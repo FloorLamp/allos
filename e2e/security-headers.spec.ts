@@ -69,8 +69,8 @@ test("login page carries the global security headers", async ({ page }) => {
 test("authenticated app page carries the global security headers", async ({
   page,
 }) => {
-  // storageState (auth.setup.ts) starts this spec logged in, so "/" renders the
-  // dashboard rather than redirecting to /login.
+  // The per-worker storageState (e2e/fixtures.ts) starts this spec logged in, so
+  // "/" renders the dashboard rather than redirecting to /login.
   const resp = await page.goto("/");
   expect(resp!.status()).toBeLessThan(400);
   expectGlobalHeaders(resp!.headers());

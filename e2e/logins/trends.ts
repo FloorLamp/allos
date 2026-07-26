@@ -29,3 +29,43 @@ export const TRENDS_CURATE_PROFILE = "Trends Curate (e2e)";
 // A canonical analyte this profile has NO readings for — the never-measured saved
 // tile. (Profile 1 seeds its own; this one must not depend on that.)
 export const TRENDS_CURATE_EMPTY_ANALYTE = "Ferritin";
+
+// ── Compare folds into Insights (issue #1489) ────────────────────────────────
+// A dedicated, TRAINING-RESTRICTED profile (birthdate ~10y ago, under the
+// instance gate of 13 seeded by e2e/seed/coverage-gaps.ts) carrying weight +
+// resting-HR readings on shared dates, so the compare overlay actually draws for a
+// minor. It proves the #1489 gate move: the Insights tab is now offered to a
+// restricted profile, carrying ONLY its age-neutral compare section.
+//
+// Dedicated ON PURPOSE (#868): the other restricted profile — the seeded ~18-month
+// "Riley (child)" — has no second metric to overlay, and this fixture also stores a
+// saved view, which on a shared profile would put a stray chip in the Views bar
+// every other Trends spec reads. Read-only in its spec (navigation + applying a
+// view, which writes nothing), so --repeat-each stays clean.
+export const E2E_LOGIN_TRENDS_COMPARE = "e2e_trends_compare";
+export const TRENDS_COMPARE_PROFILE = "Trends Compare (e2e)";
+// A saved view stored with the RETIRED `tab: "compare"` — a legacy trend_views row,
+// exactly as one saved before #1489 looks. Applying it must still land on Insights
+// with the pair selected.
+export const TRENDS_COMPARE_VIEW = "Legacy compare (e2e)";
+
+// ── Fitness becomes the windowed analytics lens (issue #1492) ────────────────
+// A dedicated ADULT profile whose training data deliberately STRADDLES the 90-day
+// default window: recent strength + cardio + sport sessions INSIDE it, and a
+// deep-past block (2026-01-*, well outside any relative window) that only appears
+// once the range is switched to All time. That's what makes "a range change
+// re-windows every chart" observable rather than asserted on a guess — the volume
+// bars, the heatmap columns, the zone/cardio weeks and the est-1RM trend all change
+// shape between 90D and All time.
+//
+// Dedicated ON PURPOSE (#868): the shared seed's profile 1 has 16 weeks of PPL plus
+// every other spec's layered activities, so an exact-count assertion there would
+// break on a neighbor's write. Read-only in its spec (navigation + range chips
+// only), so --repeat-each stays clean.
+export const E2E_LOGIN_TRENDS_FITNESS = "e2e_trends_fitness";
+export const TRENDS_FITNESS_PROFILE = "Trends Fitness (e2e)";
+// The lift the fixture trains most often INSIDE the window, so the est-1RM trend
+// names it deterministically.
+export const TRENDS_FITNESS_LIFT = "Front Squat";
+// A lift trained ONLY in the deep past — absent at 90D, present at All time.
+export const TRENDS_FITNESS_OLD_LIFT = "Pendlay Row";

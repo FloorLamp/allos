@@ -83,9 +83,9 @@ const PROFILE_ID = 1;
 
 // Reset the preventive/appointment state these tests mutate back to its
 // seeded-empty baseline, directly on the isolated e2e SQLite file. The app and
-// this helper resolve the SAME database — the webServer boots against
-// ALLOS_DB_PATH, defaulting to e2e/.data/e2e.db (see playwright.config.ts) — and
-// the seed creates none of these rows, so removing them wholesale is safe and
+// this helper resolve the SAME database — workerDbPath() is this worker's copy of
+// the seeded template, which is exactly what its server booted against (#1538) —
+// and the seed creates none of these rows, so removing them wholesale is safe and
 // returns the DB to its seeded state. Opened on its own short-lived connection
 // with a busy timeout so it never contends with the running server (WAL).
 function resetPreventiveFixture(): void {

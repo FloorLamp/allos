@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db, writeTx } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type { ConditionStatus } from "@/lib/types";
@@ -38,11 +39,25 @@ export async function addCondition(formData: FormData): Promise<FormResult> {
   const resolved =
     status === "resolved" ? dateOrNull(formData.get("resolved_date")) : null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  // created_at from the CLOCK SEAM (sqlNow, #1534): with no explicit date this
+  // stamp IS the record's Timeline day (`substr(created_at, 1, 10)` /
+  // dateFromCreatedAt), compared against `today()`-derived bounds.
   db.prepare(
     `INSERT INTO conditions
-       (name, code, code_system, status, onset_date, resolved_date, notes, source, profile_id)
-     VALUES (?,?,?,?,?,?,?,NULL,?)`
-  ).run(name, code, codeSystem, status, onset, resolved, notes, profile.id);
+       (name, code, code_system, status, onset_date, resolved_date, notes, source, profile_id,
+        created_at)
+     VALUES (?,?,?,?,?,?,?,NULL,?,?)`
+  ).run(
+    name,
+    code,
+    codeSystem,
+    status,
+    onset,
+    resolved,
+    notes,
+    profile.id,
+    sqlNow()
+  );
   revalidateConditions();
   return formOk();
 }

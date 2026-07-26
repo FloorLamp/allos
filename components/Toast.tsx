@@ -15,6 +15,11 @@ import {
   IconArrowRight,
 } from "@tabler/icons-react";
 import { upsertToast, dismissKeyed } from "@/lib/toast-upsert";
+import {
+  BOTTOM_EDGE_GUTTER_RIGHT,
+  BOTTOM_EDGE_NOTICE_BOTTOM,
+  BOTTOM_EDGE_NOTICE_LAYER,
+} from "@/components/overlay/tokens";
 
 // App-wide lightweight toast for confirming user actions (form saves, deletes,
 // etc.). Mounted once in the root layout; any client component calls `useToast()`
@@ -111,7 +116,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       {toasts.length > 0 && (
-        <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[100] flex flex-col gap-2">
+        // Bottom-edge LAYER 1 (#1520): the stack sits above the workout dock
+        // when one is present (the shared inset resolves to the plain
+        // safe-area gutter when it isn't) instead of covering it.
+        <div
+          className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_RIGHT} ${BOTTOM_EDGE_NOTICE_LAYER} flex flex-col gap-2`}
+        >
           {toasts.map((t) => (
             <ToastCard key={t.id} toast={t} dismiss={dismiss} />
           ))}

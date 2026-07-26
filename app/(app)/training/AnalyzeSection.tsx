@@ -181,7 +181,12 @@ export default async function AnalyzeSection({
       ?.label ?? currentItem;
 
   return (
-    <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
+    // The section marker (#1496) is the lazy-tab proof: /training builds ONLY the
+    // active tab, so an Overview response must not contain this testid.
+    <section
+      data-testid="analyze-section"
+      className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]"
+    >
       <div className="space-y-6">
         <div className="card relative z-20 focus-within:z-50">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">

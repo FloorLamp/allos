@@ -147,8 +147,8 @@ export default defineConfig({
         viewport: { width: 1280, height: 900 },
       },
     },
-    // Phone-viewport project (issue #1420). Same seeded-DB webServer and same
-    // auth.setup.ts storage state as `chromium` — only the viewport (iPhone-class
+    // Phone-viewport project (issue #1420). Same per-worker seeded DB and same
+    // per-worker session as `chromium` — only the viewport (iPhone-class
     // 390×844) and `hasTouch` differ, so the mobile shell (MobileNav's top bar +
     // drawer, bottom sheets, touch targets) finally has regression coverage
     // instead of being exercised only by the handful of specs that hand-set a

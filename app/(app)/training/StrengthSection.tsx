@@ -23,6 +23,13 @@ import PrCard from "@/components/PrCard";
 import { EmptyState } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 
+// UNMOUNTED since #1492. This section (and the full-history explorer it hosts) was
+// only ever rendered by Trends → Fitness, which became the WINDOWED analytics lens:
+// "analyze on Trends, do on /training". Its capabilities live on /training →
+// Analyze (the picker + per-item detail panel — the explorer triplet's fourth
+// sibling), which #1491 item 3 converges these three onto. Kept, not deleted, so
+// that convergence has its subjects; /training page changes are out of #1492's
+// scope, so nothing re-mounts it here.
 // Strength analytics + coaching. Extracted from the former /workouts page, with
 // a "Recent PRs" card added on top.
 export default async function StrengthSection() {

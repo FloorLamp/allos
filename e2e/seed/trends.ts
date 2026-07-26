@@ -8,12 +8,20 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
 import { createFixtureProfile } from "../fixture-profile";
+import { setTrendViews } from "../../lib/settings";
 import {
   E2E_LOGIN_TRENDS_CURATE,
   TRENDS_CURATE_PROFILE,
   TRENDS_CURATE_EMPTY_ANALYTE,
   E2E_LOGIN_TRENDS_BODY,
   TRENDS_BODY_PROFILE,
+  E2E_LOGIN_TRENDS_COMPARE,
+  TRENDS_COMPARE_PROFILE,
+  TRENDS_COMPARE_VIEW,
+  E2E_LOGIN_TRENDS_FITNESS,
+  TRENDS_FITNESS_PROFILE,
+  TRENDS_FITNESS_LIFT,
+  TRENDS_FITNESS_OLD_LIFT,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -115,4 +123,176 @@ export function seedCuratedOverview(): void {
       `e2e: seeded curated-Overview fixture — profile ${curateId} (${TRENDS_CURATE_PROFILE}) (#1487/#1485)`
     );
   }
+}
+
+// ── Compare folds into Insights, gate moves to the section ──
+export function seedCompareFold(): void {
+  // ── Compare-into-Insights fixture (#1489) ────────────────────────────────────
+  // A TRAINING-RESTRICTED profile that can actually run a comparison. Two things
+  // make it the fixture this needs and the seeded "Riley (child)" is not:
+  //   • an age UNDER the instance gate (13, set by e2e/seed/coverage-gaps.ts) with
+  //     TWO overlappable series — weight + resting HR on the same dates — so the
+  //     compare overlay draws its dual-axis chart for a minor;
+  //   • a stored saved view carrying the RETIRED `tab: "compare"`, i.e. a
+  //     trend_views row exactly as one saved before #1489 looks. It lives here
+  //     rather than on a shared profile because a saved view is a visible chip in
+  //     the Views bar every other Trends spec renders.
+  // Dates are RELATIVE (inside the 90-day default window) so the fixture never goes
+  // stale; the spec only reads and applies the view, so it stays repeat-safe.
+  // Idempotent: its own fixture rows are cleared and rewritten.
+  const cmpId = fixtureProfileId(TRENDS_COMPARE_PROFILE);
+  const cmpToday = today(cmpId);
+
+  // ~10 years old → under the 13-year gate → training-restricted. (Set, not
+  // ignored, on a re-seed: a stale birthdate would silently un-restrict it.)
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(cmpId, shiftDateStr(cmpToday, -3650));
+
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(cmpId);
+  const insCmp = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr, notes)
+     VALUES (?, ?, ?, ?, 'e2e:trends-compare')`
+  );
+  for (const [ago, kg, hr] of [
+    [21, 32.4, 78],
+    [14, 32.7, 76],
+    [7, 32.9, 74],
+    [2, 33.1, 75],
+  ] as const) {
+    insCmp.run(cmpId, shiftDateStr(cmpToday, -ago), kg, hr);
+  }
+
+  // The legacy saved view: no from/to (an all-time view, which viewToQuery re-emits
+  // as ?range=all) so the readings above are always inside its window.
+  setTrendViews(cmpId, [
+    {
+      name: TRENDS_COMPARE_VIEW,
+      params: {
+        tab: "compare",
+        cmpA: "metric:weight",
+        cmpB: "metric:resting_hr",
+      },
+    },
+  ]);
+
+  // Write grant: applying a saved view goes through applyTrendView, a
+  // requireWriteAccess Server Action (it redirects and stores nothing).
+  seedMemberLogin(E2E_LOGIN_TRENDS_COMPARE, cmpId, "write");
+  console.log(
+    `e2e: seeded compare-fold fixture — profile ${cmpId} (${TRENDS_COMPARE_PROFILE}) (#1489)`
+  );
+}
+
+// ── Fitness becomes the windowed analytics lens ──
+export function seedFitnessLens(): void {
+  // ── Trends → Fitness windowed-lens fixture (#1492) ───────────────────────────
+  // A dedicated ADULT profile whose training data STRADDLES the 90-day default
+  // window, so the browser tier can watch a range change re-window every chart:
+  //
+  //   INSIDE (relative dates, 5–70 days ago → always within 90D)
+  //     • six Front Squat sessions on a rising load → the est-1RM trend + a mover
+  //     • four runs with per-component minutes → weekly cardio volume + intensity mix
+  //     • two tennis matches → the Sport section
+  //   OUTSIDE (DEEP PAST, 2026-01-* — never inside a relative window)
+  //     • two Pendlay Row sessions + one long ride + one long match, all of which
+  //       must be ABSENT at 90D and PRESENT at All time
+  //
+  // The inside dates are relative so the fixture never goes stale; the outside ones
+  // are fixed deep-past per the #1511 rule (relative OR deep-past, never fixed
+  // near-present). Read-only in its spec. Idempotent: its own rows are cleared and
+  // rewritten (child exercise_sets go first — they reach profile through the
+  // activity, so the parents can't be deleted under them).
+  const fitId = fixtureProfileId(TRENDS_FITNESS_PROFILE);
+  const fitToday = today(fitId);
+
+  db.prepare(
+    `DELETE FROM exercise_sets WHERE activity_id IN
+       (SELECT id FROM activities WHERE profile_id = ?)`
+  ).run(fitId);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(fitId);
+
+  const insActivity = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, intensity, components, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual')`
+  );
+  const insSet = db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, warmup)
+     VALUES (?, ?, ?, ?, ?, 0)`
+  );
+
+  const lift = (date: string, exercise: string, weightKg: number): void => {
+    const id = Number(
+      insActivity.run(fitId, date, "strength", "Lift day", 50, null, null, null)
+        .lastInsertRowid
+    );
+    for (let set = 1; set <= 3; set++)
+      insSet.run(id, exercise, set, weightKg, 5);
+  };
+  const run = (date: string, minutes: number, intensity: string): void => {
+    insActivity.run(
+      fitId,
+      date,
+      "cardio",
+      "Run",
+      minutes,
+      8,
+      intensity,
+      JSON.stringify([
+        {
+          name: "Running",
+          type: "cardio",
+          duration_min: minutes,
+          distance_km: 8,
+        },
+      ])
+    );
+  };
+  const match = (date: string, minutes: number): void => {
+    insActivity.run(
+      fitId,
+      date,
+      "sport",
+      "Tennis match",
+      minutes,
+      null,
+      null,
+      JSON.stringify([{ name: "Tennis", type: "sport", duration_min: minutes }])
+    );
+  };
+
+  // Inside the 90-day window: a rising Front Squat, four runs, two matches.
+  for (const [ago, kg] of [
+    [70, 90],
+    [56, 95],
+    [42, 100],
+    [28, 105],
+    [14, 110],
+    [5, 115],
+  ] as const) {
+    lift(shiftDateStr(fitToday, -ago), TRENDS_FITNESS_LIFT, kg);
+  }
+  for (const [ago, minutes, intensity] of [
+    [60, 35, "easy"],
+    [40, 45, "easy"],
+    [20, 30, "moderate"],
+    [6, 40, "easy"],
+  ] as const) {
+    run(shiftDateStr(fitToday, -ago), minutes, intensity);
+  }
+  match(shiftDateStr(fitToday, -33), 60);
+  match(shiftDateStr(fitToday, -11), 75);
+
+  // Deep past — outside every relative window, visible only at All time.
+  lift("2026-01-06", TRENDS_FITNESS_OLD_LIFT, 70);
+  lift("2026-01-13", TRENDS_FITNESS_OLD_LIFT, 75);
+  run("2026-01-09", 120, "hard");
+  match("2026-01-16", 150);
+
+  seedMemberLogin(E2E_LOGIN_TRENDS_FITNESS, fitId, "read");
+  console.log(
+    `e2e: seeded Trends → Fitness windowed-lens fixture — profile ${fitId} (${TRENDS_FITNESS_PROFILE}) (#1492)`
+  );
 }

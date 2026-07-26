@@ -197,6 +197,11 @@ test("a plateaued lift shows the inline plateau hint (#923)", async ({
   }
 });
 
+// Training-watch rows on Training → Overview: the capped-open slice and the "show
+// all" overflow slice carry different testids since the #1496 rollup, and a finding
+// can legitimately be in either.
+const TRAINING_FINDING_ITEM = /^training-findings(-more)?-item$/;
+
 test("dismissing the form's plateau hint silences it on Training → Overview (#923)", async ({
   browser,
 }) => {
@@ -206,13 +211,16 @@ test("dismissing the form's plateau hint silences it on Training → Overview (#
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    // The Training-watch card shows the Skullcrusher plateau to begin with.
+    // The Training-watch card shows the Skullcrusher plateau to begin with. Since
+    // #1496 that card caps at three rows + a "show all" disclosure, so match BOTH the
+    // open rows and the overflow ones — the assertion is about the finding existing,
+    // not about which slice of the cap it happened to land in.
     await page.goto("/training?tab=overview");
     await expect(
       page
-        .getByTestId("training-findings-item")
+        .getByTestId(TRAINING_FINDING_ITEM)
         .filter({ hasText: "Skullcrusher" })
-    ).toBeVisible();
+    ).toHaveCount(1);
 
     // Dismiss it from the FORM's inline hint (same dedupeKey → shared suppression bus).
     await openNewActivity(page);
@@ -227,7 +235,7 @@ test("dismissing the form's plateau hint silences it on Training → Overview (#
     await page.goto("/training?tab=overview");
     await expect(
       page
-        .getByTestId("training-findings-item")
+        .getByTestId(TRAINING_FINDING_ITEM)
         .filter({ hasText: "Skullcrusher" })
     ).toHaveCount(0);
   } finally {

@@ -452,10 +452,14 @@ export function getExerciseSetCountsSince(
 // The only caller (buildTrainingObservationFindings → detectPlateaus) windows each
 // series to the last PLATEAU_WINDOW_DAYS anyway, so passing that cutoff makes the
 // rep-bearing-history scan a free win (issue #389) with no change to the plateau
-// output. Omit `since` for the full lifetime series.
+// output. `until` closes the other end for the Trends → Fitness strength-
+// progression section (#1492), which reads this SAME series inside the hub's
+// shared window instead of forking a windowed 1RM engine of its own. Omit both for
+// the full lifetime series.
 export function getExerciseE1rmSeries(
   profileId: number,
-  since?: string
+  since?: string,
+  until?: string
 ): {
   exercise: string;
   points: { date: string; value: number; reps: number }[];
@@ -468,9 +472,16 @@ export function getExerciseE1rmSeries(
         WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
           AND s.warmup = 0 -- warmups don't seed the plateau e1RM series (#338)
           AND (? IS NULL OR a.date >= ?)
+          AND (? IS NULL OR a.date <= ?)
         ORDER BY a.date ASC, a.id ASC`
     )
-    .all(profileId, since ?? null, since ?? null) as {
+    .all(
+      profileId,
+      since ?? null,
+      since ?? null,
+      until ?? null,
+      until ?? null
+    ) as {
     exercise: string;
     date: string;
     weight_kg: number | null;
@@ -541,7 +552,15 @@ export function getExerciseE1rmSeries(
   return out;
 }
 
-export function getVolumeByDate(profileId: number) {
+// Total working volume (kg lifted) per session date, ascending. `since`/`until`
+// (YYYY-MM-DD, inclusive) optionally bound it to a window — the SAME computation,
+// windowed (#1492/#221): the Trends → Fitness volume chart passes the hub's shared
+// range, /training passes neither and keeps its full-history series.
+export function getVolumeByDate(
+  profileId: number,
+  since?: string,
+  until?: string
+) {
   return db
     .prepare(
       `SELECT a.date AS date,
@@ -552,9 +571,20 @@ export function getVolumeByDate(profileId: number) {
          AND ((s.weight_kg IS NOT NULL AND s.reps IS NOT NULL)
           OR (s.weight_kg_right IS NOT NULL AND s.reps_right IS NOT NULL))
          AND s.warmup = 0 -- warmups aren't working volume (#338)
+         AND (? IS NULL OR a.date >= ?)
+         AND (? IS NULL OR a.date <= ?)
        GROUP BY a.date ORDER BY a.date ASC`
     )
-    .all(profileId) as { date: string; volume: number }[];
+    .all(
+      profileId,
+      since ?? null,
+      since ?? null,
+      until ?? null,
+      until ?? null
+    ) as {
+    date: string;
+    volume: number;
+  }[];
 }
 
 // Per-exercise strength stats for the combined Strength page: best set,

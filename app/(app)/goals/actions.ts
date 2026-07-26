@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import {
   formError,
   formOk,
@@ -230,10 +231,13 @@ export async function createGoal(formData: FormData): Promise<FormResult> {
   const baseline = c.body_metric
     ? getLatestBodyMetric(profile.id, c.body_metric)
     : null;
+  // created_at from the CLOCK SEAM (sqlNow, #1534): with no explicit date this
+  // stamp IS the record's Timeline day (`substr(created_at, 1, 10)` /
+  // dateFromCreatedAt), compared against `today()`-derived bounds.
   db.prepare(
-    `INSERT INTO goals (${GOAL_COLS}, baseline_value, profile_id, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?, 'active')`
-  ).run(...goalValues(c), baseline, profile.id);
+    `INSERT INTO goals (${GOAL_COLS}, baseline_value, profile_id, status, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?, 'active', ?)`
+  ).run(...goalValues(c), baseline, profile.id, sqlNow());
   revalidatePath("/training");
   revalidatePath("/");
   return formOk();

@@ -122,11 +122,12 @@ function stripOf(
 ) {
   return supplementAdherenceStrip(
     DAILY_SUPP,
-    doseIds,
+    doseIds.map((id) => ({ id })),
     lastNDates(ANCHOR, 14),
     new Set(),
     () => new Set(),
-    indexTakenByDose(rows)
+    indexTakenByDose(rows),
+    "UTC"
   );
 }
 

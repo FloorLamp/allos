@@ -71,24 +71,27 @@ interface EffortEntry {
 // per request (getCardioByActivity + getCardioVolumeByWeek + getCardioIntensityMix
 // on the training page; + getSportByActivity/journal), each a full activities scan
 // with per-row JSON.parse. cache() computes it once per (profile, type[, since])
-// per request. Pass `since` (YYYY-MM-DD) to bound the scan — used only by the
-// suggestion path, which needs recent names, not all history; the stats
-// aggregators call with no `since` so they still see the full record.
+// per request. Pass `since` (YYYY-MM-DD) to bound the scan — used by the
+// suggestion path, which needs recent names rather than all history, and by the
+// Trends → Fitness lens (#1492), which bounds BOTH ends to the hub's shared window
+// (`until`). Omitting both still sees the full record, so the /training stats
+// aggregators are unchanged.
 export const effortEntries = cache(function effortEntries(
   profileId: number,
   targetType: "cardio" | "sport",
-  since?: string
+  since?: string,
+  until?: string
 ): EffortEntry[] {
-  const args: (string | number)[] = since
-    ? [profileId, targetType, since]
-    : [profileId, targetType];
+  const args: (string | number)[] = [profileId, targetType];
+  if (since) args.push(since);
+  if (until) args.push(until);
   const rows = db
     .prepare(
       `SELECT id, date, type, title, distance_km, duration_min, intensity, components
        FROM activities
        WHERE profile_id = ? AND (type = ? OR components IS NOT NULL)${
          since ? " AND date >= ?" : ""
-       }
+       }${until ? " AND date <= ?" : ""}
        ORDER BY date ASC, id ASC`
     )
     .all(...args) as {

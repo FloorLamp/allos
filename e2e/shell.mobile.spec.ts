@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { openMobileDrawer, settledClick } from "./helpers";
-import { loginAs } from "./nav";
+import { loginAs, openCommandPalette } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_MULTI,
@@ -235,13 +235,20 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     await page.goto("/");
     await expect(primary).toHaveAttribute("data-quick-log-id", "log-activity");
     await expect(primary).toHaveAttribute("aria-label", "Log activity");
-    // Where the primary IS the activity editor, its two companions show.
+    // Where the primary IS the activity editor, its companion shows.
     await expect(page.getByTestId("start-workout-mobile")).toBeVisible();
+    // …and it is the ONLY one since #1509: the ⟳ repeat-last button left the bar
+    // (it was a fourth home for a shortcut the palette and the Journal card's ⋯
+    // menu already carry, spending a slot of a 390px bar).
+    await expect(page.getByTestId("repeat-last-mobile")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Repeat last activity" })
+    ).toHaveCount(0);
 
     await page.goto("/nutrition");
     await expect(primary).toHaveAttribute("data-quick-log-id", "log-food");
     await expect(primary).toHaveAttribute("aria-label", "Log food");
-    // …and there they are noise competing for a 390px bar, so they are dropped.
+    // …and there it is noise competing for a 390px bar, so it is dropped.
     await expect(page.getByTestId("start-workout-mobile")).toHaveCount(0);
 
     await page.goto("/medications");
@@ -253,6 +260,22 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
       "data-quick-log-id",
       "log-measurements"
     );
+  });
+
+  test("repeat-last keeps its palette home after leaving the bar (#1509)", async ({
+    page,
+  }) => {
+    // Dropping the bar button did not drop the SHORTCUT: it keeps exactly two
+    // homes — the command palette (here, reachable on a phone too) and the
+    // Journal card's ⋯ "Log again" (pinned by entry-ergonomics.spec.ts). It was
+    // deliberately NOT added to the quick-log sheet (#1506 keeps that list to
+    // logging actions).
+    await page.goto("/"); // the seed has plenty of logged activities
+    const input = await openCommandPalette(page);
+    await input.fill("repeat");
+    await expect(page.getByText("Repeat last activity")).toBeVisible();
+    // Read-only: close without executing so no draft is created.
+    await page.keyboard.press("Escape");
   });
 
   test("the quick-log sheet opens, opens a real form IN PLACE, and closes", async ({

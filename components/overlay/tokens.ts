@@ -53,3 +53,54 @@ export const OVERLAY_DRAG_HANDLE_HIT =
   "mx-auto flex h-6 w-16 shrink-0 touch-none items-center justify-center";
 export const OVERLAY_DRAG_HANDLE_BAR =
   "h-1.5 w-10 rounded-full bg-slate-300 dark:bg-ink-700";
+
+// ── The bottom edge (issue #1520, part B) ────────────────────────────────────
+//
+// FOUR fixed surfaces converge on the phone's bottom edge and, before this,
+// each one hand-wrote its own inset and picked its own z-index in isolation:
+// the workout dock (full-width, `z-40`), the offline-queue pill (bottom-left,
+// `z-[100]`), that queue's error panel (bottom-right, `z-[101]`) and the toast
+// stack (bottom-right, `z-[100]`). Since three of them anchored to `bottom:
+// max(1rem, safe-area)` regardless of the dock, a toast raised during a live
+// workout landed ON TOP of the dock — the notice covered the "still working
+// out?" bar it was competing with for the same 60px of screen.
+//
+// The convergence is deliberately NOT a slot manager. It is (a) documented
+// stacking ORDER, (b) shared class strings, and (c) ONE CSS custom property
+// naming how much of the bottom edge is already claimed:
+//
+//   LAYER 0 (base) — the workout dock. It OWNS the edge: full-width, flush to
+//     `bottom-0`, and it CLAIMS its height into `--bottom-edge-offset` while
+//     mounted (useBottomEdgeClaim). It is session state, not a notice, so it
+//     never moves out of another surface's way.
+//   LAYER 1 (notices) — transient things that stack ABOVE the dock rather than
+//     over it: the toast stack and the offline pill.
+//   LAYER 2 (alerts) — the offline error panel, which out-ranks a toast because
+//     it reports a write that did not land.
+//   (Modals/sheets/confirms sit above all of this — see BottomSheet's note.)
+//
+// The offset var defaults to `0px`, so with no dock present every one of these
+// surfaces resolves to EXACTLY the inset it had before. Only ONE claimant exists
+// (the dock); a second would need to sum or max them, which is the point at which
+// this stops being constants and starts being the slot manager #1520 rejected.
+//
+// Import path note: the toast stack and the offline queue live in the ROOT layout,
+// above the activity editor's tree, and they need only these constants — so they
+// import this module DIRECTLY rather than through components/overlay's barrel,
+// which would pull the gesture recognizer and drag handle into the app's very
+// first client chunk (including /login). The dock, already inside that tree, uses
+// the barrel because it also needs the claim hook.
+export const BOTTOM_EDGE_OFFSET_VAR = "--bottom-edge-offset";
+// Written out (not composed from the constant above) because Tailwind's scanner
+// reads LITERALS — a class string interpolating the var name above would never be
+// generated. (Do not spell such an interpolation out even in a comment here: the
+// scanner reads comments too, and would emit it as a broken rule.)
+export const BOTTOM_EDGE_NOTICE_BOTTOM =
+  "bottom-[calc(var(--bottom-edge-offset,0px)+max(1rem,env(safe-area-inset-bottom)))]";
+export const BOTTOM_EDGE_GUTTER_RIGHT =
+  "right-[max(1rem,env(safe-area-inset-right))]";
+export const BOTTOM_EDGE_GUTTER_LEFT =
+  "left-[max(1rem,env(safe-area-inset-left))]";
+export const BOTTOM_EDGE_DOCK_LAYER = "z-40";
+export const BOTTOM_EDGE_NOTICE_LAYER = "z-[100]";
+export const BOTTOM_EDGE_ALERT_LAYER = "z-[101]";

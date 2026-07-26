@@ -154,7 +154,8 @@ export default async function SupplementsTab() {
     profile.id,
     today(profile.id)
   );
-  const { hhmm } = zonedDateParts(getTimezone(profile.id), new Date());
+  const tz = getTimezone(profile.id);
+  const { hhmm } = zonedDateParts(tz, new Date());
   const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const postWorkoutReady = isPostWorkoutReady(
     todaysActivities.map((a) => a.end_time ?? a.start_time),
@@ -197,16 +198,16 @@ export default async function SupplementsTab() {
   // Policy lives in the shared supplementAdherenceStrip (issue #313).
   const stripBySupp = new Map<number, AdherenceDot[]>();
   for (const s of supplements) {
-    const doseIds = (dosesBySupp.get(s.id) ?? []).map((d) => d.id);
     stripBySupp.set(
       s.id,
       supplementAdherenceStrip(
         s,
-        doseIds,
+        dosesBySupp.get(s.id) ?? [],
         dates,
         workoutDays,
         situationsOn,
-        takenByDose
+        takenByDose,
+        tz
       )
     );
   }

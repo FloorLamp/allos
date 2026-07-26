@@ -3,10 +3,9 @@ import Database from "better-sqlite3";
 import { followLink, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
-// The isolated e2e DB path (mirrors the default in playwright.config.ts). The test
-// process gets no ALLOS_DB_PATH override, so it resolves to the same file the
-// webServer booted against. A raw connection (not lib/db) avoids re-running
-// migrate()/bootstrap side effects on import.
+// THIS worker's database (#1538): workerDbPath() resolves the same file this
+// worker's app server was booted against. A raw connection (not lib/db) avoids
+// re-running migrate()/bootstrap side effects on import.
 const DB_PATH = workerDbPath();
 
 // Visit detail + timeline deeplink. The seed (scripts/seed)

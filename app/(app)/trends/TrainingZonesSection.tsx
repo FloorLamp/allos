@@ -19,21 +19,36 @@ function zoneRange(model: ZoneModel, id: number): string {
 // stacked zone minutes with a Zone 2 target line, the current-week Zone 2 volume,
 // the easy/hard polarization split, and the zone boundary table WITH its formula.
 // All HR is scoped to activity windows so all-day wear doesn't count as training.
-export default async function TrainingZonesSection() {
+//
+// #1492: it reads the hub's SHARED window — `weeks` (the window's length in week
+// columns) and `end` (its last day) thread into the SAME getTrainingZoneData, not
+// a windowed second engine. The "Zone 2 this week" headline is the exception by
+// design: it answers "this week", so it renders only when the window actually
+// reaches today (`includesToday`) rather than quietly reporting the current week
+// under a historical window.
+export default async function TrainingZonesSection({
+  weeks,
+  end,
+  includesToday = true,
+}: {
+  weeks?: number;
+  end?: string;
+  includesToday?: boolean;
+}) {
   const { profile } = await requireSession();
-  const data = getTrainingZoneData(profile.id);
+  const data = getTrainingZoneData(profile.id, weeks, end);
   const { model } = data;
 
   return (
-    <section data-testid="training-zones" className="mb-6">
+    <div data-testid="training-zones">
       <div className="card">
-        <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+        <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
           Training intensity (HR zones)
-        </h3>
+        </h2>
         <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
-          Weekly minutes per heart-rate zone, from per-minute HR during your
-          logged workouts. Longevity training tracks weekly Zone 2 volume and
-          the easy/hard (80/20) split.
+          Weekly minutes per heart-rate zone in this window, from per-minute HR
+          during your logged workouts. Longevity training tracks weekly Zone 2
+          volume and the easy/hard (80/20) split.
         </p>
 
         {!model ? (
@@ -66,7 +81,7 @@ export default async function TrainingZonesSection() {
             )}
 
             {/* Current-week Zone 2 volume vs target. */}
-            {data.currentWeekZone2 && data.zone2Target > 0 && (
+            {includesToday && data.currentWeekZone2 && data.zone2Target > 0 && (
               <p
                 data-testid="zone2-adherence"
                 className="mt-4 text-sm text-slate-600 dark:text-slate-300"
@@ -161,6 +176,6 @@ export default async function TrainingZonesSection() {
           </>
         )}
       </div>
-    </section>
+    </div>
   );
 }

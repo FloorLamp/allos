@@ -15,13 +15,16 @@ import { listActivityVideosAction } from "@/app/(app)/journal/video-actions";
 // in the card's ⋯ overflow menu was considered and rejected (discoverability), as
 // was gating it by activity type — a clip on a run is unusual but legitimate.
 //
-// EDIT MODE ONLY, and that is a data constraint rather than a preference:
-// `activity_videos` rows need an `activityId`, which the editor's create mode does
-// not have until the row is saved. During first-time logging the block therefore
-// appears once the activity is saved and reopened. Deferred upload (hold the file
-// client-side until save, then upload) was weighed and rejected — it buys a
-// marginal flow at the cost of a client-held-blob lifecycle (navigation loss, size
-// limits, retry semantics). In-session capture, if ever wanted, rides the live
+// It needs a SAVED ACTIVITY ID, and that is a data constraint rather than a
+// preference: `activity_videos` rows need an `activityId`. It is NOT "edit mode
+// only" — the caller passes `editData?.id ?? createdId`, so during first-time
+// logging the block appears the moment autosave inserts the row, with no save-and-
+// reopen round trip (#1520; it used to gate on `editData`, which never fills in on a
+// create-mode form, so the block simply never showed while logging). Deferred upload
+// (hold the file client-side until save, then upload) was weighed and rejected — it
+// buys a marginal flow at the cost of a client-held-blob lifecycle (navigation loss,
+// size limits, retry semantics), and it is still rejected: before the row exists
+// there is no block at all. In-session capture, if ever wanted, rides the live
 // editor's own id timing (#924), not this.
 //
 // It owns its own fetch: the editor is a client component opened from several entry

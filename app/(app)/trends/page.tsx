@@ -19,7 +19,6 @@ import NavTabs from "@/components/NavTabs";
 import DateRangeControl from "@/components/DateRangeControl";
 import SavedViewsBar from "@/components/SavedViewsBar";
 import OverviewSection from "./OverviewSection";
-import CompareSection from "./CompareSection";
 import BodySection from "./BodySection";
 import { parseBodyView } from "./body-view";
 import FitnessSection from "./FitnessSection";
@@ -44,11 +43,16 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 // The Trends hub: the analytics lens — a sibling to the
 // Timeline — that aggregates the app's existing trend charts into one place under
 // a SHARED date-range control. Every section reuses existing components/queries;
-// the shared window (from/to) drives them all. Fitness + Insights (age-gated
-// surfaces) are hidden for training-restricted profiles.
+// the shared window (from/to) drives them all. Fitness (wholly age-gated content)
+// is hidden for training-restricted profiles; Insights is offered to everyone and
+// gates its AI half at the SECTION level, since its compare section is age-neutral
+// (#1489).
 export default async function TrendsPage(props: {
   searchParams: Promise<{
     tab?: string | string[];
+    // The RETIRED nested Fitness strip (#1492) — read only so an old deep link can
+    // still name the Fitness tab through parseTab; the value itself is ignored and
+    // never re-emitted into a hub link.
     ftab?: string | string[];
     from?: string | string[];
     to?: string | string[];
@@ -78,12 +82,17 @@ export default async function TrendsPage(props: {
     firstParam(searchParams.range)
   );
   const allTime = isAllTimeRange(range);
-  // Fitness + Insights are spliced out below for restricted profiles; if one is
-  // requested via ?tab=, fall back to the default so the URL doesn't advertise a
-  // tab that isn't there (the tab strip already can't select it).
-  // parseTab also maps the RETIRED `?tab=vitals` onto body (#1486) — a vocabulary
-  // mapping in lib/trends-tabs.ts, so every old deep link lands on the merged tab.
-  const requestedTab = parseTab(searchParams.tab);
+  // Fitness is spliced out below for restricted profiles; if it is requested via
+  // ?tab=, fall back to the default so the URL doesn't advertise a tab that isn't
+  // there (the tab strip already can't select it). Insights is NOT in that set
+  // since #1489 — a restricted profile gets the tab with only its compare section.
+  // parseTab also maps the RETIRED `?tab=vitals` onto body (#1486) and
+  // `?tab=compare` onto insights (#1489) — vocabulary mappings in
+  // lib/trends-tabs.ts, so every old deep link lands on the tab that absorbed it,
+  // compare params and all. The retired NESTED `?ftab=` (#1492) maps the same way:
+  // it names Fitness when no live `?tab=` is present, and its value is then ignored
+  // (the tab is sections now, so there is nothing left for it to select).
+  const requestedTab = parseTab(searchParams.tab, searchParams.ftab);
   const activeTab = isTabRestricted(requestedTab, restricted)
     ? "overview"
     : requestedTab;
@@ -94,10 +103,6 @@ export default async function TrendsPage(props: {
   // stack). Only meaningful on the Body tab; carried through the range control + tab
   // navigation so a chosen layout survives a window change.
   const bodyView = parseBodyView(firstParam(searchParams.view));
-  // The Fitness section's nested strip (Strength/Cardio/Sport) is also driven by
-  // the URL (?ftab=), so — like the top-level tab — only the active nested
-  // section is built server-side. FitnessSection validates/defaults this.
-  const ftab = firstParam(searchParams.ftab);
   // The "1D" pill (#1466), injected through the shared control's extra-ranges slot.
   // It moved to Body with the vitals (#1486) and stays scoped to that ONE tab on
   // purpose: 1D is only meaningful where the surface swaps to genuinely intraday
@@ -153,28 +158,20 @@ export default async function TrendsPage(props: {
     });
 
   // Tab-strip spec: labels only, built by the pure registry (lib/trends-tabs.ts).
-  // SIX entries since #1486 — Vitals merged into Body. Fitness + Insights are
-  // age-gated surfaces, omitted entirely for training-restricted profiles (matching
-  // the Journal/Training/Insights nav gate), so they're never in the strip or
-  // reachable via ?tab= for them (the activeTab fallback above enforces the latter).
+  // FIVE entries since #1489 — Vitals merged into Body (#1486) and Compare folded
+  // into Insights — in frequency order (Overview | Body | Fitness | Nutrition |
+  // Insights). Fitness is the one age-gated surface omitted entirely for
+  // training-restricted profiles, so it's never in the strip or reachable via ?tab=
+  // for them (the activeTab fallback above enforces the latter).
   const tabStrip = trendsTabStrip(restricted);
 
   // #105: build ONLY the active section server-side. Passing every section as a
-  // prop rendered (and ran the queries for) all six on every request — the
+  // prop rendered (and ran the queries for) all of them on every request — the
   // client `keepMounted` flag only gated DOM, not the RSC pass. Each tab switch
   // is already a URL navigation (NavTabs → router.replace), so this makes every
   // Trends request compute one tab instead of all of them, at no extra round-trips.
   const activeSection: React.ReactNode = (() => {
     switch (activeTab) {
-      case "compare":
-        return (
-          <CompareSection
-            range={range}
-            a={cmpA}
-            b={cmpB}
-            normalized={cmpNormalized}
-          />
-        );
       case "body":
         return (
           <BodySection
@@ -199,9 +196,19 @@ export default async function TrendsPage(props: {
       case "nutrition":
         return <NutritionSection range={range} />;
       case "fitness":
-        return <FitnessSection ftab={ftab} />;
+        return <FitnessSection range={range} />;
       case "insights":
-        return <InsightsSection range={range} />;
+        // The hub's "derived views" tab: AI insights + situation analytics (both
+        // age-gated INSIDE the section) plus the compare overlay, which is
+        // age-neutral and therefore the only thing a restricted profile sees here.
+        return (
+          <InsightsSection
+            range={range}
+            cmpA={cmpA}
+            cmpB={cmpB}
+            cmpNormalized={cmpNormalized}
+          />
+        );
       case "overview":
       default:
         return <OverviewSection range={range} />;

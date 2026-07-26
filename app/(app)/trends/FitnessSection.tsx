@@ -1,70 +1,87 @@
 import Link from "next/link";
-import NavTabs from "@/components/NavTabs";
-import StrengthSection from "../training/StrengthSection";
-import CardioSection from "../training/CardioSection";
-import SportSection from "../training/SportSection";
-import TrainingZonesSection from "./TrainingZonesSection";
-import WorkoutHeatmapSection from "./WorkoutHeatmapSection";
+import { requireSession } from "@/lib/auth";
+import { today } from "@/lib/db";
+import type { DateRange } from "@/lib/timeline-format";
+import {
+  FITNESS_SECTIONS,
+  fitnessWindow,
+  fitnessWindowWeeks,
+} from "@/lib/trends-fitness";
+import ChartJumpChips from "./ChartJumpChips";
+import FitnessPRs from "./FitnessPRs";
+import FitnessVolumeSection from "./FitnessVolumeSection";
+import FitnessZonesSection from "./FitnessZonesSection";
+import FitnessStrengthSection from "./FitnessStrengthSection";
+import FitnessSportSection from "./FitnessSportSection";
 
-const FTABS = ["strength", "cardio", "sport"] as const;
-type FitnessTab = (typeof FTABS)[number];
-
-function parseFtab(value: string | undefined): FitnessTab {
-  return FTABS.includes(value as FitnessTab)
-    ? (value as FitnessTab)
-    : "strength";
-}
-
-// The Trends hub's Fitness section. Reuses the Training page's Strength / Cardio /
-// Sport section components verbatim (est. 1RM per lift, cardio records, weekly
-// volume, sport summaries). These manage their own full-history views, so they
-// aren't windowed by the shared range — the note makes that explicit. The whole
-// section is hidden by the hub for age-restricted profiles (isTrainingRestricted),
-// the same gate the Journal/Training nav uses, so it's never rendered for them.
+// Trends → Fitness: the WINDOWED ANALYTICS LENS (issue #1492).
 //
-// #105: the nested strip is URL-driven (?ftab=), and only the active nested
-// section is built server-side — the page reads `ftab` and threads it down so
-// the full-history training aggregations don't all run on every Fitness view.
-export default function FitnessSection({ ftab }: { ftab?: string }) {
-  const active = parseFtab(ftab);
-  const section =
-    active === "cardio" ? (
-      <>
-        {/* HR training-intensity distribution (issue #159): zones, weekly Zone 2
-            volume, polarization split. Cardio-tab home since it's HR-driven. */}
-        <TrainingZonesSection />
-        <CardioSection />
-      </>
-    ) : active === "sport" ? (
-      <SportSection />
-    ) : (
-      <StrengthSection />
-    );
+// The rule: **analyze on Trends, do on /training.** This tab used to re-mount the
+// /training page's Strength / Cardio / Sport sections VERBATIM behind a nested
+// `?ftab=` strip — full history, un-windowed, with the apology in the UI ("full
+// history") on a hub whose subtitle promises "under one date range". Once the hub
+// defaulted to 90D (#1485 G) every other tab windowed and this one silently would
+// not. It is now four SECTIONS, composition PINNED by the owner (2026-07-25):
+//
+//   1. Volume & cadence      — windowed training volume (bars) + the heatmap,
+//                              re-scoped to the window and compacted
+//   2. Zones & cardio        — windowed HR-zone minutes / Zone 2 / polarization
+//                              (#159) + windowed weekly cardio volume + mix
+//   3. Strength progression  — windowed est-1RM movement + PR rate
+//   4. Sport                 — windowed sport summaries
+//
+// Exactly these four, no others. Every chart reads the SAME window, so a range
+// change re-windows the whole tab.
+//
+// What LEFT: the full-history explorers and the 14-row Recent-PRs pair. Those are
+// "do" surfaces — /training owns them (Analyze is their windowless home, and
+// #1491 item 3 converges the explorer triplet there) — and stacking them here was
+// the audit's ~900px pre-chart wall. In their place the tab leads with a compact
+// **PRs this window** block: the top three records set inside the window, with the
+// full list one link away (the #1485/#1490 movers treatment).
+//
+// The nested strip is gone with them. `?ftab=strength|cardio|sport` is a retired
+// VOCABULARY — an old deep link names the Fitness tab and the value is ignored
+// (lib/trends-tabs.ts, the #1486/#1489 mapping pattern) — so `/trends?tab=fitness&
+// ftab=cardio` from a Telegram nudge or a bookmark still lands here, now on a page
+// where the zone content it wanted is simply a section.
+//
+// The whole tab stays TAB-level age-gated (RESTRICTED_TRENDS_TABS): a
+// training-restricted profile never sees the chip and never reaches the section.
+export default async function FitnessSection({ range }: { range: DateRange }) {
+  const { profile } = await requireSession();
+  const todayStr = today(profile.id);
+  const window = fitnessWindow(range, todayStr);
+  // ONE week-count decision, shared by every weekly-grain builder on the tab (the
+  // heatmap columns, the zone weeks, the cardio weeks, the PR-rate weeks) so they
+  // can't disagree about how long "this window" is.
+  const weeks = fitnessWindowWeeks(window.days);
+
   return (
-    <div className="space-y-4">
-      {/* Workout-density heatmap (issue #186): overall training cadence over the
-          trailing 12 months, above the per-discipline strip so it shows on every
-          nested tab. "How often" — the companion to the zone card's "how hard". */}
-      <WorkoutHeatmapSection />
+    <div className="space-y-6" data-testid="trends-fitness">
+      {/* Section jump chips — the #1486/#1067 pattern that replaced the nested tab
+          strip. Plain in-page `#anchor` links (never `role="tab"`), so there is no
+          third navigation level under the hub's own strip + range control. */}
+      <ChartJumpChips chips={FITNESS_SECTIONS.map((s) => ({ ...s }))} />
+
+      <FitnessPRs window={window} />
+
+      <FitnessVolumeSection window={window} weeks={weeks} />
+      <FitnessZonesSection window={window} weeks={weeks} />
+      <FitnessStrengthSection window={window} weeks={weeks} />
+      <FitnessSportSection window={window} />
+
       <p className="text-sm text-slate-500 dark:text-slate-400">
-        Strength, cardio, and sport progress (full history).{" "}
+        Logging, live workouts, routines, the full-history explorers and the
+        fitness check live on{" "}
         <Link
           href="/training"
           className="font-medium text-brand-700 hover:underline dark:text-brand-300"
         >
-          Full Training →
+          Training
         </Link>
+        .
       </p>
-      <NavTabs
-        paramKey="ftab"
-        tabs={[
-          { id: "strength", label: "Strength" },
-          { id: "cardio", label: "Cardio" },
-          { id: "sport", label: "Sport" },
-        ]}
-      >
-        {section}
-      </NavTabs>
     </div>
   );
 }

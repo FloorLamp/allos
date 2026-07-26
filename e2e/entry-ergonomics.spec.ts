@@ -839,7 +839,9 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
         left: style.borderLeftWidth,
       };
     })
-  ).toEqual({ top: "0px", right: "1px", bottom: "0px", left: "0px" });
+    // Dividers on BOTH sides since #1524 gave reps its missing − button: the reps
+    // stepper is the same − input + segment the weight one has always been.
+  ).toEqual({ top: "0px", right: "1px", bottom: "0px", left: "1px" });
   const weightStepperBox = await weightStepper.boundingBox();
   const repsStepperBox = await repsStepper.boundingBox();
   expect(weightStepperBox).not.toBeNull();
@@ -874,6 +876,69 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
   // set, so the set stays half-filled and nothing auto-saves — no cleanup needed.
   await page.getByLabel("Increase weight").first().click(); // first-ok: the first set's increase-weight control on the opened card — order-agnostic
   await expect(page.getByTestId("set1-weight")).toHaveValue("2.5");
+
+  await page.keyboard.press("Escape");
+});
+
+test("the reps stepper steps DOWN as well as up, clamped at 0 (#1524)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Weight and RPE were symmetric (− and +) from the start; reps shipped with only
+  // a +, so a mis-tapped rep count could only be fixed by editing the field by hand.
+  await pickActivity(page, "Barbell Bench Press");
+  const reps = page.getByTestId("set1-reps-stepper").locator("input");
+  const up = page.getByLabel("Add a rep").first(); // first-ok: the first set's add-rep control on the card this test just opened — order-agnostic
+  const down = page.getByLabel("Decrease reps").first(); // first-ok: the first set's decrease-reps control on the card this test just opened — order-agnostic
+
+  await up.click();
+  await up.click();
+  await expect(reps).toHaveValue("2");
+  await down.click();
+  await expect(reps).toHaveValue("1");
+  // Clamped at 0: the field empties rather than going negative, and staying at the
+  // floor is a no-op.
+  await down.click();
+  await expect(reps).toHaveValue("");
+  await down.click();
+  await expect(reps).toHaveValue("");
+
+  // Reps only — the set stays half-filled, so nothing auto-saves; no cleanup.
+  await page.keyboard.press("Escape");
+});
+
+test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // A unilateral lift offers "Track sides separately", which swaps the row for the
+  // L/R variant and renders a reps stepper PER SIDE — the second home of the
+  // missing decrement.
+  await pickActivity(page, "Hammer Curl");
+  await page.getByText("Track sides separately", { exact: true }).click();
+  await expect(page.getByTestId("per-side-checkbox")).toBeChecked();
+  const downs = page.getByLabel("Decrease reps");
+  await expect(downs).toHaveCount(2);
+  const ups = page.getByLabel("Add a rep");
+  await expect(ups).toHaveCount(2);
+
+  const left = page.getByTestId("reps-stepper").first(); // first-ok: the per-side row this test just revealed on its own new-activity card — the left input of the pair
+  await ups.first().click(); // first-ok: same per-side pair — the left side's control
+  await expect(left.locator("input")).toHaveValue("1");
+  await downs.first().click(); // first-ok: same per-side pair — the left side's control
+  await expect(left.locator("input")).toHaveValue("");
 
   await page.keyboard.press("Escape");
 });

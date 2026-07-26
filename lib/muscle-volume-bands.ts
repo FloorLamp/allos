@@ -236,6 +236,25 @@ export function muscleVolumeSignalKey(
   return `${MUSCLE_VOLUME_PREFIX}below:${muscle}:${monthAnchor}`;
 }
 
+/**
+ * The INVERSE of `muscleVolumeSignalKey` — the muscle a volume-band dedupeKey names,
+ * or null for any other key. Lives here, next to the builder, so the key's shape is
+ * ONE fact (#482 identity ownership): the Overview rollup (#1496) folds N per-muscle
+ * findings into one row and needs their muscle labels WITHOUT re-parsing the rendered
+ * title or minting a second key grammar. Unknown/foreign keys return null rather than
+ * throwing — a caller renders those as ordinary rows.
+ */
+export function parseMuscleVolumeKey(dedupeKey: string): MuscleId | null {
+  if (!dedupeKey.startsWith(`${MUSCLE_VOLUME_PREFIX}below:`)) return null;
+  const parts = dedupeKey.split(":");
+  // muscle-volume : below : <muscle> : <YYYY-MM>
+  const muscle = parts[2];
+  if (!muscle) return null;
+  return (MUSCLE_IDS as readonly string[]).includes(muscle)
+    ? (muscle as MuscleId)
+    : null;
+}
+
 // Render a possibly-fractional set count (secondary credit is 0.5) — whole numbers
 // plainly, half-credit with one decimal.
 function fmtSets(n: number): string {

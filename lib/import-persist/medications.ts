@@ -196,7 +196,9 @@ export function persistExtractedMedications(
       providerId,
       // import_key — the stable within-doc reprocess anchor for visit-link decisions.
       medImportKey(docId, med.name),
-      profileId
+      profileId,
+      // created_at — the clock seam, not SQL's real clock (#1534); see insMed.
+      sqlNow()
     );
     const medId = Number(info.lastInsertRowid);
     newItems++;
@@ -245,6 +247,7 @@ export function persistExtractedMedications(
 }
 import type Database from "better-sqlite3";
 import { db } from "../db";
+import { sqlNow } from "../clock";
 import type { ImportedMedicationCourse } from "../health-import";
 import { medNameKey } from "../medication-record-match";
 import {

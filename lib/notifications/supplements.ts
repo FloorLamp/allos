@@ -28,6 +28,7 @@ import { situationHistoryResolver } from "../trend-annotations";
 import {
   adherenceSummary,
   doseStrip,
+  doseWindowSince,
   indexTakenByDose,
 } from "../supplement-adherence";
 import {
@@ -148,6 +149,7 @@ function gatherWindowDoses(
   // column window lines up with getSupplementLogsInRange's own today-anchored
   // range and with adherenceSummary's "last column is today, still pending" rule.
   const windowDates = lastNDates(today(profileId), ADHERENCE_DAYS);
+  const tz = getTimezone(profileId);
   const workoutDays = new Set(getActivityDates(profileId));
   const takenByDose = indexTakenByDose(
     getSupplementLogsInRange(profileId, ADHERENCE_DAYS)
@@ -169,8 +171,12 @@ function gatherWindowDoses(
     // A dose is "due" on a past date when its supplement was due that day
     // (workout/situational logic); situations are only known as of now.
     const dd = takenByDose.get(dose.id);
+    // Clamp the window to the dose's lifetime (#430/#1442) before summarizing it:
+    // a fixed lookback over a med added this morning is all pre-existence days,
+    // and scoring them would make the very first reminder announce "0% adherence".
+    const since = doseWindowSince(supp.created_at, dose.created_at, dd, tz);
     const strip = doseStrip(
-      windowDates,
+      since ? windowDates.filter((d) => d >= since) : windowDates,
       (d) =>
         isDueOn(supp, {
           isWorkoutDay: workoutDays.has(d),

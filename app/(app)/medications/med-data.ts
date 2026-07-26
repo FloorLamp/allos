@@ -365,7 +365,8 @@ export function loadMedicationsData(
     !!s.active && (s.as_needed === 1 || isDueOn(s, ctx));
 
   const buildCardData = (med: Supplement): MedCardData => {
-    const doseIds = (dosesBySupp.get(med.id) ?? []).map((d) => d.id);
+    const medDoses = dosesBySupp.get(med.id) ?? [];
+    const doseIds = medDoses.map((d) => d.id);
     const prn = prnInfoFor(med);
     const monitoring = med.active
       ? monitoringSummaryForMed({
@@ -381,11 +382,12 @@ export function loadMedicationsData(
       sideEffects: sideEffectsByItem.get(med.id) ?? [],
       strip: supplementAdherenceStrip(
         med,
-        doseIds,
+        medDoses,
         dates,
         workoutDays,
         situationsOn,
-        takenByDose
+        takenByDose,
+        tz
       ),
       refillRate: refillRates.get(med.id) ?? null,
       poolChip: poolChips.get(med.id) ?? null,
@@ -625,9 +627,9 @@ export function getMedicationAdherenceCalendar(
     (s) => s.id === itemId && s.kind === "medication"
   );
   if (!med) return buildAdherenceCalendar([]);
-  const doseIds = getSupplementDoses(profileId)
-    .filter((d) => d.item_id === itemId)
-    .map((d) => d.id);
+  const medDoses = getSupplementDoses(profileId).filter(
+    (d) => d.item_id === itemId
+  );
   const todayStr = today(profileId);
   const dates = lastNDates(todayStr, days);
   const workoutDays = new Set(getActivityDates(profileId));
@@ -640,11 +642,12 @@ export function getMedicationAdherenceCalendar(
   );
   const strip = supplementAdherenceStrip(
     med,
-    doseIds,
+    medDoses,
     dates,
     workoutDays,
     situationsOn,
-    takenByDose
+    takenByDose,
+    getTimezone(profileId)
   );
   const courses = getMedicationCourses(profileId).filter(
     (course) => course.item_id === itemId

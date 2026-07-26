@@ -22,10 +22,18 @@
 //
 // lib/__tests__/overlay-motion-chokepoint.test.ts fails CI if an overlay
 // component hand-rolls any of this instead.
+//
+// The module ALSO owns the BOTTOM EDGE (issue #1520, part B): the stacking order
+// and shared insets for the four fixed surfaces that converge there — the workout
+// dock (base layer, which claims its height via useBottomEdgeClaim), the toast
+// stack, the offline pill and the offline error panel. See the tokens.ts section
+// for the layer contract; lib/__tests__/bottom-edge-tokens.test.ts fails CI if a
+// bottom-anchored surface hand-writes its own inset instead.
 
 export { useDragGesture, type DragGestureOptions } from "./useDragGesture";
 export { useOverlayDrag, type OverlayDragOptions } from "./useOverlayDrag";
 export { default as OverlayDragHandle } from "./OverlayDragHandle";
+export { useBottomEdgeClaim } from "./useBottomEdgeClaim";
 export {
   OVERLAY_SCRIM,
   OVERLAY_SCRIM_TINT,
@@ -36,6 +44,13 @@ export {
   OVERLAY_SAFE_BOTTOM,
   OVERLAY_DRAG_HANDLE_HIT,
   OVERLAY_DRAG_HANDLE_BAR,
+  BOTTOM_EDGE_OFFSET_VAR,
+  BOTTOM_EDGE_NOTICE_BOTTOM,
+  BOTTOM_EDGE_GUTTER_RIGHT,
+  BOTTOM_EDGE_GUTTER_LEFT,
+  BOTTOM_EDGE_DOCK_LAYER,
+  BOTTOM_EDGE_NOTICE_LAYER,
+  BOTTOM_EDGE_ALERT_LAYER,
 } from "./tokens";
 export {
   overlayMotionClass,
