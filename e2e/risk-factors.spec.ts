@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Health risk factors on Medical → Background (issue #517). Runs authenticated as
 // admin acting as the seeded profile 1 (shared storageState). Toggling a factor
 // changes only the retest/screening cadence + ranking on Upcoming; it creates no

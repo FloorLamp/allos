@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // The dashboard "Needs attention" hero's per-item snooze/dismiss popover (issue
 // #281). It used to be a native <details> float with a translucent .card panel
@@ -15,9 +15,7 @@ import path from "node:path";
 // (the resetInteractionDismissals pattern). Short-lived connection, busy timeout
 // so it never contends with the running server (WAL).
 function removeSuppression(signalKey: string): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

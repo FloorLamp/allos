@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { randomBytes } from "node:crypto";
 import { followLink, settledClick, settledUpload } from "./helpers";
 import { openTempEntry } from "./symptom-helpers";

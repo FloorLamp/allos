@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // The confirm dialog presents as a BOTTOM SHEET on a phone (issue #1428, A).
 //
 // Why this is a real regression class: a confirm is a DECISION, and it used to

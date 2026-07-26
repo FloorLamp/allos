@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledFill } from "./helpers";
 
 // Issue #159: training intensity distribution (HR zones). The seed profile is

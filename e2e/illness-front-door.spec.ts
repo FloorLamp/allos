@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type Locator } from "@playwright/test";
 import { settledClick } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { medicationRow, prnTodayItem } from "./med-card-helpers";

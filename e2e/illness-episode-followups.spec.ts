@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { followLink } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -7,6 +8,7 @@ import {
   raiseSeverity,
   openTempEntry,
 } from "./symptom-helpers";
+import { frozenNow } from "./worker-env";
 
 async function openCurrentEpisode(page: Page) {
   await page.goto("/medical/episodes");
@@ -588,7 +590,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .getByTestId("episode-editor")
       .locator('input[type="hidden"][name="startedAt"]')
       .inputValue();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = frozenNow().toISOString().slice(0, 10);
     try {
       await start.fill(today);
       const calendar = page.getByTestId("date-field-calendar");

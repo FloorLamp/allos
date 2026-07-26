@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { medicationRow, medicationRowLink } from "./med-card-helpers";
 
 // Medication → required-monitoring-lab bridge (issue #995). The seed's ACTIVE "Warfarin"

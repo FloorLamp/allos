@@ -1,6 +1,6 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type Locator } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledCheck, settledClick } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
@@ -9,6 +9,7 @@ import {
   E2E_MEMBER_PASSWORD,
   WELL_SYMPTOM_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The recomposed "How are you today?" check-in card (issues #1314 / #1311 / #1313).
 // Covers the four-section CheckInSection grammar, the merged "What's going on?" chip
@@ -206,9 +207,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
 // The fixture's symptom / mood / coaching rows, reset before each test so --repeat-each
 // starts clean (#868 fixture ownership) — the same direct-DB reset coaching-rest-card uses.
 function resetWellSymptomState(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

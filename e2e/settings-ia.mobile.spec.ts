@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // The phone half of the Settings IA (#1462 §5, #1451.C). Runs in the `mobile`

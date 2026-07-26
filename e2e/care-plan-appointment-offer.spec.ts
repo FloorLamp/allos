@@ -1,12 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // Close the care-plan loop on appointment completion (issue #658): completing a
 // visit OFFERS to close the open care-plan items it matches (by kind/title/date
 // window), one click each — confirm-first, never a silent auto-complete. This drives
 // the real UI: add an open "colonoscopy" care-plan item, book + complete a matching
 // colonoscopy appointment, then take the offer and see the item close.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const ITEM = "E2E offer colonoscopy screening";
 const APPT = "E2E offer colonoscopy";
 

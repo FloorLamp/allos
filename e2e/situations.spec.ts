@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Situations are id-keyed rows (#560), not free-text string-keyed state. This drives
 // the real situations bar on Nutrition → Supplements: the seed activates "Illness" (surfacing the
 // situational Zinc supplement), so toggling the id-keyed situation off/on moves Zinc

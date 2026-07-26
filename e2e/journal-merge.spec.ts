@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #64, Part 2: the Journal's manual pair-merge. The e2e seed (e2e/seed-events)
 // plants two same-day MANUAL activities on 2026-07-05 — "Journal merge keeper" and
 // "Journal merge dupe" — a duplicate no heuristic catches (two manual rows). This

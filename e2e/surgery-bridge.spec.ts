@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick } from "./helpers";
 
 // Pre-surgery / Post-op suggest-only bridge (#1299): the producer for the #1296 pause.

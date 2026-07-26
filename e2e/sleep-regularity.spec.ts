@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #160 / #1066: the Trends → Body section surfaces a COMPACT sleep summary
 // tile (the SRI + last-night duration) once enough nights of sleep sessions exist;
 // the detailed regularity caption/trend moved to the dedicated /sleep page (#1066).

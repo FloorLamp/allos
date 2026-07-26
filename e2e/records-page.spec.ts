@@ -1,8 +1,9 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The Health record surface (#1079): the 14 medical sections as two-level tabs —
 // group tab → section sub-tab → one pane — superseding the #1042 stacked-section
@@ -22,7 +23,7 @@ import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // scripts/seed.ts). Presence-only assertions — never exact counts of shared-seed
 // rows.
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 test("bare /records redirects to History › Visits and renders the Visits list (#1079)", async ({
   page,

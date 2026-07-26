@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Offline Emergency Card (issue #42), living as the #emergency section of the
 // Passport page since the #1042 phase-3 merge (the old /emergency route 308-
 // redirects to /profile#emergency). This spec runs in its OWN unauthenticated

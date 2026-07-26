@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { settledClick, settledFill } from "./helpers";
 
 // Issue #743: the optional per-set RPE selector round-trips through the activity

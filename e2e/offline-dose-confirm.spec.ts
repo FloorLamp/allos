@@ -1,5 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
+import { workerAuthPath } from "./worker-env";
 // #1427: a dose confirm tapped with no signal is queued and replayed through the
 // SAME write core every other confirm path uses (markDoseTaken), which answers with
 // a typed outcome. Two ends of that contract are driven here in the real app:
@@ -21,7 +22,9 @@ import { test, expect, type Page } from "@playwright/test";
 // Each test OWNS its fixture — a uniquely-named supplement it creates and deletes
 // (#868) — so it never touches the seeded intake rows other specs count on.
 
-const AUTH_STATE = "e2e/.auth/state.json";
+// This worker's own saved admin session (a session row lives in this worker's
+// database — there is no suite-wide storage state any more, #1538).
+const AUTH_STATE = workerAuthPath();
 
 // Create a supplement with a single daily Morning dose and return its row locator.
 async function createMorningSupplement(page: Page, name: string) {

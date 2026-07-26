@@ -13,9 +13,8 @@
 // start from the seeded state. Blast radius: only this fixture profile's
 // upcoming_dismissals rows.
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -23,6 +22,7 @@ import {
   SUPPRESSED_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 const COACHING_KEY = "training-obs:plateau:e2e suppressed lift";
 const BRIDGE_KEY = "med-bridge:e2e suppressed rx";
@@ -30,9 +30,7 @@ const BRIDGE_KEY = "med-bridge:e2e suppressed rx";
 // Re-assert the fixture's three suppression rows (a prior run's Restore removed
 // some) so every test starts from the seeded state.
 function resetSuppressions(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

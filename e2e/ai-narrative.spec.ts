@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // AI narrative surfaces (issue #20): the weekly/monthly recap generator on the
 // Trends "Insights" tab. (The lab-trend interpretation card — #20's second
 // narrative — was REMOVED with the Trends → Biomarkers tab in #1164; the tests

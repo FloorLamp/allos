@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Compare axis policy (issue #400) — RE-POINTED to the Insights tab by #1489,
 // which folded Compare out of a tab of its own into a section of Insights. Same
 // layer, same params, same fixtures; only the ?tab= name changed (?tab=compare

@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // Issue #45 (domain 3): adherence-PATTERN detection on Supplements & Meds. The seed
 // fixture (e2e/seed-events.ts) logs a daily Evening "Vitamin C (e2e)" dose taken
@@ -31,9 +31,7 @@ test("Supplements & Meds shows an every-Friday adherence pattern (#45)", async (
 // for neighbors. Short-lived connection, busy timeout so it never contends with the
 // running server (WAL).
 function resetAdherenceDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

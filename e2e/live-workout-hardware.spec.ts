@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 // Issue #1422: the two hardware affordances the phone-at-the-gym flow depends on —
 // a screen wake lock while the live editor is on screen, and haptic cues for the two
 // moments you're not looking at the phone. Both are progressive enhancement: absent

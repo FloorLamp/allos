@@ -1,6 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import {
   intakeWarnings,
   expandIntakeWarnings,
@@ -8,6 +7,7 @@ import {
   interactionWarningRows,
   pgxWarnings,
 } from "./intake-warnings-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Drug-/supplement-interaction checking (issue #144). The seed gives profile 1 a
 // known-interacting pair — Warfarin (rxcui-keyed) + Ibuprofen (name-matched), a MAJOR
@@ -43,9 +43,7 @@ test("shows the seeded warfarin + ibuprofen interaction warning on /medications"
 // next repeat. Resetting before each test makes the file own its dismissal state.
 // Short-lived connection, busy timeout so it never contends with the running server (WAL).
 function resetInteractionDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

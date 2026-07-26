@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { settledClick } from "./helpers";
 
 // Issue #30: deleting a row keeps it in a short-lived holding table and offers an

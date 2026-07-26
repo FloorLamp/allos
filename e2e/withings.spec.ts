@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Dogfoods the Withings integration config surface (issue #142). The connect flow is
 // a real OAuth redirect to Withings that we can't exercise offline in CI, so this
 // spec asserts the RENDERED credentials form + setup steps and the credentials→

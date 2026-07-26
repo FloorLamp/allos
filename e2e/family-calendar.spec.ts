@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick } from "./helpers";
 
 // Exercises the CONSOLIDATED "family" calendar feed (per-login .ics spanning every

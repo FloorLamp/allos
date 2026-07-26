@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import { followLink, settledClick } from "./helpers";
 import {
@@ -8,6 +8,7 @@ import {
   E2E_MEMBER_PASSWORD,
   TRAINING_ROLLUP_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Issue #1496 — Training → Overview becomes the DOING surface (the other half of
 // #1492's rule: analyze on Trends, do on /training). On a 390×844 phone the tab was
@@ -111,9 +112,7 @@ test("a tab renders only its own section (#105)", async ({ page }) => {
 // before AND after keeps the test self-contained under --repeat-each and leaves the
 // DB as it found it.
 function clearRollupDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

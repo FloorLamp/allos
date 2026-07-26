@@ -1,8 +1,9 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { seedDupReviewPair, DUP_DATE } from "./dup-review-fixture";
+import { workerDbPath } from "./worker-env";
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 // Dogfoods the Data → Review duplicate/conflict resolver (issue #10, Phase 2). The
 // e2e seed (e2e/seed-events.ts) plants a cross-source ACTIVITY pair on DUP_DATE:

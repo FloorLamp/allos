@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
@@ -7,13 +7,14 @@ import {
   E2E_MEMBER_PASSWORD,
   NUTRITION_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The nutrition trio (#974 protein gauge / #975 dietary preferences / #976 fiber
 // adequacy), driven end-to-end against the dedicated NUTRITION_PROFILE (seed-events):
 // a weigh-in, this-week food servings, a confirmed capsule fiber supplement, sex = male,
 // and a flagged low omega-3. Fixture discipline (#868): the profile is spec-owned; the
 // preferences test MUTATES the excluded set and resets it in afterEach so it's repeat-safe.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const WAIT = 15_000;
 
 function clearPreferences() {

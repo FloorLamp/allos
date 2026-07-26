@@ -1,7 +1,9 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { E2E_LOGIN_ENDURANCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { frozenNow } from "./worker-env";
 
 // Endurance event plans on the Training overview (issue #839): create a race plan and the
 // Event-plans bar renders the recomputed this-week trajectory (target vs actual volume +
@@ -16,7 +18,7 @@ import { E2E_LOGIN_ENDURANCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // A future event date (~16 weeks out) as YYYY-MM-DD, so the plan is comfortably feasible.
 function futureEventDate(): string {
-  const d = new Date();
+  const d = frozenNow();
   d.setUTCDate(d.getUTCDate() + 112);
   return d.toISOString().slice(0, 10);
 }

@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // Contrast-safety cross-check (issue #701): an ORDERED/PLANNED contrast imaging study
 // (here a care-plan item whose text indicates contrast) meeting a contrast/iodine
@@ -19,10 +19,7 @@ const CARE_ITEM = `${PREFIX} CT abdomen with contrast`;
 const ALLERGEN = `${PREFIX} iodinated contrast`;
 
 function dbPath(): string {
-  return (
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db")
-  );
+  return workerDbPath();
 }
 
 function cleanup(): void {

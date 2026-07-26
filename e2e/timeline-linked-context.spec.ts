@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // Timeline linked context (issue #662): an IMPORTED visit deep-links the other
 // records its source document produced — the care-plan items / procedures /
@@ -8,12 +9,12 @@ import Database from "better-sqlite3";
 // encounter carrying its id + one sibling of each kind) directly in the DB and
 // asserts the visit card renders the "From this visit's document" links, then
 // removes them — never touching a shared-seed row a neighbor exact-counts.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const DOC_FILE = "e2e-lineage-ccd.xml";
 const VISIT_TYPE = "E2E Lineage Visit";
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return frozenNow().toISOString().slice(0, 10);
 }
 
 function cleanup() {

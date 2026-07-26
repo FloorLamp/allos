@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick } from "./helpers";
+import { frozenNow } from "./worker-env";
 
 // Recovery gear + practice adherence on protocols (issue #344). Creates a protocol
 // that references a seeded recovery device ("E2E Protocol Sauna") and declares a
@@ -24,7 +25,7 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   test.slow(); // next dev compiles these routes on first hit
 
   const uniqueName = `E2E Sauna Protocol ${Date.now()}`;
-  const start = new Date(Date.now() - 14 * 86_400_000)
+  const start = new Date(frozenNow().getTime() - 14 * 86_400_000)
     .toISOString()
     .slice(0, 10);
 
@@ -92,7 +93,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   // create-vs-reference rule (#344) would REFERENCE it (non-zero adherence); a fresh name
   // owns a fresh 0-count target.
   const practiceName = `E2E Practice ${Date.now()}`;
-  const start = new Date(Date.now() - 7 * 86_400_000)
+  const start = new Date(frozenNow().getTime() - 7 * 86_400_000)
     .toISOString()
     .slice(0, 10);
 

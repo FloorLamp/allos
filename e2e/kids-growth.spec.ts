@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { hydratedClick } from "./helpers";
 
 // Kids growth trends. For a CHILD profile the Trends → Body tab prioritizes

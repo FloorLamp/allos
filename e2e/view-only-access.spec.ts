@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import {

@@ -1,6 +1,6 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -8,6 +8,7 @@ import {
   E2E_LOGIN_HH_SOLO,
   E2E_LOGIN_HH_VIEWER,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Household view for members + actionable rollup (issue #31). The Household screen
 // used to be admin-only; it's now open to ANY login that can reach 2+ profiles (a
@@ -39,9 +40,7 @@ const HOUSEHOLD_RO_DUE_DOSE = "Household Magnesium";
 // spec touches it) restores the seeded DUE state. Short-lived connection + busy timeout
 // so it never contends with the running server on the WAL DB.
 function resetHouseholdDose(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

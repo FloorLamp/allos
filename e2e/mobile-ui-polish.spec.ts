@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { expandTrendsContext } from "./trends-chrome";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so

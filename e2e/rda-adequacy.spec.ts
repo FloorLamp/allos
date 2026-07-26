@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // RDA-adequacy view (issue #578). The seeded stack (scripts/seed.ts) includes Calcium
 // 500 mg/day — below the ~1000 mg adult RDA — so the Supplements tab must render an adequacy row
 // stating the SHARE the supplements provide, with the load-bearing framing "supplements

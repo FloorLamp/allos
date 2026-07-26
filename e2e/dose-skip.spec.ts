@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // The web dose check-off is a TAKEN / SKIPPED / CLEAR tri-state (#232): a
 // deliberate skip is a first-class decision, distinct from a silent miss, with
 // its own control beside the ✅ take. This drives the whole cycle in the real app

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Exercises the calendar feed customization controls (issue #12): the setup UI
 // gains category toggles, a reminder switch, and past/future window selects, all
 // persisted per profile and reflected in the served `.ics`. This drives the real

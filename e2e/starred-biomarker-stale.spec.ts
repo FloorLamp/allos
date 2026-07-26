@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #381 — the pinned starred-biomarker tile must judge staleness on the LATEST
 // RECORD's category, like the detail page and table. A genomics result never goes
 // stale (genetics don't change), but the tile used the canonical entry's category

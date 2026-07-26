@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Upcoming row composition at phone width (issue #1446, mobile project #1420).
 //
 // At 390px the per-item control row (status + CTA + "Book" + "Mark done" + "⋯")

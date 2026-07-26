@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #736 — the list-first weekly muscle-coverage surface on Training →
 // Overview. The SAME `coverageFromSets` attribution (one computation, #482) that
 // will later feed the SVG figure (#737) and volume-band verdict (#742) renders

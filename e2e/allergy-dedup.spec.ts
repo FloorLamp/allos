@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #384 — "Recorded allergies" must collapse cross-document twins like its
 // clinical-list siblings. The e2e fixture (e2e/seed-events.ts) plants the same
 // "E2E Ragweed" allergy twice (one manual, one from the browser document); the

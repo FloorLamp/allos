@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick, followLink, expectNoClippedContent } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -37,6 +37,7 @@ import {
   MVBIO_SELF_ANALYTE,
   MVBIO_RO_ANALYTE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Multi-profile viewing (issue #1096): the profile-menu view toggles + the thin
 // persistent view strip + multi-view Upcoming with subject chips + a cross-profile
@@ -51,9 +52,7 @@ import {
 // already taken. Short-lived connection with a busy timeout so it never contends with
 // the running server on the WAL DB.
 function resetMultiFixture(): { ownerId: number; sharedId: number } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -87,9 +86,7 @@ function resetMultiFixture(): { ownerId: number; sharedId: number } {
 // re-run/retry would otherwise never see the hint. Same short-lived busy-timeout
 // connection as resetMultiFixture.
 function resetMultiviewHint(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -326,9 +323,7 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
 
 // Resolve the two multi fixture profile ids (spec-owned, so a name lookup is stable).
 function multiProfileIds(): { ownerId: number; sharedId: number } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -485,9 +480,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
 // profile) so a re-run/retry starts clean, and return the two profile ids.
 function resetMultiJournal(): { ownerId: number; sharedId: number } {
   const { ownerId, sharedId } = multiProfileIds();
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -506,9 +499,7 @@ function resetMultiJournal(): { ownerId: number; sharedId: number } {
 // Count the owner's activities carrying the shared activity's title — nonzero only
 // after a "Log again" landed the shared card's session on the acting (owner) profile.
 function ownerCopiesOfSharedActivity(ownerId: number): number {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -650,9 +641,7 @@ test.describe("Multi-view Training Journal (issue #1330)", () => {
 
 // Resolve the two timeline fixture profile ids (spec-owned, so a name lookup is stable).
 function timelineProfileIds(): { eastId: number; westId: number } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -902,9 +891,7 @@ test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
 // repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
 test.describe("Medications multi-view regimen boards (issue #1373)", () => {
   function mvMedsIds(): { selfId: number; roId: number } {
-    const dbPath =
-      process.env.ALLOS_DB_PATH ??
-      path.join(process.cwd(), "e2e", ".data", "e2e.db");
+    const dbPath = workerDbPath();
     const db = new Database(dbPath);
     try {
       db.pragma("busy_timeout = 5000");
@@ -1005,9 +992,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
 // repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
 test.describe("Multi-view Biomarkers table (issue #1331)", () => {
   function mvBioIds(): { selfId: number; roId: number } {
-    const dbPath =
-      process.env.ALLOS_DB_PATH ??
-      path.join(process.cwd(), "e2e", ".data", "e2e.db");
+    const dbPath = workerDbPath();
     const db = new Database(dbPath);
     try {
       db.pragma("busy_timeout = 5000");

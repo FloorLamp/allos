@@ -1,8 +1,9 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledCheck, settledClick } from "./helpers";
 import { E2E_LOGIN_GRANTEDIT, GRANT_EDIT_PROFILE } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Family grant-matrix collapse (issue #1412). Settings → Family used to eagerly
 // render O(logins × profiles) grant controls (measured ~8,281 controls / 5 MB HTML
@@ -30,9 +31,7 @@ function grantEditFixture(): {
   profileId: number;
   ownProfileId: number | null;
 } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

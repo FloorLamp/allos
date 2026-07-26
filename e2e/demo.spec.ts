@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Demo-mode surfaces (#181, #278). Runs (via the "demo" project) against the demo
 // webServer booted with ALLOS_DEMO_MODE=1, unauthenticated — it drives the demo
 // login itself. Asserts the flag effects a browser can see: the persistent

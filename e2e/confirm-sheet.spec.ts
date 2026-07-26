@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // The DESKTOP half of the responsive confirm primitive (issue #1428, A).
 //
 // #1428 asks for one component that renders "centered ≥md and as a sheet below",

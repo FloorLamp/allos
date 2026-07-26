@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { INTEGRATIONS } from "../lib/integrations/registry";
 
 // Registry-driven Import-grid presence check (e2e-efficiency follow-up). The Import

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #737 — the hand-authored MuscleAnatomy SVG figure, in its two wired hosts:
 // per-exercise mode inside the ExerciseDetailPanel guide section, and weekly
 // coverage mode on Training → Overview beside the #736 list (which stays — the

@@ -41,9 +41,8 @@ next-env.d.ts
 # database
 /data
 
-# playwright e2e (isolated DB, saved auth state, reports/artifacts)
+# playwright e2e (per-worker DBs + servers, saved auth state, reports/artifacts)
 /e2e/.data
-/e2e/.auth
 /test-results
 /playwright-report
 /blob-report

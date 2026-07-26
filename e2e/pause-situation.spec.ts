@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick } from "./helpers";
 
 // Pause-during-situation (#1296): the INVERSE situational condition. This spec OWNS its

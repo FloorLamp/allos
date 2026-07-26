@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Allergen cross-reactivity notes (issue #153). The seeded profile carries a
 // synthetic allergen-specific IgE result ("Birch IgE", RAST class 3), which the
 // allergies view surfaces as a Birch sensitization. The shared pure matcher

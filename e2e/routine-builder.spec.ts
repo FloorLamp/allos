@@ -1,12 +1,13 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_MEMBER_PASSWORD,
   ROUTINE_BUILDER_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Routine builder UI (#739): the Routines tab on /training over the #738 write
 // cores/actions. Two flows — adopt a catalog template then activate it, and author a
@@ -22,9 +23,7 @@ import {
 // starts from a known state regardless of order or retries.
 
 function openDb(): Database.Database {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   db.pragma("busy_timeout = 5000");
   return db;

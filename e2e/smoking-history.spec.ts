@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Structured smoking history on Medical → Background (issue #83). Runs authenticated
 // as admin acting as the seeded profile 1 (shared storageState). Profile 1 is a
 // ~40-year-old, so setting a smoking status does NOT trip the age-gated lung / AAA

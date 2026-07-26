@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // True sparkline mode for Overview/Body mini tiles (issue #1445, Part 2,
 // owner-added from mobile-vitals feedback).
 //

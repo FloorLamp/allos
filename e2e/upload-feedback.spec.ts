@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // Issue #102: the inline imports table (which showed a processing spinner right
 // next to the upload form) moved into Data → Review, so after choosing a file the
@@ -26,7 +27,7 @@ const FIXTURE_2 = Buffer.from(
 // The isolated e2e DB path (mirrors the default in playwright.config.ts). The test
 // process gets no ALLOS_DB_PATH override, so it resolves to the same file the
 // webServer booted against.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 test.describe("Medical document upload feedback", () => {
   // This spec creates a medical_documents row; remove it afterward so the shared

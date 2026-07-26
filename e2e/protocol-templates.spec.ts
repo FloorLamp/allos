@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // Sun-exposure protocol template (issue #571). The Protocols page shows a

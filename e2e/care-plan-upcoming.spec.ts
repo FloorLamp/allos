@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // Care-plan items in Upcoming (issue #84). scripts/seed.ts gives profile 1 several
 // provider-ordered care_plan_items with a FUTURE planned_date and an open status
@@ -19,9 +19,7 @@ const CAREPLAN_ROWS = '[data-testid^="upcoming-item-careplan:"]';
 // already gone and the "shows" assertion fails. Same short-lived direct-DB
 // connection pattern as smoke.spec's resetCoachingSnooze.
 function reopenSeededCarePlanItem(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

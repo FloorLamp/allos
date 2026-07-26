@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { E2E_LOGIN_CONDREV } from "./fixture-logins";

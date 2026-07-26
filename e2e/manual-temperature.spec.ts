@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Manual body-temperature entry (#800). The seed activates the built-in illness-type
 // "Illness" situation, so the dashboard Symptoms card is surfaced — and with it the
 // body-temperature quick entry (a fever log belongs on the illness card). This drives

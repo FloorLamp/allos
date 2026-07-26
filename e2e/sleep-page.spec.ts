@@ -1,4 +1,5 @@
-import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
@@ -11,8 +12,9 @@ import {
 } from "./fixture-logins";
 import { settledClick } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
+import { workerDbPath, frozenNow } from "./worker-env";
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 interface SleepEditFixture {
   username: string;
@@ -33,10 +35,10 @@ function createSleepEditFixture(
   const handle = new Database(DB_PATH);
   handle.pragma("busy_timeout = 5000");
   try {
-    const manualDate = new Date(Date.now() - 3 * 86_400_000)
+    const manualDate = new Date(frozenNow().getTime() - 3 * 86_400_000)
       .toISOString()
       .slice(0, 10);
-    const importedDate = new Date(Date.now() - 4 * 86_400_000)
+    const importedDate = new Date(frozenNow().getTime() - 4 * 86_400_000)
       .toISOString()
       .slice(0, 10);
     const suffix = `${purpose}-${process.pid}-${testInfo.repeatEachIndex}`;

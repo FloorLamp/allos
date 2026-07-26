@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs, followLink } from "./nav";
 import { settledClick, settledCheck, settledFill } from "./helpers";
@@ -8,8 +8,9 @@ import {
   CLOSURE_DQ_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 // Clear the CLOSURE_DQ profile's birthdate so the "Set a birthdate" data-quality gap is
 // active before the closure test (spec-owned). BLAST RADIUS: one attr on one dedicated

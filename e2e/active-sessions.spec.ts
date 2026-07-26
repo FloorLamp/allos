@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
 
 // The Active sessions list on Settings → Account & security (#1451.A).

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #1447 — the census found pages rendering "At minimaldetail", "A read-onlygrant",
 // "…you can access.Each profile keeps…". The source was never wrong: a JSX text
 // node that follows an element, begins with a space, and contains an HTML entity

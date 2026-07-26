@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #383 — the Biomarkers table free-text search must match the CANONICAL name (the
 // row heading a user sees), not only the raw lab string. The e2e fixture
 // (e2e/seed-events.ts) plants a record raw-named "E2E CHOLESTEROL, TOTAL" but

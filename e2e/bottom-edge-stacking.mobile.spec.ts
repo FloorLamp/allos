@@ -1,7 +1,9 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
 import { hydratedClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // The bottom edge stacks; it does not overlap (issue #1520, part B).
 //
@@ -21,7 +23,7 @@ import { hydratedClick } from "./helpers";
 // its interactive case) and discards it, and the one body-metric row its toast
 // comes from is deleted by value in the finally.
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 // A weight no seed or other spec logs, so the cleanup below can key on it.
 const TOAST_WEIGHT = "77.3";
 

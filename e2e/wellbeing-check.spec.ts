@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type Locator } from "@playwright/test";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 
 // The unified "How are you today?" daily check-in card (issue #992): the one-tap

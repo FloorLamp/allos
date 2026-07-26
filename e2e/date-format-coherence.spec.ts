@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Date-display coherence (issue #1448). The app already owned a pref-aware
 // formatter (#964/#1020) but several surfaces hand-rolled their own shapes, so
 // the census found five coexisting date presentations — worst of all two inside

@@ -2,7 +2,7 @@
 // a few integration sync events so the Data → Review inbox has content to render,
 // including one currently-failing provider (Strava) that must surface under
 // "Needs attention" and drive the profile-menu badge. Runs against the same
-// ALLOS_DB_PATH the webServer boots with (see playwright.config.ts).
+// ALLOS_DB_PATH e2e/global-setup.ts seeds the worker TEMPLATE with (#1538).
 //
 // THIS FILE IS A THIN COMPOSER (issue #1511). The fixtures themselves live in
 // per-domain modules under e2e/seed/ — add a new fixture to the module that owns

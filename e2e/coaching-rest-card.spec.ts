@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -9,6 +9,7 @@ import {
   E2E_LOGIN_ROUTINE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // #1148 (multi-reason rest card) + #1150 ("Training anyway" acknowledgment + the
 // "Not today" → "Snooze" rename). Driven against the dedicated REST_CARD_PROFILE, which
@@ -21,9 +22,7 @@ import {
 // for the coaching snooze. Short-lived connection + busy timeout so it never contends
 // with the running server on the WAL DB.
 function resetRestCardState(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

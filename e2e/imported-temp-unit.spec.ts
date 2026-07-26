@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { followLink } from "./helpers";
 import { E2E_LOGIN_CEL_IMPORT, E2E_MEMBER_PASSWORD } from "./fixture-logins";

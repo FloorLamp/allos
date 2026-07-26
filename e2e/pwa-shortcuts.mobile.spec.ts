@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 // PWA home-screen shortcuts (issue #1424, section A).
 //
 // Two halves, both asserted here because neither is observable any other way:

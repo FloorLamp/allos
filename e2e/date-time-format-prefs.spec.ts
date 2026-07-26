@@ -1,6 +1,7 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // Clears any body-hygiene dismissal so the seeded 92 kg weight-jump finding is
 // guaranteed visible before the finding-text assertion, regardless of retries or
@@ -8,9 +9,7 @@ import path from "node:path";
 // #206 — same blast radius as rule-findings.spec.ts's reset). Short-lived
 // connection, busy timeout so it never contends with the running server (WAL).
 function resetBodyHygieneDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

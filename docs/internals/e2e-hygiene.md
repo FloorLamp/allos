@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight CI backstop; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
+Status: **partial** (infrastructure shipped — DB-per-worker isolation (#1538), helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight CI backstop; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
 
 Maintainer documentation for the Playwright suite's reliability discipline (issue
 #868). The user-facing "how to run e2e" note lives in AGENTS.md's browser-e2e
@@ -13,13 +13,21 @@ The suite is the right size (~340 specs, ~7m CI) and is **not** classically
 order-dependent. The recurring reds fall into four classes:
 
 1. **Shared mutable world + exact-value assertions (the root disease).** One
-   seeded DB and one shared logged-in session (`auth.setup.ts` storageState), and
+   seeded DB and one shared logged-in session for the WHOLE run, and
    specs assert EXACT state on shared fixtures — "2 today", "≥ 2 episode rows",
    "profile 1 stays sick". Any spec — or a RETRY of the same spec re-running
    against its own side effects — that mutates the shared world breaks a neighbor.
    Observed: the prn "3 today" cascade; a fresh-profile hijack of the shared
    session cascading into illness/prn specs; a spec that dared not end the seeded
    episode because siblings depended on it.
+
+   **Halved, not cured, by DB-per-worker (#1538 — see below).** Each Playwright
+   worker now owns its own database, server and session, so two specs can no
+   longer collide CONCURRENTLY and `--workers=N` is honest. Specs that share a
+   worker still run against one database in sequence, so a spec that leaves the
+   world changed can still break a neighbour — and WHICH neighbour now depends on
+   the scheduler. The fixture-ownership rule below is therefore unchanged: own
+   your fixture, never exact-count a shared-seed row.
 
 2. **Cross-ownership anatomy assertions.** Specs pin ANOTHER feature's DOM anatomy
    (med-card-parity pinning the refill-badge text, food-drug-interactions pinning
@@ -275,9 +283,9 @@ a mutated shared profile.
 
 ## Where fixtures live (the #1511 split)
 
-`e2e/seed-events.ts` and `e2e/fixture-logins.ts` **keep their names** — the Playwright
-webServer still runs the former, every spec still imports from the latter — but both
-are now thin composers over per-domain modules:
+`e2e/seed-events.ts` and `e2e/fixture-logins.ts` **keep their names** — the run's
+global setup still runs the former (once, into the template DB), every spec still
+imports from the latter — but both are now thin composers over per-domain modules:
 
 - `e2e/seed/*.ts` — one module per domain (`training`, `medical`, `intake`,
   `household`, `illness`, `metrics`, `nutrition`, `dashboard`, …), each exporting
@@ -402,10 +410,13 @@ The fix freezes the app's notion of "now" for the run via a single env-gated sea
   specs failed deterministically. Freezing at real start keeps |real − frozen|
   bounded by the run's own duration, which every recency window tolerates, at
   every hour; the residual is only a run that STARTS within its own duration of
-  real midnight) — and sets `ALLOS_TEST_NOW` in BOTH webServer `env` blocks
-  (default + demo). The webServer `env` applies to the whole `seed && start`
-  shell command, so `scripts/seed.ts`, `e2e/seed-events.ts`, and `next start`
-  all read the same instant. An externally-supplied `ALLOS_TEST_NOW` wins, so a
+  real midnight) — and hands it to `e2e/global-setup.ts` via `config.metadata`,
+  which seeds the template under it and persists it to
+  `e2e/.data/run-context.json`. Every worker's server reads that file and boots
+  with the same `ALLOS_TEST_NOW`, so `scripts/seed.ts`, `e2e/seed-events.ts` and
+  every `next start` in the run share one instant (workers are separate
+  processes — a module-level `new Date()` would give each of them a different
+  one). An externally-supplied `ALLOS_TEST_NOW` wins, so a
   boundary hour (e.g. `00:10` local) can be stress-tested on demand:
   `ALLOS_TEST_NOW="<today>T00:10:00" npm run test:e2e -- illness-hero workout-presence`.
 
@@ -514,14 +525,145 @@ pain they replace):
     dispatched at `--retries=1` still surfaces pass-on-retry tests through the same
     script, and at the default `retries: 0` it reports an accurate empty.
 
+## Fix (f) — DB-per-worker isolation (#1538)
+
+Until this landed, the suite booted ONE app server against ONE seeded SQLite
+database and ran every worker against it, so `--workers>1` fabricated failures
+(two specs writing the same rows at the same moment) and the local gate was pinned
+to `--workers=1` — 30–60 minutes on a large spec set, the pipeline's biggest
+wall-clock tax.
+
+**Why server-per-worker.** `lib/db.ts` opens ONE `better-sqlite3` handle at boot
+from `ALLOS_DB_PATH` and keeps it for the process lifetime. One server is
+therefore exactly one database for life; routing a per-request database inside a
+single server would mean rewriting the product's connection singleton. So a
+database per worker means a server per worker. The cost is one `next start` per
+worker (~0.2 s boot, ~190 MB RSS) against ONE shared production build.
+
+**The shape.**
+
+- `e2e/global-setup.ts` runs ONCE: it makes sure the production build is current
+  (see below), then seeds the two TEMPLATE directories —
+  `e2e/.data/template/` (`scripts/seed.ts` → `e2e/seed-events.ts`, in that
+  load-bearing order) and `e2e/.data/template-demo/` (the same seed under
+  `ALLOS_DEMO_MODE=1`) — and writes the run's frozen instant to
+  `e2e/.data/run-context.json`. There is no `webServer` block any more.
+- A template is a DIRECTORY, not a bare `.db`: the seed also writes cwd-relative
+  artifacts the app later reads (`data/logs/errors.jsonl` — the Settings → Errors
+  fixture — plus uploads and integration payloads), so the seed runs with the
+  template dir as its CWD and everything travels with the copy.
+- `e2e/fixtures.ts` exports the `test` every spec imports. Its **worker-scoped**
+  `workerApp` fixture copies the template into `e2e/.data/worker-<workerIndex>/`,
+  boots `next start <repoRoot> -p <PORT_BASE + parallelIndex>` **with that
+  directory as CWD**, signs in as admin against that server, and overrides the
+  `baseURL` and `storageState` options. Because Playwright fills in missing
+  context options from the test's resolved `use` (including for a manual
+  `browser.newContext()`), `page.goto("/timeline")` and `loginAs(browser, …)`
+  target this worker's server with no per-spec change.
+- The server's CWD is what isolates every cwd-relative runtime artifact:
+  `data/uploads/**`, `data/logs/ai.jsonl`, `data/logs/errors.jsonl`,
+  `data/backups/**`. Those used to be shared by every spec in the run (and were
+  wiped out of a developer's own `data/` on each run); now they are per worker,
+  and the repo-root `data/` is never touched.
+- **No `auth.setup.ts` / no shared `e2e/.auth/state.json`.** A session is a row in
+  ONE database, so a single shared storage state cannot authenticate N databases;
+  each worker signs itself in and keeps its own `auth.json`.
+- **The demo project has no second server.** `e2e/fixtures.ts` recognises the
+  `demo` project by name and boots THAT worker's server with `ALLOS_DEMO_MODE=1`
+  off the demo template, unauthenticated. The project sets `fullyParallel: false`
+  so `demo.spec.ts` keeps running in one worker, in order.
+
+**Worker directory vs slot port (why two indices).** Playwright retires a worker
+process after a failed test and starts a REPLACEMENT for the same slot, and the two
+OVERLAP — the replacement sets up while its predecessor is still tearing down. So
+the DIRECTORY (database, uploads, logs, storage state) is keyed on
+`TEST_WORKER_INDEX`, unique per worker PROCESS: a replacement never wipes a
+directory another process is still serving from. Only the PORT is keyed on the slot
+(`TEST_PARALLEL_INDEX`) — ports must stay a small bounded range — and it is handed
+over explicitly: the replacement kills the pid recorded in `e2e/.data/slot-<n>.pid`
+and waits for the listener to go. On a red run that hand-off happens once per
+failure, which is why it is a reclaim rather than an error.
+
+**Direct-DB specs.** A spec that opens SQLite itself resolves the file with
+`workerDbPath()` (`e2e/worker-env.ts`) — the ONE module mapping a worker index to
+its port, directory, database, mailbox and storage state. It keys on
+`TEST_PARALLEL_INDEX`, which Playwright sets on the worker process before it loads
+any test file, so a module-level `const DB = workerDbPath()` already resolves to
+that worker's database. Reading `process.env.ALLOS_DB_PATH` from a spec is banned
+by the hygiene guard: that variable is the APP SERVER's environment, not the spec
+process's.
+
+**A build is now required locally.** Per-worker servers run `next start`, so local
+runs no longer use `next dev` (which takes a per-project single-instance lock and
+would make each worker compile every route it touches). `global-setup` builds
+automatically when `.next/BUILD_ID` is missing or older than any build input
+(`app/`, `components/`, `lib/`, `public/`, and the root configs — `e2e/**` is
+excluded, so editing a spec never triggers a rebuild). `E2E_SKIP_BUILD=1` never
+builds, `E2E_FORCE_BUILD=1` always does; in CI the build step owns it and
+`global-setup` only asserts it exists.
+
+**Ports.** Worker N listens on `PORT_BASE + N`, `PORT_BASE` from `E2E_PORT`
+(default 3100) — a RANGE, not the old app/demo pair. Give a worktree a range wide
+enough for its worker count.
+
+**Workers.** Locally the Playwright default (half the cores) applies; pass
+`--workers=N` or `PW_WORKERS=N`. **CI still runs one worker per shard**: the 4-way
+shard matrix already spends a 2-core runner, and several `next start` processes on
+it would trade honest parallelism for swap. Raising it is now a measurement, not a
+redesign.
+
+**Measured (48-spec / 212-test slice, one 4-core container, back to back).** The
+shared-DB harness at `--workers=4` fails 20 tests; DB-per-worker at `--workers=4`
+fails 16 — and the six it drops are exactly the shared-world class (the dose
+ledger's restructure/skip history, 2FA enrolment, the login-scoped Trends default
+range, a cross-profile illness hero). At `--workers=1` the two harnesses are
+indistinguishable (4 vs 3 failures, ~11 min each; the residue fails on both and is
+an interaction-latency problem in that container, not isolation). Wall-clock on
+that box: 11.1 min at one worker, 8.3 min at two, 9.1–10.1 min at four — four
+workers means four `next start` processes AND four browsers on four cores, so the
+curve turns over at two. On a bigger machine the useful worker count is higher; the
+Playwright default (half the cores) is the right starting point either way.
+
+**One clock, everywhere — a spec's "now" is the frozen now (#1538 follow-up).**
+`ALLOS_TEST_NOW` freezes the SERVER's `now()` for the whole run, but a browser
+cannot read an env var, and neither can a spec process. That gap is the length of
+the run, and it stopped being negligible: a `--repeat-each=3` lane over a large
+spec set runs ~90 minutes, where the old assumption "real time ≈ frozen time"
+breaks outright. It failed first as a deterministic red 29 minutes into a lane —
+`workout-presence`'s finished-session test back-dates the activity form's
+CLIENT-prefilled start by 40 minutes and gives it a 30-minute duration, a
+10-minute margin, so once real time had run 10+ minutes past the frozen instant the
+session it wrote ended in the SERVER's future and the #924 recap card never
+rendered. Two halves close it:
+
+- **The browser** runs on the frozen clock: `e2e/fixtures.ts` patches
+  `browser.newContext` so every context — the built-in `page`/`context` fixtures
+  and every hand-built one (`loginAs`, anonymous, phone-viewport) — gets
+  `clock.setSystemTime(frozenNow)`. The clock still TICKS from there
+  (`setSystemTime`, not `setFixedTime`), so timers, animations and polling are
+  untouched and elapsed time within a test stays real.
+- **The spec** derives timestamps from `frozenNow()` (`e2e/worker-env.ts`), never
+  `new Date()` / `Date.now()`. The hygiene guard freezes today's wall-clock reads
+  per file; a new one needs `frozenNow()` or a same-line `clock-ok: <why>` marker,
+  which is for uses that are NOT stored timestamps — a unique-name suffix, a TOTP
+  probe that genuinely needs real time.
+
+Verified as a before/after: with the run's frozen instant set 60 minutes in the
+past, the #1441 test fails 3/3 without the context clock and passes 3/3 with it.
+
+**What isolation does NOT buy you.** A worker's database is copied once per worker,
+not once per test, so specs sharing a worker still share a world in sequence — and
+which specs share a worker depends on the scheduler. Fixture ownership (#868) is
+unchanged, and exact-count assertions against shared-seed rows stay banned.
+
 ## The `mobile` project — opt-in phone-viewport coverage (#1420)
 
 Every project used to run at 1280×900, so the mobile shell (`MobileNav`'s top bar
 and slide-in drawer, bottom sheets, touch targets) had no regression coverage
 except in the handful of specs that hand-set a phone viewport via `test.use`. The
 `mobile` project (playwright.config.ts) closes that: iPhone-class **390×844**,
-`hasTouch: true`, same seeded-DB webServer and same `auth.setup.ts` storage state
-as `chromium` — nothing else differs.
+`hasTouch: true`, same per-worker seeded DB and same per-worker session as
+`chromium` — nothing else differs.
 
 **It is opt-in, not a second copy of the suite.** Its `testMatch` admits exactly
 two things:

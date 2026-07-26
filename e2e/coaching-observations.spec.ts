@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Issue #449 — the four #45 observational domains (training balance/plateau,
 // body-metric hygiene, goal pacing, adherence patterns) render only on their own
@@ -21,9 +21,7 @@ import { settledClick } from "./helpers";
 // preventive/dose/biomarker suppressions other specs depend on. Short-lived
 // connection, busy timeout so it never contends with the running server (WAL).
 function resetCoachingObservationDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

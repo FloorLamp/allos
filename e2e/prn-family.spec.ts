@@ -1,12 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_PRN_FAMILY,
   PRN_FAMILY_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Cross-item PRN safety counters (issue #1027). The dedicated fixture profile tracks
 // OTC "Ibuprofen" (confirmed 6h interval / max 4) alongside "Ibuprofen 800 mg", whose
@@ -17,9 +17,7 @@ import {
 // an isolated fixture login (#868); duplication-note dismissals are reset per test.
 
 function resetDupDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 // Pediatric reference ranges + pediatric BP percentiles (issue #150). For a CHILD
 // profile the biomarker detail page interprets labs and vitals by AGE, not the
 // adult thresholds:

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // The admin Server settings backup card surfaces off-volume replication status
 // read-only (issue #130): whether BACKUP_DEST_DIR is configured plus the last
 // off-volume backup / error. The e2e DB boots WITHOUT BACKUP_DEST_DIR, so it shows

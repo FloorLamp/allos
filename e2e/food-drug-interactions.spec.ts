@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { openMedDetailViaLink, foodGuidance } from "./med-card-helpers";
 
 // Food–drug interaction guidance (issue #154). The seed gives profile 1 a synthetic

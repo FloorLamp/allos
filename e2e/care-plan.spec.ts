@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // /care-plan + /care-goals (issue #391, gap 5). care-plan-upcoming.spec only drives
 // the /upcoming twin. This covers the pages themselves: the care-plan list renders
 // seeded items with status + planned date, completing one from the page drops its

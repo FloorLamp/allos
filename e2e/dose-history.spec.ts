@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // A dosage/schedule edit must never destroy or rewrite adherence history.
 // Before the `retired` flag, removing a dose row on edit hard-deleted it and
 // ON DELETE CASCADE silently wiped every taken-log that referenced it; and with

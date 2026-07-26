@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
@@ -8,8 +8,9 @@ import {
   FITNESS_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 function withDb<T>(fn: (db: InstanceType<typeof Database>) => T): T {
   const db = new Database(DB_PATH);

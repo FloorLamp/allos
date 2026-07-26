@@ -1,8 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick } from "./helpers";
 import { medicationRow } from "./med-card-helpers";
+import { workerDbPath } from "./worker-env";
 
 // #1442 — the cold-start adherence label, end to end. Quick-adding a medication used
 // to render "0% adherence" on its brand-new Current-medications row: the worst
@@ -27,9 +27,7 @@ const ADDED_MED_PREFIX = "Coldstart Med e2e";
 const SEEDED_MED_WITH_HISTORY = "Adherence Refill Med (e2e)";
 
 function deleteAddedMeds(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

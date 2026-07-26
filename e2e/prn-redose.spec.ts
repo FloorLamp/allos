@@ -1,11 +1,11 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import {
   medicationsToday,
   prnTodayItem,
   medicationRow,
 } from "./med-card-helpers";
+import { workerDbPath } from "./worker-env";
 
 // #798 PRN redose notice + confirm flow. The seed (e2e/seed-events.ts) ships
 // "PRN Redose Med (e2e)" — a PRN med with a CONFIRMED redose notice (6h interval,
@@ -26,9 +26,7 @@ const REDOSE_MED = "PRN Redose Med (e2e)";
 const ADDED_MED_PREFIX = "Ibuprofen e2e redose";
 
 function deleteAddedMeds(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

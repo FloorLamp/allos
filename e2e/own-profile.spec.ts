@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -9,6 +9,7 @@ import {
   OWN_SELF_PROFILE,
   OWN_OTHER_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Own-profile link + not-self write affordances + login identity (issue #1013).
 // Spec-OWNED fixtures (E2E_LOGIN_OWN granted two adult profiles, own_profile_id →
@@ -24,9 +25,7 @@ import {
 // Resolve the two fixture profile ids from the isolated e2e DB (short-lived
 // connection, busy timeout) so the switch testid can target the OTHER profile.
 function ownProfileIds(): { selfId: number; otherId: number } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

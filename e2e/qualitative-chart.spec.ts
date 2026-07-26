@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #542 — a titer series whose values carry an embedded unit ("58 mIU/mL") or a
 // dilution ratio ("1:160") used to vanish from the chart entirely (whole-string
 // numeric parse rejected them). parseLeadingNumeric recovers the leading numeric at

@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // Canonical encounter types (#1233): the Visits list renders the raw ActEncounterCode
 // class through a friendly label ("AMB" → "Ambulatory") and offers a canonical-kind
@@ -9,7 +10,7 @@ import Database from "better-sqlite3";
 // markers — and asserts only on those rows (presence/absence under a filter), never an
 // exact count of the shared seed. Both rows are removed afterward so the shared DB
 // stays clean across CI retries.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 const EMER_MARKER = "E2E 1233 emergency filter marker";
 const AMB_MARKER = "E2E 1233 ambulatory filter marker";
@@ -32,7 +33,7 @@ test.describe("Visits — canonical encounter class label + kind filter (#1233)"
     cleanup();
     const handle = new Database(DB_PATH);
     try {
-      const date = new Date().toISOString().slice(0, 10);
+      const date = frozenNow().toISOString().slice(0, 10);
       const ins = handle.prepare(
         `INSERT INTO encounters (profile_id, date, type, class_code, reason, source, external_id)
          VALUES (1, ?, ?, ?, ?, 'manual', ?)`

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 
 // Pick an activity in the editor's exercise combobox. The option button's text

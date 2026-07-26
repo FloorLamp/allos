@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs, followLink } from "./nav";
 import { hydratedClick } from "./helpers";
 import {
@@ -11,6 +11,7 @@ import {
   E2E_LOGIN_ONBOARDING_CAREGIVER,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Onboarding is a stateful, one-way setup WIZARD: the very first step flips the seeded
 // fixture profile's onboarding state not_started→in_progress (later completing it /
@@ -28,7 +29,7 @@ import {
 // resolution; it mirrors playwright.config.ts's DB_PATH fallback because workers
 // don't inherit the webServer env block.
 function resetFixture(role: OnboardingFixtureRole): void {
-  const dbPath = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+  const dbPath = workerDbPath();
   withE2eDb(dbPath, (db) => resetOnboardingFixture(db, role));
 }
 

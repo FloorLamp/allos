@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink, settledClick } from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed

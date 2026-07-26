@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #11: Journal (activity) cards show provenance — where the row came from — plus
 // when it was added. The seed carries a Strava-imported ride alongside the
 // hand-logged workouts, so the two provenance states are both on the page: the

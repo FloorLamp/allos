@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Exercises the long-lived calendar `.ics` token lifecycle (issue #24): enabling
 // mints a subscribe URL that serves an iCalendar feed, and rotating it mints a
 // FRESH URL while the previous one immediately 404s (the token hash was replaced).
