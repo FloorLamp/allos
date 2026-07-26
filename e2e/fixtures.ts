@@ -130,6 +130,60 @@ function portIsFree(port: number): Promise<boolean> {
   });
 }
 
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reclaim this worker slot from a PREVIOUS generation of the same worker.
+ *
+ * Playwright stops a worker process after a failed test and starts a replacement
+ * with the SAME parallelIndex — and it does not wait for the old process's fixture
+ * teardown to finish (a hard-killed worker never runs teardown at all). The
+ * replacement therefore routinely finds its port still held by its predecessor's
+ * server. That is a harness artifact, never a real conflict, so the slot is
+ * reclaimed rather than reported: kill the recorded pid, then wait for the port.
+ * Only after that does a still-busy port mean something genuinely else is
+ * listening — a stale server from an interrupted run, or another worktree using
+ * the same E2E_PORT range — which is a real error worth failing on.
+ */
+async function reclaimPort(port: number, pidFile: string): Promise<void> {
+  if (fs.existsSync(pidFile)) {
+    const pid = Number(fs.readFileSync(pidFile, "utf8").trim());
+    if (Number.isInteger(pid) && pid > 0 && isAlive(pid)) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+      const hardDeadline = Date.now() + 5_000;
+      while (isAlive(pid) && Date.now() < hardDeadline)
+        await new Promise((r) => setTimeout(r, 100));
+      if (isAlive(pid)) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    }
+  }
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (await portIsFree(port)) return;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(
+    `port ${port} is still in use after 30s — a server from an interrupted run, ` +
+      `or another checkout sharing this E2E_PORT range, is holding it.`
+  );
+}
+
 async function stopServer(server: ChildProcess): Promise<void> {
   if (server.exitCode !== null || server.signalCode !== null) return;
   await new Promise<void>((resolve) => {
@@ -153,9 +207,15 @@ export const test = base.extend<{}, WorkerFixtures>({
       const port = workerPort(idx);
       const baseURL = workerBaseURL(idx);
       const logPath = path.join(dir, "server.log");
+      const pidFile = path.join(dir, "server.pid");
       const started = Date.now();
 
-      // 1) This worker's world: a fresh COPY of the seeded template (DB + the
+      // 1) Take the slot back from a previous generation of this worker (see
+      //    reclaimPort) BEFORE wiping the directory — the old server still has
+      //    this worker's database file open.
+      await reclaimPort(port, pidFile);
+
+      // 2) This worker's world: a fresh COPY of the seeded template (DB + the
       //    cwd-relative data/ artifacts the seed wrote alongside it).
       fs.rmSync(dir, { recursive: true, force: true });
       fs.cpSync(demo ? TEMPLATE_DEMO_DIR : TEMPLATE_DIR, dir, {
@@ -164,14 +224,7 @@ export const test = base.extend<{}, WorkerFixtures>({
       fs.mkdirSync(path.join(dir, "data", "logs"), { recursive: true });
       fs.mkdirSync(path.join(dir, "data", "uploads"), { recursive: true });
 
-      if (!(await portIsFree(port))) {
-        throw new Error(
-          `port ${port} (worker ${idx}) is already in use — a server from a ` +
-            `previous run may still be alive. Move the range with E2E_PORT.`
-        );
-      }
-
-      // 2) This worker's server: `next start` off the ONE shared production build,
+      // 3) This worker's server: `next start` off the ONE shared production build,
       //    but with the worker dir as CWD so every cwd-relative artifact the app
       //    writes (data/uploads, data/logs/ai.jsonl, data/logs/errors.jsonl) is
       //    private to this worker.
@@ -198,6 +251,9 @@ export const test = base.extend<{}, WorkerFixtures>({
         }
       );
       fs.closeSync(logFd);
+      // Record the pid so the NEXT generation of this worker can reclaim the port
+      // even if this process is hard-killed before its teardown runs.
+      if (server.pid) fs.writeFileSync(pidFile, String(server.pid));
       const bootStart = Date.now();
       try {
         await waitForServer(`${baseURL}/login`, server, logPath);
@@ -207,7 +263,7 @@ export const test = base.extend<{}, WorkerFixtures>({
       }
       const bootMs = Date.now() - bootStart;
 
-      // 3) This worker's session. A session is a row in THIS database, so the
+      // 4) This worker's session. A session is a row in THIS database, so the
       //    worker signs in against its own server and saves its own storageState
       //    (the replacement for the old single auth.setup.ts project).
       let authMs = 0;
@@ -241,9 +297,11 @@ export const test = base.extend<{}, WorkerFixtures>({
 
       await use({ index: idx, baseURL, port, dbPath, dir, demo });
 
-      // Teardown: stop the server. The worker dir (DB + server.log) is left on
-      // disk for postmortem; global-setup wipes e2e/.data at the start of a run.
+      // Teardown: stop the server and drop its pid record. The worker dir (DB +
+      // server.log) is left on disk for postmortem; global-setup wipes e2e/.data
+      // at the start of a run.
       await stopServer(server);
+      fs.rmSync(pidFile, { force: true });
     },
     { scope: "worker", auto: true },
   ],

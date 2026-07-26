@@ -163,6 +163,33 @@ const ADD_PROFILE_ALLOW: Record<string, number> = {};
 // one module: `destroyFixtureProfile` removes what the constructor wrote, and a raw
 // profile DELETE is banned everywhere else, which is what makes the NEXT addition to
 // the production seed core a one-file edit instead of a suite-wide FK hunt.
+// ── (viii) The DB-per-worker harness freeze (issue #1538) ───────────────────
+// Each Playwright worker now runs against its OWN database and its OWN app server.
+// Two things make that work, and both are one-line-easy to get wrong:
+//
+//   • a spec gets its worker's server + session by importing `test` from
+//     e2e/fixtures.ts. A spec that imports `test` from "@playwright/test" instead
+//     silently opts OUT — no per-worker baseURL, no per-worker storage state — and
+//     drives whatever happens to answer on the base port. Frozen at ZERO
+//     everywhere but the fixture module itself (TYPE-only imports from
+//     "@playwright/test" — Page, Locator, Browser — stay fine and are not matched).
+//
+//   • a spec that opens SQLite directly resolves the file with workerDbPath()
+//     (e2e/worker-env.ts). `process.env.ALLOS_DB_PATH` is the APP SERVER's
+//     environment, not the spec process's — reading it from a spec is how a
+//     direct-DB spec would read the wrong worker's database (or none at all).
+//     Frozen at ZERO outside the harness modules that legitimately set it.
+const WORKER_HARNESS_FILES = new Set([
+  "fixtures.ts",
+  "worker-env.ts",
+  "global-setup.ts",
+]);
+const PW_TEST_IMPORT_RE =
+  /import\s*\{[^}]*\btest\b[^}]*\}\s*from\s*["']@playwright\/test["']/g;
+const PW_TEST_IMPORT_ALLOW: Record<string, number> = {};
+const RAW_DB_ENV_RE = /process\.env\.ALLOS_DB_PATH/g;
+const RAW_DB_ENV_ALLOW: Record<string, number> = {};
+
 const FIXTURE_PROFILE_FILE = "fixture-profile.ts";
 const RAW_PROFILE_INSERT_RE = /INSERT\s+(?:OR\s+\w+\s+)?INTO\s+profiles\b/g;
 const RAW_PROFILE_INSERT_ALLOW: Record<string, number> = {};
@@ -530,6 +557,48 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     expect(mod).toMatch(/export function destroyFixtureProfile\b/);
     // It must delegate to the production seeding core, not re-implement it.
     expect(mod).toMatch(/seedStandardMetricSaves\(/);
+  });
+
+  it("no e2e/*.ts imports `test` from @playwright/test (import it from ./fixtures)", () => {
+    checkPattern(
+      "@playwright/test `test` import",
+      PW_TEST_IMPORT_RE,
+      PW_TEST_IMPORT_ALLOW,
+      {
+        skipFiles: WORKER_HARNESS_FILES,
+        hint:
+          `A spec that imports \`test\` from "@playwright/test" opts out of the ` +
+          `DB-per-worker harness (#1538): no per-worker baseURL, no per-worker session. ` +
+          `Import { test, expect } from "./fixtures" — TYPE imports (Page, Locator, ` +
+          `Browser) may stay on "@playwright/test"; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no e2e/*.ts reads process.env.ALLOS_DB_PATH (use workerDbPath())", () => {
+    checkPattern(
+      "process.env.ALLOS_DB_PATH read",
+      RAW_DB_ENV_RE,
+      RAW_DB_ENV_ALLOW,
+      {
+        skipFiles: WORKER_HARNESS_FILES,
+        hint:
+          `ALLOS_DB_PATH is the APP SERVER's environment, not the spec process's — a ` +
+          `spec reading it opens the wrong worker's database (#1538). Use ` +
+          `workerDbPath() from ./worker-env; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("the per-worker harness exposes its addressing helpers", () => {
+    const env = fs.readFileSync(path.join(E2E_DIR, "worker-env.ts"), "utf8");
+    expect(env).toMatch(/export function workerDbPath\b/);
+    expect(env).toMatch(/export function workerDir\b/);
+    expect(env).toMatch(/export function workerPort\b/);
+    const fixtures = fs.readFileSync(path.join(E2E_DIR, "fixtures.ts"), "utf8");
+    // The two option overrides are what point page/context at THIS worker.
+    expect(fixtures).toMatch(/baseURL:\s*async/);
+    expect(fixtures).toMatch(/storageState:\s*async/);
   });
 
   it("the blessed interaction module exists and exports settledClick + followLink", () => {

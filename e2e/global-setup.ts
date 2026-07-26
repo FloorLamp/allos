@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { FullConfig } from "@playwright/test";
+import { stopLeftoverWorkerServers } from "./global-teardown";
 import {
   ADMIN_PASSWORD,
   ADMIN_USERNAME,
@@ -44,6 +45,15 @@ const BUILD_INPUT_FILES = [
   "tsconfig.json",
 ];
 
+// Directories under a build-input dir that the BUILD does not read — editing a
+// test must never cost a rebuild.
+const NON_BUILD_DIRS = new Set([
+  "node_modules",
+  "__tests__",
+  "__db_tests__",
+  "__action_tests__",
+]);
+
 function newestMtime(target: string, newest = 0): number {
   let stat: fs.Stats;
   try {
@@ -54,7 +64,7 @@ function newestMtime(target: string, newest = 0): number {
   if (!stat.isDirectory()) return Math.max(newest, stat.mtimeMs);
   let best = newest;
   for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    if (NON_BUILD_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
     best = newestMtime(path.join(target, entry.name), best);
   }
   return best;
@@ -186,7 +196,10 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   );
 
   // Wipe every artifact of a previous run: stale worker dirs (a crashed run can
-  // leave one behind), the templates, and the run context.
+  // leave one behind), the templates, and the run context. Servers first — an
+  // interrupted run's orphan still holds a worker port, and its pid record is
+  // about to be deleted with the directory.
+  stopLeftoverWorkerServers();
   fs.rmSync(E2E_DATA_DIR, { recursive: true, force: true });
   fs.mkdirSync(E2E_DATA_DIR, { recursive: true });
 

@@ -74,6 +74,8 @@ export default defineConfig({
   // `webServer` block any more: each worker boots its OWN server against its OWN
   // copy of the template — see e2e/fixtures.ts (issue #1538).
   globalSetup: "./e2e/global-setup.ts",
+  // Sweeps any per-worker server that outlived its worker (an interrupted run).
+  globalTeardown: "./e2e/global-teardown.ts",
   // The run's frozen instant, handed to global-setup (same process) which persists
   // it for the worker processes.
   metadata: { frozenNow: FROZEN_NOW },

@@ -320,7 +320,7 @@ pushed, so the published `:latest` always builds cleanly.
 | `npm test`                 | Pure unit tests (vitest)                                  |
 | `npm run test:db`          | DB-tier + server-action tests (in-memory SQLite)          |
 | `npm run test:db:coverage` | DB-tier + server-action tests under a coverage floor (CI) |
-| `npm run test:e2e`         | Playwright browser tests (isolated seeded DB)             |
+| `npm run test:e2e`         | Playwright browser tests (isolated seeded DB per worker)  |
 
 ### Tech
 

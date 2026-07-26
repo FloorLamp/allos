@@ -80,13 +80,65 @@ function reachesDb(rel: string, stack: Set<string> = new Set()): boolean {
 
 // Playwright test/spec/setup files are run by the Playwright runner (which loads
 // env via playwright.config.ts), NOT as standalone tsx entrypoints, so they own no
-// env-first obligation even when they touch process.env.
-function isPlaywrightFile(rel: string): boolean {
+// env-first obligation even when they touch process.env. The same is true of the
+// harness modules those files IMPORT (e2e/worker-env.ts, the DB-per-worker
+// addressing module of #1538): they are only ever evaluated inside a Playwright
+// process, so the closure below excludes them too. A module reached from
+// e2e/seed-events.ts (a real standalone tsx entrypoint that does NOT import
+// @playwright/test) is not in this closure and stays covered.
+function isPlaywrightSource(rel: string): boolean {
   return (
     rel.endsWith(".spec.ts") ||
     rel.endsWith(".setup.ts") ||
     read(rel).includes('"@playwright/test"')
   );
+}
+
+function importClosure(roots: string[]): Set<string> {
+  const seen = new Set<string>();
+  const queue = [...roots];
+  while (queue.length) {
+    const rel = queue.pop()!;
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    for (const spec of importSpecifiers(rel)) {
+      const target = resolveImport(rel, spec);
+      if (target && !seen.has(target)) queue.push(target);
+    }
+  }
+  return seen;
+}
+
+const { playwrightOnly } = (() => {
+  const all: string[] = [];
+  for (const dir of SCAN_DIRS) {
+    const abs = path.join(ROOT, dir);
+    if (fs.existsSync(abs)) all.push(...walk(abs));
+  }
+  const fromPlaywright = importClosure(all.filter(isPlaywrightSource));
+  // Anything a NON-Playwright module IMPORTS can end up evaluated by a standalone
+  // `tsx` run (e2e/seed/* under e2e/seed-events.ts, for instance), so it keeps its
+  // env-first obligation even when a spec also imports it. Seeded from those
+  // modules' import TARGETS rather than the modules themselves, so a file's own
+  // presence in scripts//e2e/ never exempts it — only being loaded exclusively by
+  // the Playwright runner does.
+  const standaloneSeeds = all
+    .filter((f) => !isPlaywrightSource(f))
+    .flatMap((f) =>
+      importSpecifiers(f)
+        .map((spec) => resolveImport(f, spec))
+        .filter((t): t is string => t !== null)
+    );
+  const fromStandalone = importClosure(standaloneSeeds);
+  return {
+    playwrightOnly: new Set(
+      [...fromPlaywright].filter((f) => !fromStandalone.has(f))
+    ),
+  };
+})();
+
+function isPlaywrightFile(rel: string): boolean {
+  return playwrightOnly.has(rel);
 }
 
 function usesProcessEnv(rel: string): boolean {
