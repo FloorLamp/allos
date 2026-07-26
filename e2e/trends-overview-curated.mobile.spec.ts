@@ -105,7 +105,10 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
       expect(wBox, "weight tile box").not.toBeNull();
       expect(hBox, "resting HR tile box").not.toBeNull();
       expect(Math.abs(wBox!.y - hBox!.y)).toBeLessThan(4);
-      expect(wBox!.x).toBeLessThan(hBox!.x);
+      // Different COLUMNS, not "weight on the left": the tiles are drag-reorderable
+      // since #1485 C, so which one leads is user state a neighbouring test may have
+      // moved — what this owns is the two-column layout.
+      expect(Math.abs(wBox!.x - hBox!.x)).toBeGreaterThan(100);
       expect(wBox!.width).toBeLessThan(195);
 
       // #1485 A — a saved analyte with no readings at all is a ONE-LINE row, not a
@@ -121,6 +124,175 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
       // Compaction, not omission (#1456): its unstar control is still reachable.
       const menu = await openTileMenu(page, TRENDS_CURATE_EMPTY_ANALYTE);
       await expect(menu.getByTestId("star-toggle")).toBeVisible();
+    } finally {
+      await page.context().close();
+    }
+  });
+});
+
+// ── #1485 C: reorder converges on drag ──────────────────────────────────────
+//
+// The tiles' order used to move ONLY through per-tile up/down arrows — a second
+// reorder language beside DashboardGrid's drag. It is now the same lift-and-drop,
+// through the shared components/SortableOrder.tsx, with the arrows kept inside the
+// ⋯ menu as the non-pointer fallback. Both halves need a browser: the drag is
+// pointer physics, and the fallback's whole point is that it moves the tile within
+// the SAME list the drag does.
+//
+// Same dedicated fixture as above (#868): the profile is this file's own, and each
+// test restores the order it found, so --repeat-each stays clean.
+
+// The populated tiles' order, as the grid renders it.
+async function tileOrder(page: Page): Promise<string[]> {
+  return page
+    .getByTestId("saved-tiles")
+    .evaluate((el) =>
+      Array.from(el.querySelectorAll("[data-tile-key]")).map(
+        (n) => n.getAttribute("data-tile-key") ?? ""
+      )
+    );
+}
+
+// Lift one tile and drop it on another. A mouse drag (not touch) on purpose:
+// Playwright can drive it deterministically, and the MouseSensor's 6px activation
+// distance is the same DndContext the long-press TouchSensor feeds — so this
+// exercises the real reorder path without emulating a press-and-hold.
+async function dragTile(page: Page, fromKey: string, toKey: string) {
+  const from = page.locator(`[data-tile-key="${fromKey}"]`);
+  const to = page.locator(`[data-tile-key="${toKey}"]`);
+  const a = await from.boundingBox();
+  const b = await to.boundingBox();
+  expect(a, `no box for ${fromKey}`).not.toBeNull();
+  expect(b, `no box for ${toKey}`).not.toBeNull();
+  await page.mouse.move(a!.x + a!.width / 2, a!.y + a!.height / 2);
+  await page.mouse.down();
+  // Clear the activation distance first — a lift is deliberate, never a tap.
+  await page.mouse.move(a!.x + a!.width / 2 + 14, a!.y + a!.height / 2, {
+    steps: 4,
+  });
+  await page.mouse.move(b!.x + b!.width / 2, b!.y + b!.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
+}
+
+// The persist is a Server Action fired from a transition (no form submit, so
+// settledClick does not apply); wait for its POST so a reload cannot outrun it.
+function reorderSettled(page: Page) {
+  return page.waitForResponse(
+    (r) =>
+      r.request().method() === "POST" &&
+      new URL(r.url()).pathname === "/trends",
+    { timeout: 15_000 }
+  );
+}
+
+test.describe("reorder converges on drag (#1485 C)", () => {
+  test("a tile dragged onto another takes its slot, and the order survives a reload", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await curatePage(browser);
+    try {
+      await page.goto("/trends");
+      await expect(page.getByTestId("saved-tiles")).toBeVisible();
+      const before = await tileOrder(page);
+      expect(
+        before.length,
+        "the fixture needs two populated tiles to swap"
+      ).toBeGreaterThanOrEqual(2);
+      const [first, second] = before;
+
+      const settled = reorderSettled(page);
+      await dragTile(page, first, second);
+      await expect.poll(async () => (await tileOrder(page))[0]).toBe(second);
+      await settled;
+
+      // Persistence is the point — an optimistic swap that evaporates on reload is
+      // the failure the #1456 position column exists to prevent.
+      await page.reload();
+      await expect(page.getByTestId("saved-tiles")).toBeVisible();
+      expect((await tileOrder(page)).slice(0, 2)).toEqual([second, first]);
+
+      // Restore the fixture (that it restores IS a second assertion that the drag
+      // works in both directions).
+      const back = reorderSettled(page);
+      await dragTile(page, second, first);
+      await expect.poll(async () => (await tileOrder(page))[0]).toBe(first);
+      await back;
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("the ⋯ menu keeps the arrows as the non-pointer fallback, moving the same list", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await curatePage(browser);
+    try {
+      await page.goto("/trends");
+      await expect(page.getByTestId("saved-tiles")).toBeVisible();
+      const before = await tileOrder(page);
+      const [first, second] = before;
+
+      // The first tile can only go later; the arrows say so rather than offering a
+      // move off the end.
+      const firstMenu = await openTileMenu(page, "Weight");
+      const isFirstTile = first === "metric:weight";
+      await expect(firstMenu.getByTestId("saved-move-up")).toBeVisible();
+      await expect(firstMenu.getByTestId("saved-move-down")).toBeVisible();
+      if (isFirstTile) {
+        await expect(firstMenu.getByTestId("saved-move-up")).toBeDisabled();
+      }
+      await page.keyboard.press("Escape");
+
+      // "Move earlier" on the SECOND tile puts it first — the same list the drag
+      // moves, which is exactly what the old arrows could not promise (they stepped
+      // through the stored order, past sunk empty rows).
+      const menu = await openTileMenu(
+        page,
+        second === "metric:weight" ? "Weight" : "Resting heart rate"
+      );
+      const settled = reorderSettled(page);
+      await menu.getByTestId("saved-move-up").click();
+      await expect.poll(async () => (await tileOrder(page))[0]).toBe(second);
+      await settled;
+
+      await page.reload();
+      await expect(page.getByTestId("saved-tiles")).toBeVisible();
+      expect((await tileOrder(page))[0]).toBe(second);
+
+      // Restore.
+      const back = reorderSettled(page);
+      const restore = await openTileMenu(
+        page,
+        second === "metric:weight" ? "Weight" : "Resting heart rate"
+      );
+      await restore.getByTestId("saved-move-down").click();
+      await expect.poll(async () => (await tileOrder(page))[0]).toBe(first);
+      await back;
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  test("an empty tile offers no reorder arrows — only the unstar it must keep", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await curatePage(browser);
+    try {
+      await page.goto("/trends");
+      await expect(page.getByTestId("saved-tiles")).toBeVisible();
+
+      // A never-measured analyte is sunk below the grid BY RULE, so its position is
+      // not something the user can move; two arrows that visibly did nothing were
+      // the confusing part of the old chrome.
+      const menu = await openTileMenu(page, TRENDS_CURATE_EMPTY_ANALYTE);
+      await expect(menu.getByTestId("star-toggle")).toBeVisible();
+      await expect(menu.getByTestId("saved-move-up")).toHaveCount(0);
+      await expect(menu.getByTestId("saved-move-down")).toHaveCount(0);
     } finally {
       await page.context().close();
     }

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
-import { toggleBiomarkerSaved, moveSavedItem } from "@/lib/queries";
+import { toggleBiomarkerSaved } from "@/lib/queries";
 import { setSavedOrder, toggleItemSaved } from "@/lib/queries/saved";
 import {
   isSavedKind,
@@ -48,24 +48,12 @@ export async function toggleSavedItem(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-// Reorder one saved item within the profile's saved list — the affordance that
-// replaced the retired pin toggle on Trends Overview. Ordering is presentation only
-// (it never changes what is saved), and a move off either end is a no-op.
-export async function moveSaved(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const ref = savedRefFromSeriesKey(String(formData.get("key") ?? "").trim());
-  if (!ref || !isSavedKind(ref.kind))
-    return formError("Couldn't find that item.");
-  const direction = String(formData.get("dir") ?? "") === "up" ? "up" : "down";
-  moveSavedItem(profile.id, ref, direction);
-  revalidatePath("/trends");
-  return formOk();
-}
-
-// Set the saved order OUTRIGHT — the write behind the Overview tiles' drag-reorder
-// (#1485 C). Same auth tier and same store as moveSaved above; the difference is
-// only that a drag names a DESTINATION while an arrow names a direction, so this one
-// carries the whole list.
+// Set the saved order OUTRIGHT — the ONE write behind Trends Overview's reorder
+// (#1485 C). It replaced the retired `moveSaved` (a one-slot up/down step on the
+// stored order): drag and the ⋯ menu's arrow fallback now move within the SAME
+// client-side list and persist it whole, so the two affordances can no longer
+// disagree about what "earlier" means. The step math for the arrows is the pure
+// `moveInOrder`, applied in the grid — see components/SavedTilesGrid.tsx.
 //
 // The list arrives as a JSON array of Trends SERIES KEYS ("metric:weight",
 // "bio:ApoB") — the vocabulary the tiles already speak — because a saved key may

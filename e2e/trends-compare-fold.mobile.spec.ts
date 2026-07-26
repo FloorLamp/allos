@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { settledClick } from "./helpers";
+import { expandTrendsContext } from "./trends-chrome";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_TRENDS_COMPARE,
@@ -59,6 +60,8 @@ function tabStrip(page: Page) {
 test.describe("A — the tab strip is five chips in frequency order", () => {
   test("renders the new order, without a Compare chip", async ({ page }) => {
     await page.goto("/trends");
+    // The strip collapses into the #1485 F context bar at phone width.
+    await expandTrendsContext(page);
     const strip = tabStrip(page);
     await expect(strip.getByRole("tab")).toHaveText(TAB_ORDER);
 
@@ -74,6 +77,7 @@ test.describe("A — the tab strip is five chips in frequency order", () => {
     page,
   }) => {
     await page.goto("/trends");
+    await expandTrendsContext(page);
     const strip = tabStrip(page);
     await expect(strip.getByRole("tab")).toHaveCount(TAB_ORDER.length);
 
@@ -110,6 +114,7 @@ test.describe("B — Compare folded into Insights", () => {
       "/trends?tab=compare&cmpA=metric:weight&cmpB=metric:resting_hr"
     );
     await expect(page).toHaveURL(/tab=compare/);
+    await expandTrendsContext(page);
     await expect(
       page.getByRole("tab", { name: "Insights", exact: true })
     ).toHaveAttribute("aria-selected", "true");
@@ -133,6 +138,7 @@ test.describe("C — the age gate moved from the tab to the sections", () => {
     const member = await comparePage(browser);
     try {
       await member.goto("/trends");
+      await expandTrendsContext(member);
       const strip = tabStrip(member);
       // Fitness — wholly age-gated content — keeps its TAB-level splice; Insights
       // no longer does.
@@ -146,6 +152,7 @@ test.describe("C — the age gate moved from the tab to the sections", () => {
       await member.goto(
         "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:resting_hr"
       );
+      await expandTrendsContext(member);
       await expect(
         member.getByRole("tab", { name: "Insights", exact: true })
       ).toHaveAttribute("aria-selected", "true");
@@ -163,6 +170,7 @@ test.describe("C — the age gate moved from the tab to the sections", () => {
 
       // The surviving tab-level gate still bounces its tab to the default.
       await member.goto("/trends?tab=fitness");
+      await expandTrendsContext(member);
       await expect(
         member.getByRole("tab", { name: "Overview", exact: true })
       ).toHaveAttribute("aria-selected", "true");
@@ -181,6 +189,9 @@ test.describe("C — the age gate moved from the tab to the sections", () => {
     const member = await comparePage(browser);
     try {
       await member.goto("/trends");
+      // The saved-views bar rides the chip row, which the #1485 F context bar
+      // collapses on a phone.
+      await expandTrendsContext(member);
       // Applying a view is a Server Action that redirects to the hub's own param
       // vocabulary — including the `tab=compare` the row was stored with.
       await settledClick(
@@ -190,6 +201,7 @@ test.describe("C — the age gate moved from the tab to the sections", () => {
 
       await expect(member).toHaveURL(/tab=compare/);
       await expect(member).toHaveURL(/cmpA=metric%3Aweight/);
+      await expandTrendsContext(member);
       await expect(
         member.getByRole("tab", { name: "Insights", exact: true })
       ).toHaveAttribute("aria-selected", "true");

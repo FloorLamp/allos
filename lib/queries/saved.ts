@@ -1,10 +1,5 @@
 import { db, writeTx } from "../db";
-import {
-  orderSavedRefs,
-  moveInOrder,
-  type SavedKind,
-  type SavedRef,
-} from "../saved-items";
+import { orderSavedRefs, type SavedKind, type SavedRef } from "../saved-items";
 
 // The unified save store's SQL layer (issue #1456) over `saved_items` (migration
 // 113) — the ONE table behind the ★ star gesture, folding the retired
@@ -118,37 +113,17 @@ export function toggleItemSaved(
   });
 }
 
-// Move one saved item up/down within the profile's saved order — the reorder
-// affordance that replaced the retired pin toggle on Trends Overview.
-//
-// Ordering is ONE list across kinds (the Overview grid interleaves saved biomarker
-// and metric tiles), and the rewrite normalizes EVERY row to a dense 0..n-1 position,
-// so a set that was half-unpositioned (a fresh star) becomes fully ordered on the
-// first move instead of drifting. No-ops at the ends and for an unknown ref.
-export function moveSavedItem(
-  profileId: number,
-  ref: SavedRef,
-  direction: "up" | "down"
-): void {
-  writeTx(() => {
-    const rows = getSavedItems(profileId);
-    const index = rows.findIndex(
-      (r) =>
-        r.kind === ref.kind && r.key.toLowerCase() === ref.key.toLowerCase()
-    );
-    if (index < 0) return;
-    writeSavedPositions(profileId, moveInOrder(rows, index, direction));
-  });
-}
-
 // Set the profile's saved order OUTRIGHT, from a complete list of refs — the write
 // behind drag-reorder (#1485 C), where the gesture names a destination rather than
 // a direction.
 //
-// It shares moveSavedItem's normalization (dense 0..n-1 positions over the whole
-// set, so a half-unpositioned set becomes fully ordered), which is what keeps the
-// two affordances honest about the SAME list: the drag moves a tile to a slot, the
-// ⋯ menu's arrows move it one slot, and both leave the store in the same shape.
+// It replaced the retired `moveSavedItem` (one-slot up/down over the stored order):
+// with the grid holding the list client-side, the drag AND the ⋯ menu's arrow
+// fallback both name a destination, so ONE write serves both and they cannot drift.
+// Ordering is ONE list across kinds (the Overview grid interleaves saved biomarker
+// and metric tiles), and the rewrite normalizes EVERY row to a dense 0..n-1
+// position, so a set that was half-unpositioned (a fresh star) becomes fully ordered
+// on the first reorder instead of drifting.
 //
 // Refs the profile doesn't actually have saved are ignored, and any saved row the
 // caller didn't name keeps its relative order AFTER the named ones — a client

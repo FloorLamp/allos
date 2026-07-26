@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { hydratedClick } from "./helpers";
+import { expandTrendsContext } from "./trends-chrome";
 
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9
 // screens on chrome before the first chart: the always-open From/To card, a
@@ -25,6 +26,11 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
     page,
   }) => {
     await page.goto("/trends");
+    // Since #1485 F the chip row itself is behind the one-line context bar; the
+    // #1455 Custom… collapse INSIDE it is what this describe block owns, and it
+    // survives that change (an expanded bar still opens on the pills, not on the
+    // From/To card).
+    await expandTrendsContext(page);
 
     // The chip row is what a phone gets first.
     // `exact` is load-bearing, not decoration: Playwright matches an accessible
@@ -48,6 +54,7 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
 
   test("tapping Custom… expands the From/To form", async ({ page }) => {
     await page.goto("/trends");
+    await expandTrendsContext(page);
 
     const toggle = page.getByTestId("custom-range-toggle");
     await hydratedClick(page, toggle);
@@ -65,6 +72,7 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
     // A custom window matches no quick-range pill, so hiding its dates behind the
     // pill would make a shared link unreadable.
     await page.goto("/trends?from=2026-01-01&to=2026-02-01");
+    await expandTrendsContext(page);
 
     const panel = page.getByTestId("custom-range-panel");
     await expect(panel).toBeVisible();
@@ -96,9 +104,12 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
 test.describe("Overview leads with charts (B)", () => {
   test("a chart tile sits inside the opening viewport", async ({ page }) => {
     await page.goto("/trends");
-    await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
-      "aria-selected",
-      "true"
+    // What names the surface on a phone since #1485 F: the context bar's one-line
+    // label, not the (collapsed) tab strip. It is asserted here rather than the tab
+    // because it is the thing that must be on screen ABOVE the chart — the whole
+    // premise of "no chart without its window".
+    await expect(page.getByTestId("trends-context-label")).toHaveText(
+      "Overview · 90D"
     );
 
     // Presence + "reachable without scrolling", not a pixel offset: toBeInViewport
@@ -150,6 +161,7 @@ test.describe("one chip row, one range chip (C + D)", () => {
     page,
   }) => {
     await page.goto("/trends");
+    await expandTrendsContext(page);
 
     await expect(
       page.getByRole("link", { name: "All time", exact: true })
@@ -187,10 +199,17 @@ test.describe("one chip row, one range chip (C + D)", () => {
     // A preset is lit → the chip would only repeat the pill's own label (the
     // duplicate "All time").
     await page.goto("/trends");
+    await expandTrendsContext(page);
     await expect(page.getByText("All time", { exact: true })).toHaveCount(1);
 
     // A custom window has no pill naming it, so the chip carries real information.
     await page.goto("/trends?from=2026-01-01&to=2026-02-01");
+    // …and the #1485 F context label says the same window without opening anything,
+    // which is what keeps a custom-windowed chart from being read as "all time".
+    await expect(page.getByTestId("trends-context-label")).toHaveText(
+      "Overview · 2026-01-01 → 2026-02-01"
+    );
+    await expandTrendsContext(page);
     await expect(
       page.getByText("2026-01-01 → 2026-02-01", { exact: true })
     ).toBeVisible();

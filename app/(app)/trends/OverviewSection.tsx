@@ -103,7 +103,7 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
   const options = listCompareOptions(profile.id, restricted);
   const unsaved = (o: { key: string }) => !isSeriesKeySaved(savedRefs, o.key);
 
-  const renderTile = (t: TrendSeries, index: number, compact: boolean) => (
+  const renderTile = (t: TrendSeries, compact: boolean) => (
     <TrendMiniCard
       title={t.label}
       href={t.href}
@@ -117,24 +117,19 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
       applyBiomarkerDomain={t.kind === "biomarker"}
       outsideWindow={t.outsideWindow ?? null}
       compact={compact}
-      menu={
-        <TrendTileMenu
-          itemKey={t.key}
-          label={t.label}
-          isFirst={index === 0}
-          isLast={index === tiles.length - 1}
-        />
-      }
+      // The tile's own controls. Its reorder items resolve their list from the
+      // grid's context (#1485 C), so nothing about ordering is computed here.
+      menu={<TrendTileMenu itemKey={t.key} label={t.label} />}
     />
   );
 
   // One item per tile, IN SAVED ORDER — the list the drag moves within. The node is
   // fully server-rendered here and handed to the client grid as a prop, so a
   // reorder is pure motion: no re-query, no client-side tile rendering.
-  const items: SavedTileItem[] = tiles.map((t, index) => ({
+  const items: SavedTileItem[] = tiles.map((t) => ({
     key: t.key,
     empty: emptyKeys.has(t.key),
-    node: renderTile(t, index, emptyKeys.has(t.key)),
+    node: renderTile(t, emptyKeys.has(t.key)),
   }));
 
   return (

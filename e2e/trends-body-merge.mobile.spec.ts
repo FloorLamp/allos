@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { expandTrendsContext } from "./trends-chrome";
 import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -25,6 +26,9 @@ const DESKTOP = { width: 1280, height: 900 };
 
 async function openBody(page: Page, query = ""): Promise<void> {
   await page.goto(`/trends?tab=body${query}`);
+  // Below `sm` the tab strip lives inside the collapsed #1485 F context bar, so
+  // asserting the lit tab means opening the bar first (a no-op at desktop width).
+  await expandTrendsContext(page);
   await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
     "aria-selected",
     "true"
@@ -49,6 +53,7 @@ test.describe("one tab, vitals first (#1486)", () => {
   }) => {
     await page.setViewportSize(PHONE);
     await page.goto("/trends?tab=vitals");
+    await expandTrendsContext(page);
     await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
       "aria-selected",
       "true"

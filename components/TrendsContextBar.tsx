@@ -47,12 +47,17 @@ export default function TrendsContextBar({
   controls: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const { hidden } = useShellChrome();
+  const { hidden, ready } = useShellChrome();
   return (
     <div
       data-testid="trends-context-bar"
       data-hidden={hidden ? "true" : "false"}
       data-expanded={open ? "true" : "false"}
+      // Same contract as ShellChrome's: the scroll listener only exists after
+      // hydration, so before it the bar is simply always revealed (the safe state).
+      // Surfaced so a browser test can wait for the real behavior rather than race
+      // it.
+      data-ready={ready ? "true" : "false"}
       // Full-bleed on a phone so the sticky bar's background covers the content
       // gutters as the page scrolls under it; from `sm` up it is an ordinary block
       // in the reading column with no background of its own.
