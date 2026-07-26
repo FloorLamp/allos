@@ -321,6 +321,13 @@ export default async function AppLayout({
                           showViewStrip ? "" : "pt-4 md:pt-8"
                         }`}
                       >
+                        {/* The deploy notice (#1520) is an INLINE banner in this
+                            slot, not a floating toast — it renders nothing until
+                            the watcher sees a new COMMIT_SHA. Mounted inside the
+                            content container (and inside the persistent layout, so
+                            it survives client navigation) beside the onboarding
+                            banner it copies. */}
+                        <VersionWatcher current={version.sha} />
                         <OnboardingReturnBanner show={showOnboardingReturn} />
                         {children}
                       </div>
@@ -338,7 +345,6 @@ export default async function AppLayout({
                   <QuickShortcutHandler restricted={restricted} />
                   <ExtractionToaster profileId={profile.id} />
                   <ImportJobsToaster profileId={profile.id} />
-                  <VersionWatcher current={version.sha} />
                   {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and
                       listens to nothing in a browser tab, where the browser's own
                       refresh already exists. */}

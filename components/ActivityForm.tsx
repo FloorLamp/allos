@@ -1035,6 +1035,10 @@ export default function ActivityForm({
               setEstCalories(String(autoEstimateKcal));
             }}
             editData={editData}
+            // The SAVED row id — the same resolution the video/clip surfaces
+            // already use (#1520): the edited row, or the one autosave created
+            // for this create-mode form. Null until that row exists.
+            activityId={editData?.id ?? createdId}
             distanceUnit={units.distanceUnit}
           />
 

@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { IconBarbell, IconChevronUp } from "@tabler/icons-react";
+import {
+  BOTTOM_EDGE_DOCK_LAYER,
+  useBottomEdgeClaim,
+} from "@/components/overlay";
 
 // The app-wide minimized workout dock (issue #921): a full-width bottom bar that
 // keeps an in-progress session visible from every page (except the training log,
@@ -35,6 +39,10 @@ export default function WorkoutDock({
   ownerName?: string | null;
   onOpen: () => void;
 }) {
+  // The dock is the BASE layer of the bottom edge (#1520): while it's mounted it
+  // publishes its height, so the toast stack and the offline pill stack above it
+  // instead of landing on top of it.
+  const edgeRef = useBottomEdgeClaim<HTMLDivElement>();
   const [elapsedMin, setElapsedMin] = useState(() =>
     Math.max(0, Math.floor((Date.now() - startEpochMs) / 60_000))
   );
@@ -60,7 +68,8 @@ export default function WorkoutDock({
 
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-40 px-[max(0.5rem,env(safe-area-inset-left))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 print:hidden"
+      ref={edgeRef}
+      className={`fixed inset-x-0 bottom-0 ${BOTTOM_EDGE_DOCK_LAYER} px-[max(0.5rem,env(safe-area-inset-left))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 print:hidden`}
       data-testid="workout-dock"
     >
       <button

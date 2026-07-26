@@ -530,7 +530,9 @@ export default function StrengthSets({
           placeholder={ghostReps != null ? String(ghostReps) : "reps"}
           className={
             segmented
-              ? "number-no-spinner min-w-0 w-full border-y-0 border-r border-l-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+              ? // Divider on BOTH sides now that the reps stepper is symmetric
+                // (#1524: − input +), exactly like the weight stepper's input.
+                "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
               : `input bg-white dark:bg-ink-900 ${blocked ? blockedField : ""}`
           }
         />
@@ -1096,6 +1098,17 @@ export default function StrengthSets({
                               : "border-black/10 dark:border-white/10"
                           }`}
                         >
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() =>
+                              stepReps(si, isRight ? "repsRight" : "reps", -1)
+                            }
+                            aria-label="Decrease reps"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                          >
+                            −
+                          </button>
                           {effortInput(
                             sideR,
                             (v) =>
@@ -1244,6 +1257,20 @@ export default function StrengthSets({
                         : "border-black/10 dark:border-white/10"
                     }`}
                   >
+                    {/* Reps steps −/+ symmetrically with weight and RPE (#1524):
+                        the decrement was simply missing, so a mis-tapped rep count
+                        could only be fixed by editing the field by hand. Same
+                        h-9 w-7 tap target the row's other steppers use (#337);
+                        stepReps clamps at 0. */}
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => stepReps(si, "reps", -1)}
+                      aria-label="Decrease reps"
+                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                    >
+                      −
+                    </button>
                     {effortInput(
                       s.reps,
                       (v) => onUpdateSet(si, { reps: v }),

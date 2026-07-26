@@ -11,6 +11,13 @@ import {
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import {
+  BOTTOM_EDGE_ALERT_LAYER,
+  BOTTOM_EDGE_GUTTER_LEFT,
+  BOTTOM_EDGE_GUTTER_RIGHT,
+  BOTTOM_EDGE_NOTICE_BOTTOM,
+  BOTTOM_EDGE_NOTICE_LAYER,
+} from "@/components/overlay";
+import {
   buildIntent,
   chunkIntents,
   planFlushDisposition,
@@ -314,7 +321,9 @@ export default function OfflineQueueProvider({
           data-testid="offline-rejected-review"
           role="alert"
           aria-live="assertive"
-          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[101] w-[min(22rem,calc(100vw-2rem))] space-y-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 shadow-lg dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100"
+          // Bottom-edge LAYER 2 (#1520): above the toast stack (a write that
+          // didn't land out-ranks a confirmation) and above the workout dock.
+          className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_RIGHT} ${BOTTOM_EDGE_ALERT_LAYER} w-[min(22rem,calc(100vw-2rem))] space-y-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 shadow-lg dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100`}
         >
           <div className="flex items-start justify-between gap-2">
             <p className="font-semibold">
@@ -365,7 +374,9 @@ export default function OfflineQueueProvider({
           data-testid="offline-queue-badge"
           role="status"
           aria-live="polite"
-          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-[100] flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 shadow-lg dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+          // Bottom-edge LAYER 1 (#1520), left gutter — same layer as the toast
+          // stack, opposite corner, and clear of the workout dock.
+          className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_LEFT} ${BOTTOM_EDGE_NOTICE_LAYER} flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 shadow-lg dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200`}
         >
           <span
             className="h-2 w-2 rounded-full bg-amber-500"

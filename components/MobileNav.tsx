@@ -11,7 +11,6 @@ import {
   IconMenu2,
   IconPill,
   IconPlus,
-  IconRepeat,
   IconSalad,
   IconScale,
   IconSearch,
@@ -62,9 +61,11 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 //     route with no opinion.
 //   * A caret beside it opening the quick-log sheet, so the actions this route
 //     does NOT promote stay one tap away.
-//   * The activity-specific pair (live workout, repeat last) shows only where
-//     the primary action IS the activity editor; on Nutrition or Medications
-//     they are noise competing for a 390px bar.
+//   * The activity-specific shortcut (start a live workout) shows only where
+//     the primary action IS the activity editor; on Nutrition or Medications it
+//     is noise competing for a 390px bar. It used to be a PAIR — the ⟳
+//     repeat-last button left the bar in #1509 as a fourth home for a shortcut
+//     the palette and the Journal card's ⋯ menu already carry.
 //
 // The drawer slides in and out (issue #1416, section F): usePresence keeps it
 // mounted for the length of its exit animation and then unmounts it for real, so
@@ -144,8 +145,7 @@ export default function MobileNav({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { openCreate, openLive, openRepeatLast, hasLastActivity } =
-    useActivityEditor();
+  const { openCreate, openLive } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
   const reduceMotion = usePrefersReducedMotion();
   const drawer = usePresence(open, motionMs("drawer", reduceMotion));
@@ -262,33 +262,26 @@ export default function MobileNav({
             </button>
             {!restricted && (
               <>
+                {/* Start a live workout — the phone-at-the-gym entry to the
+                    rest timer + set check-off flow (issue #340). It is the ONLY
+                    activity-specific bar shortcut since #1509: the ⟳ repeat-last
+                    twin was a FOURTH home for a shortcut the command palette and
+                    the Journal card's ⋯ "Log again" already carry, and it spent a
+                    slot of a 390px bar on it. Repeat-last now lives in exactly
+                    those two homes (deliberately NOT in the quick-log sheet —
+                    #1506 keeps that list to logging actions); the
+                    `openRepeatLast` context API stays for them and for the
+                    desktop aside. */}
                 {showsActivityShortcuts(primary) && (
-                  <>
-                    {/* Start a live workout — the phone-at-the-gym entry to the
-                        rest timer + set check-off flow (issue #340). */}
-                    <button
-                      type="button"
-                      aria-label="Start workout"
-                      data-testid="start-workout-mobile"
-                      onClick={() => openLive()}
-                      className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-                    >
-                      <IconBolt className="h-5 w-5" stroke={1.75} />
-                    </button>
-                    {/* Repeat last activity — the mobile twin of the desktop
-                        aside's "Repeat last", so it isn't desktop-only (#337). */}
-                    {hasLastActivity && (
-                      <button
-                        type="button"
-                        aria-label="Repeat last activity"
-                        data-testid="repeat-last-mobile"
-                        onClick={() => openRepeatLast()}
-                        className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-                      >
-                        <IconRepeat className="h-5 w-5" stroke={1.75} />
-                      </button>
-                    )}
-                  </>
+                  <button
+                    type="button"
+                    aria-label="Start workout"
+                    data-testid="start-workout-mobile"
+                    onClick={() => openLive()}
+                    className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+                  >
+                    <IconBolt className="h-5 w-5" stroke={1.75} />
+                  </button>
                 )}
                 {/* The contextual primary. Its accessible name IS the action
                     ("Log food" on Nutrition), so the bar never lies about what
