@@ -373,7 +373,10 @@ export function upsertMetricSamples(
     // every later re-push of the rolling window, counted `unchanged` — the same
     // contract activities / body_metrics / medical_records have had since #133.
     if (found && isEditLocked(found.edited)) {
-      tallyUpsert(counts, classifyUpsert(true, true));
+      // Its OWN split (#659), like the body-metrics and vitals paths above: a lock
+      // hold is not an ordinary no-op re-send, so it stays visible in Review rather
+      // than hidden inside `unchanged`.
+      counts.edited++;
       continue;
     }
     // A delayed retry of an older cumulative snapshot must never roll a newer
