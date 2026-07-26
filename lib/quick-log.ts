@@ -156,9 +156,11 @@ export function primaryQuickLog(
   return quickLogItem(LOG_ACTIVITY_ID);
 }
 
-// The bar shows the activity-specific pair (start a live workout, repeat last)
-// ONLY where the primary action is itself the activity editor — on Nutrition or
-// Medications they are noise competing for a 390px-wide bar.
+// The bar shows the activity-specific shortcut — since #1509 that is the
+// live-workout button ALONE (the ⟳ repeat-last twin left the bar; repeat-last
+// keeps exactly two homes, the command palette and the Journal card's ⋯ menu) —
+// ONLY where the primary action is itself the activity editor. On Nutrition or
+// Medications it would be noise competing for a 390px-wide bar.
 export function showsActivityShortcuts(primary: QuickLogItem): boolean {
   return primary.target.kind === "activity";
 }
