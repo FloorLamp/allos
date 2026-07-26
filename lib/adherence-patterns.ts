@@ -151,6 +151,14 @@ export interface DoseAdherenceInput {
 // The effective start is the LATEST of these (a re-time can only move it forward,
 // never expose pre-creation days). Pure string-date math (each timestamp is
 // "YYYY-MM-DD…", which sorts chronologically), so it's client-safe and testable.
+//
+// The narrower sibling is `doseExistsSince` (lib/supplement-adherence.ts), the bound
+// a history STRIP/percentage uses. The two are deliberately different questions: this
+// one asks "over what window may I infer a claim about the dose's CURRENT slot"
+// (so a re-time resets it), while that one asks only "when did this dose exist at
+// all" (so a re-time must NOT erase the days it was genuinely taken in its old slot).
+// Both exist to keep a fixed lookback from manufacturing pre-existence misses (#430,
+// #1442); neither may be swapped for the other.
 export function doseAdherenceSince(
   itemCreatedAt: string | null | undefined,
   doseCreatedAt: string | null | undefined,
