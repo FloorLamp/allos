@@ -2,7 +2,55 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { currentPathHref } from "@/lib/hrefs";
+import { currentPathHref, type AppRoute } from "@/lib/hrefs";
+
+type MobileTabColumns = 2 | 3 | 4;
+
+const MOBILE_GRID_COLUMNS: Record<MobileTabColumns, string> = {
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+};
+
+function stripClassName({
+  prominentOnMobile,
+  mobileColumns,
+  className,
+  flush,
+}: {
+  prominentOnMobile: boolean;
+  mobileColumns: MobileTabColumns;
+  className?: string;
+  flush: boolean;
+}) {
+  return `overflow-x-auto overflow-y-hidden border-b border-black/10 dark:border-white/10 ${
+    prominentOnMobile
+      ? `grid ${MOBILE_GRID_COLUMNS[mobileColumns]} md:flex md:gap-1`
+      : "flex gap-0.5 sm:gap-1"
+  } ${className ?? (flush ? "mb-0" : "mb-4")}`;
+}
+
+function tabClassName({
+  active,
+  prominentOnMobile,
+  mobileColumns,
+}: {
+  active: boolean;
+  prominentOnMobile: boolean;
+  mobileColumns: MobileTabColumns;
+}) {
+  return `-mb-px min-w-0 shrink-0 whitespace-nowrap border-b-2 text-center transition ${
+    prominentOnMobile
+      ? mobileColumns === 2
+        ? "px-4 py-3 text-base font-semibold md:px-4 md:py-2 md:text-sm md:font-medium"
+        : "px-1 py-3 text-sm font-semibold md:px-4 md:py-2 md:font-medium"
+      : "px-1.5 py-2 text-sm font-medium sm:px-4"
+  } ${
+    active
+      ? "border-brand-500 text-brand-700 dark:text-brand-400"
+      : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+  }`;
+}
 
 // Navigation-driven tab strip. Unlike `Tabs` (which mounts every panel and
 // toggles visibility client-side), NavTabs renders a strip of tab buttons and a
@@ -34,7 +82,9 @@ export function NavTabsStrip({
   activeId,
   className,
   prominentOnMobile = false,
+  mobileColumns = 2,
   flush = false,
+  testId,
 }: {
   tabs: readonly { id: string; label: string }[];
   paramKey: string;
@@ -43,7 +93,9 @@ export function NavTabsStrip({
   // bottom margin, which belongs to the bar). Never its type or chip styling.
   className?: string;
   prominentOnMobile?: boolean;
+  mobileColumns?: MobileTabColumns;
   flush?: boolean;
+  testId?: string;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -62,11 +114,13 @@ export function NavTabsStrip({
   return (
     <div
       role="tablist"
-      className={`overflow-x-auto overflow-y-hidden border-b border-black/10 dark:border-white/10 ${
-        prominentOnMobile
-          ? "grid grid-cols-2 md:flex md:gap-1"
-          : "flex gap-0.5 sm:gap-1"
-      } ${className ?? (flush ? "mb-0" : "mb-4")}`}
+      data-testid={testId}
+      className={stripClassName({
+        prominentOnMobile,
+        mobileColumns,
+        className,
+        flush,
+      })}
     >
       {tabs.map((t) => {
         const isActive = active === t.id;
@@ -78,15 +132,11 @@ export function NavTabsStrip({
             scroll={false}
             role="tab"
             aria-selected={isActive}
-            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 text-center transition ${
-              prominentOnMobile
-                ? "px-4 py-3 text-base font-semibold md:px-4 md:py-2 md:text-sm md:font-medium"
-                : "px-1.5 py-2 text-sm font-medium sm:px-4"
-            } ${
-              isActive
-                ? "border-brand-500 text-brand-700 dark:text-brand-400"
-                : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-            }`}
+            className={tabClassName({
+              active: isActive,
+              prominentOnMobile,
+              mobileColumns,
+            })}
           >
             {t.label}
           </Link>
@@ -97,6 +147,59 @@ export function NavTabsStrip({
 }
 
 export const NavTabStrip = NavTabsStrip;
+
+// Route-driven counterpart to NavTabsStrip. Top-level route families such as
+// Results use one URL per tab instead of a query parameter, but their responsive
+// shell treatment and tab anatomy should remain identical.
+export function RouteNavTabsStrip({
+  tabs,
+  className,
+  prominentOnMobile = false,
+  mobileColumns = 2,
+  flush = false,
+  testId,
+}: {
+  tabs: readonly { href: AppRoute; label: string }[];
+  className?: string;
+  prominentOnMobile?: boolean;
+  mobileColumns?: MobileTabColumns;
+  flush?: boolean;
+  testId?: string;
+}) {
+  const pathname = usePathname();
+
+  return (
+    <div
+      role="tablist"
+      data-testid={testId}
+      className={stripClassName({
+        prominentOnMobile,
+        mobileColumns,
+        className,
+        flush,
+      })}
+    >
+      {tabs.map((tab) => {
+        const active = pathname === tab.href;
+        return (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            role="tab"
+            aria-selected={active}
+            className={tabClassName({
+              active,
+              prominentOnMobile,
+              mobileColumns,
+            })}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function NavTabs({
   tabs,

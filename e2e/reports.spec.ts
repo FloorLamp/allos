@@ -17,7 +17,7 @@ test("the Reports tab renders a narrative report body (#708)", async ({
   const tabs = page.getByTestId("results-tabs");
   await followLink(
     page,
-    tabs.getByRole("link", { name: "Reports" }),
+    tabs.getByRole("tab", { name: "Reports" }),
     /\/results\/reports$/
   );
   const reports = page.getByTestId("results-reports");

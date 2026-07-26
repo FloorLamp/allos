@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { NavTabStrip } from "@/components/NavTabs";
+import TabFirstTabs from "@/components/TabFirstTabs";
 import { tabFirstPageForPath } from "@/components/tab-first-pages";
 
 // The phone form of a tab-first page belongs to the app chrome, not to the
@@ -19,12 +19,7 @@ export default function ShellTabStrip() {
       data-testid="shell-tab-strip"
       className="bg-white/80 backdrop-blur-xl md:hidden dark:bg-ink-950/80"
     >
-      <NavTabStrip
-        tabs={config.tabs}
-        paramKey={config.paramKey}
-        prominentOnMobile
-        flush
-      />
+      <TabFirstTabs config={config} flush />
     </div>
   );
 }
