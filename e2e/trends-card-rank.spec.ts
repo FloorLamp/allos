@@ -67,7 +67,10 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     await expect(growth).toBeVisible();
 
     // The growth card sits ABOVE the chart runs — the retired planBodyCharts
-    // `growthCardFirst` fork, now a consequence of the life-stage signal.
+    // `growthCardFirst` fork, now a consequence of the life-stage signal. The
+    // Composition run follows it, ahead of Vitals, because height (the priority
+    // datapoint for a growing child) lives there: the same life-stage signal
+    // carries the card AND its run, so the promotion is actually visible.
     expect(
       await domOrder(page, [
         "growth-charts-card",
@@ -76,8 +79,8 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
       ])
     ).toEqual([
       "growth-charts-card",
-      "body-section-vitals",
       "body-section-body-composition",
+      "body-section-vitals",
     ]);
 
     // …and inside the composition run, height leads weight for a growing child.
