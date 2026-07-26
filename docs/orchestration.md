@@ -711,6 +711,18 @@ local pure tier is NOT sufficient across a route restructure.
 - Keep a task per cluster (`agent → review → merge`) and update it at each stage.
 - Institutionalize every incident into the next dispatch prompt the same day —
   the error rate drops measurably wave over wave.
+- **File e2e/CI/infra issues WITH a priority label, and label bottlenecks P1
+  (owner rule, 2026-07-26).** Anything discovered that costs pipeline
+  throughput — a merge-queue serializer, a recurring false-red class, a
+  local-gate wall-clock limiter, a flake class that forces diagnosis rounds —
+  is filed immediately (don't sit on it) and labeled by its REAL cost:
+  resolving a bottleneck is almost always **P1** (it taxes every subsequent
+  unit of work), not the reflexive P2 an "infra chore" reads as. A single
+  latent flake in one spec is P3. Under the P0/P1-first doctrine above, the
+  label IS the queue position — an unlabeled or under-labeled infra issue
+  silently deprioritizes exactly the work that speeds everything else up.
+  (Session evidence: #1511 and #1534 both went out as P2 by habit; both were
+  bottleneck-class.)
 - **Wind-down** = no new dispatches; land everything in flight (review, fix
   specs, merge), cancel queued waves, clean worktrees, write a handoff listing:
   merged work, deliberately-open items, owner decisions pending, and any
