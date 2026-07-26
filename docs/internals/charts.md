@@ -64,6 +64,7 @@ A ramp is validated as a ramp (`validateCellRamp`): one hue, monotone lightness,
 | ------------------------------------------------ | ----------------------------------------- | -------------------------------------------------------- |
 | a value over time                                | time series                               | `LineChartCard`                                          |
 | a value over time, in a grid tile                | **sparkline** (`LineChartCard sparkline`) | `TrendMiniCard`                                          |
+| a per-day QUANTITY, in a grid tile               | **bar sparkline**                         | `BarSparkline` (via `TrendMiniCard sparklineShape`)      |
 | two series compared over time                    | overlay on one time axis                  | `CompareChart`                                           |
 | one analyte over time, against ranges            | banded time series                        | `BiomarkerChart`                                         |
 | one metric, several reporting devices            | series-per-source                         | `SourceCompareChart`                                     |
@@ -113,6 +114,8 @@ The variant is a flag on the same card (`sparkline`), never a sixth hand-styled 
 - **No grid**, margins near-zero.
 - **The numbers the axes supplied become inline text.** `TrendMiniCard` renders latest (in its header, with the change badge) plus low/high under the plot — legible at any width, which an 11px tick in a 150px box is not.
 - **Hover survives.** The tooltip is how a sparkline reports a single point.
+
+**The MARK follows the data, not the tile (#1485 D).** A line asserts continuity — the quantity existed between two readings and moved smoothly between them. That is true of a level (weight, resting HR, an analyte: it has a value on the days you did not sample it) and false of a per-day TOTAL whose missing days are real zeros. Training volume is the second kind, and its line drew a slope across rest days that had no training in them at all — a sawtooth that reads as noise at tile width. So the sparkline has a bar twin (`BarSparkline`, registered in the scan's form inventory), and **which series get it is one pure decision** — `lib/trend-sparkline.ts`, keyed on the shared `metric:` / `bio:` series vocabulary, with a short justified list rather than a runtime "does it oscillate?" heuristic (a mark that changed shape as you moved the range would be worse than one that is occasionally conservative). The mark's own styling is a scaffold prop bag like every other (`chartSparklineBarProps`).
 
 Hiding axes is the MINI-TILE decision, not a global one: a full-size chart keeps the axis a reader traces a value along. `e2e/trends-sparkline.mobile.spec.ts` pins both halves at 390px — no axis inside a tile, axes still present (and ticks still ≥ 10px) on a full-size chart.
 

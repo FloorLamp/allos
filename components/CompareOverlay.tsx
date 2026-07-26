@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import CompareChart from "./CompareChart";
 import AnnotationToggleBar from "./AnnotationToggleBar";
+import { useAnnotationToggles } from "./TrendAnnotationToggles";
 import {
   annotationKindsPresent,
   filterAnnotationsByKind,
-  type AnnotationKind,
   type TrendAnnotation,
   type TrendWindow,
 } from "@/lib/trend-annotations";
@@ -41,22 +40,21 @@ export default function CompareOverlay({
   windows?: TrendWindow[];
 }) {
   const presentKinds = annotationKindsPresent(annotations, windows ?? []);
-  const [enabled, setEnabled] = useState<Record<AnnotationKind, boolean>>({
-    medication: true,
-    appointment: true,
-    situation: true,
-    protocol: true,
-  });
+  // #1493 A: on the Trends hub the pill row is rendered ONCE, in the context bar's
+  // expanded controls, so it stops costing ~60px of standing chrome above the
+  // overlay; `hoisted` says so. On a surface with no context bar to hoist into the
+  // hook falls back to local state and this renders its own bar exactly as before.
+  const { enabled, onToggle, hoisted } = useAnnotationToggles(presentKinds);
   const shown = filterAnnotationsByKind(annotations, enabled);
   const shownWindows = enabled.protocol ? (windows ?? []) : [];
 
   return (
     <div className="space-y-3">
-      {presentKinds.length > 0 && (
+      {!hoisted && presentKinds.length > 0 && (
         <AnnotationToggleBar
           kinds={presentKinds}
           enabled={enabled}
-          onToggle={(kind) => setEnabled((e) => ({ ...e, [kind]: !e[kind] }))}
+          onToggle={onToggle}
         />
       )}
       <CompareChart

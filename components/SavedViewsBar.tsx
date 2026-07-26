@@ -23,6 +23,7 @@ import type { FormResult } from "@/lib/types";
 export default function SavedViewsBar({
   views,
   range,
+  view,
 }: {
   views: TrendView[];
   // The hub's RESOLVED window (#1485 G). Since the no-param URL now MEANS 90D,
@@ -30,6 +31,11 @@ export default function SavedViewsBar({
   // re-apply it as all time. The server passes what it actually rendered; an empty
   // range here is a genuine all-time view (viewToQuery re-emits it as ?range=all).
   range: { from?: string; to?: string };
+  // The Body tab's layout mode, when there is one (#1493 C). Same reasoning as the
+  // window: a "Save current" that drops the tiles/all choice does not save the
+  // current view. Undefined off the Body tab, and undefined for the responsive
+  // default — which is itself the honest capture, since no layout was pinned.
+  view?: "tiles" | "all";
 }) {
   const params = useSearchParams();
   const [saving, setSaving] = useState(false);
@@ -65,6 +71,7 @@ export default function SavedViewsBar({
     cmpA: params.get("cmpA") ?? "",
     cmpB: params.get("cmpB") ?? "",
     cmpn: params.get("cmpn") === "1" ? "1" : "",
+    view: view ?? "",
   };
 
   // #1455 C: these chips no longer own a row — they ride the END of
@@ -120,6 +127,7 @@ export default function SavedViewsBar({
           <input type="hidden" name="cmpA" value={current.cmpA} />
           <input type="hidden" name="cmpB" value={current.cmpB} />
           <input type="hidden" name="cmpn" value={current.cmpn} />
+          <input type="hidden" name="view" value={current.view} />
           <input
             type="text"
             name="name"
