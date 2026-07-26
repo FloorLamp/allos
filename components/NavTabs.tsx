@@ -62,7 +62,7 @@ export default function NavTabs({
     <div>
       <div
         role="tablist"
-        className="mb-4 flex gap-1 overflow-x-auto border-b border-black/10 dark:border-white/10"
+        className="mb-4 flex gap-0.5 overflow-x-auto border-b border-black/10 dark:border-white/10 sm:gap-1"
       >
         {tabs.map((t) => {
           const isActive = active === t.id;
@@ -74,7 +74,13 @@ export default function NavTabs({
               scroll={false}
               role="tab"
               aria-selected={isActive}
-              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition ${
+              // Phone-tight chips (#1489): at px-4 a five-chip strip measures
+              // ~442px against a 358px content column, so the row scrolls and the
+              // trailing tab sits off the edge — the failure the five-tab reorder
+              // exists to remove. Below `sm` the chips give up padding (never type
+              // size — the label is the thing being read); from `sm` up it is the
+              // original chip.
+              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-1.5 py-2 text-sm font-medium transition sm:px-4 ${
                 isActive
                   ? "border-brand-500 text-brand-700 dark:text-brand-400"
                   : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
