@@ -573,6 +573,35 @@ body::before {
   transform: translateY(calc(-100% + env(safe-area-inset-top, 0px)));
 }
 
+/* A SECOND sticky strip parked directly under the shell chrome and riding its
+   hide/reveal (issue #1485 F — the Trends context bar is the first tenant).
+
+   `--shell-chrome-h` is published by components/ShellChrome.tsx from its own
+   measured height (the bar alone, or the bar plus the multi-profile view banner),
+   which is why it is a variable and not a constant. The value below is the
+   pre-hydration default — one bar row — so the strip parks in the right place on
+   the server-rendered first paint, before the ResizeObserver has said anything.
+
+   Phone only: from `sm` up the page keeps its ordinary static layout (the tenant
+   drops to `position: static` there), so the hidden transform is scoped to the
+   same breakpoint or it would translate a static element on a laptop.
+
+   The travel is the strip's own height PLUS the chrome above it, so it clears the
+   viewport entirely rather than parking half-off under a bar that has itself gone. */
+:root {
+  --shell-chrome-h: 3.5rem;
+}
+.sub-chrome {
+  transition: transform 180ms ease-out;
+}
+@media (max-width: 639.98px) {
+  .sub-chrome[data-hidden="true"] {
+    transform: translateY(
+      calc(-100% - var(--shell-chrome-h) + env(safe-area-inset-top, 0px))
+    );
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces: `overlayMotionClass()` already returns "" under the
      preference, so these classes are not even applied — but a surface that
@@ -594,7 +623,8 @@ body::before {
   }
   /* The chrome still hides and reveals — the preference asks for no TRAVEL, not
      for a permanently parked bar — it simply snaps. */
-  .shell-chrome {
+  .shell-chrome,
+  .sub-chrome {
     transition: none;
   }
   .press {

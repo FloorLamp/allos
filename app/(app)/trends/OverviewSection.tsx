@@ -18,6 +18,9 @@ import { EmptyState } from "@/components/ui";
 import TrendMiniCard from "@/components/TrendMiniCard";
 import TrendTileMenu from "@/components/TrendTileMenu";
 import SaveTrendPicker from "@/components/SaveTrendPicker";
+import SavedTilesGrid, {
+  type SavedTileItem,
+} from "@/components/SavedTilesGrid";
 import TrendingDigest from "./TrendingDigest";
 
 // The Trends hub's Overview: the "what's trending" digest, then the profile's OWN
@@ -82,10 +85,15 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
     }
   }
 
-  // #1485 A: split for LAYOUT only. `index` stays the tile's slot in the SAVED
-  // order (what the reorder items move within), so sinking an empty tile changes
-  // where it draws, never what its position means.
-  const { populated, empty } = partitionOverviewTiles(tiles);
+  // #1485 A: which tiles compact to a one-line row and sink below the grid. It is a
+  // LAYOUT split only — every tile keeps its slot in the SAVED order, which is the
+  // list both reorder affordances (the #1485 C drag and the ⋯ menu's arrows) move
+  // within, so sinking an empty tile changes where it draws, never what its position
+  // means. The split itself is applied client-side by SavedTilesGrid, over the same
+  // pure predicate, so an optimistic drag re-splits without a round trip.
+  const emptyKeys = new Set(
+    partitionOverviewTiles(tiles).empty.map((t) => t.tile.key)
+  );
 
   // What the picker can still add: everything savable that isn't saved yet — metrics
   // included, since unstarring one now removes its tile and the picker is the way
@@ -95,9 +103,8 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
   const options = listCompareOptions(profile.id, restricted);
   const unsaved = (o: { key: string }) => !isSeriesKeySaved(savedRefs, o.key);
 
-  const renderTile = (t: TrendSeries, index: number, compact = false) => (
+  const renderTile = (t: TrendSeries, compact: boolean) => (
     <TrendMiniCard
-      key={t.key}
       title={t.label}
       href={t.href}
       data={t.points}
@@ -110,35 +117,27 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
       applyBiomarkerDomain={t.kind === "biomarker"}
       outsideWindow={t.outsideWindow ?? null}
       compact={compact}
-      menu={
-        <TrendTileMenu
-          itemKey={t.key}
-          label={t.label}
-          isFirst={index === 0}
-          isLast={index === tiles.length - 1}
-        />
-      }
+      // The tile's own controls. Its reorder items resolve their list from the
+      // grid's context (#1485 C), so nothing about ordering is computed here.
+      menu={<TrendTileMenu itemKey={t.key} label={t.label} />}
     />
   );
+
+  // One item per tile, IN SAVED ORDER — the list the drag moves within. The node is
+  // fully server-rendered here and handed to the client grid as a prop, so a
+  // reorder is pure motion: no re-query, no client-side tile rendering.
+  const items: SavedTileItem[] = tiles.map((t) => ({
+    key: t.key,
+    empty: emptyKeys.has(t.key),
+    node: renderTile(t, emptyKeys.has(t.key)),
+  }));
 
   return (
     <div className="space-y-6">
       <TrendingDigest range={range} />
 
-      {tiles.length > 0 ? (
-        <div className="space-y-3" data-testid="saved-tiles">
-          <h2 className="flex items-center gap-2 section-label">★ Starred</h2>
-          {populated.length > 0 && (
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-              {populated.map((t) => renderTile(t.tile, t.index))}
-            </div>
-          )}
-          {empty.length > 0 && (
-            <div className="space-y-2">
-              {empty.map((t) => renderTile(t.tile, t.index, true))}
-            </div>
-          )}
-        </div>
+      {items.length > 0 ? (
+        <SavedTilesGrid items={items} />
       ) : (
         // Everything unstarred (or a brand-new profile whose only saved metrics are
         // age-gated): the grid is genuinely empty, so it says so and offers the way

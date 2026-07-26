@@ -2,9 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
-import { toggleBiomarkerSaved, moveSavedItem } from "@/lib/queries";
-import { toggleItemSaved } from "@/lib/queries/saved";
-import { isSavedKind, savedRefFromSeriesKey } from "@/lib/saved-items";
+import { toggleBiomarkerSaved } from "@/lib/queries";
+import { setSavedOrder, toggleItemSaved } from "@/lib/queries/saved";
+import {
+  isSavedKind,
+  savedRefFromSeriesKey,
+  type SavedRef,
+} from "@/lib/saved-items";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Server Actions for the unified save store (issue #1456) — the ONE ★ gesture behind
@@ -44,16 +48,37 @@ export async function toggleSavedItem(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-// Reorder one saved item within the profile's saved list — the affordance that
-// replaced the retired pin toggle on Trends Overview. Ordering is presentation only
-// (it never changes what is saved), and a move off either end is a no-op.
-export async function moveSaved(formData: FormData): Promise<FormResult> {
+// Set the saved order OUTRIGHT — the ONE write behind Trends Overview's reorder
+// (#1485 C). It replaced the retired `moveSaved` (a one-slot up/down step on the
+// stored order): drag and the ⋯ menu's arrow fallback now move within the SAME
+// client-side list and persist it whole, so the two affordances can no longer
+// disagree about what "earlier" means. The step math for the arrows is the pure
+// `moveInOrder`, applied in the grid — see components/SavedTilesGrid.tsx.
+//
+// The list arrives as a JSON array of Trends SERIES KEYS ("metric:weight",
+// "bio:ApoB") — the vocabulary the tiles already speak — because a saved key may
+// contain any character a canonical analyte name does (spaces, commas, slashes), so
+// a delimiter-joined string would be a parsing bug waiting for the first analyte
+// with a comma in it. Unparseable input is a friendly error, never a partial write;
+// keys naming nothing savable are dropped, and setSavedOrder itself ignores refs the
+// profile has not saved (a stale client can't delete a row by omitting it).
+export async function reorderSaved(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  const ref = savedRefFromSeriesKey(String(formData.get("key") ?? "").trim());
-  if (!ref || !isSavedKind(ref.kind))
-    return formError("Couldn't find that item.");
-  const direction = String(formData.get("dir") ?? "") === "up" ? "up" : "down";
-  moveSavedItem(profile.id, ref, direction);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(formData.get("keys") ?? ""));
+  } catch {
+    return formError("Couldn't read that order.");
+  }
+  if (!Array.isArray(raw)) return formError("Couldn't read that order.");
+  const refs: SavedRef[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") continue;
+    const ref = savedRefFromSeriesKey(entry);
+    if (ref && isSavedKind(ref.kind)) refs.push(ref);
+  }
+  if (refs.length === 0) return formError("Couldn't read that order.");
+  setSavedOrder(profile.id, refs);
   revalidatePath("/trends");
   return formOk();
 }

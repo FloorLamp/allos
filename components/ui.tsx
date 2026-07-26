@@ -8,10 +8,20 @@ export function PageHeader({
   title,
   subtitle,
   action,
+  compactBelowSm = false,
 }: {
   title: string;
   subtitle?: React.ReactNode;
   action?: React.ReactNode;
+  // Give up the whole heading band below `sm` (issue #1485 F, following the #1413
+  // dashboard precedent): the title goes `sr-only` and the subtitle is dropped, so
+  // the phone spends nothing on read-once copy while AT still hears the page's one
+  // h1. For a surface whose own chrome already answers "where am I" — Trends' F
+  // context bar names the tab AND the window on the line above the charts — and
+  // where the subtitle is orientation prose nobody reads twice. Off by default:
+  // most pages have nothing else naming them, and a heading-less page is a real
+  // loss there. Desktop is byte-identical either way.
+  compactBelowSm?: boolean;
 }) {
   // Compact below `md` (issue #1416, section A/D): a phone gives the heading a
   // smaller share of a much shorter screen, so the title drops to text-xl and
@@ -19,13 +29,25 @@ export function PageHeader({
   // change here reaches all ~50 pages that render this — the reason the ad-hoc
   // <h1> pages were converted rather than restyled in place.
   return (
-    <div className="mb-4 flex items-end justify-between gap-4 md:mb-6">
+    <div
+      className={`flex items-end justify-between gap-4 md:mb-6 ${
+        compactBelowSm ? "sm:mb-4" : "mb-4"
+      }`}
+    >
       <div>
-        <h1 className="text-xl font-bold text-slate-900 md:text-2xl dark:text-slate-100">
+        <h1
+          className={`text-xl font-bold text-slate-900 md:text-2xl dark:text-slate-100 ${
+            compactBelowSm ? "sr-only sm:not-sr-only" : ""
+          }`}
+        >
           {title}
         </h1>
         {subtitle && (
-          <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <div
+            className={`mt-1 text-sm text-slate-500 dark:text-slate-400 ${
+              compactBelowSm ? "hidden sm:block" : ""
+            }`}
+          >
             {subtitle}
           </div>
         )}

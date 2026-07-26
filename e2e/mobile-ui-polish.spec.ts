@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { expandTrendsContext } from "./trends-chrome";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
@@ -13,6 +14,9 @@ test.describe("mobile tab strips scroll instead of clipping (#640)", () => {
     page,
   }) => {
     await page.goto("/trends");
+    // Since #1485 F the strip lives inside the phone context bar and is collapsed
+    // by default; expanded, it is the same scroller this has always asserted.
+    await expandTrendsContext(page);
 
     // The strip must be its OWN horizontal scroll container — otherwise <main>'s
     // overflow-x-clip eats any trailing tab a narrower phone (or a longer strip)
