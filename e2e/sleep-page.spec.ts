@@ -10,7 +10,7 @@ import {
   E2E_MEMBER_PASSWORD,
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
-import { settledClick } from "./helpers";
+import { expectNoClippedContent, settledClick } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 
@@ -613,24 +613,22 @@ test.describe("Sleep page (#1066)", () => {
     await page.setViewportSize({ width: 320, height: 844 });
     await page.goto("/sleep");
     await expect(page.getByTestId("sleep-hero")).toBeVisible();
-    const layout = await page.evaluate(() => ({
-      noBodyScroll:
-        document.documentElement.scrollWidth <= window.innerWidth + 1,
-      overflowingCards: [...document.querySelectorAll("main .card")].flatMap(
-        (card, index) => {
-          const bounds = card.getBoundingClientRect();
-          return bounds.left >= -1 && bounds.right <= window.innerWidth + 1
-            ? []
-            : [
-                `${index}:${card.getAttribute("data-testid") ?? card.className} (${Math.round(bounds.left)}..${Math.round(bounds.right)})`,
-              ];
-        }
-      ),
-    }));
-    expect(layout).toEqual({
-      noBodyScroll: true,
-      overflowingCards: [],
-    });
+    // Nothing on the page may sit past the right edge (#1543 — the shell clips
+    // horizontal overflow, so a page-level width comparison asserts nothing).
+    await expectNoClippedContent(page);
+    // The blessed guard is right-edge only; the cards additionally must not hang
+    // off the LEFT, which is how a negative-margin row hides its leading column.
+    const cardsOffLeft = await page.evaluate(() =>
+      [...document.querySelectorAll("main .card")].flatMap((card, index) => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.left >= -1
+          ? []
+          : [
+              `${index}:${card.getAttribute("data-testid") ?? card.className} (left ${Math.round(bounds.left)})`,
+            ];
+      })
+    );
+    expect(cardsOffLeft).toEqual([]);
     await expect(page.getByTestId("sleep-add-entry-header")).toHaveCSS(
       "white-space",
       "nowrap"

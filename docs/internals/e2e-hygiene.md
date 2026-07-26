@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — DB-per-worker isolation (#1538), helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight CI backstop; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
+Status: **partial** (infrastructure shipped — DB-per-worker isolation (#1538), helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight CI backstop, the #1543 document-level-overflow freeze + the #1545 degenerate-input convention; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
 
 Maintainer documentation for the Playwright suite's reliability discipline (issue
 #868). The user-facing "how to run e2e" note lives in AGENTS.md's browser-e2e
@@ -41,7 +41,7 @@ order-dependent. The recurring reds fall into four classes:
    a page with a live request), `toPass()` re-click loops, `waitForTimeout()`
    sleeps, `followLink`.
 
-**Mobile no-overflow assertions go through `expectNoClippedContent` (e2e/helpers.ts, #1063).** The app shell clips horizontal overflow (`overflow-x-clip`), so a broken phone-width layout renders as invisible, unreachable content and the naive document-level `scrollWidth > clientWidth` check reads zero on every page. The blessed helper asserts ELEMENT-level containment — every rendered element's right edge inside the viewport unless it sits in a working `overflow-x: auto` container that itself fits — and folds the document-level check in for unclipped surfaces (share/print views). Set the phone viewport after auth, anchor on a page-specific element first, then call it; offenders are reported with tag/testid/class + widths.
+**Mobile no-overflow assertions go through `expectNoClippedContent` (e2e/helpers.ts, #1063), and nothing else is allowed to (#1543).** The app shell clips horizontal overflow (`overflow-x-clip`), so a broken phone-width layout renders as invisible, unreachable content and the naive document-level `scrollWidth > clientWidth` check reads zero on every page. The blessed helper asserts ELEMENT-level containment — every rendered element's right edge inside the viewport unless it sits in a working `overflow-x: auto` container that itself fits — and folds the document-level check in for unclipped surfaces (share/print views). Set the phone viewport after auth, anchor on a page-specific element first, then call it; offenders are reported with tag/testid/class + widths. The hand-rolled form is now frozen at ZERO by the hygiene guard — see "Assertion integrity" below.
 
 4. **CI retries paint over everything ≤50% flaky.** `retries: 1–2` proves "passes
    within N attempts", not "works": a 50%-flaky de-wrapped spec shipped green, and
@@ -66,6 +66,11 @@ mechanically-detectable settle anti-patterns per file and fails a NEW one:
 - `waitForTimeout(...)` — replace with `settledClick`/`followLink` or a real
   auto-retrying `expect`. (The one legitimate use — the **bounded
   absence-of-effect wait** below — stays, allowlisted.)
+- a document-level overflow check (`documentElement.scrollWidth` /
+  `document.body.scrollWidth` compared against the viewport) — replace with
+  `expectNoClippedContent(page)`. Frozen at ZERO: under the shell's
+  `overflow-x-clip` the comparison can't fail, so every such line asserted
+  nothing (#1543). Full reasoning in "Assertion integrity" below.
 - `.toPass(` — the "commented last resort", now with teeth (added after the
   flake burn-down): a retrying block hides WHICH step raced — the same disease
   as CI retries, writ small — so new unmarked uses fail. Await the actual
@@ -182,6 +187,72 @@ a **convention gate, not a linter**:
   fix was a profile that stays activity-free ON PURPOSE. When a fixture would flip
   a SHARED surface between states (single- vs multi-source, empty vs populated),
   give it its own profile.
+
+## Assertion integrity — the two ways an assertion lies (#1543 / #1545)
+
+A spec can be green for two opposite bad reasons: it asserts something that
+**cannot fail**, or it asserts something that **must not be allowed to change**.
+Both shipped in this suite, one of each, and they are the same mistake seen from
+either side — an assertion whose truth value doesn't track the product.
+
+### (1) The vacuous guard: it can't fail (#1543)
+
+The app shell is `<main className="… overflow-x-clip">` (`app/(app)/layout.tsx`).
+Clipped overflow is never scrollable overflow, so on every `(app)` page
+`document.documentElement.scrollWidth` equals the viewport width **no matter what
+the page contains** — a 3000px-wide div injected into `<main>` still reads 360 at
+a 360px viewport. Fifteen sites across thirteen specs hand-rolled that comparison
+as their mobile-overflow gate (one of them inverted, `> viewport` expected false —
+unconditionally false, same vacuity). Each one read like a guard, cost a line of
+review attention, and could not go red.
+
+The fix is the one that already existed: `expectNoClippedContent(page)` measures
+ELEMENT-level containment and names the offender. The hand-rolled form is frozen
+at ZERO by the hygiene guard, which is a TEXT scan — so a comment or string inside
+an `e2e/*.ts` that spells the pattern out counts itself; phrase spec prose without
+the literal (this doc is not scanned, which is why it can be explicit).
+
+**The general rule: prove a guard both ways before trusting it.** A guard is only
+worth its line if you have seen it fail. When you add or convert one, break the
+thing it guards ONCE — inject the offending element, delete the fixture row — and
+watch it go red, then remove the injection and watch it go green. `#1063`'s helper
+was written that way (hiding the hamburger fails 14 mobile tests and none of the
+desktop ones); the fifteen naive copies were not.
+
+### (2) The frozen defect: it can't be fixed (#1545)
+
+The inverse failure. `trends-metric-pages.spec.ts` required `period-stat-7`,
+`period-stat-30` AND `period-stat-90` to all be visible on a metric detail page.
+The fixture's steps series is three consecutive days, so all three trailing
+windows contained the SAME readings and the page rendered the identical four
+numbers three times — the defect #1541 was filed for. The presence trio had
+encoded that defect as the contract: fixing it turned the spec red, so the spec
+had to be re-pointed as part of the fix rather than confirming it.
+
+The convention, for any **windowed or aggregating statistic** (trailing windows,
+rolling averages, per-period rollups, streaks, adherence rates):
+
+- **Ship the degenerate inputs as pure cases**: all windows coincident, a single
+  reading, and empty. Those are not exotic — they are the ordinary state of a new
+  install, a fresh integration, a metric recorded once. `bodyMetricPeriodStats`
+  (`lib/trends-body-metrics.ts`) carries all three in
+  `lib/__tests__/trends-body-metrics.test.ts`, and each asserts the shape a
+  SURFACE can render: one card, keyed by the widest window it covers, carrying its
+  reading count and covered span.
+- **Assert what the surface renders, differentially.** Prefer "the number of stat
+  cards equals the number of DISTINCT windows" over a fixed-presence trio, and
+  drive a fixture where that count is a SIGNAL rather than a constant — the metric
+  page spec now pairs an all-coincident fixture (3 consecutive days → 1 card) with
+  a partial-collapse one (weigh-ins at −7d and −1d → 2 cards, `7d` + `30–90d`).
+  A presence assertion that would still pass if the windows collapsed, merged or
+  split is not measuring the statistic; it is measuring the template.
+
+This is the `#448` findings-builder rule one layer down. There, an engine with
+solid boundary-pinning pure tests still shipped bugs because its INPUT layer was
+structurally invisible to the pure tier; here, a surface with solid presence
+assertions still shipped a defect because the OUTPUT shape was pinned as a
+constant. Same remedy in both: test the seam against a realistic fixture, and
+choose the assertion that changes when the answer changes.
 
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 

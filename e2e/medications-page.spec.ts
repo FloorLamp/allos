@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
-import { followLink } from "./helpers";
+import { expectNoClippedContent, followLink } from "./helpers";
 import {
   medicationList,
   pastMedications,
@@ -277,19 +277,14 @@ test("the medication workspace stays usable without horizontal overflow on mobil
   expect(
     Math.abs(scheduledLinkBox!.y - scheduledActionBox!.y)
   ).toBeLessThanOrEqual(4);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth
-    )
-  ).toBe(true);
+  // Element-level containment (#1543): the app shell clips horizontal overflow, so
+  // a page-level width comparison is unconditionally true here and would assert
+  // nothing — the blessed guard names the offending element instead.
+  await expectNoClippedContent(page);
 
   await page.getByTestId("medication-add-toggle").click();
   await expect(page.getByTestId("quick-add-medication")).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth
-    )
-  ).toBe(true);
+  await expectNoClippedContent(page);
 });
 
 test("a medication row links to its clinical-record detail page", async ({
