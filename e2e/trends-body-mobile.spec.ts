@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
+import { expectNoClippedContent } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 
 // Trends → Body mobile overhaul, Phase 1 of #1067. On mobile the tab used to force
@@ -72,12 +73,10 @@ test.describe("Trends → Body mobile (#1067 Phase 1)", () => {
     await expect(page.getByTestId("chart-jump-bmr")).toHaveCount(0);
     await expect(page.getByTestId("chart-jump-calories")).toHaveCount(0);
 
-    // The chip row is its OWN horizontal scroll container (#1063) and the page
-    // body itself does not scroll sideways at 360px.
-    const bodyNoHScroll = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1
-    );
-    expect(bodyNoHScroll).toBe(true);
+    // The chip row is its OWN horizontal scroll container (#1063) — so its chips
+    // are allowed past the edge, but nothing else is. Element-level (#1543): the
+    // shell clips the overflow a page-level width comparison would look for.
+    await expectNoClippedContent(page);
 
     // Tapping a chip scrolls its chart into view (plain in-page `#id` anchor).
     const sleepTile = page.getByTestId("sleep-summary-tile");

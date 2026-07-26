@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { followLink } from "./helpers";
+import { expectNoClippedContent, followLink } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 
 // Trends → Body sparkline-tile overview + per-metric detail pages, Phase 2 of #1067.
@@ -118,11 +118,10 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
       "3 readings"
     );
 
-    // #1063 mobile guard: the page body must not scroll sideways at 360px.
-    const noHScroll = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1
-    );
-    expect(noHScroll).toBe(true);
+    // #1063 mobile guard, element-level (#1543): nothing on the page may be pushed
+    // past the 360px viewport edge. A page-level width comparison can't see this —
+    // the app shell clips the overflow away.
+    await expectNoClippedContent(page);
 
     await page.context().close();
   });

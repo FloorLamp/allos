@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { followLink } from "./helpers";
+import { expectNoClippedContent, followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
@@ -184,11 +184,12 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
   expect(overflow.scrollable).toBe(true);
   expect(overflow.overflowX).toBe("auto");
 
-  // …and the page itself does not scroll sideways.
-  const bodyOverflows = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth + 1
-  );
-  expect(bodyOverflows).toBe(false);
+  // …and the grid's width is CONTAINED: every element's right edge inside the
+  // viewport unless it sits in a scroller that itself fits (which is exactly the
+  // grid's own container, asserted above). The page-level width comparison this
+  // replaces could not fail (#1543) — the app shell clips the overflow, so the
+  // document never reports itself wider than the viewport, in either direction.
+  await expectNoClippedContent(page);
 });
 
 test("the five specialty sub-tabs render for the seeded profile, with their forms + crisis line (#1079)", async ({

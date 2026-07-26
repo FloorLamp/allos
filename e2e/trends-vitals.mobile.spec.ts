@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { followLink } from "./helpers";
+import { expectNoClippedContent, followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
 import {
@@ -155,12 +155,14 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
           left: Math.round(box.left),
           width: Math.round(box.width),
           inner: window.innerWidth,
-          doc: document.documentElement.scrollWidth,
         };
       });
       expect(geometry.left).toBe(0);
       expect(geometry.width).toBe(geometry.inner);
-      expect(geometry.doc).toBe(geometry.inner);
+      // "…and widens nothing" is an ELEMENT-level claim (#1543): the shell clips
+      // horizontal overflow, so a page-level width comparison would pass even if
+      // the full-bleed plot spilled a hundred pixels past the right edge.
+      await expectNoClippedContent(member);
 
       // And it is a real chart, taller than the standard h-48 windowed cards.
       const chart = plot.locator(".recharts-responsive-container");

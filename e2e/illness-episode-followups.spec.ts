@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { followLink } from "./nav";
-import { settledClick } from "./helpers";
+import { expectNoClippedContent, settledClick } from "./helpers";
 import {
   ensureUnlogged,
   addFromPicker,
@@ -463,24 +463,15 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await earlierHistory.click();
     await expect(earlierHistory).toHaveAttribute("aria-expanded", "true");
     expect(await visibleDayCount()).toBe(await dayGroups.count());
-    expect(
-      await page.evaluate(
-        () =>
-          document.documentElement.scrollWidth <=
-          document.documentElement.clientWidth + 1
-      )
-    ).toBe(true);
+    // Element-level containment (#1543): the app shell clips horizontal overflow,
+    // so comparing the document's width to the viewport's would pass even with the
+    // timeline's right-hand columns entirely off-screen.
+    await expectNoClippedContent(page);
     await page.getByTestId("illness-add-medication").click();
     await expect(
       page.getByTestId("illness-medication-quick-add")
     ).toBeVisible();
-    expect(
-      await page.evaluate(
-        () =>
-          document.documentElement.scrollWidth <=
-          document.documentElement.clientWidth + 1
-      )
-    ).toBe(true);
+    await expectNoClippedContent(page);
     const tableScroller = page.getByTestId("illness-timeline-table-wrap");
     await expect(tableScroller).toHaveCSS("overflow-x", "auto");
     await expect(tableScroller).toHaveCSS("scrollbar-width", "none");
