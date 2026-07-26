@@ -200,8 +200,10 @@ either side — an assertion whose truth value doesn't track the product.
 The app shell is `<main className="… overflow-x-clip">` (`app/(app)/layout.tsx`).
 Clipped overflow is never scrollable overflow, so on every `(app)` page
 `document.documentElement.scrollWidth` equals the viewport width **no matter what
-the page contains** — a 3000px-wide div injected into `<main>` still reads 360 at
-a 360px viewport. Fifteen sites across thirteen specs hand-rolled that comparison
+the page contains** — measured under a 3000px-wide div injected into `<main>` at a
+390px viewport, it still reads `{doc: 390, inner: 390}` and the comparison PASSES
+(the same page under `expectNoClippedContent` reports `right=3000 vs
+viewport=390`). Fifteen sites across thirteen specs hand-rolled that comparison
 as their mobile-overflow gate (one of them inverted, `> viewport` expected false —
 unconditionally false, same vacuity). Each one read like a guard, cost a line of
 review attention, and could not go red.
