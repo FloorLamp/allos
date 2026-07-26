@@ -1,6 +1,33 @@
 {
   "days": [
     {
+      "date": "2026-07-26",
+      "entries": [
+        {
+          "pr": 1546,
+          "title": "A logged workout is a logged workout — and day one reads honestly",
+          "body": "Two fixes to how the app reads your data. Logging a finished session with just a duration (\"Walking, 30 minutes, done\") no longer convinces every page you're mid-workout — the live dock, the \"Still working out?\" nag, and the household chip now correctly treat it as completed. And a medication added moments ago no longer shows \"0% adherence\" — the worst possible number for \"no history yet\": days before a dose existed don't count against it, the card simply shows no percentage until there's real history, and a week where you genuinely missed every dose keeps its honest 0%. Medications brought in from an imported record keep their full history.",
+          "kind": "fix",
+          "issues": [1441, 1442]
+        },
+        {
+          "pr": 1542,
+          "title": "The update notice stops floating, and small fixes land where you log",
+          "body": "The \"Refresh to update\" notice after a server update is now a banner at the top of the page instead of a permanent floating bubble over the bottom corner of your phone — same message, out of your way. Toasts and the offline pill also learned to stack above the live-workout dock instead of covering it. In the activity editor, the Form check section now appears while you're still creating an activity (as soon as it autosaves), the reps steppers finally step down as well as up, and the phone bar drops its repeat-last button — that shortcut lives in search and each journal card's menu, where it always also lived.",
+          "kind": "fix",
+          "issues": [1520, 1524, 1509]
+        },
+        {
+          "pr": 1540,
+          "title": "Five Trends tabs, and Compare finds its home",
+          "body": "The Trends strip is down to five tabs in the order you actually use them — Overview, Body, Fitness, Nutrition, Insights — and all five now fit a phone screen without clipping. Compare didn't disappear: it's a section of Insights now, alongside the AI insights and situation analytics, and every old Compare link or saved comparison lands there intact. One quiet improvement for families: a child's profile now sees the Insights tab too — with the comparison tools that were always age-neutral — while the training-restricted content stays hidden.",
+          "kind": "feature",
+          "issues": [1489]
+        }
+      ],
+      "operatorNotes": []
+    },
+    {
       "date": "2026-07-25",
       "entries": [
         {
