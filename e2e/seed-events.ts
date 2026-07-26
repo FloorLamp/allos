@@ -83,6 +83,7 @@ import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
 import { seedIllness } from "./seed/illness";
 import { seedCycleAndDerived, seedWindowAnalytics } from "./seed/situations";
 import { seedHaConfig } from "./seed/notifications";
+import { seedTimelineChrome } from "./seed/timeline";
 import {
   seedBodyMobile,
   seedCuratedOverview,
@@ -151,3 +152,4 @@ seedCuratedOverview();
 seedCompareFold();
 seedFitnessLens();
 seedTrainingRollup();
+seedTimelineChrome();
