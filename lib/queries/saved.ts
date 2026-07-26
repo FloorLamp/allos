@@ -137,10 +137,55 @@ export function moveSavedItem(
         r.kind === ref.kind && r.key.toLowerCase() === ref.key.toLowerCase()
     );
     if (index < 0) return;
-    const reordered = moveInOrder(rows, index, direction);
-    const setPosition = db.prepare(
-      `UPDATE saved_items SET position = ? WHERE id = ? AND profile_id = ?`
-    );
-    reordered.forEach((row, i) => setPosition.run(i, row.id, profileId));
+    writeSavedPositions(profileId, moveInOrder(rows, index, direction));
   });
+}
+
+// Set the profile's saved order OUTRIGHT, from a complete list of refs — the write
+// behind drag-reorder (#1485 C), where the gesture names a destination rather than
+// a direction.
+//
+// It shares moveSavedItem's normalization (dense 0..n-1 positions over the whole
+// set, so a half-unpositioned set becomes fully ordered), which is what keeps the
+// two affordances honest about the SAME list: the drag moves a tile to a slot, the
+// ⋯ menu's arrows move it one slot, and both leave the store in the same shape.
+//
+// Refs the profile doesn't actually have saved are ignored, and any saved row the
+// caller didn't name keeps its relative order AFTER the named ones — a client
+// working from a stale render can reorder what it can see without dropping a row
+// that was starred on another device since.
+export function setSavedOrder(
+  profileId: number,
+  refs: readonly SavedRef[]
+): void {
+  writeTx(() => {
+    const rows = getSavedItems(profileId);
+    const seen = new Set<number>();
+    const ordered: SavedItemRow[] = [];
+    for (const ref of refs) {
+      const row = rows.find(
+        (r) =>
+          !seen.has(r.id) &&
+          r.kind === ref.kind &&
+          r.key.toLowerCase() === ref.key.toLowerCase()
+      );
+      if (!row) continue;
+      seen.add(row.id);
+      ordered.push(row);
+    }
+    for (const row of rows) if (!seen.has(row.id)) ordered.push(row);
+    writeSavedPositions(profileId, ordered);
+  });
+}
+
+// Stamp a dense 0..n-1 `position` onto an already-ordered row list. Callers are
+// inside a write transaction already.
+function writeSavedPositions(
+  profileId: number,
+  ordered: readonly SavedItemRow[]
+): void {
+  const setPosition = db.prepare(
+    `UPDATE saved_items SET position = ? WHERE id = ? AND profile_id = ?`
+  );
+  ordered.forEach((row, i) => setPosition.run(i, row.id, profileId));
 }
