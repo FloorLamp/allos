@@ -82,6 +82,17 @@ test.describe("Data → Review import inbox", () => {
     await expect(viewer.getByText("records:", { exact: false })).toBeVisible();
     await viewer.getByTestId("raw-expand-all").click();
     await expect(viewer.getByText(/"Steps"/)).toBeVisible();
+
+    // Saving the payload to a file. The captured provider payload is JSON, so the
+    // format-aware button offers JSON and names the file after the sync event it came
+    // from (the XML counterpart is asserted in import-records-browser.spec.ts).
+    const downloadBtn = viewer.getByTestId("raw-download");
+    await expect(downloadBtn).toHaveText(/Download JSON/);
+    const [saved] = await Promise.all([
+      page.waitForEvent("download"),
+      downloadBtn.click(),
+    ]);
+    expect(saved.suggestedFilename()).toMatch(/^sync-payload-\d+\.json$/);
   });
 
   test("the sync provenance drill-in lists written records with working deep links (#1333)", async ({

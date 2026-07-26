@@ -7,6 +7,9 @@ import {
   xmlCollapsedSummary,
   defaultBranchOpen,
   isLargePayload,
+  rawDownload,
+  sanitizeDownloadStem,
+  RAW_DOWNLOAD_FALLBACK_STEM,
   LARGE_PAYLOAD_CHARS,
   DEFAULT_COLLAPSE_DEPTH,
 } from "@/lib/raw-data-tree";
@@ -97,5 +100,55 @@ describe("defaultBranchOpen + size guard", () => {
   it("isLargePayload keys on the char threshold", () => {
     expect(isLargePayload("x".repeat(LARGE_PAYLOAD_CHARS))).toBe(false);
     expect(isLargePayload("x".repeat(LARGE_PAYLOAD_CHARS + 1))).toBe(true);
+  });
+});
+
+describe("rawDownload", () => {
+  it("follows the format for extension, MIME, and label", () => {
+    expect(rawDownload("json", "sync-payload-7")).toEqual({
+      filename: "sync-payload-7.json",
+      mime: "application/json",
+      label: "Download JSON",
+    });
+    // The viewer serves CCD/XDM too, so an XML payload must not be handed to the
+    // user as a .json file — the extension is the only clue left on disk.
+    expect(rawDownload("xml", "sync-payload-7")).toEqual({
+      filename: "sync-payload-7.xml",
+      mime: "application/xml",
+      label: "Download XML",
+    });
+    expect(rawDownload("text", "notes")).toEqual({
+      filename: "notes.txt",
+      mime: "text/plain",
+      label: "Download",
+    });
+  });
+
+  it("falls back to a generic stem rather than producing a dotfile", () => {
+    expect(rawDownload("json").filename).toBe(
+      `${RAW_DOWNLOAD_FALLBACK_STEM}.json`
+    );
+    expect(rawDownload("json", "").filename).toBe(
+      `${RAW_DOWNLOAD_FALLBACK_STEM}.json`
+    );
+    // Sanitizes away to nothing → fallback, not ".json".
+    expect(rawDownload("json", "///").filename).toBe(
+      `${RAW_DOWNLOAD_FALLBACK_STEM}.json`
+    );
+  });
+
+  it("strips path separators and unsafe characters from the stem", () => {
+    expect(sanitizeDownloadStem("../../etc/passwd")).toBe("etc-passwd");
+    expect(sanitizeDownloadStem('a"b;c\nd')).toBe("a-b-c-d");
+    expect(sanitizeDownloadStem("visit 2026-07-26")).toBe("visit-2026-07-26");
+  });
+
+  it("bounds the stem and never leaves a trailing separator before the dot", () => {
+    const long = sanitizeDownloadStem("x".repeat(500));
+    expect(long.length).toBeLessThanOrEqual(80);
+    // A stem sliced mid-separator would otherwise yield "name-.json".
+    expect(
+      rawDownload("json", `${"y".repeat(79)} tail`).filename
+    ).not.toContain("-.json");
   });
 });
