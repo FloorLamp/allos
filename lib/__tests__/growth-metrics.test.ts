@@ -59,45 +59,39 @@ describe("showGrowthQuickAdd / showBodyFat", () => {
 });
 
 describe("planBodyCharts", () => {
-  it("keeps the original adult order and body fat", () => {
+  it("keeps the adult membership including body fat", () => {
     expect(planBodyCharts({ ageYears: 40, ageMonths: 480 })).toEqual({
       keys: ["weight", "bodyfat", "resting_hr"],
-      growthCardFirst: false,
     });
   });
 
   it("treats unknown age as an adult", () => {
     expect(planBodyCharts({ ageYears: null, ageMonths: null })).toEqual({
       keys: ["weight", "bodyfat", "resting_hr"],
-      growthCardFirst: false,
     });
   });
 
-  it("prioritizes height + head circ for an infant and drops body fat", () => {
+  it("charts height + head circ for an infant and drops body fat", () => {
     expect(planBodyCharts({ ageYears: 1, ageMonths: 18 })).toEqual({
       keys: ["height", "head_circumference", "weight", "resting_hr"],
-      growthCardFirst: true,
     });
   });
 
-  it("prioritizes height (no head circ) for an older child", () => {
+  it("charts height (no head circ) for an older child", () => {
     expect(planBodyCharts({ ageYears: 10, ageMonths: 120 })).toEqual({
       keys: ["height", "weight", "resting_hr"],
-      growthCardFirst: true,
     });
   });
 
-  it("keeps the growth-led layout for an 18–19-year-old (no demotion, #492)", () => {
+  it("keeps the growth-tracked membership for an 18–19-year-old (#492)", () => {
     expect(planBodyCharts({ ageYears: 18, ageMonths: 216 })).toEqual({
       keys: ["height", "weight", "resting_hr"],
-      growthCardFirst: true,
     });
   });
 
-  it("returns the adult layout at exactly 20 (past the chart ceiling)", () => {
+  it("returns the adult membership at exactly 20 (past the chart ceiling)", () => {
     expect(planBodyCharts({ ageYears: 20, ageMonths: 240 })).toEqual({
       keys: ["weight", "bodyfat", "resting_hr"],
-      growthCardFirst: false,
     });
   });
 

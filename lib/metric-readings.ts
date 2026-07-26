@@ -4,7 +4,7 @@ import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { getMoodReadings, reconcileFlags } from "@/lib/queries";
 import { deleteMoodLog, updateMoodValence } from "@/lib/offline/writes";
-import { HRV_METRIC } from "@/lib/vitals-input";
+import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import type { BodyMetricSlug } from "@/lib/trends-body-metrics";
 
 // The per-READING layer under a metric detail page (issue #1488, absorbing #1397).
@@ -81,6 +81,7 @@ export const METRIC_READING_STORE: Record<
   "resting-hr": { table: "body_metrics", column: "resting_hr" },
   // Device / manual samples.
   hrv: { table: "metric_samples", metric: HRV_METRIC },
+  "skin-temp": { table: "metric_samples", metric: SKIN_TEMP_DELTA_METRIC },
   height: { table: "metric_samples", metric: "height_cm" },
   "head-circ": { table: "metric_samples", metric: "head_circumference_cm" },
   steps: { table: "metric_samples", metric: "steps" },
