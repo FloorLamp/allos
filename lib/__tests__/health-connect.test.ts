@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseHealthConnectPayload,
   countUnknownRecords,
+  detectGranularityHints,
   KNOWN_HEALTH_CONNECT_KEYS,
 } from "@/lib/integrations/health-connect";
 
@@ -436,6 +437,46 @@ describe("parseHealthConnectPayload — activities", () => {
     expect(out.activities).toHaveLength(0);
     expect(out.skipped).toBe(1);
   });
+
+  // Real exporter builds send `type` as the AndroidX enum int's toString() — the same
+  // convention the sleep-stage parser already handles — so a Fitbit "other workout"
+  // arrives as "0" and used to import as a sport literally titled "0" (the Fitbit-exporter payload audit).
+  it("resolves numeric AndroidX exercise types to their names", () => {
+    const out = parse({
+      exercise: [
+        { type: "0", start_time: "2026-06-15T06:00:00Z" }, // OTHER_WORKOUT
+        { type: "56", start_time: "2026-06-15T07:00:00Z" }, // RUNNING
+        { type: "8", start_time: "2026-06-15T08:00:00Z" }, // BIKING
+        { type: "70", start_time: "2026-06-15T09:00:00Z" }, // STRENGTH_TRAINING
+      ],
+    });
+    expect(out.activities.map((a) => [a.title, a.type])).toEqual([
+      ["Workout", "sport"],
+      ["Running", "cardio"],
+      ["Biking", "cardio"],
+      ["Strength Training", "sport"],
+    ]);
+  });
+
+  // A constant from a newer library version must not become an activity named "91".
+  it("falls back to the generic title for an unmapped numeric type", () => {
+    const out = parse({
+      exercise: [{ type: "91", start_time: "2026-06-15T06:00:00Z" }],
+    });
+    expect(out.activities[0].title).toBe("Workout");
+    expect(out.activities[0].type).toBe("sport");
+  });
+
+  // The numeric and string spellings share one code path, so they must agree.
+  it("classifies the numeric and string spellings of a type identically", () => {
+    const numeric = parse({
+      exercise: [{ type: "79", start_time: "2026-06-15T06:00:00Z" }],
+    }).activities[0];
+    const string = parse({
+      exercise: [{ type: "walking", start_time: "2026-06-15T06:00:00Z" }],
+    }).activities[0];
+    expect([numeric.title, numeric.type]).toEqual([string.title, string.type]);
+  });
 });
 
 describe("parseHealthConnectPayload — sleep", () => {
@@ -475,6 +516,198 @@ describe("parseHealthConnectPayload — sleep", () => {
     expect(out.samples.some((s) => s.metric === "sleep_unknown_min")).toBe(
       false
     );
+  });
+
+  // Numeric stage constants — the shape every real exporter build sends.
+  it("classifies numeric AndroidX stage constants", () => {
+    const out = parse({
+      sleep: [
+        {
+          session_end_time: "2026-06-15T07:00:00Z",
+          duration_seconds: 7200,
+          stages: [
+            { stage: "4", duration_seconds: 3600 }, // LIGHT
+            { stage: "5", duration_seconds: 1800 }, // DEEP
+            { stage: "6", duration_seconds: 1200 }, // REM
+            { stage: "1", duration_seconds: 600 }, // AWAKE
+          ].map((st, i) => ({
+            ...st,
+            start_time: `2026-06-15T0${i}:00:00Z`,
+            end_time: `2026-06-15T0${i}:30:00Z`,
+          })),
+        },
+      ],
+    });
+    const byMetric = (m: string) =>
+      out.samples
+        .filter((s) => s.metric === m)
+        .reduce((a, s) => a + s.value, 0);
+    expect(byMetric("sleep_light_min")).toBe(60);
+    expect(byMetric("sleep_deep_min")).toBe(30);
+    expect(byMetric("sleep_rem_min")).toBe(20);
+    expect(byMetric("sleep_awake_min")).toBe(10);
+  });
+
+  // A real wrist-tracker night is dozens of stages, many of them 30 seconds long.
+  // Rounding each to a whole minute at ingest made the breakdown out-sum the session
+  // it belongs to (a 62-stage Fitbit night stored 391 min against 377) — so stages are
+  // stored exact and rounded once, later, on the summed day total (the Fitbit-exporter payload audit).
+  it("keeps the stage breakdown summing to the session total", () => {
+    const stage = (
+      s: string,
+      startMin: number,
+      lengthSec: number
+    ): Record<string, unknown> => {
+      const base = Date.UTC(2026, 5, 15, 3, 0, 0) + startMin * 60_000;
+      return {
+        stage: s,
+        start_time: new Date(base).toISOString(),
+        end_time: new Date(base + lengthSec * 1000).toISOString(),
+        duration_seconds: lengthSec,
+      };
+    };
+    const out = parse({
+      sleep: [
+        {
+          session_end_time: "2026-06-15T04:00:00Z",
+          duration_seconds: 3600,
+          stages: [
+            stage("4", 0, 1770), // light, 29.5 min
+            stage("1", 29.5, 30), // awake, 30 s
+            stage("5", 30, 1770), // deep, 29.5 min
+            stage("1", 59.5, 30), // awake, 30 s
+          ],
+        },
+      ],
+    });
+    const total = out.samples.find((s) => s.metric === "sleep_min")!.value;
+    const stageSum = out.samples
+      .filter((s) => s.metric.startsWith("sleep_") && s.metric !== "sleep_min")
+      .reduce((a, s) => a + s.value, 0);
+    expect(total).toBe(60);
+    // Per-stage rounding would have made this 62 (29.5→30 twice, 0.5→1 twice).
+    expect(stageSum).toBe(60);
+  });
+
+  // Storage precision is bounded so a re-sent window stays byte-identical and the
+  // SELECT-before-compare upsert still counts it `unchanged` (the #1109 discipline).
+  it("bounds stored stage precision to 2dp", () => {
+    const out = parse({
+      sleep: [
+        {
+          session_end_time: "2026-06-15T04:00:00Z",
+          duration_seconds: 47,
+          stages: [
+            {
+              stage: "5",
+              start_time: "2026-06-15T03:59:13Z",
+              end_time: "2026-06-15T04:00:00Z",
+              duration_seconds: 47,
+            },
+          ],
+        },
+      ],
+    });
+    // 47 s = 0.78333… min → stored as 0.78, not a 17-digit float.
+    expect(out.samples.find((s) => s.metric === "sleep_deep_min")!.value).toBe(
+      0.78
+    );
+  });
+
+  // The window is the only duration source when a build omits duration_seconds; it
+  // must not be quantized to whole minutes on the way in.
+  it("derives exact stage seconds when duration_seconds is absent", () => {
+    const out = parse({
+      sleep: [
+        {
+          session_end_time: "2026-06-15T04:00:00Z",
+          duration_seconds: 60,
+          stages: [
+            {
+              stage: "1",
+              start_time: "2026-06-15T03:59:30Z",
+              end_time: "2026-06-15T04:00:00Z",
+            },
+          ],
+        },
+      ],
+    });
+    expect(out.samples.find((s) => s.metric === "sleep_awake_min")!.value).toBe(
+      0.5
+    );
+  });
+});
+
+describe("detectGranularityHints — fine-grained settings (#1065)", () => {
+  const kcal = (startIso: string, endIso: string) => ({
+    start_time: startIso,
+    end_time: endIso,
+    calories: 20,
+  });
+
+  it("flags a whole-day push carrying many sub-daily rows", () => {
+    const recs = Array.from({ length: 10 }, (_, i) =>
+      kcal(
+        `2026-06-15T${String(i).padStart(2, "0")}:00:00Z`,
+        `2026-06-15T${String(i).padStart(2, "0")}:15:00Z`
+      )
+    );
+    expect(detectGranularityHints({ total_calories: recs })).toHaveLength(1);
+  });
+
+  // The count signal reads ONE push, but a real exporter is INCREMENTAL: at a `15m`
+  // setting it delivers only the 1–2 buckets that changed since the last push and
+  // never reaches the 8-row threshold, while the day accumulates ~96 of them (the Fitbit-exporter payload audit).
+  it("flags an incremental push of a few narrow windows", () => {
+    const hints = detectGranularityHints({
+      total_calories: [
+        kcal("2026-06-15T09:45:00Z", "2026-06-15T10:00:00Z"),
+        kcal("2026-06-15T10:00:00Z", "2026-06-15T10:15:00Z"),
+      ],
+    });
+    expect(hints).toHaveLength(1);
+    expect(hints[0]).toContain("Total calories");
+    expect(hints[0]).toContain("`daily`");
+  });
+
+  it("does not flag a correctly-set daily push", () => {
+    // One day-spanning record per metric — the `daily` shape.
+    expect(
+      detectGranularityHints({
+        steps: [
+          {
+            start_time: "2026-06-15T00:00:00Z",
+            end_time: "2026-06-15T18:00:00Z",
+            count: 9000,
+          },
+        ],
+        total_calories: [kcal("2026-06-15T00:00:00Z", "2026-06-15T18:00:00Z")],
+      })
+    ).toEqual([]);
+  });
+
+  it("emits one hint per metric even when both signals fire", () => {
+    const recs = Array.from({ length: 12 }, (_, i) =>
+      kcal(
+        `2026-06-15T${String(i).padStart(2, "0")}:00:00Z`,
+        `2026-06-15T${String(i).padStart(2, "0")}:15:00Z`
+      )
+    );
+    expect(detectGranularityHints({ total_calories: recs })).toHaveLength(1);
+  });
+
+  it("ignores a single short window (a daily push just after midnight)", () => {
+    expect(
+      detectGranularityHints({
+        steps: [
+          {
+            start_time: "2026-06-15T00:00:00Z",
+            end_time: "2026-06-15T00:20:00Z",
+            count: 40,
+          },
+        ],
+      })
+    ).toEqual([]);
   });
 });
 
