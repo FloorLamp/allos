@@ -20,6 +20,7 @@ import {
 import type { FoodGroupTier } from "@/lib/food-groups";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
+import ChartCard from "@/components/ChartCard";
 
 // Trends → Nutrition (issue #1166): the OVER-TIME nutrition view. `/nutrition` keeps the
 // log + today's adequacy + the raw servings rollup; this tab is the trend layer, re-homing
@@ -102,18 +103,16 @@ export default async function NutritionSection({
   return (
     <div className="space-y-6">
       {/* Part 1: macros + fiber over time */}
-      <div className="card" data-testid="nutrition-macros-chart">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-            Macros & fiber
-          </h2>
-          <Link
-            href="/nutrition"
-            className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-          >
-            Log nutrition →
-          </Link>
-        </div>
+      {/* Macros are a COMPOSITE series with no single-metric kind of its own, so its
+          full depth is the Nutrition page — where the per-day food entries behind
+          each bar live and are editable. */}
+      <ChartCard
+        testid="nutrition-macros-chart"
+        title="Macros & fiber"
+        detailHref="/nutrition"
+        detailTitle="macros"
+        note="Tracked protein, carbs, fat, and fiber per day. Informational — the intake trend, not a prescription."
+      >
         {macroFiber.length === 0 ? (
           <EmptyState message="No tracked macros or fiber yet. Connect a nutrition source (Health Connect) or log foods to build this chart." />
         ) : (
@@ -128,11 +127,7 @@ export default async function NutritionSection({
             ]}
           />
         )}
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          Tracked protein, carbs, fat, and fiber per day. Informational — the
-          intake trend, not a prescription.
-        </p>
-      </div>
+      </ChartCard>
 
       {/* Part 2: food-goal adherence trend */}
       <div className="card" data-testid="food-adherence-trend">

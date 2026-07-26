@@ -25,6 +25,7 @@ import {
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import StackedBarCard from "@/components/StackedBarCard";
+import ChartCard from "@/components/ChartCard";
 
 // Trends → Fitness → **Strength progression** (#1492): what the window did to the
 // lifts, as trends rather than as a full-history explorer table.
@@ -91,14 +92,16 @@ export default async function FitnessStrengthSection({
       className="scroll-mt-28 space-y-6"
       data-testid="fitness-strength"
     >
-      <div className="card" data-testid="fitness-e1rm-trend">
-        <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-          Estimated 1RM {lead ? `— ${lead.exercise}` : ""}
-        </h2>
-        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-          Best estimated one-rep max per session in this window, for your
-          most-trained lift. Variants of a lift count as one.
-        </p>
+      {/* The card already told the reader where its full depth lives ("per-lift
+          session tables … on Training → Analyze"); #1488 makes the header itself
+          that link. */}
+      <ChartCard
+        testid="fitness-e1rm-trend"
+        title={`Estimated 1RM ${lead ? `— ${lead.exercise}` : ""}`}
+        detailTitle="estimated 1RM"
+        detailHref="/training?tab=analyze"
+        description="Best estimated one-rep max per session in this window, for your most-trained lift. Variants of a lift count as one."
+      >
         {!lead ? (
           <EmptyState
             message="No lift has two or more sessions in this window yet. Widen the range, or log another session."
@@ -159,16 +162,15 @@ export default async function FitnessStrengthSection({
             </p>
           </>
         )}
-      </div>
+      </ChartCard>
 
-      <div className="card" data-testid="fitness-pr-rate">
-        <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-          PR rate
-        </h2>
-        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-          Personal records set per week in this window, strength and cardio
-          together.
-        </p>
+      <ChartCard
+        testid="fitness-pr-rate"
+        title="PR rate"
+        detailHref="/training?tab=analyze"
+        detailTitle="PR rate"
+        description="Personal records set per week in this window, strength and cardio together."
+      >
         {prRate.length === 0 || records.length === 0 ? (
           <EmptyState message="No records set in this window yet." />
         ) : (
@@ -179,7 +181,7 @@ export default async function FitnessStrengthSection({
             decimals={0}
           />
         )}
-      </div>
+      </ChartCard>
     </section>
   );
 }

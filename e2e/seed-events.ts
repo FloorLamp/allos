@@ -86,6 +86,7 @@ import { seedHaConfig } from "./seed/notifications";
 import {
   seedBodyMobile,
   seedCuratedOverview,
+  seedTrendsReadings,
   seedCompareFold,
   seedFitnessLens,
 } from "./seed/trends";
@@ -148,6 +149,7 @@ seedIntradayPanel();
 seedVitalsToday();
 seedTelegramDoseRound();
 seedCuratedOverview();
+seedTrendsReadings();
 seedCompareFold();
 seedFitnessLens();
 seedTrainingRollup();

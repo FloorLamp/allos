@@ -211,6 +211,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 074 (#1018): the unit-respell UPDATE ([degF]/°F → degF, value untouched), keyed the same way",
   },
   {
+    file: "lib/migrations/versions/115-metric-sample-edit-lock.ts",
+    includes: "PRAGMA table_info(metric_samples)",
+    why: "migration 115 (#1488) ADD COLUMN guard: a schema-shape PRAGMA (does `edited` already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
+  },
+  {
     file: "lib/migrations/versions/075-extraction-completed-at.ts",
     includes: "PRAGMA table_info(medical_documents)",
     why: "migration 075 (#1022) ADD COLUMN guard: a schema-shape PRAGMA (does extraction_completed_at already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
