@@ -8,7 +8,11 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
 import { createFixtureProfile } from "../fixture-profile";
-import { setTrendViews } from "../../lib/settings";
+import {
+  setTrendViews,
+  setUserBirthdate,
+  setUserSex,
+} from "../../lib/settings";
 import {
   E2E_LOGIN_TRENDS_CURATE,
   TRENDS_CURATE_PROFILE,
@@ -26,6 +30,12 @@ import {
   TRENDS_FITNESS_PROFILE,
   TRENDS_FITNESS_LIFT,
   TRENDS_FITNESS_OLD_LIFT,
+  E2E_LOGIN_TRENDS_RANK_PEDS,
+  TRENDS_RANK_PEDS_PROFILE,
+  E2E_LOGIN_TRENDS_RANK_GOAL,
+  TRENDS_RANK_GOAL_PROFILE,
+  E2E_LOGIN_TRENDS_RANK_PLAIN,
+  TRENDS_RANK_PLAIN_PROFILE,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -349,4 +359,136 @@ export function seedTrendsReadings(): void {
   console.log(
     `e2e: seeded Trends readings-table fixture — profile ${rdId} (${TRENDS_READINGS_PROFILE}) (#1488)`
   );
+}
+
+// ── Ranked default chart-card order (#1490) ──
+export function seedRankedCardOrder(): void {
+  // Three profiles, one per ranker scenario (#1490). Each is a NEVER-ARRANGED
+  // profile — no `trends_card_order` setting — because the ranked default is
+  // precisely what serves those and nothing else. Dedicated ON PURPOSE (#868): the
+  // claim is about the ORDER of a whole tab, which a neighbour's goal, condition or
+  // stray reading would flip. Relative dates so presence stays "rich"; idempotent.
+
+  // 1. PEDIATRIC — heights + weigh-ins for a ~6-year-old. Growth leads.
+  {
+    const id = fixtureProfileId(TRENDS_RANK_PEDS_PROFILE);
+    const anchor = today(id);
+    db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
+    db.prepare(
+      `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'height_cm'`
+    ).run(id);
+    setUserSex(id, "female");
+    setUserBirthdate(id, shiftDateStr(anchor, -365 * 6 - 30));
+
+    const insHeight = db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+       VALUES (?, 'manual', 'height_cm', ?, ?, ?, ?)`
+    );
+    const insBm = db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+       VALUES (?, ?, ?, 'e2e:trends-rank-peds')`
+    );
+    for (const [ago, cm, kg] of [
+      [120, 113.5, 20.2],
+      [60, 114.4, 20.6],
+      [10, 115.1, 20.9],
+      [2, 115.3, 21.0],
+    ] as const) {
+      const day = shiftDateStr(anchor, -ago);
+      insHeight.run(id, day, `${day}T08:00:00Z`, `${day}T08:01:00Z`, cm);
+      insBm.run(id, day, kg);
+    }
+    seedMemberLogin(E2E_LOGIN_TRENDS_RANK_PEDS, id, "read");
+    console.log(
+      `e2e: seeded Trends rank PEDS fixture — profile ${id} (${TRENDS_RANK_PEDS_PROFILE}) (#1490)`
+    );
+  }
+
+  // 2. WEIGHT GOAL and 3. PLAIN — the SAME data shape (weigh-ins + a systolic
+  // series), differing ONLY in whether a live weight goal exists. That is what
+  // makes the pair a controlled comparison: any order difference between them is
+  // the goal signal and nothing else.
+  for (const [profileName, loginName, withGoal] of [
+    [TRENDS_RANK_GOAL_PROFILE, E2E_LOGIN_TRENDS_RANK_GOAL, true],
+    [TRENDS_RANK_PLAIN_PROFILE, E2E_LOGIN_TRENDS_RANK_PLAIN, false],
+  ] as const) {
+    const id = fixtureProfileId(profileName);
+    const anchor = today(id);
+    db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
+    db.prepare(
+      `DELETE FROM medical_records WHERE profile_id = ? AND source = 'e2e:trends-rank'`
+    ).run(id);
+    db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(id);
+    setUserSex(id, "male");
+    setUserBirthdate(id, shiftDateStr(anchor, -365 * 41));
+
+    const insBm = db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+       VALUES (?, ?, ?, 'e2e:trends-rank')`
+    );
+    const insVital = db.prepare(
+      `INSERT INTO medical_records (profile_id, date, category, name, canonical_name, value, value_num, unit, source)
+       VALUES (?, ?, 'vitals', ?, ?, ?, ?, 'mmHg', 'e2e:trends-rank')`
+    );
+    const insSample = db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+       VALUES (?, 'e2e-device', ?, ?, ?, ?, ?)`
+    );
+    db.prepare(
+      `DELETE FROM metric_samples WHERE profile_id = ? AND source = 'e2e-device'`
+    ).run(id);
+    for (const [ago, kg, sys, dia, hrv, steps] of [
+      [21, 84.2, 124, 79, 44, 8100],
+      [14, 83.8, 122, 78, 47, 9400],
+      [7, 83.5, 126, 80, 43, 7700],
+      [1, 83.1, 121, 77, 46, 10200],
+    ] as const) {
+      const day = shiftDateStr(anchor, -ago);
+      insBm.run(id, day, kg);
+      // HRV and steps give the tab a third vitals card and a synced card, so the
+      // identity assertion spans every run rather than one pair.
+      insSample.run(
+        id,
+        "hrv_ms",
+        day,
+        `${day}T06:00:00Z`,
+        `${day}T06:01:00Z`,
+        hrv
+      );
+      insSample.run(
+        id,
+        "steps",
+        day,
+        `${day}T00:00:00Z`,
+        `${day}T23:59:59Z`,
+        steps
+      );
+      insVital.run(
+        id,
+        day,
+        "Blood Pressure Systolic",
+        "Blood Pressure Systolic",
+        String(sys),
+        sys
+      );
+      insVital.run(
+        id,
+        day,
+        "Blood Pressure Diastolic",
+        "Blood Pressure Diastolic",
+        String(dia),
+        dia
+      );
+    }
+    if (withGoal) {
+      db.prepare(
+        `INSERT INTO goals (profile_id, title, status, body_metric, target_value, baseline_value, archived)
+         VALUES (?, 'Reach 78 kg', 'active', 'weight', 78, 84.2, 0)`
+      ).run(id);
+    }
+    seedMemberLogin(loginName, id, "read");
+    console.log(
+      `e2e: seeded Trends rank ${withGoal ? "GOAL" : "PLAIN"} fixture — profile ${id} (${profileName}) (#1490)`
+    );
+  }
 }

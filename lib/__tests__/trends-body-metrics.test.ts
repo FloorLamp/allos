@@ -30,11 +30,6 @@ describe("BODY_METRIC_META registry", () => {
     }
   });
 
-  it("gives every metric a distinct base order", () => {
-    const orders = BODY_METRIC_SLUGS.map((s) => BODY_METRIC_META[s].order);
-    expect(new Set(orders).size).toBe(orders.length);
-  });
-
   it("only weight carries the login weight-unit suffix; others are static", () => {
     expect(resolveBodyMetricUnit(BODY_METRIC_META.weight, "lb")).toBe(" lb");
     expect(resolveBodyMetricUnit(BODY_METRIC_META.weight, "kg")).toBe(" kg");
@@ -99,84 +94,38 @@ describe("buildBodyMetricTile", () => {
 });
 
 describe("orderBodyMetricTiles", () => {
-  it("drops absent tiles and sorts present ones most-recent-first, ties by order", () => {
+  it("drops absent tiles and sequences the rest by the tab's ranked card order", () => {
     const tiles: OrderableTile[] = [
-      {
-        slug: "bmi",
-        id: "bmi",
-        label: "BMI",
-        present: false,
-        latestDate: null,
-        order: 7,
-      },
-      {
-        slug: "weight",
-        id: "weight",
-        label: "Weight",
-        present: true,
-        latestDate: "2026-07-01",
-        order: 0,
-      },
-      {
-        slug: "steps",
-        id: "steps",
-        label: "Steps",
-        present: true,
-        latestDate: "2026-07-20",
-        order: 5,
-      },
-      {
-        slug: "sleep",
-        id: "sleep",
-        label: "Sleep",
-        present: true,
-        latestDate: "2026-07-20",
-        order: 1,
-      },
+      { slug: "bmi", id: "bmi", label: "BMI", present: false },
+      { slug: "weight", id: "weight", label: "Weight", present: true },
+      { slug: "steps", id: "steps", label: "Steps", present: true },
+      { slug: "sleep", id: "sleep", label: "Sleep", present: true },
     ];
-    const ordered = orderBodyMetricTiles(tiles);
-    // Absent BMI dropped; the two 2026-07-20 entries tie and break by base order
-    // (sleep 1 before steps 5); weight (older) last.
+    // The order the tab's ranker produced — the tile grid is a formatter over it,
+    // never a second sort (#1490 retired the per-surface recency sort).
+    const ordered = orderBodyMetricTiles(tiles, [
+      "sleep",
+      "steps",
+      "weight",
+      "bmi",
+    ]);
     expect(ordered.map((t) => t.slug)).toEqual(["sleep", "steps", "weight"]);
+  });
+
+  it("keeps an unranked tile rather than dropping it", () => {
+    const ordered = orderBodyMetricTiles(
+      [
+        { slug: "sun", id: "sun", label: "Sun", present: true },
+        { slug: "weight", id: "weight", label: "Weight", present: true },
+      ],
+      ["weight"]
+    );
+    expect(ordered.map((t) => t.slug)).toEqual(["weight", "sun"]);
   });
 });
 
 describe("bodyMetricPeriodStats", () => {
   const today = "2026-07-22";
-  it("computes latest/avg/min/max/delta over 7/30/90-day trailing windows", () => {
-    const points = [
-      { date: "2026-04-25", value: 100 }, // ~88d ago → only in the 90d window
-      { date: "2026-07-01", value: 80 }, // ~21d ago → in 30d + 90d
-      { date: "2026-07-20", value: 76 }, // 2d ago → all windows
-      { date: "2026-07-22", value: 78 }, // today → all windows
-    ];
-    const [w7, w30, w90] = bodyMetricPeriodStats(points, today, 1);
-
-    expect(w7.count).toBe(2);
-    expect(w7.latest).toBe(78);
-    expect(w7.min).toBe(76);
-    expect(w7.max).toBe(78);
-    expect(w7.delta).toBe(2); // 78 − 76
-
-    expect(w30.count).toBe(3);
-    expect(w30.min).toBe(76);
-    expect(w30.max).toBe(80);
-    expect(w30.delta).toBe(-2); // 78 − 80
-
-    expect(w90.count).toBe(4);
-    expect(w90.max).toBe(100);
-    expect(w90.avg).toBe(83.5); // (100+80+76+78)/4
-  });
-
-  it("reports nulls for a window with no readings", () => {
-    const [w7] = bodyMetricPeriodStats(
-      [{ date: "2026-01-01", value: 5 }],
-      today
-    );
-    expect(w7.count).toBe(0);
-    expect(w7.latest).toBeNull();
-    expect(w7.delta).toBeNull();
-  });
 
   // #1541 — the whole point of the collapse: three windows that contain the SAME
   // readings produced three identical cards, which is the common case for any

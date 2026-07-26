@@ -5,6 +5,7 @@ import {
   type BodyMetricTile,
   type OrderableTile,
 } from "@/lib/trends-body-metrics";
+import type { BodyCardId } from "@/lib/trends-card-rank";
 
 // The Trends → Body sparkline-tile overview (#1067 Phase 2) — the default view on
 // mobile. Each present metric renders as a compact sparkline + latest value + 30-day
@@ -23,14 +24,18 @@ export interface SleepTile {
 export default function BodyMetricTiles({
   tiles,
   sleep,
+  order,
 }: {
   tiles: BodyMetricTile[];
   // The bespoke Sleep tile (duration + regularity, linking to /sleep), ordered in
   // with the metric tiles. Null when the profile has no sleep data.
   sleep: SleepTile | null;
+  // The tab's ranked card order (#1490) — the SAME sequence the chart stack and the
+  // jump chips read, so the two view modes can never disagree about what leads.
+  order: readonly BodyCardId[];
 }) {
-  // Merge the metric tiles + the Sleep tile into ONE relevance-ordered list (present
-  // first, most-recent-first) — the same predicate the chart stack + jump chips use.
+  // Merge the metric tiles + the Sleep tile into ONE list ordered by the tab's card
+  // order — the same sequence the chart stack + jump chips use.
   const nodeBySlug = new Map<string, ReactNode>();
   const descriptors: OrderableTile[] = tiles.map((t) => {
     nodeBySlug.set(t.slug, renderMetricTile(t));
@@ -39,26 +44,21 @@ export default function BodyMetricTiles({
       id: t.slug,
       label: t.label,
       present: t.present,
-      latestDate: t.latestDate,
-      order: t.order,
     };
   });
   if (sleep) {
     nodeBySlug.set("sleep", sleep.node);
+    // Sleep's base position (just ahead of the synced daily metrics, after the
+    // vitals + composition + growth block) is declared once in BODY_CARD_LAYOUT
+    // now, not re-numbered per surface.
     descriptors.push({
       slug: "sleep",
       id: "sleep",
       label: "Sleep",
       present: sleep.present,
-      // Order 11 slots Sleep just ahead of the synced daily metrics (steps, HR, …)
-      // and after the vitals + body composition + growth block, matching the chart
-      // stack's reading order (#1486 renumbered the registry when the vitals joined
-      // the grid); recency still floats a freshly-updated metric to the top.
-      latestDate: sleep.latestDate,
-      order: 11,
     });
   }
-  const ordered = orderBodyMetricTiles(descriptors);
+  const ordered = orderBodyMetricTiles(descriptors, order);
 
   if (ordered.length === 0) {
     return (

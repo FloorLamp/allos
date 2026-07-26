@@ -1,11 +1,15 @@
-// Pure, age-aware layout for the Trends → Body tab (no DB, no React) — unit-tested
-// in lib/__tests__/growth-metrics.test.ts. For a growth-tracked profile, HEIGHT is
-// the priority datapoint and body fat % is not tracked, so the Body tab reorders
-// itself: the growth-percentile card leads, height (and head circumference for the
-// very young) is charted, and the body-fat chart/tile is dropped. Adults keep the
-// original weight / body fat / resting-HR layout unchanged. Keeping this a pure
-// decision function lets both the Body section (chart order) and the Overview metric
-// tiles (which body measures to show) share one age rule.
+// Pure, age-aware MEMBERSHIP for the Trends → Body tab (no DB, no React) —
+// unit-tested in lib/__tests__/growth-metrics.test.ts. For a growth-tracked profile,
+// HEIGHT is the priority datapoint and body fat % is not tracked, so the Body tab
+// charts height (and head circumference for the very young) and drops the body-fat
+// chart/tile. Adults keep weight + body fat. Keeping this a pure decision function
+// lets both the Body section and the Overview metric tiles (which body measures to
+// show) share one age rule.
+//
+// #1490 took the ORDER half away: the growth-percentile card leading the stack for a
+// child is now the life-stage signal of the tab's one card ranker
+// (lib/trends-card-rank.ts), not a `growthCardFirst` flag here. This module answers
+// "which charts exist", never "in what sequence".
 //
 // The line is `isGrowthTracked` from lib/life-stage — the WHO/CDC growth-chart data
 // ceiling (< 20 y / 240 mo). This converges the Body tab's two former ceilings — the
@@ -58,35 +62,32 @@ export function showBodyFat(ageYears: number | null | undefined): boolean {
   return !isGrowthTracked(ageYears);
 }
 
-// The body-composition trend charts, in priority order, that the Body section
-// should render for a profile. Keys map to concrete chart specs in the section.
+// The body-composition trend charts that the Body section should render for a
+// profile. Keys map to concrete chart specs in the section.
 export type BodyChartKey =
   "height" | "head_circumference" | "weight" | "bodyfat" | "resting_hr";
 
 export interface BodyChartPlan {
-  // Ordered chart keys to render (highest priority first).
+  // Which charts exist for this age. MEMBERSHIP only — the SEQUENCE is decided by
+  // the tab's one card ranker (lib/trends-card-rank.ts, #1490), which took over the
+  // "growth card first for a child" fork this plan used to carry as a
+  // `growthCardFirst` flag. Two forks deciding one page's order is exactly the
+  // duplication #1490 retired, so this array's order is not load-bearing.
   keys: BodyChartKey[];
-  // Render the WHO/CDC growth-percentile card ABOVE the body-composition charts
-  // (true for a child — the percentile view is the headline for a kid).
-  growthCardFirst: boolean;
 }
 
-// Decide the Body tab's chart order from the profile's age. For a growth-tracked
-// profile, height leads (with head circ for the very young), body fat is dropped, and
-// the growth card floats to the top. For an adult / unknown age, the original
-// weight → body fat → resting-HR order is preserved exactly.
+// Decide WHICH body-composition charts a profile gets from its age. For a
+// growth-tracked profile, height is charted (with head circ for the very young) and
+// body fat is dropped entirely; an adult / unknown age keeps weight + body fat.
 export function planBodyCharts(input: {
   ageYears: number | null | undefined;
   ageMonths: number | null | undefined;
 }): BodyChartPlan {
   if (!isGrowthTracked(input.ageYears)) {
-    return {
-      keys: ["weight", "bodyfat", "resting_hr"],
-      growthCardFirst: false,
-    };
+    return { keys: ["weight", "bodyfat", "resting_hr"] };
   }
   const keys: BodyChartKey[] = ["height"];
   if (showHeadCircEntry(input.ageMonths)) keys.push("head_circumference");
   keys.push("weight", "resting_hr");
-  return { keys, growthCardFirst: true };
+  return { keys };
 }

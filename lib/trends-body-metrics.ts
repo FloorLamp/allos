@@ -17,7 +17,7 @@
 import { chartSeries } from "./chart-colors";
 import { shiftDateStr } from "./date";
 import { metricDetailHref, type AppRoute } from "./hrefs";
-import { orderBodyCharts, type BodyChartDescriptor } from "./trends-body-order";
+import { applyCardOrder, type BodyCardId } from "./trends-card-rank";
 import type { BodyMetricKind } from "./types";
 
 // Stable per-metric slugs — the `/trends/metric/<slug>` route param, the tile's
@@ -76,8 +76,6 @@ export interface BodyMetricMeta {
   weightUnit?: boolean;
   color: string;
   decimals: number;
-  // Base tile/chart order; broken by recency in orderBodyCharts.
-  order: number;
   // Respects the Body tab's shared date-range control (body composition + growth).
   // Synced daily metrics are NOT windowed on the Body tab (they show the most recent
   // ~6 months); the detail page's own range control still windows every metric.
@@ -102,7 +100,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " mmHg",
     color: chartSeries.rose,
     decimals: 0,
-    order: 0,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -114,7 +111,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " mmHg",
     color: chartSeries.violet,
     decimals: 0,
-    order: 1,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -126,7 +122,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "%",
     color: chartSeries.sky,
     decimals: 0,
-    order: 2,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -138,7 +133,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " /min",
     color: chartSeries.violet,
     decimals: 0,
-    order: 3,
     windowed: true,
     goalMetric: null,
     // No manual entry field — respiratory rate arrives from a device push or a
@@ -152,7 +146,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " ms",
     color: chartSeries.amber,
     decimals: 0,
-    order: 5,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -170,7 +163,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " °C",
     color: chartSeries.violet,
     decimals: 1,
-    order: 6,
     windowed: true,
     goalMetric: null,
     quickAdd: null,
@@ -182,7 +174,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " \u00b0F",
     color: chartSeries.rose,
     decimals: 1,
-    order: 7,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -195,7 +186,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     weightUnit: true,
     color: chartSeries.brand,
     decimals: 1,
-    order: 8,
     windowed: true,
     goalMetric: "weight",
     quickAdd: "measurements",
@@ -207,7 +197,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "%",
     color: chartSeries.violet,
     decimals: 1,
-    order: 9,
     windowed: true,
     goalMetric: "body_fat",
     quickAdd: "measurements",
@@ -219,7 +208,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " bpm",
     color: chartSeries.amber,
     decimals: 0,
-    order: 4,
     windowed: true,
     goalMetric: "resting_hr",
     quickAdd: "measurements",
@@ -231,7 +219,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " cm",
     color: chartSeries.violet,
     decimals: 1,
-    order: 10,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -243,7 +230,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " cm",
     color: chartSeries.sky,
     decimals: 1,
-    order: 11,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -255,7 +241,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " min",
     color: chartSeries.amber,
     decimals: 0,
-    order: 12,
     windowed: true,
     goalMetric: null,
     quickAdd: null,
@@ -271,7 +256,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 0,
-    order: 13,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -284,7 +268,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " bpm",
     color: chartSeries.rose,
     decimals: 0,
-    order: 14,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -296,7 +279,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 1,
-    order: 15,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -308,7 +290,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kg",
     color: chartSeries.sky,
     decimals: 1,
-    order: 16,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -320,7 +301,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kg",
     color: chartSeries.violet,
     decimals: 2,
-    order: 17,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -332,7 +312,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kcal",
     color: chartSeries.rose,
     decimals: 0,
-    order: 18,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -344,7 +323,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " L",
     color: chartSeries.sky,
     decimals: 2,
-    order: 19,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -357,7 +335,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kcal",
     color: chartSeries.amber,
     decimals: 0,
-    order: 20,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -370,7 +347,6 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.amber,
     decimals: 1,
-    order: 21,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -404,7 +380,6 @@ export interface BodyMetricTile {
   points: { date: string; value: number }[];
   present: boolean;
   latestDate: string | null;
-  order: number;
 }
 
 // The last 30 days (today − 29 … today, inclusive) of a chronological series. The
@@ -441,23 +416,39 @@ export function buildBodyMetricTile(
     present: fullPoints.length > 0,
     latestDate:
       fullPoints.length > 0 ? fullPoints[fullPoints.length - 1].date : null,
-    order: meta.order,
   };
 }
 
 // A descriptor for any orderable overview tile — a metric tile OR a special tile
 // (Sleep, which links to its own /sleep page rather than a metric page).
-export interface OrderableTile extends BodyChartDescriptor {
+export interface OrderableTile {
   slug: string;
+  // Stable in-page/card id — the ranker's key.
+  id: string;
+  // Short label for the tile / chip.
+  label: string;
+  // Has-data gate: false ⇒ the tile doesn't render.
+  present: boolean;
 }
 
-// Order the overview tiles by relevance (present first, most-recent-first, ties by
-// base order) — the SAME predicate that orders the Body tab's charts + chips
-// (orderBodyCharts), so the tile grid, the chart stack, and the jump chips agree.
+// Order the overview tiles by the tab's ranked card order (#1490) — the SAME
+// sequence that orders the Body tab's charts + jump chips, so the tile grid, the
+// chart stack, and the chips can never disagree. Absent tiles are filtered here (a
+// chip can't point at a tile that isn't rendered).
+//
+// This replaced `orderBodyCharts`, whose "most-recently-updated first" sort
+// resequenced the grid on every device sync; presence is now a ranker signal (and
+// an empty series a ranker FLOOR), so the order changes when what a profile tracks
+// changes, not when a watch uploads.
 export function orderBodyMetricTiles<T extends OrderableTile>(
-  tiles: readonly T[]
+  tiles: readonly T[],
+  order: readonly BodyCardId[]
 ): T[] {
-  return orderBodyCharts(tiles);
+  return applyCardOrder(
+    tiles.filter((t) => t.present),
+    order,
+    (t) => t.id
+  );
 }
 
 // Period statistics for a metric detail page: latest / average / min / max / net

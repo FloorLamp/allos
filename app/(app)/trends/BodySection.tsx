@@ -40,6 +40,7 @@ import {
   getHrMinutes,
   getGoals,
   getMoodLogs,
+  buildTrendsSubjectContext,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
@@ -49,7 +50,13 @@ import {
   displayWeightGrowth,
 } from "@/lib/growth-series";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
-import { orderBodyCharts } from "@/lib/trends-body-order";
+import {
+  applyCardOrder,
+  bodyCardOrder,
+  growthCardLeads,
+  orderCardSections,
+} from "@/lib/trends-card-rank";
+import { getTrendsCardOrder } from "@/lib/settings";
 import {
   BODY_METRIC_META,
   bodyChartScale,
@@ -276,17 +283,27 @@ export default async function BodySection({
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-TEMP_RECENT);
 
-  // Age drives an age-aware layout (kids growth trends): for a child, HEIGHT is the
-  // priority datapoint and body fat % is not tracked, so the tab charts height (and
-  // head circ for the very young), drops body fat, and floats the growth-percentile
-  // card to the top. Adults keep the weight → body-fat composition order. The
-  // decision is the pure lib/growth-metrics (planBodyCharts), shared with tests.
+  // Age drives chart MEMBERSHIP: for a growth-tracked profile the tab charts height
+  // (and head circ for the very young) and drops body fat entirely. That decision
+  // stays the pure lib/growth-metrics (planBodyCharts), shared with tests.
+  //
+  // The ORDER those charts render in is no longer decided here (#1490). Every card
+  // on this tab is sequenced by ONE ranker (lib/trends-card-rank.ts) over STABLE
+  // subject facts — life stage, live goals, monitored conditions, data presence —
+  // so the old hand-rolled forks (planBodyCharts' `growthCardFirst` and the
+  // trends-body-order recency sort) are one signal table now instead of two
+  // per-surface rules. A profile that has ARRANGED this tab keeps its own order
+  // forever; the ranked default only serves a never-arranged profile.
   const ageYears = getUserAge(profile.id);
   const birthdate = getUserBirthdate(profile.id);
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
   const plan = planBodyCharts({ ageYears, ageMonths });
+  const cardOrder = bodyCardOrder(
+    buildTrendsSubjectContext(profile.id, todayStr),
+    getTrendsCardOrder(profile.id, "body")
+  );
   // Body fat % is de-prioritized for a growth-tracked profile. #493: apply the ONE
   // showBodyFat predicate at EVERY interactive surface — the charts (via plan.keys),
   // the entry field, and the history column — so "not tracked" is consistent instead
@@ -570,6 +587,12 @@ export default async function BodySection({
     });
   }
 
+  // Sequence the vitals run by the tab's ONE card order (#1490). Membership is
+  // still each card's own has-data gate above — the ranker only orders what the
+  // section decided to render, so a monitored condition (hypertension → BP) or a
+  // richly-tracked series leads the run without any card appearing or vanishing.
+  const orderedVitals = applyCardOrder(vitalsCharts, cardOrder, (c) => c.key);
+
   const intradayBlock = intraday ? (
     !hasIntraday ? (
       <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
@@ -738,9 +761,15 @@ export default async function BodySection({
       color: chartSeries.amber,
     },
   };
-  const compositionCharts: BodyChartSpec[] = plan.keys
-    .filter((k) => k !== "resting_hr")
-    .map((k) => chartByKey[k]);
+  // MEMBERSHIP from planBodyCharts (age decides which composition charts exist);
+  // ORDER from the tab's one ranker — for a growth-tracked profile the life-stage
+  // signal lifts height/head-circ above weight, which is the pediatric layout the
+  // plan used to encode positionally.
+  const compositionCharts: BodyChartSpec[] = applyCardOrder(
+    plan.keys.filter((k) => k !== "resting_hr").map((k) => chartByKey[k]),
+    cardOrder,
+    (c) => c.key
+  );
 
   // Pediatric growth percentiles — returns null unless the profile has a known sex +
   // birthdate and is in chart range. Age-based, so it isn't windowed by the shared
@@ -879,24 +908,21 @@ export default async function BodySection({
     caloriesChart.length > 0 ||
     bmiChart.length > 0;
 
-  // #1067 Phase 1: order the synced daily charts by relevance (present + recent
-  // ahead of the fixed order) and render BOTH the sticky jump chips and the chart
-  // cards from the SAME visible list, so a chip can never point at an absent chart.
-  const lastDateOf = (arr: { date: string }[]): string | null =>
-    arr.length > 0 ? arr[arr.length - 1].date : null;
+  // #1067 Phase 1 (re-based on #1490): the synced daily charts render from ONE
+  // visible list that also feeds the sticky jump chips, so a chip can never point at
+  // an absent chart. Membership is each entry's `present` gate; the SEQUENCE is the
+  // tab's shared card order. The old per-entry `latestDate`/`order` pair is gone with
+  // `orderBodyCharts` — a raw most-recently-synced sort resequenced this page every
+  // time a watch uploaded, which is exactly the jitter a stable default forbids.
 
   const syncedEntries: (ChartChip & {
     present: boolean;
-    latestDate: string | null;
-    order: number;
     node: React.ReactNode;
   })[] = [
     {
       id: "steps",
       label: "Steps",
       present: stepsChart.length > 0,
-      latestDate: lastDateOf(stepsChart),
-      order: 0,
       node: (
         <ChartCard
           key="steps"
@@ -920,8 +946,6 @@ export default async function BodySection({
       id: "sleep",
       label: "Sleep",
       present: hasSleep,
-      latestDate: visibleLastNight?.wakeDay ?? null,
-      order: 1,
       node: (
         <Link
           key="sleep"
@@ -993,8 +1017,6 @@ export default async function BodySection({
       id: "hr",
       label: "HR",
       present: hrChart.length > 0,
-      latestDate: lastDateOf(hrChart),
-      order: 2,
       node: (
         <ChartCard
           key="hr"
@@ -1016,8 +1038,6 @@ export default async function BodySection({
       id: "hr-day",
       label: "HR (day)",
       present: hrIntraday.length > 0,
-      latestDate: latestHrDay,
-      order: 3,
       node: (
         <ChartCard
           key="hr-day"
@@ -1043,8 +1063,6 @@ export default async function BodySection({
       id: "bmi",
       label: "BMI",
       present: bmiChart.length > 0,
-      latestDate: lastDateOf(bmiChart),
-      order: 4,
       node: (
         <ChartCard
           key="bmi"
@@ -1060,8 +1078,6 @@ export default async function BodySection({
       id: "lean-mass",
       label: "Lean mass",
       present: leanMassChart.length > 0,
-      latestDate: lastDateOf(leanMassChart),
-      order: 5,
       node: (
         <ChartCard
           key="lean-mass"
@@ -1082,8 +1098,6 @@ export default async function BodySection({
       id: "bone-mass",
       label: "Bone mass",
       present: boneMassChart.length > 0,
-      latestDate: lastDateOf(boneMassChart),
-      order: 6,
       node: (
         <ChartCard
           key="bone-mass"
@@ -1104,8 +1118,6 @@ export default async function BodySection({
       id: "bmr",
       label: "BMR",
       present: bmrChart.length > 0,
-      latestDate: lastDateOf(bmrChart),
-      order: 7,
       node: (
         <ChartCard
           key="bmr"
@@ -1126,8 +1138,6 @@ export default async function BodySection({
       id: "hydration",
       label: "Hydration",
       present: hydrationChart.length > 0,
-      latestDate: lastDateOf(hydrationChart),
-      order: 8,
       node: (
         <ChartCard
           key="hydration"
@@ -1149,8 +1159,6 @@ export default async function BodySection({
       id: "calories",
       label: "Calories",
       present: caloriesChart.length > 0,
-      latestDate: lastDateOf(caloriesChart),
-      order: 9,
       node: (
         <ChartCard
           key="calories"
@@ -1169,42 +1177,73 @@ export default async function BodySection({
       ),
     },
   ];
-  const orderedSynced = orderBodyCharts(syncedEntries);
+  const orderedSynced = applyCardOrder(
+    syncedEntries.filter((e) => e.present),
+    cardOrder,
+    (e) => e.id
+  );
 
   // ONE presence boolean per fixed section, shared by its chip and its render.
   const hasVitals = vitalsCharts.length > 0 || (intraday && hasIntraday);
   const hasComposition = compositionCharts.some((c) => c.data.length > 0);
   const hasMood = moodChart.length > 0;
 
-  // Jump chips in page reading order: vitals, composition, mood, then the synced
-  // charts in their relevance order. ONE list feeds the sticky chip row.
+  // Does the growth-percentile card lead the whole stack? Ranked, not forked: true
+  // when `growth` outranks every card rendered inside the chart block.
+  const growthLeads = growthCardLeads(cardOrder, [
+    ...orderedVitals.map((c) => c.key),
+    ...compositionCharts.map((c) => c.key),
+  ]);
+
+  // The two titled runs of charts, sharing ONE annotation toggle bar (#1486). The
+  // RUNS are sequenced by the same card order as the cards inside them (#1490): a
+  // run leads when it holds the top-ranked card, so a live weight goal or a
+  // monitored condition actually surfaces the card it promoted instead of promoting
+  // it inside a run pinned below another. No signal firing ⇒ Vitals then
+  // Composition, exactly as before.
+  const chartSections: BodyChartSection[] = orderCardSections<BodyChartSection>(
+    [
+      {
+        id: "vitals",
+        heading: "Vitals",
+        description: intraday
+          ? "Today, minute by minute — worn heart rate and any timed blood-pressure or oxygen readings."
+          : "Blood pressure, oxygen saturation, respiratory rate, resting heart rate, HRV, and body temperature over the selected window.",
+        charts: intraday ? [] : orderedVitals,
+        after: intradayBlock,
+        empty: (
+          <EmptyState message="No vitals logged yet. Add a reading with “+ Log” above to see the trend." />
+        ),
+      },
+      {
+        id: "body-composition",
+        heading: "Composition",
+        description: "Body-composition trends over the selected window.",
+        charts: compositionCharts,
+      },
+    ],
+    cardOrder,
+    // The intraday swap empties the vitals run's `charts`; rank it by the vitals
+    // cards it WOULD hold, so a 1D window doesn't sink the section it belongs to.
+    (section) =>
+      section.id === "vitals"
+        ? orderedVitals.map((c) => c.key)
+        : section.charts.map((c) => c.key)
+  );
+
+  // Jump chips in PAGE READING ORDER — the two chart runs in their ranked sequence,
+  // then mood, then the synced charts. Built FROM the ordered sections, so a chip
+  // row can never advertise an order the page below doesn't have.
+  const sectionChipLabel: Record<string, string> = {
+    vitals: "Vitals",
+    "body-composition": "Weight",
+  };
   const jumpChips: ChartChip[] = [
-    ...(hasVitals ? [{ id: "vitals", label: "Vitals" }] : []),
-    ...(hasComposition ? [{ id: "body-composition", label: "Weight" }] : []),
+    ...chartSections
+      .filter((s) => (s.id === "vitals" ? hasVitals : hasComposition))
+      .map((s) => ({ id: s.id, label: sectionChipLabel[s.id] ?? s.heading })),
     ...(hasMood ? [{ id: "mood", label: "Mood" }] : []),
     ...orderedSynced.map((e) => ({ id: e.id, label: e.label })),
-  ];
-
-  // The two titled runs of charts, sharing ONE annotation toggle bar (#1486).
-  const chartSections: BodyChartSection[] = [
-    {
-      id: "vitals",
-      heading: "Vitals",
-      description: intraday
-        ? "Today, minute by minute — worn heart rate and any timed blood-pressure or oxygen readings."
-        : "Blood pressure, oxygen saturation, respiratory rate, resting heart rate, HRV, and body temperature over the selected window.",
-      charts: intraday ? [] : vitalsCharts,
-      after: intradayBlock,
-      empty: (
-        <EmptyState message="No vitals logged yet. Add a reading with “+ Log” above to see the trend." />
-      ),
-    },
-    {
-      id: "body-composition",
-      heading: "Composition",
-      description: "Body-composition trends over the selected window.",
-      charts: compositionCharts,
-    },
   ];
 
   // ── Tiles ───────────────────────────────────────────────────────────────────
@@ -1321,7 +1360,11 @@ export default async function BodySection({
 
       {/* Sparkline-tile overview — the default view on mobile. */}
       <div className={tilesContainerClass(view)} data-testid="body-tiles-view">
-        <BodyMetricTiles tiles={metricTiles} sleep={sleepGridTile} />
+        <BodyMetricTiles
+          tiles={metricTiles}
+          sleep={sleepGridTile}
+          order={cardOrder}
+        />
       </div>
 
       {/* The classic full-chart stack — the default view on desktop, and the
@@ -1335,9 +1378,12 @@ export default async function BodySection({
             container, tapping scrolls to the chart. Only present charts appear. */}
         <ChartJumpChips chips={jumpChips} />
 
-        {/* For a child the growth-percentile card is the headline, so it floats
-            above the chart sections (plan.growthCardFirst); adults never have one. */}
-        {plan.growthCardFirst && growthCard}
+        {/* For a growth-tracked profile the percentile card is the headline, so it
+            floats above the chart sections; adults never have one. That used to be
+            planBodyCharts' `growthCardFirst` fork — it is now a CONSEQUENCE of the
+            tab's one card order (#1490): the growth card leads exactly when it
+            outranks every card inside the chart block. */}
+        {growthLeads && growthCard}
 
         {/* 2 + 3. Vitals then Composition, under ONE annotation toggle bar. */}
         <BodyTrendCharts
@@ -1347,7 +1393,7 @@ export default async function BodySection({
         />
 
         {/* 4. Growth charts (minors), then the rest of the reading half. */}
-        {!plan.growthCardFirst && growthCard}
+        {!growthLeads && growthCard}
 
         {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
             bands, no flags, no retest hooks — mood is not a lab, so a low day is a

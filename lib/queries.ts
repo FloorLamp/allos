@@ -49,6 +49,7 @@ export * from "./queries/derived-situations";
 export * from "./queries/data-quality";
 export * from "./queries/surgery-bridge";
 export * from "./queries/intraday";
+export * from "./queries/trends-context";
 // The shared, GLOBAL providers registry — not profile-scoped, but
 // re-exported here so pages read it through the familiar @/lib/queries surface.
 export * from "./providers-db";
