@@ -100,6 +100,12 @@ export const METRIC_BOUNDS: Record<string, MetricBound> = {
   // RMSSD is a few ms in severe autonomic dysfunction up to ~200 ms in the very
   // relaxed; 0–2000 stays generous while rejecting a runaway magnitude.
   hrv_ms: { min: 0, max: 2000 },
+  // Skin temperature VARIATION from the device's rolling personal baseline, °C. The
+  // only SIGNED metric in this map — a negative delta is the normal cool-night case,
+  // so the usual `min: 0` floor would silently drop half the distribution. Trackers
+  // report roughly ±2 °C; ±15 rejects only sensor-fault garbage (the classic 900),
+  // per the conservative-envelope rule.
+  skin_temp_delta_c: { min: -15, max: 15 },
 
   // ---- metric_samples: sleep (minutes) ----
   // No sleep SESSION exceeds 24 h; every stage is bounded by the same 0–1440.
@@ -205,6 +211,9 @@ export const METRIC_ROUND_DP: Record<string, number> = {
   sleep_rem_min: 2,
   sleep_light_min: 2,
   sleep_awake_min: 2,
+  // skin temperature variation (°C from personal baseline) → 2dp. Trackers report
+  // 1dp (+0.6, −0.1); 2dp keeps headroom without leaking a float.
+  skin_temp_delta_c: 2,
 };
 
 // Round a canonical value to its metric's registered storage precision. An

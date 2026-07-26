@@ -33,6 +33,7 @@ export const BODY_METRIC_SLUGS = [
   "respiratory-rate",
   "hrv",
   "temperature",
+  "skin-temp",
   "weight",
   "body-fat",
   "resting-hr",
@@ -146,6 +147,24 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     goalMetric: null,
     quickAdd: "measurements",
   },
+  // A SIGNED nightly deviation from the tracker's own rolling baseline, not an
+  // absolute temperature — which is why it carries 1 decimal (the whole readable
+  // range is roughly ±2 °C, where 0dp would flatten it to a constant 0) and why it
+  // is NOT the `temperature` slug: wrist skin temperature is a distinct measurement
+  // site from core body temperature, kept apart by the #482 exclusion discipline.
+  // Import-only (the baseline is the device's and never exposed), so no quick-add.
+  "skin-temp": {
+    slug: "skin-temp",
+    label: "Skin temp",
+    title: "Skin temperature variation",
+    unit: " °C",
+    color: chartSeries.violet,
+    decimals: 1,
+    order: 6,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: null,
+  },
   temperature: {
     slug: "temperature",
     label: "Temperature",
@@ -153,7 +172,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " \u00b0F",
     color: chartSeries.rose,
     decimals: 1,
-    order: 6,
+    order: 7,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -166,7 +185,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     weightUnit: true,
     color: chartSeries.brand,
     decimals: 1,
-    order: 7,
+    order: 8,
     windowed: true,
     goalMetric: "weight",
     quickAdd: "measurements",
@@ -178,7 +197,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "%",
     color: chartSeries.violet,
     decimals: 1,
-    order: 8,
+    order: 9,
     windowed: true,
     goalMetric: "body_fat",
     quickAdd: "measurements",
@@ -202,7 +221,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " cm",
     color: chartSeries.violet,
     decimals: 1,
-    order: 9,
+    order: 10,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -214,7 +233,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " cm",
     color: chartSeries.sky,
     decimals: 1,
-    order: 10,
+    order: 11,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",

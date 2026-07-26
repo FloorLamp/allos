@@ -2,6 +2,7 @@ import type { ActivityType } from "@/lib/types";
 import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { metricAggregation } from "@/lib/metric-buckets";
+import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import type {
   NormActivity,
   NormHrMinute,
@@ -52,6 +53,7 @@ export const KNOWN_HEALTH_CONNECT_KEYS = new Set<string>([
   "sleep",
   "heart_rate",
   "exercise",
+  "skin_temperature",
 ]);
 
 // ---- per-type granularity guidance (issue #1065) ----
@@ -71,9 +73,10 @@ export interface SourceFidelityRow {
   // The exporter app's data-type label(s) this row covers, verbatim-ish for the card.
   label: string;
   // The top-level payload keys this row governs. A key with a parser home is one of
-  // KNOWN_HEALTH_CONNECT_KEYS (the registry-completeness test binds the two); an
-  // `off` row (skin temperature) has a key with no home, shown so the user knows to
-  // leave it disabled.
+  // KNOWN_HEALTH_CONNECT_KEYS (the registry-completeness test binds the two). No row
+  // currently recommends `off`; the setting stays available for a future record type
+  // that the exporter offers before the parser has a home for it, so the card can
+  // still tell the user to leave it disabled rather than silently omitting it.
   keys: string[];
   // The exporter option to select for this row.
   setting: ExporterSetting;
@@ -144,8 +147,8 @@ export const SOURCE_FIDELITY: SourceFidelityRow[] = [
   {
     label: "Skin temperature",
     keys: ["skin_temperature"],
-    setting: "off",
-    why: "relative delta records have no model home — leave it off",
+    setting: "full",
+    why: "one nightly variation reading (a signed delta from your tracker's own baseline), kept per night alongside HRV and sleep",
   },
 ];
 
@@ -839,6 +842,8 @@ export function parseHealthConnectPayload(
     const m = num(r.meters, r.value);
     return m == null ? null : Math.round(m * 100);
   });
+  // (Skin temperature is emitted AFTER the sleep block below — it is a per-NIGHT
+  // reading and has to borrow the session's wake-day attribution.)
 
   // --- vitals & biomarkers → medical_records (reference-range flagged) ---
   const vital = (
@@ -959,6 +964,7 @@ export function parseHealthConnectPayload(
   // session spans midnight, so everything (total + every stage) is attributed to the
   // local date the session *ends* (the wake-up day), matching how sleep trackers show
   // "last night" and keeping stages aligned with the total. Natural key = time window.
+  const sleepNights: { startMs: number; endMs: number; wakeDay: string }[] = [];
   for (const s of asArray(payload.sleep)) {
     const end =
       (typeof s.session_end_time === "string" && s.session_end_time) ||
@@ -986,6 +992,17 @@ export function parseHealthConnectPayload(
       continue;
     }
     const wakeDay = p.date;
+    // Remember the session window so a per-night reading timestamped INSIDE it (skin
+    // temperature, below) can borrow this same wake-day attribution.
+    const sessionStartMs = new Date(start).getTime();
+    const sessionEndMs = new Date(end).getTime();
+    if (!Number.isNaN(sessionStartMs) && !Number.isNaN(sessionEndMs)) {
+      sleepNights.push({
+        startMs: sessionStartMs,
+        endMs: sessionEndMs,
+        wakeDay,
+      });
+    }
     out.samples.push({
       metric: "sleep_min",
       date: wakeDay,
@@ -1040,6 +1057,50 @@ export function parseHealthConnectPayload(
         origin: dataOrigin(s),
       });
     }
+  }
+
+  // --- skin temperature variation → metric_samples (per NIGHT) ---
+  //
+  // NOT the "Body Temperature" vital. The record carries a SIGNED delta from the
+  // tracker's own rolling personal baseline, so it has no absolute scale to flag
+  // against: routed through medical_records it would be compared to a 97–99 °F
+  // reference range and read as catastrophically abnormal. It is also a distinct
+  // measurement SITE from core temperature, which the #482 exclusion discipline keeps
+  // in its own identity rather than collapsing. Registered in AVERAGED_METRICS — a
+  // SUMmed delta is meaningless (two +0.3 °C nights are not a +0.6 °C night).
+  //
+  // DAY ATTRIBUTION: a tracker emits ONE reading per night, stamped at sleep ONSET —
+  // which is usually before local midnight, while the night's sleep total and HRV land
+  // on the WAKE day. Taking the instant's own local date would chart the same night's
+  // skin temperature one day left of its sleep and HRV, and would be actively wrong for
+  // a variable sleeper: onsets at 23:50 and then 00:20 fall on the SAME local date, and
+  // the per-day AVG would silently merge two different nights into one point (and leave
+  // a hole). So a reading that falls inside a sleep session in this payload borrows that
+  // session's wake day. This is an exact containment test, not a clock heuristic — the
+  // exporter stamps the reading at the session start to the second. With no session in
+  // the push (the types are independently toggleable) it falls back to its own local
+  // date, which is the best available answer rather than a guess.
+  for (const rec of asArray(payload.skin_temperature)) {
+    const t = typeof rec.time === "string" ? rec.time : undefined;
+    const p = parts(t, tz);
+    const delta = boundedOrNull(
+      SKIN_TEMP_DELTA_METRIC,
+      num(rec.delta_celsius, rec.delta, rec.celsius, rec.value)
+    );
+    if (!p || !t || delta == null) {
+      out.skipped++;
+      continue;
+    }
+    const ms = new Date(t).getTime();
+    const night = sleepNights.find((n) => ms >= n.startMs && ms <= n.endMs);
+    out.samples.push({
+      metric: SKIN_TEMP_DELTA_METRIC,
+      date: night?.wakeDay ?? p.date,
+      start_time: t,
+      end_time: t,
+      value: delta,
+      origin: dataOrigin(rec),
+    });
   }
 
   // --- continuous heart rate: bucket raw samples into 1-minute aggregates ---

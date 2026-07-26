@@ -638,6 +638,130 @@ describe("parseHealthConnectPayload — sleep", () => {
   });
 });
 
+describe("parseHealthConnectPayload — skin temperature variation", () => {
+  it("routes the signed delta to metric_samples, not the Body Temperature vital", () => {
+    const out = parse({
+      skin_temperature: [
+        {
+          time: "2026-06-15T03:23:00Z",
+          delta_celsius: 0.6,
+          measurement_location: 0,
+          metadata: { data_origin: "com.fitbit.FitbitMobile" },
+        },
+      ],
+    });
+    expect(out.samples).toEqual([
+      {
+        metric: "skin_temp_delta_c",
+        date: "2026-06-15",
+        start_time: "2026-06-15T03:23:00Z",
+        end_time: "2026-06-15T03:23:00Z",
+        value: 0.6,
+        origin: "com.fitbit.FitbitMobile",
+      },
+    ]);
+    // It must NOT become a reference-range-flagged vital: 0.6 against a 97–99 °F
+    // envelope would read as catastrophically abnormal.
+    expect(out.vitals).toEqual([]);
+    expect(out.skipped).toBe(0);
+  });
+
+  // A tracker stamps the nightly reading at sleep ONSET, which is usually before local
+  // midnight — while the night's sleep total and HRV land on the WAKE day. Left on its
+  // own date the same night's skin temperature would chart one day to the left.
+  it("borrows the containing sleep session's wake day", () => {
+    const out = parse(
+      {
+        sleep: [
+          {
+            session_end_time: "2026-06-15T11:00:00Z", // 07:00 local
+            duration_seconds: 8 * 3600, // onset 03:00Z = 23:00 local, previous day
+          },
+        ],
+        skin_temperature: [
+          { time: "2026-06-15T03:23:00Z", delta_celsius: 0.6 },
+        ],
+      },
+      "America/New_York"
+    );
+    const skin = out.samples.find((s) => s.metric === "skin_temp_delta_c")!;
+    const sleep = out.samples.find((s) => s.metric === "sleep_min")!;
+    // Its own local date would be 2026-06-14 (23:23 the previous evening).
+    expect(skin.date).toBe("2026-06-15");
+    expect(skin.date).toBe(sleep.date);
+  });
+
+  it("falls back to its own local date when the push carries no sleep session", () => {
+    const out = parse(
+      {
+        skin_temperature: [
+          { time: "2026-06-15T03:23:00Z", delta_celsius: 0.6 },
+        ],
+      },
+      "America/New_York"
+    );
+    expect(out.samples[0].date).toBe("2026-06-14");
+  });
+
+  // Two consecutive nights whose onsets straddle local midnight share a calendar date.
+  // Without the session anchor the per-day AVG would merge them into one point.
+  it("keeps two nights apart when their onsets straddle midnight", () => {
+    const out = parse(
+      {
+        sleep: [
+          {
+            session_end_time: "2026-06-15T11:00:00Z",
+            duration_seconds: 8 * 3600, // onset 2026-06-15T03:00Z → 23:00 local 06-14
+          },
+          {
+            session_end_time: "2026-06-16T11:00:00Z",
+            duration_seconds: 7 * 3600, // onset 2026-06-16T04:00Z → 00:00 local 06-16
+          },
+        ],
+        skin_temperature: [
+          { time: "2026-06-15T03:30:00Z", delta_celsius: 0.6 },
+          { time: "2026-06-16T04:30:00Z", delta_celsius: -0.2 },
+        ],
+      },
+      "America/New_York"
+    );
+    const skin = out.samples
+      .filter((s) => s.metric === "skin_temp_delta_c")
+      .map((s) => [s.date, s.value]);
+    expect(skin).toEqual([
+      ["2026-06-15", 0.6],
+      ["2026-06-16", -0.2],
+    ]);
+  });
+
+  // A cool night is the normal case, so the signed value has to survive ingest.
+  it("keeps a negative delta", () => {
+    const out = parse({
+      skin_temperature: [{ time: "2026-06-15T02:59:00Z", delta_celsius: -0.1 }],
+    });
+    expect(out.samples[0].value).toBe(-0.1);
+  });
+
+  it("drops a sensor-fault delta outside the plausibility envelope", () => {
+    const out = parse({
+      skin_temperature: [{ time: "2026-06-15T02:59:00Z", delta_celsius: 900 }],
+    });
+    expect(out.samples).toEqual([]);
+    expect(out.skipped).toBe(1);
+  });
+
+  // It used to be the one record type that always counted as an unknown drop.
+  it("no longer counts as an unknown record type", () => {
+    expect(
+      countUnknownRecords({
+        skin_temperature: [
+          { time: "2026-06-15T02:59:00Z", delta_celsius: 0.2 },
+        ],
+      })
+    ).toBe(0);
+  });
+});
+
 describe("detectGranularityHints — fine-grained settings (#1065)", () => {
   const kcal = (startIso: string, endIso: string) => ({
     start_time: startIso,

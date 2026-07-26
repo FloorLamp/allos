@@ -14,6 +14,11 @@ export const AVERAGED_METRICS = new Set([
   // reading, so a same-date manual entry + imported reading must AVERAGE (agree),
   // never SUM into a doubled value on the growth chart.
   "head_circumference_cm",
+  // Skin temperature variation is a signed DELTA from the device's own baseline, so
+  // summing is not merely imprecise but meaningless — two +0.3 °C nights would read
+  // as +0.6 °C, a deviation neither night had. It is also the one metric here that
+  // can be NEGATIVE, which is why it must never reach the additive default.
+  "skin_temp_delta_c",
 ]);
 
 // The per-day aggregation a metric uses: AVG for instantaneous point metrics,

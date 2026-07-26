@@ -26,6 +26,8 @@ import {
   CEL_IMPORT_PROFILE,
   E2E_LOGIN_SUN,
   SUN_PROFILE,
+  E2E_LOGIN_SKIN_TEMP,
+  SKIN_TEMP_PROFILE,
   E2E_LOGIN_SUN_NOHOME,
   SUN_NOHOME_PROFILE,
   E2E_LOGIN_NWAY,
@@ -404,6 +406,32 @@ export function seedSunOutdoor(): void {
 
     console.log(
       `e2e: seeded sun/outdoor + free-days fixture — profile ${sunId} (${SUN_PROFILE}), no-home ${sunNoHomeId} (${SUN_NOHOME_PROFILE}) (#1171/#1241)`
+    );
+
+    // Skin temperature variation: nightly signed deltas from the tracker's own
+    // baseline, one per night over five recent nights. The values straddle zero
+    // deliberately — a negative night is the normal case, and it is the shape a
+    // `min: 0` bound or an additive aggregation would visibly destroy.
+    const skinId = fixtureProfileId(SKIN_TEMP_PROFILE);
+    setSunPS.run(skinId, "timezone", sunTz);
+    const insSkinTemp = db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, metric, date, start_time, end_time, value)
+       SELECT ?, 'health-connect', 'skin_temp_delta_c', ?, ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM metric_samples
+           WHERE profile_id = ? AND metric = 'skin_temp_delta_c' AND date = ?
+        )`
+    );
+    const skinDeltas = [-0.1, 0.2, -0.3, 0.6, 0.1];
+    skinDeltas.forEach((delta, i) => {
+      const d = shiftDateStr(sunToday, -(skinDeltas.length - 1 - i));
+      const at = `${d}T03:20:00Z`;
+      insSkinTemp.run(skinId, d, at, at, delta, skinId, d);
+    });
+    seedMemberLogin(E2E_LOGIN_SKIN_TEMP, skinId, "write");
+    console.log(
+      `e2e: seeded skin-temperature-variation fixture — profile ${skinId} (${SKIN_TEMP_PROFILE})`
     );
   }
 
