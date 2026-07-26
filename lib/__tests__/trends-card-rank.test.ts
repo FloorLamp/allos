@@ -13,6 +13,7 @@ import {
   bodyCardOrder,
   conditionMonitorTags,
   growthCardLeads,
+  orderCardSections,
   presenceLevel,
   rankBodyCards,
   TRENDS_CARD_TABLE,
@@ -312,5 +313,47 @@ describe("growthCardLeads", () => {
       "growth",
     ]);
     expect(growthCardLeads(order, ["weight"])).toBe(false);
+  });
+});
+
+describe("orderCardSections", () => {
+  const SECTIONS = [
+    { id: "vitals", keys: ["systolic", "diastolic", "hrv"] },
+    { id: "body-composition", keys: ["weight", "body-fat"] },
+  ];
+  const ordered = (ctxValue: TrendsSubjectContext) =>
+    orderCardSections(SECTIONS, rankBodyCards(ctxValue), (s) => s.keys).map(
+      (s) => s.id
+    );
+
+  it("keeps the declared run order when no signal fires", () => {
+    expect(ordered(NEUTRAL)).toEqual(["vitals", "body-composition"]);
+  });
+
+  it("lifts the run holding a promoted card, so the promotion is visible", () => {
+    // A live weight goal promotes `weight`; the Composition run it lives in has to
+    // come with it, or the promotion is invisible under a pinned Vitals run.
+    expect(ordered(ctx({ goalMetrics: ["weight"] }))).toEqual([
+      "body-composition",
+      "vitals",
+    ]);
+  });
+
+  it("keeps Vitals leading for a monitored hypertensive profile", () => {
+    expect(
+      ordered(ctx({ monitors: ["blood-pressure"], goalMetrics: ["weight"] }))
+    ).toEqual(["vitals", "body-composition"]);
+  });
+
+  it("leaves a run with no ranked cards at the end", () => {
+    const sections = [
+      { id: "mystery", keys: ["nothing-here"] },
+      { id: "vitals", keys: ["systolic"] },
+    ];
+    expect(
+      orderCardSections(sections, rankBodyCards(NEUTRAL), (s) => s.keys).map(
+        (s) => s.id
+      )
+    ).toEqual(["vitals", "mystery"]);
   });
 });

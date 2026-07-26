@@ -50,7 +50,7 @@ export default function GrowthChartsCard({
   if (!view) return null;
 
   return (
-    <div className="card">
+    <div className="card" data-testid="growth-charts-card">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Growth percentiles

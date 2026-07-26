@@ -354,6 +354,33 @@ export function applyCardOrder<T>(
     .map((e) => e.item);
 }
 
+// A titled RUN of cards (the Body tab's "Vitals" and "Composition" sections) ranks
+// by its best member: a run containing the top-ranked card leads. That is what makes
+// a promotion VISIBLE — a live weight goal that lifts `weight` to the front is
+// pointless if the Composition run it lives in is nailed below Vitals. With no
+// signal firing the runs keep their declared order (every run's best member is its
+// base-order best), so the identity property survives.
+export function orderCardSections<T>(
+  sections: readonly T[],
+  order: readonly BodyCardId[],
+  keysOf: (section: T) => readonly string[]
+): T[] {
+  const pos = new Map<string, number>();
+  order.forEach((id, i) => pos.set(id, i));
+  const bestOf = (section: T): number => {
+    let best = Number.MAX_SAFE_INTEGER;
+    for (const key of keysOf(section)) {
+      const at = pos.get(bodyCardId(key));
+      if (at != null && at < best) best = at;
+    }
+    return best;
+  };
+  return sections
+    .map((section, index) => ({ section, index, best: bestOf(section) }))
+    .sort((a, b) => a.best - b.best || a.index - b.index)
+    .map((e) => e.section);
+}
+
 // Does the growth-percentile card lead the whole chart stack? True exactly when it
 // outranks every card rendered inside the chart-section block — the ranked
 // replacement for `plan.growthCardFirst`, so the pediatric layout is now one

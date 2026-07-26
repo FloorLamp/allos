@@ -54,6 +54,7 @@ import {
   applyCardOrder,
   bodyCardOrder,
   growthCardLeads,
+  orderCardSections,
 } from "@/lib/trends-card-rank";
 import { getTrendsCardOrder } from "@/lib/settings";
 import {
@@ -1181,15 +1182,6 @@ export default async function BodySection({
   const hasComposition = compositionCharts.some((c) => c.data.length > 0);
   const hasMood = moodChart.length > 0;
 
-  // Jump chips in page reading order: vitals, composition, mood, then the synced
-  // charts in their relevance order. ONE list feeds the sticky chip row.
-  const jumpChips: ChartChip[] = [
-    ...(hasVitals ? [{ id: "vitals", label: "Vitals" }] : []),
-    ...(hasComposition ? [{ id: "body-composition", label: "Weight" }] : []),
-    ...(hasMood ? [{ id: "mood", label: "Mood" }] : []),
-    ...orderedSynced.map((e) => ({ id: e.id, label: e.label })),
-  ];
-
   // Does the growth-percentile card lead the whole stack? Ranked, not forked: true
   // when `growth` outranks every card rendered inside the chart block.
   const growthLeads = growthCardLeads(cardOrder, [
@@ -1197,26 +1189,55 @@ export default async function BodySection({
     ...compositionCharts.map((c) => c.key),
   ]);
 
-  // The two titled runs of charts, sharing ONE annotation toggle bar (#1486).
-  const chartSections: BodyChartSection[] = [
-    {
-      id: "vitals",
-      heading: "Vitals",
-      description: intraday
-        ? "Today, minute by minute — worn heart rate and any timed blood-pressure or oxygen readings."
-        : "Blood pressure, oxygen saturation, respiratory rate, resting heart rate, HRV, and body temperature over the selected window.",
-      charts: intraday ? [] : orderedVitals,
-      after: intradayBlock,
-      empty: (
-        <EmptyState message="No vitals logged yet. Add a reading with “+ Log” above to see the trend." />
-      ),
-    },
-    {
-      id: "body-composition",
-      heading: "Composition",
-      description: "Body-composition trends over the selected window.",
-      charts: compositionCharts,
-    },
+  // The two titled runs of charts, sharing ONE annotation toggle bar (#1486). The
+  // RUNS are sequenced by the same card order as the cards inside them (#1490): a
+  // run leads when it holds the top-ranked card, so a live weight goal or a
+  // monitored condition actually surfaces the card it promoted instead of promoting
+  // it inside a run pinned below another. No signal firing ⇒ Vitals then
+  // Composition, exactly as before.
+  const chartSections: BodyChartSection[] = orderCardSections<BodyChartSection>(
+    [
+      {
+        id: "vitals",
+        heading: "Vitals",
+        description: intraday
+          ? "Today, minute by minute — worn heart rate and any timed blood-pressure or oxygen readings."
+          : "Blood pressure, oxygen saturation, respiratory rate, resting heart rate, HRV, and body temperature over the selected window.",
+        charts: intraday ? [] : orderedVitals,
+        after: intradayBlock,
+        empty: (
+          <EmptyState message="No vitals logged yet. Add a reading with “+ Log” above to see the trend." />
+        ),
+      },
+      {
+        id: "body-composition",
+        heading: "Composition",
+        description: "Body-composition trends over the selected window.",
+        charts: compositionCharts,
+      },
+    ],
+    cardOrder,
+    // The intraday swap empties the vitals run's `charts`; rank it by the vitals
+    // cards it WOULD hold, so a 1D window doesn't sink the section it belongs to.
+    (section) =>
+      section.id === "vitals"
+        ? orderedVitals.map((c) => c.key)
+        : section.charts.map((c) => c.key)
+  );
+
+  // Jump chips in PAGE READING ORDER — the two chart runs in their ranked sequence,
+  // then mood, then the synced charts. Built FROM the ordered sections, so a chip
+  // row can never advertise an order the page below doesn't have.
+  const sectionChipLabel: Record<string, string> = {
+    vitals: "Vitals",
+    "body-composition": "Weight",
+  };
+  const jumpChips: ChartChip[] = [
+    ...chartSections
+      .filter((s) => (s.id === "vitals" ? hasVitals : hasComposition))
+      .map((s) => ({ id: s.id, label: sectionChipLabel[s.id] ?? s.heading })),
+    ...(hasMood ? [{ id: "mood", label: "Mood" }] : []),
+    ...orderedSynced.map((e) => ({ id: e.id, label: e.label })),
   ];
 
   // ── Tiles ───────────────────────────────────────────────────────────────────
