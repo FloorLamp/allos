@@ -26,7 +26,7 @@
 import { db } from "../db";
 import { isGrowthTracked } from "../life-stage";
 import { isGoalLive } from "../goals";
-import { getUserAge } from "../settings";
+import { getHomeLocation, getUserAge } from "../settings";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "../vitals-input";
 import {
   conditionMonitorTags,
@@ -190,9 +190,15 @@ export function buildTrendsSubjectContext(
   presence.bmi = weakest(presence.weight ?? "none", presence.height ?? "none");
   presence.growth = presence.height ?? "none";
 
-  // `sun` is deliberately absent: outdoor daylight is derived from activity +
-  // a home location, with no series of its own to count. An absent card reads as
-  // "sparse" (neutral) in the ranker, so it is never sunk by ignorance.
+  // Sun / outdoor daylight has no series of its own to count — it is derived from
+  // outdoor activity against the solar day at the HOME LOCATION, and the card is
+  // gated on that location existing at all. So the gate IS its presence: no home
+  // location, no card; with one, a neutral "sparse" (we don't re-derive the series
+  // just to bucket it). Every card in the layout gets an entry — an unmeasured card
+  // defaulting to neutral would float above a genuinely empty one under the
+  // data-present floor, which is how "nothing tracked yet" would have produced a
+  // reshuffled layout instead of the static one.
+  presence.sun = getHomeLocation(profileId) ? "sparse" : "none";
 
   return { growthTracked, goalMetrics, monitors, presence };
 }
