@@ -138,9 +138,15 @@ describe("standalone script environment bootstrap", () => {
     (file) => {
       const source = read(file);
       const imports = staticImports(source);
-      const expected = file.startsWith("e2e/")
-        ? "../scripts/load-env"
-        : "./load-env";
+      // The specifier is depth-relative: scripts/*.ts reach the loader as
+      // "./load-env", e2e/*.ts as "../scripts/load-env", and a NESTED module
+      // (e2e/seed/*.ts, the #1511 per-domain split) as "../../scripts/load-env".
+      // Computed rather than hardcoded so a new subdirectory keeps being checked
+      // instead of silently failing on the wrong expected string.
+      const rel = path
+        .relative(path.dirname(file), ENV_LOADER.replace(/\.ts$/, ""))
+        .replace(/\\/g, "/");
+      const expected = rel.startsWith(".") ? rel : `./${rel}`;
 
       expect(imports[0]).toBe(expected);
       expect(source).not.toContain('from "@next/env"');
