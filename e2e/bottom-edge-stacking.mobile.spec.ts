@@ -65,10 +65,13 @@ test("a toast raised during a live workout stacks above the dock, never over it 
       page.getByRole("button", { name: "Delete", exact: true })
     ).toBeVisible();
 
-    // Minimize, leave the training route (which hosts the inline editor instead of
-    // the bar), and the app-wide dock is up.
+    // Minimize and leave the training route (which hosts the inline editor instead
+    // of the bar) — the app-wide dock is then up on every other page. Equipment is
+    // deliberately the landing spot rather than the dashboard: the quick-log below
+    // resolves only once its revalidation has re-rendered the CURRENT route, and the
+    // dashboard is the app's heaviest render.
     await page.getByTestId("minimize-workout").click();
-    await page.goto("/");
+    await page.goto("/equipment");
     const dock = page.getByTestId("workout-dock");
     await expect(dock).toBeVisible();
 
@@ -80,8 +83,10 @@ test("a toast raised during a live workout stacks above the dock, never over it 
       TOAST_WEIGHT
     );
     await input.press("Enter");
+    // Generous window: the toast follows a Server Action + revalidation round trip,
+    // which on a loaded runner is comfortably past the default 5s assertion budget.
     const toast = page.getByTestId("toast");
-    await expect(toast).toBeVisible();
+    await expect(toast).toBeVisible({ timeout: 25_000 });
 
     // The stacking rule, as geometry: the toast ends where the dock begins (or
     // above it), instead of covering the bar.
@@ -94,7 +99,12 @@ test("a toast raised during a live workout stacks above the dock, never over it 
     // Discard the session: the dock goes, and with it the claim on the bottom
     // edge — every notice falls back to the plain safe-area gutter it always had.
     await page.getByTestId("workout-dock-open").click();
-    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    // Scope the discard to the editor's own footer — the page BEHIND the editor
+    // (Equipment) carries its own per-row Delete controls.
+    await page
+      .getByTestId("activity-form-footer")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })
