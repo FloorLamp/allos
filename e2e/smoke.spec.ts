@@ -108,7 +108,15 @@ test("dashboard coaching 'Snooze' snoozes the top recommendation (#39)", async (
   // under isolation; the #1400/#1464 class, caught latent rather than in CI.
   await settledClick(page, card.getByTestId("coaching-snooze"));
   // The snoozed recommendation is no longer shown as the widget's suggestion.
-  await expect(card.getByText(original!, { exact: true })).toHaveCount(0);
+  // settledClick guarantees the ACTION completed server-side; React then has to apply
+  // the revalidated RSC, and the dashboard is the app's heaviest server render — under
+  // a degraded single-worker `--repeat-each` crush that hand-off measured past the
+  // default 5s while the write itself had already landed (the #1306 budget class).
+  // Give the re-render the heavy-page budget so a slow refresh can't read as a lost
+  // click.
+  await expect(card.getByText(original!, { exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  });
 });
 
 // #40: derived clinical indices are computed at read time from the seeded lipid /
