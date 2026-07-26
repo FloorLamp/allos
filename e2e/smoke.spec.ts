@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import { settledClick } from "./helpers";
 import { followLink, openCommandPalette } from "./nav";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 
@@ -101,9 +102,27 @@ test("dashboard coaching 'Snooze' snoozes the top recommendation (#39)", async (
     ?.trim();
   expect(original).toBeTruthy();
 
-  await card.getByTestId("coaching-snooze").click();
-  // The snoozed recommendation is no longer shown as the widget's suggestion.
-  await expect(card.getByText(original!, { exact: true })).toHaveCount(0);
+  // settledClick, not a bare .click() (#1513): Snooze submits a Server Action, and a
+  // tap that lands before the form hydrates is swallowed — the POST never happens and
+  // the assertion below then reads a state that never changed. Measured 3-of-4 locally
+  // under isolation; the #1400/#1464 class, caught latent rather than in CI.
+  await settledClick(page, card.getByTestId("coaching-snooze"));
+  // settledClick arms a same-origin POST wait, which the app-wide toaster polls can
+  // satisfy instead of this action's own request (#1437) — so hold on the action's OWN
+  // durable completion marker before reading the result: SubmitButton renders its
+  // `pendingLabel` ("…") for exactly as long as the transition is pending, and a
+  // bystander poll cannot fake that. It resolves whether the widget re-renders with
+  // the next recommendation or falls back to empty (the card locator then matches
+  // nothing, which is a count of 0 either way).
+  await expect(card.getByText("…", { exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  // The snoozed recommendation is no longer shown as the widget's suggestion. The
+  // dashboard is the app's heaviest server render, so the revalidated-RSC hand-off
+  // gets the heavy-page budget too (the #1306 class) rather than the default 5s.
+  await expect(card.getByText(original!, { exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  });
 });
 
 // #40: derived clinical indices are computed at read time from the seeded lipid /
@@ -198,9 +217,22 @@ test("biological-age hero is absent for a child profile (#209)", async ({
     // Switch to profile 2 ("Riley (child)") via its household chip, then confirm the
     // switch by the user-menu naming the new profile.
     await page.goto("/");
-    await page.getByRole("main").getByTestId("household-chip-2").click();
+    // Same class as the Snooze above (#1513): the chip is a Server-Action form submit
+    // whose RESULT this asserts, so wait for the action's POST rather than assuming a
+    // pre-hydration tap landed.
+    await settledClick(
+      page,
+      page.getByRole("main").getByTestId("household-chip-2")
+    );
+    // The switch's own completion marker, on the heavy-page budget (#1306): the chip
+    // posts openProfileAction and redirects back to the dashboard, and settledClick's
+    // same-origin POST wait can be satisfied by an app-wide toaster poll instead of
+    // that action (#1437) — so the switch can still be in flight when this reads. The
+    // retry IS the wait; it just needs longer than the default 5s on the app's
+    // heaviest server render.
     await expect(page.getByTestId("user-menu-trigger")).toContainText(
-      "Riley (child)"
+      "Riley (child)",
+      { timeout: 15_000 }
     );
 
     // On the child's Biomarkers page the hero is not rendered at all.

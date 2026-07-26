@@ -16,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
 import type { ExtractionResult } from "@/lib/medical-extract";
@@ -349,9 +350,16 @@ export async function ingestMedicalUpload(
   // within the process). The transaction returns either the pre-existing row or
   // the id of the freshly reserved 'processing' row; file IO / extraction happen
   // afterwards, outside the transaction.
+  // uploaded_at is bound from the CLOCK SEAM (sqlNow, #1534) instead of taking the
+  // column's `datetime('now')` default: it is read as a calendar DAY —
+  // `date(uploaded_at)` decides illness-episode membership and `substr(uploaded_at,
+  // 1, 10)` is the Timeline day for a document with no clinical document_date — both
+  // against `today()`-derived values. processing_started_at deliberately KEEPS SQL's
+  // real clock: it is an extraction LEASE (the reaper compares it to
+  // `datetime('now', '-N minutes')`), i.e. a duration, which the seam must never own.
   const insertRow = db.prepare(
-    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, profile_id)
-     VALUES (?,?,?,?,?, 'processing', datetime('now'), ?)`
+    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, uploaded_at, profile_id)
+     VALUES (?,?,?,?,?, 'processing', datetime('now'), ?, ?)`
   );
   const reserved = writeTx(
     (): { existing: DedupTarget } | { docId: number } => {
@@ -363,6 +371,7 @@ export async function ingestMedicalUpload(
         storedMime,
         buffer.length,
         contentHash,
+        sqlNow(),
         profileId
       );
       return { docId: Number(info.lastInsertRowid) };

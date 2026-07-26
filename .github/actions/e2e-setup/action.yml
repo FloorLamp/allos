@@ -67,3 +67,30 @@ runs:
     - name: Build
       run: npm run build
       shell: bash
+
+    # UTC-midnight backstop (issue #1534). Date-keyed specs assert against "today",
+    # and a suite that STRADDLES real 00:00 UTC can write a row on one side of the
+    # boundary and read it back against a "today" on the other — the 2026-07-25→26
+    # night took 3 of 4 shards red on two PRs, one of them a JSON-only edit.
+    # #1464's forward nudge stabilizes the JS-side frozen clock and #1534's audit
+    # routes the date-semantic SQL writes through that same seam, but neither can
+    # reach a residual real-clock read (an untouched column default, a fixture
+    # shelling out to `date`). This step is the cheap, honest mitigation: if the
+    # suite is about to start inside the hazard window, wait the boundary out.
+    #
+    # Deliberately dead simple and bounded: at most WINDOW_MIN + 1 = 13 minutes,
+    # and it runs LAST in setup so the ~4 min build already counts toward clearing
+    # the boundary. Outside the window it is a no-op (no output, no delay).
+    - name: Delay past UTC midnight when inside the hazard window (#1534)
+      shell: bash
+      run: |
+        WINDOW_MIN=12
+        # Whole minutes left until the next UTC midnight (floored).
+        REMAIN=$(( (86400 - ($(date -u +%s) % 86400)) / 60 ))
+        if [ "$REMAIN" -le "$WINDOW_MIN" ]; then
+          MSG="delaying suite start $((REMAIN + 1)) min to clear UTC midnight — see #1534"
+          echo "::notice::$MSG"
+          echo "$MSG"
+          sleep $(( (REMAIN + 1) * 60 ))
+          echo "UTC midnight cleared at $(date -u +%FT%TZ) — starting the suite."
+        fi

@@ -5,6 +5,7 @@
 // through writeTx (#468).
 
 import { db, writeTx } from "./db";
+import { sqlNow } from "./clock";
 import {
   injuryConstraints,
   isValidRegion,
@@ -154,8 +155,9 @@ export function logInjuryCore(
       db
         .prepare(
           `INSERT INTO injuries
-             (profile_id, label, regions, muscles, status, since, resolved_date, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+             (profile_id, label, regions, muscles, status, since, resolved_date, notes,
+              created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           profileId,
@@ -166,7 +168,9 @@ export function logInjuryCore(
           s.since,
           // Born resolved (a historical record) keeps a resolved_date; otherwise null.
           s.status === "resolved" ? (s.since ?? null) : null,
-          s.notes
+          s.notes,
+          // created_at from the clock seam (#1534) — the Timeline day fallback.
+          sqlNow()
         ).lastInsertRowid
     );
     return { kind: "ok" as const, id };

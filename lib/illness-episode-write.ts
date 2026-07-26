@@ -10,6 +10,7 @@
 // exactly that row and never a hand-entered condition.
 
 import { db, today, writeTx } from "./db";
+import { sqlNow } from "./clock";
 import { shiftDateStr } from "./date";
 import { episodeConditionExternalId } from "./illness-episode-format";
 import { episodeReopenEligibility } from "./illness-episode-reopen";
@@ -91,8 +92,9 @@ export function promoteEpisodeToConditionCore(
     const info = db
       .prepare(
         `INSERT OR IGNORE INTO conditions
-           (name, status, onset_date, resolved_date, source, external_id, profile_id)
-         VALUES (?, ?, ?, ?, 'episode', ?, ?)`
+           (name, status, onset_date, resolved_date, source, external_id, profile_id,
+            created_at)
+         VALUES (?, ?, ?, ?, 'episode', ?, ?, ?)`
       )
       .run(
         v.name,
@@ -100,7 +102,9 @@ export function promoteEpisodeToConditionCore(
         v.onsetDate,
         v.resolvedDate,
         v.externalId,
-        profileId
+        profileId,
+        // created_at from the clock seam (#1534) — the Timeline day fallback.
+        sqlNow()
       );
     // OR IGNORE could no-op under a race; re-read to return the authoritative id.
     if (info.changes === 0) {

@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
+Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight CI backstop; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
 
 Maintainer documentation for the Playwright suite's reliability discipline (issue
 #868). The user-facing "how to run e2e" note lives in AGENTS.md's browser-e2e
@@ -429,6 +429,46 @@ profile without a per-profile timezone resolves to the pin at read time; a
 fixture designed against UTC wall-times opts out per-profile
 (`setTimezone(id, "UTC")` — the food-slot ranking profile). The demo server
 stays UTC (its specs are time-neutral).
+
+**The SQL-side clock (#1534) — the half the freeze couldn't reach.** `ALLOS_TEST_NOW`
+freezes the JS clock; SQLite's own `date('now')` / `datetime('now')` /
+`CURRENT_TIMESTAMP` reads the REAL one, and no env var can change that. So a run that
+STRADDLES real 00:00 UTC writes rows stamped on one side of the boundary and reads
+them back against a `today()` on the other, and every date-keyed assertion becomes a
+coin flip — 3 of 4 shards red on two PRs on the 2026-07-25→26 night (one of them a
+JSON-only edit, which is what proved it main-side), in an exclusively date-keyed
+failure set. #1464's forward NUDGE only moved the frozen instant to the side of the
+boundary the run spends most of its time on; it cannot make a SQL stamp follow.
+
+The rule, and it is a rule about SEMANTICS, not about which function you like:
+
+- A stamp whose **calendar DAY** is later read — a SQL `date(col)` /
+  `substr(col, 1, 10)`, a JS `.slice(0, 10)` / `dateFromCreatedAt`, a `YYYY-MM-DD`
+  comparison, or a per-day `GROUP BY` that meets a `today()`-derived value — is bound
+  from the seam: **`sqlNow()`** (`lib/clock.ts`), which renders `now()` in SQLite's
+  `datetime('now')` shape (`"YYYY-MM-DD HH:MM:SS"`, UTC) so it sorts, compares and
+  truncates identically to a SQLite-written value. In production the override is unset
+  and the two are byte-identical, so the rewrite is inert outside the suite.
+- Everything else **keeps SQL's real clock on purpose**, because the seam must never
+  own a DURATION: session/token expiry, lease and claim timeouts, rate-limit windows,
+  retention cutoffs, rolling "last N days" windows, and plain "last modified" audit
+  stamps.
+
+`lib/__tests__/sql-clock-seam.test.ts` is the guard: a pure source scan over
+`lib`/`app`/`scripts` that fails CI on a NEW raw now-read in query text, with a
+per-file frozen count and a written reason for every keep. Column DEFAULTs of
+`(datetime('now'))` live in shipped, immutable migrations and are out of the scan's
+reach, so the write sites that must not rely on one bind `sqlNow()` explicitly
+(`intake_items`, `intake_item_doses`, `intake_item_logs`, `medical_documents`,
+`conditions`, `allergies`, `imaging_studies`, `goals`, `injuries`).
+
+The belt to that braces is a **CI backstop** in `.github/actions/e2e-setup` (so the
+sharded matrix, the changed-spec lane and `e2e-full.yml` all inherit it): when the
+suite is about to start within 12 minutes of UTC midnight it sleeps past the
+boundary, loudly, bounded at 13 minutes. It runs LAST in setup, so the ~4 min build
+already counts toward clearing the boundary; outside the window it is a no-op. It is
+honest about being a mitigation — it covers the forks of the problem the audit
+missed.
 
 ## Fix (e) — sharded CI, the on-demand full-suite workflow, and flake telemetry
 
