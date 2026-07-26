@@ -255,20 +255,37 @@ function classifySameSourcePair<T extends ActivityDupInput>(
   return buildPair(a, b, "high", "Overlapping times from one source");
 }
 
-// Find duplicate activity pairs within each (date, type) bucket. Two paths:
-// CROSS-SOURCE pairs (high overlap OR medium proximity) and, since issue #64,
-// SAME-SOURCE pairs (high overlap only). Generic over the row so callers keep their
-// display fields (title, …). Ordered deterministically: HIGH confidence first, then
-// by date desc, then signature.
+// Find duplicate activity pairs within each DATE bucket. Two paths: CROSS-SOURCE
+// pairs (high overlap OR medium proximity) and, since issue #64, SAME-SOURCE pairs
+// (high overlap only). Generic over the row so callers keep their display fields
+// (title, …). Ordered deterministically: HIGH confidence first, then by date desc,
+// then signature.
+//
+// The bucket is date-only, and the ACTIVITY TYPE gate now applies to the
+// cross-source path ALONE. Grouping on (date, type) assumed the two records of one
+// session agree about what that session was — which is false exactly where the
+// same-source path is aimed. Health Connect can hold ONE bike ride twice, written by
+// the same app seconds apart, typed OTHER_WORKOUT on one record and BIKING on the
+// other; those classify to `sport` and `cardio`, land in different buckets, and are
+// never compared — so the ride double-counts in every distance rollup with nothing
+// surfaced in Review. (It was masked while the parser could not read numeric
+// AndroidX exercise types: both records fell through to `sport`, so they shared a
+// bucket by accident. Teaching the parser those constants made the pair honest and
+// this blind spot visible.)
+//
+// Dropping the gate here is safe because classifySameSourcePair requires OVERLAPPING
+// time windows — a run and a swim logged by one provider on one day don't overlap,
+// so a genuinely distinct session is still never paired. The cross-source path keeps
+// the type gate: it also matches on mere PROXIMITY (10% duration/distance), which
+// without a type check would start pairing a 30-minute run with a 30-minute swim.
 export function findActivityDuplicates<T extends ActivityDupInput>(
   rows: T[]
 ): ActivityDupPair<T>[] {
   const groups = new Map<string, T[]>();
   for (const r of rows) {
-    const key = `${r.date} ${r.type}`;
-    const arr = groups.get(key);
+    const arr = groups.get(r.date);
     if (arr) arr.push(r);
-    else groups.set(key, [r]);
+    else groups.set(r.date, [r]);
   }
   const out: ActivityDupPair<T>[] = [];
   for (const group of groups.values()) {
@@ -277,7 +294,9 @@ export function findActivityDuplicates<T extends ActivityDupInput>(
         const a = group[i];
         const b = group[j];
         const pair = crossSource(a, b)
-          ? classifyCrossSourcePair(a, b)
+          ? a.type === b.type
+            ? classifyCrossSourcePair(a, b)
+            : null
           : sameSourceDuplicate(a, b)
             ? classifySameSourcePair(a, b)
             : null;

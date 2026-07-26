@@ -42,7 +42,7 @@ import {
   getMoodLogs,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
-import { HRV_METRIC } from "@/lib/vitals-input";
+import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import {
   buildGrowthProfile,
   bmiSeriesDatePaired,
@@ -239,6 +239,18 @@ export default async function BodySection({
       value: Math.round(d.value),
     })
   );
+  // Skin temperature variation keeps 1 decimal, unlike its whole-unit neighbours:
+  // it is a signed deviation whose whole readable range is roughly ±2 °C, so
+  // rounding to whole units would flatten the series to a constant 0.
+  // getMetricDailyTotals AVERAGES this metric per day (AVERAGED_METRICS), never sums.
+  const skinTempAll = getMetricDailyTotals(
+    profile.id,
+    SKIN_TEMP_DELTA_METRIC,
+    3650
+  ).map((d) => ({
+    date: d.date,
+    value: Math.round(d.value * 10) / 10,
+  }));
 
   const systolicAll = vitalPoints(systolicRows);
   const diastolicAll = vitalPoints(diastolicRows);
@@ -251,6 +263,7 @@ export default async function BodySection({
   const spo2Chart = filterSeriesByRange(spo2All, range);
   const respiratoryChart = filterSeriesByRange(respiratoryAll, range);
   const hrvChart = filterSeriesByRange(hrvAll, range);
+  const skinTempChart = filterSeriesByRange(skinTempAll, range);
 
   // Temperature: acute — the most recent readings only, newest kept, oldest first.
   const temperatureRecent = temperatureAll
@@ -492,6 +505,18 @@ export default async function BodySection({
       label: "HRV",
       unit: " ms",
       color: chartSeries.amber,
+    });
+  }
+  if (skinTempChart.length > 0) {
+    vitalsCharts.push({
+      key: "skin_temp",
+      testid: "vitals-skin-temp",
+      title: BODY_METRIC_META["skin-temp"].title,
+      data: skinTempChart,
+      label: BODY_METRIC_META["skin-temp"].label,
+      unit: BODY_METRIC_META["skin-temp"].unit,
+      color: BODY_METRIC_META["skin-temp"].color,
+      note: "Nightly deviation from your tracker's own baseline, not an absolute temperature — so only the change matters, and it is comparable to your other nights rather than to a reference range. A sustained rise often shows up alongside a drop in HRV.",
     });
   }
   if (sun.length > 0) {
@@ -1133,6 +1158,7 @@ export default async function BodySection({
     ["respiratory-rate", respiratoryAll],
     ["resting-hr", restingHrAll],
     ["hrv", hrvAll],
+    ["skin-temp", skinTempAll],
     ["temperature", temperatureAll],
     ["weight", weightAll],
     ["body-fat", bodyFatAll],

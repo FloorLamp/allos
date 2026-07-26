@@ -2,6 +2,7 @@ import type { ActivityType } from "@/lib/types";
 import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import { metricAggregation } from "@/lib/metric-buckets";
+import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import type {
   NormActivity,
   NormHrMinute,
@@ -52,6 +53,7 @@ export const KNOWN_HEALTH_CONNECT_KEYS = new Set<string>([
   "sleep",
   "heart_rate",
   "exercise",
+  "skin_temperature",
 ]);
 
 // ---- per-type granularity guidance (issue #1065) ----
@@ -71,9 +73,10 @@ export interface SourceFidelityRow {
   // The exporter app's data-type label(s) this row covers, verbatim-ish for the card.
   label: string;
   // The top-level payload keys this row governs. A key with a parser home is one of
-  // KNOWN_HEALTH_CONNECT_KEYS (the registry-completeness test binds the two); an
-  // `off` row (skin temperature) has a key with no home, shown so the user knows to
-  // leave it disabled.
+  // KNOWN_HEALTH_CONNECT_KEYS (the registry-completeness test binds the two). No row
+  // currently recommends `off`; the setting stays available for a future record type
+  // that the exporter offers before the parser has a home for it, so the card can
+  // still tell the user to leave it disabled rather than silently omitting it.
   keys: string[];
   // The exporter option to select for this row.
   setting: ExporterSetting;
@@ -144,8 +147,8 @@ export const SOURCE_FIDELITY: SourceFidelityRow[] = [
   {
     label: "Skin temperature",
     keys: ["skin_temperature"],
-    setting: "off",
-    why: "relative delta records have no model home — leave it off",
+    setting: "full",
+    why: "one nightly variation reading (a signed delta from your tracker's own baseline), kept per night alongside HRV and sleep",
   },
 ];
 
@@ -181,6 +184,24 @@ const FINE_GRAINED_CHECK: { key: string; label: string }[] = [
 // origin apps). 8+ records in a single day is unmistakably a sub-daily (`15m`/`1m`)
 // setting — well clear of any legitimate per-origin daily count.
 export const FINE_GRAINED_ROWS_PER_DAY = 8;
+
+// The count signal above reads ONE PUSH, but a real exporter pushes INCREMENTALLY:
+// it sends only the buckets that changed since the last push, so a phone syncing every
+// few minutes at a `15m` setting delivers 1–2 fresh rows per push forever and never
+// reaches 8 — while the DAY quietly accumulates ~96 of them (the Fitbit-exporter payload audit). The count
+// threshold silently assumed each push carries a whole day.
+//
+// So the shape of a SINGLE record is the second, push-size-independent signal: a
+// `daily` record's window spans midnight→now, whereas a `15m`/`1m` bucket is minutes
+// wide. A daily-stored additive metric arriving in windows an hour or narrower is
+// therefore a fine-grained setting regardless of how few rows the push carried.
+export const SUB_DAILY_WINDOW_MAX_MIN = 60;
+// Require two such records before hinting: a genuine `daily` push made within an hour
+// of local midnight is itself a short window, and one origin doing that shouldn't trip
+// the hint. Two independent short windows in one batch is the fine-grained shape. (The
+// hint is informational — it never drops or gates a record — so an occasional
+// false negative here costs nothing.)
+export const SUB_DAILY_MIN_ROWS = 2;
 
 // Heart rate at `1m` yields ~1440 records/day; `daily` yields ~1/day. To avoid
 // mistaking a sparse-but-fine day for a daily aggregate, only flag it when the batch
@@ -221,6 +242,25 @@ export function maxRecordsPerDay(recs: Record<string, unknown>[]): number {
   return max;
 }
 
+// How many of the given interval records span a window of `maxMinutes` or less — the
+// push-size-independent fine-grained signal (see SUB_DAILY_WINDOW_MAX_MIN). A record
+// missing either endpoint, or carrying a non-positive/unparseable window, is not
+// counted: absent evidence is never evidence of a wrong setting. Pure.
+export function shortWindowRecords(
+  recs: Record<string, unknown>[],
+  maxMinutes: number
+): number {
+  let n = 0;
+  for (const rec of recs) {
+    const start = typeof rec.start_time === "string" ? rec.start_time : null;
+    const end = typeof rec.end_time === "string" ? rec.end_time : null;
+    if (!start || !end) continue;
+    const mins = minutesBetween(start, end);
+    if (mins != null && mins <= maxMinutes) n++;
+  }
+  return n;
+}
+
 // The number of distinct calendar days the given records span. Pure.
 export function distinctRecordDays(recs: Record<string, unknown>[]): number {
   const days = new Set<string>();
@@ -240,11 +280,17 @@ export function detectGranularityHints(body: unknown): string[] {
   const payload = body as Record<string, unknown>;
   const hints: string[] = [];
 
-  // Too fine: a daily-stored additive metric arriving as many sub-daily rows/day.
+  // Too fine: a daily-stored additive metric arriving either as many sub-daily rows
+  // per day (a whole-day push) or as several narrow windows (an incremental push that
+  // never accumulates enough rows to trip the count — see SUB_DAILY_WINDOW_MAX_MIN).
+  // Either signal alone is enough; they emit ONE hint per metric, not one per signal.
   for (const { key, label } of FINE_GRAINED_CHECK) {
     const recs = looseArray(payload[key]);
     if (!recs.length) continue;
-    if (maxRecordsPerDay(recs) >= FINE_GRAINED_ROWS_PER_DAY) {
+    const manyPerDay = maxRecordsPerDay(recs) >= FINE_GRAINED_ROWS_PER_DAY;
+    const narrowWindows =
+      shortWindowRecords(recs, SUB_DAILY_WINDOW_MAX_MIN) >= SUB_DAILY_MIN_ROWS;
+    if (manyPerDay || narrowWindows) {
       const setting = recommendedSettingForKey(key) ?? "daily";
       hints.push(
         `${label} look like a fine-grained setting — set ${label} to \`${setting}\` in the webhook app (large payloads risk rejection).`
@@ -409,12 +455,101 @@ const CARDIO_HINTS = [
   "spin",
 ];
 
+// AndroidX ExerciseSessionRecord.EXERCISE_TYPE_* constants → the library's OWN
+// snake_case string name for that constant (its EXERCISE_TYPE_STRING_TO_INT_MAP
+// keys). Real exporter builds send `type` as the raw enum int's toString() — the
+// SAME convention `classifyStage` below already handles for sleep stages — so a
+// Fitbit-sourced "other workout" session arrives as `"0"` and, without this table,
+// title-cases into an activity literally named "0" (the Fitbit-exporter payload audit).
+//
+// Mapping to the AndroidX NAME rather than straight to a title means the numeric and
+// string spellings converge on ONE code path: the name flows through the same
+// title-casing and CARDIO_HINTS matching below, so `56` and `"running"` classify
+// identically and a hint added for one spelling covers both. Note `0` → "workout",
+// which reproduces the pre-existing default ("Workout" / sport) exactly.
+//
+// The gaps in the sequence (1, 3, 6, 7, …) are reserved/removed values in the
+// upstream enum, not omissions here. A numeric type ABSENT from this table (a newer
+// library constant) falls back to the generic default rather than a bare digit.
+const EXERCISE_TYPE_NAMES: Record<string, string> = {
+  "0": "workout", // EXERCISE_TYPE_OTHER_WORKOUT
+  "2": "badminton",
+  "4": "baseball",
+  "5": "basketball",
+  "8": "biking",
+  "9": "biking_stationary",
+  "10": "boot_camp",
+  "11": "boxing",
+  "13": "calisthenics",
+  "14": "cricket",
+  "16": "dancing",
+  "25": "elliptical",
+  "26": "exercise_class",
+  "27": "fencing",
+  "28": "football_american",
+  "29": "football_australian",
+  "31": "frisbee_disc",
+  "32": "golf",
+  "33": "guided_breathing",
+  "34": "gymnastics",
+  "35": "handball",
+  "36": "high_intensity_interval_training",
+  "37": "hiking",
+  "38": "ice_hockey",
+  "39": "ice_skating",
+  "44": "martial_arts",
+  "46": "paddling",
+  "47": "paragliding",
+  "48": "pilates",
+  "50": "racquetball",
+  "51": "rock_climbing",
+  "52": "roller_hockey",
+  "53": "rowing",
+  "54": "rowing_machine",
+  "55": "rugby",
+  "56": "running",
+  "57": "running_treadmill",
+  "58": "sailing",
+  "59": "scuba_diving",
+  "60": "skating",
+  "61": "skiing",
+  "62": "snowboarding",
+  "63": "snowshoeing",
+  "64": "soccer",
+  "65": "softball",
+  "66": "squash",
+  "68": "stair_climbing",
+  "69": "stair_climbing_machine",
+  "70": "strength_training",
+  "71": "stretching",
+  "72": "surfing",
+  "73": "swimming_open_water",
+  "74": "swimming_pool",
+  "75": "table_tennis",
+  "76": "tennis",
+  "78": "volleyball",
+  "79": "walking",
+  "80": "water_polo",
+  "81": "weightlifting",
+  "82": "wheelchair",
+  "83": "yoga",
+};
+
+// Resolve a raw `type` to the label the classifier works from: an all-digits value is
+// looked up as an AndroidX constant (unknown numbers → the generic default, never a
+// bare digit as a title); anything else passes through as the string it already is.
+function exerciseTypeLabel(rawType: unknown): string {
+  const raw = typeof rawType === "string" ? rawType.trim() : "";
+  if (!raw) return "Workout";
+  if (/^\d+$/.test(raw)) return EXERCISE_TYPE_NAMES[raw] ?? "Workout";
+  return raw;
+}
+
 function classifyExercise(rawType: unknown): {
   type: ActivityType;
   title: string;
 } {
-  const raw =
-    typeof rawType === "string" && rawType.trim() ? rawType.trim() : "Workout";
+  const raw = exerciseTypeLabel(rawType);
   const norm = raw.toLowerCase();
   const title = raw
     .replace(/[_-]+/g, " ")
@@ -460,6 +595,19 @@ function minutesBetween(start?: string, end?: string): number | null {
   const b = new Date(end).getTime();
   if (Number.isNaN(a) || Number.isNaN(b) || b <= a) return null;
   return Math.round((b - a) / 60000);
+}
+
+// The same window in EXACT seconds. Sleep durations derive from this rather than from
+// minutesBetween(...) * 60: that round-trip quantizes to whole minutes first, which
+// would re-introduce the per-stage inflation (the Fitbit-exporter payload audit) for any exporter build that omits
+// `duration_seconds` and leaves the window as the only source. Activity `duration_min`
+// keeps using minutesBetween — it IS a whole-minute field.
+function secondsBetween(start?: string, end?: string): number | null {
+  if (!start || !end) return null;
+  const a = new Date(start).getTime();
+  const b = new Date(end).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b) || b <= a) return null;
+  return (b - a) / 1000;
 }
 
 export function parseHealthConnectPayload(
@@ -694,6 +842,8 @@ export function parseHealthConnectPayload(
     const m = num(r.meters, r.value);
     return m == null ? null : Math.round(m * 100);
   });
+  // (Skin temperature is emitted AFTER the sleep block below — it is a per-NIGHT
+  // reading and has to borrow the session's wake-day attribution.)
 
   // --- vitals & biomarkers → medical_records (reference-range flagged) ---
   const vital = (
@@ -814,6 +964,7 @@ export function parseHealthConnectPayload(
   // session spans midnight, so everything (total + every stage) is attributed to the
   // local date the session *ends* (the wake-up day), matching how sleep trackers show
   // "last night" and keeping stages aligned with the total. Natural key = time window.
+  const sleepNights: { startMs: number; endMs: number; wakeDay: string }[] = [];
   for (const s of asArray(payload.sleep)) {
     const end =
       (typeof s.session_end_time === "string" && s.session_end_time) ||
@@ -824,8 +975,7 @@ export function parseHealthConnectPayload(
       (typeof s.session_start_time === "string" && s.session_start_time) ||
       undefined;
     let secs = num(s.duration_seconds, s.duration_sec);
-    if (secs == null && start && end)
-      secs = (minutesBetween(start, end) ?? 0) * 60;
+    if (secs == null && start && end) secs = secondsBetween(start, end) ?? 0;
     // Derive a deterministic start from end − duration when only the end is given,
     // so the dedup key is stable across re-syncs.
     if (!start && end && secs != null) {
@@ -842,6 +992,17 @@ export function parseHealthConnectPayload(
       continue;
     }
     const wakeDay = p.date;
+    // Remember the session window so a per-night reading timestamped INSIDE it (skin
+    // temperature, below) can borrow this same wake-day attribution.
+    const sessionStartMs = new Date(start).getTime();
+    const sessionEndMs = new Date(end).getTime();
+    if (!Number.isNaN(sessionStartMs) && !Number.isNaN(sessionEndMs)) {
+      sleepNights.push({
+        startMs: sessionStartMs,
+        endMs: sessionEndMs,
+        wakeDay,
+      });
+    }
     out.samples.push({
       metric: "sleep_min",
       date: wakeDay,
@@ -855,6 +1016,18 @@ export function parseHealthConnectPayload(
     // on its window and pin its date to the session's wake day so it groups with the
     // total. Unknown / generic-"sleeping" stages classify to null and are skipped
     // here (still reflected in sleep_min).
+    //
+    // Stage minutes are stored EXACT (seconds/60), NOT rounded per stage (issue
+    // the Fitbit-exporter payload audit). One row is emitted per stage and the read layer SUMs them, so rounding
+    // each stage independently accumulates error across the whole night — and it
+    // rounds UP hardest on the shortest stages, which is precisely what a real
+    // wrist-tracker night is full of: a 62-stage Fitbit session with a dozen 30-second
+    // awake micro-arousals stored 391 min of stages against a 377-min session, so the
+    // breakdown out-summed the total it belongs to. Rounding happens ONCE now, on the
+    // summed day totals in getSleepStageDailyTotals. The stored value still goes
+    // through boundedOrNull, whose METRIC_ROUND_DP entry for these metrics bounds the
+    // written precision so a re-send stays byte-identical (the #1109 discipline) and
+    // the SELECT-before-compare upsert still counts it `unchanged`.
     for (const st of asArray(s.stages)) {
       const bucket = classifyStage(st.stage ?? st.type);
       const stStart =
@@ -862,12 +1035,10 @@ export function parseHealthConnectPayload(
       const stEnd = typeof st.end_time === "string" ? st.end_time : undefined;
       let stSecs = num(st.duration_seconds, st.duration_sec);
       if (stSecs == null && stStart && stEnd)
-        stSecs = (minutesBetween(stStart, stEnd) ?? 0) * 60;
+        stSecs = secondsBetween(stStart, stEnd) ?? 0;
       const stMetric = `sleep_${bucket}_min`;
       const stMin =
-        stSecs != null
-          ? boundedOrNull(stMetric, Math.round(stSecs / 60))
-          : null;
+        stSecs != null ? boundedOrNull(stMetric, stSecs / 60) : null;
       if (
         !bucket ||
         !stStart ||
@@ -886,6 +1057,50 @@ export function parseHealthConnectPayload(
         origin: dataOrigin(s),
       });
     }
+  }
+
+  // --- skin temperature variation → metric_samples (per NIGHT) ---
+  //
+  // NOT the "Body Temperature" vital. The record carries a SIGNED delta from the
+  // tracker's own rolling personal baseline, so it has no absolute scale to flag
+  // against: routed through medical_records it would be compared to a 97–99 °F
+  // reference range and read as catastrophically abnormal. It is also a distinct
+  // measurement SITE from core temperature, which the #482 exclusion discipline keeps
+  // in its own identity rather than collapsing. Registered in AVERAGED_METRICS — a
+  // SUMmed delta is meaningless (two +0.3 °C nights are not a +0.6 °C night).
+  //
+  // DAY ATTRIBUTION: a tracker emits ONE reading per night, stamped at sleep ONSET —
+  // which is usually before local midnight, while the night's sleep total and HRV land
+  // on the WAKE day. Taking the instant's own local date would chart the same night's
+  // skin temperature one day left of its sleep and HRV, and would be actively wrong for
+  // a variable sleeper: onsets at 23:50 and then 00:20 fall on the SAME local date, and
+  // the per-day AVG would silently merge two different nights into one point (and leave
+  // a hole). So a reading that falls inside a sleep session in this payload borrows that
+  // session's wake day. This is an exact containment test, not a clock heuristic — the
+  // exporter stamps the reading at the session start to the second. With no session in
+  // the push (the types are independently toggleable) it falls back to its own local
+  // date, which is the best available answer rather than a guess.
+  for (const rec of asArray(payload.skin_temperature)) {
+    const t = typeof rec.time === "string" ? rec.time : undefined;
+    const p = parts(t, tz);
+    const delta = boundedOrNull(
+      SKIN_TEMP_DELTA_METRIC,
+      num(rec.delta_celsius, rec.delta, rec.celsius, rec.value)
+    );
+    if (!p || !t || delta == null) {
+      out.skipped++;
+      continue;
+    }
+    const ms = new Date(t).getTime();
+    const night = sleepNights.find((n) => ms >= n.startMs && ms <= n.endMs);
+    out.samples.push({
+      metric: SKIN_TEMP_DELTA_METRIC,
+      date: night?.wakeDay ?? p.date,
+      start_time: t,
+      end_time: t,
+      value: delta,
+      origin: dataOrigin(rec),
+    });
   }
 
   // --- continuous heart rate: bucket raw samples into 1-minute aggregates ---

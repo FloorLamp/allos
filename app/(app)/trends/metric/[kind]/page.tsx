@@ -23,7 +23,7 @@ import {
   getMoodLogs,
   getGoals,
 } from "@/lib/queries";
-import { HRV_METRIC } from "@/lib/vitals-input";
+import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { dispWeight, round } from "@/lib/units";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
@@ -116,6 +116,18 @@ function fullSeriesFor(
       return getMetricDailyTotals(profileId, HRV_METRIC, ALL_ROWS).map((r) => ({
         date: r.date,
         value: Math.round(r.value),
+      }));
+    // Keeps 1 decimal, unlike its whole-unit neighbours: the readable range of a
+    // signed baseline deviation is roughly ±2 °C, so whole units would flatten the
+    // series to a constant 0. getMetricDailyTotals AVERAGES it per day, never sums.
+    case "skin-temp":
+      return getMetricDailyTotals(
+        profileId,
+        SKIN_TEMP_DELTA_METRIC,
+        ALL_ROWS
+      ).map((r) => ({
+        date: r.date,
+        value: roundTo(r.value, BODY_METRIC_META["skin-temp"].decimals),
       }));
     case "weight":
       return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(

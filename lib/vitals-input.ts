@@ -118,6 +118,15 @@ export const VITAL_CANONICAL = {
 
 export const SLEEP_METRIC = "sleep_min";
 export const HRV_METRIC = "hrv_ms";
+// Skin temperature VARIATION — a signed °C deviation from the tracker's own rolling
+// personal baseline, not an absolute temperature. IMPORT-ONLY: unlike the vitals
+// above it has no quick-add field, because the baseline is the device's (Fitbit
+// computes it over ~30 nights) and is never exposed — a hand-typed delta would have
+// no referent. Deliberately NOT folded into the "Body Temperature" identity family:
+// wrist skin temperature is a distinct measurement site from core body temperature,
+// and the #482 exclusion discipline keeps distinct sites apart rather than granting a
+// cross-site all-clear.
+export const SKIN_TEMP_DELTA_METRIC = "skin_temp_delta_c";
 
 // °C → °F, rounded to 0.1 — identical to the Health Connect parser's conversion so
 // a manual °C entry and a synced reading land on the same canonical degF scale.

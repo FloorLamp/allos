@@ -141,7 +141,15 @@ describe("Health Connect exporter v1.9 shapes", () => {
       skipped: 0,
     });
     expect(JSON.parse(event.details)).toMatchObject({
-      warnings: [],
+      // The fixture's Fitbit total_calories stream is deliberately two 15-minute
+      // buckets (against Garmin's one day-spanning record) so the origin-dedup case
+      // below has something to choose between — which is a genuinely fine-grained
+      // shape, and the narrow-window signal now says so. The hint is
+      // informational: it changes nothing about the counts or the origin choice
+      // asserted here.
+      warnings: [
+        "Total calories look like a fine-grained setting — set Total calories to `daily` in the webhook app (large payloads risk rejection).",
+      ],
       origins: [
         {
           metric: "total_kcal",

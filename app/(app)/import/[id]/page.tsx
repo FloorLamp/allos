@@ -798,7 +798,10 @@ export default async function ImportDetailPage(props: {
                       {/* The shared collapsible JSON/XML tree + copy (#1318) — a CCD/XDM
                       raw renders as a foldable element tree, an AI extraction as a
                       JSON tree, anything else as plain text. */}
-                      <RawDataViewer text={doc.raw_extraction ?? raw} />
+                      <RawDataViewer
+                        text={doc.raw_extraction ?? raw}
+                        downloadName={`extraction-${doc.id}`}
+                      />
                     </details>
                   )}
                 </div>

@@ -37,6 +37,55 @@ export function sniffRawFormat(text: string): RawFormat {
   return "text";
 }
 
+// ---- download descriptor ----
+//
+// The viewer's save-to-file affordance. The button is FORMAT-AWARE rather than
+// hardcoded to JSON, because this one component genuinely serves all three modes: a
+// MyChart CCD/XDM raw is XML, an AI extraction is JSON, and anything unparseable is
+// plain text (see the import page's Raw extraction block). A button that always said
+// "Download JSON" would hand you a `.json` file containing XML — mislabeling the file
+// on disk, where the extension is the only remaining clue about what it holds.
+//
+// Kept here (pure) rather than in the component so the extension/MIME/label mapping is
+// unit-tested without a DOM, like the rest of the tree model.
+export interface RawDownload {
+  filename: string;
+  mime: string;
+  label: string;
+}
+
+const DOWNLOAD_BY_FORMAT: Record<
+  RawFormat,
+  { ext: string; mime: string; label: string }
+> = {
+  json: { ext: "json", mime: "application/json", label: "Download JSON" },
+  xml: { ext: "xml", mime: "application/xml", label: "Download XML" },
+  text: { ext: "txt", mime: "text/plain", label: "Download" },
+};
+
+// Strip anything that could break a Content-Disposition filename or escape a
+// directory, and bound the length. A base name that sanitizes to nothing (or is
+// omitted) falls back to a generic stem rather than producing a dotfile.
+export const RAW_DOWNLOAD_FALLBACK_STEM = "raw-data";
+const MAX_STEM_CHARS = 80;
+
+export function sanitizeDownloadStem(base: string | undefined): string {
+  const cleaned = (base ?? "")
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^[-._]+|[-._]+$/g, "")
+    .slice(0, MAX_STEM_CHARS)
+    // A trailing separator left behind by the slice would produce "name-.json".
+    .replace(/[-._]+$/g, "");
+  return cleaned || RAW_DOWNLOAD_FALLBACK_STEM;
+}
+
+// The filename, MIME type, and button label for saving a raw payload of `format`.
+export function rawDownload(format: RawFormat, base?: string): RawDownload {
+  const { ext, mime, label } = DOWNLOAD_BY_FORMAT[format];
+  return { filename: `${sanitizeDownloadStem(base)}.${ext}`, mime, label };
+}
+
 export type JsonKind =
   "object" | "array" | "string" | "number" | "boolean" | "null";
 
