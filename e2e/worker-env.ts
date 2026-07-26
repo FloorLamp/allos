@@ -11,12 +11,23 @@ import path from "node:path";
 // ALLOS_DB_PATH — one server is exactly one DB for life, so DB-per-worker
 // NECESSARILY means server-per-worker). See docs/internals/e2e-hygiene.md.
 //
-// Everything here keys on Playwright's TEST_PARALLEL_INDEX, which the worker
-// process sets on itself BEFORE it loads any test file (playwright's
-// workerProcessEntry) — so a spec's module-level `const DB = workerDbPath()`
-// already resolves to that worker's DB. In the main process (the config,
-// global-setup) the variable is unset and these resolve to worker 0's slot; only
-// the template/data-root paths are read there.
+// Everything here keys on the two indices Playwright's worker process sets on
+// ITSELF before it loads any test file (playwright's workerProcessEntry), so a
+// spec's module-level `const DB = workerDbPath()` already resolves correctly:
+//
+//   • TEST_WORKER_INDEX   — unique per worker PROCESS for the whole run. It names
+//     the worker's DIRECTORY (database, uploads, logs, storage state). Playwright
+//     retires a worker after a failed test and starts a REPLACEMENT for the same
+//     slot, and the two overlap: the replacement sets up while its predecessor is
+//     still finishing teardown. Keying the directory on the process index means a
+//     replacement never wipes a directory another process is still serving from.
+//   • TEST_PARALLEL_INDEX — the SLOT (0..workers-1), which names the PORT. Ports
+//     have to be a small bounded range, so the slot's port genuinely is reused by
+//     the replacement — that is the one thing handed over, and e2e/fixtures.ts
+//     reclaims it explicitly (kill the recorded pid, wait for the listener).
+//
+// In the main process (the config, global-setup) both are unset and these resolve
+// to slot/worker 0; only the template and data-root paths are read there.
 
 // Playwright is always invoked from the repo root (playwright.config.ts lives
 // there and the suite's file fixtures have always been cwd-relative).
@@ -55,14 +66,19 @@ export const PORT_BASE = Number(process.env.E2E_PORT ?? 3100);
 export const ADMIN_USERNAME = "admin";
 export const ADMIN_PASSWORD = "e2e-admin-pass";
 
-/** This Playwright worker's parallel index (0 in the main process). */
+/** This worker PROCESS's index — unique for the whole run (0 in the main process). */
 export function workerIndex(): number {
+  return Number(process.env.TEST_WORKER_INDEX ?? 0);
+}
+
+/** This worker's SLOT (0..workers-1) — what the port is keyed on. */
+export function slotIndex(): number {
   return Number(process.env.TEST_PARALLEL_INDEX ?? 0);
 }
 
 /**
- * This worker's private directory. It is also the app server's CWD, which is what
- * isolates every cwd-relative runtime artifact the app writes — `data/uploads/**`,
+ * This worker PROCESS's private directory. It is also the app server's CWD, which
+ * is what isolates every cwd-relative runtime artifact the app writes — `data/uploads/**`,
  * `data/logs/ai.jsonl`, `data/logs/errors.jsonl`, `data/backups/**` — per worker.
  * (The server is started as `next start <repoRoot>`, so the build is shared while
  * the working directory is not.)
@@ -90,10 +106,19 @@ export function workerAuthPath(idx: number = workerIndex()): string {
   return path.join(workerDir(idx), "auth.json");
 }
 
-export function workerPort(idx: number = workerIndex()): number {
-  return PORT_BASE + idx;
+export function workerPort(slot: number = slotIndex()): number {
+  return PORT_BASE + slot;
 }
 
-export function workerBaseURL(idx: number = workerIndex()): string {
-  return `http://localhost:${workerPort(idx)}`;
+/**
+ * Where a slot records the pid of the server currently holding its port. It lives
+ * OUTSIDE any worker directory precisely because it is handed from one worker
+ * process to the next.
+ */
+export function slotPidPath(slot: number = slotIndex()): string {
+  return path.join(E2E_DATA_DIR, `slot-${slot}.pid`);
+}
+
+export function workerBaseURL(slot: number = slotIndex()): string {
+  return `http://localhost:${workerPort(slot)}`;
 }

@@ -513,7 +513,7 @@ worker (~0.2 s boot, ~190 MB RSS) against ONE shared production build.
   fixture — plus uploads and integration payloads), so the seed runs with the
   template dir as its CWD and everything travels with the copy.
 - `e2e/fixtures.ts` exports the `test` every spec imports. Its **worker-scoped**
-  `workerApp` fixture copies the template into `e2e/.data/worker-<parallelIndex>/`,
+  `workerApp` fixture copies the template into `e2e/.data/worker-<workerIndex>/`,
   boots `next start <repoRoot> -p <PORT_BASE + parallelIndex>` **with that
   directory as CWD**, signs in as admin against that server, and overrides the
   `baseURL` and `storageState` options. Because Playwright fills in missing
@@ -532,6 +532,17 @@ worker (~0.2 s boot, ~190 MB RSS) against ONE shared production build.
   `demo` project by name and boots THAT worker's server with `ALLOS_DEMO_MODE=1`
   off the demo template, unauthenticated. The project sets `fullyParallel: false`
   so `demo.spec.ts` keeps running in one worker, in order.
+
+**Worker directory vs slot port (why two indices).** Playwright retires a worker
+process after a failed test and starts a REPLACEMENT for the same slot, and the two
+OVERLAP — the replacement sets up while its predecessor is still tearing down. So
+the DIRECTORY (database, uploads, logs, storage state) is keyed on
+`TEST_WORKER_INDEX`, unique per worker PROCESS: a replacement never wipes a
+directory another process is still serving from. Only the PORT is keyed on the slot
+(`TEST_PARALLEL_INDEX`) — ports must stay a small bounded range — and it is handed
+over explicitly: the replacement kills the pid recorded in `e2e/.data/slot-<n>.pid`
+and waits for the listener to go. On a red run that hand-off happens once per
+failure, which is why it is a reclaim rather than an error.
 
 **Direct-DB specs.** A spec that opens SQLite itself resolves the file with
 `workerDbPath()` (`e2e/worker-env.ts`) — the ONE module mapping a worker index to

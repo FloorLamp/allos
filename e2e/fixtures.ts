@@ -7,6 +7,7 @@ import {
   ADMIN_PASSWORD,
   ADMIN_USERNAME,
   RUN_CONTEXT_PATH,
+  slotPidPath,
   TEMPLATE_DEMO_DIR,
   TEMPLATE_DIR,
   workerAuthPath,
@@ -29,7 +30,7 @@ import {
 // shared production build; the payoff is that `--workers=N` stops fabricating
 // failures, because no two workers can see each other's writes.
 //
-// WHAT EACH WORKER GETS (all under e2e/.data/worker-<parallelIndex>/):
+// WHAT EACH WORKER GETS (all under e2e/.data/worker-<workerIndex>/):
 //   • app.db      — a COPY of the template seeded once by e2e/global-setup.ts
 //   • data/**     — the server runs with this dir as its CWD, so uploads, the AI
 //                   log, the error log and integration payloads are per-worker too
@@ -48,8 +49,10 @@ import {
 // not the spec process's). See docs/internals/e2e-hygiene.md.
 
 export type WorkerApp = {
-  /** Playwright's parallelIndex for this worker — the key everything is named by. */
+  /** This worker PROCESS's index — what its directory is named for. */
   index: number;
+  /** This worker's SLOT (0..workers-1) — what its port is derived from. */
+  slot: number;
   /** This worker's app server origin, e.g. http://localhost:3100. */
   baseURL: string;
   port: number;
@@ -152,7 +155,11 @@ function isAlive(pid: number): boolean {
  * listening — a stale server from an interrupted run, or another worktree using
  * the same E2E_PORT range — which is a real error worth failing on.
  */
-async function reclaimPort(port: number, pidFile: string): Promise<void> {
+async function reclaimPort(
+  port: number,
+  pidFile: string,
+  budgetMs = 20_000
+): Promise<void> {
   if (fs.existsSync(pidFile)) {
     const pid = Number(fs.readFileSync(pidFile, "utf8").trim());
     if (Number.isInteger(pid) && pid > 0 && isAlive(pid)) {
@@ -173,14 +180,15 @@ async function reclaimPort(port: number, pidFile: string): Promise<void> {
       }
     }
   }
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + budgetMs;
   while (Date.now() < deadline) {
     if (await portIsFree(port)) return;
     await new Promise((r) => setTimeout(r, 200));
   }
   throw new Error(
-    `port ${port} is still in use after 30s — a server from an interrupted run, ` +
-      `or another checkout sharing this E2E_PORT range, is holding it.`
+    `port ${port} is still in use after ${budgetMs}ms — a server from an ` +
+      `interrupted run, or another checkout sharing this E2E_PORT range, is ` +
+      `holding it.`
   );
 }
 
@@ -200,19 +208,23 @@ async function stopServer(server: ChildProcess): Promise<void> {
 export const test = base.extend<{}, WorkerFixtures>({
   workerApp: [
     async ({ browser }, use, workerInfo) => {
-      const idx = workerInfo.parallelIndex;
+      // The DIRECTORY is keyed on the worker PROCESS (workerIndex, unique for the
+      // run) and the PORT on the SLOT (parallelIndex, 0..workers-1): a replacement
+      // worker gets a fresh directory of its own — never wiping one its retiring
+      // predecessor is still serving from — and inherits only the port, which it
+      // reclaims explicitly below. See e2e/worker-env.ts.
+      const idx = workerInfo.workerIndex;
+      const slot = workerInfo.parallelIndex;
       const demo = workerInfo.project.name === "demo";
       const dir = workerDir(idx);
       const dbPath = workerDbPath(idx);
-      const port = workerPort(idx);
-      const baseURL = workerBaseURL(idx);
+      const port = workerPort(slot);
+      const baseURL = workerBaseURL(slot);
       const logPath = path.join(dir, "server.log");
-      const pidFile = path.join(dir, "server.pid");
+      const pidFile = slotPidPath(slot);
       const started = Date.now();
 
-      // 1) Take the slot back from a previous generation of this worker (see
-      //    reclaimPort) BEFORE wiping the directory — the old server still has
-      //    this worker's database file open.
+      // 1) Take the port back from the worker that previously held this slot.
       await reclaimPort(port, pidFile);
 
       // 2) This worker's world: a fresh COPY of the seeded template (DB + the
@@ -253,7 +265,8 @@ export const test = base.extend<{}, WorkerFixtures>({
       fs.closeSync(logFd);
       // Record the pid so the NEXT generation of this worker can reclaim the port
       // even if this process is hard-killed before its teardown runs.
-      if (server.pid) fs.writeFileSync(pidFile, String(server.pid));
+      const ownPid = server.pid;
+      if (ownPid) fs.writeFileSync(pidFile, String(ownPid));
       const bootStart = Date.now();
       try {
         await waitForServer(`${baseURL}/login`, server, logPath);
@@ -269,7 +282,15 @@ export const test = base.extend<{}, WorkerFixtures>({
       let authMs = 0;
       if (!demo) {
         const authStart = Date.now();
-        const ctx = await browser.newContext({ baseURL });
+        // Both options are passed EXPLICITLY: Playwright fills any option a manual
+        // newContext() omits from the test's resolved `use` — and `storageState`
+        // resolves through this very fixture, so naming it here (as undefined =
+        // anonymous, which is what a login context needs) keeps worker setup from
+        // depending on a value it is in the middle of producing.
+        const ctx = await browser.newContext({
+          baseURL,
+          storageState: undefined,
+        });
         try {
           const page = await ctx.newPage();
           await page.goto("/login");
@@ -291,19 +312,30 @@ export const test = base.extend<{}, WorkerFixtures>({
       process.env.ALLOS_DB_PATH = dbPath;
 
       console.log(
-        `[e2e] worker ${idx}${demo ? " (demo)" : ""}: ${baseURL} db=${path.relative(process.cwd(), dbPath)} ` +
+        `[e2e] worker ${idx} (slot ${slot}${demo ? ", demo" : ""}): ${baseURL} db=${path.relative(process.cwd(), dbPath)} ` +
           `boot=${bootMs}ms auth=${authMs}ms total=${Date.now() - started}ms`
       );
 
-      await use({ index: idx, baseURL, port, dbPath, dir, demo });
+      await use({ index: idx, slot, baseURL, port, dbPath, dir, demo });
 
-      // Teardown: stop the server and drop its pid record. The worker dir (DB +
-      // server.log) is left on disk for postmortem; global-setup wipes e2e/.data
-      // at the start of a run.
+      // Teardown: stop the server and drop its pid record — but only if the slot
+      // still points at OUR server. A retiring worker's teardown can land after
+      // its replacement has already claimed the slot, and deleting the record then
+      // would strand the replacement's pid. The worker dir (DB + server.log) is
+      // left on disk for postmortem; global-setup wipes e2e/.data per run.
       await stopServer(server);
-      fs.rmSync(pidFile, { force: true });
+      try {
+        if (fs.readFileSync(pidFile, "utf8").trim() === String(ownPid))
+          fs.rmSync(pidFile, { force: true });
+      } catch {
+        // no record to clean up
+      }
     },
-    { scope: "worker", auto: true },
+    // A generous setup timeout (the default is 30 s): copying the template,
+    // booting the server and signing in is a few seconds on an idle machine but
+    // can be much slower on a loaded one, and a fixture that times out fails EVERY
+    // test the worker would have run.
+    { scope: "worker", auto: true, timeout: 180_000 },
   ],
 
   // Point the built-in page/context — and any manual browser.newContext(), which
