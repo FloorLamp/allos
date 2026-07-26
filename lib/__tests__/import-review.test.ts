@@ -271,6 +271,84 @@ describe("findActivityDuplicates", () => {
     expect(pairs[0].reason).toMatch(/one source/);
   });
 
+  it("flags a same-source pair whose provider typed the SAME session two ways", () => {
+    // Health Connect can hold ONE bike ride twice, written by the same app seconds
+    // apart, typed OTHER_WORKOUT on one record and BIKING on the other — so the two
+    // rows classify to different ActivityTypes. Grouping candidates by (date, type)
+    // put them in separate buckets and never compared them, and the ride
+    // double-counted in every distance rollup with nothing surfaced in Review.
+    const rows = [
+      act({
+        id: 1,
+        type: "sport",
+        source: "health-connect",
+        external_id: "health-connect:2026-07-24T14:28:47Z",
+        start_time: "10:28",
+        end_time: "12:29",
+      }),
+      act({
+        id: 2,
+        type: "cardio",
+        source: "health-connect",
+        external_id: "health-connect:2026-07-24T14:29:05Z",
+        start_time: "10:29",
+        end_time: "12:29",
+      }),
+    ];
+    const pairs = findActivityDuplicates(rows);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].confidence).toBe("high");
+    expect(pairs[0].reason).toMatch(/one source/);
+  });
+
+  it("still does NOT pair two same-source sessions of different types at disjoint times", () => {
+    // Dropping the type gate for same-source pairs is safe ONLY because overlapping
+    // windows remain required: a morning run and an evening swim from one provider
+    // must stay two activities.
+    const rows = [
+      act({
+        id: 1,
+        type: "cardio",
+        source: "health-connect",
+        external_id: "health-connect:a",
+        start_time: "06:00",
+        end_time: "06:30",
+      }),
+      act({
+        id: 2,
+        type: "sport",
+        source: "health-connect",
+        external_id: "health-connect:b",
+        start_time: "18:00",
+        end_time: "18:30",
+      }),
+    ];
+    expect(findActivityDuplicates(rows)).toHaveLength(0);
+  });
+
+  it("keeps the type gate on the CROSS-source path (proximity would over-pair)", () => {
+    // Cross-source also matches on mere proximity (10% duration/distance), so without
+    // a type check a 30-minute run would pair with a 30-minute swim.
+    const rows = [
+      act({
+        id: 1,
+        type: "cardio",
+        source: null,
+        start_time: "08:00",
+        end_time: "08:30",
+      }),
+      act({
+        id: 2,
+        type: "sport",
+        source: "strava",
+        external_id: "strava:1",
+        start_time: "08:05",
+        end_time: "08:35",
+      }),
+    ];
+    expect(findActivityDuplicates(rows)).toHaveLength(0);
+  });
+
   it("does NOT flag a same-source pair at disjoint times", () => {
     const rows = [
       act({
