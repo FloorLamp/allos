@@ -29,9 +29,12 @@ import {
 import {
   biomarkerViewHref,
   encounterHref,
+  immunizationHref,
   importHref,
   intakeHref,
+  medicationHref,
   nutritionTabHref,
+  timelineDayHref,
   MEDICATIONS_HREF,
   type AppRoute,
 } from "../hrefs";
@@ -52,6 +55,16 @@ import {
 // needed. We over-fetch (CANDIDATE_LIMIT) per domain and let the ranker pick the
 // best PER_DOMAIN_CAP, so an exact-but-older match isn't cut off by a date-only
 // SQL LIMIT.
+//
+// HREF RULE (#1568): a hit's href is the most PRECISE destination its row data
+// supports — the per-record page (biomarker/document/encounter/medication/vaccine)
+// or a day/tab-scoped hub link (an activity's timeline day, the goals tab). A bare
+// hub route is correct ONLY where no precise target exists: the passport list
+// surfaces (condition/allergy/procedure/appointment/family-history/care plan/care
+// goal) render no per-row anchor, so their hits land on the list page until one
+// exists. This is the class typed routes CANNOT catch — `/training` is a live
+// pathname, just the wrong one — so it's pinned by data-level tests instead
+// (lib/__db_tests__/search-hrefs.test.ts).
 
 const PER_DOMAIN_CAP = 5;
 const CANDIDATE_LIMIT = 25;
@@ -171,7 +184,16 @@ function activityHits(
     key: `activity:${r.id}`,
     title: r.title,
     subtitle: `${r.type[0].toUpperCase()}${r.type.slice(1)} · ${r.date}`,
-    href: "/training",
+    // The activity's DAY on the timeline (#1568), not the /training hub. A hub
+    // href here was invisible as a bug: searching from /training — the natural
+    // place to look for a workout — made the selection a same-route push, so the
+    // palette closed and nothing moved, reading as a dead control.
+    //
+    // NOT the journal anchor (`#activity-<id>` in JournalCard): HistorySection
+    // renders one newest window with "Load more" (#451), so an older activity's
+    // anchor isn't on the page you land on. timelineDayHref filters the feed BY
+    // the date, so it resolves for an activity of any age.
+    href: timelineDayHref(r.date),
     date: r.date,
   }));
 }
@@ -198,7 +220,10 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     key: `supplement:${r.id}`,
     title: r.name,
     subtitle: r.active ? "Active" : "Inactive",
-    href: intakeHref(r.kind),
+    // A medication has a real per-record detail page (#817), so the hit lands ON
+    // the med rather than the daily list (#1568). A supplement has no per-item
+    // page — it keeps the kind-level surface intakeHref resolves (#746).
+    href: r.kind === "medication" ? medicationHref(r.id) : intakeHref(r.kind),
     date: null,
     // Contextual actions on a FOUND medication (#662): log a dose, and refill when
     // it tracks supply. Supplements get none (issue-scoped to meds/appt/biomarker).
@@ -242,7 +267,9 @@ function immunizationHits(profileId: number, query: string): SearchHit[] {
       key: `immunization:${r.id}`,
       title: display,
       subtitle: r.dose_label ? `${r.dose_label} · ${r.date}` : r.date,
-      href: "/records/history/immunizations",
+      // The per-vaccine page (#1568) — dose history, schedule assessment, titers
+      // and overrides for THIS vaccine — instead of the immunizations list hub.
+      href: immunizationHref(r.vaccine),
       date: r.date,
     }));
 }
@@ -268,7 +295,10 @@ function goalHits(profileId: number, like: string): SearchHit[] {
     key: `goal:${r.id}`,
     title: r.title,
     subtitle: r.category ? `${r.category} · ${r.status}` : r.status,
-    href: "/training",
+    // The Goals tab, not the Training hub's default Log tab (#1568) — `goals` is
+    // the tab vocabulary's own id (lib/training-tabs.ts), the same deep link the
+    // dashboard widget and the goal-pacing finding use.
+    href: "/training?tab=goals",
     date: null,
   }));
 }

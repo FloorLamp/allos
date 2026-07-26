@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { encounterHref, MEDICATIONS_HREF, type AppRoute } from "../hrefs";
+import { biomarkerNameKey } from "./medical";
 
 // PER-PROFILE activity reads for the provider detail/index pages (issue #275).
 //
@@ -263,9 +264,13 @@ export function getProviderLabs(
   profileId: number,
   providerId: number
 ): ProviderActivityItem[] {
+  // The canonical name is the DISPLAY name (#1501): `name` is the raw string the
+  // lab delivered ("URIC ACID"), `canonical_name` is the vocabulary's clean,
+  // deliberately-cased text. biomarkerNameKey is the shared COALESCE every other
+  // analyte-listing surface keys on.
   const rows = db
     .prepare(
-      `SELECT id, date, name, category FROM medical_records
+      `SELECT id, date, ${biomarkerNameKey()} AS name, category FROM medical_records
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY date DESC, id DESC`
     )

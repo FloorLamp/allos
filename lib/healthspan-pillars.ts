@@ -24,9 +24,14 @@ import {
   type StrengthLevel,
 } from "./strength-standards";
 import { sriPresentation } from "./sleep-regularity";
-import { rangeBadge, type RangeBadge } from "./reference-range";
-import { convertToCanonical } from "./unit-conversions";
-import type { CanonicalBiomarker, Sex } from "./types";
+import {
+  optimalBand,
+  rangeBadge,
+  rangeBadgeFlag,
+  type RangeBadge,
+} from "./reference-range";
+import { convertToCanonical, sameUnit } from "./unit-conversions";
+import type { CanonicalBiomarker, MedicalFlag, Sex } from "./types";
 
 // ── Optimal-range hit rate ("31 of 38 markers optimal") ──────────────────────
 
@@ -98,6 +103,40 @@ export interface OptimalShareRow {
   name: string;
   canonicalName: string | null;
   badge: Exclude<RangeBadge, "unknown">;
+  // The reading itself, so the row can lead with the VALUE (#1501-B) through the
+  // existing MedicalValue instead of a direction chip. `value`/`unit` are the
+  // STORED reading, exactly as every other MedicalValue call site renders it
+  // (BiomarkerScale's precedent: display what was measured, judge on the
+  // converted number). `flag` is derived from THIS row's badge — never the
+  // ingest-time stored flag, which can disagree with the verdict this card counted.
+  value: string;
+  unit: string | null;
+  flag: MedicalFlag | null;
+  // The curated optimal band as display text ("3.5–5.5", "≤180", "≥40"), or null
+  // when there is no curated band OR the reading's unit differs from the canonical
+  // one — a band printed in canonical units beside a value in the lab's units
+  // would be a false comparison, and this card has no room to spell both out.
+  optimalText: string | null;
+}
+
+// Trim float noise from a converted/stored reading for display (170 → "170",
+// 5.4000000000000004 → "5.4"). Display only — never fed back into a judgment.
+function num(n: number): string {
+  return String(Number(n.toFixed(3)));
+}
+
+function optimalBandText(
+  r: NamedBiomarkerReading,
+  sex?: Sex | null,
+  age?: number | null
+): string | null {
+  if (!r.cb || !sameUnit(r.unit, r.cb.unit)) return null;
+  const band = optimalBand(r.cb, sex, age);
+  if (band.low != null && band.high != null)
+    return `${num(band.low)}–${num(band.high)}`;
+  if (band.high != null) return `≤${num(band.high)}`;
+  if (band.low != null) return `≥${num(band.low)}`;
+  return null;
 }
 
 export function optimalShareRows(
@@ -109,7 +148,17 @@ export function optimalShareRows(
   for (const r of readings) {
     const badge = judgeReading(r, sex, age);
     if (badge == null) continue;
-    rows.push({ name: r.name, canonicalName: r.canonicalName, badge });
+    rows.push({
+      name: r.name,
+      canonicalName: r.canonicalName,
+      badge,
+      // judgeReading only returns non-null for a numeric reading, so value_num is
+      // present on every row that gets here.
+      value: num(r.value_num as number),
+      unit: r.unit,
+      flag: rangeBadgeFlag(badge),
+      optimalText: optimalBandText(r, sex, age),
+    });
   }
   return rows.sort((a, b) => {
     const aOpt = a.badge === "optimal" ? 1 : 0;
