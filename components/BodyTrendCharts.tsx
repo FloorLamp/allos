@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import LineChartCard from "./LineChartCard";
 import ChartCard from "./ChartCard";
 import AnnotationToggleBar from "./AnnotationToggleBar";
+import { useAnnotationToggles } from "./TrendAnnotationToggles";
 import { roundChartValue } from "@/lib/chart-format";
 import type { AppRoute } from "@/lib/hrefs";
 import {
   annotationKindsPresent,
   filterAnnotationsByKind,
-  type AnnotationKind,
   type TrendAnnotation,
   type TrendWindow,
 } from "@/lib/trend-annotations";
@@ -111,12 +111,11 @@ export default function BodyTrendCharts({
   windows?: TrendWindow[];
 }) {
   const presentKinds = annotationKindsPresent(annotations, windows);
-  const [enabled, setEnabled] = useState<Record<AnnotationKind, boolean>>({
-    medication: true,
-    appointment: true,
-    situation: true,
-    protocol: true,
-  });
+  // #1493 A: on the Trends hub the ONE pill row lives in the context bar's expanded
+  // controls (it was ~60px of standing chrome above the chart stack at 390px), so
+  // `hoisted` is true here and the local bar below is skipped. On a surface without
+  // that bar the hook falls back to local state and the bar renders as before.
+  const { enabled, onToggle, hoisted } = useAnnotationToggles(presentKinds);
   const shown = filterAnnotationsByKind(annotations, enabled);
   const shownWindows = enabled.protocol ? windows : [];
 
@@ -163,11 +162,11 @@ export default function BodyTrendCharts({
 
   return (
     <div className="space-y-4">
-      {presentKinds.length > 0 && (
+      {!hoisted && presentKinds.length > 0 && (
         <AnnotationToggleBar
           kinds={presentKinds}
           enabled={enabled}
-          onToggle={(kind) => setEnabled((e) => ({ ...e, [kind]: !e[kind] }))}
+          onToggle={onToggle}
         />
       )}
 

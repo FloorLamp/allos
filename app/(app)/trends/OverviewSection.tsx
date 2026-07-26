@@ -13,6 +13,7 @@ import {
   metricSeriesKey,
   partitionOverviewTiles,
 } from "@/lib/saved-items";
+import { sparklineShapeForSeriesKey } from "@/lib/trend-sparkline";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
 import TrendMiniCard from "@/components/TrendMiniCard";
@@ -116,6 +117,10 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
       minPctChange={t.minPctChange}
       applyBiomarkerDomain={t.kind === "biomarker"}
       outsideWindow={t.outsideWindow ?? null}
+      // #1485 D: the mark follows the job. Decided once, from the series key, by
+      // lib/trend-sparkline.ts — training volume's rest days are real zeros, so a
+      // line through them draws a slope over training that never happened.
+      sparklineShape={sparklineShapeForSeriesKey(t.key)}
       compact={compact}
       // The tile's own controls. Its reorder items resolve their list from the
       // grid's context (#1485 C), so nothing about ordering is computed here.

@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { IconArrowDownRight, IconArrowUpRight } from "@tabler/icons-react";
 import LineChartCard from "./LineChartCard";
+import BarSparkline from "./BarSparkline";
+import type { SparklineShape } from "@/lib/trend-sparkline";
 import { round } from "@/lib/units";
 import { robustSeriesSummary } from "@/lib/trends-digest";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
@@ -67,6 +69,7 @@ export default function TrendMiniCard({
   compact = false,
   applyBiomarkerDomain = false,
   outsideWindow = null,
+  sparklineShape = "line",
   testid = "trend-mini-card",
 }: {
   title: string;
@@ -99,6 +102,11 @@ export default function TrendMiniCard({
   // plain empty state. Rendered only when `data` is empty — it is a fallback FOR
   // the empty state, never an annotation on a drawn series.
   outsideWindow?: { text: string; age: string } | null;
+  // Which MARK the sparkline draws (#1485 D). Decided ONCE, per series, by
+  // lib/trend-sparkline.ts — a tile grid passes the answer through rather than
+  // re-deciding. "line" (the default) is a level; "bar" is a per-day quantity whose
+  // missing days are real zeros, where a line would draw a slope through a rest day.
+  sparklineShape?: SparklineShape;
 }) {
   const values = data.map((d) => d.value).filter((v): v is number => v != null);
   const latest = values.length > 0 ? values[values.length - 1] : null;
@@ -204,17 +212,28 @@ export default function TrendMiniCard({
         {menu}
       </div>
       {data.length > 0 && (
-        <div className="mt-2">
-          <LineChartCard
-            data={data}
-            label={label}
-            unit={unit}
-            color={color}
-            decimals={decimals}
-            heightClass="h-20"
-            yDomain={yDomain}
-            sparkline
-          />
+        <div className="mt-2" data-sparkline-shape={sparklineShape}>
+          {sparklineShape === "bar" ? (
+            <BarSparkline
+              data={data}
+              label={label}
+              unit={unit}
+              color={color}
+              decimals={decimals}
+              heightClass="h-20"
+            />
+          ) : (
+            <LineChartCard
+              data={data}
+              label={label}
+              unit={unit}
+              color={color}
+              decimals={decimals}
+              heightClass="h-20"
+              yDomain={yDomain}
+              sparkline
+            />
+          )}
           {lo != null && hi != null && (
             <div
               className="mt-1 flex items-baseline justify-between gap-2 text-xs tabular-nums text-slate-500 dark:text-slate-400"

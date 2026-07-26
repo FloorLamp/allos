@@ -20,6 +20,17 @@ import type { DateRange } from "./timeline-format";
 export type AnnotationKind =
   "medication" | "appointment" | "situation" | "protocol";
 
+// The kinds, in display order. Exported because the toggle state is a
+// Record<AnnotationKind, boolean> that several hosts build — hand-writing that
+// object literal in each of them is how a new kind ships toggled-off in one place
+// and on in another (components/TrendAnnotationToggles.tsx builds it from here).
+export const ANNOTATION_KINDS: readonly AnnotationKind[] = [
+  "medication",
+  "appointment",
+  "situation",
+  "protocol",
+];
+
 // A positioned marker: an ISO date, a short human label, and the source kind that
 // drives its color + the per-type toggle.
 export interface TrendAnnotation {
