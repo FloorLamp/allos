@@ -35,6 +35,7 @@ import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { strOrNull } from "./parse";
+import { biomarkerSuggestionSource } from "./supplement-suggestion-source";
 
 const log = createLogger("supplement-suggest");
 
@@ -586,7 +587,7 @@ export async function autoSuggestFromBiomarkers(
   if (result.suggestions.length === 0) return 0;
 
   const names = relevant.map((r) => r.canonical_name || r.name);
-  const sourceDetail = `New/changed biomarkers: ${[...new Set(names)].join(", ")}`;
+  const sourceDetail = biomarkerSuggestionSource(names);
   return insertSuggestions(
     profileId,
     result.suggestions,

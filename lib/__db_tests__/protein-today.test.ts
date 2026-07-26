@@ -6,11 +6,13 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
+  getProteinOnDate,
   getProteinToday,
   getProteinAdequacy,
   getProteinLoggedGrams,
 } from "@/lib/queries";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { shiftDateStr } from "@/lib/date";
 
 function newProfile(name: string): number {
   return Number(
@@ -41,6 +43,21 @@ function seedTrackedProtein(profileId: number, date: string, grams: number) {
 }
 
 describe("getProteinToday (#974)", () => {
+  it("reads a selected historical day's protein without leaking today's intake", () => {
+    const p = newProfile("protein-on-date");
+    const anchor = today(p);
+    const yesterday = shiftDateStr(anchor, -1);
+    seedWeight(p, yesterday, 80);
+    logFood(p, yesterday, "poultry", 1); // 35 estimated
+    addProteinGramsCore(p, yesterday, 15); // +15 logged
+    logFood(p, anchor, "eggs", 3); // must not enter yesterday
+
+    const day = getProteinOnDate(p, yesterday);
+    expect(Math.round(day!.todayGrams)).toBe(50);
+    expect(day?.todayIntake?.basis).toBe("combined");
+    expect(day?.weeklyAverageGrams).toBeNull();
+  });
+
   it("composes today's estimated + quick-add grams and exposes the goal band", () => {
     const p = newProfile("today-combined");
     const anchor = today(p);

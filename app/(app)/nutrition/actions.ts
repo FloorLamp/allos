@@ -4,6 +4,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
+import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
 import {
   addProteinGramsCore,
@@ -16,7 +17,13 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // trusting a local increment — a failed write (expired session, revoked grant) rolls the
 // count back rather than leaving a phantom serving.
 export type FoodLogResult =
-  { ok: true; servings: number } | { ok: false; error: string };
+  | {
+      ok: true;
+      servings: number;
+      mealSlot?: FoodSlot;
+      mealServings?: number;
+    }
+  | { ok: false; error: string };
 
 // The largest sane weekly serving target — mirrors the protocol practice clamp so a
 // fat-fingered "70" can't create a permanently-behind habit.
@@ -33,12 +40,18 @@ const MAX_PER_WEEK = 21;
 function parseFields(
   formData: FormData,
   profileId: number
-): { group: string; date: string } | null {
+): { group: string; date: string; mealSlot?: FoodSlot } | null {
   const group = String(formData.get("group_key") ?? "").trim();
   if (!group || !isValidFoodGroup(group)) return null;
   const rawDate = String(formData.get("date") ?? "").trim();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today(profileId);
-  return { group, date };
+  const rawMealSlot = String(formData.get("meal_slot") ?? "").trim();
+  if (rawMealSlot && !isFoodSlot(rawMealSlot)) return null;
+  return {
+    group,
+    date,
+    ...(rawMealSlot ? { mealSlot: rawMealSlot as FoodSlot } : {}),
+  };
 }
 
 // Log one serving of a food group on a day (default today). Upserts the day's row,
@@ -51,12 +64,25 @@ export async function logFoodServing(
   const { profile } = await requireWriteAccess();
   const fields = parseFields(formData, profile.id);
   if (!fields) return formError("Unknown food group.");
-  const outcome = logFoodServingCore(profile.id, fields.group, fields.date);
+  const outcome = logFoodServingCore(
+    profile.id,
+    fields.group,
+    fields.date,
+    undefined,
+    fields.mealSlot
+  );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   revalidatePath("/nutrition");
   revalidatePath("/trends");
   revalidatePath("/");
-  return { ok: true, servings: outcome.servings };
+  return {
+    ok: true,
+    servings: outcome.servings,
+    ...(outcome.mealSlot ? { mealSlot: outcome.mealSlot } : {}),
+    ...(outcome.mealServings != null
+      ? { mealServings: outcome.mealServings }
+      : {}),
+  };
 }
 
 // Undo one serving (decrement); removes the row when it would hit zero, so a fully
@@ -70,12 +96,24 @@ export async function undoFoodServing(
   const { profile } = await requireWriteAccess();
   const fields = parseFields(formData, profile.id);
   if (!fields) return formError("Unknown food group.");
-  const outcome = undoFoodServingCore(profile.id, fields.group, fields.date);
+  const outcome = undoFoodServingCore(
+    profile.id,
+    fields.group,
+    fields.date,
+    fields.mealSlot
+  );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   revalidatePath("/nutrition");
   revalidatePath("/trends");
   revalidatePath("/");
-  return { ok: true, servings: outcome.servings };
+  return {
+    ok: true,
+    servings: outcome.servings,
+    ...(outcome.mealSlot ? { mealSlot: outcome.mealSlot } : {}),
+    ...(outcome.mealServings != null
+      ? { mealServings: outcome.mealServings }
+      : {}),
+  };
 }
 
 // ---- Protein-grams quick-add (issue #824) ----

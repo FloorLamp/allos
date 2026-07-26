@@ -19,16 +19,18 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await page.goto("/nutrition?tab=supplements");
 
   // ── Create a split-dose supplement: 500 mg Morning + 500 mg Evening ────────
-  const addCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add supplement" });
-  await addCard.getByLabel("Name").fill(name);
-  await addCard.getByLabel("Amount").first().fill("500 mg"); // first-ok: the first dose's Amount field in the add form this spec fills
-  await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the add form this spec fills
-  await addCard.getByRole("button", { name: "Add dose", exact: true }).click();
-  await addCard.getByLabel("Amount").nth(1).fill("500 mg");
-  await addCard.getByLabel("Time of day").nth(1).selectOption("Evening");
-  await addCard.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByTestId("supplement-add-toggle").click();
+  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+  await addDialog.getByLabel("Name").fill(name);
+  await addDialog.getByLabel("Amount").first().fill("500 mg"); // first-ok: the first dose's Amount field in the scoped add modal
+  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
+  await addDialog
+    .getByRole("button", { name: "Add dose", exact: true })
+    .click();
+  await addDialog.getByLabel("Amount").nth(1).fill("500 mg");
+  await addDialog.getByLabel("Time of day").nth(1).selectOption("Evening");
+  await addDialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(addDialog).toHaveCount(0);
 
   // One row per dose renders (both due today for a daily supplement).
   const rows = page.locator("div.card").filter({ hasText: name });
@@ -48,11 +50,11 @@ test("dosage restructure keeps the taken history at its original amount", async 
   // ── Restructure: replace both doses with a single 1000 mg dose ─────────────
   await morningRow.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
-  // The add form is also on the page, so scope to the edit form — the only
-  // form with a "Save" (not "Add") submit.
-  const editForm = page
-    .locator("form")
-    .filter({ has: page.getByRole("button", { name: "Save", exact: true }) });
+  const editForm = page.getByRole("dialog", { name: `Edit ${name}` });
+  await expect(editForm.getByTestId("supplement-edit-panel")).toHaveCSS(
+    "padding-left",
+    "4px"
+  );
   // Remove the confirmed Morning dose (the first dose row), then repurpose the
   // remaining one as the new single 1000 mg dose.
   await editForm.getByRole("button", { name: "Remove dose" }).first().click(); // first-ok: removes the first (Morning) dose row — see comment above

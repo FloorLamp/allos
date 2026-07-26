@@ -49,7 +49,19 @@ test("selenium detail page suggests brazil nuts — expanded low-nutrient covera
   const suggestion = page.getByTestId("food-suggestion-selenium");
   await expect(suggestion).toBeVisible();
   await expect(suggestion).toContainText(/brazil/i);
-  await expect(suggestion).toContainText("Food for Selenium");
+  await expect(suggestion).toContainText("Selenium is LOW. Eat more:");
+  await expect(page.getByTestId("food-suggestion-foods-selenium")).toHaveCSS(
+    "list-style-type",
+    "disc"
+  );
+  await expect(page.getByTestId("food-suggestion-caveat-selenium")).toHaveCSS(
+    "font-style",
+    "normal"
+  );
+  await expect(page.getByTestId("food-suggestion-caveat-selenium")).toHaveCSS(
+    "font-size",
+    "14px"
+  );
 });
 
 test("high LDL detail page shows a REDUCE suggestion (cut back on limit-tier foods) (#775)", async ({
@@ -61,9 +73,9 @@ test("high LDL detail page shows a REDUCE suggestion (cut back on limit-tier foo
 
   const suggestion = page.getByTestId("food-suggestion-ldl-apob");
   await expect(suggestion).toBeVisible();
-  // Reduce framing (the other direction of the ONE engine): "Cut back for …", high.
+  // Reduce framing (the other direction of the ONE engine): one reason + action line.
   await expect(suggestion).toHaveAttribute("data-direction", "reduce");
-  await expect(suggestion).toContainText(/cut back/i);
+  await expect(suggestion).toContainText(/.* is HIGH. Eat less:/);
   await expect(suggestion).toContainText(/fried|processed/i);
   await expect(suggestion).not.toContainText(
     "Informational, not medical advice"

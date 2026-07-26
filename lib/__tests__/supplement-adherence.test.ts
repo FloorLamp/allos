@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   adherenceSummary,
+  adherenceSummaryVisibility,
   aggregateDoseDay,
   doseExistsSince,
   doseStrip,
@@ -143,6 +144,53 @@ describe("adherenceSummary", () => {
       partialDays: 0,
       skippedDays: 0,
       applicableDays: 0,
+    });
+  });
+});
+
+describe("adherenceSummaryVisibility", () => {
+  it("hides routine perfect adherence on a resting supplement row", () => {
+    const summary = adherenceSummary(strip("tt"));
+    expect(adherenceSummaryVisibility(summary, true)).toEqual({
+      show: false,
+      showDetail: false,
+      showStreak: false,
+      showSkipped: false,
+    });
+  });
+
+  it("keeps imperfect adherence and deliberate skips visible", () => {
+    const imperfect = adherenceSummary(strip("tmt"));
+    expect(adherenceSummaryVisibility(imperfect, true)).toMatchObject({
+      show: true,
+      showDetail: true,
+    });
+
+    const skipped = adherenceSummary(strip("ts"));
+    expect(adherenceSummaryVisibility(skipped, true)).toMatchObject({
+      show: true,
+      showDetail: true,
+      showSkipped: true,
+    });
+  });
+
+  it("shows only the streak for a meaningful perfect run", () => {
+    const summary = adherenceSummary(strip("ttt"));
+    expect(adherenceSummaryVisibility(summary, true)).toEqual({
+      show: true,
+      showDetail: false,
+      showStreak: true,
+      showSkipped: false,
+    });
+  });
+
+  it("keeps the existing full medication presentation by default", () => {
+    const summary = adherenceSummary(strip("tt"));
+    expect(adherenceSummaryVisibility(summary)).toEqual({
+      show: true,
+      showDetail: true,
+      showStreak: true,
+      showSkipped: false,
     });
   });
 });

@@ -144,13 +144,13 @@ export interface FoodSuggestion {
   label: string;
   // Which direction this suggestion is: "add" (a low reading → eat MORE of a food) or
   // "reduce" (a high reading → eat LESS of a limit-tier food, issue #775). The surfaces
-  // format the framing off this ("Food for …" vs "Cut back for …", low vs high).
+  // format the framing off this (eat more vs eat less, low vs high).
   direction: "add" | "reduce";
   // `food-suggest:<key>` (add) or `food-reduce:<key>` (reduce) — the findings-bus
   // dedupeKey (family-keyed, #482; separate namespaces so the two can't collide).
   dedupeKey: string;
-  // The flagged biomarker names that triggered this suggestion (for the "because your
-  // … is low/high" rationale). Current, family-collapsed readings only.
+  // The flagged biomarker names that triggered this suggestion (for the concise
+  // "Vitamin D is LOW" rationale). Current, family-collapsed readings only.
   triggeredBy: string[];
   foods: SuggestedFood[];
   evidence: string;

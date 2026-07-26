@@ -79,7 +79,7 @@ test("the Supplements tab renders the same scope line (one computation, both sur
       );
       return Boolean(
         addCard &&
-        addCard.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING
+        node.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING
       );
     })
   ).toBe(true);

@@ -43,12 +43,13 @@ export default function FoodSuggestions({
     <div data-testid={testid} className="space-y-3">
       {suggestions.map((s) => {
         const reduce = s.direction === "reduce";
+        const reasons = s.triggeredBy.length > 0 ? s.triggeredBy : [s.label];
         return (
           <div
             key={s.dedupeKey}
             data-testid={`food-suggestion-${s.key}`}
             data-direction={s.direction}
-            className={`rounded-lg border px-3 py-2.5 text-sm ${
+            className={`rounded-lg border px-3 py-2.5 text-base ${
               reduce ? NOTICE_TONE.amber : NOTICE_TONE.emerald
             }`}
           >
@@ -66,22 +67,17 @@ export default function FoodSuggestions({
                       : "font-semibold text-emerald-900 dark:text-emerald-100"
                   }
                 >
-                  {reduce ? "Cut back for" : "Food for"} {s.label}
+                  {reasons.join(", ")} {reasons.length > 1 ? "are" : "is"}{" "}
+                  {reduce ? "HIGH. Eat less:" : "LOW. Eat more:"}
                 </p>
-                {s.triggeredBy.length > 0 && (
-                  <p
-                    className={
-                      reduce
-                        ? "mt-0.5 text-xs text-amber-700 dark:text-amber-300"
-                        : "mt-0.5 text-xs text-emerald-700 dark:text-emerald-300"
-                    }
-                  >
-                    Because your {s.triggeredBy.join(", ")}{" "}
-                    {s.triggeredBy.length > 1 ? "are" : "is"}{" "}
-                    {reduce ? "high" : "low"}.
-                  </p>
-                )}
-                <ul className="mt-1.5 space-y-1">
+                <ul
+                  data-testid={`food-suggestion-foods-${s.key}`}
+                  className={`mt-1.5 list-disc space-y-1 pl-5 ${
+                    reduce
+                      ? "marker:text-amber-500 dark:marker:text-amber-400"
+                      : "marker:text-emerald-500 dark:marker:text-emerald-400"
+                  }`}
+                >
                   {s.foods.map((f) => (
                     <li
                       key={f.food}
@@ -93,7 +89,7 @@ export default function FoodSuggestions({
                           alternative
                         </span>
                       )}
-                      <span className="block text-xs text-slate-500 dark:text-slate-400">
+                      <span className="block text-sm text-slate-500 dark:text-slate-400">
                         {f.serving}
                       </span>
                       {/* Track-as-habit is an ENCOURAGE affordance — offered only for
@@ -109,7 +105,7 @@ export default function FoodSuggestions({
                           <button
                             type="submit"
                             data-testid={`track-${f.foodGroup}`}
-                            className="inline-flex items-center gap-1 rounded-full border border-emerald-300 px-2 py-0.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-300 px-2 py-0.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900"
                           >
                             <FoodGroupIcon
                               slug={f.foodGroup}
@@ -127,7 +123,7 @@ export default function FoodSuggestions({
                     {s.safetyNotes.map((n, i) => (
                       <li
                         key={i}
-                        className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300"
+                        className="flex items-start gap-1 text-sm text-amber-700 dark:text-amber-300"
                       >
                         {noteIcon(n.kind)}
                         <span>{n.text}</span>
@@ -136,11 +132,14 @@ export default function FoodSuggestions({
                   </ul>
                 )}
                 {s.caveat && (
-                  <p className="mt-1.5 text-xs italic text-slate-500 dark:text-slate-400">
+                  <p
+                    data-testid={`food-suggestion-caveat-${s.key}`}
+                    className="mt-1.5 text-sm text-slate-500 dark:text-slate-400"
+                  >
                     {s.caveat}
                   </p>
                 )}
-                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
                   {s.evidence} Source: {s.source}.
                 </p>
               </div>

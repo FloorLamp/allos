@@ -1,5 +1,5 @@
-import { PageHeader } from "@/components/ui";
-import NavTabs from "@/components/NavTabs";
+import TabFirstPage from "@/components/TabFirstPage";
+import { NUTRITION_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { NUTRITION_TABS, type NutritionTab } from "@/lib/hrefs";
 import FoodTab from "./FoodTab";
 import SupplementsTab from "./SupplementsTab";
@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 
 // The Nutrition umbrella (#746): a URL-driven Food | Supplements tab strip (the
 // Trends/Data/Settings precedent — one panel resolved server-side per request, not
-// every panel mounted). Food is the food-group serving log (habit tier); Supplements
-// is the former /medicine supplement surface folded in as a tab. Medications left for
-// their own Medical-group page; /medicine redirects to ?tab=supplements.
+// every panel mounted). The strip and active panel stay at page level; each Food or
+// Supplements section owns its own card hierarchy. Medications remain on their own
+// Medical-group page; /medicine redirects to ?tab=supplements.
 //
 // The infant gate (issue #591/#746) lives on the FOOD tab only — infant supplements
 // (vitamin D drops) are real, so the Supplements tab is always reachable and the nav
@@ -32,20 +32,12 @@ export default async function NutritionPage(props: {
   const activePanel = tab === "supplements" ? <SupplementsTab /> : <FoodTab />;
 
   return (
-    <div>
-      <PageHeader
-        title="Nutrition"
-        subtitle="Food-group servings and your supplement schedule — one habit-tier home."
-      />
-      <NavTabs
-        paramKey="tab"
-        tabs={[
-          { id: "food", label: "Food" },
-          { id: "supplements", label: "Supplements" },
-        ]}
-      >
-        {activePanel}
-      </NavTabs>
-    </div>
+    <TabFirstPage
+      config={NUTRITION_TAB_FIRST_PAGE}
+      className="xl:max-w-6xl"
+      testId="nutrition-page"
+    >
+      {activePanel}
+    </TabFirstPage>
   );
 }

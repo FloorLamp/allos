@@ -12,20 +12,56 @@
 import { db, writeTx } from "./db";
 import { now as clockNow } from "./clock";
 import { canonicalFoodGroup } from "./food-groups";
+import { type FoodSlot } from "./food-slot";
+import { foodSlotForProfileEvent } from "./profile-food-slot";
 
 // The typed result of a serving write, so a Telegram tap answers from what ACTUALLY
 // happened rather than unconditionally confirming (the markDoseTaken contract, #232):
 //   logged        — a serving was recorded; `servings` is the group's new total for the day.
 //   unknown-group  — the slug isn't in the catalog (forged/stale token); nothing written.
 export type FoodLogOutcome =
-  { kind: "logged"; servings: number } | { kind: "unknown-group" };
+  | {
+      kind: "logged";
+      servings: number;
+      mealSlot?: FoodSlot;
+      mealServings?: number;
+    }
+  | { kind: "unknown-group" };
 
 // The typed result of an undo (issue #748 item 5): a serving was removed and
 // `servings` is the group's REMAINING daily total (0 once the row is dropped), or the
 // slug isn't in the catalog. Undo is idempotent — undoing a group with nothing logged
 // is a no-op that reports 0.
 export type FoodUndoOutcome =
-  { kind: "undone"; servings: number } | { kind: "unknown-group" };
+  | {
+      kind: "undone";
+      servings: number;
+      mealSlot?: FoodSlot;
+      mealServings?: number;
+    }
+  | { kind: "unknown-group" };
+
+function mealServingCount(
+  profileId: number,
+  slug: string,
+  date: string,
+  mealSlot: FoodSlot
+): number {
+  const events = db
+    .prepare(
+      `SELECT logged_at, meal_slot FROM food_log_events
+        WHERE profile_id = ? AND date = ? AND group_key = ?`
+    )
+    .all(profileId, date, slug) as {
+    logged_at: string;
+    meal_slot: FoodSlot | null;
+  }[];
+  return events.filter(
+    (event) =>
+      foodSlotForProfileEvent(profileId, event.logged_at, event.meal_slot) ===
+      mealSlot
+  ).length;
+}
 
 // Log one serving of a food group on a day. Upserts the day's row, incrementing its
 // servings, and returns the group's resulting daily total. Single IMMEDIATE
@@ -36,12 +72,12 @@ export function logFoodServingCore(
   group: string,
   date: string,
   // The tap instant (an ISO-8601 UTC string), appended to the food_log_events ledger
-  // (#950). Defaults to NOW — the load-bearing "logged_at is TAP time, never
-  // backfilled" decision: even when `date` is yesterday (the backfill toggle), the
-  // event records WHEN the user reached for the button, because ranking predicts the
-  // next tap. Injectable so tests can seed a specific slot; production always passes
-  // the default.
-  loggedAt: string = clockNow().toISOString()
+  // (#950). Defaults to NOW and always remains the audit/tap time. `mealSlot`, when
+  // supplied, separately records the consumed window for an honest backfill; callers
+  // without an explicit meal retain the legacy timestamp-derived behavior. The instant
+  // remains injectable so tests can seed a specific legacy slot.
+  loggedAt: string = clockNow().toISOString(),
+  mealSlot?: FoodSlot
 ): FoodLogOutcome {
   // Persist the canonical slug, not the raw input (#883): the matcher accepts
   // case/punctuation variants, but downstream readers compare group_key exactly.
@@ -59,16 +95,24 @@ export function logFoodServingCore(
     // with no matching event (or vice versa). Additive — the counter row above is
     // byte-identical to the pre-ledger write.
     db.prepare(
-      `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
-       VALUES (?, ?, ?, ?)`
-    ).run(profileId, slug, date, loggedAt);
+      `INSERT INTO food_log_events
+         (profile_id, group_key, date, logged_at, meal_slot)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(profileId, slug, date, loggedAt, mealSlot ?? null);
     const row = db
       .prepare(
         `SELECT servings FROM food_log
           WHERE profile_id = ? AND date = ? AND group_key = ?`
       )
       .get(profileId, date, slug) as { servings: number } | undefined;
-    return { kind: "logged", servings: row?.servings ?? 1 };
+    return {
+      kind: "logged",
+      servings: row?.servings ?? 1,
+      ...(mealSlot ? { mealSlot } : {}),
+      ...(mealSlot
+        ? { mealServings: mealServingCount(profileId, slug, date, mealSlot) }
+        : {}),
+    };
   });
 }
 
@@ -81,39 +125,94 @@ export function logFoodServingCore(
 export function undoFoodServingCore(
   profileId: number,
   group: string,
-  date: string
+  date: string,
+  mealSlot?: FoodSlot
 ): FoodUndoOutcome {
   // Canonicalize so undo targets the same row a canonical log wrote (#883).
   const slug = canonicalFoodGroup(group);
   if (slug === null) return { kind: "unknown-group" };
   return writeTx(() => {
+    const current = db
+      .prepare(
+        `SELECT servings FROM food_log
+          WHERE profile_id = ? AND date = ? AND group_key = ?`
+      )
+      .get(profileId, date, slug) as { servings: number } | undefined;
+    if (!current || current.servings <= 0)
+      return {
+        kind: "undone",
+        servings: 0,
+        ...(mealSlot ? { mealSlot, mealServings: 0 } : {}),
+      };
+
+    const candidates = db
+      .prepare(
+        `SELECT id, logged_at, meal_slot FROM food_log_events
+          WHERE profile_id = ? AND date = ? AND group_key = ?
+          ORDER BY logged_at DESC, id DESC`
+      )
+      .all(profileId, date, slug) as {
+      id: number;
+      logged_at: string;
+      meal_slot: FoodSlot | null;
+    }[];
+    const event = mealSlot
+      ? candidates.find(
+          (candidate) =>
+            foodSlotForProfileEvent(
+              profileId,
+              candidate.logged_at,
+              candidate.meal_slot
+            ) === mealSlot
+        )
+      : candidates[0];
+
+    // A slot-scoped undo may only remove a serving visible in that meal. This keeps
+    // a Morning minus from silently deleting Dinner. Legacy counter-only history has
+    // no assignable meal and therefore remains daily-only.
+    if (mealSlot && !event)
+      return {
+        kind: "undone",
+        servings: current.servings,
+        mealSlot,
+        mealServings: 0,
+      };
+
     db.prepare(
       `UPDATE food_log SET servings = servings - 1
-        WHERE profile_id = ? AND date = ? AND group_key = ?`
+        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings > 0`
     ).run(profileId, date, slug);
     db.prepare(
       `DELETE FROM food_log
         WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
     ).run(profileId, date, slug);
-    // Pop the NEWEST ledger event for (profile, date, group) alongside the counter
-    // decrement (#950), one tx. Undo removes the last thing you logged, so it removes
-    // the last event. A pre-ledger counter row (counter > events — logged before this
-    // migration) has no event to pop: the subquery finds nothing and the DELETE is a
-    // tolerated no-op (a "popless decrement"), so the counter still decrements.
-    db.prepare(
-      `DELETE FROM food_log_events
-        WHERE id = (
-          SELECT id FROM food_log_events
-           WHERE profile_id = ? AND date = ? AND group_key = ?
-           ORDER BY logged_at DESC, id DESC LIMIT 1
-        )`
-    ).run(profileId, date, slug);
+    // Pop the chosen ledger event alongside the counter decrement (#950), one tx.
+    // Default callers remove the newest event; meal-aware callers remove the newest
+    // event in that meal. A pre-ledger counter row has no event to pop, which remains
+    // a tolerated "popless decrement" for default callers.
+    if (event) {
+      db.prepare(
+        `DELETE FROM food_log_events
+          WHERE id = ? AND profile_id = ?`
+      ).run(event.id, profileId);
+    }
     const row = db
       .prepare(
         `SELECT servings FROM food_log
           WHERE profile_id = ? AND date = ? AND group_key = ?`
       )
       .get(profileId, date, slug) as { servings: number } | undefined;
-    return { kind: "undone", servings: row?.servings ?? 0 };
+    const removedSlot =
+      mealSlot && event
+        ? foodSlotForProfileEvent(profileId, event.logged_at, event.meal_slot)
+        : undefined;
+    return {
+      kind: "undone",
+      servings: row?.servings ?? 0,
+      ...(removedSlot ? { mealSlot: removedSlot } : {}),
+      ...(mealSlot
+        ? { mealServings: mealServingCount(profileId, slug, date, mealSlot) }
+        : {}),
+    };
   });
 }

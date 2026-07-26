@@ -221,6 +221,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 075 (#1022) ADD COLUMN guard: a schema-shape PRAGMA (does extraction_completed_at already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
   },
   {
+    file: "lib/migrations/versions/116-food-event-meal-slot.ts",
+    includes: "PRAGMA table_info(food_log_events)",
+    why: "migration 116 ADD COLUMN guard: schema-shape introspection so the non-version-gated migrate() replay no-ops — reads column metadata, never food events",
+  },
+  {
     file: "lib/migrations/versions/090-medical-record-category-classes.ts",
     includes:
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
