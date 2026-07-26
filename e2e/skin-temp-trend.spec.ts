@@ -30,6 +30,10 @@ test.describe("Skin temperature variation trend", () => {
 
       const card = member.getByTestId("vitals-skin-temp");
       await expect(card).toBeVisible();
+      await expect(card.getByTestId("chart-card-header-link")).toHaveAttribute(
+        "href",
+        "/trends/metric/skin-temp"
+      );
       await expect(
         card.getByRole("heading", { name: "Skin temperature variation" })
       ).toBeVisible();
