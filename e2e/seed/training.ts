@@ -17,6 +17,8 @@ import {
   FORM_INJURY_PROFILE,
   E2E_LOGIN_ENDURANCE,
   ENDURANCE_PROFILE,
+  E2E_LOGIN_TRAINING_ROLLUP,
+  TRAINING_ROLLUP_PROFILE,
 } from "../fixture-logins";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
 import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
@@ -385,5 +387,54 @@ export function seedEndurancePlans(): void {
   seedMemberLogin(E2E_LOGIN_ENDURANCE, enduranceProfileId, "write");
   console.log(
     `e2e: seeded endurance-plan fixture — profile ${enduranceProfileId} (${ENDURANCE_PROFILE}) (#839)`
+  );
+}
+
+// ── Training → Overview rollup fixture (#1496) ──
+export function seedTrainingRollup(): void {
+  // A dedicated ADULT profile with a LIGHT recent strength log: five small-muscle
+  // exercises at 2 sets each inside the trailing 7-day window, so the per-muscle
+  // volume-band engine (#742) fires a HANDFUL of `below` shortfalls at once — the pile
+  // the Overview rollup exists to fold into one card. Earlier sessions in the two
+  // preceding weeks clear the #719 cold-start gate (≥2 distinct training weeks). NO
+  // routine (so no deload gate) and NO injury (so no excluded region), and every date
+  // is RELATIVE so the fixture never goes stale.
+  const profileId = fixtureProfileId(TRAINING_ROLLUP_PROFILE);
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:training-rollup-%'`
+  ).run(profileId);
+  const insAct = db.prepare(
+    `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, source, external_id, edited)
+   VALUES (?, ?, 'strength', 'Accessories', 30, 'manual', ?, 0)`
+  );
+  const insSet = db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, warmup)
+     VALUES (?, ?, ?, 20, 10, 0)`
+  );
+  const EXERCISES = [
+    "Barbell Curl",
+    "Skullcrusher",
+    "Lateral Raise",
+    "Cable Crunch",
+    "Standing Calf Raise",
+  ];
+  // Two earlier weeks satisfy the cold-start gate; day -2 is the in-window session
+  // whose light volume produces the shortfalls.
+  [-16, -9, -2].forEach((day, i) => {
+    const actId = Number(
+      insAct.run(
+        profileId,
+        shiftDateStr(today(profileId), day),
+        `e2e:training-rollup-${i}`
+      ).lastInsertRowid
+    );
+    for (const exercise of EXERCISES) {
+      for (let s = 1; s <= 2; s++) insSet.run(actId, exercise, s);
+    }
+  });
+  seedMemberLogin(E2E_LOGIN_TRAINING_ROLLUP, profileId, "write");
+  console.log(
+    `e2e: seeded training-overview rollup fixture — profile ${profileId} (${TRAINING_ROLLUP_PROFILE}) (#1496)`
   );
 }

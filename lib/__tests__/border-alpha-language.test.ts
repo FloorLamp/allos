@@ -41,8 +41,12 @@ const ALLOWLIST = new Map<string, string>([
     "'info' finding tone — sibling to the amber 'warning' tone in the same ternary (moved from Trends → Biomarkers to Results, #1164)",
   ],
   [
-    "components/FindingsList.tsx",
-    "'info' finding tone — sibling to the amber 'warning' tone in the same ternary",
+    "components/FindingRow.tsx",
+    "'info' finding tone — sibling to the amber 'warning' tone in the same ternary (the row extracted out of FindingsList, #1496)",
+  ],
+  [
+    "app/(app)/training/TrainingWatchCard.tsx",
+    "'info' tone on the Training-watch rollup row — the same neutral sibling of the amber finding tone, matching the FindingRow it wraps (#1496)",
   ],
   [
     "components/CoverageGaps.tsx",
