@@ -130,9 +130,9 @@ describe("fitnessWindowWeeks", () => {
 
 describe("windowPrDays", () => {
   it("is the window's length, so a PR engine's `withinDays` IS the window", () => {
-    expect(windowPrDays(fitnessWindow({ from: "2026-04-27", to: TODAY }, TODAY))).toBe(
-      90
-    );
+    expect(
+      windowPrDays(fitnessWindow({ from: "2026-04-27", to: TODAY }, TODAY))
+    ).toBe(90);
   });
 
   it("reaches past any storable record for an all-time window", () => {

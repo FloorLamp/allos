@@ -121,7 +121,11 @@ function insertMatch(date: string, minutes: number): void {
     title: `Match ${date}`,
     durationMin: minutes,
     components: [
-      { name: "Tennis", type: "sport", duration_min: minutes } as ActivityComponent,
+      {
+        name: "Tennis",
+        type: "sport",
+        duration_min: minutes,
+      } as ActivityComponent,
     ],
   });
 }

@@ -172,9 +172,9 @@ describe("the retired nested ?ftab= (#1492)", () => {
 
   it("resolves the whole legacy URL a nudge/bookmark carries", () => {
     const sp = new URLSearchParams("tab=fitness&ftab=cardio");
-    expect(parseTab(sp.get("tab") ?? undefined, sp.get("ftab") ?? undefined)).toBe(
-      "fitness"
-    );
+    expect(
+      parseTab(sp.get("tab") ?? undefined, sp.get("ftab") ?? undefined)
+    ).toBe("fitness");
     // The hub never re-emits it: nothing downstream reads ftab once the tab is
     // resolved, so the param simply falls off the next link.
   });
