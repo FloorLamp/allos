@@ -14,15 +14,15 @@ import { test, expect } from "@playwright/test";
 test("exercise detail shows the bodyweight-band strength standard line (#152)", async ({
   page,
 }) => {
-  // Trends → Fitness renders the Strength explorer + exercise detail panel.
-  await page.goto("/trends?tab=fitness");
+  // Training → Analyze renders the per-exercise detail panel. (#1492 moved this
+  // host: Trends → Fitness became the WINDOWED analytics lens — four sections of
+  // trend charts — and the full-history explorer that used to carry this panel is a
+  // "do" surface, so /training owns it. `?item=` pins a COVERED core lift; the
+  // default item is the strongest lift by est. 1RM, an accessory in the seed (Leg
+  // Press) that carries no barbell standard.)
+  await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
 
   const main = page.getByRole("main");
-  // Open a COVERED core lift's detail panel. The panel opens by default on the
-  // strongest lift by est. 1RM — which in the seed is an accessory (Leg Press) that
-  // carries no barbell standard — so click the Back Squat row (a dataset lift) to
-  // surface the standard line.
-  await main.getByRole("cell", { name: /Back Squat/ }).click();
   const standard = main.getByTestId("strength-standard").first(); // first-ok: asserts a strength-standard row renders — order-agnostic presence
   await expect(standard).toBeVisible();
   await expect(standard).toContainText("Strength standard");

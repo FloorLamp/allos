@@ -129,3 +129,53 @@ describe("isTabRestricted", () => {
     expect(isTabRestricted("fitness", false)).toBe(false);
   });
 });
+
+// #1492: the nested Fitness strip (`?ftab=strength|cardio|sport`) retires the same
+// way its two tab-level predecessors did — a VOCABULARY MAPPING, not a redirect.
+// The tab is four windowed sections now, so there is nothing left for the nested
+// value to select: it names Fitness, and is then ignored.
+describe("the retired nested ?ftab= (#1492)", () => {
+  it("keeps a full `?tab=fitness&ftab=…` deep link on Fitness", () => {
+    for (const ftab of ["strength", "cardio", "sport"]) {
+      expect(parseTab("fitness", ftab)).toBe("fitness");
+    }
+  });
+
+  it("names Fitness when the outer ?tab= is missing or unknown", () => {
+    expect(parseTab(undefined, "cardio")).toBe("fitness");
+    expect(parseTab("", "sport")).toBe("fitness");
+    expect(parseTab("biomarkers", "strength")).toBe("fitness");
+    // The mapping is NESTED-only: a nested value arriving as the OUTER ?tab= is
+    // just an unknown tab name, not a Fitness alias.
+    expect(parseTab("cardio")).toBe(DEFAULT_TRENDS_TAB);
+  });
+
+  it("never lets a nested value override a LIVE tab", () => {
+    // A live `?tab=` always wins: the nested param is legacy vocabulary, so it can
+    // only ever fill in for a tab that names nothing.
+    expect(parseTab("nutrition", "cardio")).toBe("nutrition");
+    expect(parseTab("body", "strength")).toBe("body");
+    // …including a retired TAB alias, which resolves through its own map first.
+    expect(parseTab("compare", "cardio")).toBe("insights");
+    expect(parseTab("vitals", "sport")).toBe("body");
+  });
+
+  it("ignores an unknown nested value", () => {
+    expect(parseTab(undefined, "mobility")).toBe(DEFAULT_TRENDS_TAB);
+    expect(parseTab(undefined, "")).toBe(DEFAULT_TRENDS_TAB);
+    expect(parseTab(undefined, undefined)).toBe(DEFAULT_TRENDS_TAB);
+  });
+
+  it("takes the FIRST value of a repeated nested param", () => {
+    expect(parseTab(undefined, ["sport", "nonsense"])).toBe("fitness");
+  });
+
+  it("resolves the whole legacy URL a nudge/bookmark carries", () => {
+    const sp = new URLSearchParams("tab=fitness&ftab=cardio");
+    expect(parseTab(sp.get("tab") ?? undefined, sp.get("ftab") ?? undefined)).toBe(
+      "fitness"
+    );
+    // The hub never re-emits it: nothing downstream reads ftab once the tab is
+    // resolved, so the param simply falls off the next link.
+  });
+});
