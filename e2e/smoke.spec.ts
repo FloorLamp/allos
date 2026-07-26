@@ -224,8 +224,15 @@ test("biological-age hero is absent for a child profile (#209)", async ({
       page,
       page.getByRole("main").getByTestId("household-chip-2")
     );
+    // The switch's own completion marker, on the heavy-page budget (#1306): the chip
+    // posts openProfileAction and redirects back to the dashboard, and settledClick's
+    // same-origin POST wait can be satisfied by an app-wide toaster poll instead of
+    // that action (#1437) — so the switch can still be in flight when this reads. The
+    // retry IS the wait; it just needs longer than the default 5s on the app's
+    // heaviest server render.
     await expect(page.getByTestId("user-menu-trigger")).toContainText(
-      "Riley (child)"
+      "Riley (child)",
+      { timeout: 15_000 }
     );
 
     // On the child's Biomarkers page the hero is not rendered at all.
