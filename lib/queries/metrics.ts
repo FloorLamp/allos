@@ -199,19 +199,27 @@ export function getMetricDailyTotals(
     origin: string | null;
     value: number;
   }[];
-  return pickOneProviderPerDay(
-    pickRowsOneOriginPerSourceDay(
-      rows,
-      (r) => r.date,
-      (r) => r.source,
-      (r) => r.origin,
-      (r) => r.value
-    ),
-    sourcePreference(metric, priority, PROVIDER_PREFERENCE)
-  )
-    .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .slice(0, limitDays)
-    .reverse();
+  return (
+    pickOneProviderPerDay(
+      pickRowsOneOriginPerSourceDay(
+        rows,
+        (r) => r.date,
+        (r) => r.source,
+        (r) => r.origin,
+        (r) => r.value
+      ),
+      sourcePreference(metric, priority, PROVIDER_PREFERENCE)
+    )
+      .sort((a, b) => (a.date < b.date ? 1 : -1))
+      // ALL_ROWS is -1 ("no limit" — that is what SQLite's `LIMIT -1` means, and the
+      // recentDates query above already reads it that way). Passing it straight to
+      // slice meant `slice(0, -1)`, which drops the LAST element of a newest-first
+      // array — i.e. every unbounded additive series silently lost its OLDEST day.
+      // Found via #1541: the metric detail page reads its full series with ALL_ROWS,
+      // so a 3-day steps history rendered as 2 readings.
+      .slice(0, limitDays < 0 ? undefined : limitDays)
+      .reverse()
+  );
 }
 
 // The most recent value for a point metric (e.g. 'height_cm'), or null.

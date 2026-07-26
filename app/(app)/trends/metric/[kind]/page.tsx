@@ -461,7 +461,7 @@ function PeriodStatsCard({
                 explicable when they legitimately differ, and what explains a
                 collapsed card when they don't. */}
             <div
-              data-testid={`period-stat-count-${s.days}`}
+              data-testid={`period-readings-${s.days}`}
               className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
             >
               {s.count === 0

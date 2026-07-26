@@ -114,7 +114,7 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     // by the WIDEST window it covers, and says how many readings it summarises.
     await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(1);
     await expect(page.getByTestId("period-stat-90")).toBeVisible();
-    await expect(page.getByTestId("period-stat-count-90")).toContainText(
+    await expect(page.getByTestId("period-readings-90")).toContainText(
       "3 readings"
     );
 
