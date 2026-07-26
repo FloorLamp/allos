@@ -1,4 +1,10 @@
 import { test, expect } from "./fixtures";
+import {
+  hydratedClick,
+  settledClick,
+  settledFill,
+  settledSelect,
+} from "./helpers";
 // Manual body-temperature entry (#800). The seed activates the built-in illness-type
 // "Illness" situation, so the dashboard Symptoms card is surfaced — and with it the
 // body-temperature quick entry (a fever log belongs on the illness card). This drives
@@ -11,14 +17,18 @@ test("logging a fever from the symptom card surfaces it flagged on the day view 
   await page.goto("/");
 
   // The temperature quick entry is collapsed by default (#857) — expand it.
-  await page.getByTestId("temp-quick-toggle").click();
+  // hydratedClick, not a bare .click(): a tap dispatched before React attaches is
+  // swallowed, the panel never opens, and the spec fails downstream at the toast
+  // with no clue why. (Observed flaking at retries:0 under worker contention.)
+  await hydratedClick(page, page.getByTestId("temp-quick-toggle"));
   const temp = page.getByTestId("temp-quick-entry");
   await expect(temp).toBeVisible();
 
   // A clear fever in °F (the default unit) — 103 °F is well above the 97–99 °F range.
-  await page.getByTestId("temp-quick-unit").selectOption("F");
-  await page.getByTestId("temp-quick-input").fill("103");
-  await page.getByTestId("temp-quick-save").click();
+  await settledSelect(page, page.getByTestId("temp-quick-unit"), "F");
+  await settledFill(page, page.getByTestId("temp-quick-input"), "103");
+  // The save posts a Server Action — await it rather than racing the toast.
+  await settledClick(page, page.getByTestId("temp-quick-save"));
 
   // End-to-end confirmation the server action wrote without error.
   await expect(page.getByText(/Temperature logged/i)).toBeVisible();

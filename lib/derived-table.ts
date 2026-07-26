@@ -10,6 +10,12 @@
 
 import { isNonOptimal, isOutOfRange } from "./reference-range";
 import { biomarkerFamily } from "./canonical-name";
+import {
+  OTHER_PANEL,
+  panelForCanonicalName,
+  panelSortOrder,
+  type PanelId,
+} from "./biomarker-panels";
 import { latestByGroup } from "./latest-per-group";
 import type { MedicalRecord } from "./types";
 import type { MedicalSortColumn, SortDirection } from "./queries/medical";
@@ -36,6 +42,17 @@ function familyGroupKey(r: {
   return biomarkerFamily(tableNameKey(r)).toLowerCase();
 }
 
+// The normalized panel a table row belongs to (#1502) — resolved from the row's
+// display identity (canonical name, else the raw name), exactly like the SQL
+// BIOMARKER_PANEL_KEY, so the merged stored+derived list filters and sorts by the
+// same answer the SQL-only list does.
+export function tablePanelId(r: {
+  name: string;
+  canonical_name: string | null;
+}): PanelId {
+  return panelForCanonicalName(tableNameKey(r));
+}
+
 // Case-insensitive compare (NOCASE-equivalent) for the name/panel sort keys.
 function nocase(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: "base" });
@@ -45,14 +62,17 @@ function nocase(a: string, b: string): number {
 // WHERE getMedicalRecords applies to stored rows, so derived analytes honor the
 // same category/panel/range/free-text filters. (The `current` filter is applied
 // later, over the COMBINED set, by prepareTableRecords.) Derived rows are always
-// category 'lab' with a null panel, so a category!=lab or any panel filter excludes
-// them by construction.
+// category 'lab', so a category!=lab filter excludes them by construction. Their
+// stored `panel` column is null, but since #1502 the panel is RESOLVED from the
+// canonical name — so a derived index now honors the facet like any stored row
+// (Non-HDL and TG/HDL are `lipids`, HOMA-IR `glycemic`, eGFR `kidney`), where the
+// old "derived rows carry no panel" rule dropped them from every panel view.
 export function filterDerivedForTable(
   derived: MedicalRecord[],
   filters: {
     category?: string;
     excludeCategories?: string[];
-    panel?: string;
+    panel?: PanelId;
     range?: RangeFilter;
     q?: string;
   }
@@ -61,7 +81,7 @@ export function filterDerivedForTable(
   return derived.filter((r) => {
     if (filters.category && r.category !== filters.category) return false;
     if (filters.excludeCategories?.includes(r.category)) return false;
-    if (filters.panel) return false; // derived rows carry no panel
+    if (filters.panel && tablePanelId(r) !== filters.panel) return false;
     if (filters.range === "oor") {
       if (!isOutOfRange(r.flag)) return false;
     } else if (filters.range === "nonoptimal") {
@@ -96,13 +116,15 @@ function comparator(
   }
   if (sort === "panel") {
     return (a, b) => {
-      const pa = a.panel,
-        pb = b.panel;
-      if ((pa == null) !== (pb == null)) return pa == null ? 1 : -1; // nulls last
-      if (pa != null && pb != null) {
-        const c = d * nocase(pa, pb);
-        if (c) return c;
-      }
+      // Mirrors medicalOrderBy's `<panelKey> = 'other', <panelOrder> <dir>` —
+      // curated clinical order, with the unresolved bucket last in BOTH
+      // directions (the successor to the old "nulls last" rule).
+      const oa = tablePanelId(a),
+        ob = tablePanelId(b);
+      if ((oa === OTHER_PANEL) !== (ob === OTHER_PANEL))
+        return oa === OTHER_PANEL ? 1 : -1;
+      const c = d * (panelSortOrder(oa) - panelSortOrder(ob));
+      if (c) return c;
       return nocase(nameOf(a), nameOf(b)) || a.id - b.id;
     };
   }
@@ -199,13 +221,12 @@ function mvComparator(
     a.profileId - b.profileId;
   if (sort === "panel") {
     return (a, b) => {
-      const pa = a.panel,
-        pb = b.panel;
-      if ((pa == null) !== (pb == null)) return pa == null ? 1 : -1; // nulls last
-      if (pa != null && pb != null) {
-        const c = d * nocase(pa, pb);
-        if (c) return c;
-      }
+      const oa = tablePanelId(a),
+        ob = tablePanelId(b);
+      if ((oa === OTHER_PANEL) !== (ob === OTHER_PANEL))
+        return oa === OTHER_PANEL ? 1 : -1;
+      const c = d * (panelSortOrder(oa) - panelSortOrder(ob));
+      if (c) return c;
       return subj(a, b) || nocase(name(a), name(b)) || a.id - b.id;
     };
   }

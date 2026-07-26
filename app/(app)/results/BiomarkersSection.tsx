@@ -27,6 +27,7 @@ import {
   BIOMARKER_CATEGORIES,
   NON_BIOMARKER_CATEGORIES,
 } from "@/lib/medical-categories";
+import { parsePanelId } from "@/lib/biomarker-panels";
 
 // The query params the Biomarkers section consumes — the former /biomarkers index
 // page's searchParams, unchanged (#1042 phase 5 moved the content, not the
@@ -56,7 +57,11 @@ function parseFilters(searchParams: BiomarkersSearchParams) {
   const category = BIOMARKER_CATEGORIES.includes(searchParams.category as never)
     ? searchParams.category
     : undefined;
-  const panel = searchParams.panel?.trim() || undefined;
+  // `?panel=` is a normalized panel SLUG (#1502), validated against the closed
+  // PanelId set: an unknown/legacy value (an old bookmark carrying the free-text
+  // "Quest Diagnostics" the facet used to emit) is IGNORED rather than filtering
+  // the table to nothing, and a typo can never fork a group.
+  const panel = parsePanelId(searchParams.panel);
   const range =
     searchParams.range === "oor"
       ? ("oor" as const)

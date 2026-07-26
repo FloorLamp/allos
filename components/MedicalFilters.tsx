@@ -1,18 +1,24 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { IconX } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
 import RecordSearch from "./RecordSearch";
 import RangeFilterSelect from "./RangeFilterSelect";
 import CategoryFilterSelect from "./CategoryFilterSelect";
+import PanelFilterSelect from "./PanelFilterSelect";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import type { PanelId } from "@/lib/biomarker-panels";
 
-// Filter bar for the medical records table: a category dropdown, the All/
-// Non-optimal/Out-of-range "show" filter, and (when set) a clearable panel chip.
+// Filter bar for the medical records table: a category dropdown, the clinical
+// PANEL dropdown (#1502), and the All/Non-optimal/Out-of-range "show" filter.
 // Each control navigates via query params, preserving the others (including the
 // active sort, which lives in `sort`/`dir`).
+//
+// The panel control was a clearable CHIP that only ever appeared after clicking a
+// Panel cell — the right affordance when the value was an unpredictable free-text
+// vendor string with no enumerable set. With a closed taxonomy it becomes a
+// first-class dropdown beside Category: the facet is now discoverable ("show my
+// Lipids") instead of reachable only by finding a row that happens to carry it.
 export default function MedicalFilters({
   category,
   panel,
@@ -21,7 +27,7 @@ export default function MedicalFilters({
   current,
 }: {
   category?: string;
-  panel?: string;
+  panel?: PanelId;
   range?: string;
   q?: string;
   current?: boolean;
@@ -54,6 +60,8 @@ export default function MedicalFilters({
         categories={BIOMARKER_CATEGORIES}
       />
 
+      <PanelFilterSelect value={panel} />
+
       <RangeFilterSelect value={range} />
 
       <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -67,17 +75,6 @@ export default function MedicalFilters({
         />
         <span className="font-medium">Current values only</span>
       </label>
-
-      {panel ? (
-        <Link
-          href={qs({ panel: undefined })}
-          className="badge inline-flex items-center gap-1 bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
-          title="Clear panel filter"
-        >
-          Panel: {panel}
-          <IconX className="h-4 w-4" />
-        </Link>
-      ) : null}
     </div>
   );
 }

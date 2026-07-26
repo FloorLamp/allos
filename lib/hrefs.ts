@@ -34,6 +34,7 @@
 //     and validates those directly.
 
 import type { Route } from "next";
+import type { PanelId } from "./biomarker-panels";
 import type { IntegrationId } from "./types/integrations";
 import type { SupplementKind } from "./types/intake";
 
@@ -131,6 +132,15 @@ export function biomarkerViewHref(
   return canonical && name
     ? `/biomarkers/view?name=${encodeURIComponent(name)}`
     : BIOMARKERS_LIST_HREF;
+}
+
+// The biomarkers list FILTERED to one normalized panel (#1502). A rule-carrying
+// helper because the `?panel=` facet now encodes a controlled SLUG (not the old
+// free-text heading) on the post-#1079 list route, and two lanes emit it — the
+// Panel cell in BiomarkersTable and the "see the whole panel" link on biomarker
+// detail. One encoding so they can't drift onto different routes or param shapes.
+export function panelFilterHref(panel: PanelId): AppRoute {
+  return `/results/biomarkers?panel=${encodeURIComponent(panel)}`;
 }
 
 // The biomarker ADD-FORM deep link: Results › Biomarkers with the add form

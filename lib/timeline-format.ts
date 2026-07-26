@@ -1,4 +1,5 @@
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
+import { OTHER_PANEL, panelLabel, parsePanelId } from "./biomarker-panels";
 import {
   biomarkerViewHref,
   importHref,
@@ -419,6 +420,23 @@ export function countTone(
   nonoptimalCount: number
 ): TimelineEvent["tone"] {
   return abnormalCount ? "bad" : nonoptimalCount ? "warn" : "default";
+}
+
+// Display name for a grouped medical event (#1502). `panelId` is the normalized
+// panel slug the SQL resolved from the group's canonical names; `fallback` is the
+// pre-#1502 key (the stored free-text panel, else the record category). A known
+// panel renders its curated label ("Lipids", "Complete blood count"); the reserved
+// `other` slug — an un-canonicalized analyte with no panel to claim — keeps the
+// old behavior verbatim so nothing regresses into a meaningless "Other results".
+// A blank fallback (a category-less row) degrades to "Lab" rather than an empty
+// title. Pure, so the same rule is testable without a DB.
+export function medicalGroupLabel(
+  panelId: string,
+  fallback: string | null | undefined
+): string {
+  const known = parsePanelId(panelId);
+  if (known && known !== OTHER_PANEL) return panelLabel(known);
+  return fallback?.trim() || "Lab";
 }
 
 // Destination for a grouped medical/lab panel event: the source document when

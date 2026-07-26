@@ -1,6 +1,11 @@
 import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
 import { biomarkerFamily, BIOMARKER_FAMILIES } from "../canonical-name";
+import {
+  panelKeyOfExpr,
+  panelOrderOfPanelExpr,
+  type PanelId,
+} from "../biomarker-panels";
 import type {
   CanonicalBiomarker,
   MedicalDocument,
@@ -53,7 +58,11 @@ export interface MedicalRecordFilters {
   // browser — meds live on the document view + Supplements & Meds). Rendered as a
   // parameterized `category NOT IN (…)`; an empty/absent list adds no clause.
   excludeCategories?: string[];
-  panel?: string;
+  // The NORMALIZED panel slug (#1502), never the stored free-text heading — the
+  // `?panel=` param is a clinical facet ("show my Lipids"), not a lab-vendor
+  // filter. Rows match on the panel RESOLVED from their canonical name, so the
+  // facet works regardless of what any document's section heading said.
+  panel?: PanelId;
   // Flag-based filter: out-of-range only, or all non-optimal rows.
   range?: RangeFilter;
   // Free-text search matched against name and panel.
@@ -105,6 +114,17 @@ function familyKeyOfExpr(nameExpr: string): string {
 export function biomarkerFamilyKey(alias = ""): string {
   return familyKeyOfExpr(biomarkerNameKey(alias));
 }
+// The normalized PANEL slug as a SQL expression (#1502) — the finite-preimage
+// (#394) realization of panelForCanonicalName(), built over the same canonical-or-
+// raw display-name key the family grouping uses, from the SAME curated assignment
+// the JS resolver reads (lib/biomarker-panels.ts). A name the taxonomy doesn't know
+// falls through to 'other'. Pass a table alias for a self-join.
+export function biomarkerPanelKey(alias = ""): string {
+  return panelKeyOfExpr(biomarkerNameKey(alias));
+}
+const BIOMARKER_PANEL_KEY = biomarkerPanelKey();
+// The panel's curated sort order, over the slug the expression above resolves.
+const BIOMARKER_PANEL_ORDER = panelOrderOfPanelExpr(BIOMARKER_PANEL_KEY);
 const BIOMARKER_FAMILY_KEY = biomarkerFamilyKey();
 // The same family identity computed over the SAVE store's key column (saved_items.key
 // where kind='biomarker' — the canonical analyte name, #1456), so a save keys on the
@@ -203,8 +223,12 @@ function medicalOrderBy(
   const name = `${BIOMARKER_NAME_KEY} COLLATE NOCASE`;
   // Every non-name sort tie-breaks on the canonical name ascending, then id.
   if (sort === "name") return `${name} ${d}, date DESC, id DESC`;
+  // Panel sort orders by the RESOLVED panel's curated order (#1502) — clinical
+  // sequence, not the alphabetical accident of a slug or a vendor string. The
+  // unresolved `other` bucket stays last in BOTH directions, exactly like the
+  // pre-#1502 "nulls last" rule it replaces.
   if (sort === "panel")
-    return `panel IS NULL, panel COLLATE NOCASE ${d}, ${name}, id`;
+    return `${BIOMARKER_PANEL_KEY} = 'other', ${BIOMARKER_PANEL_ORDER} ${d}, ${name}, id`;
   if (sort === "date") return `date ${d}, ${name}, id`;
   return fallback;
 }
@@ -249,7 +273,12 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
     args.push(...filters.excludeCategories);
   }
   if (filters.panel) {
-    where.push("panel = ?");
+    // Resolved-panel equality, not `panel = ?` on the stored heading. The slug is
+    // a validated PanelId (parsePanelId at the boundary) and the expression is
+    // built from hardcoded constants, so inlining it is injection-safe; it also
+    // makes `?panel=other` mean "analytes the taxonomy doesn't know", which a
+    // bound stored-column compare could never express.
+    where.push(`${BIOMARKER_PANEL_KEY} = ?`);
     args.push(filters.panel);
   }
   const rangeClause = rangeFilterClause(filters.range);
