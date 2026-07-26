@@ -4,6 +4,41 @@
       "date": "2026-07-26",
       "entries": [
         {
+          "pr": 1574,
+          "title": "Search results take you to the thing you searched for",
+          "body": "Picking an activity from the command palette now opens that day's Timeline instead of the generic Training page (which, if you were already on it, made the palette look broken — nothing changed on screen). A medication result opens that medication's page, a vaccine result opens its per-vaccine page with your dose history and schedule, and a goal lands on the goals tab. Biomarker names also got a cleanup: rows now show the clean catalog name (\"Uric Acid\") instead of the lab's shouting case (\"URIC ACID\") wherever the reading is the point — import-review and \"as reported\" views deliberately keep the document's original text.",
+          "kind": "fix",
+          "issues": [1568, 1501]
+        },
+        {
+          "pr": 1572,
+          "title": "Trends ties off: annotation controls in the context bar, complete saved views, honest volume bars",
+          "body": "The event/protocol-window toggles moved into the context bar's expanded controls — one set for the whole page instead of a repeated row above each chart, returning about 60px on phones. A saved view now captures everything about where you were, including the Body tab's tiles-vs-all layout, and views saved under the old tab names keep working. The range pills scroll with a fade when they overflow a phone screen, training volume draws as bars instead of a noisy line, and the normalize toggle is finally finger-sized.",
+          "kind": "feature",
+          "issues": [1493, 1485]
+        },
+        {
+          "pr": 1569,
+          "title": "Your labs, organized by panel — everywhere",
+          "body": "Allos now knows which clinical panel every catalog biomarker belongs to — Lipids, Complete blood count, Thyroid, and thirty-one more. The Timeline titles a lab draw by what was measured (\"Lipids results — 6 results, 1 out of range\") instead of the lab company's name; the Biomarkers list can filter by panel as a real clinical facet; and each biomarker's detail page offers the rest of its panel one tap away. Readings the catalog doesn't recognize keep their original grouping.",
+          "kind": "feature",
+          "issues": [1502]
+        },
+        {
+          "pr": 1566,
+          "title": "Trends charts open in the order that matters for you",
+          "body": "The Body tab's default chart order now starts from who the profile is: growth charts lead for a child, the series your active conditions watch (blood pressure for hypertension, oxygen for asthma) move up, a metric with a live goal rises, and empty charts can never sit above charts with data. Nothing reshuffles day to day — the order comes from stable facts, not the latest sync — and once you drag your own arrangement, it's yours permanently.",
+          "kind": "feature",
+          "issues": [1490]
+        },
+        {
+          "pr": 1564,
+          "title": "Nutrition gets one workspace for food and supplements",
+          "body": "The Nutrition page was redesigned around a shared Food | Supplements workspace: the same recent-day and time-slot controls on both tabs, compact date menus on phones, supplement add/edit in a focused modal, and date-specific protein and fiber feedback with weekly summaries. Meals you log for an earlier day now stay on that day's slot. Supplement schedules also stopped showing newly added doses on days before the dose existed — history stays honest.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
           "pr": 1561,
           "title": "Phone screens: metric details, the view strip, and Timeline all slim down",
           "body": "Three phone-size cleanups. A metric's detail page no longer shows three identical stat cards when you have under a week of data — coincident windows collapse into one honestly-labelled card, the “Change” stat names the actual date it compares against, a caption notes when your selected range outruns the data, and step/hydration/calorie charts now start their axis at zero. The view strip at the top of list pages drops its card frame on phones, returning about 30px of every screen to content. And the Timeline: the day switcher stays pinned while you scroll, the filter block collapses to a single summary line, and symptom entry sits behind “+ Log symptom” — opening automatically on days that already have symptoms or an active illness.",
