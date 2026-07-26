@@ -191,6 +191,83 @@ export default function SupplementForm({
     }
   }
 
+  const advancedFields = (
+    <>
+      <div>
+        <label className="label" htmlFor={`supp-priority-${fid}`}>
+          Priority
+        </label>
+        <select
+          id={`supp-priority-${fid}`}
+          name="priority"
+          defaultValue={s?.priority ?? "high"}
+          className="input"
+        >
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {PRIORITY_LABELS[p]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="label" htmlFor={`supp-stack-${fid}`}>
+          Stack (optional)
+        </label>
+        <input
+          id={`supp-stack-${fid}`}
+          name="stack"
+          defaultValue={s?.stack ?? ""}
+          className="input"
+          placeholder="e.g. D3 + K2"
+        />
+      </div>
+
+      <div>
+        <label className="label">Brand</label>
+        <SupplementCombobox
+          name="brand"
+          ariaLabel="Brand"
+          value={brand}
+          onChange={setBrand}
+          options={SUPPLEMENT_BRANDS}
+          placeholder="e.g. Thorne"
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor={`supp-product-${fid}`}>
+          Product
+        </label>
+        <input
+          id={`supp-product-${fid}`}
+          name="product"
+          defaultValue={s?.product ?? ""}
+          className="input"
+          placeholder="e.g. Vitamin D/K2"
+        />
+      </div>
+
+      <CriticalEscalation
+        fid={fid}
+        supplement={s}
+        critical={critical}
+        setCritical={setCritical}
+      />
+
+      <RefillTracking fid={fid} supplement={s} />
+
+      <KeepApartPairsEditor
+        pairRows={pairRows}
+        setPairRows={setPairRows}
+        others={others}
+      />
+
+      <IntakeNotesField fid={fid} defaultValue={s?.notes} />
+    </>
+  );
+
   return (
     <form ref={formRef} action={handle} className="grid gap-4 sm:grid-cols-2">
       {s && <input type="hidden" name="id" value={s.id} />}
@@ -249,37 +326,6 @@ export default function SupplementForm({
         </select>
       </div>
 
-      <div>
-        <label className="label" htmlFor={`supp-priority-${fid}`}>
-          Priority
-        </label>
-        <select
-          id={`supp-priority-${fid}`}
-          name="priority"
-          defaultValue={s?.priority ?? "high"}
-          className="input"
-        >
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {PRIORITY_LABELS[p]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="label" htmlFor={`supp-stack-${fid}`}>
-          Stack (optional)
-        </label>
-        <input
-          id={`supp-stack-${fid}`}
-          name="stack"
-          defaultValue={s?.stack ?? ""}
-          className="input"
-          placeholder="e.g. D3 + K2"
-        />
-      </div>
-
       {condition === "situational" && (
         <div className="sm:col-span-2">
           <label className="label" htmlFor={`supp-situation-${fid}`}>
@@ -332,54 +378,28 @@ export default function SupplementForm({
           Held (not due) while this situation is active — you can still log it.
         </p>
       </div>
-
-      <div>
-        <label className="label">Brand</label>
-        <SupplementCombobox
-          name="brand"
-          ariaLabel="Brand"
-          value={brand}
-          onChange={setBrand}
-          options={SUPPLEMENT_BRANDS}
-          placeholder="e.g. Thorne"
-        />
-      </div>
-
-      <div>
-        <label className="label" htmlFor={`supp-product-${fid}`}>
-          Product
-        </label>
-        <input
-          id={`supp-product-${fid}`}
-          name="product"
-          defaultValue={s?.product ?? ""}
-          className="input"
-          placeholder="e.g. Vitamin D/K2"
-        />
-      </div>
-
-      <CriticalEscalation
-        fid={fid}
-        supplement={s}
-        critical={critical}
-        setCritical={setCritical}
-      />
-
-      <RefillTracking fid={fid} supplement={s} />
-
       <DoseRowsEditor
         doses={doses}
         setDoses={setDoses}
         dosageOptions={entry?.dosages ?? []}
       />
 
-      <KeepApartPairsEditor
-        pairRows={pairRows}
-        setPairRows={setPairRows}
-        others={others}
-      />
-
-      <IntakeNotesField fid={fid} defaultValue={s?.notes} />
+      {s ? (
+        advancedFields
+      ) : (
+        <details
+          data-testid="supplement-more-options"
+          className="group sm:col-span-2"
+        >
+          <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750">
+            <span>More options</span>
+            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+              Priority, brand, supply, interactions, notes
+            </span>
+          </summary>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">{advancedFields}</div>
+        </details>
+      )}
 
       {error && (
         <p

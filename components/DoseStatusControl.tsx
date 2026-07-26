@@ -178,8 +178,8 @@ export default function DoseStatusControl({
           isTaken
             ? "cursor-default border-brand-600 bg-brand-600 text-white"
             : isSkipped
-              ? "border-black/5 bg-slate-50 text-transparent dark:border-white/5 dark:bg-ink-900/60"
-              : "border-black/10 text-transparent hover:border-brand-400 dark:border-white/10"
+              ? "border-black/5 bg-slate-50 text-slate-300 hover:text-brand-500 dark:border-white/5 dark:bg-ink-900/60 dark:text-slate-600 dark:hover:text-brand-400"
+              : "border-black/10 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-white/10 dark:text-slate-400 dark:hover:text-brand-400"
         }`
       : `${compact ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${
           isTaken

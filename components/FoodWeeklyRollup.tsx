@@ -1,18 +1,15 @@
 import type { GroupServingTotal } from "@/lib/food-log";
 import { EmptyState } from "@/components/ui";
-import FoodGroupIcon from "@/components/FoodGroupIcon";
+import FoodGroupIcon, {
+  FOOD_GROUP_TIER_TINT,
+} from "@/components/FoodGroupIcon";
 
 // Presentational weekly food-servings rollup (issue #579). A pure formatter over the
 // ONE computation (getWeeklyFoodRollup → rollupServings), shared by the /nutrition
-// card and the Trends → Nutrition tab so they can't disagree. Servings per group this
-// week, encourage-first (the catalog order the rollup already returns). The food-group
-// icon (#591) is tinted by tier, so a single glyph conveys both the group and its tier.
-
-const TIER_TINT: Record<string, string> = {
-  encourage: "text-emerald-500",
-  neutral: "text-slate-400",
-  limit: "text-amber-500",
-};
+// card and the Trends → Nutrition tab so they can't disagree. The summary orders groups
+// by servings descending, then alphabetically for ties, so its hierarchy is immediately
+// legible instead of exposing the catalog's internal order. The food-group icon (#591)
+// is tinted by tier, so a single glyph conveys both the group and its tier.
 
 export default function FoodWeeklyRollup({
   rollup,
@@ -28,27 +25,28 @@ export default function FoodWeeklyRollup({
       </div>
     );
   }
+  const orderedRollup = [...rollup].sort(
+    (a, b) =>
+      b.servings - a.servings ||
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
+
   return (
     <ul data-testid={testid} className="space-y-1.5">
-      {rollup.map((g) => (
+      {orderedRollup.map((g) => (
         <li
           key={g.slug}
           data-testid={`rollup-${g.slug}`}
-          className="flex items-center justify-between gap-3 text-sm"
+          className="flex items-center gap-2 text-sm"
         >
-          <span className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
-            <FoodGroupIcon
-              slug={g.slug}
-              className={`h-4 w-4 shrink-0 ${TIER_TINT[g.tier] ?? "text-slate-400"}`}
-            />
-            {g.name}
-          </span>
-          <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+          <FoodGroupIcon
+            slug={g.slug}
+            className={`h-4 w-4 shrink-0 ${FOOD_GROUP_TIER_TINT[g.tier]}`}
+          />
+          <span className="w-5 shrink-0 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">
             {g.servings % 1 === 0 ? g.servings : g.servings.toFixed(1)}
-            <span className="ml-1 text-xs font-normal text-slate-400">
-              {g.servings === 1 ? "serving" : "servings"}
-            </span>
           </span>
+          <span className="text-slate-700 dark:text-slate-200">{g.name}</span>
         </li>
       ))}
     </ul>

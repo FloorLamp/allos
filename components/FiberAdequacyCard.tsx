@@ -1,9 +1,4 @@
-import {
-  fiberIntakeSummary,
-  fiberTargetSummary,
-  fiberAdequacyTitle,
-  type FiberAdequacy,
-} from "@/lib/fiber";
+import type { FiberAdequacy } from "@/lib/fiber";
 import FiberGauge from "./FiberGauge";
 
 // The fiber ROW of the "Today's nutrients" card (issues #976, #980 item 2). A pure
@@ -21,12 +16,21 @@ const STATUS_ACCENT: Record<string, string> = {
   above: "border-l-slate-300 dark:border-l-slate-600",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  below: "Below goal",
+  within: "In range",
+  above: "Above range",
+};
+
 export default function FiberAdequacyCard({
   adequacy,
+  periodLabel,
 }: {
   adequacy: FiberAdequacy;
+  // Weekly cards use the default "Avg"; historical day views name their day.
+  periodLabel?: string;
 }) {
-  const { intake, target, status } = adequacy;
+  const { intake, status } = adequacy;
   return (
     <div
       data-testid="fiber-adequacy"
@@ -34,41 +38,15 @@ export default function FiberAdequacyCard({
       data-basis={intake.basis}
       className={`border-l-4 pl-3 ${STATUS_ACCENT[status] ?? STATUS_ACCENT.within}`}
     >
-      <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-        Fiber
-      </h3>
-      <FiberGauge adequacy={adequacy} />
-      <p
-        data-testid="fiber-adequacy-caption"
-        className="mt-2 text-xs text-slate-500 dark:text-slate-400"
-      >
-        {fiberAdequacyTitle(adequacy)}
-      </p>
-      <dl className="mt-3 space-y-1.5 text-sm">
-        <div className="flex justify-between gap-3">
-          <dt className="text-slate-500 dark:text-slate-400">Intake</dt>
-          <dd
-            data-testid="fiber-intake"
-            className="text-right font-medium tabular-nums text-slate-800 dark:text-slate-100"
-          >
-            {fiberIntakeSummary(intake)}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-slate-500 dark:text-slate-400">Target</dt>
-          <dd
-            data-testid="fiber-target"
-            className="text-right font-medium tabular-nums text-slate-800 dark:text-slate-100"
-          >
-            {fiberTargetSummary(target)}
-          </dd>
-        </div>
-      </dl>
-      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        {intake.basis !== "tracked"
-          ? "A floor from your logged food-group servings plus any fiber supplements you confirmed — untracked foods add more. "
-          : ""}
-      </p>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+          Fiber
+        </h3>
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+          {STATUS_LABEL[status]}
+        </span>
+      </div>
+      <FiberGauge adequacy={adequacy} periodLabel={periodLabel} />
     </div>
   );
 }

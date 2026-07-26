@@ -75,18 +75,19 @@ test("a just-added medication shows no adherence percentage, not 0% (#1442)", as
   // come due yet, so there is no follow-through to report.
   const freshRow = medicationRow(page, name);
   await expect(freshRow).toBeVisible();
-  await expect(freshRow).not.toContainText("% adherence");
-  await expect(freshRow).not.toContainText("0%");
+  // Copy-agnostic: no percentage of ANY phrasing (the summary copy changed in the
+  // nutrition redesign — "N% adherence" became "… due days followed · N%").
+  await expect(freshRow).not.toContainText(/\d+%/);
 
   // Control: the seeded med that DOES have logged history still reports its
   // percentage, so the assertion above is about this med's cold start and not a
   // selector that stopped matching or a line that vanished for everyone.
   await expect(medicationRow(page, SEEDED_MED_WITH_HISTORY)).toContainText(
-    /% adherence/
+    /\d+%/
   );
 
   // Still no percentage on a fresh server render (the strip is server-computed, so a
   // reload is the honest check that the gather — not just the first paint — is fixed).
   await page.reload();
-  await expect(medicationRow(page, name)).not.toContainText("% adherence");
+  await expect(medicationRow(page, name)).not.toContainText(/\d+%/);
 });

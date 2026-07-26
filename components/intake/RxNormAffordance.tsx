@@ -2,8 +2,9 @@
 
 import type { RxcuiState } from "@/components/intake/useIntakeRxcui";
 
-// The RxNorm confirm affordance shared by both intake forms (#846): "Find RxNorm
-// code" → candidate list → confirm, or the confirmed-code chip with Clear. The lookup
+// The standardized-ingredient affordance shared by both intake forms (#846): a
+// plain-language lookup → candidate list → confirm, or the confirmed RxNorm code with
+// Clear. The lookup
 // is the only network call in the interaction feature and sends just the term (#144).
 // Presentational over the shared useIntakeRxcui hook; the form owns the hidden
 // `rxcui`/`rxcui_ingredients` inputs.
@@ -46,7 +47,7 @@ export default function RxNormAffordance({
             onClick={() => void rx.find(name)}
             disabled={rx.loading || !name.trim()}
           >
-            {rx.loading ? "Looking up…" : "Find RxNorm code"}
+            {rx.loading ? "Looking up…" : "Match standardized ingredient"}
           </button>
         )}
       </div>

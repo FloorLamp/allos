@@ -189,7 +189,15 @@ export function daysBetweenDateStr(a: string, b: string): number | null {
   return Math.round((tb - ta) / 86400000);
 }
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const WEEKDAYS_SHORT = [
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+] as const;
 
 // Weekday (0=Sun … 6=Sat) of an instant in the given timezone.
 export function weekdayInTz(tz: string, d: Date = new Date()): number {
@@ -197,7 +205,7 @@ export function weekdayInTz(tz: string, d: Date = new Date()): number {
     timeZone: tz,
     weekday: "short",
   }).format(d);
-  return WEEKDAYS.indexOf(short);
+  return WEEKDAYS_SHORT.indexOf(short as (typeof WEEKDAYS_SHORT)[number]);
 }
 
 // Hour of day (0–23) of an instant in the given timezone. Some ICU builds emit

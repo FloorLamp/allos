@@ -1,6 +1,7 @@
 // Shared slot-derivation over the food_log_events ledger (issues #950, #1016). This is
-// the ONE code path that decides which food WINDOW a tap belongs to — from its logged_at
-// instant, in the profile's timezone + configured slot boundaries — and it is consumed by
+// the ONE code path that decides which food WINDOW an event belongs to — an explicit
+// meal_slot when present, otherwise its logged_at instant in the profile's timezone +
+// configured slot boundaries — and it is consumed by
 // BOTH:
 //   • the #950 slot RANKING signal (getFoodGroupLogOrder's slot occurrences), and
 //   • the #1016 slot-scoped nudge button COUNTS (getFoodSlotServingsOnDate).
@@ -16,21 +17,24 @@ import {
   type FoodSlotBoundaries,
 } from "./food-slot";
 
-// A food_log_events row as the ranking/count read it: the group_key, the logged DAY, and
-// the tap instant (ISO-8601 UTC) the window is derived from.
+// A food_log_events row as the ranking/count read it: the group_key, logged day, tap
+// instant, and optional explicit consumed window.
 export interface FoodLedgerEvent {
   name: string; // group_key
   date: string; // YYYY-MM-DD (the logged day)
   logged_at: string; // ISO-8601 UTC instant of the tap
+  meal_slot?: FoodSlot | null; // explicit consumed window; null on legacy/tap-only rows
 }
 
-// The food window a tap instant falls in, in the profile's tz + boundaries. The single
-// derivation both surfaces call.
+// The event's food window. An explicit consumed slot wins; legacy/tap-only events derive
+// it from the tap instant in the profile's timezone and boundaries.
 export function foodEventWindow(
   loggedAt: string,
   tz: string,
-  boundaries: FoodSlotBoundaries
+  boundaries: FoodSlotBoundaries,
+  explicitSlot?: FoodSlot | null
 ): FoodSlot {
+  if (explicitSlot) return explicitSlot;
   const { hhmm } = zonedDateParts(tz, new Date(loggedAt));
   return foodSlotForHhmm(hhmm, boundaries);
 }
@@ -44,7 +48,7 @@ export function foodEventsInWindow(
   window: FoodSlot
 ): FoodLedgerEvent[] {
   return events.filter(
-    (e) => foodEventWindow(e.logged_at, tz, boundaries) === window
+    (e) => foodEventWindow(e.logged_at, tz, boundaries, e.meal_slot) === window
   );
 }
 
@@ -64,7 +68,8 @@ export function slotServingCounts(
   const m = new Map<string, number>();
   for (const e of events) {
     if (e.date !== date) continue;
-    if (foodEventWindow(e.logged_at, tz, boundaries) !== window) continue;
+    if (foodEventWindow(e.logged_at, tz, boundaries, e.meal_slot) !== window)
+      continue;
     m.set(e.name, (m.get(e.name) ?? 0) + 1);
   }
   return m;

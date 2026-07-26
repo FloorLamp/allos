@@ -2,15 +2,17 @@
 
 import { useEffect, useRef } from "react";
 import { useShellChrome } from "./useShellChrome";
+import ShellTabStrip from "./ShellTabStrip";
 
 // The app shell's sticky top chrome (issue #1416, sections B + C).
 //
-// ONE sticky element holds BOTH the phone top bar (`children` — MobileNav's
-// md:hidden bar) and the multi-profile view banner (`banner` —
-// ProfileViewStrip), so they hide and reveal as a single unit and can never
-// drift apart vertically. That is also why the banner moved out of the content
-// flow: on a phone it used to scroll away, and "whose data am I looking at?" is
-// exactly the question you need answered mid-scroll, not only at the top.
+// ONE sticky element holds the phone top bar (`children` — MobileNav's
+// md:hidden bar), the multi-profile view banner (`banner` — ProfileViewStrip),
+// and any route-registered mobile tab-first strip. They hide and reveal as a
+// single unit and can never drift apart vertically. That is also why the banner
+// moved out of the content flow: on a phone it used to scroll away, and "whose
+// data am I looking at?" is exactly the question you need answered mid-scroll,
+// not only at the top.
 //
 // Hide/reveal is transform-only: the element keeps its box (no layout thrash,
 // no reflow of the page under it) and slides up by its own height MINUS the
@@ -83,6 +85,7 @@ export default function ShellChrome({
           </div>
         </div>
       )}
+      <ShellTabStrip />
     </div>
   );
 }

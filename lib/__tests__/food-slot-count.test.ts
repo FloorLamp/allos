@@ -40,6 +40,12 @@ describe("foodEventWindow", () => {
   it("puts a boundary-time (11:00) tap in Midday, consistently for ranking and count", () => {
     expect(foodEventWindow(`${DAY}T11:00:00Z`, TZ, BOUNDS)).toBe("Midday");
   });
+
+  it("prefers an explicit backfilled meal over the later tap time", () => {
+    expect(foodEventWindow(`${DAY}T19:00:00Z`, TZ, BOUNDS, "Morning")).toBe(
+      "Morning"
+    );
+  });
 });
 
 describe("slotServingCounts (#1016)", () => {
@@ -82,5 +88,22 @@ describe("slotServingCounts (#1016)", () => {
     expect(
       slotServingCounts(evs, TZ, BOUNDS, "Midday", DAY).get("fatty_fish")
     ).toBe(2);
+  });
+
+  it("groups an explicitly backfilled meal by meal_slot, not logged_at", () => {
+    const evs: FoodLedgerEvent[] = [
+      {
+        name: "berries",
+        date: "2026-07-11",
+        logged_at: `${DAY}T19:00:00Z`,
+        meal_slot: "Morning",
+      },
+    ];
+    expect(
+      slotServingCounts(evs, TZ, BOUNDS, "Morning", "2026-07-11").get("berries")
+    ).toBe(1);
+    expect(
+      slotServingCounts(evs, TZ, BOUNDS, "Evening", "2026-07-11").get("berries")
+    ).toBeUndefined();
   });
 });
