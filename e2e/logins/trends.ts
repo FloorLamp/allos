@@ -29,3 +29,22 @@ export const TRENDS_CURATE_PROFILE = "Trends Curate (e2e)";
 // A canonical analyte this profile has NO readings for — the never-measured saved
 // tile. (Profile 1 seeds its own; this one must not depend on that.)
 export const TRENDS_CURATE_EMPTY_ANALYTE = "Ferritin";
+
+// ── Compare folds into Insights (issue #1489) ────────────────────────────────
+// A dedicated, TRAINING-RESTRICTED profile (birthdate ~10y ago, under the
+// instance gate of 13 seeded by e2e/seed/coverage-gaps.ts) carrying weight +
+// resting-HR readings on shared dates, so the compare overlay actually draws for a
+// minor. It proves the #1489 gate move: the Insights tab is now offered to a
+// restricted profile, carrying ONLY its age-neutral compare section.
+//
+// Dedicated ON PURPOSE (#868): the other restricted profile — the seeded ~18-month
+// "Riley (child)" — has no second metric to overlay, and this fixture also stores a
+// saved view, which on a shared profile would put a stray chip in the Views bar
+// every other Trends spec reads. Read-only in its spec (navigation + applying a
+// view, which writes nothing), so --repeat-each stays clean.
+export const E2E_LOGIN_TRENDS_COMPARE = "e2e_trends_compare";
+export const TRENDS_COMPARE_PROFILE = "Trends Compare (e2e)";
+// A saved view stored with the RETIRED `tab: "compare"` — a legacy trend_views row,
+// exactly as one saved before #1489 looks. Applying it must still land on Insights
+// with the pair selected.
+export const TRENDS_COMPARE_VIEW = "Legacy compare (e2e)";

@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 
-// Compare-tab axis policy (issue #400). The tab copy promises "Different units
+// Compare axis policy (issue #400) — RE-POINTED to the Insights tab by #1489,
+// which folded Compare out of a tab of its own into a section of Insights. Same
+// layer, same params, same fixtures; only the ?tab= name changed (?tab=compare
+// still resolves here through the alias — see trends-compare-fold.mobile.spec.ts).
+// The section copy promises "Different units
 // get their own axis"; the code used to render a second, independently
 // auto-scaled Y axis for ANY non-normalized pair — so two same-unit series (LDL
 // vs HDL, both mg/dL) got two contradictory scales and appeared to cross. The fix:
@@ -11,10 +15,10 @@ import { test, expect } from "@playwright/test";
 // Fixtures: the seed plants weekly body_metrics (weight in kg, resting HR in bpm)
 // plus workout volume (kg). weight vs volume share the weight unit; weight vs
 // resting HR do not.
-test.describe("Compare tab axis policy", () => {
+test.describe("Compare axis policy", () => {
   test("same-unit series share one axis (#400)", async ({ page }) => {
     await page.goto(
-      "/trends?tab=compare&cmpA=metric:weight&cmpB=metric:volume"
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:volume"
     );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
@@ -23,7 +27,7 @@ test.describe("Compare tab axis policy", () => {
 
   test("different-unit series keep the dual axis (#400)", async ({ page }) => {
     await page.goto(
-      "/trends?tab=compare&cmpA=metric:weight&cmpB=metric:resting_hr"
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:resting_hr"
     );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
@@ -34,7 +38,7 @@ test.describe("Compare tab axis policy", () => {
     page,
   }) => {
     await page.goto(
-      "/trends?tab=compare&cmpA=metric:weight&cmpB=metric:resting_hr&cmpn=1"
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:resting_hr&cmpn=1"
     );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
@@ -45,7 +49,7 @@ test.describe("Compare tab axis policy", () => {
   // index-spaced category axis, so an irregular series' gaps render proportionally.
   test("date axis is time-scaled (#402)", async ({ page }) => {
     await page.goto(
-      "/trends?tab=compare&cmpA=metric:weight&cmpB=metric:volume"
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:volume"
     );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
@@ -63,7 +67,7 @@ test.describe("Chart legend (#1445)", () => {
     page,
   }) => {
     await page.goto(
-      "/trends?tab=compare&cmpA=metric:weight&cmpB=metric:resting_hr"
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:resting_hr"
     );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();

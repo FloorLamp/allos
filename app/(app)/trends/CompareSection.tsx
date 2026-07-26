@@ -19,12 +19,18 @@ import type { DateRange } from "@/lib/timeline-format";
 import CompareControls from "@/components/CompareControls";
 import CompareOverlay from "@/components/CompareOverlay";
 
-// The Trends hub's Compare tab: overlay two series on one time axis to eyeball
+// The Trends hub's Compare view: overlay two series on one time axis to eyeball
 // correlation. The A/B picks (cmpA/cmpB query params) and the normalize toggle
 // (cmpn) round-trip through CompareControls; this server component resolves each
 // key to a windowed series, aligns them with the pure lib/trends-compare helpers,
 // and renders a dual-axis (or normalized single-axis) overlay plus a Pearson r
 // read-out.
+//
+// #1489 folded it out of a tab of its own and into a SECTION of Insights (rendered
+// by InsightsSection). It MOVED, it did not change: same params, same dual-axis
+// (#400) / time-axis (#402) / normalized behaviour, same saved views. It is
+// age-NEUTRAL — a training-restricted profile sees this section (with the gated
+// series already filtered out of `listCompareOptions`) and nothing else on the tab.
 export default async function CompareSection({
   range,
   a,

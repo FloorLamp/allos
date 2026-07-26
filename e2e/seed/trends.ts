@@ -8,12 +8,16 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
 import { createFixtureProfile } from "../fixture-profile";
+import { setTrendViews } from "../../lib/settings";
 import {
   E2E_LOGIN_TRENDS_CURATE,
   TRENDS_CURATE_PROFILE,
   TRENDS_CURATE_EMPTY_ANALYTE,
   E2E_LOGIN_TRENDS_BODY,
   TRENDS_BODY_PROFILE,
+  E2E_LOGIN_TRENDS_COMPARE,
+  TRENDS_COMPARE_PROFILE,
+  TRENDS_COMPARE_VIEW,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -115,4 +119,64 @@ export function seedCuratedOverview(): void {
       `e2e: seeded curated-Overview fixture — profile ${curateId} (${TRENDS_CURATE_PROFILE}) (#1487/#1485)`
     );
   }
+}
+
+// ── Compare folds into Insights, gate moves to the section ──
+export function seedCompareFold(): void {
+  // ── Compare-into-Insights fixture (#1489) ────────────────────────────────────
+  // A TRAINING-RESTRICTED profile that can actually run a comparison. Two things
+  // make it the fixture this needs and the seeded "Riley (child)" is not:
+  //   • an age UNDER the instance gate (13, set by e2e/seed/coverage-gaps.ts) with
+  //     TWO overlappable series — weight + resting HR on the same dates — so the
+  //     compare overlay draws its dual-axis chart for a minor;
+  //   • a stored saved view carrying the RETIRED `tab: "compare"`, i.e. a
+  //     trend_views row exactly as one saved before #1489 looks. It lives here
+  //     rather than on a shared profile because a saved view is a visible chip in
+  //     the Views bar every other Trends spec renders.
+  // Dates are RELATIVE (inside the 90-day default window) so the fixture never goes
+  // stale; the spec only reads and applies the view, so it stays repeat-safe.
+  // Idempotent: its own fixture rows are cleared and rewritten.
+  const cmpId = fixtureProfileId(TRENDS_COMPARE_PROFILE);
+  const cmpToday = today(cmpId);
+
+  // ~10 years old → under the 13-year gate → training-restricted. (Set, not
+  // ignored, on a re-seed: a stale birthdate would silently un-restrict it.)
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(cmpId, shiftDateStr(cmpToday, -3650));
+
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(cmpId);
+  const insCmp = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr, notes)
+     VALUES (?, ?, ?, ?, 'e2e:trends-compare')`
+  );
+  for (const [ago, kg, hr] of [
+    [21, 32.4, 78],
+    [14, 32.7, 76],
+    [7, 32.9, 74],
+    [2, 33.1, 75],
+  ] as const) {
+    insCmp.run(cmpId, shiftDateStr(cmpToday, -ago), kg, hr);
+  }
+
+  // The legacy saved view: no from/to (an all-time view, which viewToQuery re-emits
+  // as ?range=all) so the readings above are always inside its window.
+  setTrendViews(cmpId, [
+    {
+      name: TRENDS_COMPARE_VIEW,
+      params: {
+        tab: "compare",
+        cmpA: "metric:weight",
+        cmpB: "metric:resting_hr",
+      },
+    },
+  ]);
+
+  // Write grant: applying a saved view goes through applyTrendView, a
+  // requireWriteAccess Server Action (it redirects and stores nothing).
+  seedMemberLogin(E2E_LOGIN_TRENDS_COMPARE, cmpId, "write");
+  console.log(
+    `e2e: seeded compare-fold fixture — profile ${cmpId} (${TRENDS_COMPARE_PROFILE}) (#1489)`
+  );
 }

@@ -32,13 +32,15 @@ async function openBody(page: Page, query = ""): Promise<void> {
 }
 
 test.describe("one tab, vitals first (#1486)", () => {
-  test("the tab strip drops to six entries with no Vitals tab", async ({
-    page,
-  }) => {
+  test("the tab strip carries no Vitals tab", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await openBody(page);
     const tabs = page.getByRole("tab");
-    await expect(tabs).toHaveCount(6);
+    // Five since #1489 folded Compare into Insights (this merge took it from
+    // seven to six); the ORDER + phone fit are that issue's spec —
+    // trends-compare-fold.mobile.spec.ts. What #1486 owns here is the absence of
+    // Vitals.
+    await expect(tabs).toHaveCount(5);
     await expect(page.getByRole("tab", { name: "Vitals" })).toHaveCount(0);
   });
 

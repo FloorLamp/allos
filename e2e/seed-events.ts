@@ -82,7 +82,11 @@ import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
 import { seedIllness } from "./seed/illness";
 import { seedCycleAndDerived, seedWindowAnalytics } from "./seed/situations";
 import { seedHaConfig } from "./seed/notifications";
-import { seedBodyMobile, seedCuratedOverview } from "./seed/trends";
+import {
+  seedBodyMobile,
+  seedCuratedOverview,
+  seedCompareFold,
+} from "./seed/trends";
 
 seedPrelude();
 seedJournalCard();
@@ -142,3 +146,4 @@ seedIntradayPanel();
 seedVitalsToday();
 seedTelegramDoseRound();
 seedCuratedOverview();
+seedCompareFold();

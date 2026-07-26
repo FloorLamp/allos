@@ -14,14 +14,17 @@ test.describe("mobile tab strips scroll instead of clipping (#640)", () => {
   }) => {
     await page.goto("/trends");
 
-    // The strip overflows the viewport (6 tabs), so it must be its OWN scroll
-    // container — otherwise <main>'s overflow-x-clip eats the trailing tabs.
+    // The strip must be its OWN horizontal scroll container — otherwise <main>'s
+    // overflow-x-clip eats any trailing tab a narrower phone (or a longer strip)
+    // pushes past the edge. This used to be asserted as "it genuinely overflows at
+    // 390px", but #1489 cut the strip to five chips that FIT — the stronger
+    // outcome, pinned by trends-compare-fold.mobile.spec.ts — so what survives here
+    // is the scroller property itself plus the reachability of the last tab.
     const strip = page.getByRole("tablist");
-    const { scrollW, clientW } = await strip.evaluate((el) => ({
-      scrollW: el.scrollWidth,
-      clientW: el.clientWidth,
-    }));
-    expect(scrollW).toBeGreaterThan(clientW); // genuinely overflowing
+    const overflowX = await strip.evaluate(
+      (el) => getComputedStyle(el).overflowX
+    );
+    expect(["auto", "scroll"]).toContain(overflowX);
     // The page body itself does NOT scroll sideways (the clip backstop holds).
     const bodyOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth + 1
