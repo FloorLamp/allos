@@ -70,7 +70,8 @@ import { fileURLToPath } from "node:url";
 // A SIXTH check (the fixture-LOGIN budget, issue #1392) — not a count-freeze but a
 // per-fixture rule:
 //
-//   (vi) Every `E2E_LOGIN_*` constant seeded by e2e/fixture-logins.ts must be
+//   (vi) Every `E2E_LOGIN_*` constant seeded by the fixture-login modules (the
+//        e2e/logins/* set that e2e/fixture-logins.ts composes, #1511) must be
 //        referenced by a spec AND used in a sign-in position, else carry a written
 //        justification. The seeded login population is MONOTONIC — each one is a
 //        permanent Settings → Family row — and that ratchet is what grew the family
@@ -234,7 +235,14 @@ const TOPASS_ALLOW: Record<string, number> = {};
 // wrapper may need an allowlist line — that's the point: adding a login stays a
 // deliberate, justified act rather than a reflex.
 const LOGIN_CONST_RE = /export const (E2E_LOGIN_[A-Z0-9_]+) = "([^"]+)"/g;
+// The budget is measured over the COMPOSED population, not one file: #1511 split the
+// constants into per-domain modules under e2e/logins/ that e2e/fixture-logins.ts
+// re-exports. Every one of them declares logins, so all of them are the source of
+// truth (and none of them counts as a "spec that references" a login).
 const FIXTURE_LOGINS_FILE = "fixture-logins.ts";
+const FIXTURE_LOGINS_DIR = "logins/";
+const isFixtureLoginsModule = (name: string) =>
+  name === FIXTURE_LOGINS_FILE || name.startsWith(FIXTURE_LOGINS_DIR);
 // A constant used within this many characters after a sign-in opener counts as
 // "signed in as" (covers the multi-line `loginAs(browser, { username: X, … })` form).
 const SIGNIN_WINDOW_RE = /(?:loginAs\(|creds\(|username:)[\s\S]{0,200}/g;
@@ -247,14 +255,29 @@ const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
     "access-control subject: family-grants drives its grant row / own-profile select AS THE ADMIN (#1412)",
 };
 
+// RECURSIVE since #1511 split the two append-magnet modules into per-domain files
+// (e2e/seed/*.ts, e2e/logins/*.ts): a guard that stopped at the top level would
+// silently stop scanning the moved content. `name` is the path RELATIVE to e2e/
+// (posix), so a top-level file keeps its bare basename — every allowlist / skip-set
+// key above is unchanged — and a nested one reads as "seed/medical.ts".
 function specFiles(): { name: string; text: string }[] {
-  return fs
-    .readdirSync(E2E_DIR)
-    .filter((f) => f.endsWith(".ts") && !SCAN_EXCLUDE.has(f))
-    .map((name) => ({
-      name,
-      text: fs.readFileSync(path.join(E2E_DIR, name), "utf8"),
-    }));
+  const out: { name: string; text: string }[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      // Skip the runtime dot-dirs (.data / .auth / test-results) — generated, not source.
+      if (entry.name.startsWith(".")) continue;
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".ts")) {
+        const name = path.relative(E2E_DIR, full).split(path.sep).join("/");
+        if (!SCAN_EXCLUDE.has(name)) {
+          out.push({ name, text: fs.readFileSync(full, "utf8") });
+        }
+      }
+    }
+  };
+  walk(E2E_DIR);
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function countMatches(text: string, re: RegExp): number {
@@ -408,16 +431,16 @@ describe("e2e suite hygiene guard (issue #868)", () => {
   });
 
   it("every seeded fixture login is signed in as by a spec (the #1392 fixture-login budget)", () => {
-    const src = fs.readFileSync(
-      path.join(E2E_DIR, FIXTURE_LOGINS_FILE),
-      "utf8"
-    );
+    const src = specFiles()
+      .filter((f) => isFixtureLoginsModule(f.name))
+      .map((f) => f.text)
+      .join("\n");
     const constants = [...src.matchAll(LOGIN_CONST_RE)].map((m) => m[1]);
     // The constants file is the population's source of truth; an empty read means
     // the regex (or the file) moved, which must fail loudly rather than pass vacuously.
     expect(constants.length).toBeGreaterThan(0);
 
-    const files = specFiles().filter((f) => f.name !== FIXTURE_LOGINS_FILE);
+    const files = specFiles().filter((f) => !isFixtureLoginsModule(f.name));
     const violations: string[] = [];
 
     for (const name of constants) {
@@ -438,7 +461,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       if (why) continue;
       violations.push(
         referencedBy.length === 0
-          ? `${name}: seeded in e2e/fixture-logins.ts but NO e2e spec references it — ` +
+          ? `${name}: seeded in e2e/logins/ but NO e2e spec references it — ` +
               `delete the login (and its seedMemberLogin call); a dead login is a permanent ` +
               `Settings → Family row (#1392).`
           : `${name}: referenced by ${referencedBy
@@ -456,7 +479,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       if (!constants.includes(name))
         violations.push(
           `${name}: allowlisted in LOGIN_NO_SIGNIN_ALLOW but no longer exists in ` +
-            `e2e/fixture-logins.ts — remove its entry.`
+            `e2e/logins/ — remove its entry.`
         );
     }
 

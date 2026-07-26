@@ -4,6 +4,20 @@
       "date": "2026-07-25",
       "entries": [
         {
+          "pr": 1530,
+          "title": "One Body tab, one place to log your numbers",
+          "body": "Trends loses its Vitals/Body split: one Body tab now leads with today's readings and the 1D intraday view, then your vitals charts (blood pressure, oxygen, resting heart rate — charted exactly once, goal line intact — HRV, and the fever view), then weight and body fat, with the tab strip down to six entries and old Vitals links landing in the right place. Logging is one combined \"Log measurements\" form — weight, body fat, blood pressure, glucose, oxygen, temperature, sleep, HRV, and growth fields for kids — behind a + Log button on desktop and the quick-log sheet's single Measurements item on your phone. The three fitness-check tests (grip, chair stand, balance) moved to the guided flow on Training, where timed tests belong — same records, same percentiles.",
+          "kind": "feature",
+          "issues": [1486]
+        },
+        {
+          "pr": 1529,
+          "title": "Settings, reorganized around what things are about",
+          "body": "Settings is no longer three navigation systems around two very long pages: it's now an index of eleven topic groups — Account & security, Display & units, Health profile, Training, Nutrition, Coaching & AI, Notifications, Privacy, plus the admin People & access, Server, and Logs & audit — each a short page that states who it applies to (your login, this profile, or the server). The Notifications page drops from three screens to three sections with exactly one row per message kind (enable, timing, and channels together — the old duplicate toggle-card and routing matrix are gone, with no change to what's configurable). The active-sessions list finally reads as devices (\"Chrome · Linux\") instead of 22 identical truncated browser strings, collapsed to the recent few. One heads-up: old settings URLs from before the reorganization aren't redirected — use the index once and you're re-oriented.",
+          "kind": "feature",
+          "issues": [1462, 1451]
+        },
+        {
           "pr": 1523,
           "title": "Your Trends Overview is now yours to curate",
           "body": "The Overview tab shows exactly two things: what changed (the movers digest) and what you starred — nothing unconditional. The standard tiles (weight, body fat, resting heart rate, training volume) are still there on day one, but as ordinary saved tiles you can unstar or reorder like anything else; the domain tabs keep showing everything. Tiles also got denser on phones — two abreast, the latest value as the headline number, controls tucked into a corner menu — and a saved metric with no readings in the window compacts to a one-line row below the populated tiles instead of a full-height empty box. Unstar everything and the page tells you how to build it back rather than going blank.",

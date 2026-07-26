@@ -13,7 +13,7 @@ root-causes, and the release-notes pipeline below).
 
 The standing directive (restartable anytime via `/loop`):
 
-> orchestrate all development; prioritize bugs over features; delegate to opus
+> orchestrate all development; prioritize P0/P1 bugs over features; delegate to opus
 > agents; prefer gh rest over mcp; open prs as ready; max 2 agents working on
 > e2e; only you run e2e tests; issues that aren't e2e can parallelize more;
 > review all prs
@@ -23,25 +23,21 @@ What that means in practice:
 - **You never write feature code.** You cluster, dispatch, review, diagnose e2e,
   merge, and clean up. The only code you write directly is e2e spec fixes —
   because you own the only local e2e environment.
-- **Bugs before features, always.** A new audit dump preempts feature work.
+- **P0/P1 bugs before features.** (Owner-revised 2026-07-26; was "all bugs
+  first".) A P0/P1 bug preempts feature work the moment it appears. P2/P3 bugs
+  are ordinary queue members — cluster them with adjacent work and schedule them
+  against features on value, not reflexively ahead. An audit dump preempts only
+  for its P0/P1 items.
 - **Every PR gets a real review** before merge: full diff read (or focused reads
   - test-surface verification for >1,500-line refactors), posted as a COMMENT
     review via REST (APPROVE is rejected for this session type).
 - **Merges are yours**, squash only, via `mcp__github__merge_pull_request`.
-  Merge is the ONLY GitHub op that uses MCP — everything else (issue reads, PR
-  creation, reviews, check-runs, status) goes through the REST API (`curl` +
-  `$GH_TOKEN`). The MCP `issue_read`/`list_issues` path shares the owner's
-  account rate limit and exhausted it mid-session; REST does not. **Every
-  subagent brief must instruct the agent to read its issue via `curl` REST
-  (`GET /repos/OWNER/REPO/issues/N` + `/comments`), never `mcp__github__*`** —
-  dispatched agents reading issues via MCP is what drained the quota.
-  Even merge-only usage rate-limits PERIODICALLY (the MCP tool rides the
-  owner's account quota): when a merge call rejects on rate limit, don't retry
-  in a loop — set a background wait-out timer past the reset and batch the
-  pending merges after it; REST reads keep working throughout, so reviews and
-  watchers continue unaffected. Draft→ready also goes through MCP
-  (`mcp__github__update_pull_request`) — REST PATCH can't flip draft and
-  GraphQL is blocked by the proxy.
+  MCP rides the owner's account rate limit — subagent briefs point agents at
+  `curl` REST for issue reads (`GET /repos/OWNER/REPO/issues/N` + `/comments`)
+  so a fleet can't drain the quota. On a rate-limit rejection, don't retry in
+  a loop: wait out the reset and batch the pending calls. Draft→ready goes
+  through MCP `update_pull_request` (REST PATCH can't flip draft; GraphQL is
+  proxy-blocked).
 - **Strategic items wait for the owner** (integrations, mobile shell, IA
   decisions). Never start them unprompted; list them in status reports.
 
@@ -57,7 +53,7 @@ What that means in practice:
 | Local e2e        | Assign each WORKTREE a fixed port PAIR (`E2E_PORT`/`E2E_DEMO_PORT`: 5400/5401, 5600/5601, 5800/5801, …) at dispatch — zero collisions since adopting pairs. AVOID 6000–6099: Next.js refuses X11-reserved ports (an agent lost a round discovering port 6000 won't boot). `ALLOS_DB_PATH` isolation is handled by the Playwright config. In some containers local `next dev` boot TIMES OUT — run CI-parity instead: `rm -rf .next && npm run build` once, then `CI=1 ANTHROPIC_API_KEY= E2E_PORT=<p> E2E_DEMO_PORT=<p+1> npx playwright test e2e/auth.setup.ts <specs> --repeat-each=3 --retries=0 --reporter=list`, with `rm -rf e2e/.data` + `lsof -ti :<p> -ti :<p+1> \| xargs -r kill` first. **FULL suites: always CI-mode** (see e2e discipline — dev-mode full suites swap the box and mass-fail). |
 | Raw Playwright   | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                                                                                                                                             |
 | REST merge       | `PUT /pulls/N/merge` can 403 through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs at `--repeat-each=3 --retries=0`; skips when no spec changed — infra blast radius is the matrix's job), and a 4-way sharded `e2e` matrix (full suite at retries=0 since #1160 — the suite is clean enough that the retry safety-net was dropped so a flaky spec can't hide; fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. On-demand full-suite gate for ANY branch: dispatch `.github/workflows/e2e-full.yml` (fresh runners, defaults retries=0; `repeat_each` up to 3). Each full-suite shard posts a pass-on-retry flake report to its job summary — read it after green runs; those are confirmed flakes to file.                                            |
+| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs at `--repeat-each=3 --retries=0`; skips when no spec changed — infra blast radius is the matrix's job), and a 4-way sharded `e2e` matrix (full suite at retries=0 since #1160 — the suite is clean enough that the retry safety-net was dropped so a flaky spec can't hide; fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. (`e2e-full.yml` exists for owner-dispatched full-suite runs — sessions can't dispatch it, see Actions-rerun row; its shards post pass-on-retry flake reports worth reading after green runs.)                                                                                                                                          |
 | CI watchers      | A background check-runs watcher MUST require the full check count registered (≥8 on this repo) before concluding GREEN — a fresh push registers `gitleaks` first and alone for a window, and a watcher sampling then declares a false green. And a CONFLICT-DIRTY PR starts NO CI at all (the `pull_request` runs need the merge ref GitHub can't build) — a watcher stuck at "1–2 runs registered" for many polls means check `mergeable` on the PR, not wait longer.                                                                                                                                                                                                                                                                                                                                     |
 | Issue auto-close | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | gitleaks         | CI's gitleaks runs `git --log-opts="--all"` over ALL fetched refs — a secret-shaped literal committed to ANY branch reds EVERY PR's gitleaks job repo-wide until that branch's history is rewritten (squash to one clean commit + `--force-with-lease`; fixing the tip alone is NOT enough). High-entropy synthetic token literals in test fixtures are the trigger (entropy ≥ ~3.5 trips `generic-api-key`) — dispatch briefs now mandate low-entropy fixture values (`e2e-hc-token-test-value-1`, words+digits, never random hex).                                                                                                                                                                                                                                                                       |
@@ -89,9 +85,8 @@ learned by losing work to it:
 - **The restart drill** (run it on every restart notification): assume every
   agent is dead; snapshot each worktree (`git log --oneline -3`, `git status`,
   local-vs-origin rev); resume each agent via `SendMessage` with a precise
-  state summary (what survived, what's left); restart your own CI polls
-  (they die too — and relaunch them with ABSOLUTE script paths; a
-  cwd-inherited relative path 127s).
+  state summary (what survived, what's left); restamp the boot-id and restart
+  the canary (below).
 - Agents resumed from transcript with a good state summary recover cleanly
   every time — killing/redispatching is almost never necessary.
 - **Transient API errors (529 Overloaded, 5xx) kill subagents the same way** —
@@ -115,10 +110,20 @@ learned by losing work to it:
   local refs, the container is the stale party — recover with `git fetch` +
   `git checkout -B <branch> <api-verified-sha>`, and re-verify any "completed"
   work the reverted task list claims is still pending before redoing it.
+- **Automatic restart detection (2026-07-25).** Two mechanisms, both cheap:
+  (1) a **canary background task** (`while true; do sleep 3600; done`) whose
+  death fires the harness's background-task notification — the restart's push
+  alert; (2) a **boot-id stamp**: write `/proc/sys/kernel/random/boot_id` to
+  `$SCRATCH/.boot_id` once, and compare at EVERY self-scheduled check-in. On
+  mismatch: restamp, restart the canary, then run the resume-all drill
+  (SendMessage every live agent: report status + commit WIP now). Agents'
+  worktrees survive restarts; uncommitted gate-run state does not — which is
+  why every dispatch brief mandates commit-WIP-before-long-gates.
 
 ## The pipeline (per unit of work)
 
-1. **Triage.** Sweep open issues. Bugs first. Read the bodies **and all issue
+1. **Triage.** Sweep open issues. P0/P1 bugs first; lower-priority bugs rank
+   with features. Read the bodies **and all issue
    comments** — clarifications, scope changes, and owner decisions get buried in
    comment threads, and a fix that honors the body but misses a comment is wrong.
    This repo's audit issues are excellent (root cause + file:line + prescribed
@@ -136,13 +141,10 @@ learned by losing work to it:
    — build only what's still open. This closed one issue with zero code (an
    evidence table on the issue) and halved two other builds; without it those
    agents would have re-implemented merged work and conflicted with it.
-   **Serialize same-area dispatches.** Sequential PRs that each append to the
-   same spec/fixture files (`multi-view.spec.ts`, `fixture-logins.ts`,
-   `seed-events.ts`) cost a keep-both reconcile pass per merge — every later
-   branch must merge main and reassemble the shared file. Either serialize the
-   dispatches (next brief cut AFTER the previous merge) or give each PR its own
-   uniquely-anchored block (own `describe`, own fixture ids) so the reconcile
-   stays a mechanical keep-both.
+   **Serialize same-area dispatches** when two briefs would touch the same
+   files; post-#1511 the shared seams are small (README bullets, the seed
+   composers' import lists) — give each PR uniquely-anchored blocks (own
+   `describe`, own fixture ids) and reconciles stay mechanical keep-both.
 4. **Review** when the PR lands: full diff via
    `Accept: application/vnd.github.v3.diff`. Verify the agent's _claims_ with
    cheap greps against main (does that testid exist? is that fixture id
@@ -150,17 +152,12 @@ learned by losing work to it:
 5. **CI green → squash merge.** If e2e fails, YOU reproduce locally (see e2e
    discipline), fix the spec on the branch, verify locally, push once, comment
    the diagnosis on the PR.
-   **Merge-collision management:** at a high merge rate, same-file conflicts
-   are the norm — README feature bullets and `e2e/seed-events.ts` are the
-   recurring magnets (three consecutive PRs once collided on one README line).
-   Serialize merges through the orchestrator; when several open PRs touch the
-   same file, defer the later PR's rebase until the LAST conflicting merge has
-   landed (one rebase instead of two). To repair a botched hand-merge, redo the
-   file with a mechanical 3-way (`git merge-file merged base theirs`) rather
-   than editing conflict markers — hand union-splicing produced this pattern's
-   only self-inflicted breakages (leftover markers, fused declarations). Keep
-   README edits to one self-contained clause and seed blocks uniquely anchored
-   so splices stay one-line operations.
+   **Merge-collision management:** serialize merges through the orchestrator;
+   when several open PRs touch the same file, defer the later PR's rebase until
+   the LAST conflicting merge lands (one rebase instead of two). Repair a
+   botched hand-merge with a mechanical 3-way (`git merge-file merged base
+theirs`), never by editing conflict markers. README bullets are the main
+   remaining magnet post-#1511 — keep edits to one self-contained clause.
    **Owner commits land on main mid-session** — including direct non-PR pushes
    from the owner's other tools — so a PR built before one can grow a SEMANTIC
    conflict (a redesigned component vs. an agent's additions to it), not a text
@@ -269,19 +266,11 @@ it later from the issue number is guesswork.
 
 ## E2e discipline (the part that most needs an owner)
 
-> **2026-07-21 update — full-suite gates moved to GitHub runners.** The sharded
-> `e2e` matrix in PR CI now runs the FULL suite on every push (fresh runner +
-> fresh servers per shard), and `.github/workflows/e2e-full.yml`
-> (workflow_dispatch) runs the whole suite against any branch at `--retries=0`
-> on demand. Use the dispatch workflow where this section previously required a
-> LOCAL CI-parity full-suite run (migration PRs, big UI merges) — it is the
-> "CI on a fresh runner is the ultimate authority" conclusion below,
-> institutionalized. **Caveat (2026-07-24): the dispatch API 403s for session
-> tokens** — when you can't dispatch it, the PR's own sharded `e2e` matrix (the
-> whole suite, retries=0, fresh runners, that exact push) satisfies the gate;
-> say so in the merge comment. The local-run guidance that follows (memory
-> bounds, sharding, degradation triage) is retained for the rare case a local
-> full run is still needed (e.g. no pushable branch yet).
+> **Full-suite gates live on GitHub runners.** The sharded `e2e` matrix runs
+> the FULL suite at retries=0 on fresh runners on every non-docs push — that
+> green IS the full-suite authority; a session cannot dispatch `e2e-full.yml`
+> (the API 403s). The local-run guidance below is for the rare case with no
+> pushable branch yet.
 
 - **Split ownership: agents verify their own changed specs (CI-parity,
   `--repeat-each=3 --retries=0`, their assigned port pair); only the
@@ -305,88 +294,37 @@ it later from the issue number is guesswork.
     update `TOP_LEVEL_ORDER` too. (Fixing this pre-existing spec is the
     orchestrator's lane — it's an e2e spec edit — but flag it in the brief so it
     lands in the same push.)
-- **Double-green before merging a UI/migration PR:** CI green (check + e2e,
-  including CI's changed-specs repeat lane) AND a local CI-parity full-suite
-  run. Lib/docs-only PRs merge on CI green alone. **Relaxed bar for contained
-  diffs (owner-approved 2026-07-20):** a low-blast-radius PR (a lib fix, a
-  bug cluster that changed a handful of specs) merges on CI green + typecheck
-  - pure + db + the PR's OWN changed-spec lane — SKIP the full local suite.
-    The full-suite gate is reserved for MIGRATION PRs and BIG UI merges (a nav
-    consolidation, a multi-page feature) — and since 2026-07-21 it is a dispatch
-    of `e2e-full.yml` against the branch (fresh runners, retries=0), not a local
-    run; PR CI's sharded `e2e` matrix already gives every push a full-suite pass
-    at retries=0 on top of that (dropped from retries=1 in #1160). **Rebase waiver:** when a
-    rebase's delta is text-only (README/docs conflict resolution), CI's full e2e
-  * changed-specs lane on the exact rebased tip, plus the pre-rebase local full
-    suite, is sufficient — don't burn a second local full run.
-    **Branch-cut waiver:** a branch cut before a spec-fix merged to main will
-    re-fail that spec in the local full suite (the fix isn't on the branch; the
-    post-merge tree has it). With CI green on the head and the failure matching
-    the main-fixed flake, that failure doesn't block the merge — note the
-    branch's cut point before interpreting local full-suite results.
-- **Local FULL suites are memory-bound — run them in CI-mode, serialized.**
-  A dev-mode (`next dev`) server balloons to ~5 GB RSS as the suite touches
-  every route; the suite runs TWO (app + demo) plus Chromium, which pushes the
-  container into swap mid-run — from there every spec times out ("element(s)
-  not found" across 80–90 UNRELATED specs, 2× runtime). This masquerades as
-  "flaky environment" but is deterministic memory exhaustion: check
-  `ps aux --sort=-%cpu` for `kswapd0`/`kcompactd0` CPU time before blaming
-  specs. The fix: full suites run the CI recipe (`npm run build` once, then
-  `CI=1 E2E_PORT=<p> E2E_DEMO_PORT=<p+1> npm run test:e2e`) — production
-  `next start` is lean AND is the mode that actually gates. Never run a full
-  suite while any agent is building or a second suite is running; one full
-  suite on the machine at a time.
-- **SHARD the full local suite — a single 460-spec `next start` process
-  degrades even solo on a quiet box (2026-07-20).** A lean single-worker CI-mode
-  run of the WHOLE suite in one process climbs to ~50 min and starts failing
-  60+ UNRELATED specs with server-death timeouts (`element(s) not found`,
-  `toBeVisible` timeouts) partway through — the long-lived app+demo servers
-  degrade cumulatively, NOT a memory-at-start problem (14 GB free, no swap; the
-  memory sample stays flat while it dies). The fix is to run `--shard=N/M`:
-  each shard is a fresh `npx playwright test` invocation → fresh servers → each
-  chunk finishes in 3-6 min clean. **Use `/4` (≈115 specs/shard), not `/3`** —
-  the third of three still degraded in testing; four holds. Run the shards as
-  SEPARATE sequential invocations (not chained in one shell after a heavy
-  pure+db+build run — that shell's accumulated RSS pushes the last shard over).
-  A shard that fails wide with server-death timeouts is **transient container
-  degradation, not a regression**: re-run THAT shard fresh on a settled box; a
-  clean re-run is the authority. Do NOT chase it as a code bug (a real
-  infinite-loop poison is deterministic — it fails the same shard every time,
-  including a `--max-failures=1` probe; degradation passes on a settled re-run).
-  This cost hours on the #1047-#1062 train before the pattern was clear.
-- **The #1 cause of "degradation" is YOUR OWN concurrent poll loops — never run a
-  background CI-poll while a local e2e gate runs (2026-07-21).** A whole night's
-  worth of "container degradation" (90s server-death timeouts, 11-min 6-spec
-  runs) turned out to be self-inflicted: a `for i in seq…; do sleep 30; curl…;
-python… ; done` CI-poll loop running in the background was starving the
-  `next start` servers of CPU. The box was never exhausted — `ps` showed zero
-  leaked processes and 14 GB free RAM the whole time. Kill the polls (or don't
-  start them) and the SAME specs run clean in ~48 s. Discipline: while a local
-  e2e run is in flight, run NOTHING else — no CI polls, no second gate, no agent
-  build. Check `ps -eo comm | grep -cE 'next-server|chromium|curl'` and
-  `free -g` before blaming the container; leaked-process-count 0 + free RAM ⇒
-  it's contention (yours) or the single-process heavy-shard limit, not exhaustion.
-  A container restart doesn't fix contention — stopping the competing work does.
-- **Don't chain full gates — an exhausted container makes even the "re-run
-  fresh" remedy lie (2026-07-20, #1045).** After ~65 min of continuous e2e (two
-  back-to-back full 4-shard gates + an isolation re-run) the box degraded so far
-  that a 40-test isolation run took **15 min** (~5× normal) and REPRODUCED the
-  exact same ~18 failures — because under severe starvation the failure set is
-  NOT random: the heaviest-rendering specs (chart pages, multi-section `/records`,
-  detail pages) blow the 5 s `toBeVisible` timeout FIRST and DETERMINISTICALLY.
-  So "same failures twice" is NOT proof of a real bug when the container is spent
-  — the `--max-failures=1`/isolation heuristic above assumes a SETTLED box, and a
-  chained-gate box is not settled. Two defenses: (a) never run gates back-to-back
-  — let the box idle, or better, don't re-gate locally at all once you have a
-  clean fresh-runner signal; (b) **CI on a fresh GitHub runner is the ultimate
-  authority.** Bonus: the 4-way sharded `e2e` matrix runs the WHOLE suite at
-  retries=0 on every non-docs PR (including one that touches shared e2e infra like
-  `e2e/seed-events.ts`/`fixture-logins.ts`/`helpers.ts`), so its green IS a
-  full-suite pass on a clean box — trust it over a local run on your degraded
-  container. Before calling a wide local
-  failure a regression, confirm the diff could even reach those specs (a purely
-  additive fixture that only creates NEW profiles cannot break records/qualitative/
-  protocols specs that read OTHER profiles — that's degradation, full stop).
+- **The merge bar:** CI fully green on the exact head — `check` + the
+  changed-spec repeat lane + the 4-way sharded matrix (which IS a full-suite
+  pass on fresh runners). No separate local full-suite gate; local runs are
+  for diagnosis. A branch cut before a spec-fix merged to main may locally
+  re-fail that spec — note the cut point before interpreting local results.
+- **Behind-only vs dirty:** a PR merely BEHIND main (no conflicts) refreshes
+  via `mcp__github__update_pull_request_branch`; a DIRTY PR needs the worktree
+  reconcile. Check `mergeable_state` FIRST when CI looks absent — a
+  conflict-dirty PR runs NO pull_request checks at all (only push-triggered
+  gitleaks), which reads as "CI is stuck" but isn't.
+- **A docs/JSON-only PR failing e2e is never the diff.** When a bookkeeping PR
+  (release notes, docs) goes red on the matrix, the breakage is main-side or
+  environmental (date rollover, runner) — diagnose THERE, and treat the
+  bookkeeping PR as the control group proving it. Actions rerun APIs 403 for
+  session tokens; the retrigger is an empty commit (never a history rewrite).
+- **Local FULL suites (rare — see preamble): CI-mode, sharded `/4`, alone.**
+  Dev-mode servers balloon to ~5 GB RSS and swap the box (mass "element(s) not
+  found" across unrelated specs = memory, not flakes — check `kswapd0` CPU
+  before blaming specs). Recipe: `npm run build` once, then `CI=1` shards as
+  SEPARATE sequential `--shard=N/4` invocations (a single 460-spec process
+  degrades even solo; `/3` still degraded, `/4` holds). Nothing else runs
+  during a local e2e gate — no CI polls, no agent builds, no second suite; a
+  whole night of "container degradation" was once a background poll loop
+  starving the servers (leaked-process count 0 + free RAM ⇒ contention, yours).
+  A shard failing WIDE with server-death timeouts on a busy or gate-chained box
+  is degradation: re-run that shard fresh on a settled box, and remember that a
+  SPENT box reproduces the same failure set deterministically (the heaviest
+  specs blow the 5 s timeout first) — "same failures twice" proves nothing
+  unless the box was settled. A real poison is deterministic on a fresh box
+  including a `--max-failures=1` probe. CI on a fresh runner is the ultimate
+  authority — prefer pushing over local re-gating.
 - **Mass-failure triage drill** (when a local full suite fails wide): (1) check
   memory pressure first (above); (2) rerun a handful of the failed specs in
   isolation — passing alone means suite-scale starvation, failing alone means a
@@ -407,22 +345,6 @@ python… ; done` CI-poll loop running in the background was starving the
   through `e2e/helpers.ts` (`settledClick`/`followLink`) are the fix for
   pre-hydration clicks. In containers where `next dev` boot times out, run the
   CI-parity form (build + `CI=1`) exclusively — it is the mode that gates.
-- **The `e2e-changed` whole-suite escalation was REMOVED — the SHARDED matrix
-  owns infra coverage now (2026-07-23).** History: a change to shared e2e infra
-  (`seed-events.ts`/`fixture-logins.ts`/`helpers.ts`) used to make `e2e-changed`
-  run the WHOLE suite in ONE worker, which hit the same cumulative-starvation wall
-  a local single-process full run does — reding on a ROTATING set of
-  create-member/login specs (`audit-log`, `email-auth`, `episode-med-reconcile`,
-  `household-rollup`, `illness-episode`) that varied run-to-run while `check` and
-  all four `e2e` shards stayed green. That single-worker whole-suite lane added no
-  coverage the sharded matrix (which already runs the whole suite at retries=0 on
-  every non-docs PR) didn't have, no repeat-each scrutiny, and no faster verdict —
-  only the degradation itself. It's gone: `e2e-changed` now gates on a changed
-  `*.spec.ts` and runs ONLY the changed specs at `--repeat-each=3`; an infra-only
-  PR skips the lane, and its blast radius is covered by the sharded matrix. So the
-  old "rotating failure set" red can no longer occur, and the old workaround
-  (pulling a fixture OUT of `seed-events.ts` just to avoid escalating this lane) is
-  obsolete — put fixtures where the domain wants them.
 - **Adding a NEW spec FILE reshuffles the shard split and surfaces LATENT
   interference (2026-07-22).** Playwright shards the sorted spec-file list, so a
   new `.spec.ts` shifts which specs land together — and specs that mutate shared
@@ -515,37 +437,22 @@ python… ; done` CI-poll loop running in the background was starving the
    seed still wrote `notify_last_error*` settings keys the reader no longer
    consulted.) Reviewers: a PR that relocates state must grep
    `e2e/seed-events.ts` and `scripts/seed.ts` for the old mechanism.
-8. **UTC time-band false-failures (RESOLVED 2026-07-21, PR #1103; kept for the
-   triage pattern).** A gate that fails only in a wall-clock window is almost
-   never the PR — read the run's timestamps before blaming the diff. Original
-   band: real time lagged the frozen `ALLOS_TEST_NOW` (a fixed noon) for hours
-   after 00:00 UTC, so runtime-stamped rows (`datetime('now')`) read stale
-   against every liveness/recency window, spraying ~10 rotating false-failures
-   across a night full-suite gate. #1103 froze the instant to the run's REAL
-   start, so real can no longer lag frozen at any hour. **Residual:** a run that
-   STARTS within its own duration (~25 min) of real midnight can still roll a
-   SQL-stamped row a day ahead of the frozen date. **Triage drill (still the
-   move for any suspected time artifact):** run the SAME failing specs on the
-   PR's BASE commit at the SAME hour — identical failures ⇒ time-band, not the
-   PR, and the PR's own changed spec passing + a green `check` merges on the
-   carve-out. Two root causes to grep for: (a) a CLIENT relative-age
-   (`"2 hrs ago"`) off the browser clock, which can't see `ALLOS_TEST_NOW` — fix
-   is the #1028 pattern (thread a server `nowIso` across the "use client"
-   boundary, never client `new Date()`); (b) a DB fixture pairing
-   `today(profileId)` with a wall clock off a SHIFTED instant → an instant ~24h
-   in the FUTURE (`grep getUTCHours lib/__db_tests__`; derive a row's date AND
-   time from ONE instant). (A `BUILD=1` when checking out an OLDER commit in a
-   reused worktree is the downgrade guard, not a build break — `rm data/allos.db*`
-   and rebuild.) **Pinned-rotating-timezone variant (2026-07-24, #1417):** the e2e
-   seed pins the instance timezone PER RUN from the start hour
-   (`e2e/pinned-timezone.ts`, frozen local ~13:00), so a fixture that writes NAIVE
-   local-less timestamps (`${day}T04:00` — parsed host-UTC by `new Date()`) into a
-   feature that groups by profile-LOCAL date/time fails deterministically for a
-   BAND of start hours (derived-situations red for every run starting ≥18:00 UTC:
-   the rough night's wake-day slid back a local day and merged under the previous
-   night's main session). Triage tell: same spec red on multiple unrelated branches
-   with green runs earlier the same day. Fix at the fixture: `zonedWallTimeToUtc`
-   through the profile tz — the seed's own #1110 sleep-page block is the precedent.
+8. **Time-band false-failures (largely RESOLVED by #1103; the drill lives).**
+   A gate that fails only in a wall-clock window is almost never the PR — read
+   the run's timestamps first. Triage drill: run the SAME failing specs on the
+   PR's BASE commit at the SAME hour; identical failures ⇒ time-band, not the
+   PR. Root causes to grep for: (a) a CLIENT relative-age off the browser clock
+   (can't see `ALLOS_TEST_NOW`) — fix with the #1028 pattern (thread a server
+   `nowIso` across the "use client" boundary); (b) a DB fixture deriving date
+   and time from TWO different instants (`grep getUTCHours lib/__db_tests__`).
+   **Pinned-rotating-timezone variant (#1417):** the seed pins the instance
+   timezone PER RUN from the start hour (`e2e/pinned-timezone.ts`), so a
+   fixture writing NAIVE local-less timestamps (`${day}T04:00`, parsed
+   host-UTC) into a profile-LOCAL-grouping feature fails for a BAND of start
+   hours — tell: same spec red on unrelated branches, green earlier the same
+   day. Fix at the fixture: `zonedWallTimeToUtc` through the profile tz.
+   (A `BUILD=1` complaint when checking out an OLDER commit in a reused
+   worktree is the DB downgrade guard — `rm data/allos.db*`, rebuild.)
 9. **Persisted channel config turns event-driven dispatches into marker
    pollution** — the delivery-health marker is GLOBAL (one `notify_lifecycle`
    row), and `notify-delivery-error.spec.ts` asserts the seeded fixture
@@ -583,6 +490,38 @@ python… ; done` CI-poll loop running in the background was starving the
     budget (seed enrichment fixtures as PROFILES WITHOUT LOGINS when the spec
     only needs a profile — every login grows this page forever). Timeout bumps
     measurably did NOT help (0/3 at 20s windows) — don't reach for them here.
+12. **Mid-run UTC-midnight crossing (2026-07-26, #1534).** A run that STRADDLES
+    real 00:00 UTC fails date-keyed specs (illness day counts, dose-date
+    windows, sleep nights, import time-windows) because SQL-side `date('now')`
+    can't be frozen by the JS-side freeze — multi-shard, multi-spec red that
+    looks alarming. Drill: check the run's start/end timestamps; if it crossed
+    midnight, retrigger (empty commit) clear of the boundary — and if the rerun
+    fails CLEAR of midnight, the midnight explanation is FALSIFIED for that
+    failure and it gets a real root-cause (that falsification found #13 below).
+13. **Fixture-date roulette (2026-07-26, the import-dedup incident).** Fixture
+    dates are either RELATIVE to today or DEEP-PAST (`2026-01-*`) — never fixed
+    near-present. `scripts/seed.ts` writes ~3 weeks of rolling relative-date
+    rows back from the real today, so a fixed near-present fixture date gets
+    landed on by a rolling row on some future calendar day (a daily re-rolled
+    roulette; it "passed for weeks" then failed every run for a whole day, on
+    unrelated PRs). Deep past is permanently safe because today only moves
+    forward. Corollary: an assertion on a SHARED-WORLD AGGREGATE (a section
+    heading with a total, a bare-testid count over a detector's output) is the
+    same #868 violation one level up — scope it to the spec's OWN rows
+    (`filter({ hasText })`), the way the review-badge delta assertions already
+    do.
+14. **Stale generated route types in a reused worktree.** After merging main
+    into a worktree, `tsc` can report `"/route" is not assignable to AppRoute`
+    for routes the merge just brought in — Next's typedRoutes `.d.ts` under
+    `.next/` is stale, not the code. Run `npm run build` (which regenerates
+    them) before believing an AppRoute error, and never "fix" it by widening a
+    type.
+15. **Where fixtures live (post-#1511).** Shared e2e fixtures are per-domain
+    modules — `e2e/seed/<domain>.ts` + `e2e/logins/<domain>.ts` — composed by
+    the thin entrypoints (`seed-events.ts` / `fixture-logins.ts`), whose CALL
+    ORDER is load-bearing (row ids follow insertion order). Agents add to the
+    domain module, never the composer; the hygiene guard walks `e2e/**`
+    recursively, and the fixture-login budget measures the composed set.
 
 ## Review checklist
 
@@ -627,11 +566,8 @@ number in TEST files — a `migration-NNN-*.test.ts` name and its import path, a
 the profile-scoping allowlist's `NNN-slug.ts` PRAGMA entry, all need the new
 number; (6) validate BEFORE the full gate with the cheap deterministic tier:
 `migration-immutability` (hashes match) + db-tier `migrate`/`runner` (contiguous
-chain applies) + `typecheck`. **Append-append conflict hazard:** resolving
-fixture files (`seed-events.ts`, `fixture-logins.ts`) by concatenating ours+theirs
-can drop a shared boundary line — a `console.log(...` whose closing `);` sat on
-the other side of the `=======` — so ALWAYS `typecheck` after; the error is a
-bare `',' expected` at the seam.
+chain applies) + `typecheck` (always typecheck after any hand-resolved
+conflict — a dropped boundary line surfaces as a bare `',' expected`).
 
 **Rebasing a PR ACROSS a merged route restructure (2026-07-22).** When a
 tabs/route-per-page change (e.g. #1079's `/results#anchor` → `/results/biomarkers`)
@@ -646,11 +582,24 @@ local pure tier is NOT sufficient across a route restructure.
 
 ## Cadence & lifecycle
 
-- Agent completion notifications are the primary wake signal; `ScheduleWakeup`
-  ~300s while work is in flight, 1200–1800s idle. Never poll with sleep.
+- Agent completion notifications are the primary wake signal; self-scheduled
+  check-ins (send_later, ~20–30 min) cover CI waits and are re-armed every
+  turn. Never poll with sleep.
 - Keep a task per cluster (`agent → review → merge`) and update it at each stage.
 - Institutionalize every incident into the next dispatch prompt the same day —
   the error rate drops measurably wave over wave.
+- **File e2e/CI/infra issues WITH a priority label, and label bottlenecks P1
+  (owner rule, 2026-07-26).** Anything discovered that costs pipeline
+  throughput — a merge-queue serializer, a recurring false-red class, a
+  local-gate wall-clock limiter, a flake class that forces diagnosis rounds —
+  is filed immediately (don't sit on it) and labeled by its REAL cost:
+  resolving a bottleneck is almost always **P1** (it taxes every subsequent
+  unit of work), not the reflexive P2 an "infra chore" reads as. A single
+  latent flake in one spec is P3. Under the P0/P1-first doctrine above, the
+  label IS the queue position — an unlabeled or under-labeled infra issue
+  silently deprioritizes exactly the work that speeds everything else up.
+  (Session evidence: #1511 and #1534 both went out as P2 by habit; both were
+  bottleneck-class.)
 - **Wind-down** = no new dispatches; land everything in flight (review, fix
   specs, merge), cancel queued waves, clean worktrees, write a handoff listing:
   merged work, deliberately-open items, owner decisions pending, and any
