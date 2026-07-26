@@ -107,13 +107,19 @@ test("dashboard coaching 'Snooze' snoozes the top recommendation (#39)", async (
   // the assertion below then reads a state that never changed. Measured 3-of-4 locally
   // under isolation; the #1400/#1464 class, caught latent rather than in CI.
   await settledClick(page, card.getByTestId("coaching-snooze"));
-  // The snoozed recommendation is no longer shown as the widget's suggestion.
-  // settledClick guarantees the ACTION completed server-side; React then has to apply
-  // the revalidated RSC, and the dashboard is the app's heaviest server render — under
-  // a degraded single-worker `--repeat-each` crush that hand-off measured past the
-  // default 5s while the write itself had already landed (the #1306 budget class).
-  // Give the re-render the heavy-page budget so a slow refresh can't read as a lost
-  // click.
+  // settledClick arms a same-origin POST wait, which the app-wide toaster polls can
+  // satisfy instead of this action's own request (#1437) — so hold on the action's OWN
+  // durable completion marker before reading the result: SubmitButton renders its
+  // `pendingLabel` ("…") for exactly as long as the transition is pending, and a
+  // bystander poll cannot fake that. It resolves whether the widget re-renders with
+  // the next recommendation or falls back to empty (the card locator then matches
+  // nothing, which is a count of 0 either way).
+  await expect(card.getByText("…", { exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  // The snoozed recommendation is no longer shown as the widget's suggestion. The
+  // dashboard is the app's heaviest server render, so the revalidated-RSC hand-off
+  // gets the heavy-page budget too (the #1306 class) rather than the default 5s.
   await expect(card.getByText(original!, { exact: true })).toHaveCount(0, {
     timeout: 15_000,
   });
