@@ -29,7 +29,7 @@ import {
 import { chartSeries } from "@/lib/chart-colors";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { roundChartValue } from "@/lib/chart-format";
+import { groupChartValue, roundChartValue } from "@/lib/chart-format";
 import {
   ANNOTATION_KIND_META,
   snapAnnotationsToDates,
@@ -58,6 +58,7 @@ export default function LineChartCard({
   referenceValue,
   decimals,
   yDomain,
+  groupYTicks = false,
   syncId,
   sparkline = false,
 }: {
@@ -71,7 +72,16 @@ export default function LineChartCard({
   // axis-domain policy (biomarkerAxisDomain) through so a pinned-biomarker tile and
   // the biomarker DETAIL chart scale the same series identically (0-clamped for a
   // non-negative analyte; a flat series gets a small window). Omitted → auto.
-  yDomain?: [number, number];
+  //
+  // Either bound may be the string "auto" (#1541): a COUNT metric pins the FLOOR at
+  // zero — a count's distance from zero is its signal, and recharts' auto floor
+  // turned a 1.6× steps spread into a near-zero-to-peak swing — while leaving the
+  // ceiling to follow the data.
+  yDomain?: [number | "auto", number | "auto"];
+  // Thousands-group the Y-axis ticks AND the tooltip value (#1541). Opt-in, because
+  // grouping only earns its comma on a metric that runs to four+ digits; the two
+  // travel together so the axis and the tooltip can't render one number two ways.
+  groupYTicks?: boolean;
   // Charts with the same id share hover position/tooltip alignment (used by the
   // paired sleep + mood panels so the same date is compared in both).
   syncId?: string;
@@ -165,10 +175,19 @@ export default function LineChartCard({
           <YAxis
             {...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c))}
             domain={yDomain ?? ["auto", "auto"]}
+            tickFormatter={
+              groupYTicks
+                ? (v) => groupChartValue(Number(v), decimals)
+                : undefined
+            }
           />
           <Tooltip
             formatter={(v) => [
-              `${roundChartValue(Number(v), decimals)}${unit}`,
+              `${
+                groupYTicks
+                  ? groupChartValue(Number(v), decimals)
+                  : roundChartValue(Number(v), decimals)
+              }${unit}`,
               label,
             ]}
             labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}

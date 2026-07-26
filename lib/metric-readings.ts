@@ -81,6 +81,9 @@ export const METRIC_READING_STORE: Record<
   "resting-hr": { table: "body_metrics", column: "resting_hr" },
   // Device / manual samples.
   hrv: { table: "metric_samples", metric: HRV_METRIC },
+  // Import-only (#1562) — the tracker owns the baseline, so there is no quick-add.
+  // It still has REAL rows, which is exactly why it needs a store: a bad import is
+  // otherwise unreachable, and delete-with-tombstone is what the table is for.
   "skin-temp": { table: "metric_samples", metric: SKIN_TEMP_DELTA_METRIC },
   height: { table: "metric_samples", metric: "height_cm" },
   "head-circ": { table: "metric_samples", metric: "head_circumference_cm" },

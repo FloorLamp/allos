@@ -38,6 +38,7 @@ import {
   setMetricSourcePriorityEntry,
 } from "@/lib/settings";
 import { METRIC_SOURCE_PRIORITY_KEY } from "@/lib/metric-source-priority";
+import { ALL_ROWS } from "@/lib/trends";
 
 // ---- migration 014: hr_minutes key rebuild -----------------------------------
 
@@ -284,6 +285,36 @@ describe("getMetricDailyTotals — additive metrics never sum across sources", (
     setMetricSourcePriorityEntry(profileId, "hrv_ms", "strava");
     expect(getMetricDailyTotals(profileId, "hrv_ms")).toEqual([
       { date: DATE, value: 50 },
+    ]);
+  });
+
+  // ALL_ROWS is -1, i.e. "no limit" — which is what SQLite's `LIMIT -1` means and
+  // what the query's own date-cutoff read assumed. The JS tail then did
+  // `slice(0, -1)` on a newest-first array and dropped the OLDEST day, so every
+  // unbounded additive series was silently one reading short (found via #1541: a
+  // 3-day steps history rendered as "2 readings" on the metric detail page).
+  it("ALL_ROWS keeps the OLDEST day (it means no limit, not drop-one)", () => {
+    const metric = "distance_km";
+    for (const [date, value] of [
+      ["2024-03-01", 3],
+      ["2024-03-02", 4],
+      ["2024-03-03", 5],
+    ] as const) {
+      upsertMetricSamples(
+        profileId,
+        [sample(metric, date, value)],
+        "health-connect"
+      );
+    }
+    expect(getMetricDailyTotals(profileId, metric, ALL_ROWS)).toEqual([
+      { date: "2024-03-01", value: 3 },
+      { date: "2024-03-02", value: 4 },
+      { date: "2024-03-03", value: 5 },
+    ]);
+    // A positive limit still bounds the window, newest-first.
+    expect(getMetricDailyTotals(profileId, metric, 2)).toEqual([
+      { date: "2024-03-02", value: 4 },
+      { date: "2024-03-03", value: 5 },
     ]);
   });
 });

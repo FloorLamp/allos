@@ -19,6 +19,13 @@ import {
 export interface BodyChartSpec {
   key: string;
   title: string;
+  // Take the card's title (and its latest-value headline) out of the PAINTED header
+  // (#1541 fix 3). Both earn their keep on the Body tab, where several cards stack
+  // and each needs naming; on a SINGLE-chart detail page whose <h1> is the same
+  // string and whose subtitle is the same latest value they are pure echo — the
+  // #1533 double-render shape, ~700px apart on a phone. The title stays in the
+  // document outline (sr-only), so the card is still named for a screen reader.
+  hideTitle?: boolean;
   data: { date: string; value: number | null }[];
   label: string;
   unit: string;
@@ -40,6 +47,11 @@ export interface BodyChartSpec {
   // across to the illness/fever surface). Server-rendered and passed in, so this
   // component stays the toggle-state owner and nothing else.
   headerAction?: ReactNode;
+  // Axis treatment for a COUNT metric (#1541) — a zero-floored domain and grouped
+  // ticks. Composed by lib/trends-body-metrics' bodyChartScale() from the ONE
+  // registry, never re-decided per surface.
+  yDomain?: [number | "auto", number | "auto"];
+  groupYTicks?: boolean;
   // The chart's tap-through destination (#1488) — REQUIRED, `null` only with a
   // same-line `detail-none:` justification at the call site. Every registered body
   // metric has one via `metricDetailHref(slug)`; the metric detail page's OWN chart
@@ -114,7 +126,12 @@ export default function BodyTrendCharts({
         <ChartCard
           key={chart.key}
           title={chart.title}
-          headline={latestHeadline(chart)}
+          hideTitle={chart.hideTitle}
+          // The detail page's own chart (#1541 fix 3): its <h1> is this title and
+          // its subtitle is this headline, ~700px apart on a phone — the #1533
+          // double-render shape. Suppressed together, since the card's header row
+          // is not even a tap target there (detailHref is null).
+          headline={chart.hideTitle ? null : latestHeadline(chart)}
           note={chart.note}
           anchorId={chart.anchorId}
           testid={chart.testid}
@@ -136,6 +153,8 @@ export default function BodyTrendCharts({
             annotations={shown}
             windows={shownWindows}
             referenceValue={chart.referenceValue ?? null}
+            yDomain={chart.yDomain}
+            groupYTicks={chart.groupYTicks}
           />
         </ChartCard>
       ))}

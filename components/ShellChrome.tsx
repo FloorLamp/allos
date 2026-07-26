@@ -66,9 +66,19 @@ export default function ShellChrome({
       className="shell-chrome sticky top-0 z-30 md:static print:hidden"
     >
       {children}
+      {/* The banner BAND is the surface below `md` (issue #1539). It carries the
+          brand wash edge-to-edge — "this bar means multi-profile" survives as a
+          colour signal — so the strip inside it needs no frame, no tint and no
+          background of its own; two translucent layers used to stack here and page
+          content bled through the gaps above and below the floating card. The
+          padding is `py-1.5`, not `py-3`: the band was 77px tall, TALLER than the
+          57px nav bar above it, for a component whose own doc comment calls it
+          "the thin persistent multi-profile banner". 47px now.
+          From `md` up the band drops to transparent and the strip becomes the card
+          again, in the ordinary reading column with its unchanged pt-8 / pb-4. */}
       {banner && (
-        <div className="border-b border-black/10 bg-white/80 backdrop-blur-xl md:border-0 md:bg-transparent md:backdrop-blur-none dark:border-white/5 dark:bg-ink-950/80 md:dark:bg-transparent">
-          <div className="mx-auto pt-3 pb-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-8 md:pb-4 md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]">
+        <div className="border-b border-brand-200 bg-brand-50/85 backdrop-blur-xl md:border-0 md:bg-transparent md:backdrop-blur-none dark:border-brand-500/25 dark:bg-brand-950/85 md:dark:bg-transparent">
+          <div className="mx-auto py-1.5 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-8 md:pb-4 md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]">
             {banner}
           </div>
         </div>

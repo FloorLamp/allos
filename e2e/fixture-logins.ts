@@ -30,5 +30,6 @@ export * from "./logins/notifications";
 export * from "./logins/nutrition";
 export * from "./logins/shared";
 export * from "./logins/situations";
+export * from "./logins/timeline";
 export * from "./logins/training";
 export * from "./logins/trends";

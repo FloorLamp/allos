@@ -311,14 +311,17 @@ export default async function AppLayout({
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover).
               Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
-              the unchanged pt-8 / 1.25rem from `md` up. The top padding is
-              dropped entirely when the view banner is showing — ShellChrome
-              already spends it above the banner, and doubling it would push the
-              page heading a third of the way down a phone screen. */}
+              the unchanged pt-8 / 1.25rem from `md` up. The top padding all but
+              disappears when the view banner is showing — ShellChrome already
+              spends it above the banner, and doubling it would push the page
+              heading a third of the way down a phone screen. Below `md` a token
+              pt-2 survives, because #1539 cut the band's own bottom padding from
+              12px to 6px: at zero the page heading would sit 7px under a bordered
+              bar. From `md` up the band's md:pb-4 still supplies the whole gap. */}
                       <div
                         data-testid="app-content-container"
                         className={`mx-auto pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem] ${
-                          showViewStrip ? "" : "pt-4 md:pt-8"
+                          showViewStrip ? "pt-2 md:pt-0" : "pt-4 md:pt-8"
                         }`}
                       >
                         {/* The deploy notice (#1520) is an INLINE banner in this

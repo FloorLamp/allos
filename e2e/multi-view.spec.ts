@@ -247,6 +247,80 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     await page.context().close();
   });
 
+  test("the view strip reads as bar content at 390px: no card frame, chips uncipped (issue #1539)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = resetMultiFixture();
+
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await enterMultiView(page, sharedId);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/upcoming");
+
+    const strip = page.getByTestId("profile-view-strip");
+    await expect(strip).toBeVisible();
+    await expect(page.getByTestId(`view-chip-${ownerId}`)).toBeVisible();
+    await expect(page.getByTestId(`view-chip-${sharedId}`)).toBeVisible();
+
+    // No card frame below `md`: the band the strip lives in is the surface, so the
+    // strip itself carries neither border nor background of its own. Two
+    // translucent layers used to stack here and page content bled through.
+    const frame = await strip.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { border: s.borderTopWidth, bg: s.backgroundColor };
+    });
+    expect(frame.border, "the strip still draws a card border at 390px").toBe(
+      "0px"
+    );
+    expect(frame.bg, "the strip still tints itself at 390px").toBe(
+      "rgba(0, 0, 0, 0)"
+    );
+
+    // The label is not PAINTED — it used to spend 41% of the row restating what the
+    // chips beside it already say — but it stays in the accessibility tree, so a
+    // screen reader still hears it.
+    const label = await page.getByTestId("view-strip-label").boundingBox();
+    expect(label, "the label should still be in the tree").not.toBeNull();
+    expect(label!.width, "the label is still painted at 390px").toBeLessThan(4);
+    await expect(strip).toContainText("Viewing 2 profiles");
+
+    // …so the chips now start at the strip's left edge (past only the IconUsers and
+    // its gap) instead of 146px into a 356px row. Containment, not a pixel budget
+    // (#868): the assertion is "the chips get the row", not "the row is N px".
+    const stripBox = await strip.boundingBox();
+    const firstChip = await page
+      .getByTestId(`view-chip-${ownerId}`)
+      .boundingBox();
+    expect(stripBox, "the strip should be laid out").not.toBeNull();
+    expect(firstChip, "the first chip should be laid out").not.toBeNull();
+    expect(
+      firstChip!.x - stripBox!.x,
+      "the label is still pushing the chips right"
+    ).toBeLessThan(40);
+
+    // The strip itself is a working overflow-x:auto container that fits the
+    // viewport — the blessed element-level clip check (#1063).
+    await expectNoClippedContent(page);
+
+    // Desktop is out of scope and stays a card in the reading column.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/upcoming");
+    const desktopFrame = await page
+      .getByTestId("profile-view-strip")
+      .evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(desktopFrame).not.toBe("0px");
+    const desktopLabel = await page
+      .getByTestId("view-strip-label")
+      .boundingBox();
+    expect(desktopLabel!.width).toBeGreaterThan(40);
+
+    await page.context().close();
+  });
+
   test("by-person toggle groups the merged list under per-member headers (issue #1327 fix 2)", async ({
     browser,
   }) => {

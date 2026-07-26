@@ -43,13 +43,31 @@ export default function ProfileViewStrip({
     // permanently taken off the page. The chips scroll horizontally instead.
     // The vertical margin moved to the ShellChrome wrapper, which owns spacing
     // in both placements.
+    //
+    // NO CARD BELOW `md` (issue #1539). Since the move into the ShellChrome band
+    // the strip was a bordered, tinted, rounded card floating inside a bordered,
+    // blurred bar, with 12px of wrapper padding either side of it — a card with
+    // outer padding inside a surface that is already a surface, and two stacked
+    // translucent layers page content bled through. Below `md` the BAND is the
+    // surface (it carries the brand wash edge-to-edge, see ShellChrome) and the
+    // strip is bare bar content; from `md` up the band is transparent, so the card
+    // styling returns and desktop is byte-identical. One tree, responsive classes
+    // only — never a hidden md:* / md:hidden pair.
     <div
       data-testid="profile-view-strip"
-      className="flex items-center gap-2 overflow-x-auto rounded-lg border border-brand-200 bg-brand-50/70 px-3 py-2 text-sm sm:flex-wrap sm:overflow-x-visible dark:border-brand-500/30 dark:bg-brand-500/10"
+      className="flex items-center gap-2 overflow-x-auto text-sm sm:flex-wrap sm:overflow-x-visible md:rounded-lg md:border md:border-brand-200 md:bg-brand-50/70 md:px-3 md:py-2 md:dark:border-brand-500/30 md:dark:bg-brand-500/10"
     >
       <span className="flex shrink-0 items-center gap-1.5 font-medium text-brand-700 dark:text-brand-300">
         <IconUsers className="h-4 w-4 shrink-0" stroke={1.75} />
-        Viewing {profiles.length} profiles
+        {/* The label costs 146px of a 356px row at 390px — 41% of the space, spent
+            restating what the chips beside it already say (the names AND the
+            count), which is what pushed the second chip off the right edge with no
+            scroll affordance. Below `md` the IconUsers carries it visually and the
+            words stay in the accessibility tree, so a screen reader still hears
+            "Viewing 2 profiles". */}
+        <span data-testid="view-strip-label" className="sr-only md:not-sr-only">
+          Viewing {profiles.length} profiles
+        </span>
       </span>
       <div className="flex shrink-0 items-center gap-1.5 sm:flex-wrap">
         {profiles.map((p) => {

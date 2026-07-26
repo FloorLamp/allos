@@ -49,7 +49,9 @@ import {
   BODY_METRIC_META,
   isBodyMetricSlug,
   resolveBodyMetricUnit,
+  bodyChartScale,
   bodyMetricPeriodStats,
+  seriesCoverageNote,
   type BodyMetricSlug,
   type PeriodStat,
 } from "@/lib/trends-body-metrics";
@@ -376,12 +378,18 @@ export default async function BodyMetricDetailPage(props: {
     key: meta.slug,
     detailHref: null, // detail-none: this page IS the detail — a card here would link to itself
     title: meta.title,
+    // The page's <h1> already says it — a card heading here is pure echo (#1541).
+    hideTitle: true,
     data: windowed,
     label: meta.label,
     unit,
     color: meta.color,
     referenceValue: overlay.referenceValue,
     projectionNote: overlay.projectionNote,
+    // What the plot ACTUALLY covers, whenever the selected window is wider than the
+    // series — the reconciliation between a lit "90D" pill and a week-wide axis.
+    note: seriesCoverageNote(windowed, range),
+    ...bodyChartScale(meta),
   };
 
   const latest =
@@ -451,7 +459,9 @@ export default async function BodyMetricDetailPage(props: {
       />
 
       {/* Trailing-window period stats (7 / 30 / 90 days) — always relative to today,
-          independent of the range control above. */}
+          independent of the range control above. Windows that cover the SAME
+          readings collapse into one card (#1541), which is the common case on any
+          series younger than a week. */}
       <PeriodStatsCard stats={stats} unit={unit} />
 
       {/* The big chart — reuses the Body tab's chart card (annotation toggle + goal
@@ -501,6 +511,17 @@ function BackLink() {
   );
 }
 
+// One column per window from `sm` up — but only as many columns as there are
+// cards, so a collapsed single card fills the card instead of sitting in a third
+// of it. Below `sm` the windows STACK (#1541 fix 2): at 390px a hard `grid-cols-3`
+// leaves 76px of content per cell against a `Range` row needing ~110px, so the
+// value broke mid-range onto a second line — by arithmetic, not by accident.
+const PERIOD_COLS: Record<number, string> = {
+  1: "sm:grid-cols-1",
+  2: "sm:grid-cols-2",
+  3: "sm:grid-cols-3",
+};
+
 function PeriodStatsCard({
   stats,
   unit,
@@ -509,12 +530,16 @@ function PeriodStatsCard({
   unit: string;
 }) {
   const fmt = (v: number | null) => (v == null ? "—" : `${v}${unit}`);
+  // MM-DD, the same form the chart's x-axis tick and coverage caption use.
+  const md = (d: string) => d.slice(5);
   return (
     <div className="card" data-testid="metric-period-stats">
       <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
         Period stats
       </h2>
-      <div className="grid grid-cols-3 gap-3">
+      <div
+        className={`grid grid-cols-1 gap-3 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}`}
+      >
         {stats.map((s) => (
           <div
             key={s.label}
@@ -522,12 +547,24 @@ function PeriodStatsCard({
             className="rounded-lg border border-black/10 p-3 dark:border-white/10"
           >
             <div className="section-label">{s.label}</div>
-            {s.count === 0 ? (
-              <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                No data
-              </div>
-            ) : (
-              <dl className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-300">
+            {/* The reading COUNT, always — it was already computed and used only to
+                pick the No-data branch. Shown, it is what makes a trio of windows
+                explicable when they legitimately differ, and what explains a
+                collapsed card when they don't. */}
+            <div
+              data-testid={`period-readings-${s.days}`}
+              className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+            >
+              {s.count === 0
+                ? "No readings"
+                : `${s.count} reading${s.count === 1 ? "" : "s"}${
+                    s.from && s.to
+                      ? ` · ${md(s.from)}${s.from === s.to ? "" : ` – ${md(s.to)}`}`
+                      : ""
+                  }`}
+            </div>
+            {s.count === 0 ? null : (
+              <dl className="mt-1.5 space-y-0.5 text-xs text-slate-600 dark:text-slate-300">
                 <div className="flex justify-between gap-2">
                   <dt className="text-slate-500 dark:text-slate-400">Latest</dt>
                   <dd className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
@@ -544,8 +581,15 @@ function PeriodStatsCard({
                     {s.min}–{s.max}
                   </dd>
                 </div>
+                {/* Not "Change" (#1541 fix 6): the figure is last-minus-FIRST-in-
+                    window, so it describes where the window edge landed. Naming the
+                    date it subtracts from makes the subtraction explicit — and stays
+                    true, which "vs 7d ago" would not be whenever the window's first
+                    reading isn't sitting on its edge (a weekly weigh-in, always). */}
                 <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500 dark:text-slate-400">Change</dt>
+                  <dt className="text-slate-500 dark:text-slate-400">
+                    {s.from ? `vs ${md(s.from)}` : "Change"}
+                  </dt>
                   <dd className="tabular-nums">
                     {s.delta != null && s.delta > 0 ? "+" : ""}
                     {fmt(s.delta)}

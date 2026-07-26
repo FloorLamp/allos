@@ -67,6 +67,17 @@ async function logAndConfirm(
 test("active-first: catalog collapses into the picker; logging via the picker raises the worst severity", async ({
   page,
 }) => {
+  // BUDGET, not flake. Alone in this file this test runs TWO full logAndConfirm
+  // loops, and each one is a settled write plus a reload of the dashboard — the
+  // app's heaviest render. Measured end to end at ~43–45s on a 4-core box, so it
+  // was over the 30s default whatever the machine was doing (its siblings, with one
+  // loop each, come in at 11s and 20s). Confirmed against the pre-#1560 merge base:
+  // the same test fails there 2/2 at the default budget with the identical error,
+  // and passes 1/1 at 120s — so this is the test's real cost, not a regression.
+  //
+  // test.slow() is a declared budget (×3), NOT a retry: at retries=0 the test still
+  // has to pass on its first attempt, so nothing is masked.
+  test.slow();
   await page.goto("/");
   const tap = settledTap(page);
   const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic

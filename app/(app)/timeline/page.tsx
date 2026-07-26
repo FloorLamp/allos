@@ -71,6 +71,7 @@ import {
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { SYMPTOMS } from "@/lib/symptoms";
 import SymptomLogBar from "../symptoms/SymptomLogBar";
+import SymptomEntryCard from "./SymptomEntryCard";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import {
   groupTimelineDays,
@@ -84,6 +85,8 @@ import IntradayPanel from "@/components/IntradayPanel";
 import { formatLongDate, formatMonthDay } from "@/lib/format-date";
 import { shiftDateStr } from "@/lib/date";
 import TimelineDayNav from "@/components/TimelineDayNav";
+import { contextLabel } from "@/lib/context-label";
+import ContextBar from "@/components/ContextBar";
 import { EmptyState, MedicalValue, PageHeader } from "@/components/ui";
 import ActivityIcon from "@/components/ActivityIcon";
 import DateRangeControl from "@/components/DateRangeControl";
@@ -575,6 +578,22 @@ export default async function TimelinePage(props: {
       ? getIntradayDay(daySubjectId, range.from, days[0].events)
       : null;
 
+  // The day's symptom state, gathered ONCE (#1517 C): it feeds both the retro entry
+  // bar and the decision about whether that bar opens on arrival. Only read on the
+  // surface that renders it — a single selected day that belongs to the acting
+  // profile (the bar writes to the acting profile, never a mixed subject).
+  const symptomDay =
+    singleDaySelected && range.from && !viewingOtherSubject ? range.from : null;
+  const daySymptomSeverities = symptomDay
+    ? getSymptomSeveritiesOnDate(daySubjectId, symptomDay)
+    : {};
+  const daySymptomNotes = symptomDay
+    ? getSymptomNotesOnDate(daySubjectId, symptomDay)
+    : {};
+  const dayIllnessActive = symptomDay
+    ? hasActiveIllnessSituation(daySubjectId)
+    : false;
+
   const latestDay = (multiFeed ? mergedDays : days)[0]?.date;
   const oldestDay = (multiFeed ? mergedDays : days).at(-1)?.date;
   const throughLabel =
@@ -599,71 +618,90 @@ export default async function TimelinePage(props: {
         restoreKey={`${category ?? "all"}:${range.from ?? ""}:${range.to ?? ""}`}
       />
 
+      {/* The filter block (issue #1517 A+B). It used to be `sticky` on a phone —
+          permanently occupying viewport height for the chrome you set once and
+          rarely re-touch, while the day nav below it (prev/next day, used
+          constantly) scrolled away. The priority is swapped: below `md` this block
+          scrolls away, collapsed to one summary line ("All · Through today ▾") that
+          expands on tap, and TimelineDayNav takes the pinned slot instead. From
+          `md` up — where the height is not scarce — it is sticky exactly as before,
+          and from `sm` up the controls are simply always shown. */}
       <div
         id="timeline-controls"
-        className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-2 mb-5 space-y-2 bg-slate-50/50 px-2 py-2 backdrop-blur-md sm:space-y-4 sm:py-3 md:top-0 dark:bg-ink-950/50"
+        className="mb-5 md:sticky md:top-0 md:z-20 md:-mx-2 md:bg-slate-50/50 md:px-2 md:py-3 md:backdrop-blur-md md:dark:bg-ink-950/50"
       >
-        <DateRangeControl
-          basePath="/timeline"
-          range={range}
-          todayStr={todayStr}
-          hiddenParams={{ category }}
-          buildHref={(r) => filterHref(category, r)}
-          LinkComponent={TimelineFilterLink}
-          idPrefix="timeline"
-          rightSlot={
-            <>
-              <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
-                {throughLabel}
-              </span>
-              {latestDay && oldestDay && latestDay !== oldestDay && (
-                <>
-                  <a
-                    href={`#timeline-day-${latestDay}`}
-                    className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
-                  >
-                    Latest
-                  </a>
-                  <a
-                    href={`#timeline-day-${oldestDay}`}
-                    className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
-                  >
-                    Oldest
-                  </a>
-                </>
-              )}
-            </>
+        <ContextBar
+          idPrefix="timeline-filters"
+          label={contextLabel(
+            category ? timelineCategoryLabel(category) : "All",
+            throughLabel
+          )}
+          controls={
+            <div className="space-y-2 sm:space-y-4">
+              <DateRangeControl
+                basePath="/timeline"
+                range={range}
+                todayStr={todayStr}
+                hiddenParams={{ category }}
+                buildHref={(r) => filterHref(category, r)}
+                LinkComponent={TimelineFilterLink}
+                idPrefix="timeline"
+                rightSlot={
+                  <>
+                    <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+                      {throughLabel}
+                    </span>
+                    {latestDay && oldestDay && latestDay !== oldestDay && (
+                      <>
+                        <a
+                          href={`#timeline-day-${latestDay}`}
+                          className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
+                        >
+                          Latest
+                        </a>
+                        <a
+                          href={`#timeline-day-${oldestDay}`}
+                          className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
+                        >
+                          Oldest
+                        </a>
+                      </>
+                    )}
+                  </>
+                }
+              />
+
+              <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+                <TimelineFilterLink
+                  href={filterHref(undefined, range)}
+                  className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
+                    !category
+                      ? "bg-brand-500 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+                  }`}
+                >
+                  All
+                </TimelineFilterLink>
+                {visibleCategories.map((c) => {
+                  const active = c === category;
+                  return (
+                    <TimelineFilterLink
+                      key={c}
+                      href={filterHref(c, range)}
+                      className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
+                        active
+                          ? "bg-brand-500 text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+                      }`}
+                    >
+                      {timelineCategoryLabel(c)}
+                    </TimelineFilterLink>
+                  );
+                })}
+              </div>
+            </div>
           }
         />
-
-        <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-          <TimelineFilterLink
-            href={filterHref(undefined, range)}
-            className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-              !category
-                ? "bg-brand-500 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-            }`}
-          >
-            All
-          </TimelineFilterLink>
-          {visibleCategories.map((c) => {
-            const active = c === category;
-            return (
-              <TimelineFilterLink
-                key={c}
-                href={filterHref(c, range)}
-                className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                  active
-                    ? "bg-brand-500 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
-              >
-                {timelineCategoryLabel(c)}
-              </TimelineFilterLink>
-            );
-          })}
-        </div>
       </div>
 
       {/* Multi-view merged feed: the interleaved | by-person toggle (issue #1327 fix 2,
@@ -710,22 +748,30 @@ export default async function TimelinePage(props: {
           #1329). When no illness-type situation is active it offers the suggest-only
           "Mark as illness" bridge (direction A of the two-way bridge). */}
       {singleDaySelected && range.from && !viewingOtherSubject && (
-        <div className="card mb-5" data-testid="timeline-symptom-entry">
-          <h2 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-            Log symptoms for {formatLongDate(range.from, formatPrefs)}
-          </h2>
+        <SymptomEntryCard
+          dateLabel={formatLongDate(range.from, formatPrefs)}
+          // #1517 C: open when logging IS the point of the visit — the day already
+          // carries symptom entries, or an illness-type situation is active (the
+          // sick-day flow #799 built the bar for). Otherwise the ordinary day gets
+          // the block back. Both inputs are already read below for the bar itself.
+          defaultOpen={
+            Object.keys(daySymptomSeverities).length > 0 ||
+            Object.keys(daySymptomNotes).length > 0 ||
+            dayIllnessActive
+          }
+        >
           <SymptomLogBar
             date={range.from}
-            initial={getSymptomSeveritiesOnDate(daySubjectId, range.from)}
-            initialNotes={getSymptomNotesOnDate(daySubjectId, range.from)}
+            initial={daySymptomSeverities}
+            initialNotes={daySymptomNotes}
             symptoms={SYMPTOMS}
             customNames={getCustomSymptomNames(daySubjectId)}
             rankedKeys={getSymptomLogOrder(daySubjectId)}
-            suggestActivateIllness={!hasActiveIllnessSituation(daySubjectId)}
+            suggestActivateIllness={!dayIllnessActive}
             temperatureUnit={units.temperatureUnit}
             textIntakeEnabled={isTaskConfigured("symptom-map")}
           />
-        </div>
+        </SymptomEntryCard>
       )}
 
       {!hasAnyEvents ? (

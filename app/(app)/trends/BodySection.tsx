@@ -59,6 +59,7 @@ import {
 import { getTrendsCardOrder } from "@/lib/settings";
 import {
   BODY_METRIC_META,
+  bodyChartScale,
   buildBodyMetricTile,
   type BodyMetricSlug,
   type BodyMetricTile,
@@ -930,10 +931,13 @@ export default async function BodySection({
           detailHref={metricDetailHref("steps")}
           detailTitle="steps"
         >
+          {/* Count metric: zero-floored axis + grouped ticks, from the ONE
+              registry the detail page reads (#1541). */}
           <LineChartCard
             data={stepsChart}
             label="Steps"
             color={chartSeries.sky}
+            {...bodyChartScale(BODY_METRIC_META.steps)}
           />
         </ChartCard>
       ),
@@ -1146,6 +1150,7 @@ export default async function BodySection({
             label="Water"
             color={chartSeries.sky}
             unit=" L"
+            {...bodyChartScale(BODY_METRIC_META.hydration)}
           />
         </ChartCard>
       ),
@@ -1166,6 +1171,7 @@ export default async function BodySection({
             label="Calories"
             color={chartSeries.amber}
             unit=" kcal"
+            {...bodyChartScale(BODY_METRIC_META.calories)}
           />
         </ChartCard>
       ),

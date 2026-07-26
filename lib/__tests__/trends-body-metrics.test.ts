@@ -8,6 +8,9 @@ import {
   buildBodyMetricTile,
   orderBodyMetricTiles,
   bodyMetricPeriodStats,
+  collapseCoincidentPeriods,
+  seriesCoverageNote,
+  bodyChartScale,
   type OrderableTile,
 } from "@/lib/trends-body-metrics";
 
@@ -118,5 +121,152 @@ describe("orderBodyMetricTiles", () => {
       ["weight"]
     );
     expect(ordered.map((t) => t.slug)).toEqual(["weight", "sun"]);
+  });
+});
+
+describe("bodyMetricPeriodStats", () => {
+  const today = "2026-07-22";
+
+  // #1541 — the whole point of the collapse: three windows that contain the SAME
+  // readings produced three identical cards, which is the common case for any
+  // series younger than a week (every new install, every fresh integration).
+  it("collapses windows that cover the same readings into one card", () => {
+    const stats = bodyMetricPeriodStats(
+      [
+        { date: "2026-07-20", value: 8200 },
+        { date: "2026-07-21", value: 9100 },
+        { date: "2026-07-22", value: 7600 },
+      ],
+      today,
+      0
+    );
+    expect(stats).toHaveLength(1);
+    const [only] = stats;
+    expect(only.windows).toEqual([7, 30, 90]);
+    expect(only.days).toBe(90);
+    expect(only.label).toBe("7–90d");
+    // The count + the covered span — the passthrough that makes the card explicable.
+    expect(only.count).toBe(3);
+    expect(only.from).toBe("2026-07-20");
+    expect(only.to).toBe("2026-07-22");
+  });
+
+  it("collapses only the coincident RUN, keeping a window that really differs", () => {
+    // 7d holds one reading; 30d and 90d both hold two → two cards, not three.
+    const stats = bodyMetricPeriodStats(
+      [
+        { date: "2026-07-01", value: 78.4 },
+        { date: "2026-07-21", value: 77.9 },
+      ],
+      today,
+      1
+    );
+    expect(stats.map((s) => s.label)).toEqual(["7d", "30–90d"]);
+    expect(stats.map((s) => s.count)).toEqual([1, 2]);
+    expect(stats[1].delta).toBeCloseTo(-0.5, 5);
+  });
+
+  it("keeps three cards when all three windows genuinely differ", () => {
+    const stats = bodyMetricPeriodStats(
+      [
+        { date: "2026-04-25", value: 100 },
+        { date: "2026-07-01", value: 80 },
+        { date: "2026-07-20", value: 76 },
+      ],
+      today,
+      1
+    );
+    expect(stats.map((s) => s.label)).toEqual(["7d", "30d", "90d"]);
+    expect(stats.every((s) => s.windows.length === 1)).toBe(true);
+  });
+
+  it("collapses three EMPTY windows too — one 'no readings' card, not three", () => {
+    const stats = bodyMetricPeriodStats(
+      [{ date: "2026-01-01", value: 5 }],
+      today
+    );
+    expect(stats).toHaveLength(1);
+    expect(stats[0].count).toBe(0);
+    expect(stats[0].label).toBe("7–90d");
+  });
+});
+
+describe("collapseCoincidentPeriods", () => {
+  const stat = (days: number, count: number) => ({
+    label: `${days}d`,
+    days,
+    windows: [days],
+    count,
+    from: null,
+    to: null,
+    latest: null,
+    avg: null,
+    min: null,
+    max: null,
+    delta: null,
+  });
+
+  it("is a no-op when every window differs", () => {
+    const out = collapseCoincidentPeriods([
+      stat(7, 1),
+      stat(30, 2),
+      stat(90, 3),
+    ]);
+    expect(out).toHaveLength(3);
+  });
+
+  it("merges an ADJACENT run only — a matching count either side of a gap is not one window", () => {
+    // Nested windows can't actually produce this (counts are monotonic), but the
+    // merge must stay a run-collapse rather than a group-by-count.
+    const out = collapseCoincidentPeriods([
+      stat(7, 2),
+      stat(30, 3),
+      stat(90, 3),
+    ]);
+    expect(out.map((s) => s.label)).toEqual(["7d", "30–90d"]);
+  });
+});
+
+describe("seriesCoverageNote (#1541 fix 4)", () => {
+  const pts = [{ date: "2026-07-19" }, { date: "2026-07-25" }];
+
+  it("names what is actually drawn when the window is wider than the series", () => {
+    expect(
+      seriesCoverageNote(pts, { from: "2026-04-27", to: "2026-07-25" })
+    ).toBe("All 2 readings, 07-19 → 07-25");
+  });
+
+  it("stays silent when the range genuinely bounds the series", () => {
+    // The window starts ON the first reading — the pill is already truthful.
+    expect(
+      seriesCoverageNote(pts, { from: "2026-07-19", to: "2026-07-25" })
+    ).toBeNull();
+  });
+
+  it("drops the 'All' when the range also clips the recent end", () => {
+    expect(seriesCoverageNote(pts, { from: null, to: "2026-07-20" })).toBe(
+      "2 readings, 07-19 → 07-25"
+    );
+  });
+
+  it("has nothing to say about an empty window", () => {
+    expect(seriesCoverageNote([], { from: null, to: null })).toBeNull();
+  });
+});
+
+describe("bodyChartScale (#1541 fix 5)", () => {
+  it("floors a COUNT metric at zero and groups its ticks", () => {
+    expect(bodyChartScale(BODY_METRIC_META.steps)).toEqual({
+      yDomain: [0, "auto"],
+      groupYTicks: true,
+    });
+    expect(bodyChartScale(BODY_METRIC_META.calories).groupYTicks).toBe(true);
+    expect(bodyChartScale(BODY_METRIC_META.hydration).groupYTicks).toBe(true);
+  });
+
+  it("leaves a ratio/index metric on the auto domain, where zero would flatten it", () => {
+    for (const slug of ["weight", "bmi", "resting-hr", "spo2"] as const) {
+      expect(bodyChartScale(BODY_METRIC_META[slug]).yDomain).toBeUndefined();
+    }
   });
 });
