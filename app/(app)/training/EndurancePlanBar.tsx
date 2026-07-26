@@ -50,10 +50,15 @@ export default function EndurancePlanBar({
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             Event plans
           </h3>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            Training toward a race? Set the event and coaching builds a safe
-            weekly volume trajectory — ramp, long session, and taper.
-          </p>
+          {/* Conditional card (#1496), same shape as the injury bar: the explainer
+              renders only with a live plan (or an open form); otherwise the card is
+              its title + "Add plan", so an empty state costs one row, not a block. */}
+          {(plans.length > 0 || showForm) && (
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Training toward a race? Set the event and coaching builds a safe
+              weekly volume trajectory — ramp, long session, and taper.
+            </p>
+          )}
         </div>
         <button
           type="button"

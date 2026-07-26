@@ -20,6 +20,7 @@ import {
   seedTrainingZones,
   seedActivityFormPaths,
   seedEndurancePlans,
+  seedTrainingRollup,
 } from "./seed/training";
 import { seedIntegrationSyncEvents } from "./seed/integrations";
 import { seedMergeFixtures } from "./seed/merge";
@@ -149,3 +150,4 @@ seedTelegramDoseRound();
 seedCuratedOverview();
 seedCompareFold();
 seedFitnessLens();
+seedTrainingRollup();

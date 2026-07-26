@@ -35,3 +35,15 @@ export const FORM_INJURY_PROFILE = "Form Injury (e2e)";
 // training-restricted, so /training renders the full hub with the Event-plans bar.
 export const E2E_LOGIN_ENDURANCE = "e2e_endurance";
 export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
+
+// ── Training → Overview, the doing surface (#1496) ────────────────────────────
+// A dedicated ADULT profile whose recent strength log is deliberately LIGHT across
+// several small muscles (2 sets each of curls / skullcrushers / lateral raises /
+// crunches / calf raises inside the trailing 7-day window, plus earlier weeks so the
+// #719 cold-start gate is satisfied), so the per-muscle volume-band engine (#742)
+// fires SEVERAL shortfalls at once — exactly the pile the Overview rollup folds into
+// one card. Dedicated on purpose (#868): the spec DISMISSES one of those findings, and
+// a suppression write on a shared profile would silence a neighbor's finding. NO
+// routine and NO injury, so nothing gates the observations (deload / injured region).
+export const E2E_LOGIN_TRAINING_ROLLUP = "e2e_training_rollup";
+export const TRAINING_ROLLUP_PROFILE = "Training Rollup (e2e)";
