@@ -416,3 +416,75 @@ test("temporary appointment absence never becomes a saved hidden preference", as
     cleanupAvailabilityFixture();
   }
 });
+
+// The dashboard's Customize drag, after #1485 C moved its DndContext, sensors and
+// list math into the SHARED components/SortableOrder.tsx that Trends Overview's
+// tiles now also lift with. One reorder mechanism, two consumers — so the
+// established one needs a test proving it still reorders, not just that Customize
+// still renders.
+//
+// Fixture hygiene (#868): NOTHING is written. The drag is asserted in edit state
+// and then CANCELLED, which restores the pre-edit order — so this perturbs no
+// neighbour and is repeat-safe on the shared admin profile.
+test("Customize still drags a widget to a new slot (the shared reorder core, #1485 C)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const main = page.getByRole("main");
+  await main.getByRole("button", { name: "Edit dashboard" }).click();
+
+  const widgets = main.locator("[data-testid^='dashboard-widget-']");
+  await expect(widgets.first()).toBeVisible(); // first-ok: the editor's leading slot IS the subject — "does the top widget move?"
+  const idsBefore = await widgets.evaluateAll((els) =>
+    els.map((e) => e.getAttribute("data-testid") ?? "")
+  );
+  expect(
+    idsBefore.length,
+    "Customize should list several widgets"
+  ).toBeGreaterThan(2);
+
+  // The grid starts well below the fold, and a mouse gesture is viewport-relative
+  // — so bring the pair on screen and measure THEN, or every coordinate lands
+  // outside the window and nothing moves.
+  await main.getByTestId(idsBefore[0]).scrollIntoViewIfNeeded();
+
+  // Lift by the grip handle (this surface's lift mode) and drop on the next slot.
+  const handle = main
+    .getByTestId(idsBefore[0])
+    .getByRole("button", { name: /^Drag / });
+  const target = main.getByTestId(idsBefore[1]);
+  const from = await handle.boundingBox();
+  const to = await target.boundingBox();
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    from!.x + from!.width / 2 + 12,
+    from!.y + from!.height / 2,
+    {
+      steps: 4,
+    }
+  );
+  await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () =>
+      widgets.evaluateAll((els) => els[0]?.getAttribute("data-testid") ?? "")
+    )
+    .toBe(idsBefore[1]);
+
+  // Cancel restores the pre-edit order — and leaves the saved layout untouched.
+  await main.getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    main.getByRole("button", { name: "Edit dashboard" })
+  ).toBeVisible();
+  await expect
+    .poll(async () =>
+      main
+        .locator("[data-testid^='dashboard-widget-']")
+        .evaluateAll((els) => els[0]?.getAttribute("data-testid") ?? "")
+    )
+    .toBe(idsBefore[0]);
+});
