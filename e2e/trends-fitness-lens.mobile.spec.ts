@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { followLink } from "./helpers";
+import { expectNoClippedContent, followLink } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_FITNESS,
@@ -110,11 +110,10 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     // The card's TOP inside the first screen (the audit's 1,776px → under 844px).
     expect(box!.y).toBeLessThan(viewport!.height);
 
-    // And the page itself never scrolls sideways at 390px.
-    const noHScroll = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1
-    );
-    expect(noHScroll).toBe(true);
+    // And nothing is pushed past the right edge at 390px — measured per element
+    // (#1543), since the app shell clips the overflow a page-level width
+    // comparison would look for.
+    await expectNoClippedContent(page);
 
     await page.close();
   });

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { expectNoClippedContent, settledClick } from "./helpers";
 import {
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
@@ -257,13 +257,10 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
 
     await page.goto("/training?tab=fitness");
     await expect(page.getByTestId("fitness-grid")).toBeVisible();
-    // No horizontal overflow: the document isn't wider than the viewport.
-    const overflow = await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth + 1
-    );
-    expect(overflow).toBe(false);
+    // No horizontal overflow, measured per element (#1543): the app shell clips
+    // the overflow away, so comparing the document's width to the viewport's is
+    // true no matter how far a tile spills past the edge.
+    await expectNoClippedContent(page);
 
     await page.close();
   });

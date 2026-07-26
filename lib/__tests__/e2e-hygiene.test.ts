@@ -220,6 +220,31 @@ const WALL_CLOCK_ALLOW: Record<string, number> = {
   "undo-delete.spec.ts": 1,
 };
 
+// ── (x) The document-level overflow check freeze (issue #1543) ──────────────
+// The app shell clips horizontal overflow (`<main className="… overflow-x-clip">`,
+// app/(app)/layout.tsx), so the document NEVER reports itself wider than the
+// viewport on an (app) page: a 3000px-wide div injected into <main> still reads a
+// document scroll width of 360 at a 360px viewport. Every hand-rolled
+// "document width ≤ viewport width" guard is therefore UNCONDITIONALLY TRUE — 15
+// sites across 13 specs asserted exactly nothing, including one written in the
+// inverted direction (unconditionally false), which is the same vacuity.
+//
+// The blessed guard is `expectNoClippedContent(page)` (e2e/helpers.ts, #1063): it
+// asserts ELEMENT-level containment (every rendered element's right edge inside the
+// viewport +2px, unless it sits in a working `overflow-x: auto|scroll` container
+// that itself fits), reports the offending tag/testid/class + widths, and folds the
+// document-level check in as belt-and-braces for surfaces OUTSIDE the clipping shell
+// (share pages, print views) — so the honest home for that comparison is the helper,
+// which the scan excludes.
+//
+// Frozen at ZERO: every site was converted in #1543. The scan is TEXTUAL, so a
+// comment or string in an e2e file that spells the pattern out counts itself —
+// phrase the prose without the literal (this file is not scanned, so it may).
+// An alias (`const de = document.documentElement; de.scrollWidth`) evades the regex;
+// that is a deliberate limit, not a supported escape.
+const DOC_SCROLLWIDTH_RE = /(?:documentElement|document\.body)\.scrollWidth/g;
+const DOC_SCROLLWIDTH_ALLOW: Record<string, number> = {};
+
 const WORKER_HARNESS_FILES = new Set([
   "fixtures.ts",
   "worker-env.ts",
@@ -628,6 +653,24 @@ describe("e2e suite hygiene guard (issue #868)", () => {
           `ALLOS_DB_PATH is the APP SERVER's environment, not the spec process's — a ` +
           `spec reading it opens the wrong worker's database (#1538). Use ` +
           `workerDbPath() from ./worker-env; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no document-level overflow check in an e2e/*.ts (use expectNoClippedContent)", () => {
+    checkPattern(
+      "document-level overflow check",
+      DOC_SCROLLWIDTH_RE,
+      DOC_SCROLLWIDTH_ALLOW,
+      {
+        hint:
+          `The app shell clips horizontal overflow, so a document-width vs ` +
+          `viewport-width comparison is unconditionally true on every (app) page — ` +
+          `it asserts NOTHING (#1543). Use expectNoClippedContent(page) from ` +
+          `e2e/helpers.ts, which measures element-level containment (right edge ` +
+          `inside the viewport unless inside a working overflow-x scroller that ` +
+          `itself fits) and names the offending element; see ` +
+          `docs/internals/e2e-hygiene.md.`,
       }
     );
   });

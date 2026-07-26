@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Browser, type Page } from "@playwright/test";
 import { loginAs } from "./nav";
+import { expectNoClippedContent } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_NOWSTRIP,
@@ -85,13 +86,12 @@ test("the phone dashboard drops the page header and leads with the Now strip (#1
     // it is gone on a phone.
     await expect(strip.getByTestId("now-strip-date")).toBeVisible();
 
-    // The two-card band must stay a BAND: at 390px the page itself must never
-    // scroll sideways (the repo's responsive rule), which is the risk a 2-column
-    // strip on a phone actually carries.
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth
-    );
-    expect(overflow).toBeLessThanOrEqual(0);
+    // The two-card band must stay a BAND: at 390px nothing may be pushed past the
+    // viewport edge (the repo's responsive rule), which is the risk a 2-column
+    // strip on a phone actually carries. Measured element-by-element (#1543) —
+    // the app shell clips horizontal overflow, so a page-level width comparison
+    // reads "no overflow" even when a card is entirely off-screen.
+    await expectNoClippedContent(page);
   } finally {
     await page.context().close();
   }

@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { expandTrendsContext } from "./trends-chrome";
+import { expectNoClippedContent } from "./helpers";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
@@ -29,11 +30,10 @@ test.describe("mobile tab strips scroll instead of clipping (#640)", () => {
       (el) => getComputedStyle(el).overflowX
     );
     expect(["auto", "scroll"]).toContain(overflowX);
-    // The page body itself does NOT scroll sideways (the clip backstop holds).
-    const bodyOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1
-    );
-    expect(bodyOverflow).toBe(true);
+    // Nothing OUTSIDE that scroller sits past the right edge. Element-level
+    // (#1543): the shell's clip makes a page-level width comparison read "no
+    // overflow" on every page, so it could never have caught a regression here.
+    await expectNoClippedContent(page);
 
     // The Insights tab — last in the strip — is clickable: Playwright scrolls the
     // strip to it, which was impossible when the strip was clipped, not scrollable.
@@ -238,11 +238,9 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     expect(box!.x + box!.width).toBeLessThanOrEqual(PHONE.width + 1);
     expect(box!.x).toBeGreaterThanOrEqual(0);
 
-    // And the page body itself does not scroll sideways.
-    const noBodyScroll = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1
-    );
-    expect(noBodyScroll).toBe(true);
+    // And no OTHER element on the page is pushed off the right edge either
+    // (#1543 — element-level, since the shell clips the page-level signal away).
+    await expectNoClippedContent(page);
   });
 });
 

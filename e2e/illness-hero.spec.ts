@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { expectNoClippedContent, settledClick } from "./helpers";
 import { openTempEntry } from "./symptom-helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -154,11 +154,10 @@ test("below xl: the priority cards do not create horizontal page overflow", asyn
 
   await expect(page.getByTestId("illness-hero")).toBeVisible();
   await expect(page.getByTestId("needs-attention")).toBeVisible();
-  const dimensions = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+  // Element-level containment (#1543): the app shell clips horizontal overflow,
+  // so a document-vs-viewport width comparison is true at every width and the
+  // priority row could spill a card off-screen without failing anything.
+  await expectNoClippedContent(page);
 
   await page.context().close();
 });

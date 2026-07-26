@@ -240,6 +240,53 @@ describe("bodyMetricPeriodStats", () => {
     expect(stats[0].count).toBe(0);
     expect(stats[0].label).toBe("7–90d");
   });
+
+  // ── The degenerate inputs (#1545) ──────────────────────────────────────────
+  // A windowed statistic's contract is decided at its edges, and those edges are
+  // the ORDINARY state of a real install: no readings at all (a metric never
+  // recorded), and exactly one (the day after a first weigh-in or a fresh
+  // integration). Pinning what the function returns there is what lets a SURFACE
+  // spec assert "one card per DISTINCT window" instead of a fixed 7/30/90 trio —
+  // the presence-trio that #1541's collapse had to break to be fixable.
+
+  it("returns ONE empty card for a metric with no readings at all", () => {
+    const stats = bodyMetricPeriodStats([], today);
+    expect(stats).toHaveLength(1);
+    expect(stats[0]).toMatchObject({
+      label: "7–90d",
+      windows: [7, 30, 90],
+      count: 0,
+      from: null,
+      to: null,
+      latest: null,
+      avg: null,
+      min: null,
+      max: null,
+      delta: null,
+    });
+  });
+
+  it("returns ONE card for a single reading, with a zero delta and no spread", () => {
+    const stats = bodyMetricPeriodStats(
+      [{ date: "2026-07-21", value: 81.25 }],
+      today,
+      1
+    );
+    expect(stats).toHaveLength(1);
+    const [only] = stats;
+    expect(only.label).toBe("7–90d");
+    expect(only.count).toBe(1);
+    // latest === min === max, and the change is against ITSELF: exactly zero, not
+    // null. A single reading is a real (if uninformative) answer, and the card must
+    // say so rather than render three copies of it.
+    expect(only.latest).toBe(81.3);
+    expect(only.min).toBe(81.3);
+    expect(only.max).toBe(81.3);
+    expect(only.avg).toBe(81.3);
+    expect(only.delta).toBe(0);
+    expect(only.from).toBe("2026-07-21");
+    expect(only.to).toBe("2026-07-21");
+  });
 });
 
 describe("collapseCoincidentPeriods", () => {

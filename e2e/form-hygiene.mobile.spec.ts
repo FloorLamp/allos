@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { expectNoClippedContent } from "./helpers";
 // Form hygiene at phone width (issue #1450 cluster A, the highest-stakes site).
 //
 // The strength set row (SET · WEIGHT stepper · × · REPS stepper · OPTIONS) is the
@@ -84,13 +85,9 @@ test("the live set row shows a 4-character load at 390px (#1450)", async ({
 
   // The row must not achieve that by overflowing the viewport instead — the app
   // shell clips horizontal overflow, so a too-wide row would hide the options
-  // column rather than scroll to it.
-  const rowRight = await page
-    .getByTestId("set1-weight-stepper")
-    .evaluate(() => document.documentElement.scrollWidth);
-  expect(rowRight).toBeLessThanOrEqual(
-    await page.evaluate(() => document.documentElement.clientWidth + 2)
-  );
+  // column rather than scroll to it. That clipping is exactly why this is an
+  // ELEMENT-level check (#1543): a page-level width comparison sees nothing.
+  await expectNoClippedContent(page);
 
   // Reps keep their own room on the same wrapped line.
   expect(await isClipped(page, "set1-weight")).toBe(false);
