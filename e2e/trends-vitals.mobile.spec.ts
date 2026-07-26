@@ -74,7 +74,7 @@ test.describe("the 1D pill is scoped to the Body tab (B)", () => {
     for (const tab of [
       "/trends",
       "/trends?tab=nutrition",
-      "/trends?tab=compare",
+      "/trends?tab=insights",
     ]) {
       await page.goto(tab);
       // Exact, like the 1D locators above: the movers digest renders LINK chips
