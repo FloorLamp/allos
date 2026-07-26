@@ -5,6 +5,7 @@ import { formatMinutes } from "@/lib/duration";
 import type { FitnessWindow } from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
+import ChartCard from "@/components/ChartCard";
 import TrainingZonesSection from "./TrainingZonesSection";
 
 // Intensity → bar/legend color (the same vocabulary the /training cardio section
@@ -50,13 +51,15 @@ export default async function FitnessZonesSection({
         includesToday={window.to >= todayStr}
       />
 
-      <div className="card" data-testid="fitness-cardio-volume">
-        <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-          Weekly cardio volume
-        </h2>
-        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-          Minutes per week in this window, by activity.
-        </p>
+      {/* Weekly minutes are an AGGREGATE over logged cardio sessions; Training →
+          Analyze holds the per-session detail each bar is built from. */}
+      <ChartCard
+        testid="fitness-cardio-volume"
+        title="Weekly cardio volume"
+        detailHref="/training?tab=analyze"
+        detailTitle="cardio volume"
+        description="Minutes per week in this window, by activity."
+      >
         {weekly.data.length === 0 ? (
           <EmptyState
             message="No cardio in this window. Widen the range, or log a run, ride, or swim."
@@ -70,7 +73,7 @@ export default async function FitnessZonesSection({
             labelPrefix="Week of "
           />
         )}
-      </div>
+      </ChartCard>
 
       {mixTotal > 0 && (
         <div className="card" data-testid="fitness-intensity-mix">

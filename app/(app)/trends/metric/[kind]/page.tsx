@@ -54,6 +54,11 @@ import {
   type PeriodStat,
 } from "@/lib/trends-body-metrics";
 import type { AppRoute } from "@/lib/hrefs";
+import {
+  METRIC_READING_STORE,
+  METRIC_READINGS_LIMIT,
+  getMetricReadings,
+} from "@/lib/metric-readings";
 import type { BodyMetricKind, Goal } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
@@ -61,6 +66,9 @@ import DateRangeControl from "@/components/DateRangeControl";
 import BodyTrendCharts, {
   type BodyChartSpec,
 } from "@/components/BodyTrendCharts";
+import MetricReadingsTable, {
+  type MetricReadingRow,
+} from "@/components/MetricReadingsTable";
 import MeasurementsQuickAdd from "../../MeasurementsQuickAdd";
 
 export const dynamic = "force-dynamic";
@@ -209,6 +217,43 @@ function fullSeriesFor(
   }
 }
 
+// Why a DERIVED metric shows no readings table: there is no row to edit. Said out
+// loud on the page, because an empty table would read as "your data is missing"
+// rather than "this number is computed from other numbers you CAN fix".
+const DERIVED_READING_REASON: Partial<Record<BodyMetricSlug, string>> = {
+  bmi: "BMI is computed from your weight and height — correct a reading on either of those to change it.",
+  hr: "Daily average heart rate is computed from your recorded per-minute heart rate, so there is no single reading to edit here.",
+  sun: "Outdoor daylight is computed from your logged outdoor sessions and the solar day at your home location — edit the session to change it.",
+};
+
+// The detail page's readings table rows: the metric's own store rows, formatted in
+// the page's display unit. The ONE unit boundary is the same one the series crosses
+// (weight in the login's preference); every other metric is stored in the unit it is
+// charted in, so its value passes through rounded to the metric's decimals.
+function readingRowsFor(
+  slug: BodyMetricSlug,
+  profileId: number,
+  decimals: number,
+  weightUnit: WeightUnit
+): MetricReadingRow[] {
+  return getMetricReadings(profileId, slug).map((r) => {
+    const shown =
+      slug === "weight"
+        ? dispWeight(r.value, weightUnit)
+        : round(r.value, decimals);
+    return {
+      id: r.id,
+      date: r.date,
+      display: String(shown),
+      editValue: shown,
+      source: r.source,
+      flag: r.flag,
+      edited: r.edited,
+      notes: r.notes,
+    };
+  });
+}
+
 // The goal overlay (target line + projection caption) for a metric that can carry a
 // body-metric goal — the SAME shape the Body tab draws (projectGoal + describeEta).
 function goalOverlay(
@@ -298,6 +343,7 @@ export default async function BodyMetricDetailPage(props: {
   const fullSeries = fullSeriesFor(kind, profile.id, weightUnit, todayStr);
   const windowed = filterSeriesByRange(fullSeries, range);
   const stats = bodyMetricPeriodStats(fullSeries, todayStr, meta.decimals);
+  const readings = readingRowsFor(kind, profile.id, meta.decimals, weightUnit);
 
   // Goal overlay + event annotations, both windowed to the shared range — the same
   // machinery the Body tab draws (buildTrendAnnotations / buildProtocolTrendWindows).
@@ -413,6 +459,21 @@ export default async function BodyMetricDetailPage(props: {
       </div>
 
       {quickAdd}
+
+      {/* The readings themselves, one tap from the chart they shape (#1488 /
+          #1397): each row's ⋯ menu edits or deletes it, and the chart above
+          redraws. */}
+      <MetricReadingsTable
+        kind={kind}
+        rows={readings}
+        unit={unit}
+        readOnlyReason={
+          METRIC_READING_STORE[kind]
+            ? null
+            : (DERIVED_READING_REASON[kind] ?? null)
+        }
+        truncated={readings.length >= METRIC_READINGS_LIMIT}
+      />
     </PageContainer>
   );
 }

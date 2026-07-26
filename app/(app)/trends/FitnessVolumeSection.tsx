@@ -6,6 +6,7 @@ import { dispWeight } from "@/lib/units";
 import type { FitnessWindow } from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
+import ChartCard from "@/components/ChartCard";
 import WorkoutHeatmapSection from "./WorkoutHeatmapSection";
 
 // Trends → Fitness → **Volume & cadence** (#1492), the tab's first section and
@@ -38,13 +39,15 @@ export default async function FitnessVolumeSection({
       className="scroll-mt-28 space-y-6"
       data-testid="fitness-volume"
     >
-      <div className="card">
-        <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-          Training volume
-        </h2>
-        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-          Working {wu} lifted per session in this window (warmups excluded).
-        </p>
+      {/* Volume is an AGGREGATE over every logged set, so its full depth is Training
+          → Analyze — the per-lift session tables the bars are summed from. */}
+      <ChartCard
+        testid="fitness-volume-chart"
+        title="Training volume"
+        detailHref="/training?tab=analyze"
+        detailTitle="training volume"
+        description={`Working ${wu} lifted per session in this window (warmups excluded).`}
+      >
         {volume.length === 0 ? (
           <EmptyState
             message="No strength sessions in this window. Widen the range, or log a lift."
@@ -63,7 +66,7 @@ export default async function FitnessVolumeSection({
             ]}
           />
         )}
-      </div>
+      </ChartCard>
 
       {/* Cadence: the workout-density calendar (#186), re-scoped to the same
           window and compacted — a 90D window is ~13 columns, not the old

@@ -28,13 +28,23 @@ import type { AppRoute } from "@/lib/hrefs";
 // Trends chart rendered outside this card. A new chart cannot ship as a dead end
 // silently.
 //
-// SQUARE ON MOBILE (owner-added 2026-07-26). Below `sm` the CARD commits to a 1:1
-// aspect in EVERY state — populated, empty, loading, error, offline-fallback — with
-// the plot filling the box under the header (`flex-1`), replacing the per-call-site
-// height vocabulary (h-24 / h-32 / h-40 / h-64) that made a single-column stack
-// reflow whenever one series happened to be empty. From `sm` up the card is
-// `block` + the plot box takes `plotHeightClass` (default `sm:h-64`), so DESKTOP
-// PROPORTIONS ARE UNCHANGED — the square rule is mobile-only by design.
+// SQUARE ON MOBILE (owner-added 2026-07-26). Below `sm` the plot commits to a 1:1
+// aspect in EVERY state — populated, empty, loading, error, offline-fallback — in
+// place of the per-call-site height vocabulary (h-24 / h-32 / h-40 / h-64) that made
+// a single-column stack reflow whenever one series happened to be empty. From `sm` up
+// the box takes `plotHeightClass` (default `sm:h-64`), so DESKTOP PROPORTIONS ARE
+// UNCHANGED — the square rule is mobile-only by design.
+//
+// The aspect rides the PLOT BOX rather than the whole card, which is what makes the
+// rule survive the cards that carry real content under the plot (the HR-zones card's
+// Zone-2 adherence line, easy/hard split and zone table; a goal-projection caption).
+// Squaring the outer card would have to take that footer's height OUT of the plot,
+// so a footer-heavy card would render a squeezed 60px plot inside a 358px square —
+// regularity bought by destroying the chart. Square plot + the card growing for its
+// footer delivers what the rule is FOR (one rhythm down a stack; an empty chart
+// occupying exactly the footprint the populated one will) with nothing squeezed:
+// two cards of the same shape still have identical bounding boxes whether their
+// series are populated or empty, which is the property the browser test pins.
 //
 // The plot box carries `.chart-card-plot` (app/globals.css), whose `> *` rule sizes
 // whatever the caller renders to the box. That is deliberate: the card OWNS the plot
@@ -127,12 +137,12 @@ export default function ChartCard({
     <div
       id={anchorId}
       data-testid={testid}
-      className={`${surfaceClass} flex aspect-square flex-col sm:block sm:aspect-auto ${
+      className={`${surfaceClass} ${
         anchorId ? "scroll-mt-28 " : ""
       }${className}`}
     >
       <div
-        className={`mb-2 flex shrink-0 items-start justify-between gap-2 sm:mb-3 ${headerClassName}`}
+        className={`mb-2 flex items-start justify-between gap-2 sm:mb-3 ${headerClassName}`}
       >
         {detailHref ? (
           <Link
@@ -152,7 +162,7 @@ export default function ChartCard({
               href={detailHref}
               data-testid="chart-card-expand"
               aria-label={`Open ${detailTitle ?? title} detail`}
-              className="tap-target press inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-brand-700 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-300"
+              className="tap-target press inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-300"
             >
               <IconArrowsMaximize className="h-4 w-4" aria-hidden />
             </Link>
@@ -162,7 +172,7 @@ export default function ChartCard({
 
       {note != null && (
         <p
-          className={`mb-2 shrink-0 text-xs text-slate-500 dark:text-slate-400 sm:mb-3 ${headerClassName}`}
+          className={`mb-2 text-xs text-slate-500 dark:text-slate-400 sm:mb-3 ${headerClassName}`}
         >
           {note}
         </p>
@@ -172,12 +182,12 @@ export default function ChartCard({
           here is tooltip inspection, not navigation. */}
       <div
         data-testid="chart-card-plot"
-        className={`chart-card-plot min-h-0 min-w-0 flex-1 sm:flex-none ${plotHeightClass}`}
+        className={`chart-card-plot aspect-square min-w-0 sm:aspect-auto ${plotHeightClass}`}
       >
         {children}
       </div>
 
-      {footer != null && <div className="shrink-0">{footer}</div>}
+      {footer}
     </div>
   );
 }

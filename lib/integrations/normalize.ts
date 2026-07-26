@@ -312,7 +312,7 @@ export function upsertMetricSamples(
   // an update's provenance row (#1333) names the existing row rather than relying on
   // lastInsertRowid (unreliable for an ON CONFLICT DO UPDATE).
   const find = db.prepare(
-    "SELECT id, value, date, end_time, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?"
+    "SELECT id, value, date, end_time, edited, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?"
   );
   const stmt = db.prepare(
     `INSERT INTO metric_samples
@@ -349,6 +349,7 @@ export function upsertMetricSamples(
           value: number;
           date: string;
           end_time: string;
+          edited: number;
           activity_external_id: string | null;
         }
       | undefined;
@@ -365,6 +366,14 @@ export function upsertMetricSamples(
       )
     ) {
       counts.suppressed++;
+      continue;
+    }
+    // The #133 user-edit lock, which metric_samples gained in #1488 alongside the
+    // detail-page readings table's per-row Edit. A hand-corrected sample survives
+    // every later re-push of the rolling window, counted `unchanged` — the same
+    // contract activities / body_metrics / medical_records have had since #133.
+    if (found && isEditLocked(found.edited)) {
+      tallyUpsert(counts, classifyUpsert(true, true));
       continue;
     }
     // A delayed retry of an older cumulative snapshot must never roll a newer
