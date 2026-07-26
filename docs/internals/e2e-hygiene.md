@@ -273,6 +273,33 @@ nothing navigates away while the action is still in flight. Same shape as the
 too: a cleanup click followed by a `goto` can drop the cleanup and hand the next spec
 a mutated shared profile.
 
+## Where fixtures live (the #1511 split)
+
+`e2e/seed-events.ts` and `e2e/fixture-logins.ts` **keep their names** — the Playwright
+webServer still runs the former, every spec still imports from the latter — but both
+are now thin composers over per-domain modules:
+
+- `e2e/seed/*.ts` — one module per domain (`training`, `medical`, `intake`,
+  `household`, `illness`, `metrics`, `nutrition`, `dashboard`, …), each exporting
+  `seedX()` functions that the entrypoint calls **in the original order**. That order
+  is load-bearing: fixtures build on rows earlier calls insert, and row ids follow
+  insertion order, so a NEW domain's call is appended at the end unless it must run
+  earlier. Helpers used by more than one domain (`seedMemberLogin`, `fixtureProfileId`,
+  `grantProfile`, `PROFILE_ID`) live in `e2e/seed/common.ts`; fixture DATA never does.
+- `e2e/logins/*.ts` — the same domain split for the credential + fixture-profile-name
+  constants, re-exported (alphabetically) from `e2e/fixture-logins.ts`.
+- `e2e/fixture-profile.ts` stays put: `createFixtureProfile` / `destroyFixtureProfile`
+  are the blessed profile CONSTRUCTOR pair, not seed content.
+- `e2e/helpers.ts` stays ONE module on purpose — it is the settle-primitive
+  chokepoint, and two homes for the same wait is the drift it exists to prevent. Its
+  functions are ordered ALPHABETICALLY so additions stop landing on the same trailing
+  lines.
+
+The point is merge-queue throughput: two PRs adding fixtures for different domains no
+longer touch the same file. **The hygiene guard's scan is recursive** (`specFiles()`
+walks `e2e/**`), so the moved content keeps being scanned — a guard that silently
+stopped seeing it would be worse than the conflicts.
+
 ### The fixture-LOGIN budget (#1392)
 
 The seeded fixture population is **monotonic**: every dedicated fixture login is a
@@ -291,7 +318,7 @@ stays. But a fixture that only wants an **isolated profile** takes
 a login is not.
 
 Enforced by the hygiene guard's sixth check: every `E2E_LOGIN_*` constant in
-`e2e/fixture-logins.ts` must be referenced by a spec AND used in a sign-in position
+the fixture-login modules must be referenced by a spec AND used in a sign-in position
 (`loginAs(` / `creds(` / `username:`). A deliberate exception carries a written reason
 in `LOGIN_NO_SIGNIN_ALLOW` (today: the sleep-page hash-clone TEMPLATE login and the
 `#1412` grant-matrix subject login). A login no spec references at all fails as dead

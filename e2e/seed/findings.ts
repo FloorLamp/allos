@@ -1,0 +1,330 @@
+// e2e seed fixtures — findings domain. Composed (in order) by e2e/seed-events.ts,
+// which stays the entrypoint the Playwright webServer runs. Add a fixture for THIS
+// domain here (a new exported seed function, or inside an existing one) so two PRs
+// touching different domains stop colliding on one file — see the entrypoint header.
+
+import "../../scripts/load-env";
+
+import { db, today } from "../../lib/db";
+import { shiftDateStr } from "../../lib/date";
+import { upsertConnection } from "../../lib/integrations/connections";
+import {
+  E2E_LOGIN_WEATHER,
+  WEATHER_PROFILE,
+  E2E_LOGIN_PHOTOS,
+  E2E_LOGIN_SUPPRESSED,
+  PROGRESS_PHOTOS_PROFILE,
+  SUPPRESSED_PROFILE,
+  E2E_LOGIN_VIDEO,
+  VIDEO_PROFILE,
+} from "../fixture-logins";
+import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
+
+// ── Rule-domain findings fixtures ──
+export function seedRuleDomains(): void {
+  // ---- issue #45 rule-domain fixtures (domains 4–6) --------------------------
+  // Deterministic fixtures so the new observational-findings surfaces have something
+  // to render in e2e. Goal pacing (domain 6) is already covered by the base seed's
+  // off-pace "Reach 74 kg" / "Cut to 78 kg" weight goals; these add the training
+  // plateau (domain 4) and the body-metric weight jump (domain 5). All idempotent.
+
+  // Domain 4 — a PLATEAUED lift: six weekly Skullcrusher sessions at a FIXED 30 kg × 10,
+  // so the estimated 1RM is flat across ~5 weeks and the plateau rule fires on
+  // Training → Overview. Skullcrusher is outside the seeded PPL routine, so it doesn't
+  // disturb the progressing lifts.
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:plateau-%'`
+  ).run(PROFILE_ID);
+  const insPlateauAct = db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+   VALUES (1, ?, 'strength', 'Arms — Skullcrusher', 30, 'hard', 'manual', ?)`
+  );
+  const insPlateauSet = db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+   VALUES (?, 'Skullcrusher', ?, 30, 10)`
+  );
+  for (let w = 0; w < 6; w++) {
+    const date = shiftDateStr(today(PROFILE_ID), -(w * 7 + 2));
+    const actId = Number(
+      insPlateauAct.run(date, `e2e:plateau-${w}`).lastInsertRowid
+    );
+    for (let s = 1; s <= 3; s++) insPlateauSet.run(actId, s);
+  }
+
+  // #449 — a DEDICATED plateaued lift ("E2E Dismiss Press") whose ONLY purpose is the
+  // coaching-observations dashboard-dismiss spec. That spec mutates the shared
+  // suppression store (dismissing the finding), and "dismiss once, silence everywhere"
+  // would then hide the finding on Training → Overview too — so it must NOT reuse the
+  // Skullcrusher plateau, which rule-findings.spec.ts asserts is visible. Built exactly
+  // like the Skullcrusher fixture (six weekly sessions at a FIXED 30 kg × 10 → flat 1RM →
+  // plateau rule fires), with a unique name no other spec references. Idempotent; outside
+  // the seeded PPL routine so it doesn't disturb the progressing lifts.
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:dismiss-plateau-%'`
+  ).run(PROFILE_ID);
+  const insDismissAct = db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+   VALUES (1, ?, 'strength', 'Arms — E2E Dismiss Press', 30, 'hard', 'manual', ?)`
+  );
+  const insDismissSet = db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+   VALUES (?, 'E2E Dismiss Press', ?, 30, 10)`
+  );
+  for (let w = 0; w < 6; w++) {
+    const date = shiftDateStr(today(PROFILE_ID), -(w * 7 + 2));
+    const actId = Number(
+      insDismissAct.run(date, `e2e:dismiss-plateau-${w}`).lastInsertRowid
+    );
+    for (let s = 1; s <= 3; s++) insDismissSet.run(actId, s);
+  }
+
+  // #789 — a CUSTOM-ONLY strength session for the per-session muscle-figure spec's
+  // negative case: one strength activity whose only lift is a made-up, non-catalog
+  // name, so `musclesWorked` resolves to the empty set and the Journal card's
+  // per-session anatomy figure degrades to nothing. Unique title so the spec targets
+  // it exactly; a recent date so it lands in the Journal's first (newest) page. The
+  // custom lift has no catalog muscle tags, so it adds nothing to weekly coverage and
+  // leaves the coverage/volume-band specs undisturbed. Idempotent.
+  const MUSCLE_FIG_CUSTOM = "Custom-only lift day (e2e)";
+  db.prepare(`DELETE FROM activities WHERE profile_id = ? AND title = ?`).run(
+    PROFILE_ID,
+    MUSCLE_FIG_CUSTOM
+  );
+  const muscleFigActId = Number(
+    db
+      .prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+       VALUES (?, ?, 'strength', ?, 40, 'hard', 'manual', 'e2e:muscle-fig-custom')`
+      )
+      .run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), -1), MUSCLE_FIG_CUSTOM)
+      .lastInsertRowid
+  );
+  const insMuscleFigSet = db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+   VALUES (?, 'E2E Bespoke Machine Press', ?, 40, 10)`
+  );
+  for (let s = 1; s <= 3; s++) insMuscleFigSet.run(muscleFigActId, s);
+
+  console.log(
+    `e2e: seeded a custom-only strength session "${MUSCLE_FIG_CUSTOM}" for the per-session muscle-figure spec (#789)`
+  );
+
+  // Domain 5 — a probable-error weight JUMP: one outlier reading (92 kg) three days
+  // after the prior weekly weigh-in (~80.5 kg), ~14% above it — a scale-glitch
+  // signature the body-hygiene rule flags on Trends → Body.
+  const jumpDate = shiftDateStr(today(PROFILE_ID), -12);
+  db.prepare(
+    `DELETE FROM body_metrics WHERE profile_id = ? AND notes = 'e2e:weight-jump'`
+  ).run(PROFILE_ID);
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+   VALUES (1, ?, 92, 'e2e:weight-jump')`
+  ).run(jumpDate);
+
+  console.log(
+    `e2e: seeded a 6-week Skullcrusher plateau, a dedicated E2E Dismiss Press plateau (#449), and a weight jump on ${jumpDate} (#45)`
+  );
+
+  // Domain 3 — an adherence PATTERN: a daily Evening supplement taken every day for
+  // ~8 weeks EXCEPT every Friday. The weekday-miss rule then flags "you miss your
+  // evening dose most Fridays" and suggests moving it earlier, on Supplements & Meds.
+  // Fully synthetic. Idempotent: re-created from scratch each boot (the item + its
+  // dose + logs), so today-relative dates stay correct across days.
+  const ADHERE_ITEM = "Evening Vitamin C (e2e)";
+  db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+    PROFILE_ID,
+    ADHERE_ITEM
+  );
+  // Backdated created_at: the #430 lifetime clamp bounds each dose's adherence
+  // strip to max(item created, dose created/re-timed), so the item + dose must
+  // PREDATE the 63-day backfilled log window or the pattern rules see no history.
+  const adhereBorn = `${shiftDateStr(today(PROFILE_ID), -70)} 08:00:00`;
+  const adhereItemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+         (profile_id, name, condition, priority, active, source, created_at)
+       VALUES (?, ?, 'daily', 'high', 1, 'manual', ?)`
+      )
+      .run(PROFILE_ID, ADHERE_ITEM, adhereBorn).lastInsertRowid
+  );
+  const adhereDoseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort, created_at, updated_at)
+       VALUES (?, '500 mg', 'Evening', 'any', 0, ?, ?)`
+      )
+      .run(adhereItemId, adhereBorn, adhereBorn).lastInsertRowid
+  );
+  const insAdhereLog = db.prepare(
+    `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, status)
+   VALUES (?, ?, ?, 'taken')`
+  );
+  // 63 days back → nine Fridays in the window; log taken on every non-Friday.
+  for (let i = 1; i <= 63; i++) {
+    const date = shiftDateStr(today(PROFILE_ID), -i);
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    if (weekday === 5) continue; // Friday → missed (no taken-log)
+    insAdhereLog.run(adhereDoseId, adhereItemId, date);
+  }
+
+  console.log(
+    `e2e: seeded an every-Friday evening-dose miss pattern for ${ADHERE_ITEM} (#45 domain 3)`
+  );
+}
+
+// ── Suppressed-center fixture ──
+export function seedSuppressedCenter(): void {
+  // ── Suppressed-center fixture (#1151) ─────────────────────────────────────────
+  // A dedicated profile whose "Snoozed & dismissed" section spans all three
+  // classes: a CARE snooze (future appointment), a COACHING dismissal (a
+  // training-obs plateau key — no backing rows needed; the dismissal IS the fact),
+  // and a SUGGESTION dismissal (a med-bridge key resolved purely from its prefix —
+  // post-#1178/092 no backing medical_records 'prescription' row can exist, and a
+  // dismissal that outlived its record is a REAL current-state shape, #1232).
+  // Idempotent: the spec ALSO resets these suppression rows itself before each
+  // test (retries / --repeat-each), so this boot-time seed only guarantees the
+  // backing data + a first-run state. All synthetic.
+  {
+    const scId = fixtureProfileId(SUPPRESSED_PROFILE);
+    seedMemberLogin(E2E_LOGIN_SUPPRESSED, scId, "write");
+    const scToday = today(scId);
+
+    // Backing appointment (future, scheduled) — recreated each boot so its date
+    // stays in the future relative to the frozen clock.
+    db.prepare(
+      `DELETE FROM appointments WHERE profile_id = ? AND title = 'E2E Suppressed Appointment'`
+    ).run(scId);
+    const scApptId = Number(
+      db
+        .prepare(
+          `INSERT INTO appointments (profile_id, scheduled_at, title, status)
+         VALUES (?, ?, 'E2E Suppressed Appointment', 'scheduled')`
+        )
+        .run(scId, `${shiftDateStr(scToday, 5)} 10:00`).lastInsertRowid
+    );
+
+    // The three suppression rows (the spec re-asserts these per test). The
+    // med-bridge key needs no backing row — the section's resolver labels it from
+    // the key alone (lib/suppression-display.ts), and Restore simply clears it.
+    db.prepare(`DELETE FROM upcoming_dismissals WHERE profile_id = ?`).run(
+      scId
+    );
+    db.prepare(
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until)
+     VALUES (?, ?, ?)`
+    ).run(scId, `appointment:${scApptId}`, shiftDateStr(scToday, 3));
+    const scDismiss = db.prepare(
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
+     VALUES (?, ?, datetime('now'))`
+    );
+    scDismiss.run(scId, "training-obs:plateau:e2e suppressed lift");
+    scDismiss.run(scId, "med-bridge:e2e suppressed rx");
+
+    console.log(
+      `e2e: seeded suppressed-center fixture — profile ${scId} (${SUPPRESSED_PROFILE}), appointment ${scApptId} (#1151)`
+    );
+  }
+
+  // #1119 — progress photos: a dedicated, initially PHOTO-LESS profile + write
+  // member. The spec itself uploads/deletes photos (and clears the table for this
+  // profile in beforeAll), so the seed only guarantees the login/profile exist —
+  // keeping the data-gated nav flip and the exact-count grid assertions isolated
+  // from profile 1 (whose sidebar order nav-consolidation.spec.ts pins verbatim).
+  {
+    const photosId = fixtureProfileId(PROGRESS_PHOTOS_PROFILE);
+    seedMemberLogin(E2E_LOGIN_PHOTOS, photosId, "write");
+    console.log(
+      `e2e: seeded progress-photos fixture — profile ${photosId} (${PROGRESS_PHOTOS_PROFILE}) (#1119)`
+    );
+  }
+
+  // #1224 — video capture: a dedicated ADULT profile (birthdate so /training isn't
+  // age-gated) with ONE seeded strength activity the spec attaches a form-check clip
+  // to. The spec clears the profile's activity_videos / symptom_videos rows itself,
+  // so its clip counts stay isolated. Idempotent for a reused server.
+  {
+    const videoId = fixtureProfileId(VIDEO_PROFILE);
+    db.prepare(
+      `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1990-04-01')`
+    ).run(videoId);
+    db.prepare(
+      `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')`
+    ).run(videoId);
+    const hasActivity = db
+      .prepare(
+        `SELECT id FROM activities WHERE profile_id = ? AND title = 'Squat session (e2e)'`
+      )
+      .get(videoId) as { id: number } | undefined;
+    if (!hasActivity) {
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, source)
+         VALUES (?, ?, 'strength', 'Squat session (e2e)', 'manual')`
+      ).run(videoId, today(videoId));
+    }
+    seedMemberLogin(E2E_LOGIN_VIDEO, videoId, "write");
+    console.log(
+      `e2e: seeded video-capture fixture — profile ${videoId} (${VIDEO_PROFILE}) (#1224)`
+    );
+  }
+
+  // #1172 — the Open-Meteo weather/UV integration + two-sided UV-dose sun model. A
+  // dedicated adult profile seeded so the weather spec is fully isolated from profile
+  // 1: a coarse home location (New York; timezone matched so the local hour labels line
+  // up), Fitzpatrick skin type II, the weather connection ENABLED, an outdoor daytime
+  // activity TODAY (10:00–12:00, avg_temp_c present = the outdoor signal), and cached
+  // LIVE UV for that day+location — so /integrations/weather renders Connected and the
+  // timeline renders the live UV badge. All UV values are low-entropy synthetic.
+  {
+    const wxId = fixtureProfileId(WEATHER_PROFILE);
+    seedMemberLogin(E2E_LOGIN_WEATHER, wxId, "write");
+    const wxTz = "America/New_York";
+    const wxLat = 40.7;
+    const wxLng = -74;
+    // Home location + timezone + skin type (profile_settings key/value — no migration).
+    const setPS = db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    );
+    setPS.run(wxId, "home_lat", String(wxLat));
+    setPS.run(wxId, "home_lng", String(wxLng));
+    setPS.run(wxId, "timezone", wxTz);
+    setPS.run(wxId, "skin_type", "2");
+    // Today in the profile's timezone (YYYY-MM-DD).
+    const wxToday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: wxTz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    // Enable the keyless weather connection (the enable flag the tick + grid read).
+    upsertConnection(wxId, "weather", { status: "connected", config: null });
+    // An outdoor daytime walk today, well inside the daylight window.
+    db.prepare(
+      `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, avg_temp_c)
+     VALUES (?, ?, 'cardio', 'Lunch walk', '10:00', '12:00', 20)`
+    ).run(wxId, wxToday);
+    // Cached live UV (+ irradiance) for the location's hours that day — the values the
+    // dose model crosses with the walk. High-ish UV so the badge is unmistakable; the
+    // overexposure side needs the skin type above.
+    const insUv = db.prepare(
+      `INSERT INTO weather_uv_hours
+       (lat, lng, hour_ts, uv_index, uv_index_clear_sky,
+        shortwave_radiation, direct_radiation, diffuse_radiation, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open-meteo')
+     ON CONFLICT(lat, lng, hour_ts) DO NOTHING`
+    );
+    for (const [hr, uv] of [
+      ["10", 7],
+      ["11", 8],
+      ["12", 8],
+    ] as [string, number][]) {
+      insUv.run(wxLat, wxLng, `${wxToday}T${hr}:00`, uv, uv + 1, 600, 500, 100);
+    }
+    console.log(
+      `e2e: seeded weather/UV fixture — profile ${wxId} (${WEATHER_PROFILE}), day ${wxToday} (#1172)`
+    );
+  }
+}
