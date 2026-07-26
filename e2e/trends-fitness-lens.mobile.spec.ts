@@ -74,8 +74,13 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     await expect(page.getByTestId("chart-jump-volume")).toBeVisible();
     await expect(page.getByTestId("chart-jump-zones")).toBeVisible();
 
-    // The old apology ("full history") is gone with the un-windowed content.
-    await expect(page.getByText("full history")).toHaveCount(0);
+    // The old un-windowed content is gone with its apology: the tab used to say
+    // "Strength, cardio, and sport progress (full history)" beside a "Full
+    // Training →" link, on a hub promising one shared date range.
+    await expect(page.getByText("(full history)")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Full Training/ })).toHaveCount(
+      0
+    );
 
     await page.close();
   });
