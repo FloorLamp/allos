@@ -83,6 +83,13 @@ export const OVERLAY_DRAG_HANDLE_BAR =
 // surfaces resolves to EXACTLY the inset it had before. Only ONE claimant exists
 // (the dock); a second would need to sum or max them, which is the point at which
 // this stops being constants and starts being the slot manager #1520 rejected.
+//
+// Import path note: the toast stack and the offline queue live in the ROOT layout,
+// above the activity editor's tree, and they need only these constants — so they
+// import this module DIRECTLY rather than through components/overlay's barrel,
+// which would pull the gesture recognizer and drag handle into the app's very
+// first client chunk (including /login). The dock, already inside that tree, uses
+// the barrel because it also needs the claim hook.
 export const BOTTOM_EDGE_OFFSET_VAR = "--bottom-edge-offset";
 // Written out (not composed from the constant above) because Tailwind's scanner
 // reads LITERALS — a class string interpolating the var name above would never be

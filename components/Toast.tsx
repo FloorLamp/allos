@@ -19,7 +19,7 @@ import {
   BOTTOM_EDGE_GUTTER_RIGHT,
   BOTTOM_EDGE_NOTICE_BOTTOM,
   BOTTOM_EDGE_NOTICE_LAYER,
-} from "@/components/overlay";
+} from "@/components/overlay/tokens";
 
 // App-wide lightweight toast for confirming user actions (form saves, deletes,
 // etc.). Mounted once in the root layout; any client component calls `useToast()`
