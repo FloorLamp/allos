@@ -4,6 +4,27 @@
       "date": "2026-07-26",
       "entries": [
         {
+          "pr": 1558,
+          "title": "Trends chrome gets out of the way — and tiles drag",
+          "body": "On a phone, Trends now opens with a one-line context bar — \"Overview · 90D\" — instead of two rows of pills and tabs: tap it to change the range or tab, and it slides away with the top bar as you scroll, returning the moment you scroll up. The window label is always visible, so a chart is never shown without knowing what period you're looking at. Your first chart now sits inside the opening screen. Reordering saved tiles is a long-press drag — the same gesture the dashboard uses — with the up/down controls still available in each tile's menu. This also fixed a bug where those arrows sometimes visibly did nothing.",
+          "kind": "feature",
+          "issues": [1485]
+        },
+        {
+          "pr": 1555,
+          "title": "Training opens on what you're doing today",
+          "body": "The Training overview now leads with today's session, then your week, with everything else in calm order behind it — and the wall of per-muscle coaching notices is one expandable card (each notice can still be dismissed individually inside it). The long PR lists show their top three with the rest one tap away, and the charts moved to Trends → Fitness where the date range applies to them. The page is about half its former height, and switching tabs no longer does the work of building all six behind the scenes.",
+          "kind": "feature",
+          "issues": [1496]
+        },
+        {
+          "pr": 1554,
+          "title": "Trends → Fitness respects your date range",
+          "body": "The Fitness tab stopped mirroring the Training page and became true trends content: four sections — volume (as bars, with the activity heatmap sized to your window), zones and cardio, strength progression, and sport — all honoring the same date range as every other tab. Records set in your window show as a top-three list with the full history one tap away on Training. Old links into the tab's former sub-tabs land correctly.",
+          "kind": "feature",
+          "issues": [1492]
+        },
+        {
           "pr": 1546,
           "title": "A logged workout is a logged workout — and day one reads honestly",
           "body": "Two fixes to how the app reads your data. Logging a finished session with just a duration (\"Walking, 30 minutes, done\") no longer convinces every page you're mid-workout — the live dock, the \"Still working out?\" nag, and the household chip now correctly treat it as completed. And a medication added moments ago no longer shows \"0% adherence\" — the worst possible number for \"no history yet\": days before a dose existed don't count against it, the card simply shows no percentage until there's real history, and a week where you genuinely missed every dose keeps its honest 0%. Medications brought in from an imported record keep their full history.",
@@ -25,7 +46,9 @@
           "issues": [1489]
         }
       ],
-      "operatorNotes": []
+      "operatorNotes": [
+        "For self-hosters who run the test suite: local e2e now uses per-worker databases and requires a production build first (the harness builds automatically when stale); parallel workers are supported and honest. No change to running or deploying the app itself."
+      ]
     },
     {
       "date": "2026-07-25",
