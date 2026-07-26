@@ -9,7 +9,7 @@ import {
   type WeightUnit,
 } from "@/lib/settings";
 import { round as roundTo } from "@/lib/units";
-import { ageInMonthsFromBirthdate } from "@/lib/date";
+import { ageInMonthsFromBirthdate, lastNDates } from "@/lib/date";
 import {
   showHeadCircEntry,
   showBodyFat,
@@ -18,6 +18,7 @@ import {
 import {
   getBiomarkerSeries,
   getBodyMetricDailySeries,
+  getDaylightOutdoorMinutesSeries,
   getMetricDailyTotals,
   getHrDailySummary,
   getMoodLogs,
@@ -64,6 +65,11 @@ import MeasurementsQuickAdd from "../../MeasurementsQuickAdd";
 
 export const dynamic = "force-dynamic";
 
+// The widest span the sun/outdoor series is gathered over — its query answers a list
+// of DATES (there is no row store to read back), so the page picks the horizon and
+// the range control windows within it. A year matches the Body tab's own cap.
+const SUN_SERIES_DAYS = 366;
+
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a
 // Trends → Body sparkline tile, mirroring the biomarker series view (/biomarkers/view)
 // that labs have always had but body metrics never did: a big chart with the shared
@@ -95,7 +101,8 @@ function biomarkerPoints(
 function fullSeriesFor(
   slug: BodyMetricSlug,
   profileId: number,
-  weightUnit: WeightUnit
+  weightUnit: WeightUnit,
+  todayStr: string
 ): { date: string; value: number }[] {
   switch (slug) {
     // ── vitals (#1486) ────────────────────────────────────────────────────────
@@ -139,6 +146,16 @@ function fullSeriesFor(
         "head_circumference_cm",
         ALL_ROWS
       ).map((r) => ({ date: r.date, value: round(r.value, 1) }));
+    case "sun":
+      // Sun/outdoor minutes is the one DATE-DRIVEN series here: the query answers a
+      // list of days rather than reading rows back, so the page asks for the widest
+      // span it charts (a year) and the range control windows it like every other
+      // metric. Same getDaylightOutdoorMinutes computation the Body tab's card and
+      // the DaylightChip read — a formatter, not a second engine (#221).
+      return getDaylightOutdoorMinutesSeries(
+        profileId,
+        lastNDates(todayStr, SUN_SERIES_DAYS)
+      );
     case "steps":
       return getMetricDailyTotals(profileId, "steps", ALL_ROWS).map((r) => ({
         date: r.date,
@@ -278,7 +295,7 @@ export default async function BodyMetricDetailPage(props: {
       : searchParams.range
   );
 
-  const fullSeries = fullSeriesFor(kind, profile.id, weightUnit);
+  const fullSeries = fullSeriesFor(kind, profile.id, weightUnit, todayStr);
   const windowed = filterSeriesByRange(fullSeries, range);
   const stats = bodyMetricPeriodStats(fullSeries, todayStr, meta.decimals);
 
@@ -299,6 +316,7 @@ export default async function BodyMetricDetailPage(props: {
 
   const chartSpec: BodyChartSpec = {
     key: meta.slug,
+    detailHref: null, // detail-none: this page IS the detail — a card here would link to itself
     title: meta.title,
     data: windowed,
     label: meta.label,

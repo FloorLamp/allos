@@ -276,13 +276,16 @@ export function immunizationHref(vaccine: string): AppRoute {
   return href as AppRoute;
 }
 
-// A body-metric detail page (#1067 Phase 2) — the per-metric surface for a Trends →
-// Body sparkline tile (`/trends/metric/weight`, `/trends/metric/steps`, …), the
-// biomarker-view pattern applied to body metrics. The slug is a stable
-// BodyMetricSlug (see lib/trends-body-metrics); a dynamic route needs the widening
-// cast. Typed `string` (not the slug union) to avoid a hrefs ↔ trends-body-metrics
-// import cycle — the page validates the slug against the registry.
-export function bodyMetricHref(kind: string): AppRoute {
+// A metric DETAIL page (#1067 Phase 2, generalized by #1488) — the per-metric
+// full-depth surface (`/trends/metric/weight`, `/trends/metric/steps`,
+// `/trends/metric/mood`, …): the biomarker-view pattern applied to body metrics,
+// and since #1488 the tap-through destination EVERY full-size Trends chart of a
+// registered kind points at. The slug is a stable BodyMetricSlug (see
+// lib/trends-body-metrics); a dynamic route needs the widening cast. Typed `string`
+// (not the slug union) to avoid a hrefs ↔ trends-body-metrics import cycle — the
+// page validates the slug against the registry, and `chart-detail-href.test.ts`
+// pins that every kind the registry declares resolves there.
+export function metricDetailHref(kind: string): AppRoute {
   const href: Route<`/trends/metric/${string}`> = `/trends/metric/${kind}`;
   return href as AppRoute;
 }

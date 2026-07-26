@@ -16,7 +16,7 @@
 
 import { chartSeries } from "./chart-colors";
 import { shiftDateStr } from "./date";
-import { bodyMetricHref, type AppRoute } from "./hrefs";
+import { metricDetailHref, type AppRoute } from "./hrefs";
 import { orderBodyCharts, type BodyChartDescriptor } from "./trends-body-order";
 import type { BodyMetricKind } from "./types";
 
@@ -38,6 +38,12 @@ export const BODY_METRIC_SLUGS = [
   "resting-hr",
   "height",
   "head-circ",
+  // Sun / outdoor daylight minutes (#1171) — a derived DAILY series (it aggregates
+  // outdoor activity against the solar day at the home location, so it has no
+  // per-row store of its own). It became a registered kind in #1488 so the Body
+  // tab's sun card taps through like every other chart instead of being the one
+  // dead end left on the tab.
+  "sun",
   "steps",
   "hr",
   "bmi",
@@ -219,6 +225,18 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     goalMetric: null,
     quickAdd: "measurements",
   },
+  sun: {
+    slug: "sun",
+    label: "Sun",
+    title: "Sun / outdoor time",
+    unit: " min",
+    color: chartSeries.amber,
+    decimals: 0,
+    order: 11,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: null,
+  },
   steps: {
     slug: "steps",
     label: "Steps",
@@ -382,7 +400,7 @@ export function buildBodyMetricTile(
   return {
     slug: meta.slug,
     label: meta.label,
-    href: bodyMetricHref(meta.slug),
+    href: metricDetailHref(meta.slug),
     unit: resolveBodyMetricUnit(meta, weightUnit),
     color: meta.color,
     decimals: meta.decimals,
