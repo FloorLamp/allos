@@ -35,15 +35,21 @@ export function getWorkoutDayDensity(
     .all(profileId, since) as WorkoutDayDensity[];
 }
 
-// The trailing ~12-month workout heatmap for the profile: `weeks` week-columns
-// ending on the week of "today" (profile timezone), aligned to the profile's first
-// weekday. The query window is derived from the same alignment so no data outside
-// the grid is fetched.
+// The trailing workout heatmap for the profile: `weeks` week-columns ending on the
+// week of `end` (default "today" in the profile timezone), aligned to the profile's
+// first weekday. The query window is derived from the same alignment so no data
+// outside the grid is fetched.
+//
+// `weeks`/`end` are what let the grid honor the Trends hub's shared range (#1492):
+// a 90D window draws ~13 columns ending on the window's last day, all time keeps
+// the trailing-12-month cap. Callers resolve the column count through
+// `fitnessWindowWeeks` (lib/trends-fitness.ts).
 export function getWorkoutHeatmap(
   profileId: number,
-  weeks = 53
+  weeks = 53,
+  endDate?: string
 ): WorkoutHeatmap {
-  const end = today(profileId);
+  const end = endDate ?? today(profileId);
   const weekStart = getWeekStart(profileId);
   const since = heatmapStart(end, weeks, weekStart);
   const density = getWorkoutDayDensity(profileId, since);

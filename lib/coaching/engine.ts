@@ -865,7 +865,9 @@ export function intensityRecommendation(
     title: "Ease off — add easy Zone 2",
     detail: `${split.hardPct}% of your recent training time was hard (above the aerobic threshold); a polarized 80/20 base keeps most of it easy. Swap a hard session for easy Zone 2 to build aerobic volume without the fatigue.`,
     tone: "caution",
-    actionHref: "/trends?tab=fitness&ftab=cardio",
+    // #1492: the nested `?ftab=cardio` strip is gone — zones are a SECTION of the
+    // Fitness tab now, so the deep link carries its in-page anchor instead.
+    actionHref: "/trends?tab=fitness#zones",
     actionLabel: "See HR zones",
   };
 }

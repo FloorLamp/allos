@@ -7,19 +7,31 @@ export interface PrItem {
 }
 
 // A "Recent PRs" card: a titled 2-up grid of `name → value · meta` rows. Shared
-// by the strength and cardio Training sections so the row layout stays in sync.
+// by the strength and cardio Training sections and the Trends → Fitness "PRs this
+// window" block (#1492) so the row layout stays in sync. `action` rides the
+// heading (the compact block's "Show all →" link into /training); `footer` sits
+// under the rows.
 export default function PrCard({
   title,
   items,
+  action,
+  footer,
+  testId,
 }: {
   title: string;
   items: PrItem[];
+  action?: ReactNode;
+  footer?: ReactNode;
+  testId?: string;
 }) {
   return (
-    <div className="card">
-      <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-        {title}
-      </h3>
+    <div className="card" data-testid={testId}>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+          {title}
+        </h3>
+        {action}
+      </div>
       <ul className="grid gap-2 sm:grid-cols-2">
         {items.map((it, i) => (
           <li
@@ -40,6 +52,7 @@ export default function PrCard({
           </li>
         ))}
       </ul>
+      {footer}
     </div>
   );
 }
