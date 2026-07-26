@@ -120,7 +120,10 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
       await expect(nav).toHaveAttribute("data-hidden", "false");
       const navBox = await nav.boundingBox();
       expect(navBox, "the day nav should be laid out").not.toBeNull();
-      expect(navBox!.y).toBeGreaterThanOrEqual(0);
+      // -2 epsilon: sticky positioning can report a sub-pixel negative y
+      // (-0.82 observed) while visually pinned at the top — the assertion is
+      // "pinned in the top band", not "mathematically at 0".
+      expect(navBox!.y).toBeGreaterThan(-2);
       expect(navBox!.y).toBeLessThan(160);
       await expect(page.getByTestId("timeline-day-prev")).toBeVisible();
 
