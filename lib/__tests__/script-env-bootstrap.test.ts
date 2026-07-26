@@ -94,6 +94,11 @@ function isPlaywrightSource(rel: string): boolean {
   );
 }
 
+// The Playwright config is the other runner entrypoint: whatever it names
+// (globalSetup, globalTeardown) and whatever those import is loaded by the runner,
+// never by `tsx`.
+const PLAYWRIGHT_CONFIG = "playwright.config.ts";
+
 function importClosure(roots: string[]): Set<string> {
   const seen = new Set<string>();
   const queue = [...roots];
@@ -115,7 +120,10 @@ const { playwrightOnly } = (() => {
     const abs = path.join(ROOT, dir);
     if (fs.existsSync(abs)) all.push(...walk(abs));
   }
-  const fromPlaywright = importClosure(all.filter(isPlaywrightSource));
+  const fromPlaywright = importClosure([
+    PLAYWRIGHT_CONFIG,
+    ...all.filter(isPlaywrightSource),
+  ]);
   // Anything a NON-Playwright module IMPORTS can end up evaluated by a standalone
   // `tsx` run (e2e/seed/* under e2e/seed-events.ts, for instance), so it keeps its
   // env-first obligation even when a spec also imports it. Seeded from those
@@ -123,7 +131,7 @@ const { playwrightOnly } = (() => {
   // presence in scripts//e2e/ never exempts it — only being loaded exclusively by
   // the Playwright runner does.
   const standaloneSeeds = all
-    .filter((f) => !isPlaywrightSource(f))
+    .filter((f) => !fromPlaywright.has(f))
     .flatMap((f) =>
       importSpecifiers(f)
         .map((spec) => resolveImport(f, spec))
