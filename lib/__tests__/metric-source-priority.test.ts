@@ -101,6 +101,29 @@ describe("sourcePreference", () => {
       PROVIDER_PREFERENCE
     );
   });
+
+  it("ranks fitbit-takeout below health-connect, and LISTS it at all", () => {
+    // Listed: pickOneProviderPerDay falls back to "largest single-source total"
+    // for an unlisted provider, which for sleep would systematically pick the
+    // archive purely because it reports a longer session than the live push.
+    expect(PROVIDER_PREFERENCE).toContain("fitbit-takeout");
+    // Below health-connect: importing an archive must never silently rewrite days
+    // the live stream already covered. Preferring the archive is a deliberate
+    // per-profile choice, not a default.
+    expect(PROVIDER_PREFERENCE.indexOf("fitbit-takeout")).toBeGreaterThan(
+      PROVIDER_PREFERENCE.indexOf("health-connect")
+    );
+  });
+
+  it("lets a profile deliberately prefer the archive over the live push", () => {
+    expect(
+      sourcePreference(
+        "sleep_min",
+        { sleep_min: "fitbit-takeout" },
+        PROVIDER_PREFERENCE
+      )[0]
+    ).toBe("fitbit-takeout");
+  });
 });
 
 describe("sourceKey", () => {
@@ -130,6 +153,19 @@ describe("comparable metric allowlist + source colors", () => {
     expect(sourceColor("oura")).toBe(SOURCE_COLORS.oura);
     expect(sourceColor(null)).toBe(SOURCE_COLORS.manual); // NULL = manual
     expect(sourceColor("document:9")).toBe(SOURCE_FALLBACK_COLOR);
+  });
+
+  it("gives fitbit-takeout its OWN color, not the unknown fallback", () => {
+    // It is routinely plotted AGAINST health-connect on the compare-sources
+    // overlay (both describe the same nights), so sharing the generic fallback
+    // would make two first-class providers indistinguishable there.
+    expect(sourceColor("fitbit-takeout")).toBe(SOURCE_COLORS["fitbit-takeout"]);
+    expect(sourceColor("fitbit-takeout")).not.toBe(SOURCE_FALLBACK_COLOR);
+    const used = Object.values(SOURCE_COLORS);
+    expect(new Set(used).size, "every source color is distinct").toBe(
+      used.length
+    );
+    expect(used).not.toContain(SOURCE_FALLBACK_COLOR);
   });
 
   it("every default-preference source has a fixed color assigned", () => {

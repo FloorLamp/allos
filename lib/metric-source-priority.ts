@@ -195,6 +195,14 @@ export const SOURCE_COLORS: Record<string, string> = {
   oura: "#7c3aed",
   strava: "#ea580c",
   withings: "#db2777",
+  // amber-600. A first-class provider needs its OWN color, not the shared unknown
+  // fallback (#531/#534: every distinct entity gets a stable color, never one family
+  // color) — and this one especially, because the surface it matters on is the
+  // compare-sources overlay, where a Takeout series is routinely plotted against the
+  // Health Connect series for the very same nights. Sitting in the wide hue gap
+  // between strava's burnt orange and manual's green, it stays separable from all
+  // five siblings and from the teal fallback.
+  "fitbit-takeout": "#ca8a04",
 };
 
 export const SOURCE_FALLBACK_COLOR = "#0d9488";
