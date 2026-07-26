@@ -559,7 +559,10 @@ export function getSyncRowProvenance(
         | undefined;
       deleted = !rec;
       date = rec?.date ?? null;
-      label = rec?.name || rec?.canonical_name || "Lab result";
+      // Canonical FIRST (#1501): the label and the href below must name the same
+      // identity — the link already commits to the canonical analyte, so a raw-first
+      // label reads "URIC ACID" on a row that opens "Uric Acid".
+      label = rec?.canonical_name?.trim() || rec?.name || "Lab result";
       href = biomarkerViewHref(rec?.canonical_name ?? null, rec?.name ?? null);
     }
     out.push({

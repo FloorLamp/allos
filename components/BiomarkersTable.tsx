@@ -477,7 +477,11 @@ function BiomarkerRow({
                     onClick={async () => {
                       const ok = await confirm({
                         title: "Delete record",
-                        message: `Delete “${r.name}”? You can undo this.`,
+                        // Name it the way the row the user clicked names it —
+                        // nameKey is the same canonical-preferred identity nameCell
+                        // renders (#1501), so the confirm can't say "URIC ACID"
+                        // about a row labelled "Uric Acid".
+                        message: `Delete “${nameKey(r)}”? You can undo this.`,
                         confirmLabel: "Delete",
                         danger: true,
                       });
