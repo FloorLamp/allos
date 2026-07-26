@@ -572,6 +572,18 @@ shard matrix already spends a 2-core runner, and several `next start` processes 
 it would trade honest parallelism for swap. Raising it is now a measurement, not a
 redesign.
 
+**Measured (48-spec / 212-test slice, one 4-core container, back to back).** The
+shared-DB harness at `--workers=4` fails 20 tests; DB-per-worker at `--workers=4`
+fails 16 — and the six it drops are exactly the shared-world class (the dose
+ledger's restructure/skip history, 2FA enrolment, the login-scoped Trends default
+range, a cross-profile illness hero). At `--workers=1` the two harnesses are
+indistinguishable (4 vs 3 failures, ~11 min each; the residue fails on both and is
+an interaction-latency problem in that container, not isolation). Wall-clock on
+that box: 11.1 min at one worker, 8.3 min at two, 9.1–10.1 min at four — four
+workers means four `next start` processes AND four browsers on four cores, so the
+curve turns over at two. On a bigger machine the useful worker count is higher; the
+Playwright default (half the cores) is the right starting point either way.
+
 **What isolation does NOT buy you.** A worker's database is copied once per worker,
 not once per test, so specs sharing a worker still share a world in sequence — and
 which specs share a worker depends on the scheduler. Fixture ownership (#868) is
