@@ -108,16 +108,66 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     ).toBeVisible();
     await expect(page.getByTestId("metric-detail-chart")).toBeVisible();
     await expect(page.getByTestId("metric-period-stats")).toBeVisible();
-    // Trailing 7/30/90-day period windows.
-    await expect(page.getByTestId("period-stat-7")).toBeVisible();
-    await expect(page.getByTestId("period-stat-30")).toBeVisible();
+    // The fixture's steps series is THREE recent days, so the trailing 7/30/90-day
+    // windows contain the same readings and collapse onto ONE card (#1541) — the
+    // page used to render the identical four numbers three times. The card is keyed
+    // by the WIDEST window it covers, and says how many readings it summarises.
+    await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(1);
     await expect(page.getByTestId("period-stat-90")).toBeVisible();
+    await expect(page.getByTestId("period-readings-90")).toContainText(
+      "3 readings"
+    );
 
     // #1063 mobile guard: the page body must not scroll sideways at 360px.
     const noHScroll = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth + 1
     );
     expect(noHScroll).toBe(true);
+
+    await page.context().close();
+  });
+
+  test("windows that really differ still get their own card, and no stat value wraps at phone width", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TRENDS_BODY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    // The #1541 measurement viewport: 390px is where a hard grid-cols-3 left 76px
+    // of content per cell against a Range row needing ~110px.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/trends/metric/weight");
+
+    // The fixture's two weigh-ins sit 7 and 1 days back: the 7d window holds ONE
+    // of them, 30d and 90d hold both — so the collapse is partial and the card
+    // count is a real signal rather than a constant.
+    await expect(page.locator('[data-testid^="period-stat-"]')).toHaveCount(2);
+    await expect(page.getByTestId("period-stat-7")).toBeVisible();
+    await expect(page.getByTestId("period-stat-90")).toBeVisible();
+
+    // No value wraps onto a second line: a wrapped `dd` is ~2× the height of the
+    // `dt` beside it, which never wraps. Behavioral, not a pixel budget (#868).
+    const rows = page.getByTestId("metric-period-stats").locator("dl > div");
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i);
+      const rowBox = await row.boundingBox();
+      const term = await row.locator("dt").boundingBox();
+      const value = await row.locator("dd").boundingBox();
+      expect(rowBox, "the stat row should be laid out").not.toBeNull();
+      expect(term, "the stat label should be laid out").not.toBeNull();
+      expect(value, "the stat value should be laid out").not.toBeNull();
+      expect(
+        value!.height,
+        `stat value wrapped onto a second line: ${await row.innerText()}`
+      ).toBeLessThan(term!.height * 1.5);
+      // …and it stays inside its own cell.
+      expect(value!.x + value!.width).toBeLessThanOrEqual(
+        rowBox!.x + rowBox!.width + 1
+      );
+    }
 
     await page.context().close();
   });

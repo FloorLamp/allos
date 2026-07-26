@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
+import { expandTimelineFilters } from "./timeline-chrome";
 
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9
 // screens on chrome before the first chart: the always-open From/To card, a
@@ -94,6 +95,11 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
     // DateRangeControl is shared, so this is the regression guard for the OTHER
     // surface that mounts it (the metric detail pages are the third).
     await page.goto("/timeline");
+    // Since #1517 B the Timeline's own controls collapse behind a one-line filter
+    // bar at phone width, so the shared control has to be reached before its own
+    // #1455 collapse can be asserted. The nesting is the point: two collapses, one
+    // per question ("which filters" then "which custom window").
+    await expandTimelineFilters(page);
 
     await expect(page.getByTestId("custom-range-toggle")).toBeVisible();
     await expect(page.getByTestId("custom-range-panel")).toBeHidden();

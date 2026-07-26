@@ -62,6 +62,7 @@ export const CHART_PLOT_FILL = "h-full";
 export default function ChartCard({
   title,
   headingLevel = "h2",
+  hideTitle = false,
   headline,
   description,
   note,
@@ -82,6 +83,13 @@ export default function ChartCard({
   // on a tab; `h3` for one nested under a section heading, so the document outline
   // stays honest.
   headingLevel?: "h2" | "h3";
+  // Stop PAINTING the title, without removing it (#1541 fix 3). The one caller is
+  // the metric detail page's own chart, whose <h1> is already this exact string —
+  // a visible card heading there is the #1533 echo. The heading element stays in
+  // the DOM as `sr-only`, so the document outline and the accessible name of the
+  // card are unchanged; only the visual duplicate goes. Never use it to hide a
+  // title a reader would otherwise need.
+  hideTitle?: boolean;
   // The latest-value headline (#1485 B) — part of the tap target, inside the header
   // link. A string or a small node; omitted where the section has no single latest.
   headline?: ReactNode;
@@ -120,7 +128,13 @@ export default function ChartCard({
   const Heading = headingLevel;
   const heading = (
     <>
-      <Heading className="truncate font-semibold text-slate-800 dark:text-slate-100">
+      <Heading
+        className={
+          hideTitle
+            ? "sr-only"
+            : "truncate font-semibold text-slate-800 dark:text-slate-100"
+        }
+      >
         {title}
       </Heading>
       {headline != null && (

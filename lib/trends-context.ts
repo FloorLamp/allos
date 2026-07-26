@@ -6,6 +6,7 @@ import {
   type QuickRange,
 } from "./timeline-format";
 import { rangeSummaryLabel } from "./trends";
+import { contextLabel, CONTEXT_LABEL_SEPARATOR } from "./context-label";
 
 // The Trends hub's CONTEXT LABEL (issue #1485 F) — the pure half of the phone
 // chrome that replaced the always-open pill row + tab strip.
@@ -25,8 +26,10 @@ import { rangeSummaryLabel } from "./trends";
 // live in components/TrendsContextBar.tsx.
 
 // The separator between the two halves of the label. A middot, not an en dash: the
-// two halves are peers ("which tab" and "which window"), not a range.
-export const TRENDS_CONTEXT_SEPARATOR = " · ";
+// two halves are peers ("which tab" and "which window"), not a range. It lives in
+// lib/context-label.ts now that the Timeline's filter bar (#1517) collapses into the
+// same one-line shape — one separator, two bars, no drift.
+export const TRENDS_CONTEXT_SEPARATOR = CONTEXT_LABEL_SEPARATOR;
 
 // The name of the window currently in force, as the chip row itself would say it.
 //
@@ -61,5 +64,5 @@ export function trendsContextLabel(
   tabLabel: string,
   rangeLabel: string
 ): string {
-  return `${tabLabel}${TRENDS_CONTEXT_SEPARATOR}${rangeLabel}`;
+  return contextLabel(tabLabel, rangeLabel);
 }

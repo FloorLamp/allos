@@ -86,6 +86,10 @@ export interface BodyMetricMeta {
   goalMetric: BodyMetricKind | null;
   // The detail-page quick-add form, if the metric is manually enterable.
   quickAdd: BodyQuickAddForm;
+  // A COUNT metric — steps, calories, hydration — whose chart is floored at zero
+  // and whose axis ticks are thousands-grouped. See bodyChartScale() for why the
+  // two travel together, and why a ratio/index metric must NOT take them.
+  countMetric?: boolean;
 }
 
 // The registry. Colors mirror the Body tab's existing chart colors so a metric keeps
@@ -251,10 +255,14 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " min",
     color: chartSeries.amber,
     decimals: 0,
-    order: 11,
+    order: 12,
     windowed: true,
     goalMetric: null,
     quickAdd: null,
+    // Daily minutes outdoors: a COUNT, so "how far from zero" is the whole signal
+    // (#1541). Deliberately NOT set on skin-temp, whose series is a SIGNED
+    // deviation from the device's baseline — a zero floor would clip half of it.
+    countMetric: true,
   },
   steps: {
     slug: "steps",
@@ -263,10 +271,11 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 0,
-    order: 12,
+    order: 13,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
+    countMetric: true,
   },
   hr: {
     slug: "hr",
@@ -275,7 +284,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " bpm",
     color: chartSeries.rose,
     decimals: 0,
-    order: 13,
+    order: 14,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -287,7 +296,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 1,
-    order: 14,
+    order: 15,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -299,7 +308,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kg",
     color: chartSeries.sky,
     decimals: 1,
-    order: 15,
+    order: 16,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -311,7 +320,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kg",
     color: chartSeries.violet,
     decimals: 2,
-    order: 16,
+    order: 17,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -323,7 +332,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kcal",
     color: chartSeries.rose,
     decimals: 0,
-    order: 17,
+    order: 18,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -335,10 +344,11 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " L",
     color: chartSeries.sky,
     decimals: 2,
-    order: 18,
+    order: 19,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
+    countMetric: true,
   },
   calories: {
     slug: "calories",
@@ -347,10 +357,11 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kcal",
     color: chartSeries.amber,
     decimals: 0,
-    order: 19,
+    order: 20,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
+    countMetric: true,
   },
   mood: {
     slug: "mood",
@@ -359,7 +370,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.amber,
     decimals: 1,
-    order: 20,
+    order: 21,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -453,15 +464,68 @@ export function orderBodyMetricTiles<T extends OrderableTile>(
 // change over each of the 7/30/90-day trailing windows, computed from the metric's
 // FULL series (independent of the page's range control, so the windows always mean
 // "last N days from today"). A window with no readings reports nulls.
+//
+// COINCIDENT WINDOWS COLLAPSE (#1541). With fewer than 7 days of history — every
+// new install, every freshly connected integration — all three windows contain the
+// SAME readings, so every derived figure is identical BY CONSTRUCTION and the card
+// rendered the same four numbers three times. Adjacent windows whose membership
+// coincides are therefore merged into ONE stat spanning them ("7–90d"), and every
+// stat carries the reading `count` and the `from`/`to` dates it actually covers, so
+// a trio that legitimately differs is explicable rather than merely repetitive.
 export interface PeriodStat {
+  // The window label: "7d" for a single window, "7–90d" for a collapsed run.
   label: string;
+  // The WIDEST trailing window this stat represents — its stable key/testid.
   days: number;
+  // Every trailing window whose readings this stat covers: [7] or [7, 30, 90].
+  windows: number[];
   count: number;
+  // First / last reading DATE inside the window (null when it holds none) — what
+  // the card is actually summarising, as opposed to what it is labelled.
+  from: string | null;
+  to: string | null;
   latest: number | null;
   avg: number | null;
   min: number | null;
   max: number | null;
   delta: number | null;
+}
+
+// The trailing windows, ascending. Nested by construction (7d ⊂ 30d ⊂ 90d) — the
+// property the collapse predicate below leans on.
+const PERIOD_WINDOWS = [7, 30, 90] as const;
+
+function periodLabel(windows: readonly number[]): string {
+  return windows.length === 1
+    ? `${windows[0]}d`
+    : `${windows[0]}–${windows[windows.length - 1]}d`;
+}
+
+// Merge adjacent windows that cover the SAME readings into one stat.
+//
+// The membership test is the reading COUNT, not the points themselves: the windows
+// are nested, so a wider window holding the same number of readings as the one
+// inside it necessarily holds exactly those readings. Exported for the pure test —
+// this predicate is the whole of #1541's first fix.
+export function collapseCoincidentPeriods(
+  stats: readonly PeriodStat[]
+): PeriodStat[] {
+  const out: PeriodStat[] = [];
+  for (const s of stats) {
+    const prev = out[out.length - 1];
+    if (prev && prev.count === s.count) {
+      const windows = [...prev.windows, ...s.windows];
+      out[out.length - 1] = {
+        ...prev,
+        days: s.days,
+        windows,
+        label: periodLabel(windows),
+      };
+      continue;
+    }
+    out.push(s);
+  }
+  return out;
 }
 
 export function bodyMetricPeriodStats(
@@ -470,7 +534,7 @@ export function bodyMetricPeriodStats(
   decimals = 1
 ): PeriodStat[] {
   const round = (n: number) => Number(n.toFixed(decimals));
-  return [7, 30, 90].map((days) => {
+  const raw = PERIOD_WINDOWS.map((days): PeriodStat => {
     const cutoff = shiftDateStr(todayStr, -(days - 1));
     const win = points.filter((p) => p.date >= cutoff);
     const vals = win.map((p) => p.value);
@@ -478,7 +542,10 @@ export function bodyMetricPeriodStats(
       return {
         label: `${days}d`,
         days,
+        windows: [days],
         count: 0,
+        from: null,
+        to: null,
         latest: null,
         avg: null,
         min: null,
@@ -490,7 +557,10 @@ export function bodyMetricPeriodStats(
     return {
       label: `${days}d`,
       days,
+      windows: [days],
       count: vals.length,
+      from: win[0].date,
+      to: win[win.length - 1].date,
       latest: round(vals[vals.length - 1]),
       avg: round(sum / vals.length),
       min: round(Math.min(...vals)),
@@ -498,4 +568,51 @@ export function bodyMetricPeriodStats(
       delta: round(vals[vals.length - 1] - vals[0]),
     };
   });
+  return collapseCoincidentPeriods(raw);
+}
+
+// The chart's honesty caption (#1541 fix 4). The metric detail page defaults to the
+// 90D window (#1507, inherited so a drill-in from a tile doesn't rewind the range),
+// so with a week of history the pill says 90D while the axis says 07-19 → 07-25 and
+// nothing reconciles the two — the reader can't tell whether data is missing, the
+// sync is broken, or the control is.
+//
+// Returned ONLY when the selected range extends past the first reading, i.e. when
+// the window is NOT what bounds the plot: then the caption names what is actually
+// drawn. A range that genuinely clips the series gets no caption — the pill already
+// describes it truthfully.
+//
+// Dates are rendered MM-DD, the same form the chart's own x-axis tick uses, so the
+// caption reads as a label FOR the axis rather than a second date vocabulary.
+export function seriesCoverageNote(
+  windowed: readonly { date: string }[],
+  range: { from?: string | null; to?: string | null }
+): string | null {
+  if (windowed.length === 0) return null;
+  const first = windowed[0].date;
+  const last = windowed[windowed.length - 1].date;
+  const openStart = !range.from || range.from < first;
+  if (!openStart) return null;
+  const openEnd = !range.to || range.to >= last;
+  const n = windowed.length;
+  const md = (d: string) => d.slice(5);
+  return `${openEnd ? "All " : ""}${n} reading${n === 1 ? "" : "s"}, ${md(first)} → ${md(last)}`;
+}
+
+// The axis treatment a COUNT metric's chart takes (#1541 fixes 5 + "Also").
+//
+// Two consequences of one predicate, which is why they share a flag rather than
+// two. A count's distance from ZERO is its signal: recharts' ["auto","auto"] floors
+// the steps axis at 6000, so 6931 vs 11214 — a 1.6× spread — renders as a
+// near-zero-to-peak swing and ordinary day-to-day variance looks dramatic. And a
+// count runs to four and five digits, where an ungrouped `12000` tick is simply
+// harder to read than `12,000`. Ratio/index metrics (weight, BMI, resting HR) keep
+// the auto domain, where a zero baseline would flatten the signal instead.
+export function bodyChartScale(meta: BodyMetricMeta): {
+  yDomain?: [number | "auto", number | "auto"];
+  groupYTicks?: boolean;
+} {
+  return meta.countMetric
+    ? { yDomain: [0, "auto"], groupYTicks: true }
+    : { yDomain: undefined, groupYTicks: undefined };
 }
