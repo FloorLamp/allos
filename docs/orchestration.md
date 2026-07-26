@@ -119,6 +119,15 @@ learned by losing work to it:
   local refs, the container is the stale party — recover with `git fetch` +
   `git checkout -B <branch> <api-verified-sha>`, and re-verify any "completed"
   work the reverted task list claims is still pending before redoing it.
+- **Automatic restart detection (2026-07-25).** Two mechanisms, both cheap:
+  (1) a **canary background task** (`while true; do sleep 3600; done`) whose
+  death fires the harness's background-task notification — the restart's push
+  alert; (2) a **boot-id stamp**: write `/proc/sys/kernel/random/boot_id` to
+  `$SCRATCH/.boot_id` once, and compare at EVERY self-scheduled check-in. On
+  mismatch: restamp, restart the canary, then run the resume-all drill
+  (SendMessage every live agent: report status + commit WIP now). Agents'
+  worktrees survive restarts; uncommitted gate-run state does not — which is
+  why every dispatch brief mandates commit-WIP-before-long-gates.
 
 ## The pipeline (per unit of work)
 
@@ -316,6 +325,17 @@ it later from the issue number is guesswork.
   diffs (owner-approved 2026-07-20):** a low-blast-radius PR (a lib fix, a
   bug cluster that changed a handful of specs) merges on CI green + typecheck
   - pure + db + the PR's OWN changed-spec lane — SKIP the full local suite.
+- **Behind-only vs dirty:** a PR that is merely BEHIND main (no conflicts)
+  can be refreshed with `mcp__github__update_pull_request_branch` instead of a
+  local merge round-trip; a DIRTY PR needs the worktree reconcile. Check
+  `mergeable_state` FIRST when CI looks absent — a conflict-dirty PR runs NO
+  pull_request checks at all (only push-triggered gitleaks), which reads as
+  "CI is stuck" but isn't.
+- **A docs/JSON-only PR failing e2e is never the diff.** When a bookkeeping PR
+  (release notes, docs) goes red on the matrix, the breakage is main-side or
+  environmental (date rollover, runner) — diagnose THERE, and treat the
+  bookkeeping PR as the control group proving it. Actions rerun APIs 403 for
+  session tokens; the retrigger is an empty commit (never a history rewrite).
     The full-suite gate is reserved for MIGRATION PRs and BIG UI merges (a nav
     consolidation, a multi-page feature) — and since 2026-07-21 it is a dispatch
     of `e2e-full.yml` against the branch (fresh runners, retries=0), not a local
@@ -588,6 +608,41 @@ python… ; done` CI-poll loop running in the background was starving the
     budget (seed enrichment fixtures as PROFILES WITHOUT LOGINS when the spec
     only needs a profile — every login grows this page forever). Timeout bumps
     measurably did NOT help (0/3 at 20s windows) — don't reach for them here.
+12. **Mid-run UTC-midnight crossing (2026-07-26, #1534).** A run that STRADDLES
+    real 00:00 UTC fails date-keyed specs (illness day counts, dose-date
+    windows, sleep nights, import time-windows) because SQL-side `date('now')`
+    can't be frozen by the JS-side freeze — multi-shard, multi-spec red that
+    looks alarming. Drill: check the run's start/end timestamps; if it crossed
+    midnight, retrigger (empty commit) clear of the boundary — and if the rerun
+    fails CLEAR of midnight, the midnight explanation is FALSIFIED for that
+    failure and it gets a real root-cause (that falsification found #13 below).
+13. **Fixture-date roulette (2026-07-26, the import-dedup incident).** Fixture
+    dates are either RELATIVE to today or DEEP-PAST (`2026-01-*`) — never fixed
+    near-present. `scripts/seed.ts` writes ~3 weeks of rolling relative-date
+    rows back from the real today, so a fixed near-present fixture date gets
+    landed on by a rolling row on some future calendar day (a daily re-rolled
+    roulette; it "passed for weeks" then failed every run for a whole day, on
+    unrelated PRs). Deep past is permanently safe because today only moves
+    forward. Corollary: an assertion on a SHARED-WORLD AGGREGATE (a section
+    heading with a total, a bare-testid count over a detector's output) is the
+    same #868 violation one level up — scope it to the spec's OWN rows
+    (`filter({ hasText })`), the way the review-badge delta assertions already
+    do.
+14. **Stale generated route types in a reused worktree.** After merging main
+    into a worktree, `tsc` can report `"/route" is not assignable to AppRoute`
+    for routes the merge just brought in — Next's typedRoutes `.d.ts` under
+    `.next/` is stale, not the code. Run `npm run build` (which regenerates
+    them) before believing an AppRoute error, and never "fix" it by widening a
+    type.
+15. **Where fixtures live (post-#1511).** Shared e2e fixtures are per-domain
+    modules — `e2e/seed/<domain>.ts` + `e2e/logins/<domain>.ts` — composed by
+    the thin entrypoints (`seed-events.ts` / `fixture-logins.ts`), whose CALL
+    ORDER is load-bearing (row ids follow insertion order). Agents add to the
+    domain module, never the composer; the hygiene guard walks `e2e/**`
+    recursively, and the fixture-login budget measures the composed set. The
+    old append-magnet reconcile choreography in this doc is now mostly
+    historical: README and the composers' import lists are the remaining
+    (much smaller) shared seams.
 
 ## Review checklist
 
