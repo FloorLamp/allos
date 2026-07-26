@@ -12,6 +12,7 @@ import BottomSheet from "./BottomSheet";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
+import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import {
   loadQuickEntry,
   type QuickEntryData,
@@ -202,14 +203,15 @@ function QuickEntryBody({
       // logs however many servings they mean to and dismisses the sheet. (Its
       // taps already refresh the page behind, so "stay put" still holds.)
       return (
-        <FoodLogBar
-          today={data.today}
-          yesterday={data.yesterday}
-          initial={data.initial}
-          initialYesterday={data.initialYesterday}
-          groups={data.groups}
-          slot={data.slot}
-        />
+        <FoodSelectedDateProvider today={data.today} days={data.days}>
+          <FoodLogBar
+            today={data.today}
+            days={data.days}
+            groupsBySlot={data.groupsBySlot}
+            excludedGroups={data.excludedGroups}
+            slot={data.slot}
+          />
+        </FoodSelectedDateProvider>
       );
     case "dose":
       return <QuickDoseList doses={data.doses} onDone={onDone} />;

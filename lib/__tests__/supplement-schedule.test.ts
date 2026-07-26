@@ -10,6 +10,7 @@ import {
   priorityClass,
   spreadDoseTimes,
   timeBucket,
+  TIME_BUCKET_LABELS,
   workoutDaySubtitleLabel,
   WORKOUT_CONDITIONS,
 } from "@/lib/supplement-schedule";
@@ -36,6 +37,11 @@ describe("availableConditions", () => {
 });
 
 describe("timeBucket", () => {
+  it("uses the same user-facing labels across slot controls and sections", () => {
+    expect(TIME_BUCKET_LABELS["Before sleep"]).toBe("Bedtime");
+    expect(TIME_BUCKET_LABELS.Morning).toBe("Morning");
+  });
+
   it("maps morning words", () => {
     for (const t of ["morning", "AM", "with breakfast", "on wake", "early"]) {
       expect(timeBucket(t)).toBe("Morning");

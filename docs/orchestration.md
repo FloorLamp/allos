@@ -580,6 +580,18 @@ sweep (which only catches SOURCE hrefs) will NOT flag them — grep the rebased 
 for stale route literals and re-run its e2e in CI-parity. A clean rebase + green
 local pure tier is NOT sufficient across a route restructure.
 
+**A behind-only PR's green CI can be stale (2026-07-26 — broke main for ~1h).**
+`mergeable_state: behind` with green checks is only safe when nothing has merged
+since those checks RAN on surfaces adjacent to the PR's. #1560's green predated
+#1562's merge; the branches were textually conflict-free but semantically
+incompatible (one added a chart kind, the other had just made a prop + store
+entry mandatory for every chart kind), and the squash landed a main red on `tsc`
+and `npm test`. Before merging a behind PR, compare its check-suite timestamp
+against main's latest merge: if a CODE merge landed in between on adjacent
+surfaces, `update_pull_request_branch` (REST) and let CI re-run on the merge
+result first. A docs/JSON-only intervening merge doesn't require this; anything
+touching shared source does.
+
 ## Cadence & lifecycle
 
 - Agent completion notifications are the primary wake signal; self-scheduled

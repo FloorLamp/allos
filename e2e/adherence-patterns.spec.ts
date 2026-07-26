@@ -13,7 +13,12 @@ test("Supplements & Meds shows an every-Friday adherence pattern (#45)", async (
   page,
 }) => {
   await page.goto("/nutrition?tab=supplements");
-  const card = page.getByRole("main").getByTestId("adherence-findings");
+  const badge = page.getByTestId("supplement-patterns-badge");
+  await expect(badge).toHaveAttribute("aria-haspopup", "dialog");
+  await expect(badge).not.toHaveAttribute("aria-expanded", /.*/);
+  await badge.click();
+  const dialog = page.getByRole("dialog", { name: "Patterns" });
+  const card = dialog.getByTestId("adherence-findings");
   await expect(card).toBeVisible();
   await expect(card).toContainText(/Vitamin C/i);
   await expect(card).toContainText(/Friday/i);
@@ -53,7 +58,9 @@ test("an adherence-pattern finding can be dismissed (#45)", async ({
 }) => {
   await page.goto("/nutrition?tab=supplements");
   const main = page.getByRole("main");
-  const finding = main
+  await main.getByTestId("supplement-patterns-badge").click();
+  const finding = page
+    .getByRole("dialog", { name: "Patterns" })
     .getByTestId("adherence-findings-item")
     .filter({ hasText: "Vitamin C" });
   await expect(finding).toBeVisible();

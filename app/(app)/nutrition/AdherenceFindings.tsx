@@ -1,9 +1,5 @@
 import { IconCalendarStats } from "@tabler/icons-react";
-import { requireSession } from "@/lib/auth";
-import { today } from "@/lib/db";
-import { getFindingSuppressions } from "@/lib/queries";
-import { activeFindings } from "@/lib/findings";
-import { buildAdherencePatternFindings } from "@/lib/rule-findings";
+import type { Finding } from "@/lib/findings";
 import FindingsList from "@/components/FindingsList";
 import { dismissAdherencePattern } from "./supplement-actions";
 
@@ -13,15 +9,13 @@ import { dismissAdherencePattern } from "./supplement-actions";
 // day-specific reminder). Calm and observational — this is WHERE the misses cluster,
 // not a safety reminder (dose reminders + missed-dose escalation stay their own,
 // un-suppressible machinery). Each finding can be dismissed through the shared
-// findings-bus suppression store; nothing renders when none are firing.
-export default async function AdherenceFindings() {
-  const { profile } = await requireSession();
-  const now = today(profile.id);
-  const findings = activeFindings(
-    buildAdherencePatternFindings(profile.id, now),
-    getFindingSuppressions(profile.id),
-    now
-  );
+// findings-bus suppression store; nothing renders when none are firing. Gathering
+// now happens in SupplementsTab so the badge and panel share one exact count.
+export default function AdherenceFindings({
+  findings,
+}: {
+  findings: Finding[];
+}) {
   return (
     <FindingsList
       findings={findings}

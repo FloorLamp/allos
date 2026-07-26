@@ -18,6 +18,13 @@ import { hhmmToMinutes } from "./date";
 export type FoodSlot = "Morning" | "Midday" | "Evening";
 export const FOOD_SLOTS: readonly FoodSlot[] = ["Morning", "Midday", "Evening"];
 
+export function isFoodSlot(value: unknown): value is FoodSlot {
+  return (
+    typeof value === "string" &&
+    (FOOD_SLOTS as readonly string[]).includes(value)
+  );
+}
+
 // Fallback boundaries (minutes-of-day) used when the profile has NOT configured a
 // full morning/midday/evening notify schedule. Reproduce currentTimeBucket's fixed
 // 11:00 / 15:00 splits (the pre-#950 behavior), with Evening running to midnight.

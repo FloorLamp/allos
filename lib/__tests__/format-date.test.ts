@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   formatLongDate,
   formatMonthDay,
+  formatWeekdayDate,
   formatClock,
   formatClockMinutes,
   formatClockValue,
@@ -79,6 +80,32 @@ describe("formatMonthDay", () => {
     expect(
       formatMonthDay("2024-08-03", { timeFormat: "24h", dateFormat: "iso" })
     ).toBe("2024-08-03");
+  });
+});
+
+describe("formatWeekdayDate", () => {
+  it("renders a compact weekday label and omits the current year", () => {
+    expect(formatWeekdayDate("2026-07-22")).toBe("Wed, Jul 22");
+  });
+
+  it("respects dmy and iso date preferences", () => {
+    expect(
+      formatWeekdayDate("2026-07-22", {
+        timeFormat: "24h",
+        dateFormat: "dmy",
+      })
+    ).toBe("Wed, 22 Jul");
+    expect(
+      formatWeekdayDate("2026-07-22", {
+        timeFormat: "24h",
+        dateFormat: "iso",
+      })
+    ).toBe("Wed, 2026-07-22");
+  });
+
+  it("appends the year when it differs and preserves invalid input", () => {
+    expect(formatWeekdayDate("2024-07-22")).toBe("Mon, Jul 22, 2024");
+    expect(formatWeekdayDate("not-a-date")).toBe("not-a-date");
   });
 });
 

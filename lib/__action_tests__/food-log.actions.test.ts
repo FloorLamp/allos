@@ -110,13 +110,14 @@ describe("food_log_events ledger through the actions (#950)", () => {
   function ledger(profileId: number) {
     return db
       .prepare(
-        `SELECT group_key, date, logged_at FROM food_log_events
+        `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
           WHERE profile_id = ? ORDER BY id`
       )
       .all(profileId) as {
       group_key: string;
       date: string;
       logged_at: string;
+      meal_slot: string | null;
     }[];
   }
 
@@ -145,6 +146,50 @@ describe("food_log_events ledger through the actions (#950)", () => {
     await undoFoodServing(fd({ group_key: "berries", date: DATE }));
 
     expect(ledger(profile.id)).toHaveLength(1);
+  });
+
+  it("persists and returns the selected meal slot for a backfill", async () => {
+    const login = createLogin();
+    const profile = createProfile("meal-backfiller", login.id);
+    actAs(login, profile);
+
+    const logged = await logFoodServing(
+      fd({ group_key: "berries", date: DATE, meal_slot: "Morning" })
+    );
+    expect(logged).toEqual({
+      ok: true,
+      servings: 1,
+      mealSlot: "Morning",
+      mealServings: 1,
+    });
+    expect(ledger(profile.id)[0]).toMatchObject({
+      group_key: "berries",
+      date: DATE,
+      meal_slot: "Morning",
+    });
+
+    const undone = await undoFoodServing(
+      fd({ group_key: "berries", date: DATE, meal_slot: "Morning" })
+    );
+    expect(undone).toEqual({
+      ok: true,
+      servings: 0,
+      mealSlot: "Morning",
+      mealServings: 0,
+    });
+    expect(ledger(profile.id)).toEqual([]);
+  });
+
+  it("rejects a forged meal slot without writing", async () => {
+    const login = createLogin();
+    const profile = createProfile("bad-meal-slot", login.id);
+    actAs(login, profile);
+
+    const result = await logFoodServing(
+      fd({ group_key: "berries", date: DATE, meal_slot: "Brunch" })
+    );
+    expect(result.ok).toBe(false);
+    expect(rows(profile.id)).toEqual([]);
   });
 });
 

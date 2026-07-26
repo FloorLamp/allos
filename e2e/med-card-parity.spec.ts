@@ -36,8 +36,8 @@ test("medication row shows the adherence summary and refill badge (#747)", async
   await expect(refillRunOut(badge)).toContainText(/runs out ~/);
 
   // Adherence summary — the shared AdherenceSummaryLine (#313). The all-taken log
-  // run yields a deterministic percentage.
-  await expect(row).toContainText(/% adherence/);
+  // run yields a deterministic percentage with an explicit due-day denominator.
+  await expect(row).toContainText(/\d+(?:\.5)?\/\d+ due days followed · \d+%/);
 
   // The same parity widgets render on the clinical-record detail page the row links
   // to (#817) — the row is the scannable index, the detail is the home. openMedDetailViaHref
@@ -51,5 +51,7 @@ test("medication row shows the adherence summary and refill badge (#747)", async
   await expect(detailBadge).toContainText(/days?\s+left/);
   // Same run-out-date parity on the detail card (#852 item 3).
   await expect(refillRunOut(detailBadge)).toContainText(/runs out ~/);
-  await expect(detail).toContainText(/% adherence/);
+  await expect(detail).toContainText(
+    /\d+(?:\.5)?\/\d+ due days followed · \d+%/
+  );
 });

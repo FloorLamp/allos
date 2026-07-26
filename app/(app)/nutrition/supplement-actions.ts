@@ -1188,7 +1188,7 @@ export async function dismissSuggestion(
 
 // Look up RxNorm candidates for a free-text name (issue #144) — the ONLY network
 // egress of the interaction feature, and it sends just the term (no PHI). Called
-// from the item form's "Find RxNorm code" affordance; the user CONFIRMS a candidate,
+// from the item form's standardized-ingredient affordance; the user CONFIRMS a candidate,
 // which fills the hidden `rxcui` field saved by add/updateSupplement. Degrades to []
 // (name-only matching) on any timeout/error. requireWriteAccess gates it to a
 // session with write access; nothing is stored here.

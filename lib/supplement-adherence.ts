@@ -47,6 +47,34 @@ export interface AdherenceSummary {
   applicableDays: number;
 }
 
+export interface AdherenceSummaryVisibility {
+  show: boolean;
+  showDetail: boolean;
+  showStreak: boolean;
+  showSkipped: boolean;
+}
+
+// Resting supplement rows should surface adherence only when it carries signal:
+// an imperfect follow-through rate, a deliberate skip, or a streak long enough to
+// feel earned. Medication surfaces retain the full summary by using the default
+// mode. Pure so the UI threshold stays explicit and pinned.
+export function adherenceSummaryVisibility(
+  summary: AdherenceSummary,
+  noteworthyOnly = false
+): AdherenceSummaryVisibility {
+  const showSkipped = summary.skippedDays > 0;
+  const showDetail =
+    summary.pct !== null &&
+    (!noteworthyOnly || summary.pct < 100 || showSkipped);
+  const showStreak = summary.streak >= (noteworthyOnly ? 3 : 2);
+  return {
+    show: showDetail || showStreak || showSkipped,
+    showDetail,
+    showStreak,
+    showSkipped,
+  };
+}
+
 // Roll one supplement-day's per-dose outcomes into a single strip state (#232).
 // `total` is the number of doses due that day; `takenN`/`skippedN` how many were
 // taken / deliberately skipped. A day where every due dose is resolved as a skip

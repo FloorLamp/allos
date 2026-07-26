@@ -23,7 +23,7 @@ import {
 import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import { upsertMoodLog } from "@/lib/offline/writes";
 import { getMetricReadings } from "@/lib/metric-readings";
-import { HRV_METRIC } from "@/lib/vitals-input";
+import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { seedActor, createProfile, fd } from "./harness";
 
 const SRC = "health-connect";
@@ -48,6 +48,27 @@ function hrvRows(profileId: number) {
 }
 
 describe("updateMetricReading", () => {
+  it("maps skin-temperature variation to its metric-samples readings", () => {
+    const { profile } = seedActor();
+    upsertMetricSamples(
+      profile.id,
+      [
+        {
+          metric: SKIN_TEMP_DELTA_METRIC,
+          date: DATE,
+          start_time: START,
+          end_time: END,
+          value: -0.3,
+        },
+      ],
+      SRC
+    );
+
+    expect(getMetricReadings(profile.id, "skin-temp")).toMatchObject([
+      { value: -0.3, source: SRC },
+    ]);
+  });
+
   it("corrects a metric_samples reading and locks it against the next re-sync", async () => {
     const { profile } = seedActor();
     upsertMetricSamples(profile.id, sample(42), SRC);

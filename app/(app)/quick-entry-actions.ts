@@ -4,7 +4,11 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { ageInMonthsFromBirthdate, shiftDateStr } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
-import { getUserAge, getUserBirthdate } from "@/lib/settings/profile-attrs";
+import {
+  getExcludedFoodGroups,
+  getUserAge,
+  getUserBirthdate,
+} from "@/lib/settings/profile-attrs";
 import {
   showBodyFat,
   showGrowthQuickAdd,
@@ -14,12 +18,12 @@ import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import {
   collectHouseholdRollup,
   currentFoodSlot,
+  getFoodMealDays,
   getFoodGroupLogOrder,
-  getFoodServingsOnDate,
 } from "@/lib/queries";
 import { upcomingDueText } from "@/lib/upcoming";
 import type { FoodGroup } from "@/lib/food-groups";
-import type { FoodSlot } from "@/lib/food-slot";
+import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import type { QuickEntryForm } from "@/lib/quick-log";
 
@@ -69,10 +73,14 @@ export type QuickEntryData =
   | {
       form: "food";
       today: string;
-      yesterday: string;
-      initial: Record<string, number>;
-      initialYesterday: Record<string, number>;
-      groups: FoodGroup[];
+      days: Array<{
+        date: string;
+        label: string;
+        counts: Record<string, number>;
+        slotCounts: Record<FoodSlot, Record<string, number>>;
+      }>;
+      groupsBySlot: Record<FoodSlot, FoodGroup[]>;
+      excludedGroups: string[];
       slot: FoodSlot;
     }
   | { form: "dose"; doses: QuickEntryDose[] }
@@ -121,22 +129,21 @@ export async function loadQuickEntry(
       };
     }
     const yesterday = shiftDateStr(date, -1);
-    const initial: Record<string, number> = {};
-    for (const [slug, n] of getFoodServingsOnDate(profile.id, date))
-      initial[slug] = n;
-    const initialYesterday: Record<string, number> = {};
-    for (const [slug, n] of getFoodServingsOnDate(profile.id, yesterday))
-      initialYesterday[slug] = n;
+    const days = getFoodMealDays(profile.id, [date, yesterday]).map((day) => ({
+      ...day,
+      label: day.date === date ? "Today" : "Yesterday",
+    }));
     // The SAME slot derivation that orders the catalog, so the bar's slot chip
     // and its row order agree here exactly as they do on the page (#950).
     const slot = currentFoodSlot(profile.id);
     return {
       form: "food",
       today: date,
-      yesterday,
-      initial,
-      initialYesterday,
-      groups: getFoodGroupLogOrder(profile.id, slot),
+      days,
+      groupsBySlot: Object.fromEntries(
+        FOOD_SLOTS.map((meal) => [meal, getFoodGroupLogOrder(profile.id, meal)])
+      ) as Record<FoodSlot, FoodGroup[]>,
+      excludedGroups: getExcludedFoodGroups(profile.id),
       slot,
     };
   }
