@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../db";
+import { sqlNow } from "../clock";
 
 export const UPLOAD_DIR = path.join(
   process.cwd(),
@@ -88,10 +89,13 @@ export function insertDuplicateDoc(
   const error = `Duplicate upload — ${target}. ${advice}`;
   const info = db
     .prepare(
-      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, extraction_error, profile_id)
-       VALUES (?,?,?,?,?, 'skipped', ?, ?)`
+      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, extraction_error, uploaded_at, profile_id)
+       VALUES (?,?,?,?,?, 'skipped', ?, ?, ?)`
     )
-    .run(filename, "", mime, size, contentHash, error, profileId);
+    // uploaded_at from the clock seam (#1534) — `date(uploaded_at)` is the document's
+    // episode-window / Timeline day. Same seam as the primary insert in
+    // lib/medical-pipeline.ts, so sibling rows can't straddle two clocks.
+    .run(filename, "", mime, size, contentHash, error, sqlNow(), profileId);
   return Number(info.lastInsertRowid);
 }
 
@@ -104,9 +108,10 @@ export function insertFailedDoc(
 ): number {
   const info = db
     .prepare(
-      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, extraction_status, extraction_error, profile_id)
-       VALUES (?,?,?,?, 'failed', ?, ?)`
+      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, extraction_status, extraction_error, uploaded_at, profile_id)
+       VALUES (?,?,?,?, 'failed', ?, ?, ?)`
     )
-    .run(filename, "", mime, size, error, profileId);
+    // uploaded_at from the clock seam (#1534) — see insertSkippedDuplicate above.
+    .run(filename, "", mime, size, error, sqlNow(), profileId);
   return Number(info.lastInsertRowid);
 }

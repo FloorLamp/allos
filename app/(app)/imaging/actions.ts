@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
@@ -68,8 +69,8 @@ export async function addImagingStudy(formData: FormData): Promise<FormResult> {
     `INSERT INTO imaging_studies
        (modality, body_region, laterality, contrast, contrast_agent, study_date,
         dose_msv, impression, indication, status, notes,
-        ordering_provider_id, reading_provider_id, source, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
+        ordering_provider_id, reading_provider_id, source, profile_id, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)`
   ).run(
     normalizeModality(formData.get("modality")),
     str(formData, "body_region"),
@@ -84,7 +85,9 @@ export async function addImagingStudy(formData: FormData): Promise<FormResult> {
     str(formData, "notes"),
     orderingProviderId,
     readingProviderId,
-    profile.id
+    profile.id,
+    // created_at from the clock seam (#1534) — the Timeline day fallback.
+    sqlNow()
   );
   revalidateImaging();
   return formOk();

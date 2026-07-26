@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import {
   formError,
@@ -36,11 +37,24 @@ export async function addAllergy(formData: FormData): Promise<FormResult> {
   const onsetRaw = String(formData.get("onset_date") ?? "").trim();
   const onset = isRealIsoDate(onsetRaw) ? onsetRaw : null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  // created_at from the CLOCK SEAM (sqlNow, #1534): with no explicit date this
+  // stamp IS the record's Timeline day (`substr(created_at, 1, 10)` /
+  // dateFromCreatedAt), compared against `today()`-derived bounds.
   db.prepare(
     `INSERT INTO allergies
-       (substance, reaction, severity, status, onset_date, notes, source, profile_id)
-     VALUES (?,?,?,?,?,?,NULL,?)`
-  ).run(substance, reaction, severity, status, onset, notes, profile.id);
+       (substance, reaction, severity, status, onset_date, notes, source, profile_id,
+        created_at)
+     VALUES (?,?,?,?,?,?,NULL,?,?)`
+  ).run(
+    substance,
+    reaction,
+    severity,
+    status,
+    onset,
+    notes,
+    profile.id,
+    sqlNow()
+  );
   revalidateAllergies();
   return formOk();
 }

@@ -498,14 +498,19 @@ export function persistDocumentImport(
     // This UPDATE is the ONE 'done' transition (every extract/import/reprocess
     // path funnels through persistDocumentImport), so the stamp can't be missed;
     // a reprocess re-stamps it, which is correct — the re-extraction is news.
+    // Bound from the CLOCK SEAM (sqlNow, #1534) — the same seam `uploaded_at` is
+    // written from (lib/medical-pipeline.ts), so the #1022 invariant that a
+    // document's completion stamp is never BEHIND its upload stamp holds under the
+    // e2e frozen clock too. Mixing the two clocks on one row would break it.
     db.prepare(
       `UPDATE medical_documents
-         SET extraction_status = 'done', extraction_completed_at = datetime('now'),
+         SET extraction_status = 'done', extraction_completed_at = ?,
              extracted_count = ?, doc_type = ?,
              source = ?, document_date = ?, patient_name = ?, raw_extraction = ?,
              model = ?, import_report = ?, extraction_error = NULL
        WHERE id = ? AND profile_id = ?`
     ).run(
+      sqlNow(),
       extractedCount,
       input.meta.docType,
       input.meta.source,
@@ -727,17 +732,21 @@ function insertImportRows(
   // (below), then INSERT OR IGNORE dedups within the document via the per-profile
   // unique external_id index (scoped with the document source so two documents each
   // keep their own physical row and a delete never orphans another's).
+  // created_at on these three is bound from the CLOCK SEAM (sqlNow, #1534): with no
+  // explicit clinical date the stamp IS the record's Timeline day
+  // (`substr(created_at, 1, 10)` / dateFromCreatedAt), compared against
+  // `today()`-derived bounds.
   const insAllergy = db.prepare(
     `INSERT OR IGNORE INTO allergies
        (substance, substance_code, substance_code_system, reaction, severity,
-        status, onset_date, source, document_id, external_id, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+        status, onset_date, source, document_id, external_id, profile_id, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insCondition = db.prepare(
     `INSERT OR IGNORE INTO conditions
        (name, code, code_system, status, onset_date, resolved_date,
-        source, document_id, external_id, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`
+        source, document_id, external_id, profile_id, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Encounters / visits. Same idempotency as records/conditions: a
   // per-document delete-set (below) clears this document's prior rows, then INSERT
@@ -805,8 +814,8 @@ function insertImportRows(
     `INSERT OR IGNORE INTO imaging_studies
        (modality, body_region, laterality, contrast, contrast_agent, study_date,
         dose_msv, impression, indication, status,
-        source, document_id, external_id, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        source, document_id, external_id, profile_id, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Optical prescriptions (#697). Same idempotency as the other clinical domains:
   // the per-document delete-set clears this document's prior rows, then INSERT OR
@@ -991,7 +1000,8 @@ function insertImportRows(
       docSource,
       docId,
       scopedExternalId(a.external_id),
-      profileId
+      profileId,
+      sqlNow()
     );
   }
   for (const c of input.conditions) {
@@ -1005,7 +1015,8 @@ function insertImportRows(
       docSource,
       docId,
       scopedExternalId(c.external_id),
-      profileId
+      profileId,
+      sqlNow()
     );
   }
   // Seed the STRUCTURED smoking record (#83) from the imported social-history
@@ -1137,7 +1148,8 @@ function insertImportRows(
       docSource,
       docId,
       scopedExternalId(s.external_id),
-      profileId
+      profileId,
+      sqlNow()
     );
   }
   // Optical prescriptions (#697) — optional on PersistInput, so guard with `?? []`.

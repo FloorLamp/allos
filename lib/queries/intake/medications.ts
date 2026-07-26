@@ -5,6 +5,7 @@
 // Medication history / lifecycle: courses (episodes), active-flag sync, side
 // effects and their promotion to an allergy row.
 import { db, today, writeTx } from "../../db";
+import { sqlNow } from "../../clock";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
 import { strengthFromName } from "../../prescription-parse";
 import { profileAgeMonths } from "../../settings";
@@ -731,8 +732,8 @@ export function promoteMedicationSideEffect(
     db.prepare(
       `INSERT OR IGNORE INTO allergies
          (substance, reaction, severity, status, onset_date, notes, source,
-          external_id, profile_id)
-       VALUES (?,?,?,?,?,?,NULL,?,?)`
+          external_id, profile_id, created_at)
+       VALUES (?,?,?,?,?,?,NULL,?,?,?)`
     ).run(
       row.effect,
       `Reaction to ${row.med_name}`,
@@ -741,7 +742,9 @@ export function promoteMedicationSideEffect(
       date,
       row.notes ?? `Promoted from a ${row.med_name} side effect.`,
       `med-se:${id}`,
-      profileId
+      profileId,
+      // created_at from the clock seam (#1534) — the Timeline day fallback.
+      sqlNow()
     );
     db.prepare(
       "UPDATE intake_item_side_effects SET resolved = 1 WHERE id = ?"
