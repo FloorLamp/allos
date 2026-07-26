@@ -4,6 +4,27 @@
       "date": "2026-07-26",
       "entries": [
         {
+          "pr": 1561,
+          "title": "Phone screens: metric details, the view strip, and Timeline all slim down",
+          "body": "Three phone-size cleanups. A metric's detail page no longer shows three identical stat cards when you have under a week of data — coincident windows collapse into one honestly-labelled card, the “Change” stat names the actual date it compares against, a caption notes when your selected range outruns the data, and step/hydration/calorie charts now start their axis at zero. The view strip at the top of list pages drops its card frame on phones, returning about 30px of every screen to content. And the Timeline: the day switcher stays pinned while you scroll, the filter block collapses to a single summary line, and symptom entry sits behind “+ Log symptom” — opening automatically on days that already have symptoms or an active illness.",
+          "kind": "feature",
+          "issues": [1541, 1539, 1517]
+        },
+        {
+          "pr": 1560,
+          "title": "Tap any chart to go deeper — and edit its readings",
+          "body": "Every full-size chart on Trends now links through to a detail view — tap the title or the expand icon; the plot itself still pans and zooms without hijacking your touch. Charts that summarize several things (nutrition macros, training volume, heart-rate zones) land on their real home pages, and the sun/outdoor-time chart — the tab's last dead end — gets a detail page of its own. Each metric detail page also gains a Readings table: every stored reading, with in-place edit and delete. A reading you hand-correct is protected from being overwritten by the next sync, and a deleted one stays deleted.",
+          "kind": "feature",
+          "issues": [1488, 1397]
+        },
+        {
+          "pr": 1562,
+          "title": "Health Connect syncs catch more duplicates — and more readings",
+          "body": "Fixes from real-world payloads: possible-duplicate detection now groups same-day readings even when the source apps label their type differently, so cross-app duplicates actually surface for review; skin-temperature variation — the one reading that can legitimately be negative — is now accepted instead of dropped; and sleep-stage durations keep their precision instead of rounding.",
+          "kind": "fix",
+          "issues": []
+        },
+        {
           "pr": 1558,
           "title": "Trends chrome gets out of the way — and tiles drag",
           "body": "On a phone, Trends now opens with a one-line context bar — \"Overview · 90D\" — instead of two rows of pills and tabs: tap it to change the range or tab, and it slides away with the top bar as you scroll, returning the moment you scroll up. The window label is always visible, so a chart is never shown without knowing what period you're looking at. Your first chart now sits inside the opening screen. Reordering saved tiles is a long-press drag — the same gesture the dashboard uses — with the up/down controls still available in each tile's menu. This also fixed a bug where those arrows sometimes visibly did nothing.",
