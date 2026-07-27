@@ -1,6 +1,18 @@
 {
   "days": [
     {
+      "date": "2026-07-27",
+      "entries": [
+        {
+          "pr": 1577,
+          "title": "Your lab history, folded into panels you can scan",
+          "body": "The Biomarkers list — the longest page in the app — now groups your readings by clinical panel: each panel shows as one line with its analyte count and how many are currently flagged (\"Lipids · 6 · 1 flagged\"), and taps open to the readings. Flagged panels identify themselves at a glance, searching or filtering opens the matching groups automatically, and the roughly ten separate trajectory-watch cards folded into a single expandable card (each item can still be dismissed individually). Entry forms sit behind \"+ Add\". The page dropped from about thirteen thousand pixels to under three thousand.",
+          "kind": "feature",
+          "issues": [1499]
+        }
+      ]
+    },
+    {
       "date": "2026-07-26",
       "entries": [
         {
