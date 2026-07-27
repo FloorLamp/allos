@@ -12,9 +12,28 @@ import { sourceKey } from "./metric-source-priority";
 // sources and the profile hasn't picked a primary one. A manual entry is the
 // user's own correction, so it wins; Health Connect covers the whole day;
 // Oura covers the night/workouts it saw; Strava only its recorded activities.
+//
+// `fitbit-takeout` sits directly BELOW health-connect, and its position is a real
+// decision rather than an append. A Takeout archive and a Health Connect push can
+// describe the SAME night from the SAME watch and still disagree — measured on a
+// real pair: session windows offset by tens of minutes, and stage architecture
+// differing 2–4× on deep/REM, in no consistent direction (Fitbit appears to
+// re-score sleep server-side after the sync that fed Health Connect, so the two
+// are snapshots of an evolving analysis). Neither is obviously "right".
+//
+// Ranking it below health-connect keeps the LIVE stream authoritative by default,
+// so importing an archive never silently rewrites the days a user already had. The
+// per-profile primary-source pick (#14) is how someone deliberately prefers the
+// archive's re-scored record instead — that choice is prepended to this list by the
+// query layer, so it wins without editing the default.
+//
+// Being listed at all is the load-bearing part: pickOneProviderPerDay falls back to
+// "the largest single-source total" for a provider absent from this list, which for
+// sleep would systematically favour the archive purely because it reports longer.
 export const PROVIDER_PREFERENCE = [
   "manual",
   "health-connect",
+  "fitbit-takeout",
   "oura",
   "withings",
   "strava",

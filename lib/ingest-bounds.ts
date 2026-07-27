@@ -95,6 +95,10 @@ export const METRIC_BOUNDS: Record<string, MetricBound> = {
   // are display-only, engine-inert vendor numbers (never a synthesis input).
   oura_sleep_score: { min: 0, max: 100 },
   oura_readiness_score: { min: 0, max: 100 },
+  // Fitbit's own 0–100 daily scores, the same vendor-score stance as Oura's above
+  // (#1069): stored as what the source said, rendered attributed, feeding no engine.
+  fitbit_sleep_score: { min: 0, max: 100 },
+  fitbit_readiness_score: { min: 0, max: 100 },
 
   // ---- metric_samples: HRV (point) ----
   // RMSSD is a few ms in severe autonomic dysfunction up to ~200 ms in the very

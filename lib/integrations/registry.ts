@@ -113,6 +113,42 @@ export const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://developer.garmin.com/gc-developer-program/health-api/",
   },
   {
+    id: "fitbit-takeout",
+    name: "Fitbit (Google Takeout)",
+    kind: "archive",
+    status: "available",
+    blurb:
+      "Import a Fitbit account export downloaded from Google Takeout. This is the " +
+      "only way to bring in body composition from a scale that syncs to Fitbit: " +
+      "Fitbit does not forward weight or body fat to Health Connect, so those " +
+      "readings — often years of them — are invisible to the phone exporter. Sleep, " +
+      "workouts, resting heart rate, SpO2 and respiratory rate come along too, plus " +
+      "Fitbit's own sleep and readiness scores, which are stored and shown as " +
+      "Fitbit's numbers and never feed anything the app computes. Minute-level heart " +
+      "rate, steps and distance come in too. Rows Fitbit itself received from Health " +
+      "Connect are left to that connection rather than imported twice — that includes " +
+      "the steps your phone counted alongside your watch, which would otherwise " +
+      "double the day. A one-off import, not a live connection — re-import a fresher " +
+      "export whenever you like; repeats are safe.",
+    dataTypes: [
+      "Weight",
+      "Body fat",
+      "Resting HR",
+      "Heart rate",
+      "Steps",
+      "Distance",
+      "Active calories",
+      "Sleep",
+      "Workouts",
+      "SpO2",
+      "Respiratory rate",
+      "Skin temperature",
+      "Sleep score",
+      "Readiness score",
+    ],
+    docsUrl: "https://takeout.google.com/",
+  },
+  {
     id: "weather",
     name: "Weather & UV (Open-Meteo)",
     kind: "public",
