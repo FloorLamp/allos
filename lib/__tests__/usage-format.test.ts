@@ -26,6 +26,11 @@ describe("formatSessionCount", () => {
     expect(formatSessionCount(1)).toBe("1 session");
     expect(formatSessionCount(23)).toBe("23 sessions");
   });
+  it("supports serving nouns", () => {
+    expect(formatSessionCount(0, "serving")).toBe("no servings yet");
+    expect(formatSessionCount(1, "serving")).toBe("1 serving");
+    expect(formatSessionCount(2, "serving")).toBe("2 servings");
+  });
 });
 
 describe("formatUsageSummary", () => {
@@ -40,5 +45,8 @@ describe("formatUsageSummary", () => {
   });
   it("shows only the empty phrase when there are no sessions", () => {
     expect(formatUsageSummary(0, null, today)).toBe("no sessions yet");
+    expect(formatUsageSummary(0, null, today, "serving")).toBe(
+      "no servings yet"
+    );
   });
 });

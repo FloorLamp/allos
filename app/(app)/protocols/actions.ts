@@ -10,13 +10,8 @@ import { normalizeOutcomeKeys } from "@/lib/protocol-metrics";
 import { getProtocol, situationUsedByOtherProtocol } from "@/lib/queries";
 import { getEquipmentById } from "@/lib/equipment";
 import { parseScopedPractice } from "@/lib/protocol-practice";
-import { logPracticeSession } from "@/lib/practice-log";
-import {
-  formError,
-  formOk,
-  type FormResult,
-  type PracticeLogOutcome,
-} from "@/lib/types";
+import { findPracticeTarget } from "@/lib/practice-store";
+import { formError, formOk, type FormResult } from "@/lib/types";
 
 function revalidateProtocols(id?: number) {
   // The hub lives on the Longevity page's #protocols section (#1042 phase 4);
@@ -137,14 +132,17 @@ function syncPracticeTarget(
   let owns = 0;
 
   if (practice) {
-    const found = db
-      .prepare(
-        `SELECT id FROM frequency_targets
-          WHERE profile_id = ? AND scope_kind = ? AND scope_value = ?
-          LIMIT 1`
-      )
-      .get(profileId, practice.scopeKind, practice.scopeValue) as
-      { id: number } | undefined;
+    const found =
+      practice.scopeKind === "practice"
+        ? findPracticeTarget(profileId, practice.scopeValue)
+        : (db
+            .prepare(
+              `SELECT id FROM frequency_targets
+                WHERE profile_id = ? AND scope_kind = ? AND scope_value = ?
+                LIMIT 1`
+            )
+            .get(profileId, practice.scopeKind, practice.scopeValue) as
+            { id: number } | undefined);
     if (found) {
       tid = found.id;
       // If the protocol already OWNED this exact target, keep ownership and let the
@@ -197,29 +195,6 @@ function cleanupStaleOwnedTarget(
 ) {
   if (staleOwnedTargetId != null)
     maybeDeleteOwnedTarget(profileId, staleOwnedTargetId, exceptProtocolId);
-}
-
-// One-tap log a wellness-practice session (#1259) for TODAY (the profile-local date).
-// The thin action over the auth-blind write core (logPracticeSession) — the ONE shared
-// entry point for the protocol detail, the Active-protocols widget, and (via its own
-// wrapper) the Telegram Done button. requireWriteAccess resolves the ACTIVE profile, so a
-// caregiver acting-as a child logs against the child (the profileId-first write core
-// needs no special code — the caregiver shape is a scoping property of the auth gate).
-// Returns the typed outcome carrying the day's running count; the surface renders from it,
-// never unconditionally confirms.
-export async function logPractice(
-  formData: FormData
-): Promise<PracticeLogOutcome> {
-  const { profile } = await requireWriteAccess();
-  const practice = String(formData.get("practice") ?? "").trim();
-  if (!practice) return { kind: "invalid-date" };
-  const outcome = logPracticeSession(profile.id, practice, today(profile.id));
-  if (outcome.kind === "logged") {
-    revalidateProtocols();
-    revalidatePath("/timeline");
-    revalidatePath("/upcoming");
-  }
-  return outcome;
 }
 
 export async function createProtocol(formData: FormData): Promise<FormResult> {

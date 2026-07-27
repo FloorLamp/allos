@@ -7,6 +7,9 @@ import {
   PRACTICE_SIGNAL_PREFIX,
   PRACTICE_STARTER_LIST,
   normalizePracticeName,
+  practiceIdentity,
+  samePractice,
+  previousPracticeDuration,
 } from "@/lib/practice";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 import { resolveSuppressedKeyDisplay } from "@/lib/suppression-display";
@@ -99,6 +102,23 @@ describe("practice identity + dedupeKey namespace (#1259)", () => {
     );
     expect(normalizePracticeName("")).toBe("");
     expect(normalizePracticeName(null)).toBe("");
+  });
+
+  it("collapses only case/whitespace identity variants", () => {
+    expect(practiceIdentity("  Red   Light Therapy ")).toBe(
+      "red light therapy"
+    );
+    expect(samePractice("Sauna", "  SAUNA ")).toBe(true);
+    expect(samePractice("Breathwork", "Breath work")).toBe(false);
+    expect(samePractice("", "")).toBe(false);
+  });
+
+  it("prefills duration from the immediately previous session only", () => {
+    expect(previousPracticeDuration([{ duration_min: 20 }])).toBe(20);
+    expect(
+      previousPracticeDuration([{ duration_min: null }, { duration_min: 20 }])
+    ).toBeNull();
+    expect(previousPracticeDuration([])).toBeNull();
   });
 
   it("ships the curated starter list (#1259)", () => {

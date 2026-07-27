@@ -20,10 +20,11 @@ export function formatLastUsed(
   return `${days} days ago`;
 }
 
-// "N sessions" with singular/plural, or "no sessions yet" for zero.
-export function formatSessionCount(sessions: number): string {
-  if (sessions <= 0) return "no sessions yet";
-  return `${sessions} ${sessions === 1 ? "session" : "sessions"}`;
+// "N sessions" with singular/plural, or "no sessions yet" for zero. Food-group
+// protocols pass "serving"; every existing caller keeps the "session" default.
+export function formatSessionCount(sessions: number, noun = "session"): string {
+  if (sessions <= 0) return `no ${noun}s yet`;
+  return `${sessions} ${sessions === 1 ? noun : `${noun}s`}`;
 }
 
 // The compact combined summary: "23 sessions · last 3 days ago" (or just
@@ -31,8 +32,9 @@ export function formatSessionCount(sessions: number): string {
 export function formatUsageSummary(
   sessions: number,
   lastUsed: string | null | undefined,
-  today: string
+  today: string,
+  noun = "session"
 ): string {
-  if (sessions <= 0) return "no sessions yet";
-  return `${formatSessionCount(sessions)} · last ${formatLastUsed(lastUsed, today)}`;
+  if (sessions <= 0) return formatSessionCount(sessions, noun);
+  return `${formatSessionCount(sessions, noun)} · last ${formatLastUsed(lastUsed, today)}`;
 }

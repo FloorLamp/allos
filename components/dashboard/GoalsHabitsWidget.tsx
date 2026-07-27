@@ -2,6 +2,7 @@ import Link from "next/link";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import LogActivityButton from "@/components/LogActivityButton";
 import {
+  dashboardHabitDomain,
   dashboardGoalsHabitsLayout,
   summarizeDashboardHabits,
 } from "@/lib/dashboard-widgets";
@@ -42,26 +43,41 @@ export default function GoalsHabitsWidget({
   const layout = dashboardGoalsHabitsLayout(hasGoals, hasHabits);
   const hasTrainingContent =
     hasGoals ||
-    freqTargets.some((target) => target.target.scope_kind !== "food_group");
+    freqTargets.some(
+      (target) => dashboardHabitDomain(target.target.scope_kind) === "training"
+    );
   const hasFoodContent = freqTargets.some(
-    (target) => target.target.scope_kind === "food_group"
+    (target) => dashboardHabitDomain(target.target.scope_kind) === "food"
+  );
+  const hasPracticeContent = freqTargets.some(
+    (target) => dashboardHabitDomain(target.target.scope_kind) === "practice"
   );
   const hasOpenTrainingTarget = allOpenTargets.some(
-    (target) => target.target.scope_kind !== "food_group"
+    (target) => dashboardHabitDomain(target.target.scope_kind) === "training"
   );
   const hasOpenFoodTarget = allOpenTargets.some(
-    (target) => target.target.scope_kind === "food_group"
+    (target) => dashboardHabitDomain(target.target.scope_kind) === "food"
+  );
+  const hasOpenPracticeTarget = allOpenTargets.some(
+    (target) => dashboardHabitDomain(target.target.scope_kind) === "practice"
   );
   const hiddenTrainingTargets = hiddenOpenTargets.filter(
-    (target) => target.target.scope_kind !== "food_group"
+    (target) => dashboardHabitDomain(target.target.scope_kind) === "training"
   );
   const hiddenFoodTargets = hiddenOpenTargets.filter(
-    (target) => target.target.scope_kind === "food_group"
+    (target) => dashboardHabitDomain(target.target.scope_kind) === "food"
   );
-  const headerHref =
-    hasFoodContent && !hasTrainingContent
-      ? ("/nutrition" as const)
-      : ("/training?tab=goals" as const);
+  const hiddenPracticeTargets = hiddenOpenTargets.filter(
+    (target) => dashboardHabitDomain(target.target.scope_kind) === "practice"
+  );
+  const headerHref = hasTrainingContent
+    ? ("/training?tab=goals" as const)
+    : hasPracticeContent
+      ? ("/wellness" as const)
+      : ("/nutrition" as const);
+  const hasMultipleHabitDomains =
+    [hasTrainingContent, hasFoodContent, hasPracticeContent].filter(Boolean)
+      .length > 1;
   return (
     <div className="card" data-testid="goals-habits">
       <WidgetHeader title="Goals and habits" href={headerHref} />
@@ -183,10 +199,17 @@ export default function GoalsHabitsWidget({
                       +{hiddenFoodTargets.length} more food habits →
                     </Link>
                   )}
+                  {hiddenPracticeTargets.length > 0 && (
+                    <Link
+                      href="/wellness"
+                      className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                    >
+                      +{hiddenPracticeTargets.length} more practices →
+                    </Link>
+                  )}
                 </div>
               )}
-              {(openTargets.length > 0 ||
-                (hasFoodContent && hasTrainingContent)) && (
+              {(openTargets.length > 0 || hasMultipleHabitDomains) && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {hasOpenTrainingTarget && (
                     <LogActivityButton className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
@@ -201,14 +224,32 @@ export default function GoalsHabitsWidget({
                       Log food serving →
                     </Link>
                   )}
-                  {hasFoodContent && hasTrainingContent && (
+                  {hasOpenPracticeTarget && (
                     <Link
-                      href="/nutrition"
-                      className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                      href="/wellness"
+                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
                     >
-                      Manage food habits →
+                      Log practice session →
                     </Link>
                   )}
+                  {hasFoodContent &&
+                    (hasTrainingContent || hasPracticeContent) && (
+                      <Link
+                        href="/nutrition"
+                        className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                      >
+                        Manage food habits →
+                      </Link>
+                    )}
+                  {hasPracticeContent &&
+                    (hasTrainingContent || hasFoodContent) && (
+                      <Link
+                        href="/wellness"
+                        className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                      >
+                        Manage practices →
+                      </Link>
+                    )}
                 </div>
               )}
             </section>

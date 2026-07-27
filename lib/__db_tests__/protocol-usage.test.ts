@@ -67,13 +67,15 @@ function insertActivity(
 
 describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => {
   beforeEach(() => {
+    db.prepare("DELETE FROM practice_logs WHERE profile_id = 1").run();
+    db.prepare("DELETE FROM food_log WHERE profile_id = 1").run();
     db.prepare("DELETE FROM activities WHERE profile_id = 1").run();
     db.prepare("DELETE FROM protocols WHERE profile_id = 1").run();
     db.prepare("DELETE FROM frequency_targets WHERE profile_id = 1").run();
     db.prepare("DELETE FROM equipment WHERE profile_id = 1").run();
   });
 
-  it("counts distinct in-window days matching the linked gear or practice type", () => {
+  it("counts in-window activity events, including multiple sessions on one day", () => {
     const sauna = createEquipment(1, {
       name: "Sauna",
       weight_kg: null,
@@ -91,7 +93,7 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
     insertActivity(1, "2026-06-03", "sport", sauna.id);
     // In-window, practice type cardio (counts).
     insertActivity(1, "2026-06-10", "cardio", null);
-    // Same day, gear-linked AND cardio — still one distinct day.
+    // Same day, gear-linked AND cardio — a second event is a second session.
     insertActivity(1, "2026-06-10", "cardio", sauna.id);
     // Out of window (before start) — excluded.
     insertActivity(1, "2026-05-20", "cardio", sauna.id);
@@ -102,8 +104,65 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
 
     const p = getProtocol(1, pid)!;
     const usage = getProtocolUsage(1, p, "2026-07-31");
-    expect(usage.sessions).toBe(2); // 06-03 and 06-10
+    expect(usage.sessions).toBe(3);
     expect(usage.lastUsed).toBe("2026-06-10");
+  });
+
+  it("counts practice-log rows across identity variants and excludes outside-window sessions", () => {
+    const tid = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, per_week)
+           VALUES (1, 'practice', 'Sauna', 3)`
+        )
+        .run().lastInsertRowid
+    );
+    const pid = insertProtocol(1, {
+      start: "2026-06-01",
+      end: "2026-06-30",
+      frequency_target_id: tid,
+    });
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date)
+       VALUES (1, 'sauna', '2026-06-10'),
+              (1, ' SAUNA ', '2026-06-10'),
+              (1, 'Sauna', '2026-05-31'),
+              (1, 'Sauna', '2026-07-01')`
+    ).run();
+
+    expect(getProtocolUsage(1, getProtocol(1, pid)!, "2026-07-31")).toEqual({
+      sessions: 2,
+      lastUsed: "2026-06-10",
+    });
+  });
+
+  it("counts positive food-log event rows rather than days or serving totals", () => {
+    const tid = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, per_week)
+           VALUES (1, 'food_group', 'fatty_fish', 2)`
+        )
+        .run().lastInsertRowid
+    );
+    const pid = insertProtocol(1, {
+      start: "2026-06-01",
+      end: "2026-06-30",
+      frequency_target_id: tid,
+    });
+    db.prepare(
+      `INSERT INTO food_log (profile_id, date, group_key, servings)
+       VALUES (1, '2026-06-08', 'fatty_fish', 2),
+              (1, '2026-06-09', 'fatty_fish', 1),
+              (1, '2026-06-10', 'fatty_fish', 0),
+              (1, '2026-07-01', 'fatty_fish', 1)`
+    ).run();
+    expect(getProtocolUsage(1, getProtocol(1, pid)!, "2026-07-31")).toEqual({
+      sessions: 2,
+      lastUsed: "2026-06-09",
+    });
   });
 
   it("uses today as the window end for an ongoing protocol", () => {

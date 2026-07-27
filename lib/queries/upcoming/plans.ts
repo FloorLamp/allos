@@ -71,9 +71,10 @@ export function practiceItems(profileId: number): UpcomingItem[] {
       domain: "practice" as const,
       title: p.target.scope_value,
       detail: "Weekly practice target",
-      href: "/longevity#protocols",
+      href: "/wellness",
       dueDate: null,
       band: "week" as const,
+      practiceTargetId: p.target.id,
       dueText:
         p.per_week_max != null && p.per_week_max > p.per_week
           ? `${p.count}/${p.per_week}–${p.per_week_max} this week`

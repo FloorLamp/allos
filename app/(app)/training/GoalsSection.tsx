@@ -56,19 +56,21 @@ export default async function GoalsSection() {
           . Click a routine to edit it.
         </p>
         <FrequencyTargets
-          items={targets.map((t) => ({
-            id: t.target.id,
-            scopeKind: t.target.scope_kind,
-            scopeValue: t.target.scope_value,
-            label: frequencyScopeLabel(
-              t.target.scope_kind,
-              t.target.scope_value
-            ),
-            count: t.count,
-            perWeek: t.per_week,
-            met: t.met,
-            pace: t.pace,
-          }))}
+          items={targets
+            .filter((t) => t.target.scope_kind !== "practice")
+            .map((t) => ({
+              id: t.target.id,
+              scopeKind: t.target.scope_kind,
+              scopeValue: t.target.scope_value,
+              label: frequencyScopeLabel(
+                t.target.scope_kind,
+                t.target.scope_value
+              ),
+              count: t.count,
+              perWeek: t.per_week,
+              met: t.met,
+              pace: t.pace,
+            }))}
         />
       </div>
     </section>

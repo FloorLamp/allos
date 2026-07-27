@@ -20,10 +20,12 @@ import { intakeHref } from "@/lib/hrefs";
 import { formatUsageSummary } from "@/lib/usage-format";
 import { protocolPracticeLabel } from "@/lib/protocol-practice";
 import { practiceCadenceText, PRACTICE_PLENTY_TEXT } from "@/lib/practice";
-import { getPracticeDayCount } from "@/lib/practice-log";
+import { getPracticeDayCount, getPracticeSessions } from "@/lib/practice-log";
+import { previousPracticeDuration } from "@/lib/practice";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import LogPracticeButton from "../LogPracticeButton";
+import PracticeSessionHistory from "@/app/(app)/wellness/PracticeSessionHistory";
 import { updateProtocol, endProtocol, deleteProtocol } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +77,19 @@ export default async function ProtocolDetailPage(props: {
       ? getPracticeDayCount(profile.id, practice.value, todayStr)
       : 0;
   const usage = getProtocolUsage(profile.id, protocol, todayStr);
+  const protocolPracticeSessions =
+    practice?.scopeKind === "practice"
+      ? getPracticeSessions(profile.id, practice.value, 100, {
+          start: protocol.start_date,
+          end: protocol.end_date ?? todayStr,
+        })
+      : [];
+  const previousDurationMin =
+    practice?.scopeKind === "practice"
+      ? previousPracticeDuration(
+          getPracticeSessions(profile.id, practice.value, 1)
+        )
+      : null;
   const hasPracticeCard = !!gear || !!practice || !!intakeItem;
 
   return (
@@ -185,6 +200,9 @@ export default async function ProtocolDetailPage(props: {
                       practice={practice.value}
                       todayCount={practiceTodayCount}
                       atCeiling={adherence?.atCeiling ?? false}
+                      today={todayStr}
+                      defaultDurationMin={previousDurationMin}
+                      showDetails
                     />
                   )}
                 </div>
@@ -196,8 +214,16 @@ export default async function ProtocolDetailPage(props: {
                   className="mt-0.5 text-sm text-slate-700 dark:text-slate-200"
                   data-testid="protocol-usage"
                 >
-                  {formatUsageSummary(usage.sessions, usage.lastUsed, todayStr)}
+                  {formatUsageSummary(
+                    usage.sessions,
+                    usage.lastUsed,
+                    todayStr,
+                    practice?.scopeKind === "food_group" ? "serving" : "session"
+                  )}
                 </div>
+                {practice?.scopeKind === "practice" && (
+                  <PracticeSessionHistory sessions={protocolPracticeSessions} />
+                )}
               </div>
             </div>
           )}
