@@ -247,7 +247,7 @@ describe("body composition — the archive's uniquely deep data", () => {
 });
 
 describe("daily vitals", () => {
-  it("rounds fractional resting HR to a whole bpm", () => {
+  it("rounds fractional resting HR, and keeps the day Fitbit LABELLED", () => {
     const out = parseDailyRestingHrCsv(
       [
         "timestamp,beats per minute,data source",
@@ -255,8 +255,10 @@ describe("daily vitals", () => {
       ].join("\n"),
       TZ
     );
-    // 00:00Z is the previous evening in New York.
-    expect(out.bodyMetrics).toEqual([{ date: "2026-06-09", resting_hr: 67 }]);
+    // Midnight UTC is a LABEL for the day, not the instant of a measurement.
+    // Converting it through New York would walk it back to 06-09 — the exact
+    // one-day offset that showed up against the same readings from Health Connect.
+    expect(out.bodyMetrics).toEqual([{ date: "2026-06-10", resting_hr: 67 }]);
   });
 
   it("maps respiratory rate to the SAME canonical the HC parser writes", () => {
@@ -613,5 +615,72 @@ describe("computed (nightly) temperature", () => {
       TZ
     );
     expect(out.samples[0].metric).toBe("skin_temp_delta_c");
+  });
+});
+
+describe("daily aggregates are dated by their LABEL, not by conversion", () => {
+  // The bug this pins: Fitbit stamps per-day and per-night aggregates at midnight
+  // UTC. That is a label for the day, not an instant. Converting it through a
+  // western zone dates every one of them a day early — found by noticing that the
+  // Takeout and Health Connect series for respiratory rate were identical but offset
+  // by exactly one day (HC dates from a real sleep-end instant, so HC was right).
+  const MIDNIGHT_UTC = "2026-06-11T00:00:00Z";
+
+  it("resting HR, respiratory rate and SpO2 all keep the labelled day", () => {
+    expect(
+      parseDailyRestingHrCsv(
+        [
+          "timestamp,beats per minute,data source",
+          `${MIDNIGHT_UTC},60,Fitbit App`,
+        ].join("\n"),
+        TZ
+      ).bodyMetrics[0].date
+    ).toBe("2026-06-11");
+
+    expect(
+      parseDailyVitalCsv(
+        [
+          "timestamp,breaths per minute,data source",
+          `${MIDNIGHT_UTC},13.8,Fitbit App`,
+        ].join("\n"),
+        TZ,
+        "respiratory_rate"
+      ).vitals[0].date
+    ).toBe("2026-06-11");
+
+    expect(
+      parseDailyVitalCsv(
+        [
+          "timestamp,average percentage,data source",
+          `${MIDNIGHT_UTC},94.8,Radiance`,
+        ].join("\n"),
+        TZ,
+        "oxygen_saturation"
+      ).vitals[0].date
+    ).toBe("2026-06-11");
+  });
+
+  it("the vendor scores keep it too", () => {
+    expect(
+      parseVendorScoreCsv(
+        ["timestamp,overall_score", `${MIDNIGHT_UTC},48`].join("\n"),
+        TZ,
+        "sleep_score"
+      ).samples[0].date
+    ).toBe("2026-06-11");
+  });
+
+  it("but a genuine INSTANT still converts — a weigh-in is not a day label", () => {
+    // 02:11Z really is the previous evening in New York, and a weigh-in belongs on
+    // the day it happened.
+    expect(
+      parseWeightCsv(
+        [
+          "timestamp,weight grams,data source",
+          "2026-07-26T02:11:30Z,64900,Fitbit App",
+        ].join("\n"),
+        TZ
+      ).bodyMetrics[0].date
+    ).toBe("2026-07-25");
   });
 });

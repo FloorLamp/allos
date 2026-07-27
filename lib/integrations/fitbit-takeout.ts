@@ -275,6 +275,26 @@ export function localDate(iso: string | undefined, tz: string): string | null {
   return zonedDateParts(tz, d).date;
 }
 
+// The day a DAILY-AGGREGATE row is FOR, taken verbatim from its timestamp.
+//
+// Fitbit stamps its per-day and per-night aggregates at midnight UTC —
+// `2026-06-11T00:00:00Z` on daily_respiratory_rate — and that is a LABEL for the
+// day, not the instant anything was measured. Running it through the profile zone
+// walks it backwards: in New York that midnight is 20:00 the previous evening, so
+// every reading lands a day early. Caught by comparing against the same readings
+// arriving over Health Connect, which timestamps a real instant (the end of the
+// sleep session) and therefore dates them correctly — the two series were identical
+// but offset by exactly one day.
+//
+// So an aggregate's date is its date string, full stop. Only genuinely INSTANTANEOUS
+// families (a weigh-in, an intraday sample) go through localDate/localMinute, where
+// the zone conversion is the whole point.
+export function dayLabelDate(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const day = iso.trim().slice(0, 10);
+  return BARE_DAY.test(day) ? day : null;
+}
+
 // The profile-local MINUTE key an instant buckets into — the hr_minutes natural key,
 // identical in shape to what the Health Connect parser writes, so a Takeout minute
 // and a synced minute for the same time collide on the key instead of duplicating.
@@ -411,7 +431,7 @@ export function parseDailyRestingHrCsv(
       out.roundTripSkipped++;
       continue;
     }
-    const date = localDate(row.timestamp, tz);
+    const date = dayLabelDate(row.timestamp);
     const bpm = boundedOrNull("resting_hr", csvNum(row["beats per minute"]));
     if (!date || bpm == null) {
       out.skipped++;
@@ -463,7 +483,7 @@ export function parseDailyVitalCsv(
       continue;
     }
     const iso = row.timestamp;
-    const date = localDate(iso, tz);
+    const date = dayLabelDate(iso);
     const value = boundedOrNull(spec.canonical, csvNum(row[spec.column]));
     if (!date || !iso || value == null) {
       out.skipped++;
@@ -981,7 +1001,7 @@ export function parseVendorScoreCsv(
   const byDate = new Map<string, number>();
   for (const row of parsed.rows) {
     const iso = row.timestamp;
-    const date = localDate(iso, tz);
+    const date = dayLabelDate(iso);
     const score = boundedOrNull(metric, csvNum(row[column]));
     if (!date || score == null) {
       out.skipped++;
