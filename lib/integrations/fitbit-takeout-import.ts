@@ -142,13 +142,6 @@ function parseFamily(
       return parseExerciseJson(text, tz);
     case "computed_temperature":
       return parseComputedTemperatureCsv(text, tz);
-    // Classified but deliberately not parsed, so the walk reports the file honestly
-    // rather than pretending the archive didn't carry it. Height is TWO rows on a
-    // real archive that disagree by 6 mm — a self-reported profile field written by
-    // two apps, not a measurement, and the app's own manual entry (which feeds BMI
-    // and the growth percentiles) is the better source.
-    case "height":
-      return emptyTakeoutParsed();
   }
 }
 

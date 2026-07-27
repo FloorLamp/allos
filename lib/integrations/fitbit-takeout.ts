@@ -74,13 +74,22 @@ export const TAKEOUT_HEALTH_ROOT = "Takeout/Google Health/";
 // JSON's non-zero-minute count exactly).
 const INTRADAY_NOT_SUMMABLE = new Set(["calories"]);
 
-// Families with no model home at all, listed so the reason is recorded rather than
-// rediscovered: heart-rate zone minutes and Fitbit's SEDENTARY/LIGHTLY/… activity
-// bands are vendor classifications with no metric to land in.
+// Families deliberately not consumed, listed so the reason is recorded rather than
+// rediscovered. Most have no model home at all: heart-rate zone minutes and Fitbit's
+// SEDENTARY/LIGHTLY/… activity bands are vendor classifications with no metric to
+// land in.
+//
+// `height` is the exception — it HAS a home, and is refused on quality instead. The
+// real archive carries two rows that disagree by 6 mm, which is the signature of a
+// self-reported profile field written by two apps rather than a measurement. Height
+// feeds BMI and the growth percentiles, so a wrong value propagates quietly into
+// derived numbers; the app's own manual entry is the better source and the user
+// already owns it.
 const NO_HOME_FAMILIES = new Set([
   "time_in_heart_rate_zones",
   "activity_level",
   "resting_heart_rate",
+  "height",
 ]);
 
 // Directory segments whose contents are never health data. Matched as a path
@@ -127,7 +136,6 @@ export function isHealthConnectRoundTrip(dataSource: string | null): boolean {
 export type TakeoutFamily =
   | "weight"
   | "body_fat"
-  | "height"
   | "daily_resting_heart_rate"
   | "daily_respiratory_rate"
   | "daily_oxygen_saturation"
@@ -182,7 +190,6 @@ export function classifyTakeoutEntry(path: string): TakeoutFamily | null {
     if (base === "active_energy_burned") return "active_energy";
     if (base === "weight") return "weight";
     if (base === "body_fat") return "body_fat";
-    if (base === "height") return "height";
     if (base === "daily_resting_heart_rate") return "daily_resting_heart_rate";
     if (base === "daily_respiratory_rate") return "daily_respiratory_rate";
     if (base === "daily_oxygen_saturation") return "daily_oxygen_saturation";

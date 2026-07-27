@@ -513,6 +513,22 @@ describe("intraday classification", () => {
     ).toBeNull();
   });
 
+  it("REFUSES height — a self-reported profile field, not a measurement", () => {
+    // Unlike the families below, height HAS a home; it is refused on quality. The
+    // real archive carries two rows disagreeing by 6 mm, the signature of a profile
+    // field written by two apps. Height feeds BMI and the growth percentiles, so a
+    // wrong value propagates quietly into derived numbers — and the user already
+    // owns the manual entry. Refused at CLASSIFY time, so the walk never inflates
+    // it (measured on the real archive: 75 entries read before, 74 after, with every
+    // record count unchanged).
+    for (const f of ["height.csv", "height-2026-06-01.csv"]) {
+      expect(
+        classifyTakeoutEntry(`${P}/Physical Activity_GoogleData/${f}`),
+        f
+      ).toBeNull();
+    }
+  });
+
   it("skips the vendor-classification families with no metric home", () => {
     for (const f of [
       "activity_level_2026-06-01.csv",
