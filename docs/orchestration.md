@@ -398,6 +398,25 @@ it later from the issue number is guesswork.
   a "flake" that reproduces 3/3 on main is a DEFECT (census → root-cause → fix
   PR), which is how both #1400 (self-racing retry loop) and #1417 (naive
   fixture timestamps vs the pinned zone) fell the same day.
+  **Base-comparison caution (2026-07-27, the #1577 sleep-hero incident): when
+  the failure is CLOCK-ADJACENT, "branch fails / main passes minutes apart" is
+  NOT conclusive** — the two runs' harness config-load instants can straddle a
+  #1464 nudge boundary, making the CLOCK the discriminant while it wears the
+  branch's face. The conclusive form is a forced-skew A/B: run the failing spec
+  on BOTH branch and clean main with `ALLOS_TEST_NOW` explicitly skewed into
+  the hypothesized hazard (e.g. one day ahead of real UTC); identical failures
+  under identical skew is the proof. I attributed a pre-existing bug to a PR's
+  diff for an hour on the weaker evidence; the agent's forced-skew A/B
+  overturned it.
+  **Distinct-one-offs extension (the #1577 merge, refining #1557's precedent):**
+  a PR whose OWN and adjacent surfaces are green across N≥3 full CI runs, where
+  each run's single red is a DIFFERENT spec on a surface the diff doesn't touch,
+  each attributable to a documented pre-existing class (censused or filed, never
+  shrugged) and NO spec reds twice — merges with a run-by-run attribution table
+  in the PR thread. Three disjoint one-offs with zero repeats is the suite's
+  marginal-spec tail under shifting shard compositions, not the change; an
+  unbounded retrigger loop against a ~1-one-off-per-run tail never terminates.
+  A REPEAT of the same spec voids this and demands the root-cause path.
 
 **Known failure classes** (every one recurred at least once):
 
@@ -522,6 +541,38 @@ it later from the issue number is guesswork.
     ORDER is load-bearing (row ids follow insertion order). Agents add to the
     domain module, never the composer; the hygiene guard walks `e2e/**`
     recursively, and the fixture-login budget measures the composed set.
+16. **Wall-clock fixture in the frozen-clock suite (2026-07-27, the #1577
+    sleep-hero incident).** A fixture row whose timestamp falls to SQL's
+    `datetime('now')` DEFAULT (instead of being stamped from `today(profileId)`
+    / the frozen clock) anchors on REAL UTC while every consumer reads the
+    FROZEN clock. The clocks normally agree, so the bug is invisible — except
+    in the ~30-min band before UTC midnight where #1464's forward nudge puts
+    frozen date at `D+1` while real is still `D`, and any lifetime/dueness
+    comparison against the fixture's anchor flips (a bedtime dose became
+    retroactively "due" for a night predating its creation). Deterministic
+    inside the band, green everywhere else — a DAILY roulette, class-#13's
+    clock cousin. Tells: red only in late-UTC-evening runs; the failing value
+    is a COUNT/dueness flip, not a timeout. Fix at the fixture (stamp from the
+    frozen clock so exclusion is intentional); grep vector: intake/dose/metric
+    INSERTs in `e2e/seed/**` that omit `created_at`. Found because #1577's new
+    spec file reshuffled shard composition — an added spec can surface a
+    latent neighbor without touching it.
+17. **The settle-window one-off tail (#1556 — the dominant residual class).**
+    At `retries: 0`, roughly one full-matrix run in three tonight dropped ONE
+    test to a default-5s expectation losing to a Server-Action write + RSC
+    refresh round-trip under shard load (wellbeing activation, share-target
+    upload feed, sleep-tooltip hover, surgery-bridge suggestion — all censused
+    on #1556). The fix shape is a DECLARED budget on the SERVER-TRUTH signal
+    (the marker/cockpit/feed row that only renders after the write committed
+    and the refresh round-tripped) — 15–30s with a comment citing the measured
+    overrun; at retries=0 a budget masks nothing. On dashboard-class surfaces
+    with bystander POST traffic, `settledClick` is the WRONG tool (its any-POST
+    wait resolves on a bystander) — widen the server-truth window instead.
+    Watch for BUDGET ASYMMETRY inside one spec: a 5s default sitting right
+    after a sibling deliberately given 30s for the same class of operation
+    (workout-presence:141) is a latent member. Every new one-off goes on the
+    #1556 census — the census, not retrigger memory, is what turns the tail
+    into a fixable list.
 
 ## Review checklist
 
