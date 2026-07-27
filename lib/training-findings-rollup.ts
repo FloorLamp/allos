@@ -30,13 +30,14 @@
 import type { Finding } from "./findings";
 import { muscleLabel } from "./lifts";
 import { parseMuscleVolumeKey } from "./muscle-volume-bands";
+import { SUMMARY_NAME_LIMIT, summarizeNames } from "./summarize-names";
 
 // Any findings list on Training → Overview renders this many rows, with the rest
 // behind a "show all" disclosure (the #1219 movers pattern).
 export const TRAINING_FINDINGS_CAP = 3;
 
 // How many muscle names the group's summary line spells out before "and N more".
-const GROUP_DETAIL_NAMES = 3;
+const GROUP_DETAIL_NAMES = SUMMARY_NAME_LIMIT;
 
 export interface TrainingFindingGroup {
   // Stable React/testid key for the row (not a suppression key — the group is a
@@ -80,16 +81,15 @@ function muscleNames(findings: readonly Finding[]): string[] {
   return out;
 }
 
-// "Chest, Quads, Calves and 2 more" — the summary line under the group title.
+// "Chest, Quads, Calves and 2 more" — the summary line under the group title. The
+// sentence itself is the shared summarizeNames (the Results-hub trajectory rollup
+// prints the identical shape for analyte names); this stays as the muscle-domain
+// name for it, so the rollup's own tests keep pinning the copy they always did.
 export function summarizeMuscleNames(
   names: readonly string[],
   limit = GROUP_DETAIL_NAMES
 ): string {
-  const shown = names.slice(0, limit);
-  const rest = names.length - shown.length;
-  if (shown.length === 0) return "";
-  const list = shown.join(", ");
-  return rest > 0 ? `${list} and ${rest} more` : list;
+  return summarizeNames(names, limit);
 }
 
 /**

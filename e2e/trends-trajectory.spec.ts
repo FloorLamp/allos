@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Clears the seeded eGFR trajectory dismissal so the finding is present again — the
@@ -39,6 +40,10 @@ test.afterAll(() => resetEgfrTrajectoryDismissal());
 // stays above the CKD floor the whole time, so it never trips a range flag but DOES
 // fire the velocity + persistent + approaching rules. This proves the pure engine, the
 // profile-scoped server assembly, and the rendered card all work end-to-end.
+//
+// #1499 section B folded the card into ONE capped rollup: an analyte's findings live
+// in a per-analyte expandable row, so the observation text is one disclosure away.
+// The engine, the dedupeKeys and the bus are untouched — only the shape is.
 test("Results → Biomarkers shows a trajectory finding for the seeded eGFR decline (#41)", async ({
   page,
 }) => {
@@ -46,10 +51,16 @@ test("Results → Biomarkers shows a trajectory finding for the seeded eGFR decl
 
   const card = page.getByTestId("trajectory-findings");
   await expect(card).toBeVisible();
-  await expect(card).toContainText("eGFR");
-  // The velocity rule's observation names the analyte and its framing.
-  await expect(card).toContainText(/eGFR is falling faster than usual/i);
-  await expect(card).toContainText(/clinician/i);
+  // The rollup names the analyte on its collapsed row.
+  const rollup = card.getByTestId("trajectory-rollup").filter({
+    hasText: "eGFR",
+  });
+  await expect(rollup).toBeVisible();
+
+  // Expanding it reveals the rule's own observation, unchanged.
+  await hydratedClick(page, rollup.getByTestId("trajectory-rollup-toggle"));
+  await expect(rollup).toContainText(/eGFR is falling faster than usual/i);
+  await expect(rollup).toContainText(/clinician/i);
 });
 
 // The dismiss affordance funnels through the shared findings-bus suppression store
@@ -62,16 +73,23 @@ test("dismissing a trajectory finding silences the analyte's trajectory watch (#
 }) => {
   await page.goto("/results/biomarkers");
 
-  const finding = page
+  // Inside the #1499 rollup the dismiss is still ITEM-wise: the velocity row keeps
+  // its own form, posting the same analyte acknowledgment it always did.
+  const rollup = page
+    .getByTestId("trajectory-rollup")
+    .filter({ hasText: "eGFR" });
+  await hydratedClick(page, rollup.getByTestId("trajectory-rollup-toggle"));
+  const finding = rollup
     .getByTestId("trajectory-finding")
     .filter({ hasText: "eGFR is falling faster than usual" });
   await expect(finding).toBeVisible();
 
-  await finding.getByTestId("trajectory-dismiss").click();
+  await settledClick(page, finding.getByTestId("trajectory-dismiss"));
 
   // After the server action + re-render, every eGFR trajectory finding is gone
-  // (the analyte-level acknowledgment, not just the velocity rule).
+  // (the analyte-level acknowledgment, not just the velocity rule) — the rollup row
+  // for the analyte goes with them.
   await expect(
-    page.getByTestId("trajectory-finding").filter({ hasText: "eGFR" })
+    page.getByTestId("trajectory-rollup").filter({ hasText: "eGFR" })
   ).toHaveCount(0);
 });

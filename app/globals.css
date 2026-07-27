@@ -312,6 +312,15 @@ body::before {
   .table-cards tr:last-child {
     @apply max-sm:mb-0;
   }
+  /* A SECTION HEADER row (issue #1499's panel groups) is not a record card — it is
+     the index entry above one. In card mode it drops the card frame entirely and
+     lets its own control own the surface, so the group header reads as a header at
+     both viewports from the one `<tr>` (no `hidden md:*` twin to drift). The extra
+     class beats `.table-cards tr` on specificity, which a utility class on the row
+     could not — the reason the header's colour lives on its button. */
+  .table-cards tr.table-section-row {
+    @apply max-sm:mb-2 max-sm:block max-sm:border-0 max-sm:bg-transparent max-sm:p-0;
+  }
   .table-cards td {
     @apply max-sm:block max-sm:px-0 max-sm:py-0;
   }

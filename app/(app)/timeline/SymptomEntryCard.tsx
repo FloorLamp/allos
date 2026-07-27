@@ -1,8 +1,5 @@
-"use client";
-
-import { useState, type ReactNode } from "react";
-import { IconChevronDown, IconPlus } from "@tabler/icons-react";
-import Collapse from "@/components/Collapse";
+import type { ReactNode } from "react";
+import AddEntryPanel from "@/components/AddEntryPanel";
 
 // The Timeline day view's retro symptom entry, behind a "+ Log symptom" affordance
 // (issue #1517 C — the #1497 rare-cadence-entry rule).
@@ -20,9 +17,12 @@ import Collapse from "@/components/Collapse";
 // initial state only, never a controlled value: once you have opened or closed the
 // panel, the next render must not yank it back.
 //
-// The panel stays MOUNTED while collapsed (that is what lets it animate, and what
-// keeps a deep link's server-rendered state intact); <Collapse> takes it out of the
-// accessibility tree and the tab order so a hidden form is never a keyboard trap.
+// The disclosure MECHANICS — mounted-while-collapsed (so it can animate and a deep
+// link's server-rendered state survives), `aria-hidden` + out of the tab order while
+// closed, the collapsed "+" affordance vs the open heading — are the shared
+// components/AddEntryPanel since #1499 applied the same rule to the Results hub's
+// entry forms. This file is the Timeline's copy deck over it, not a second
+// implementation of the behavior.
 export default function SymptomEntryCard({
   dateLabel,
   defaultOpen,
@@ -34,47 +34,17 @@ export default function SymptomEntryCard({
   // The server-rendered <SymptomLogBar>.
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div
-      data-testid="timeline-symptom-entry"
-      data-open={open ? "true" : "false"}
-      // Collapsed it is a bare affordance, not a card: a bordered box holding one
-      // button would give most of the block back and then charge for the frame.
-      className={open ? "card mb-5" : "mb-5"}
+    <AddEntryPanel
+      label={`Log symptoms for ${dateLabel}`}
+      addLabel="Log symptom"
+      defaultOpen={defaultOpen}
+      panelId="timeline-symptom-panel"
+      testId="timeline-symptom-entry"
+      toggleTestId="timeline-symptom-toggle"
+      dense
     >
-      <button
-        type="button"
-        data-testid="timeline-symptom-toggle"
-        aria-expanded={open}
-        aria-controls="timeline-symptom-panel"
-        onClick={() => setOpen((v) => !v)}
-        className={
-          open
-            ? "flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
-            : "btn-secondary text-sm"
-        }
-      >
-        {open ? (
-          <>
-            <span>Log symptoms for {dateLabel}</span>
-            <IconChevronDown
-              className="h-4 w-4 shrink-0 rotate-180 transition-transform"
-              aria-hidden="true"
-            />
-          </>
-        ) : (
-          <>
-            <IconPlus className="h-4 w-4" stroke={2} aria-hidden="true" />
-            Log symptom
-          </>
-        )}
-      </button>
-      <Collapse open={open}>
-        <div id="timeline-symptom-panel" className="pt-3">
-          {children}
-        </div>
-      </Collapse>
-    </div>
+      {children}
+    </AddEntryPanel>
   );
 }

@@ -13,18 +13,29 @@ import { expectNoClippedContent, followLink, settledSelect } from "./helpers";
 
 const BIOMARKERS = "/results/biomarkers";
 
+// The master list is an index of collapsed panel groups since #1499 section A, so a
+// spec about the ROW's card shape has to open a group first. `?q=` narrows the list
+// to one analyte AND auto-expands the groups that match it (a search hit must never
+// look like no-results), which is both the shortest route to a rendered card and a
+// bounded, fixture-agnostic one — "Cholesterol" is present in every seeded profile.
+const CARD_ROWS = `${BIOMARKERS}?q=Cholesterol`;
+
 test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
   test("the biomarkers table stacks as cards — no header row, prominent value, no sideways scroll", async ({
     page,
   }) => {
-    await page.goto(BIOMARKERS);
+    await page.goto(CARD_ROWS);
     const table = page.getByTestId("biomarkers-table");
     await expect(table).toBeVisible();
 
     // The header strip is gone in card mode; each cell carries its own label instead.
     await expect(table.locator("thead")).toBeHidden();
 
-    const card = table.locator("tbody tr").first(); // first-ok: the spec asserts the card SHAPE, never which row is first
+    // Skip the group's own header row — the card under test is a READING.
+    const card = table
+      .locator("tbody tr")
+      .filter({ has: page.locator('td[data-card="title"]') })
+      .first(); // first-ok: the spec asserts the card SHAPE, never which row is first
     await expect(card.locator('td[data-card="title"]')).toBeVisible();
     // The value (with its out-of-range flag) is on the card, not scrolled off it.
     const value = card.locator('td[data-card="value"]');
@@ -48,7 +59,7 @@ test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
   test("tapping a card's name opens the same biomarker detail the desktop row links to", async ({
     page,
   }) => {
-    await page.goto(BIOMARKERS);
+    await page.goto(CARD_ROWS);
     const table = page.getByTestId("biomarkers-table");
     await expect(table).toBeVisible();
     // The canonical-name link is the SAME `biomarkerViewHref` anchor the desktop
@@ -63,7 +74,7 @@ test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
   test("sorting still works in card mode, through the compact sort select", async ({
     page,
   }) => {
-    await page.goto(BIOMARKERS);
+    await page.goto(CARD_ROWS);
     const table = page.getByTestId("biomarkers-table");
     await expect(table).toBeVisible();
     const firstTitle = table.locator('td[data-card="title"]').first(); // first-ok: the assertion is that whatever is first CHANGES when the sort flips — an ordering, not a fixture identity

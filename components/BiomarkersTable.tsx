@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { IconChevronRight } from "@tabler/icons-react";
 import type { MedicalRecord } from "@/lib/types";
 import { Tag, MedicalValue } from "./ui";
 import SortableHeader from "./SortableHeader";
@@ -25,6 +26,12 @@ import SubjectChip from "./SubjectChip";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
 import { multiViewGroupKey, tablePanelId } from "@/lib/derived-table";
 import { OTHER_PANEL, panelLabel, type PanelId } from "@/lib/biomarker-panels";
+import {
+  defaultOpenPanels,
+  groupRowsByPanel,
+  panelGroupSummary,
+  type PanelGroup,
+} from "@/lib/biomarker-panel-groups";
 import type { SubjectInfo } from "@/lib/scope";
 
 // A table row in multi-view carries its owning profile + stamped subject identity
@@ -53,6 +60,12 @@ const SORT_CHOICES = [
   { column: "panel", label: "Panel" },
   { column: "date", label: "Date", defaultDir: "desc" as const },
 ];
+
+// The column ordered when the URL names none — `panel` since #1499 made the browser
+// a panel index (see BiomarkersSection's parseFilters for why). Stated once here so
+// the (hidden) header arrows and the card-mode select agree about what is active on
+// a fresh load; the server's parseSortColumn fallback is its twin.
+const DEFAULT_SORT = "panel";
 
 // The active-filter context threaded through to build the panel/category filter
 // links (each preserves the current sort/range/etc., matching the server-built
@@ -509,6 +522,77 @@ function BiomarkerRow({
   );
 }
 
+// The collapsed PANEL-GROUP header (#1499 section A) — the row that replaces a wall
+// of readings with an index entry: "Lipids · 6 analytes · 1 flagged", tap to expand.
+//
+// ONE ROW, BOTH VIEWPORTS. It is a `<tr>` inside the group's `<tbody>`, so the
+// desktop table and the phone's card stack (.table-cards re-lays this same DOM) get
+// the same grouping from the same markup — the AGENTS.md responsive-surface rule:
+// no `hidden md:*` twin to drift, and no per-viewport semantic fork where a phone
+// groups and a desktop doesn't.
+//
+// A FLAGGED GROUP SELF-IDENTIFIES: the amber treatment is on the BUTTON, not the
+// `<tr>` — `.table-cards tr` (a class+element selector) outranks a utility class on
+// the row in card mode, so styling the row would silently lose on a phone, which is
+// the one viewport this is for.
+function PanelGroupHeader({
+  group,
+  open,
+  onToggle,
+  panelId,
+  colSpan,
+}: {
+  group: PanelGroup<TableRecord>;
+  open: boolean;
+  onToggle: () => void;
+  panelId: string;
+  colSpan: number;
+}) {
+  const flagged = group.flaggedCount > 0;
+  return (
+    <tr className="table-section-row" data-testid="biomarker-panel-header">
+      <Td slot="full" colSpan={colSpan} className="!px-0 !py-0">
+        <button
+          type="button"
+          data-testid="biomarker-panel-toggle"
+          data-panel={group.panel}
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={panelGroupSummary(group)}
+          onClick={onToggle}
+          className={`flex w-full items-center gap-2 px-3 py-2.5 text-left transition max-sm:rounded-xl ${
+            flagged
+              ? "bg-amber-50/70 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+              : "bg-slate-50/70 hover:bg-slate-100/70 dark:bg-ink-850/50 dark:hover:bg-ink-800/60"
+          }`}
+        >
+          <IconChevronRight
+            className={`h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${
+              open ? "rotate-90" : ""
+            }`}
+            stroke={2}
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1 truncate font-semibold text-slate-800 dark:text-slate-100">
+            {group.label}
+          </span>
+          <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+            {group.analyteCount}
+          </span>
+          {flagged && (
+            <span
+              data-testid="biomarker-panel-flagged"
+              className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-400/15 dark:text-amber-300"
+            >
+              {group.flaggedCount} flagged
+            </span>
+          )}
+        </button>
+      </Td>
+    </tr>
+  );
+}
+
 // The Biomarkers results table. Client-side so each row can swap in place for an
 // inline editor and offer delete — but the display, grouping, sorting, staleness,
 // and filter links are unchanged from the prior server-rendered table.
@@ -546,6 +630,50 @@ export default function BiomarkersTable({
     multiView && r.profileId != null
       ? multiViewGroupKey({ ...r, profileId: r.profileId })
       : nameKey(r);
+
+  // ── Panel groups (#1499 section A) ──────────────────────────────────────────
+  // ONE computation: the header's counts and the rows its expansion draws are
+  // fields of the same PanelGroup, and the analyte identity is the table's OWN
+  // groupKey — so "Lipids · 6" can never disagree with the six name headings under
+  // it, in single OR multi view.
+  const groups = useMemo(
+    () => groupRowsByPanel(records, groupKey),
+    // groupKey is derived from `multiView`; recompute when either changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [records, multiView]
+  );
+  // Which groups start open is the SERVER-STATE decision (search/facet/short list),
+  // recomputed whenever the URL that produced these rows changes — but it is the
+  // INITIAL value only: once the reader has opened or closed a group, a re-render
+  // of the same view must not yank it back (the #1455/#1517 disclosure contract).
+  const openSignature = JSON.stringify([
+    category ?? "",
+    panel ?? "",
+    range ?? "",
+    q ?? "",
+    sort,
+    dir,
+    current,
+    pagination?.page ?? 1,
+  ]);
+  const [openState, setOpenState] = useState(() => ({
+    signature: openSignature,
+    open: new Set<PanelId>(defaultOpenPanels(groups, filters)),
+  }));
+  if (openState.signature !== openSignature) {
+    setOpenState({
+      signature: openSignature,
+      open: new Set<PanelId>(defaultOpenPanels(groups, filters)),
+    });
+  }
+  const toggleGroup = (id: PanelId) =>
+    setOpenState((prev) => {
+      const open = new Set(prev.open);
+      if (open.has(id)) open.delete(id);
+      else open.add(id);
+      return { signature: prev.signature, open };
+    });
+
   // Preserve the active filters/sort when moving between pages; page 1 drops `p`.
   const pageHref = (n: number) =>
     qs({
@@ -567,7 +695,7 @@ export default function BiomarkersTable({
       <div className="border-b border-black/5 px-3 py-2 sm:hidden dark:border-white/10">
         <TableSortSelect
           choices={SORT_CHOICES}
-          defaultSort="name"
+          defaultSort={DEFAULT_SORT}
           label="Sort by"
         />
       </div>
@@ -583,14 +711,18 @@ export default function BiomarkersTable({
                   Profile
                 </th>
               )}
-              <SortableHeader column="name" label="Name" defaultSort="name" />
+              <SortableHeader
+                column="name"
+                label="Name"
+                defaultSort={DEFAULT_SORT}
+              />
               {/* Panel, Notes and Category hide below `md` so the table fits a
               phone without side-scrolling; panel/category stay reachable through
               the filters above and the biomarker detail page. */}
               <SortableHeader
                 column="panel"
                 label="Panel"
-                defaultSort="name"
+                defaultSort={DEFAULT_SORT}
                 className="hidden md:table-cell"
               />
               <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
@@ -610,7 +742,7 @@ export default function BiomarkersTable({
               <SortableHeader
                 column="date"
                 label="Date"
-                defaultSort="name"
+                defaultSort={DEFAULT_SORT}
                 defaultDir="desc"
               />
               <th className="th sticky top-0 z-10 bg-white text-right dark:bg-ink-900">
@@ -618,38 +750,64 @@ export default function BiomarkersTable({
               </th>
             </tr>
           </thead>
-          <tbody>
-            {/* Group adjacent readings of the same biomarker via the shared
-            contiguous-group helper: the name shows once per group (on the start
-            row) and a bottom border falls only at group ends. */}
-            {groupContiguous(records, groupKey).map(
-              ({ row: r, isGroupStart, isGroupEnd }) => {
-                // Flag the group as stale off its latest reading — the row carrying
-                // is_latest holds the newest date, so its staleness is the
-                // biomarker's.
-                const stale =
-                  !!r.is_latest && isBiomarkerStale(r.date, r.category, now);
-                return (
-                  <BiomarkerRow
-                    // In multi-view two members can share a derived row id (negative,
-                    // per-profile), so key on (profileId, id), not id alone.
-                    key={
-                      multiView && r.profileId != null
-                        ? `${r.profileId}:${r.id}`
-                        : r.id
+          {/* One <tbody> per PANEL group (#1499): its collapsed header, then its
+          readings when expanded. A collapsed group renders no rows at all — the DOM
+          is the height, and the whole point is that the master list stops being an
+          8,000px wall. The group's rows keep the active sort (the partition is
+          stable), and within a group adjacent readings of the same biomarker are
+          still run-grouped by the shared contiguous-group helper: the name shows
+          once per run (on the start row) and a bottom border falls only at run
+          ends. */}
+          {groups.map((group) => {
+            const open = openState.open.has(group.panel);
+            const bodyId = `biomarker-panel-${group.panel}`;
+            return (
+              <tbody
+                key={group.panel}
+                id={bodyId}
+                data-testid="biomarker-panel-group"
+                data-panel={group.panel}
+                data-open={open ? "true" : "false"}
+              >
+                <PanelGroupHeader
+                  group={group}
+                  open={open}
+                  onToggle={() => toggleGroup(group.panel)}
+                  panelId={bodyId}
+                  colSpan={multiView ? 9 : 8}
+                />
+                {open &&
+                  groupContiguous(group.rows, groupKey).map(
+                    ({ row: r, isGroupStart, isGroupEnd }) => {
+                      // Flag the group as stale off its latest reading — the row
+                      // carrying is_latest holds the newest date, so its staleness
+                      // is the biomarker's.
+                      const stale =
+                        !!r.is_latest &&
+                        isBiomarkerStale(r.date, r.category, now);
+                      return (
+                        <BiomarkerRow
+                          // In multi-view two members can share a derived row id
+                          // (negative, per-profile), so key on (profileId, id).
+                          key={
+                            multiView && r.profileId != null
+                              ? `${r.profileId}:${r.id}`
+                              : r.id
+                          }
+                          r={r}
+                          isStart={isGroupStart}
+                          isEnd={isGroupEnd}
+                          stale={stale}
+                          now={now}
+                          filters={filters}
+                          multiView={multiView}
+                        />
+                      );
                     }
-                    r={r}
-                    isStart={isGroupStart}
-                    isEnd={isGroupEnd}
-                    stale={stale}
-                    now={now}
-                    filters={filters}
-                    multiView={multiView}
-                  />
-                );
-              }
-            )}
-          </tbody>
+                  )}
+              </tbody>
+            );
+          })}
         </ResponsiveTable>
       </div>
       {pagination && pagination.total > 0 && (

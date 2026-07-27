@@ -36,6 +36,9 @@ import {
   ENCRICH_PROFILE,
   E2E_LOGIN_CREATEVISIT,
   CREATEVISIT_PROFILE,
+  E2E_LOGIN_PANELGROUPS,
+  PANEL_GROUPS_PROFILE,
+  PANEL_GROUPS_OTHER_ANALYTE,
 } from "../fixture-logins";
 import {
   PROFILE_ID,
@@ -741,4 +744,114 @@ export function seedRecordsEnrichment(): void {
       `e2e: seeded records-enrichment fixture — ${E2E_LOGIN_RECS_ENRICH} granted ${RECS_ENRICH_PROFILE} (${reId}) (#1354/#1355)`
     );
   }
+}
+
+// ── Results-hub panel groups (#1499 section A) ────────────────────────────────
+// A dedicated adult profile whose WHOLE lab history is FOURTEEN readings across
+// exactly three #1502 panels, so the group headers' published counts are exact and
+// stable:
+//
+//   Lipids   · 5 analytes · 1 flagged   (LDL still high; the rest currently normal)
+//   Thyroid  · 2 analytes               (no flag — the unflagged contrast)
+//   Other    · 1 analyte                (un-canonicalized, sorts last, never dropped)
+//
+// Several analytes carry historical readings, for two reasons. First, the header
+// counts ANALYTES while the expansion lists ROWS, and only a fixture where the two
+// differ can pin that. Second, a Triglycerides high whose CURRENT reading is normal
+// must NOT count toward "1 flagged" — that pins the header to the analyte's CURRENT
+// state rather than to any reading ever.
+//
+// The row count is deliberately ABOVE lib/biomarker-panel-groups' AUTO_OPEN_ROW_LIMIT
+// (a short list has nothing to index, so it arrives expanded) — this fixture has to
+// arrive COLLAPSED for the default-state assertions to mean anything.
+//
+// HDL Cholesterol is DELIBERATELY absent. It is the input to two read-time derived
+// indices (Non-HDL Cholesterol, Triglyceride/HDL Ratio), and a derived virtual row is
+// a lipids analyte too — seeding HDL would silently move the count off 5 the day
+// someone reads this fixture. Idempotent: every row is deleted by profile before
+// insert, so a reused server re-seeds cleanly.
+export function seedPanelGroups(): void {
+  const pid = fixtureProfileId(PANEL_GROUPS_PROFILE);
+  db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(pid);
+  const anchor = today(pid);
+  const add = (
+    date: string,
+    name: string,
+    canonical: string | null,
+    value: number,
+    unit: string,
+    flag: string | null,
+    panel: string
+  ) =>
+    db
+      .prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, value_num, unit, canonical_name, flag, panel, source)
+         VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, ?, ?, 'manual')`
+      )
+      .run(pid, date, name, String(value), value, unit, canonical, flag, panel);
+
+  const recent = shiftDateStr(anchor, -30);
+  const older = shiftDateStr(anchor, -400);
+  const oldest = shiftDateStr(anchor, -760);
+  const LAB = "E2E Lab";
+
+  // Lipids — five analytes; LDL is the group's one CURRENT flag.
+  add(recent, "LDL Cholesterol", "LDL Cholesterol", 171, "mg/dL", "high", LAB);
+  add(older, "LDL Cholesterol", "LDL Cholesterol", 168, "mg/dL", "high", LAB);
+  add(oldest, "LDL Cholesterol", "LDL Cholesterol", 96, "mg/dL", null, LAB);
+  add(
+    recent,
+    "Total Cholesterol",
+    "Total Cholesterol",
+    190,
+    "mg/dL",
+    null,
+    LAB
+  );
+  add(older, "Total Cholesterol", "Total Cholesterol", 202, "mg/dL", null, LAB);
+  add(
+    oldest,
+    "Total Cholesterol",
+    "Total Cholesterol",
+    186,
+    "mg/dL",
+    null,
+    LAB
+  );
+  add(recent, "Triglycerides", "Triglycerides", 110, "mg/dL", null, LAB);
+  add(older, "Triglycerides", "Triglycerides", 128, "mg/dL", null, LAB);
+  // A historical high whose CURRENT reading is normal — must NOT count as flagged.
+  add(oldest, "Triglycerides", "Triglycerides", 260, "mg/dL", "high", LAB);
+  add(recent, "VLDL Cholesterol", "VLDL Cholesterol", 22, "mg/dL", null, LAB);
+  add(recent, "Lipoprotein(a)", "Lipoprotein(a)", 18, "nmol/L", null, LAB);
+
+  // Thyroid — two analytes, both normal, so a second group stays COLLAPSED while
+  // Lipids is expanded (the per-group independence assertion).
+  add(
+    recent,
+    "TSH",
+    "Thyroid-Stimulating Hormone (TSH)",
+    2.1,
+    "uIU/mL",
+    null,
+    LAB
+  );
+  add(recent, "Free T4", "Free T4", 1.3, "ng/dL", null, LAB);
+
+  // Un-canonicalized — the reserved `other` bucket, never dropped, always last.
+  add(
+    recent,
+    PANEL_GROUPS_OTHER_ANALYTE,
+    null,
+    42,
+    "U/L",
+    null,
+    "E2E Vendor Panel"
+  );
+
+  seedMemberLogin(E2E_LOGIN_PANELGROUPS, pid, "write");
+  console.log(
+    `e2e: seeded panel-groups fixture — ${E2E_LOGIN_PANELGROUPS} granted ${PANEL_GROUPS_PROFILE} (${pid}) (#1499)`
+  );
 }

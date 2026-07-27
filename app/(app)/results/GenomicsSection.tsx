@@ -7,6 +7,7 @@ import GenomicVariantForm from "@/app/(app)/genomics/GenomicVariantForm";
 import GenomicVariantList from "@/app/(app)/genomics/GenomicVariantList";
 import { addGenomicVariant } from "@/app/(app)/genomics/actions";
 import ListRailLayout from "@/components/ListRailLayout";
+import AddEntryPanel from "@/components/AddEntryPanel";
 
 // The former /genomics index page body (#1042 phase 5), now the #genomics section
 // of /results. Genomic variants: the profile's structured genetic results — gene,
@@ -38,7 +39,16 @@ export default function GenomicsSection({ scope }: { scope: ProfileScope }) {
     <ListRailLayout
       rail={
         <>
-          <GenomicVariantForm action={addGenomicVariant} />
+          {/* Entry behind "+ Add genomic variant" (#1499 section C — the #1497
+          rare-cadence rule): a genetics report is a once-in-a-lifetime import for
+          most profiles, so the form costs one button until it is wanted. */}
+          <AddEntryPanel
+            testId="add-genomic-panel"
+            panelId="add-genomic-panel-body"
+            label="Add genomic variant"
+          >
+            <GenomicVariantForm action={addGenomicVariant} />
+          </AddEntryPanel>
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Variant data is stored on this server and is never sent to any
             external service except when you upload a report for extraction.

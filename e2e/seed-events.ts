@@ -76,6 +76,7 @@ import {
   seedDataQualityGaps,
   seedVisitLinking,
   seedRecordsEnrichment,
+  seedPanelGroups,
 } from "./seed/medical";
 import { seedCoverageGaps } from "./seed/coverage-gaps";
 import { seedNutritionTrio, seedFoodSlots } from "./seed/nutrition";
@@ -123,6 +124,7 @@ seedIllness();
 seedFoodSlots();
 seedEndurancePlans();
 seedFlaggedFollowups();
+seedPanelGroups();
 seedCycleAndDerived();
 seedDailyLoop();
 seedNavGating();

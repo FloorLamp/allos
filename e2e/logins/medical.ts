@@ -124,3 +124,22 @@ export const RECS_ENRICH_PROFILE = "Records Enrich (e2e)";
 export const RECS_ENRICH_ALLERGY_MED = "Amoxicillin 500 mg (e2e)";
 export const RECS_ENRICH_PGX_MED = "Clopidogrel (e2e)";
 export const RECS_ENRICH_PROCEDURE = "Knee arthroscopy (e2e)";
+
+// ── Results-hub panel groups (#1499 section A) ────────────────────────────────
+// A member granted a dedicated ADULT profile whose ENTIRE lab history is a known,
+// small set of analytes spread over exactly three #1502 panels — five lipids (one
+// flagged: a high LDL), two thyroid (none flagged), and one deliberately
+// un-canonicalized reading that must land in the reserved "Other" bucket.
+//
+// Spec-owned on purpose (#868 fixture-ownership). The collapse's headers PUBLISH
+// COUNTS ("Lipids · 5 analytes · 1 flagged"), and a count is the one assertion that
+// cannot be made against a shared seed — a neighbor's write or a retry moves it. On
+// its own profile the counts are exact and the flagged/unflagged contrast is
+// guaranteed, which is what makes "flagged groups self-identify" testable at all.
+// Read-only in its spec (only the client-side expand/collapse is exercised), so it
+// stays repeat-safe with no reset.
+export const E2E_LOGIN_PANELGROUPS = "e2e_panelgroups";
+export const PANEL_GROUPS_PROFILE = "Panel Groups (e2e)";
+// The one un-canonicalized analyte: reported under a vendor heading the taxonomy has
+// nothing to say about, so it resolves to `other` and proves nothing is dropped.
+export const PANEL_GROUPS_OTHER_ANALYTE = "E2E Unmapped Assay";

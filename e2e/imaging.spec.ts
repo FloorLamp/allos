@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // Imaging-study CRUD on the #imaging section of /results (#702, #1042 phase 5): add a structured study through the real
@@ -42,6 +42,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     test.slow();
 
     await page.goto("/results/imaging");
+    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
@@ -110,6 +112,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     test.slow();
 
     await page.goto("/results/imaging");
+    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
@@ -166,6 +170,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     }
 
     await page.goto("/imaging");
+    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 

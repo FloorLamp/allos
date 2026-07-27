@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { hydratedClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Genomic variants CRUD on the #genomics section of /results (#709, #1042 phase 5): add a structured variant through the
@@ -31,6 +32,8 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     test.slow();
 
     await page.goto("/results/genomics");
+    // Entry lives behind "+ Add genomic variant" since #1499 section C.
+    await hydratedClick(page, page.getByTestId("add-genomic-panel-toggle"));
     const form = page.getByTestId("genomic-variant-form");
     await expect(form).toBeVisible();
 
