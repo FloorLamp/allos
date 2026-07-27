@@ -8,8 +8,8 @@
 // This module is PURE (metadata + windowing math, no DB/queries import) so it stays
 // unit-testable. The series themselves are gathered by the callers:
 //   - the Body tab builds each metric's series ONCE and feeds BOTH the classic chart
-//     stack AND the tile grid from it (the tile is the series' 30-day tail — one
-//     gather, no second computation, #221);
+//     stack AND the tile grid from it (the tile applies the shared range — one gather,
+//     no second computation, #221);
 //   - the detail page re-derives its single metric's series through the SAME queries
 //     (the biomarker-view precedent — a separate surface re-deriving via the shared
 //     query layer), then windows it here.
@@ -17,7 +17,9 @@
 import { chartSeries } from "./chart-colors";
 import { shiftDateStr } from "./date";
 import { metricDetailHref, type AppRoute } from "./hrefs";
+import { filterSeriesByRange } from "./trends";
 import { applyCardOrder, type BodyCardId } from "./trends-card-rank";
+import type { DateRange } from "./timeline-format";
 import type { BodyMetricKind } from "./types";
 
 // Stable per-metric slugs — the `/trends/metric/<slug>` route param, the tile's
@@ -76,9 +78,9 @@ export interface BodyMetricMeta {
   weightUnit?: boolean;
   color: string;
   decimals: number;
-  // Respects the Body tab's shared date-range control (body composition + growth).
-  // Synced daily metrics are NOT windowed on the Body tab (they show the most recent
-  // ~6 months); the detail page's own range control still windows every metric.
+  // Whether the classic full-chart stack respects the Body tab's shared range.
+  // Tiles and metric-detail pages window every metric; synced full charts retain
+  // their historical ~6-month behavior.
   windowed: boolean;
   // The Goal.body_metric this metric can carry a target/overlay for, if any.
   goalMetric: BodyMetricKind | null;
@@ -366,8 +368,8 @@ export function resolveBodyMetricUnit(
   return meta.weightUnit ? ` ${weightUnit}` : meta.unit;
 }
 
-// A sparkline tile for the overview grid: the metric's metadata + its 30-day series
-// tail (already in display units, oldest→newest) + presence for the has-data gate.
+// A sparkline tile for the overview grid: the metric's metadata + its selected-range
+// series (already in display units, oldest→newest) + presence for the has-data gate.
 export interface BodyMetricTile {
   slug: BodyMetricSlug;
   label: string;
@@ -375,33 +377,24 @@ export interface BodyMetricTile {
   unit: string;
   color: string;
   decimals: number;
-  // The last-30-day tail of the metric's series — the tile's sparkline + latest +
+  // The points inside the shared Trends range — the tile's sparkline + latest +
   // delta all read from this (no second computation, #221).
   points: { date: string; value: number }[];
   present: boolean;
   latestDate: string | null;
 }
 
-// The last 30 days (today − 29 … today, inclusive) of a chronological series. The
-// tile's "30d delta" is over exactly this slice.
-export function last30DaySlice<T extends { date: string }>(
-  points: readonly T[],
-  todayStr: string
-): T[] {
-  const cutoff = shiftDateStr(todayStr, -29);
-  return points.filter((p) => p.date >= cutoff);
-}
-
 // Build one overview tile from a metric's FULL display-unit series (the same array
-// the classic chart renders) by taking its 30-day tail. The caller passes the series
-// it already gathered — this only shapes it.
+// the classic chart renders), windowed by the shared Trends range. Presence and
+// ordering still use the full series so a temporarily empty range does not make a
+// known metric disappear; the tile instead says there is no data in this range.
 export function buildBodyMetricTile(
   meta: BodyMetricMeta,
   fullPoints: readonly { date: string; value: number }[],
   weightUnit: string,
-  todayStr: string
+  range: DateRange
 ): BodyMetricTile {
-  const points = last30DaySlice(fullPoints, todayStr);
+  const points = filterSeriesByRange([...fullPoints], range);
   return {
     slug: meta.slug,
     label: meta.label,
@@ -410,9 +403,8 @@ export function buildBodyMetricTile(
     color: meta.color,
     decimals: meta.decimals,
     points,
-    // Presence is over the FULL series, not the 30-day tail — a metric with data
-    // (but none in the last 30 days) still earns its tile; the sparkline just reads
-    // empty. Mirrors the Body tab's has-data chip gate.
+    // Presence is over the FULL series, not the selected window — a metric with
+    // history still earns its tile and can explicitly show an empty range.
     present: fullPoints.length > 0,
     latestDate:
       fullPoints.length > 0 ? fullPoints[fullPoints.length - 1].date : null,

@@ -146,15 +146,13 @@ export default function DateRangeControl({
           </form>
         </CustomRangePanel>
 
-        {/* The chip row. One horizontally-scrolling row on a phone: quick ranges,
-            the "Custom…" toggle, then whatever the surface hangs off the end
-            (the Trends hub's saved views — #1455 C, so they stop costing a second
-            full-width row). It wraps normally from `sm` up.
+        {/* The chip row. One horizontally-scrolling row on a phone: quick ranges
+            and the "Custom…" toggle. Desktop surfaces may hang trailing controls
+            off the end (Trends saved views live there); it wraps normally from
+            `sm` up.
 
-            #1485 D: it SCROLLED but said nothing about it — at 390px the row is
-            ~815px of chips in a 358px box, so the sixth pill rendered as "Custo…"
-            against a hard edge and the saved views past it were invisible. Cut-off
-            content with no affordance reads as broken layout, not as "scroll me".
+            #1485 D: when the row overflows, cut-off content with no affordance
+            reads as broken layout, not as "scroll me".
             The fix is the app's existing one — components/ScrollFade, the same
             mask-based edge hint the wide tables use — NOT a second hand-rolled
             gradient. The mask is theme-agnostic and self-cancelling: it only paints
@@ -165,7 +163,7 @@ export default function DateRangeControl({
           data-testid={`${idPrefix}-chip-row`}
           className="order-1 flex items-center gap-2 pb-1 sm:order-2 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0"
         >
-          <div className="flex shrink-0 items-center gap-2 sm:flex-wrap">
+          <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
             {qrs.map((qr) => (
               <LinkComponent
                 key={qr.label}

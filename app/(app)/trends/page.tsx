@@ -14,7 +14,7 @@ import {
   type DateRange,
 } from "@/lib/timeline-format";
 import { rangeSummaryLabel } from "@/lib/trends";
-import { activeRangeLabel, trendsContextLabel } from "@/lib/trends-context";
+import { activeRangeLabel } from "@/lib/trends-context";
 import { PageHeader } from "@/components/ui";
 import { NavTabsStrip } from "@/components/NavTabs";
 import TrendsContextBar from "@/components/TrendsContextBar";
@@ -171,14 +171,10 @@ export default async function TrendsPage(props: {
   // for them (the activeTab fallback above enforces the latter).
   const tabStrip = trendsTabStrip(restricted);
 
-  // The phone chrome's one-line context label (#1485 F): "<tab> · <window>". Built
-  // on the server from the SAME predicates the pills light themselves with, so the
-  // collapsed label can never disagree with the control it hides — and rendered
-  // before hydration, so a chart is never on screen with its window unnamed.
-  const contextLabel = trendsContextLabel(
-    tabStrip.find((t) => t.id === activeTab)?.label ?? "Trends",
-    activeRangeLabel(range, todayStr, extraRanges)
-  );
+  // The phone range trigger is built from the SAME predicates the pills light
+  // themselves with, so its compact label can never disagree with the expanded
+  // range control.
+  const rangeLabel = activeRangeLabel(range, todayStr, extraRanges);
 
   // #105: build ONLY the active section server-side. Passing every section as a
   // prop rendered (and ran the queries for) all of them on every request — the
@@ -243,18 +239,27 @@ export default async function TrendsPage(props: {
         compactBelowSm
       />
 
-      {/* The whole pre-chart band — range pills, saved views, tab strip, and (since
-          #1493 A) the event/protocol-window toggles — behind ONE collapsed line on a
-          phone, expanded in place from `sm` up (#1485 F).
-
-          The provider wraps BOTH the bar and the panel because they share one state:
-          the toggles are rendered up here while the charts they filter are down
-          there, and the whole point is that there is exactly one annotation state on
-          the page rather than a control that has to be kept in sync with its charts
-          (components/TrendAnnotationToggles.tsx). */}
+      {/* Tabs remain visible on phones while the range and annotation controls
+          expand below them. The provider wraps both the bar and panel because the
+          toggles rendered here filter charts registered by the active section. */}
       <TrendAnnotationProvider>
         <TrendsContextBar
-          label={contextLabel}
+          // Preserve the phone disclosure while a range link re-renders the page;
+          // changing sections still starts the new tab with controls collapsed.
+          key={activeTab}
+          rangeLabel={rangeLabel}
+          tabs={
+            <NavTabsStrip
+              tabs={tabStrip}
+              paramKey="tab"
+              activeId={activeTab}
+              prominentOnMobile
+              mobileLayout="scroll"
+              flush
+              testId="trends-tabs"
+              className="sm:mt-4"
+            />
+          }
           controls={
             <>
               <DateRangeControl
@@ -303,16 +308,6 @@ export default async function TrendsPage(props: {
                     </span>
                   ) : undefined
                 }
-              />
-              {/* The strip lives INSIDE the bar; its panel stays in the page below
-                (components/NavTabs.tsx exports the two halves so this is the same
-                one strip implementation, not a second copy). Its own bottom margin
-                is dropped — the spacing under the whole band belongs to the bar. */}
-              <NavTabsStrip
-                tabs={tabStrip}
-                paramKey="tab"
-                activeId={activeTab}
-                className="mt-2 sm:mt-4"
               />
               {/* The event / protocol-window toggles (#1493 A), LAST because they are
                 the most specific context: the tab says what the charts are of, the

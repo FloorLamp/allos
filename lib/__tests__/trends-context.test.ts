@@ -1,19 +1,13 @@
 import { describe, expect, it } from "vitest";
-import {
-  activeRangeLabel,
-  trendsContextLabel,
-  TRENDS_CONTEXT_SEPARATOR,
-} from "../trends-context";
+import { activeRangeLabel } from "../trends-context";
 import {
   defaultTrendsRange,
   intradayQuickRange,
   quickRanges,
 } from "../timeline-format";
 
-// The Trends phone chrome's context LABEL (#1485 F). The label is the only part of
-// the pill row + tab strip that stays visible once they collapse, so its whole
-// contract is: it names the window the charts are drawn over, and it never
-// disagrees with the pill the expanded control would light.
+// The Trends phone chrome's fixed range label: it names the window the charts
+// are drawn over and never disagrees with the pill the expanded control lights.
 
 const TODAY = "2026-07-26";
 
@@ -56,20 +50,5 @@ describe("activeRangeLabel", () => {
       "From 2026-01-01"
     );
     expect(activeRangeLabel({ to: TODAY }, TODAY)).toBe("Through today");
-  });
-});
-
-describe("trendsContextLabel", () => {
-  it("joins the tab and the window with the shared separator", () => {
-    expect(trendsContextLabel("Overview", "90D")).toBe(
-      `Overview${TRENDS_CONTEXT_SEPARATOR}90D`
-    );
-    expect(trendsContextLabel("Body", "All time")).toBe("Body · All time");
-  });
-
-  it("always carries both halves — a chart is never shown unnamed", () => {
-    const label = trendsContextLabel("Insights", "2026-01-01 → 2026-02-01");
-    expect(label).toContain("Insights");
-    expect(label).toContain("2026-01-01 → 2026-02-01");
   });
 });

@@ -7,7 +7,7 @@ import {
   fitnessWindow,
   fitnessWindowWeeks,
 } from "@/lib/trends-fitness";
-import ChartJumpChips from "./ChartJumpChips";
+import ChartJumpMenu from "./ChartJumpMenu";
 import FitnessPRs from "./FitnessPRs";
 import FitnessVolumeSection from "./FitnessVolumeSection";
 import FitnessZonesSection from "./FitnessZonesSection";
@@ -59,10 +59,12 @@ export default async function FitnessSection({ range }: { range: DateRange }) {
 
   return (
     <div className="space-y-6" data-testid="trends-fitness">
-      {/* Section jump chips — the #1486/#1067 pattern that replaced the nested tab
-          strip. Plain in-page `#anchor` links (never `role="tab"`), so there is no
-          third navigation level under the hub's own strip + range control. */}
-      <ChartJumpChips chips={FITNESS_SECTIONS.map((s) => ({ ...s }))} />
+      {/* Four consecutive, clearly headed sections do not need a third navigation
+          layer on phones. Keep the optional long-page shortcut as the same compact
+          desktop chart menu used by Body. */}
+      <div className="hidden justify-end md:flex">
+        <ChartJumpMenu items={FITNESS_SECTIONS.map((s) => ({ ...s }))} />
+      </div>
 
       <FitnessPRs window={window} />
 

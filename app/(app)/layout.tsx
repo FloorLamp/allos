@@ -280,6 +280,9 @@ export default async function AppLayout({
                     so there is ONE strip in the DOM on every viewport — never a
                     hidden md:* / md:hidden pair. */}
                       <ShellChrome
+                        disabledTabFirstPageIds={
+                          restricted ? ["training"] : undefined
+                        }
                         banner={
                           showViewStrip ? (
                             <ProfileViewStrip

@@ -61,8 +61,6 @@ function tabStrip(page: Page) {
 test.describe("A — the tab strip is five chips in frequency order", () => {
   test("renders the new order, without a Compare chip", async ({ page }) => {
     await page.goto("/trends");
-    // The strip collapses into the #1485 F context bar at phone width.
-    await expandTrendsContext(page);
     const strip = tabStrip(page);
     await expect(strip.getByRole("tab")).toHaveText(TAB_ORDER);
 
@@ -74,33 +72,36 @@ test.describe("A — the tab strip is five chips in frequency order", () => {
     ).toHaveCount(0);
   });
 
-  test("all five chips fit 390px — the strip never scrolls", async ({
+  test("the one-row strip scrolls and brings a later selected tab into view", async ({
     page,
   }) => {
     await page.goto("/trends");
-    await expandTrendsContext(page);
     const strip = tabStrip(page);
     await expect(strip.getByRole("tab")).toHaveCount(TAB_ORDER.length);
 
-    // The strip is an `overflow-x-auto` row, so a sixth chip would not CLIP — it
-    // would silently hide off the right edge, which is the failure #1489 removes.
-    // scrollWidth fitting clientWidth is the direct expression of "nothing hidden";
-    // the per-chip check names which chip overflowed if one ever does.
-    const fits = await strip.evaluate(
-      (el) => el.scrollWidth <= el.clientWidth + 1
+    // The range trigger owns the fixed right edge, leaving the primary tabs one
+    // stable horizontal scroller instead of hiding them inside that trigger.
+    const scrolls = await strip.evaluate(
+      (el) => el.scrollWidth > el.clientWidth
     );
-    expect(fits, "the Trends tab strip overflows a 390px viewport").toBe(true);
+    expect(scrolls).toBe(true);
 
-    const overflowing = await strip.evaluate((el) =>
-      Array.from(el.querySelectorAll('[role="tab"]'))
-        .filter(
-          (t) =>
-            t.getBoundingClientRect().right >
-            document.documentElement.clientWidth + 1
-        )
-        .map((t) => t.textContent)
-    );
-    expect(overflowing, overflowing.join(", ")).toEqual([]);
+    const insights = strip.getByRole("tab", { name: "Insights" });
+    await insights.click();
+    await expect(insights).toHaveAttribute("aria-selected", "true");
+    await expect
+      .poll(() =>
+        insights.evaluate((tab) => {
+          const scroller = tab.parentElement;
+          if (!scroller) return false;
+          const tabRect = tab.getBoundingClientRect();
+          const stripRect = scroller.getBoundingClientRect();
+          return (
+            tabRect.left >= stripRect.left && tabRect.right <= stripRect.right
+          );
+        })
+      )
+      .toBe(true);
   });
 });
 

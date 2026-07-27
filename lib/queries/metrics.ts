@@ -572,16 +572,18 @@ export function getHrDailySummary(
     max: number;
     n: number;
   }[];
-  return pickRowsOneSourcePerDay(
+  const picked = pickRowsOneSourcePerDay(
     rows,
     preferenceFor(profileId, "heart_rate"),
     (r) => r.date,
     (r) => r.source,
     (r) => r.n
-  )
-    .sort((a, b) => (a.date < b.date ? -1 : 1))
-    .slice(-limitDays)
-    .map(({ date, avg, min, max }) => ({ date, avg, min, max }));
+  ).sort((a, b) => (a.date < b.date ? -1 : 1));
+  // Match SQLite LIMIT semantics used by the other Trends queries: a negative
+  // limit is the ALL_ROWS sentinel, not Array.slice(1).
+  return (limitDays < 0 ? picked : picked.slice(-limitDays)).map(
+    ({ date, avg, min, max }) => ({ date, avg, min, max })
+  );
 }
 
 // The most recent day that has any HR buckets, or null.

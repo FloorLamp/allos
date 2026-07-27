@@ -4,7 +4,6 @@ import {
   BODY_METRIC_SLUGS,
   isBodyMetricSlug,
   resolveBodyMetricUnit,
-  last30DaySlice,
   buildBodyMetricTile,
   orderBodyMetricTiles,
   bodyMetricPeriodStats,
@@ -48,45 +47,40 @@ describe("BODY_METRIC_META registry", () => {
   });
 });
 
-describe("last30DaySlice", () => {
-  const today = "2026-07-22";
-  it("keeps only the trailing 30 days (today − 29 … today, inclusive)", () => {
-    const points = [
-      { date: "2026-05-01", value: 1 }, // > 30d ago → dropped
-      { date: "2026-06-23", value: 2 }, // exactly 29 days before today → kept
-      { date: "2026-06-22", value: 9 }, // 30 days before → dropped
-      { date: "2026-07-22", value: 3 }, // today → kept
-    ];
-    const sliced = last30DaySlice(points, today);
-    expect(sliced.map((p) => p.value)).toEqual([2, 3]);
-  });
-});
-
 describe("buildBodyMetricTile", () => {
-  const today = "2026-07-22";
-  it("shapes a tile from the full series' 30-day tail, presence over the full series", () => {
+  it("shapes a tile from the selected range, with presence over the full series", () => {
     const full = [
-      { date: "2026-01-01", value: 80 }, // old — outside the 30d tail
+      { date: "2026-01-01", value: 80 },
       { date: "2026-07-10", value: 78 },
       { date: "2026-07-20", value: 77 },
     ];
-    const tile = buildBodyMetricTile(
-      BODY_METRIC_META.weight,
-      full,
-      "kg",
-      today
-    );
+    const tile = buildBodyMetricTile(BODY_METRIC_META.weight, full, "kg", {
+      from: "2026-07-01",
+      to: "2026-07-31",
+    });
     expect(tile.slug).toBe("weight");
     expect(tile.href).toBe("/trends/metric/weight");
     expect(tile.unit).toBe(" kg");
     expect(tile.present).toBe(true);
     expect(tile.latestDate).toBe("2026-07-20");
-    // Only the trailing-30d points make the sparkline.
+    // Only points inside the selected range make the sparkline.
     expect(tile.points.map((p) => p.value)).toEqual([78, 77]);
   });
 
-  it("is absent (present=false) for an empty series", () => {
-    const tile = buildBodyMetricTile(BODY_METRIC_META.steps, [], "kg", today);
+  it("keeps a known metric present when the selected range is empty", () => {
+    const tile = buildBodyMetricTile(
+      BODY_METRIC_META.steps,
+      [{ date: "2026-01-01", value: 1000 }],
+      "kg",
+      { from: "2026-07-01", to: "2026-07-31" }
+    );
+    expect(tile.present).toBe(true);
+    expect(tile.latestDate).toBe("2026-01-01");
+    expect(tile.points).toEqual([]);
+  });
+
+  it("is absent (present=false) for an empty full series", () => {
+    const tile = buildBodyMetricTile(BODY_METRIC_META.steps, [], "kg", {});
     expect(tile.present).toBe(false);
     expect(tile.latestDate).toBeNull();
     expect(tile.points).toEqual([]);

@@ -98,9 +98,9 @@ export default function TrendMiniCard({
   applyBiomarkerDomain?: boolean;
   // #1485 G: the latest reading BEHIND the window, for a series with no points in
   // it. Optional and off by default, so the range-driven Overview tiles opt in
-  // while BodyMetricTiles (a fixed trailing slice, not range-driven) keeps the
-  // plain empty state. Rendered only when `data` is empty — it is a fallback FOR
-  // the empty state, never an annotation on a drawn series.
+  // while BodyMetricTiles keeps the plain empty state. Rendered only when `data`
+  // is empty — it is a fallback FOR the empty state, never an annotation on a
+  // drawn series.
   outsideWindow?: { text: string; age: string } | null;
   // Which MARK the sparkline draws (#1485 D). Decided ONCE, per series, by
   // lib/trend-sparkline.ts — a tile grid passes the answer through rather than

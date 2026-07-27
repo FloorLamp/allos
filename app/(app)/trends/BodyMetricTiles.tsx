@@ -8,12 +8,12 @@ import {
 import type { BodyCardId } from "@/lib/trends-card-rank";
 
 // The Trends → Body sparkline-tile overview (#1067 Phase 2) — the default view on
-// mobile. Each present metric renders as a compact sparkline + latest value + 30-day
-// delta tile (the pillars-widget grammar, via the shared TrendMiniCard) that opens
+// mobile. Each present metric renders as a compact selected-range sparkline + latest
+// value and delta tile (the pillars-widget grammar, via the shared TrendMiniCard) that opens
 // its per-metric detail page; absent metrics don't render. Sleep is a SPECIAL tile —
 // it links to the dedicated /sleep page, not a metric page, because strong topics
 // keep their own surface (#1042). The tiles are the SAME series the classic chart
-// stack draws, just their 30-day tails — one gather feeds both (#221).
+// stack draws, windowed by the shared Trends range — one gather feeds both (#221).
 
 export interface SleepTile {
   present: boolean;

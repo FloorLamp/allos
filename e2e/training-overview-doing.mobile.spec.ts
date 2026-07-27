@@ -34,6 +34,26 @@ test("Overview leads with today's session, then the week, then the findings roll
 }) => {
   await page.goto("/training?tab=overview");
 
+  // On phones the six-tab navigation IS the page identity: the visible
+  // Training title/subtitle leave the content flow and the one-row strip joins
+  // the auto-hiding app shell. Unlike the compact equal-column pages, six tabs
+  // scroll horizontally instead of becoming two tall rows.
+  await expect(page.getByTestId("training-page-title")).toBeHidden();
+  const shell = page.getByTestId("shell-chrome");
+  const shellTabs = shell.getByTestId("shell-tab-strip");
+  const tabs = shellTabs.getByTestId("training-tabs");
+  await expect(tabs).toBeVisible();
+  await expect(tabs).toHaveCSS("overflow-y", "hidden");
+  await expect(tabs.getByRole("tab")).toHaveCount(6);
+  await expect(tabs.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  const stripOverflow = await tabs.evaluate(
+    (el) => el.scrollWidth > el.clientWidth
+  );
+  expect(stripOverflow).toBe(true);
+
   const today = page.getByTestId("training-today");
   await expect(today).toBeVisible();
 
@@ -42,10 +62,33 @@ test("Overview leads with today's session, then the week, then the findings roll
   const todayTop = await topOf(page, "training-today");
   const weekTop = await topOf(page, "training-week");
   expect(todayTop).toBeLessThan(weekTop);
-  expect(todayTop).toBeLessThan(844);
+  expect(todayTop).toBeLessThan(260);
 
   // Muscle coverage follows the week (and the findings card, when one is firing).
   expect(weekTop).toBeLessThan(await topOf(page, "muscle-coverage"));
+});
+
+test("a later deep-linked Training tab is brought into the visible tab row", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=goals");
+  const tabs = page.getByTestId("training-tabs");
+  const goals = tabs.getByRole("tab", { name: "Goals" });
+  await expect(goals).toHaveAttribute("aria-selected", "true");
+
+  await expect
+    .poll(() =>
+      goals.evaluate((tab) => {
+        const strip = tab.parentElement;
+        if (!strip) return false;
+        const tabRect = tab.getBoundingClientRect();
+        const stripRect = strip.getBoundingClientRect();
+        return (
+          tabRect.left >= stripRect.left && tabRect.right <= stripRect.right
+        );
+      })
+    )
+    .toBe(true);
 });
 
 test("no chart card renders on Overview — the volume/intensity block moved to Trends → Fitness", async ({

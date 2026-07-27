@@ -74,13 +74,12 @@ export default function SavedViewsBar({
     view: view ?? "",
   };
 
-  // #1455 C: these chips no longer own a row — they ride the END of
-  // DateRangeControl's chip row (passed in as its `trailingChips`), which is a
-  // single horizontally-scrolling row on a phone. Hence `shrink-0` throughout (a
-  // chip must keep its width and scroll, never compress) and wrapping only from
-  // `sm` up, where the row wraps instead of scrolling.
+  // Saved views are a desktop power-user affordance. On phones, rebuilding a view
+  // is only a couple of taps and this low-frequency control made the primary
+  // range row feel broken and overfull. From `sm` up the chips ride the END of
+  // DateRangeControl's wrapping row instead of owning a second row.
   return (
-    <div className="flex shrink-0 items-center gap-2 sm:flex-wrap">
+    <div className="hidden shrink-0 items-center gap-2 sm:flex sm:flex-wrap">
       <span className="flex shrink-0 items-center gap-1 section-label">
         <IconBookmark className="h-3.5 w-3.5" stroke={2} />
         Views

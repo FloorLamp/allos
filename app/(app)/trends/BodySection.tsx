@@ -95,7 +95,8 @@ import GrowthChartsCard, {
 } from "@/components/GrowthChartsCard";
 import LogMeasurementsPanel from "./LogMeasurementsPanel";
 import VitalsTodayStrip from "./VitalsTodayStrip";
-import ChartJumpChips, { type ChartChip } from "./ChartJumpChips";
+import type { ChartChip } from "./ChartJumpChips";
+import ChartJumpMenu from "./ChartJumpMenu";
 import BodyMetricTiles from "./BodyMetricTiles";
 import BodyViewToggle from "./BodyViewToggle";
 import {
@@ -209,9 +210,8 @@ export default async function BodySection({
   const weightSeries = getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS);
   const bodyMetrics = getBodyMetricsWithSource(profile.id, ALL_ROWS);
 
-  // Keep the UNWINDOWED display-unit series named (…All) so the overview tiles read
-  // their 30-day tail from the SAME arrays the windowed charts draw — one gather
-  // feeds both (#221). The chart applies the shared range on top.
+  // Keep the UNWINDOWED display-unit series named (…All) so the overview tiles and
+  // charts apply the shared range to the SAME arrays — one gather feeds both (#221).
   const weightAll = weightSeries.map((w) => ({
     date: w.date,
     value: dispWeight(w.value, wu),
@@ -835,12 +835,16 @@ export default async function BodySection({
     ) : null;
 
   // ── 4. Synced-from-integrations daily metrics ───────────────────────────────
-  // NOT windowed by the shared range; they show the most recent ~6 months (the
-  // queries' default 180-row cap), captioned honestly below (issue #399).
-  const stepsChart = getMetricDailyTotals(profile.id, "steps").map((r) => ({
-    date: r.date,
-    value: Math.round(r.value),
-  }));
+  // The desktop full charts retain their most-recent ~6-month window (issue #399);
+  // the tile inputs keep the full series so every shared-range choice is honest.
+  const recent180 = <T,>(rows: T[]): T[] => rows.slice(-180);
+  const stepsAll = getMetricDailyTotals(profile.id, "steps", ALL_ROWS).map(
+    (r) => ({
+      date: r.date,
+      value: Math.round(r.value),
+    })
+  );
+  const stepsChart = recent180(stepsAll);
   // Sleep moved to its own dedicated /sleep page (issue #1066): the detailed
   // per-night / regularity / stage cards live there now. Trends → Body keeps a
   // COMPACT summary tile — last night's main-session duration + the SRI — linking to
@@ -853,22 +857,34 @@ export default async function BodySection({
     lastNightPresentation?.freshness === "stale" ? null : lastNight;
   const sleepReg = getSleepRegularity(profile.id);
   const hasSleep = visibleLastNight != null || sleepReg != null;
-  const leanMassChart = getMetricDailyTotals(profile.id, "lean_mass_kg").map(
-    (r) => ({ date: r.date, value: round(r.value, 1) })
-  );
-  const boneMassChart = getMetricDailyTotals(profile.id, "bone_mass_kg").map(
-    (r) => ({ date: r.date, value: round(r.value, 2) })
-  );
-  const bmrChart = getMetricDailyTotals(profile.id, "bmr_kcal").map((r) => ({
-    date: r.date,
-    value: Math.round(r.value),
-  }));
-  const hydrationChart = getMetricDailyTotals(profile.id, "hydration_l").map(
-    (r) => ({ date: r.date, value: round(r.value, 2) })
-  );
-  const caloriesChart = getMetricDailyTotals(profile.id, "nutrition_kcal").map(
+  const leanMassAll = getMetricDailyTotals(
+    profile.id,
+    "lean_mass_kg",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: round(r.value, 1) }));
+  const leanMassChart = recent180(leanMassAll);
+  const boneMassAll = getMetricDailyTotals(
+    profile.id,
+    "bone_mass_kg",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: round(r.value, 2) }));
+  const boneMassChart = recent180(boneMassAll);
+  const bmrAll = getMetricDailyTotals(profile.id, "bmr_kcal", ALL_ROWS).map(
     (r) => ({ date: r.date, value: Math.round(r.value) })
   );
+  const bmrChart = recent180(bmrAll);
+  const hydrationAll = getMetricDailyTotals(
+    profile.id,
+    "hydration_l",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: round(r.value, 2) }));
+  const hydrationChart = recent180(hydrationAll);
+  const caloriesAll = getMetricDailyTotals(
+    profile.id,
+    "nutrition_kcal",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: Math.round(r.value) }));
+  const caloriesChart = recent180(caloriesAll);
   // BMI over the weight series, pairing each weigh-in with the height in effect ON
   // OR BEFORE that date — the SAME date-paired derivation the growth card uses, so
   // the two BMI charts on a child's Body tab can't disagree (issue #407).
@@ -881,15 +897,18 @@ export default async function BodySection({
   ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
   // Mood trend (#992): the daily wellbeing check-ins as a chartable 1–5 series —
   // like a vital in shape, but DELIBERATELY never reference-range flagged and never
-  // retested (a subjective self-rating, not a lab). Most recent ~6 months.
-  const moodChart = getMoodLogs(profile.id, shiftDateStr(todayStr, -179)).map(
-    (m) => ({ date: m.date, value: m.valence })
-  );
+  // retested (a subjective self-rating, not a lab).
+  const moodAll = getMoodLogs(profile.id).map((m) => ({
+    date: m.date,
+    value: m.valence,
+  }));
+  const moodChart = recent180(moodAll);
 
-  const hrChart = getHrDailySummary(profile.id).map((r) => ({
+  const hrAll = getHrDailySummary(profile.id, ALL_ROWS).map((r) => ({
     date: r.date,
     value: Math.round(r.avg),
   }));
+  const hrChart = recent180(hrAll);
   const latestHrDay = getLatestHrDay(profile.id);
   const hrIntraday = latestHrDay
     ? getHrMinutes(profile.id, latestHrDay).map((m) => ({
@@ -909,7 +928,7 @@ export default async function BodySection({
     bmiChart.length > 0;
 
   // #1067 Phase 1 (re-based on #1490): the synced daily charts render from ONE
-  // visible list that also feeds the sticky jump chips, so a chip can never point at
+  // visible list that also feeds the chart menu, so it can never point at
   // an absent chart. Membership is each entry's `present` gate; the SEQUENCE is the
   // tab's shared card order. The old per-entry `latestDate`/`order` pair is gone with
   // `orderBodyCharts` — a raw most-recently-synced sort resequenced this page every
@@ -1183,7 +1202,7 @@ export default async function BodySection({
     (e) => e.id
   );
 
-  // ONE presence boolean per fixed section, shared by its chip and its render.
+  // ONE presence boolean per fixed section, shared by its menu item and render.
   const hasVitals = vitalsCharts.length > 0 || (intraday && hasIntraday);
   const hasComposition = compositionCharts.some((c) => c.data.length > 0);
   const hasMood = moodChart.length > 0;
@@ -1231,9 +1250,9 @@ export default async function BodySection({
         : section.charts.map((c) => c.key)
   );
 
-  // Jump chips in PAGE READING ORDER — the two chart runs in their ranked sequence,
-  // then mood, then the synced charts. Built FROM the ordered sections, so a chip
-  // row can never advertise an order the page below doesn't have.
+  // Menu items in PAGE READING ORDER — the two chart runs in their ranked sequence,
+  // then mood, then the synced charts. Built FROM the ordered sections, so the
+  // menu can never advertise an order the page below doesn't have.
   const sectionChipLabel: Record<string, string> = {
     vitals: "Vitals",
     "body-composition": "Weight",
@@ -1247,8 +1266,9 @@ export default async function BodySection({
   ];
 
   // ── Tiles ───────────────────────────────────────────────────────────────────
-  // Each tile is the 30-day tail of the SAME display-unit series its classic chart
-  // draws above (one gather feeds both). The VITALS joined this grid in #1486, so
+  // Each tile windows the SAME display-unit series its classic chart draws above
+  // to the shared Trends range (one gather feeds both). VITALS joined this grid in
+  // #1486, so
   // `view=tiles` and `view=all` are two renderings of one metric set — not two
   // different sets. Body fat is dropped for a growth-tracked profile (matching the
   // charts/history); every other metric self-gates on presence.
@@ -1266,70 +1286,77 @@ export default async function BodySection({
     ["height", heightAll],
     ["head-circ", headCircAll],
     ["sun", sun],
-    ["steps", stepsChart],
-    ["hr", hrChart],
+    ["steps", stepsAll],
+    ["hr", hrAll],
     ["bmi", bmiChart],
-    ["lean-mass", leanMassChart],
-    ["bone-mass", boneMassChart],
-    ["bmr", bmrChart],
-    ["hydration", hydrationChart],
-    ["calories", caloriesChart],
-    ["mood", moodChart],
+    ["lean-mass", leanMassAll],
+    ["bone-mass", boneMassAll],
+    ["bmr", bmrAll],
+    ["hydration", hydrationAll],
+    ["calories", caloriesAll],
+    ["mood", moodAll],
   ];
   const metricTiles: BodyMetricTile[] = tileSeries
     .filter(([slug]) => slug !== "body-fat" || bodyFatShown)
     .map(([slug, arr]) =>
-      buildBodyMetricTile(BODY_METRIC_META[slug], arr, wu, todayStr)
+      buildBodyMetricTile(BODY_METRIC_META[slug], arr, wu, range)
     )
     .filter((t) => t.present);
 
   // The bespoke Sleep tile for the grid — links to /sleep (strong topic keeps its
   // own surface, #1042), NOT a metric page. A distinct node from the stack's sleep
   // card so there's no duplicate `#sleep` anchor id across the two layouts.
-  const sleepGridTile = hasSleep
-    ? {
-        present: true,
-        latestDate: visibleLastNight?.wakeDay ?? null,
-        node: (
-          <Link
-            href="/sleep"
-            data-testid="body-tile-sleep"
-            className="card group flex h-full flex-col transition hover:border-brand-300 dark:hover:border-brand-700"
-          >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="font-semibold text-slate-800 dark:text-slate-100">
-                Sleep
-              </span>
-              <IconArrowRight
-                className="h-4 w-4 text-brand-600 dark:text-brand-400"
-                stroke={1.75}
-                aria-hidden
-              />
-            </div>
-            {visibleLastNight && lastNightPresentation && (
-              <>
-                <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                  {formatHm(visibleLastNight.durationMin)}
-                </div>
+  const sleepTileDate =
+    visibleLastNight?.wakeDay ?? sleepReg?.windowEnd ?? null;
+  const sleepInRange =
+    sleepTileDate != null &&
+    (!range.from || sleepTileDate >= range.from) &&
+    (!range.to || sleepTileDate <= range.to);
+  const sleepGridTile =
+    hasSleep && sleepInRange
+      ? {
+          present: true,
+          latestDate: sleepTileDate,
+          node: (
+            <Link
+              href="/sleep"
+              data-testid="body-tile-sleep"
+              className="card group flex h-full flex-col transition hover:border-brand-300 dark:hover:border-brand-700"
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="font-semibold text-slate-800 dark:text-slate-100">
+                  Sleep
+                </span>
+                <IconArrowRight
+                  className="h-4 w-4 text-brand-600 dark:text-brand-400"
+                  stroke={1.75}
+                  aria-hidden
+                />
+              </div>
+              {visibleLastNight && lastNightPresentation && (
+                <>
+                  <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                    {formatHm(visibleLastNight.durationMin)}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    {lastNightPresentation.label}
+                  </div>
+                </>
+              )}
+              {sleepReg != null && (
                 <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  {lastNightPresentation.label}
+                  Regularity · {sriPresentation(sleepReg.sri).text}
                 </div>
-              </>
-            )}
-            {sleepReg != null && (
-              <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Regularity · {sriPresentation(sleepReg.sri).text}
-              </div>
-            )}
-            {!visibleLastNight && sleepReg == null && (
-              <div className="text-sm text-slate-500 dark:text-slate-400">
-                Open Sleep
-              </div>
-            )}
-          </Link>
-        ),
-      }
-    : null;
+              )}
+              {!visibleLastNight && sleepReg == null && (
+                <div className="text-sm text-slate-500 dark:text-slate-400">
+                  Open Sleep
+                </div>
+              )}
+            </Link>
+          ),
+        }
+      : null;
 
   return (
     <div className="space-y-6" data-testid="trends-body">
@@ -1352,14 +1379,24 @@ export default async function BodySection({
           in both layouts. */}
       <BodyHygieneFindings />
 
-      {/* #1067 Phase 2: tiles ⇄ classic-stack toggle. Default is responsive (tiles on
-          mobile, stack on desktop); the toggle pins either explicitly. */}
-      <div className="flex justify-end">
+      {/* The chart navigator belongs to the selected full-chart layout, so it
+          follows the tiles ⇄ charts toggle in one compact, right-aligned row
+          instead of reading as another tab bar. */}
+      <div
+        className="hidden items-center justify-end gap-1 md:!mt-6 md:flex"
+        data-testid="body-view-controls"
+      >
         <BodyViewToggle view={view} tilesHref={tilesHref} allHref={allHref} />
+        <div className={stackContainerClass(view)}>
+          <ChartJumpMenu items={jumpChips} />
+        </div>
       </div>
 
-      {/* Sparkline-tile overview — the default view on mobile. */}
-      <div className={tilesContainerClass(view)} data-testid="body-tiles-view">
+      {/* Sparkline-tile overview — the only view on mobile. */}
+      <div
+        className={`${tilesContainerClass(view)} !mt-2`}
+        data-testid="body-tiles-view"
+      >
         <BodyMetricTiles
           tiles={metricTiles}
           sleep={sleepGridTile}
@@ -1367,17 +1404,12 @@ export default async function BodySection({
         />
       </div>
 
-      {/* The classic full-chart stack — the default view on desktop, and the
-          `view=all` layout on every viewport. Carries the sticky jump chips + the
-          per-chart `#id` anchors (#1067 Phase 1). */}
+      {/* The classic full-chart stack — desktop only. Carries the per-chart `#id`
+          anchors used by the chart dropdown (#1067 Phase 1). */}
       <div
-        className={`${stackContainerClass(view)} space-y-6`}
+        className={`${stackContainerClass(view)} !mt-2 space-y-6`}
         data-testid="body-charts-all"
       >
-        {/* Sticky chart-jump chips (#1067) — one row, its own overflow-x-auto
-            container, tapping scrolls to the chart. Only present charts appear. */}
-        <ChartJumpChips chips={jumpChips} />
-
         {/* For a growth-tracked profile the percentile card is the headline, so it
             floats above the chart sections; adults never have one. That used to be
             planBodyCharts' `growthCardFirst` fork — it is now a CONSEQUENCE of the
@@ -1396,8 +1428,8 @@ export default async function BodySection({
         {!growthLeads && growthCard}
 
         {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
-            bands, no flags, no retest hooks — mood is not a lab, so a low day is a
-            data point, never an "abnormal". Hidden until a check-in exists. */}
+              bands, no flags, no retest hooks — mood is not a lab, so a low day is a
+              data point, never an "abnormal". Hidden until a check-in exists. */}
         {hasMood && (
           <ChartCard
             anchorId="mood"

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   NUTRITION_TAB_FIRST_PAGE,
   RESULTS_TAB_FIRST_PAGE,
+  TRAINING_TAB_FIRST_PAGE,
   tabFirstPageForPath,
 } from "@/components/tab-first-pages";
 
@@ -9,6 +10,8 @@ describe("tab-first page registry", () => {
   it("matches a query-tab page only at its exact pathname", () => {
     expect(tabFirstPageForPath("/nutrition")).toBe(NUTRITION_TAB_FIRST_PAGE);
     expect(tabFirstPageForPath("/nutrition/history")).toBeUndefined();
+    expect(tabFirstPageForPath("/training")).toBe(TRAINING_TAB_FIRST_PAGE);
+    expect(tabFirstPageForPath("/training/session")).toBeUndefined();
   });
 
   it("keeps route-tab pages in the shell across their child routes", () => {

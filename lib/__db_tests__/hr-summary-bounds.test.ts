@@ -85,6 +85,7 @@ describe("getHrDailySummary — bounded window equals full-history slice (#387)"
     seedHr(p, END, 200);
 
     const full = getHrDailySummary(p, BIG);
+    expect(getHrDailySummary(p, -1)).toEqual(full);
     expect(full.length).toBe(200); // one row per day, ascending
 
     for (const k of [1, 15, 60, 199, 200, 250]) {

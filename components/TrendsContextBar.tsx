@@ -1,57 +1,91 @@
 "use client";
 
-import { type ReactNode } from "react";
-import ContextBar from "@/components/ContextBar";
-import { useShellChrome } from "@/components/useShellChrome";
+import { useState, type ReactNode } from "react";
+import { IconChevronDown } from "@tabler/icons-react";
+import { revealShellChrome, useShellChrome } from "@/components/useShellChrome";
 
-// The Trends hub's phone chrome (issue #1485 F): the range pills and the tab strip
-// collapse into ONE line — "Overview · 90D ▾" — that expands to the full controls
-// on tap.
+// Trends has two different controls: primary section navigation and a shared
+// chart window. On a phone the old disclosure hid BOTH behind
+// "Overview · 90D", making the tabs look like advanced filters. Keep the tabs
+// permanently visible instead, with the active range as a fixed trigger at the
+// right edge. Opening the range reveals only range controls beneath the stable
+// tab row.
 //
-// The collapse itself lives in components/ContextBar.tsx (shared with the Timeline's
-// filter bar since #1517); this file is the Trends PLACEMENT — the invariant it
-// exists to hold is that no chart on this page is ever rendered without its window
-// named, which is why the bar is sticky rather than merely collapsible.
-//
-// RIDING THE SHELL CHROME (#1416). On a phone the bar is sticky directly beneath
-// the app's top bar and shares its state: scroll down and both slide away, scroll up
-// and both return, so mid-page the compact label is still there naming the window.
-// It reads the SAME `useShellChrome()` machine the bar itself does rather than
-// re-deriving scroll direction — one question, one computation — and parks at
-// `--shell-chrome-h`, the height that component publishes (see app/globals.css
-// `.sub-chrome`). From `sm` up it drops to static and nothing sticks.
-//
-// The tab strip stays HERE and is deliberately not a bottom sheet: primary
-// navigation stays discoverable, and the bottom edge belongs to the workout dock
-// (the #1542 bottom-edge layer contract). The custom-range editor keeps its own
-// #1455 "Custom…" collapse inside the expanded controls.
+// The whole unit still rides the app shell: charts retain a visible window label
+// while the chrome is shown, and tabs + range hide/reveal together on scroll.
+// From `sm` up the range trigger disappears and the same range controls and tab
+// strip return to their classic stacked desktop order.
 export default function TrendsContextBar({
-  label,
+  rangeLabel,
+  tabs,
   controls,
 }: {
-  // The one-line context label, e.g. "Overview · 90D" (lib/trends-context.ts).
-  label: string;
-  // The range pills + saved views + the tab strip: what the bar collapses.
+  rangeLabel: string;
+  tabs: ReactNode;
   controls: ReactNode;
 }) {
   const { hidden, ready } = useShellChrome();
+  const [open, setOpen] = useState(false);
+  const controlsId = "trends-context-controls";
+
+  function toggleRangeControls() {
+    const closing = open;
+    setOpen((value) => !value);
+    revealShellChrome();
+    if (closing) {
+      // Closing removes a tall in-flow panel. Browsers may clamp scrollY and emit
+      // a scroll event from that layout shift; re-anchor after the new geometry
+      // has painted so neither this row nor the app bar mistakes it for intent.
+      requestAnimationFrame(() => requestAnimationFrame(revealShellChrome));
+    }
+  }
+
   return (
-    <ContextBar
-      idPrefix="trends-context"
-      label={label}
-      controls={controls}
-      rootProps={{
-        "data-hidden": hidden ? "true" : "false",
-        // Same contract as ShellChrome's: the scroll listener only exists after
-        // hydration, so before it the bar is simply always revealed (the safe
-        // state). Surfaced so a browser test can wait for the real behavior rather
-        // than race it.
-        "data-ready": ready ? "true" : "false",
-      }}
-      // Full-bleed on a phone so the sticky bar's background covers the content
-      // gutters as the page scrolls under it; from `sm` up it is an ordinary block
-      // in the reading column with no background of its own.
-      className="sub-chrome sticky top-[var(--shell-chrome-h)] z-20 -mx-4 mb-3 border-b border-black/10 bg-white/85 px-4 backdrop-blur-xl sm:static sm:z-auto sm:mx-0 sm:mb-6 sm:border-0 sm:bg-transparent sm:px-0 sm:backdrop-blur-none dark:border-white/10 dark:bg-ink-950/85 sm:dark:bg-transparent"
-    />
+    <div
+      data-testid="trends-context-bar"
+      data-expanded={open ? "true" : "false"}
+      data-hidden={hidden ? "true" : "false"}
+      data-ready={ready ? "true" : "false"}
+      className="sub-chrome sticky top-[var(--shell-chrome-h)] z-20 -mx-4 -mt-4 mb-3 bg-white/85 backdrop-blur-xl sm:static sm:z-auto sm:mx-0 sm:mt-0 sm:mb-6 sm:bg-transparent sm:backdrop-blur-none dark:bg-ink-950/85 sm:dark:bg-transparent"
+    >
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] sm:flex sm:flex-col">
+        <div className="min-w-0 sm:order-2 sm:[&_[role=tab]]:px-4 sm:[&_[role=tab]]:py-2 sm:[&_[role=tab]]:text-sm sm:[&_[role=tab]]:font-medium">
+          {tabs}
+        </div>
+
+        <button
+          type="button"
+          data-testid="trends-context-toggle"
+          aria-expanded={open}
+          aria-controls={controlsId}
+          aria-label={`Date range: ${rangeLabel}`}
+          onClick={toggleRangeControls}
+          className="-mb-px flex max-w-40 items-center gap-1 border-b border-l border-black/10 px-3 text-sm font-semibold text-slate-600 sm:hidden dark:border-white/10 dark:text-slate-300"
+        >
+          <span
+            data-testid="trends-context-label"
+            className="truncate"
+            title={rangeLabel}
+          >
+            {rangeLabel === "All time" ? "All" : rangeLabel}
+          </span>
+          <IconChevronDown
+            className={`h-4 w-4 shrink-0 transition-transform ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+
+        <div
+          id={controlsId}
+          data-testid={controlsId}
+          className={`col-span-2 border-b border-black/10 px-4 pb-2 pt-2 sm:order-1 sm:block sm:border-0 sm:px-0 sm:pt-0 sm:pb-0 dark:border-white/10 ${
+            open ? "block" : "hidden"
+          }`}
+        >
+          {controls}
+        </div>
+      </div>
+    </div>
   );
 }

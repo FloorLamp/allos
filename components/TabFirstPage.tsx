@@ -12,11 +12,13 @@ import { PageHeader } from "@/components/ui";
 export default function TabFirstPage({
   config,
   children,
+  action,
   className = "",
   testId,
 }: {
   config: TabFirstPageConfig;
   children: ReactNode;
+  action?: ReactNode;
   className?: string;
   testId?: string;
 }) {
@@ -31,7 +33,7 @@ export default function TabFirstPage({
         data-testid={testId ? `${testId}-title` : undefined}
         className="hidden md:block"
       >
-        <PageHeader title={title} subtitle={subtitle} />
+        <PageHeader title={title} subtitle={subtitle} action={action} />
       </div>
       <h1 className="sr-only md:hidden">{title}</h1>
       <div className="hidden md:block">

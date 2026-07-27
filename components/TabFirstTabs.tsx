@@ -16,6 +16,7 @@ export default function TabFirstTabs({
   const shared = {
     prominentOnMobile: true,
     mobileColumns: config.mobileColumns,
+    mobileLayout: config.mobileLayout,
     flush,
     testId: config.testId,
     className: flush ? undefined : config.desktopStripClassName,

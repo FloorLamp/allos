@@ -8,6 +8,16 @@ import {
   resetShellChrome,
 } from "@/lib/shell-chrome";
 
+const REVEAL_SHELL_CHROME_EVENT = "allos:reveal-shell-chrome";
+
+// Interactive sub-chrome can change the document height without the user
+// scrolling (for example, closing Trends' expanded range controls). Re-anchor
+// every shell-chrome listener after that layout settles so the synthetic scroll
+// event cannot hide the nav the user just interacted with.
+export function revealShellChrome(): void {
+  window.dispatchEvent(new Event(REVEAL_SHELL_CHROME_EVENT));
+}
+
 // The thin browser half of the auto-hiding shell chrome (issue #1416) — a
 // passive scroll listener, rAF-coalesced, feeding the PURE state machine in
 // lib/shell-chrome.ts. Everything that DECIDES anything lives there; this file
@@ -40,6 +50,9 @@ export function useShellChrome(): { hidden: boolean; ready: boolean } {
 
   useEffect(() => {
     let frame = 0;
+    const onReveal = () => {
+      setState(resetShellChrome(window.scrollY));
+    };
     const onScroll = () => {
       if (frame) return;
       frame = requestAnimationFrame(() => {
@@ -48,9 +61,11 @@ export function useShellChrome(): { hidden: boolean; ready: boolean } {
       });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener(REVEAL_SHELL_CHROME_EVENT, onReveal);
     setReady(true);
     return () => {
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener(REVEAL_SHELL_CHROME_EVENT, onReveal);
       if (frame) cancelAnimationFrame(frame);
     };
   }, []);
