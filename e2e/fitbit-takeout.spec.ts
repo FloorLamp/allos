@@ -48,4 +48,34 @@ test.describe("Fitbit (Google Takeout) integration", () => {
       page.getByText(/never used to compute anything else/)
     ).toBeVisible();
   });
+
+  // Uploading the WRONG file is the likely mistake here — the export arrives as
+  // several numbered parts and lives among other Takeout downloads — so the failure
+  // message is a real surface, not an edge case. It used to be "internal error" (a
+  // 500, which also filed a server error for every mistyped upload); an unreadable
+  // archive is the caller's problem and now answers 400 with the reason.
+  //
+  // A junk zip is a legitimate browser fixture where a real one is not: the import
+  // fails at the central-directory read, before any DB write, so this touches no
+  // shared seed data and leaves nothing to clean up.
+  test("a file that isn't a valid archive says so, rather than 'internal error'", async ({
+    page,
+  }) => {
+    await page.goto("/integrations/fitbit-takeout");
+
+    await page.getByTestId("takeout-file").setInputFiles({
+      name: "not-really-an-export.zip",
+      mimeType: "application/zip",
+      buffer: Buffer.from("PK\x03\x04 this is not a zip central directory"),
+    });
+
+    const error = page.getByTestId("takeout-error");
+    await expect(error).toBeVisible();
+    await expect(error).toContainText(/not a valid zip archive/i);
+    // The point of the change: the user is told what's wrong with THEIR file.
+    await expect(error).not.toContainText(/internal error/i);
+
+    // A rejected upload must not claim an import happened.
+    await expect(page.getByTestId("takeout-result")).toHaveCount(0);
+  });
 });

@@ -2,11 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { cookies } from "next/headers";
 import { requireWriteAccess } from "@/lib/auth";
 import { createLogger } from "@/lib/log";
 import { importTakeoutArchive } from "@/lib/integrations/fitbit-takeout-import";
 import { upsertConnection } from "@/lib/integrations/connections";
 import { FITBIT_TAKEOUT_ID } from "@/lib/integrations/fitbit-takeout";
+import { SESSION_COOKIE } from "@/lib/session-cookie";
+import { ZipIndexError } from "@/lib/zip-index";
 
 const log = createLogger("fitbit-takeout-route");
 
@@ -55,6 +58,20 @@ async function streamToFile(
 }
 
 export async function POST(req: Request) {
+  // Middleware answers an unauthenticated /api/ request with a 401 JSON — but this
+  // route is deliberately OUTSIDE the middleware matcher (see the comment on
+  // middleware.ts's config, and lib/__tests__/upload-size-lockstep.test.ts), so it
+  // repeats that same coarse cookie-PRESENCE check itself. Without it,
+  // requireWriteAccess()'s redirect() turns an unauthenticated XHR into a 307 toward
+  // /login, which fetch() silently follows to an HTML page — the client then sees a
+  // 200 it can't parse rather than an auth error. This restores the exact prior
+  // behavior and is non-authoritative in exactly the same way middleware is: the
+  // REAL check is requireWriteAccess() immediately below, which still governs an
+  // expired cookie, a member without write access, and demo mode.
+  if (!(await cookies()).get(SESSION_COOKIE)) {
+    return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
   // The one auth boundary: a write to the ACTIVE profile, same gate as every other
   // ingest write path. `requireWriteAccess` redirects/throws for a member without
   // write access, so nothing below runs unauthorized.
@@ -100,6 +117,20 @@ export async function POST(req: Request) {
     upsertConnection(profile.id, FITBIT_TAKEOUT_ID, { status: "connected" });
     return Response.json({ ok: true, ...result });
   } catch (err) {
+    // An unreadable archive is the CALLER's problem, not a server fault: the wrong
+    // zip, a truncated download, a Takeout part that never finished. Answering 500
+    // "internal error" told the user nothing and filed a server error for every
+    // mistyped upload — and it is what the middleware body-truncation bug looked
+    // like from the outside, which is part of why that took so long to see.
+    // ZipIndexError messages are authored in lib/zip-index.ts and carry no paths or
+    // internals, so they are safe to hand back verbatim under #478.
+    if (err instanceof ZipIndexError) {
+      log.warn("takeout archive unreadable", {
+        profileId: profile.id,
+        reason: err.message,
+      });
+      return Response.json({ ok: false, error: err.message }, { status: 400 });
+    }
     // The generic message is deliberate (#478) — a zip/parse failure must not leak
     // paths or internals to the caller; the cause goes to the error log.
     log.error("takeout import failed", { profileId: profile.id, err });
