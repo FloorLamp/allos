@@ -345,6 +345,14 @@ export type PracticeLogOutcome =
   | { kind: "invalid-date" }
   | { kind: "stale-target" };
 
+// Typed correction outcomes (#1585). Edits and deletes are profile-scoped: a stale,
+// deleted, or cross-profile id returns not-found and never receives a success toast.
+export type PracticeSessionMutationOutcome =
+  | { kind: "updated"; session: PracticeLog }
+  | { kind: "deleted"; id: number }
+  | { kind: "invalid-date" }
+  | { kind: "not-found" };
+
 // ── Routines (#738, migration 039) ─────────────────────────────────────────────
 // A routine is a declarative, user-owned program the user ADOPTS (from the
 // lib/routine-templates.ts catalog) or AUTHORS. Templates and custom routines share

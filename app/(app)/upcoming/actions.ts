@@ -11,6 +11,7 @@ import {
   recordPreventiveDone,
   setPreventiveOverride,
   markCarePlanItemDone,
+  logPracticeByTargetId,
 } from "@/lib/queries";
 import { snoozeUntil } from "@/lib/upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
@@ -20,6 +21,7 @@ import {
   formOk,
   type FormResult,
   type DoseTakenOutcome,
+  type PracticeLogOutcome,
 } from "@/lib/types";
 import { requireSession } from "@/lib/auth";
 import { dismissMultiviewHint } from "@/lib/settings";
@@ -43,6 +45,34 @@ async function gateItemProfile(formData: FormData): Promise<number> {
   }
   const { profile } = await requireWriteAccess();
   return profile.id;
+}
+
+export type LogUpcomingPracticeResult =
+  { ok: true; outcome: PracticeLogOutcome } | { ok: false; error: string };
+
+export async function logUpcomingPractice(
+  formData: FormData
+): Promise<LogUpcomingPracticeResult> {
+  const requestedProfileId = Number(formData.get("profile_id"));
+  let pid: number;
+  if (requestedProfileId > 0) {
+    await requireProfileWriteAccess(requestedProfileId);
+    pid = requestedProfileId;
+  } else {
+    const { profile } = await requireWriteAccess();
+    pid = profile.id;
+  }
+  const targetId = Number(formData.get("target_id"));
+  if (!targetId) return { ok: false, error: "Couldn't find that practice." };
+  const outcome = logPracticeByTargetId(pid, targetId);
+  if (outcome.kind === "logged") {
+    revalidatePath("/upcoming");
+    revalidatePath("/wellness");
+    revalidatePath("/longevity");
+    revalidatePath("/timeline");
+    revalidatePath("/");
+  }
+  return { ok: true, outcome };
 }
 
 // "Why is this flagged?" (issue #878, Phase 1). Narrate a finding's OWN reason payload

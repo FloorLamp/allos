@@ -37,10 +37,38 @@ export const PRACTICE_STARTER_LIST: readonly string[] = [
   "Wind-down routine",
 ];
 
-// Normalize a user-entered practice name: collapse surrounding whitespace. Names are
-// stored verbatim (case preserved) but a blank name is not a practice.
+// Normalize a user-entered practice name: collapse whitespace while preserving the
+// user's display casing. A blank name is not a practice.
 export function normalizePracticeName(raw: string | null | undefined): string {
   return (raw ?? "").replace(/\s+/g, " ").trim();
+}
+
+// The ONE identity for a wellness practice (#1591). Practice names are user-owned,
+// open vocabulary, so the safe equivalence set is deliberately narrow: case and
+// whitespace variants only. We do NOT fold synonyms ("breath work" ≠ "breathwork"),
+// modalities ("infrared sauna" ≠ "sauna"), or starter-list neighbors — doing so could
+// silently merge two practices with different targets and histories. DB readers gather
+// the finite set of stored spellings matching this key and bind those spellings into
+// their SQL IN-list (SQL cannot call this JS normalizer).
+export function practiceIdentity(raw: string | null | undefined): string {
+  return normalizePracticeName(raw).toLocaleLowerCase("en-US");
+}
+
+export function samePractice(
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean {
+  const left = practiceIdentity(a);
+  return left !== "" && left === practiceIdentity(b);
+}
+
+// The expanded log form defaults duration from the immediately previous session.
+// A prior row with no recorded duration intentionally yields no default — old null
+// rows are never treated as if a duration had been captured.
+export function previousPracticeDuration(
+  sessions: readonly { duration_min: number | null }[]
+): number | null {
+  return sessions[0]?.duration_min ?? null;
 }
 
 // The range state of a practice (or any) frequency target this week — ONE computation

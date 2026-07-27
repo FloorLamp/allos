@@ -74,6 +74,7 @@ import {
   dismissMultiviewHintAction,
 } from "./actions";
 import { confirmConditionSuggestion } from "@/app/(app)/conditions/actions";
+import PracticeLogButton from "./PracticeLogButton";
 
 export const dynamic = "force-dynamic";
 
@@ -895,7 +896,8 @@ function Row({
     hasExplain ||
     cta != null ||
     hasMenu ||
-    actions.length > 0;
+    actions.length > 0 ||
+    (actionVisible && item.practiceTargetId != null);
 
   return (
     <div
@@ -990,6 +992,12 @@ function Row({
               title={item.title}
               detail={item.detail}
               reasons={item.reasons}
+            />
+          )}
+          {actionVisible && item.practiceTargetId != null && (
+            <PracticeLogButton
+              targetId={item.practiceTargetId}
+              profileId={item.profileId}
             />
           )}
           <RowActionChips actions={actions} fold={hasMenu} />

@@ -37,6 +37,7 @@ import { daysBetweenDateStr } from "../date";
 import { protocolPracticeLabel } from "../protocol-practice";
 import { protocolHref, type AppRoute } from "../hrefs";
 import { getUsedCanonicalNames } from "./medical";
+import { getPracticeUsageInWindow } from "../practice-log";
 
 interface ProtocolRow {
   id: number;
@@ -210,11 +211,9 @@ export function situationUsedByOtherProtocol(
   return !!row;
 }
 
-// Usage-during-window for a protocol (issue #344): a pure join over `activities`
-// within [start_date, end_date ?? today] that used the protocol's linked gear
-// (activities.equipment_id) and/or logged the protocol's practice type. Counted as
-// distinct training days, plus the last such date, for the "23 sessions · last 3
-// days ago" line. No new table. Profile-scoped.
+// Usage-during-window for a protocol (issues #344/#1583): event-row counts within
+// [start_date, end_date ?? today]. Each scope reads its own ledger: activities,
+// food_log, or practice_logs. Multi-session days remain multiple sessions.
 export interface ProtocolUsage {
   sessions: number;
   lastUsed: string | null;
@@ -230,6 +229,7 @@ export function getProtocolUsage(
   // activities) or a food group (#580 — counted over food_log).
   let practiceType: string | null = null;
   let practiceFoodGroup: string | null = null;
+  let wellnessPractice: string | null = null;
   if (protocol.frequency_target_id != null) {
     const t = db
       .prepare(
@@ -241,41 +241,49 @@ export function getProtocolUsage(
     if (t && t.scope_kind === "type") practiceType = t.scope_value;
     else if (t && t.scope_kind === "food_group")
       practiceFoodGroup = t.scope_value;
+    else if (t && t.scope_kind === "practice") wellnessPractice = t.scope_value;
   }
 
-  // Food-group practice: distinct days the group was logged in the protocol window —
-  // the "during this protocol" tally for a diet intervention (fatty fish for omega-3).
+  if (wellnessPractice != null) {
+    return getPracticeUsageInWindow(
+      profileId,
+      wellnessPractice,
+      protocol.start_date,
+      end
+    );
+  }
+
+  // Food-group practice: event rows with positive servings in the protocol window.
   if (practiceFoodGroup != null) {
-    const rows = db
+    const row = db
       .prepare(
-        `SELECT DISTINCT date FROM food_log
+        `SELECT COUNT(*) AS sessions, MAX(date) AS lastUsed FROM food_log
           WHERE profile_id = ? AND date >= ? AND date <= ?
-            AND group_key = ? AND servings > 0
-          ORDER BY date`
+            AND group_key = ? AND servings > 0`
       )
-      .all(profileId, protocol.start_date, end, practiceFoodGroup) as {
-      date: string;
-    }[];
+      .get(profileId, protocol.start_date, end, practiceFoodGroup) as {
+      sessions: number;
+      lastUsed: string | null;
+    };
     return {
-      sessions: rows.length,
-      lastUsed: rows.length ? rows[rows.length - 1].date : null,
+      sessions: row.sessions,
+      lastUsed: row.lastUsed,
     };
   }
 
   if (protocol.equipment_id == null && practiceType == null)
     return { sessions: 0, lastUsed: null };
 
-  const rows = db
+  const row = db
     .prepare(
-      `SELECT DISTINCT date FROM activities
+      `SELECT COUNT(*) AS sessions, MAX(date) AS lastUsed FROM activities
         WHERE profile_id = ? AND date >= ? AND date <= ?
           AND (
             (? IS NOT NULL AND equipment_id = ?)
             OR (? IS NOT NULL AND type = ?)
-          )
-        ORDER BY date`
+          )`
     )
-    .all(
+    .get(
       profileId,
       protocol.start_date,
       end,
@@ -283,11 +291,11 @@ export function getProtocolUsage(
       protocol.equipment_id,
       practiceType,
       practiceType
-    ) as { date: string }[];
+    ) as { sessions: number; lastUsed: string | null };
 
   return {
-    sessions: rows.length,
-    lastUsed: rows.length ? rows[rows.length - 1].date : null,
+    sessions: row.sessions,
+    lastUsed: row.lastUsed,
   };
 }
 

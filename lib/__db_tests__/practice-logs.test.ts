@@ -12,6 +12,7 @@ import { setWeekMode } from "@/lib/settings";
 import {
   logPracticeSession,
   getPracticeDayCount,
+  getPracticeSessions,
   getFrequencyTargetProgress,
   collectUpcoming,
   dismissFinding,
@@ -74,6 +75,36 @@ describe("practice_logs store + range progress (#1259)", () => {
     )!;
     expect(prog.count).toBe(1);
     expect(prog.met).toBe(false);
+  });
+
+  it("case/whitespace variants share one target identity and one history", () => {
+    const pid = makeProfile("identity");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    const tid = practiceTarget(pid, "Sauna", 3, 5);
+    logPracticeSession(pid, " sauna ", t);
+    logPracticeSession(pid, "SAUNA", shiftDateStr(t, -1));
+
+    const progress = getFrequencyTargetProgress(pid).find(
+      (p) => p.target.id === tid
+    );
+    expect(progress?.count).toBe(2);
+    expect(getPracticeDayCount(pid, "Sauna", t)).toBe(1);
+    expect(getPracticeSessions(pid, "sAuNa")).toHaveLength(2);
+  });
+
+  it("supports protocol-windowed and unbounded session history", () => {
+    const pid = makeProfile("windowed-history");
+    logPracticeSession(pid, "Meditation", "2026-06-01");
+    logPracticeSession(pid, "Meditation", "2026-06-10");
+    logPracticeSession(pid, "Meditation", "2026-07-01");
+    expect(
+      getPracticeSessions(pid, "Meditation", 50, {
+        start: "2026-06-05",
+        end: "2026-06-30",
+      }).map((session) => session.date)
+    ).toEqual(["2026-06-10"]);
+    expect(getPracticeSessions(pid, "Meditation")).toHaveLength(3);
   });
 
   it("range semantics: floor drives met, ceiling flips atCeiling (calm 'plenty')", () => {
@@ -147,6 +178,8 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     const item = items.find((i) => i.key === `practice:${tid}`)!;
     expect(item.domain).toBe("practice");
     expect(item.dueText).toBe("1/3–5 this week");
+    expect(item.href).toBe("/wellness");
+    expect(item.practiceTargetId).toBe(tid);
   });
 
   it("the nudge builder fires only when behind, and honors the suppression bus", () => {

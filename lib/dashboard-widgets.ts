@@ -103,6 +103,17 @@ export interface DashboardHabitProgress {
   met: boolean;
 }
 
+export type DashboardHabitDomain = "training" | "food" | "practice";
+
+// The combined habits card spans three owning surfaces. Keep this classification
+// shared so a practice can never inherit the old "anything non-food is training"
+// fallback and point at the wrong editor.
+export function dashboardHabitDomain(scopeKind: string): DashboardHabitDomain {
+  if (scopeKind === "food_group") return "food";
+  if (scopeKind === "practice") return "practice";
+  return "training";
+}
+
 export function summarizeDashboardHabits<T extends DashboardHabitProgress>(
   targets: readonly T[],
   limit = 4

@@ -6,7 +6,7 @@ import {
 } from "../../goal-progress";
 import { goalMatchesExercise } from "../../goals";
 import type { FrequencyPace } from "../../goals";
-import { frequencyRangeState } from "../../practice";
+import { frequencyRangeState, practiceIdentity } from "../../practice";
 import { daysBetweenDateStr } from "../../date";
 import type { BodyGroup, MuscleRegion } from "../../lifts";
 import { regionForExercise, regionsForGroup } from "../../lifts";
@@ -261,8 +261,9 @@ export function getFrequencyTargetProgress(
           WHERE profile_id = ? AND date >= ?`
       )
       .all(profileId, since) as { practice: string; date: string }[]) {
-      let set = practiceDates.get(r.practice);
-      if (!set) practiceDates.set(r.practice, (set = new Set()));
+      const key = practiceIdentity(r.practice);
+      let set = practiceDates.get(key);
+      if (!set) practiceDates.set(key, (set = new Set()));
       set.add(r.date);
     }
   }
@@ -281,7 +282,7 @@ export function getFrequencyTargetProgress(
     } else if (t.scope_kind === "mobility_region") {
       count = mobilityRegionDates.get(t.scope_value as MuscleRegion)?.size ?? 0;
     } else if (t.scope_kind === "practice") {
-      count = practiceDates.get(t.scope_value)?.size ?? 0;
+      count = practiceDates.get(practiceIdentity(t.scope_value))?.size ?? 0;
     } else {
       count = typeDates.get(t.scope_value)?.size ?? 0;
     }

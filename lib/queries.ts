@@ -57,3 +57,4 @@ export * from "./providers-db";
 // in the top-level lib module; re-exported here so the `@/lib/queries` surface carries it
 // (the notify callback + the query consumers import from queries).
 export * from "./practice-log";
+export * from "./practice-store";

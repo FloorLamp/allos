@@ -243,6 +243,9 @@ export interface UpcomingItem {
   // When set, the page renders an inline "mark taken" form for this dose id
   // (reusing the existing dose check-off path). Only dose items carry one.
   doseId?: number;
+  // Wellness-practice items carry their stable frequency-target id so Upcoming can
+  // offer the same typed one-tap log as the wellness/protocol surfaces (#1591).
+  practiceTargetId?: number;
   // When set, the row renders inline preventive controls — "Mark done" (records a
   // satisfaction) plus a declined / not-applicable override — for this stable
   // catalog rule key. Only visit/screening items (issue #82) carry one; mirrors

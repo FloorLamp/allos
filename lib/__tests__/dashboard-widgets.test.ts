@@ -6,6 +6,7 @@ import {
   DATA_QUALITY_GAPS_CAP,
   capDashboardList,
   customizableWidgetDefs,
+  dashboardHabitDomain,
   dashboardGoalsHabitsLayout,
   resolveWidgets,
   resolveWidgetList,
@@ -283,6 +284,13 @@ describe("data-aware empty resolution", () => {
 });
 
 describe("summarizeDashboardHabits", () => {
+  it("routes wellness practices independently from training and food", () => {
+    expect(dashboardHabitDomain("practice")).toBe("practice");
+    expect(dashboardHabitDomain("food_group")).toBe("food");
+    expect(dashboardHabitDomain("region")).toBe("training");
+    expect(dashboardHabitDomain("type")).toBe("training");
+  });
+
   it("ranks the full open set before applying the compact dashboard limit", () => {
     const targets = [
       { id: "almost", count: 3, per_week: 4, met: false },

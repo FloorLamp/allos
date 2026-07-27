@@ -70,7 +70,7 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
 
   // Self-clean.
   page.on("dialog", (d) => d.accept());
-  await detailMain.getByRole("button", { name: "Delete" }).click();
+  await detailMain.getByRole("button", { name: "Delete", exact: true }).click();
   await page.waitForURL(/\/longevity(?:#|$)/);
   await expect(page.getByRole("main")).not.toContainText(uniqueName);
 });
@@ -135,10 +135,22 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await expect(card.getByTestId("practice-today-count")).toContainText(
     "1 logged today"
   );
+  await expect(card.getByTestId("protocol-usage")).toContainText("1 session");
+  const history = card.getByTestId("practice-session-history");
+  await expect(history.locator("tbody tr")).toHaveCount(1);
+
+  // Ending makes the protocol historical, but correction controls remain available
+  // (#1585; #1592 later removes only NEW-data affordances).
+  await settledClick(page, detailMain.getByRole("button", { name: "End now" }));
+  await expect(detailMain.getByTestId("protocol-header")).not.toContainText(
+    "ongoing"
+  );
+  await expect(history.getByTestId("practice-session-edit")).toBeVisible();
+  await expect(history.getByTestId("practice-session-delete")).toBeVisible();
 
   // Self-clean.
   page.on("dialog", (d) => d.accept());
-  await detailMain.getByRole("button", { name: "Delete" }).click();
+  await detailMain.getByRole("button", { name: "Delete", exact: true }).click();
   await page.waitForURL(/\/longevity(?:#|$)/);
   await expect(page.getByRole("main")).not.toContainText(uniqueName);
 });
