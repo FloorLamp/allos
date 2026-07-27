@@ -165,6 +165,17 @@ const FILES: [string, string | Buffer][] = [
       "2026-06-10T16:28:00Z,1.07,Fitbit App",
     ].join("\n"),
   ],
+  // Fitbit's own per-night temperature record. Row 1 has no baseline yet (literal
+  // NaN, as a real archive writes for a device's first nights) and must be skipped
+  // rather than stored as a zero deviation.
+  [
+    `${ROOT}/Temperature/Computed Temperature - 2026-06-10.csv`,
+    [
+      "type,sleep_start,sleep_end,temperature_samples,nightly_temperature,baseline_relative_sample_sum,baseline_relative_sample_sum_of_squares,baseline_relative_nightly_standard_deviation,baseline_relative_sample_standard_deviation",
+      "IDT,2026-06-10T22:13,2026-06-11T05:41:30,444,33.336,NaN,NaN,NaN,NaN",
+      "IDT,2026-07-25T23:14:30,2026-07-26T06:11:30,404,34.07,189.768,419.6,0.279,0.956",
+    ].join("\n"),
+  ],
   // Present-but-empty, exactly as a real export ships them.
   [`${ROOT}/Biometrics/Glucose 1.csv`, "no data"],
   [`${ROOT}/Stress Score/Stress Score.csv`, "DATE,UPDATED_AT,STRESS_SCORE"],
@@ -205,13 +216,14 @@ describe("Fitbit Takeout import", () => {
     // 12 data files are classified (9 daily + HR + steps + distance); calories,
     // the two 2 MB bulk members, the empty placeholders, the readme and the foreign
     // product are all skipped UNREAD.
-    expect(r.entriesRead).toBe(12);
-    expect(r.entriesSkipped).toBe(FILES.length - 12);
+    expect(r.entriesRead).toBe(13);
+    expect(r.entriesSkipped).toBe(FILES.length - 13);
 
     // Held back: the round-trip weight row AND the phone's steps row. Counted apart
     // from malformed rows so the sync event can say so.
     expect(r.roundTripSkipped).toBe(2);
-    expect(r.skipped).toBe(0);
+    // The one NaN-baseline temperature night.
+    expect(r.skipped).toBe(1);
     expect(r.counts.inserted).toBeGreaterThan(0);
 
     const bm = db
@@ -328,6 +340,20 @@ describe("Fitbit Takeout import", () => {
     // Total calories are present in the archive but must never be summed into a
     // daily total from the sparse minute stream.
     expect(sample("total_kcal")).toEqual([]);
+  });
+
+  it("derives a nightly skin-temperature delta onto the wake day", () => {
+    const rows = db
+      .prepare(
+        `SELECT date, value FROM metric_samples
+          WHERE profile_id = ? AND metric = 'skin_temp_delta_c'`
+      )
+      .all(profileId) as { date: string; value: number }[];
+    // 189.768 / 404 = 0.4697 -> 0.47 at the metric's precision, on the night that
+    // ENDED 07-26. The NaN-baseline night contributed nothing.
+    expect(rows).toEqual([{ date: "2026-07-26", value: 0.47 }]);
+    // The absolute 34.07 °C is never stored — uninterpretable without a baseline.
+    expect(rows.map((r) => r.value)).not.toContain(34.07);
   });
 
   it("re-importing the same archive changes nothing", () => {

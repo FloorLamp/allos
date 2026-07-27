@@ -142,6 +142,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Workouts",
       "SpO2",
       "Respiratory rate",
+      "Skin temperature",
       "Sleep score",
       "Readiness score",
     ],

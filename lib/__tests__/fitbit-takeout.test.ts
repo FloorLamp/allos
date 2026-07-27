@@ -10,6 +10,7 @@ import {
   parseDailyRestingHrCsv,
   parseDailyVitalCsv,
   parseVendorScoreCsv,
+  parseComputedTemperatureCsv,
   parseHeartRateCsv,
   parseIntradaySumCsv,
   foldHrBuckets,
@@ -517,5 +518,100 @@ describe("intraday classification", () => {
         f
       ).toBeNull();
     }
+  });
+});
+
+describe("computed (nightly) temperature", () => {
+  // Real column set and real shapes; values synthetic.
+  const HDR =
+    "type,sleep_start,sleep_end,temperature_samples,nightly_temperature," +
+    "baseline_relative_sample_sum,baseline_relative_sample_sum_of_squares," +
+    "baseline_relative_nightly_standard_deviation,baseline_relative_sample_standard_deviation";
+
+  it("derives the mean baseline-relative deviation and dates it to the WAKE day", () => {
+    const out = parseComputedTemperatureCsv(
+      [
+        HDR,
+        "IDT,2026-07-25T23:14:30,2026-07-26T06:11:30,404,34.07,189.768,419.6,0.279,0.956",
+      ].join("\n"),
+      TZ
+    );
+    // 189.768 / 404 = 0.4697..., stored at the metric's 2dp precision. The night is
+    // the one that ENDED on 07-26, matching how sleep totals are attributed.
+    expect(out.samples).toEqual([
+      {
+        metric: "skin_temp_delta_c",
+        date: "2026-07-26",
+        start_time: "2026-07-26T00:00:00.000Z",
+        end_time: "2026-07-26T00:00:00.000Z",
+        value: 0.47,
+      },
+    ]);
+    expect(out.skipped).toBe(0);
+  });
+
+  it("keeps a NEGATIVE deviation — the normal cool night", () => {
+    const out = parseComputedTemperatureCsv(
+      [
+        HDR,
+        "IDT,2026-07-24T22:57:30,2026-07-25T05:22,384,33.54,-25.305,300.5,0.264,0.949",
+      ].join("\n"),
+      TZ
+    );
+    expect(out.samples[0].value).toBe(-0.07);
+  });
+
+  it("SKIPS a night whose baseline is NaN, never storing it as zero", () => {
+    // Fitbit writes literal NaN for the first nights of a device's life, before it
+    // has a baseline. Zero would read as a perfectly average night.
+    const out = parseComputedTemperatureCsv(
+      [
+        HDR,
+        "IDT,2026-06-10T22:13,2026-06-11T05:41:30,444,33.33,NaN,NaN,NaN,NaN",
+      ].join("\n"),
+      TZ
+    );
+    expect(out.samples).toEqual([]);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("skips a row with no samples rather than dividing by zero", () => {
+    const out = parseComputedTemperatureCsv(
+      [
+        HDR,
+        "IDT,2026-07-01T23:00,2026-07-02T06:00,0,33.3,12.0,1.0,0.2,0.9",
+      ].join("\n"),
+      TZ
+    );
+    expect(out.samples).toEqual([]);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("does NOT store the absolute nightly temperature", () => {
+    // ~33 °C of wrist temperature is dominated by room and bedding; without a
+    // baseline it is not interpretable, which is why both Fitbit and Health Connect
+    // surface the delta instead.
+    const out = parseComputedTemperatureCsv(
+      [
+        HDR,
+        "IDT,2026-07-25T23:14:30,2026-07-26T06:11:30,404,34.07,189.768,419.6,0.279,0.956",
+      ].join("\n"),
+      TZ
+    );
+    expect(out.samples.every((s) => s.metric === "skin_temp_delta_c")).toBe(
+      true
+    );
+    expect(out.samples.map((s) => s.value)).not.toContain(34.07);
+  });
+
+  it("writes the SAME metric the Health Connect path does, so they share one series", () => {
+    const out = parseComputedTemperatureCsv(
+      [
+        HDR,
+        "IDT,2026-07-25T23:14:30,2026-07-26T06:11:30,404,34.07,189.768,419.6,0.279,0.956",
+      ].join("\n"),
+      TZ
+    );
+    expect(out.samples[0].metric).toBe("skin_temp_delta_c");
   });
 });

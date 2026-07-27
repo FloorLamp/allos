@@ -670,6 +670,91 @@ export function finalizeDailySums(
   return out;
 }
 
+// ---- computed (nightly) temperature ----
+//
+// Fitbit's own per-night skin-temperature record, and the better half of the two
+// paths this app has to that signal. Health Connect can only ever carry the last
+// night or two — its exporter pushes a rolling 48-hour window — while the archive
+// holds every night the device has seen (46 against 1, measured on a real pair).
+//
+// It also states the SLEEP WINDOW outright (`sleep_start`/`sleep_end`), which
+// retires a piece of inference: the Health Connect path gets a bare instant stamped
+// at sleep onset and has to decide which night that belongs to by testing whether it
+// falls inside a session. Here the night is given.
+//
+// The stored value is the same `skin_temp_delta_c` the Health Connect path writes —
+// a deviation from the tracker's own rolling baseline — so both land in one series
+// and one chart rather than splitting the signal across two metrics.
+//
+// THAT VALUE IS DERIVED, which is a step beyond this parser's usual store-what-the-
+// source-said and is worth being explicit about. The row carries the baseline-
+// relative deviations SUMMED over the night plus the sample count, so the mean
+// deviation is `sum / samples` — arithmetic on Fitbit's own baseline-relative
+// figures, not a baseline this app invents. It lands close to, but not identical
+// to, what Health Connect pushes for the same night (measured: −0.066 against −0.1,
+// +0.470 against +0.6), because the two describe slightly different windows and so
+// average different sample sets.
+//
+// ON THE FEW NIGHTS BOTH SOURCES COVER, the reader AVERAGES them rather than picking
+// one: skin_temp_delta_c is an AVERAGED_METRICS kind, and getMetricDailyTotals takes
+// the mean across sources for those unless the profile has pinned a primary source.
+// (PROVIDER_PREFERENCE's one-source-per-day pick governs ADDITIVE metrics, where
+// summing two sources would double-count — a distinction easy to get backwards.)
+// That is the intended semantics for a point metric: two sources measuring the same
+// quantity should agree, and here they nearly do. It does mean the chart can show a
+// value neither source reported (0.6 and 0.47 render as 0.53), so a profile wanting
+// one of them verbatim pins it with the primary-source picker.
+//
+// `nightly_temperature` — the ABSOLUTE °C, ~32.9–34.1 on a real archive — is
+// deliberately NOT stored. Wrist temperature is dominated by room temperature and
+// bedding, so without a personal baseline it is not interpretable; that is exactly
+// why both Fitbit and Health Connect surface the delta instead. Storing it would add
+// a chart with no readable meaning.
+export function parseComputedTemperatureCsv(
+  text: string,
+  tz: string
+): TakeoutParsed {
+  const out = emptyTakeoutParsed();
+  const parsed = parseTakeoutCsv(text);
+  if (!parsed) return out;
+  // Last night wins per wake-day: a same-day nap and a night would otherwise both
+  // claim the day, and the overnight record is the one this signal is about.
+  const byDate = new Map<string, number>();
+  for (const row of parsed.rows) {
+    // The wake day — the local date the session ENDS — matching how sleep totals and
+    // stages are attributed everywhere else, so a night's temperature sits with that
+    // night's sleep rather than a day off.
+    const date = localDate(row.sleep_end, tz);
+    const sum = csvNum(row.baseline_relative_sample_sum);
+    const samples = csvNum(row.temperature_samples);
+    // Fitbit writes a literal NaN into the baseline columns for the first nights of
+    // a device's life, before it has a baseline to be relative to. csvNum already
+    // reads that as absent; the guard here is that absent must mean SKIP, never a
+    // zero deviation (which would read as a perfectly average night).
+    if (!date || sum == null || samples == null || samples <= 0) {
+      out.skipped++;
+      continue;
+    }
+    const delta = boundedOrNull("skin_temp_delta_c", sum / samples);
+    if (delta == null) {
+      out.skipped++;
+      continue;
+    }
+    byDate.set(date, delta);
+  }
+  for (const [date, value] of byDate) {
+    const instant = `${date}T00:00:00.000Z`;
+    out.samples.push({
+      metric: "skin_temp_delta_c",
+      date,
+      start_time: instant,
+      end_time: instant,
+      value,
+    });
+  }
+  return out;
+}
+
 // ---- sleep ----
 //
 // One Fitbit sleep log → a nightly `sleep_min` total plus the four-bucket stage
