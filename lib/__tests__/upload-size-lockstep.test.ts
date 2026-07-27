@@ -76,4 +76,53 @@ describe("upload-size lockstep (issues #696/#1364)", () => {
     expect(parseSize("65mb")).toBe(65 * 1024 * 1024);
     expect(parseSize("1kb")).toBe(1024);
   });
+
+  // The Fitbit Takeout import is the one upload that does NOT clear the transport
+  // cap and is not supposed to: a Takeout export is ~250MB, and lifting
+  // proxyClientMaxBodySize that high would make every middleware-matched route
+  // buffer a quarter-gigabyte body to serve one importer. It escapes instead — the
+  // route is excluded from the middleware matcher, so no body clone (and no
+  // truncation) happens on that path.
+  //
+  // That exclusion is load-bearing and invisible: delete it and nothing fails to
+  // compile, no test that existed before this one goes red, and the handler's 1 GiB
+  // cap quietly becomes a false promise — Next truncates the body to the cap
+  // (it warns rather than rejecting), the ZIP's end-of-central-directory record
+  // goes with the tail, and a real import 500s with "Not a valid ZIP archive".
+  // That is exactly the "silently reintroduced" failure this file exists to catch,
+  // so the exemption is pinned here beside the caps it opts out of.
+  describe("Fitbit Takeout import escapes the transport cap (#1571)", () => {
+    const ROUTE = "app/api/integrations/fitbit-takeout/import/route.ts";
+    const MATCHER_PATH = "api/integrations/fitbit-takeout/import";
+    const middleware = fs.readFileSync(
+      path.join(REPO, "middleware.ts"),
+      "utf8"
+    );
+
+    it("the route is excluded from the middleware matcher", () => {
+      const m = /matcher:\s*\[([\s\S]*?)\]/.exec(middleware);
+      expect(m, "middleware.ts is missing a matcher").toBeTruthy();
+      expect(
+        m![1],
+        `middleware's matcher must exclude ${MATCHER_PATH} — otherwise Next clones ` +
+          `and truncates the archive body at proxyClientMaxBodySize and the import 500s`
+      ).toContain(MATCHER_PATH);
+    });
+
+    it("the excluded path still names a real route handler", () => {
+      // A matcher exclusion is a string, so a moved/renamed route would leave the
+      // exclusion pointing at nothing AND put the live route back under the cap —
+      // silently, since neither half is a compile error.
+      expect(
+        fs.existsSync(path.join(REPO, ROUTE)),
+        `${ROUTE} moved — update the middleware matcher exclusion to match`
+      ).toBe(true);
+    });
+
+    it("the handler enforces its own cap, since the transport one no longer applies", () => {
+      const source = fs.readFileSync(path.join(REPO, ROUTE), "utf8");
+      expect(source).toMatch(/DEFAULT_MAX_TAKEOUT_BYTES\s*=/);
+      expect(source).toContain("resolveMaxTakeoutBytes");
+    });
+  });
 });
