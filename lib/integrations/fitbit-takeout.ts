@@ -41,10 +41,10 @@ export const TAKEOUT_HEALTH_ROOT = "Takeout/Google Health/";
 // double-counts, so exactly one wins — and it is the CSV, for two reasons that are
 // not stylistic:
 //
-//   • TIMEZONE. The CSVs stamp `2026-06-10T16:39:00Z` — absolute, unambiguous. The
-//     JSON stamps `06/10/26 16:39:00` — US-ordered LOCAL wall time with no offset,
-//     so it can only be resolved against an assumed zone, and is silently wrong for
-//     any day the user spent in another one.
+//   • EXPLICITNESS. The CSVs stamp `2026-06-10T16:39:00Z` — absolute and marked. The
+//     JSON stamps `06/10/26 16:39:00`, which is the SAME instant in UTC but carries
+//     no marker saying so, and reads naturally (and wrongly) as local wall time. See
+//     parseUsUtcStamp for how that misreading was caught.
 //   • PROVENANCE. Only the CSVs carry a `data source` column, which is what makes
 //     the Health-Connect round-trip below detectable at all.
 //
@@ -837,6 +837,16 @@ export function parseSleepJson(text: string): TakeoutParsed {
       end_time: end,
       value: total,
     });
+    // The stage breakdown comes ONLY from a stage-scored log. A `classic` log — an
+    // older tracker, or any session Fitbit did not stage-score, which in practice is
+    // every nap — carries a summary in a DIFFERENT vocabulary: restless / awake /
+    // asleep, not deep / light / rem / wake. Mapping it by shared key name takes
+    // `awake` and silently drops `restless` and `asleep`, so a day with a classic nap
+    // gained awake minutes with no other stage behind them and its breakdown stopped
+    // summing to its own total — the same invariant #1562 restored on the Health
+    // Connect path, broken from the other direction. The total is still taken above;
+    // only the incomparable breakdown is refused.
+    if (log.type !== "stages") continue;
     const levels = log.levels as Record<string, unknown> | undefined;
     const summary = levels?.summary as
       Record<string, { minutes?: unknown }> | undefined;
@@ -903,20 +913,56 @@ export function fitbitDistanceKm(
 
 // `MM/DD/YY HH:MM:SS` — US-ordered local wall time, the only form the JSON families
 // use. Returns the calendar date and the "HH:MM" clock, both verbatim: this is the
-// device's local time already, and re-interpreting it through a zone would move it.
-export function parseUsLocalStamp(
-  s: string | undefined
+// "HH:MM" <-> minutes-of-day. The activity clock fields are wall times, not
+// instants, so an end past midnight wraps rather than rolling a date — matching how
+// the Health Connect path derives its own end clock.
+export function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+export function minutesToHhmm(total: number): string {
+  const t = ((total % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
+// `MM/DD/YY HH:MM:SS` — US-ordered, and in UTC despite carrying no marker.
+// Converted through the profile zone to the local date and "HH:MM" clock.
+//
+// The archive uses TWO timestamp conventions and they disagree, which is worth
+// stating because guessing wrong is silent:
+//
+//   `06/13/26 13:05:01`        (US, space-separated)  -> UTC
+//   `2026-07-25T23:14:30.000`  (ISO-ish, T-separated) -> LOCAL wall time
+//
+// Proven, not inferred. The same step record appears in both encodings — the JSON's
+// `06/10/26 16:39:00` value 34 is the CSV's `2026-06-10T16:39:00Z,34,Radiance` — so
+// the US form carries the same clock as an explicitly-Z timestamp. Independently,
+// exercise logs read as local were landing every ride exactly 4 hours (this
+// profile's offset) after the same ride recorded by Strava. The T-separated form is
+// the opposite: a sleep session's 23:14:30 matches the 23:23 LOCAL onset Health
+// Connect reports for that night, so it is already local and must NOT be converted.
+//
+// Reading the US form as local put activities 4 hours out and, worse, on the wrong
+// DAY whenever an evening session fell after UTC midnight — a 21:07 local swim is
+// stamped `06/15/26 01:07:21` and was filed under the 15th.
+export function parseUsUtcStamp(
+  s: string | undefined,
+  tz: string
 ): { date: string; hhmm: string } | null {
   if (!s) return null;
   const m = s
     .trim()
     .match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return null;
-  const [, mm, dd, yy, hh, mi] = m;
-  return { date: `20${yy}-${mm}-${dd}`, hhmm: `${hh}:${mi}` };
+  const [, mm, dd, yy, hh, mi, ss] = m;
+  const d = new Date(`20${yy}-${mm}-${dd}T${hh}:${mi}:${ss ?? "00"}Z`);
+  if (Number.isNaN(d.getTime()) || !inTimeWindow(d.getTime())) return null;
+  const parts = zonedDateParts(tz, d);
+  return { date: parts.date, hhmm: parts.hhmm };
 }
 
-export function parseExerciseJson(text: string): TakeoutParsed {
+export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
   const out = emptyTakeoutParsed();
   let logs: unknown;
   try {
@@ -932,8 +978,9 @@ export function parseExerciseJson(text: string): TakeoutParsed {
       continue;
     }
     const log = raw as Record<string, unknown>;
-    const stamp = parseUsLocalStamp(
-      typeof log.startTime === "string" ? log.startTime : undefined
+    const stamp = parseUsUtcStamp(
+      typeof log.startTime === "string" ? log.startTime : undefined,
+      tz
     );
     const logId = log.logId;
     if (!stamp || (typeof logId !== "number" && typeof logId !== "string")) {
@@ -951,15 +998,14 @@ export function parseExerciseJson(text: string): TakeoutParsed {
         : typeof log.duration === "number"
           ? log.duration
           : null;
+    const durationMin =
+      ms != null ? boundedOrNull("duration_min", Math.round(ms / 60000)) : null;
     out.activities.push({
       external_id: `${FITBIT_TAKEOUT_ID}:${logId}`,
       date: stamp.date,
       type: CARDIO_HINTS.some((h) => norm.includes(h)) ? "cardio" : "sport",
       title: name,
-      duration_min:
-        ms != null
-          ? boundedOrNull("duration_min", Math.round(ms / 60000))
-          : null,
+      duration_min: durationMin,
       distance_km: boundedOrNull(
         "distance_km",
         fitbitDistanceKm(
@@ -968,7 +1014,17 @@ export function parseExerciseJson(text: string): TakeoutParsed {
         )
       ),
       start_time: stamp.hhmm,
-      end_time: null,
+      // DERIVED from start + duration, not left null. The archive gives both, and the
+      // end clock is what lets the import-review duplicate detector use its
+      // high-confidence OVERLAPPING-WINDOW path: a Takeout export re-exports rides
+      // Strava also recorded, so the same session lands twice under two providers and
+      // double-counts in training totals. Without an end there is no window to
+      // overlap, and detection falls back to the 10% duration/distance proximity
+      // rule — which misses a ride whose distance one side didn't record at all
+      // (measured: three real Strava/Takeout duplicate rides went undetected).
+      // Wraps past midnight the same way the Health Connect path does, since this is
+      // a wall clock rather than a date.
+      end_time: minutesToHhmm(hhmmToMinutes(stamp.hhmm) + (durationMin ?? 0)),
       avg_hr:
         typeof log.averageHeartRate === "number"
           ? boundedOrNull("heart_rate_bpm", log.averageHeartRate)

@@ -139,7 +139,7 @@ function parseFamily(
     case "sleep":
       return parseSleepJson(text);
     case "exercise":
-      return parseExerciseJson(text);
+      return parseExerciseJson(text, tz);
     case "computed_temperature":
       return parseComputedTemperatureCsv(text, tz);
     // Classified but deliberately not parsed, so the walk reports the file honestly

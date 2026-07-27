@@ -11,6 +11,10 @@ import {
   parseDailyVitalCsv,
   parseVendorScoreCsv,
   parseComputedTemperatureCsv,
+  parseExerciseJson,
+  parseSleepJson,
+  hhmmToMinutes,
+  minutesToHhmm,
   parseHeartRateCsv,
   parseIntradaySumCsv,
   foldHrBuckets,
@@ -682,5 +686,140 @@ describe("daily aggregates are dated by their LABEL, not by conversion", () => {
         TZ
       ).bodyMetrics[0].date
     ).toBe("2026-07-25");
+  });
+});
+
+describe("the archive's TWO timestamp conventions", () => {
+  // Getting this backwards is silent, so both halves are pinned.
+  it("reads a US-ordered exercise stamp as UTC, converting to the local day", () => {
+    // 01:07 UTC is 21:07 the PREVIOUS evening in New York. Read as local it was
+    // filed under the 15th — four hours out and on the wrong day.
+    const out = parseExerciseJson(
+      JSON.stringify([
+        {
+          logId: 77411312255,
+          activityName: "Swim",
+          startTime: "06/15/26 01:07:21",
+          activeDuration: 1024000,
+        },
+      ]),
+      TZ
+    );
+    expect(out.activities[0].date).toBe("2026-06-14");
+    expect(out.activities[0].start_time).toBe("21:07");
+  });
+
+  it("derives an end clock from start + duration, wrapping past midnight", () => {
+    const out = parseExerciseJson(
+      JSON.stringify([
+        {
+          logId: 1,
+          activityName: "Outdoor Bike",
+          startTime: "06/13/26 13:05:01",
+          activeDuration: 125 * 60000,
+        },
+      ]),
+      TZ
+    );
+    // 13:05 UTC -> 09:05 local, + 125 min -> 11:10. Without an end there is no
+    // window for the duplicate detector's high-confidence overlap path.
+    expect(out.activities[0].start_time).toBe("09:05");
+    expect(out.activities[0].end_time).toBe("11:10");
+  });
+
+  it("leaves a T-separated SLEEP stamp alone — that one really is local", () => {
+    // 23:14:30 matches the 23:23 LOCAL onset Health Connect reports for the same
+    // night. Converting it would move a night's sleep to the wrong day.
+    const out = parseSleepJson(
+      JSON.stringify([
+        {
+          logId: 1,
+          dateOfSleep: "2026-07-26",
+          startTime: "2026-07-25T23:14:30.000",
+          endTime: "2026-07-26T06:11:30.000",
+          duration: 25020000,
+          levels: { summary: { deep: { minutes: 58 } } },
+        },
+      ])
+    );
+    const total = out.samples.find((x) => x.metric === "sleep_min")!;
+    expect(total.date).toBe("2026-07-26");
+    expect(total.start_time).toBe("2026-07-25T23:14:30.000");
+  });
+
+  it("wraps an end clock past midnight rather than rolling the date", () => {
+    expect(minutesToHhmm(hhmmToMinutes("23:30") + 90)).toBe("01:00");
+    expect(minutesToHhmm(hhmmToMinutes("09:05") + 125)).toBe("11:10");
+  });
+});
+
+describe("classic (unstaged) sleep logs", () => {
+  // Fitbit scores naps and older-tracker sessions as `classic`, whose summary uses
+  // restless / awake / asleep — a different vocabulary from deep / light / rem /
+  // wake. Mapping by shared key name would take `awake` and drop the other two.
+  const CLASSIC = JSON.stringify([
+    {
+      logId: 1,
+      dateOfSleep: "2026-06-13",
+      startTime: "2026-06-13T13:20:00.000",
+      endTime: "2026-06-13T14:34:00.000",
+      duration: 74 * 60000,
+      type: "classic",
+      mainSleep: false,
+      levels: {
+        summary: {
+          restless: { minutes: 12 },
+          awake: { minutes: 2 },
+          asleep: { minutes: 60 },
+        },
+      },
+    },
+  ]);
+
+  it("takes the TOTAL but refuses the incomparable breakdown", () => {
+    const out = parseSleepJson(CLASSIC);
+    expect(out.samples).toEqual([
+      {
+        metric: "sleep_min",
+        date: "2026-06-13",
+        start_time: "2026-06-13T13:20:00.000",
+        end_time: "2026-06-13T14:34:00.000",
+        value: 74,
+      },
+    ]);
+    // Specifically NOT an awake-only breakdown with nothing behind it.
+    expect(out.samples.some((x) => x.metric === "sleep_awake_min")).toBe(false);
+  });
+
+  it("still takes the full breakdown from a stage-scored log", () => {
+    const out = parseSleepJson(
+      JSON.stringify([
+        {
+          logId: 2,
+          dateOfSleep: "2026-07-26",
+          startTime: "2026-07-25T23:14:30.000",
+          endTime: "2026-07-26T06:11:30.000",
+          duration: 417 * 60000,
+          type: "stages",
+          levels: {
+            summary: {
+              deep: { minutes: 58 },
+              wake: { minutes: 91 },
+              light: { minutes: 245 },
+              rem: { minutes: 23 },
+            },
+          },
+        },
+      ])
+    );
+    const stages = out.samples.filter((x) => x.metric !== "sleep_min");
+    expect(stages.map((x) => x.metric).sort()).toEqual([
+      "sleep_awake_min",
+      "sleep_deep_min",
+      "sleep_light_min",
+      "sleep_rem_min",
+    ]);
+    // The breakdown sums to the session it belongs to.
+    expect(stages.reduce((a, x) => a + x.value, 0)).toBe(417);
   });
 });
