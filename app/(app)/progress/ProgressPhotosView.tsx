@@ -6,6 +6,7 @@ import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
 import DateField from "@/components/DateField";
+import { useConfirm } from "@/components/ConfirmDialog";
 import {
   filterBySeries,
   timelineOrder,
@@ -36,6 +37,7 @@ export default function ProgressPhotosView({
   autoCapture?: boolean;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [pose, setPose] = useState<ProgressPose>("front");
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
   const [view, setView] = useState<"grid" | "compare">("grid");
@@ -189,7 +191,14 @@ export default function ProgressPhotosView({
                   className="rounded-lg bg-rose-600/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600"
                   data-testid="photo-lightbox-delete"
                   onClick={async () => {
-                    if (!window.confirm("Delete this photo?")) return;
+                    const ok = await confirm({
+                      title: "Delete this photo?",
+                      message:
+                        "This progress photo will be permanently removed.",
+                      confirmLabel: "Delete photo",
+                      danger: true,
+                    });
+                    if (!ok) return;
                     const fd = new FormData();
                     fd.set("photo_id", String(photo.id));
                     const res = await deleteProgressPhoto(fd);

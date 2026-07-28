@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
 
 // Recovery gear + practice adherence on protocols (issue #344). Creates a protocol
@@ -32,10 +32,10 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
-  const form = main.getByTestId("protocol-form");
+  const form = page.getByTestId("protocol-form");
 
   await form.getByLabel("Name").fill(uniqueName);
-  await main.locator("#pr-start-new").fill(start);
+  await form.locator("#pr-start-new").fill(start);
   await page.keyboard.press("Escape"); // dismiss the date popover
 
   // Reference the seeded sauna and declare a sport 4×/week practice.
@@ -70,8 +70,20 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   await expect(card.getByTestId("protocol-usage")).toBeVisible();
 
   // Self-clean.
-  page.on("dialog", (d) => d.accept());
-  await detailMain.getByRole("button", { name: "Delete", exact: true }).click();
+  await hydratedClick(
+    page,
+    detailMain.getByRole("button", { name: "More protocol actions" })
+  );
+  await page
+    .getByRole("menu")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await settledClick(
+    page,
+    page
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "Delete protocol" })
+  );
   await page.waitForURL(/\/longevity(?:#|$)/);
   await expect(page.getByRole("main")).not.toContainText(uniqueName);
 });
@@ -101,10 +113,10 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
-  const form = main.getByTestId("protocol-form");
+  const form = page.getByTestId("protocol-form");
 
   await form.getByLabel("Name", { exact: true }).fill(uniqueName);
-  await main.locator("#pr-start-new").fill(start);
+  await form.locator("#pr-start-new").fill(start);
   await page.keyboard.press("Escape"); // dismiss the date popover
 
   // A 3–5×/week custom wellness practice (the CREATE-owned path).
@@ -143,7 +155,17 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
 
   // Ending makes the protocol historical, but correction controls remain available
   // (#1585; #1592 later removes only NEW-data affordances).
-  await settledClick(page, detailMain.getByRole("button", { name: "End now" }));
+  await hydratedClick(
+    page,
+    detailMain.getByRole("button", { name: "More protocol actions" })
+  );
+  await page.getByRole("menu").getByRole("button", { name: "End now" }).click();
+  await settledClick(
+    page,
+    page
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "End protocol" })
+  );
   await expect(detailMain.getByTestId("protocol-header")).not.toContainText(
     "ongoing"
   );
@@ -151,8 +173,20 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await expect(history.getByTestId("practice-session-delete")).toBeVisible();
 
   // Self-clean.
-  page.on("dialog", (d) => d.accept());
-  await detailMain.getByRole("button", { name: "Delete", exact: true }).click();
+  await hydratedClick(
+    page,
+    detailMain.getByRole("button", { name: "More protocol actions" })
+  );
+  await page
+    .getByRole("menu")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await settledClick(
+    page,
+    page
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "Delete protocol" })
+  );
   await page.waitForURL(/\/longevity(?:#|$)/);
   await expect(page.getByRole("main")).not.toContainText(uniqueName);
 });

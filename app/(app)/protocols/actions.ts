@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { db, today, writeTx } from "@/lib/db";
 import { requireWriteAccess } from "@/lib/auth";
 import { getActiveSituations, setActiveSituations } from "@/lib/settings";
@@ -13,11 +12,15 @@ import { parseScopedPractice } from "@/lib/protocol-practice";
 import { findPracticeTarget } from "@/lib/practice-store";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { createLogger } from "@/lib/log";
+import { protocolReopenEligibility } from "@/lib/protocol-reopen";
 
 const log = createLogger("protocols");
 
-type CreateProtocolResult =
+export type CreateProtocolResult =
   | { ok: true; redirectTo: `/protocols/${number}` }
+  | { ok: false; error: string };
+export type DeleteProtocolResult =
+  | { ok: true; redirectTo: "/longevity#protocols" }
   | { ok: false; error: string };
 
 function revalidateProtocols(id?: number) {
@@ -354,7 +357,120 @@ export async function endProtocol(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-export async function deleteProtocol(formData: FormData): Promise<FormResult> {
+export async function resumeProtocol(formData: FormData): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that protocol.");
+  const existing = getProtocol(profile.id, id);
+  if (!existing) return formError("Couldn't find that protocol.");
+  const eligibility = protocolReopenEligibility(
+    existing.end_date,
+    today(profile.id)
+  );
+  if (eligibility.kind !== "eligible") {
+    return formError(
+      eligibility.kind === "expired"
+        ? "This protocol is outside the resume window. Run it again instead."
+        : "This protocol can't be resumed."
+    );
+  }
+
+  db.prepare(
+    "UPDATE protocols SET end_date = NULL WHERE id = ? AND profile_id = ?"
+  ).run(id, profile.id);
+  if (existing.situation) activateSituation(profile.id, existing.situation);
+  revalidateProtocols(id);
+  return formOk();
+}
+
+export async function runProtocolAgain(
+  formData: FormData
+): Promise<CreateProtocolResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that protocol.");
+  const existing = getProtocol(profile.id, id);
+  if (!existing) return formError("Couldn't find that protocol.");
+  if (
+    protocolReopenEligibility(existing.end_date, today(profile.id)).kind !==
+    "expired"
+  ) {
+    return formError("Resume this protocol instead.");
+  }
+
+  const start = today(profile.id);
+  const protocolId = writeTx(() => {
+    let frequencyTargetId = existing.frequency_target_id;
+    let ownsFrequencyTarget = 0;
+
+    // An owned cadence belongs to one protocol run. Clone it so later edits or
+    // deletion of either run cannot mutate the other's historical setup.
+    if (existing.owns_frequency_target && frequencyTargetId != null) {
+      const target = db
+        .prepare(
+          `SELECT scope_kind, scope_value, per_week, per_week_max
+             FROM frequency_targets
+            WHERE id = ? AND profile_id = ?`
+        )
+        .get(frequencyTargetId, profile.id) as
+        | {
+            scope_kind: string;
+            scope_value: string;
+            per_week: number;
+            per_week_max: number | null;
+          }
+        | undefined;
+      if (target) {
+        const info = db
+          .prepare(
+            `INSERT INTO frequency_targets
+              (profile_id, scope_kind, scope_value, per_week, per_week_max)
+             VALUES (?, ?, ?, ?, ?)`
+          )
+          .run(
+            profile.id,
+            target.scope_kind,
+            target.scope_value,
+            target.per_week,
+            target.per_week_max
+          );
+        frequencyTargetId = Number(info.lastInsertRowid);
+        ownsFrequencyTarget = 1;
+      } else {
+        frequencyTargetId = null;
+      }
+    }
+
+    const info = db
+      .prepare(
+        `INSERT INTO protocols
+          (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
+           equipment_id, frequency_target_id, owns_frequency_target, intake_item_id)
+         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        profile.id,
+        existing.name,
+        start,
+        existing.notes,
+        JSON.stringify(existing.outcomeKeys),
+        existing.situation,
+        existing.equipment_id,
+        frequencyTargetId,
+        ownsFrequencyTarget,
+        existing.intake_item_id
+      );
+    if (existing.situation) activateSituation(profile.id, existing.situation);
+    return Number(info.lastInsertRowid);
+  });
+
+  revalidateProtocols();
+  return { ok: true, redirectTo: `/protocols/${protocolId}` };
+}
+
+export async function deleteProtocol(
+  formData: FormData
+): Promise<DeleteProtocolResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
@@ -375,5 +491,5 @@ export async function deleteProtocol(formData: FormData): Promise<FormResult> {
   if (existing.situation && existing.end_date == null)
     deactivateSituation(profile.id, existing.situation, id);
   revalidateProtocols();
-  redirect("/longevity#protocols");
+  return { ok: true, redirectTo: "/longevity#protocols" };
 }

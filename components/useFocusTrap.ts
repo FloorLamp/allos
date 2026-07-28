@@ -63,6 +63,18 @@ export function useFocusTrap({
       const panel = panelRef.current;
       if (!panel) return;
       if (e.key === "Escape") {
+        // A nested picker may own this Escape first (DateField's portaled
+        // calendar is the first tenant). The marker is present only while that
+        // child layer is open; its own key handler closes the child as the event
+        // continues down from this window-capture listener. A second Escape then
+        // reaches the parent modal normally.
+        const target = e.target;
+        if (
+          target instanceof Element &&
+          target.closest('[data-escape-layer="true"]')
+        ) {
+          return;
+        }
         e.stopPropagation();
         onCloseRef.current();
         return;

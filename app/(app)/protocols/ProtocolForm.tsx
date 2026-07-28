@@ -26,9 +26,14 @@ import {
 } from "@/lib/protocol-templates";
 import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
 
-type ProtocolFormResult =
+export type ProtocolFormResult =
   | { ok: true; redirectTo?: `/protocols/${number}` }
   | { ok: false; error: string };
+
+// One geometry for both creation and edit. Wide enough for the outcome picker,
+// but deliberately below the app shell's largest work-surface modal.
+export const PROTOCOL_MODAL_CLASS =
+  "w-full max-w-4xl rounded-xl bg-white p-4 shadow-xl outline-none sm:p-6 dark:bg-ink-900";
 
 const PRACTICE_TYPE_LABELS: Record<string, string> = {
   strength: "Strength",
@@ -59,16 +64,7 @@ function practiceDefaults(
 // body/index metrics + the profile's tracked and derived biomarkers).
 // `equipment` powers the optional recovery-gear reference; `practice` seeds the
 // optional adherence practice (activity type × N/week) in edit mode (issue #344).
-export default function ProtocolForm({
-  action,
-  options,
-  equipment,
-  intakeItems,
-  protocol,
-  practice = null,
-  template = null,
-  onDone,
-}: {
+export interface ProtocolFormProps {
   action: (formData: FormData) => Promise<ProtocolFormResult>;
   options: OutcomeOption[];
   equipment: Equipment[];
@@ -82,7 +78,18 @@ export default function ProtocolForm({
   // everything before saving — a template never creates a protocol on its own.
   template?: ProtocolTemplate | null;
   onDone?: () => void;
-}) {
+}
+
+export default function ProtocolForm({
+  action,
+  options,
+  equipment,
+  intakeItems,
+  protocol,
+  practice = null,
+  template = null,
+  onDone,
+}: ProtocolFormProps) {
   const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
@@ -90,7 +97,6 @@ export default function ProtocolForm({
   const initialTemplate = editing ? null : template;
   const initialPractice = practiceDefaults(practice, initialTemplate);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(editing || initialTemplate != null);
   const [templateId, setTemplateId] = useState(initialTemplate?.id ?? "");
   const [selectedKeys, setSelectedKeys] = useState(() => {
     const available = new Set(options.map((option) => option.key));
@@ -168,38 +174,19 @@ export default function ProtocolForm({
     if (!editing) {
       formRef.current?.reset();
       selectTemplate("");
-      setExpanded(false);
     }
     onDone?.();
     router.refresh();
   }
 
   const uid = protocol?.id ?? "new";
-  if (!editing && !expanded) {
-    return (
-      <button
-        type="button"
-        className="btn w-full"
-        onClick={() => setExpanded(true)}
-        data-testid="new-protocol-toggle"
-      >
-        + New protocol
-      </button>
-    );
-  }
-
   return (
     <form
       ref={formRef}
       action={handle}
-      className="card space-y-3"
+      className="mt-4 space-y-4"
       data-testid="protocol-form"
     >
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          New protocol
-        </h2>
-      )}
       {editing && <input type="hidden" name="id" value={protocol!.id} />}
       {!editing && (
         <div>
@@ -452,7 +439,7 @@ export default function ProtocolForm({
             id={`pr-notes-${uid}`}
             name="notes"
             className="input"
-            rows={2}
+            rows={5}
             defaultValue={protocol?.notes ?? activeTemplate?.notes ?? ""}
           />
         </div>
@@ -466,21 +453,8 @@ export default function ProtocolForm({
         <SubmitButton className="btn w-full" pendingLabel="Saving…">
           {editing ? "Save" : "Create protocol"}
         </SubmitButton>
-        {editing && onDone && (
+        {onDone && (
           <button type="button" className="btn-ghost" onClick={onDone}>
-            Cancel
-          </button>
-        )}
-        {!editing && (
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => {
-              selectTemplate("");
-              formRef.current?.reset();
-              setExpanded(false);
-            }}
-          >
             Cancel
           </button>
         )}

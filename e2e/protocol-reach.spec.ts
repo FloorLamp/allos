@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink, settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
 
 // Protocol reach (issue #660): chart annotations, the active-protocol dashboard
@@ -18,11 +18,15 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
 
     // The add form offers the seeded Creatine supplement as an intervention.
     await main.getByTestId("new-protocol-toggle").click();
-    const select = main.getByTestId("protocol-intake-item");
+    const select = page.getByTestId("protocol-intake-item");
     await expect(select).toBeVisible();
     await expect(
       select.locator("option", { hasText: "Creatine Monohydrate" })
     ).toHaveCount(1);
+    await page
+      .getByRole("dialog", { name: "New protocol" })
+      .getByRole("button", { name: "Close" })
+      .click();
 
     // The seeded protocol's detail page shows the intervention link to the
     // supplement surface (Nutrition → Supplements).
@@ -64,9 +68,9 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
     await main.getByTestId("new-protocol-toggle").click();
-    const form = main.getByTestId("protocol-form");
+    const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
-    await main.locator("#pr-start-new").fill(start);
+    await form.locator("#pr-start-new").fill(start);
     // Dismiss the DateField popover so it doesn't intercept the outcome picker.
     await page.keyboard.press("Escape");
     await form.getByLabel("Filter outcome metrics").fill("LDL Cholesterol");
@@ -89,12 +93,21 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
       page.getByRole("main").getByRole("button", { name: "Protocols" })
     ).toBeVisible();
 
-    // Self-clean: delete the protocol we created.
-    page.on("dialog", (d) => d.accept());
+    // Self-clean: delete the protocol we created through the app confirmation.
     await page.goto(protocolUrl);
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "More protocol actions" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
     await settledClick(
       page,
-      page.getByRole("main").getByRole("button", { name: "Delete" })
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete protocol" })
     );
     await page.waitForURL(/\/longevity(?:#|$)/);
     await expect(page.getByRole("main")).not.toContainText(uniqueName);

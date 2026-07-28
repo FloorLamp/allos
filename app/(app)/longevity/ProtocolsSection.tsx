@@ -9,9 +9,8 @@ import {
 } from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
-import ProtocolForm from "@/app/(app)/protocols/ProtocolForm";
+import ProtocolFormModal from "@/app/(app)/protocols/ProtocolFormModal";
 import ProtocolList from "@/app/(app)/protocols/ProtocolList";
-import ListRailLayout from "@/components/ListRailLayout";
 import { createProtocol } from "@/app/(app)/protocols/actions";
 import type { ProtocolTemplate } from "@/lib/protocol-templates";
 
@@ -62,43 +61,39 @@ export default async function ProtocolsSection({
             </p>
           </div>
         </div>
-        <Link
-          href="/wellness"
-          className="btn-ghost btn-sm"
-          data-testid="longevity-wellness-link"
-        >
-          <IconSparkles className="h-4 w-4" aria-hidden />
-          Wellness practices
-        </Link>
-      </div>
-
-      <ListRailLayout
-        rail={
-          <div className="space-y-2">
-            <ProtocolForm
-              // A legacy ?template= navigation remounts the form. In-form template
-              // changes use ProtocolForm's keyed field seed instead.
-              key={template?.id ?? "blank"}
-              action={createProtocol}
-              options={options}
-              equipment={equipment}
-              intakeItems={intakeItems}
-              template={template}
-            />
-            <p className="px-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              Results are descriptive: the shift and sample size in each window,
-              without invented certainty.
-            </p>
-          </div>
-        }
-      >
-        <div className="rounded-xl border border-black/5 bg-white/25 p-2 dark:border-white/5 dark:bg-white/[0.02]">
-          <ProtocolList
-            items={protocols}
-            formatPrefs={getDisplayFormatPrefs(login.id)}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/wellness"
+            className="btn-ghost btn-sm"
+            data-testid="longevity-wellness-link"
+          >
+            <IconSparkles className="h-4 w-4" aria-hidden />
+            Wellness practices
+          </Link>
+          <ProtocolFormModal
+            // A legacy ?template= navigation remounts the modal and opens it with
+            // the linked template. In-form template changes use ProtocolForm's
+            // keyed field seed instead.
+            key={template?.id ?? "blank"}
+            action={createProtocol}
+            options={options}
+            equipment={equipment}
+            intakeItems={intakeItems}
+            template={template}
           />
         </div>
-      </ListRailLayout>
+      </div>
+
+      <div className="rounded-xl border border-black/5 bg-white/25 p-2 dark:border-white/5 dark:bg-white/[0.02]">
+        <ProtocolList
+          items={protocols}
+          formatPrefs={getDisplayFormatPrefs(login.id)}
+        />
+      </div>
+      <p className="mt-2 px-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+        Results are descriptive: the shift and sample size in each window,
+        without invented certainty.
+      </p>
     </section>
   );
 }

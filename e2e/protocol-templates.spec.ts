@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import { expectNoClippedContent, hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
 
 test("protocol creation is collapsed and templates seed inside the form (#1500)", async ({
@@ -15,7 +15,11 @@ test("protocol creation is collapsed and templates seed inside the form (#1500)"
   await expect(toggle).toBeVisible();
   await toggle.click();
 
-  const form = main.getByTestId("protocol-form");
+  const dialog = page.getByRole("dialog", { name: "New protocol" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveClass(/max-w-4xl/);
+  const form = dialog.getByTestId("protocol-form");
+  await expect(form.getByLabel("Notes")).toHaveAttribute("rows", "5");
   const picker = form.getByTestId("protocol-template-picker");
   await picker.selectOption("sun-exposure");
   await expect(form.locator('input[name="name"]')).toHaveValue(
@@ -53,7 +57,7 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
   await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
-  const form = main.getByTestId("protocol-form");
+  const form = page.getByTestId("protocol-form");
   await form.getByLabel("Name").fill(uniqueName);
 
   const search = form.getByLabel("Filter outcome metrics");
@@ -84,7 +88,19 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
     detail.getByTestId("protocol-outcome-biomarker:Non-HDL Cholesterol")
   ).toBeVisible();
 
-  page.on("dialog", (dialog) => dialog.accept());
-  await detail.getByRole("button", { name: "Delete", exact: true }).click();
+  await hydratedClick(
+    page,
+    detail.getByRole("button", { name: "More protocol actions" })
+  );
+  await page
+    .getByRole("menu")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await settledClick(
+    page,
+    page
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "Delete protocol" })
+  );
   await page.waitForURL(/\/longevity(?:#|$)/);
 });

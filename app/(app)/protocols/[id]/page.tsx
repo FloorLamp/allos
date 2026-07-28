@@ -26,7 +26,13 @@ import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import LogPracticeButton from "../LogPracticeButton";
 import PracticeSessionHistory from "@/app/(app)/wellness/PracticeSessionHistory";
-import { updateProtocol, endProtocol, deleteProtocol } from "../actions";
+import {
+  updateProtocol,
+  endProtocol,
+  resumeProtocol,
+  runProtocolAgain,
+  deleteProtocol,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -102,22 +108,27 @@ export default async function ProtocolDetailPage(props: {
         protocols
       </Link>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-1">
-          <ProtocolControls
-            protocol={protocol}
-            options={options}
-            equipment={equipment}
-            intakeItems={intakeItems}
-            practice={practice}
-            updateAction={updateProtocol}
-            endAction={endProtocol}
-            deleteAction={deleteProtocol}
-          />
+      <div className="space-y-6">
+        <ProtocolControls
+          protocol={protocol}
+          options={options}
+          equipment={equipment}
+          intakeItems={intakeItems}
+          practice={practice}
+          updateAction={updateProtocol}
+          endAction={endProtocol}
+          resumeAction={resumeProtocol}
+          runAgainAction={runProtocolAgain}
+          deleteAction={deleteProtocol}
+          asOf={todayStr}
+        />
 
+        <div
+          className={`grid gap-6 ${hasPracticeCard ? "lg:grid-cols-3" : ""}`}
+        >
           {hasPracticeCard && (
             <div
-              className="card space-y-3"
+              className="card min-w-0 space-y-3 lg:col-span-1"
               data-testid="protocol-practice-card"
             >
               <h2 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -227,9 +238,9 @@ export default async function ProtocolDetailPage(props: {
               </div>
             </div>
           )}
-        </div>
-        <div className="min-w-0 lg:col-span-2">
-          <ProtocolCompare comparison={comparison} />
+          <div className={`min-w-0 ${hasPracticeCard ? "lg:col-span-2" : ""}`}>
+            <ProtocolCompare comparison={comparison} />
+          </div>
         </div>
       </div>
     </div>
