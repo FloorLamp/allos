@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { settledCheck } from "./helpers";
+import { settledCheckSave } from "./helpers";
 import {
   E2E_LOGIN_HH_ROUND,
   E2E_MEMBER_PASSWORD,
@@ -50,13 +50,13 @@ test.describe("Household dose round settings", () => {
       // and is idempotent, so this drives to a known state without assuming the
       // entry one — a --repeat-each run re-enters with the previous run's writes.
       const enable = card.getByTestId("household-round-enabled");
-      await settledCheck(member, enable, true);
+      await settledCheckSave(member, enable, true, card);
 
       const wardBox = members
         .getByRole("checkbox")
         .and(members.locator("input:not([disabled])"))
         .first(); // first-ok: this spec's DEDICATED fixture offers exactly one member
-      await settledCheck(member, wardBox, true);
+      await settledCheckSave(member, wardBox, true, card);
 
       // Reload: the toggle and the tick came back from SQLite, not local state.
       await member.reload();
@@ -75,10 +75,11 @@ test.describe("Household dose round settings", () => {
       // actually landed before this page closes, which is also what leaves the
       // fixture unsubscribed for the next run (an autosave awaited only in the
       // browser can lose its POST to the close).
-      await settledCheck(
+      await settledCheckSave(
         member,
         reloaded.getByTestId("household-round-enabled"),
-        false
+        false,
+        reloaded
       );
       await member.reload();
       await expect(
