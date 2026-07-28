@@ -71,6 +71,7 @@ export default function FoodLogBar({
   groupsBySlot,
   excludedGroups,
   slot,
+  initialFoodGroup,
   nutrientSummaryByDate = [],
   proteinQuickAdd,
 }: {
@@ -87,6 +88,10 @@ export default function FoodLogBar({
   // computation that ranked `groups`, so the chip and the order agree. Shown as a
   // small label so the slot-aware ordering is legible ("why is fish first right now").
   slot: FoodSlot;
+  // Optional protocol-owned group (#1584). It is promoted into the quick rows
+  // for this mount so opening "Log servings" lands on the intended existing
+  // write control without inventing another food-log path.
+  initialFoodGroup?: string;
   // Mobile-only compact feedback for each bounded date, placed between the meal
   // context and its add controls. Kept as server-rendered slots so this client island
   // continues to own only logging state while an older date gets its own nutrients.
@@ -201,11 +206,21 @@ export default function FoodLogBar({
       })
     ) as Record<FoodSlot, Set<string>>;
   }
-  const quickGroups = orderedGroups.filter((g) =>
-    quickSlugs.current![activeSlot].has(g.slug)
-  );
+  const initialGroup = initialFoodGroup
+    ? orderedGroups.find((group) => group.slug === initialFoodGroup)
+    : undefined;
+  const quickGroups = [
+    ...(initialGroup ? [initialGroup] : []),
+    ...orderedGroups.filter(
+      (group) =>
+        group.slug !== initialGroup?.slug &&
+        quickSlugs.current![activeSlot].has(group.slug)
+    ),
+  ];
   const moreGroups = orderedGroups.filter(
-    (g) => !quickSlugs.current![activeSlot].has(g.slug)
+    (group) =>
+      group.slug !== initialGroup?.slug &&
+      !quickSlugs.current![activeSlot].has(group.slug)
   );
 
   // Set one slug's daily count, leaving every other day untouched.
@@ -311,6 +326,7 @@ export default function FoodLogBar({
           <li
             key={g.slug}
             data-testid={`food-group-${g.slug}`}
+            data-prefilled={g.slug === initialGroup?.slug ? "true" : undefined}
             className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2 dark:border-white/10 dark:bg-ink-900"
           >
             <FoodGroupIcon

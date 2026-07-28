@@ -33,6 +33,7 @@ export default function CustomTypeChips({
           key={t}
           type="button"
           onClick={() => onPick(t)}
+          aria-pressed={activeType === t}
           className={chipCls(activeType === t)}
         >
           {titleCase(t)}

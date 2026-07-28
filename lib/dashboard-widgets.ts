@@ -94,6 +94,24 @@ export function capDashboardList<T>(
   return { shown: items.slice(0, n), overflow: items.slice(n) };
 }
 
+// Actionable protocol rows can never disappear behind the compact widget cap
+// (#1584). Render every row with a pending log action, then use any remaining
+// standard-cap slots for informational protocols. Overflow therefore contains
+// informational rows only.
+export function capActionableDashboardList<T>(
+  items: readonly T[],
+  cap: number,
+  isActionable: (item: T) => boolean
+): { shown: T[]; overflow: T[] } {
+  const actionable = items.filter(isActionable);
+  const informational = items.filter((item) => !isActionable(item));
+  const informationalSlots = Math.max(0, Math.trunc(cap) - actionable.length);
+  return {
+    shown: [...actionable, ...informational.slice(0, informationalSlots)],
+    overflow: informational.slice(informationalSlots),
+  };
+}
+
 // The dashboard shows only a compact weekly-habit subset. Rank the WHOLE open
 // set before applying the limit so creation order cannot hide a less-complete
 // habit behind one that is nearly done. Kept pure for direct regression coverage.

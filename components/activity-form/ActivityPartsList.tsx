@@ -248,9 +248,9 @@ export default function ActivityPartsList({
 
               {/* Chips sit outside the `valid` gates: a typeless custom part
                   renders neither block, and the chips are what unblock it. */}
-              {p.custom && p.name.trim() !== "" && (
+              {p.custom && (p.name.trim() !== "" || p.customType !== null) && (
                 <CustomTypeChips
-                  activeType={t}
+                  activeType={p.customType}
                   fault={issue}
                   onPick={(ct) =>
                     onUpdatePart(pi, { custom: true, customType: ct })

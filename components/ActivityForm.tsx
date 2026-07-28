@@ -273,6 +273,15 @@ export default function ActivityForm({
     equipmentList,
     isKnown,
     customFlags,
+    // A protocol's type-scoped action opens a deliberately blank create seed.
+    // Keep that type as the fallback when the user commits an unknown custom
+    // activity name; recognizable names still use their inferred catalog type.
+    defaultCustomType:
+      prefill?.title === "" &&
+      !prefill.components &&
+      (prefill.type === "cardio" || prefill.type === "sport")
+        ? prefill.type
+        : null,
     // A set check-off starts the live-mode rest timer (#340) and fires a short haptic
     // tick (#1422) — the phone-in-pocket confirmation that the set registered, distinct
     // from the rest timer's end-of-rest double-pulse. Live mode only: the tick means

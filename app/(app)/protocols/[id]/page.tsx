@@ -24,7 +24,7 @@ import { getPracticeDayCount, getPracticeSessions } from "@/lib/practice-log";
 import { previousPracticeDuration } from "@/lib/practice";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
-import LogPracticeButton from "../LogPracticeButton";
+import ProtocolLogButton from "../ProtocolLogButton";
 import PracticeSessionHistory from "@/app/(app)/wellness/PracticeSessionHistory";
 import {
   updateProtocol,
@@ -97,6 +97,7 @@ export default async function ProtocolDetailPage(props: {
         )
       : null;
   const hasPracticeCard = !!gear || !!practice || !!intakeItem;
+  const ongoing = protocol.end_date == null;
 
   return (
     <div>
@@ -177,7 +178,7 @@ export default async function ProtocolDetailPage(props: {
                 </div>
               )}
 
-              {practice && (
+              {practice && ongoing && (
                 <div>
                   <div className="section-label">Adherence this week</div>
                   <div
@@ -206,16 +207,15 @@ export default async function ProtocolDetailPage(props: {
                       </span>
                     )}
                   </div>
-                  {practice.scopeKind === "practice" && (
-                    <LogPracticeButton
-                      practice={practice.value}
-                      todayCount={practiceTodayCount}
-                      atCeiling={adherence?.atCeiling ?? false}
-                      today={todayStr}
-                      defaultDurationMin={previousDurationMin}
-                      showDetails
-                    />
-                  )}
+                  <ProtocolLogButton
+                    practice={practice}
+                    ongoing={ongoing}
+                    todayCount={practiceTodayCount}
+                    atCeiling={adherence?.atCeiling ?? false}
+                    today={todayStr}
+                    defaultDurationMin={previousDurationMin}
+                    showDetails
+                  />
                 </div>
               )}
 

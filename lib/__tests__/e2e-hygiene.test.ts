@@ -207,7 +207,6 @@ const WALL_CLOCK_ALLOW: Record<string, number> = {
   "offline-queue.spec.ts": 2,
   "prn-redose-interval-only.spec.ts": 1,
   "prn-redose.spec.ts": 1,
-  "protocol-practice.spec.ts": 3,
   "protocol-reach.spec.ts": 1,
   "protocols.spec.ts": 1,
   "rpe-logging.spec.ts": 1,
