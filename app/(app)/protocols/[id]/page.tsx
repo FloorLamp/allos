@@ -26,7 +26,13 @@ import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import LogPracticeButton from "../LogPracticeButton";
 import PracticeSessionHistory from "@/app/(app)/wellness/PracticeSessionHistory";
-import { updateProtocol, endProtocol, deleteProtocol } from "../actions";
+import {
+  updateProtocol,
+  endProtocol,
+  resumeProtocol,
+  runProtocolAgain,
+  deleteProtocol,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +118,10 @@ export default async function ProtocolDetailPage(props: {
             practice={practice}
             updateAction={updateProtocol}
             endAction={endProtocol}
+            resumeAction={resumeProtocol}
+            runAgainAction={runProtocolAgain}
             deleteAction={deleteProtocol}
+            asOf={todayStr}
           />
 
           {hasPracticeCard && (

@@ -205,11 +205,16 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     await expect(page.getByTestId("photo-timeline-overlay")).toBeVisible();
     await expect(page.getByTestId("photo-timeline-side")).toHaveCount(0);
 
-    // Delete from the lightbox (confirm dialog accepted) → one photo remains.
+    // Delete from the lightbox through the app confirmation → one photo remains.
     await page.getByTestId("progress-view-grid").click();
     await items.nth(0).click();
-    page.once("dialog", (d) => void d.accept());
-    await settledClick(page, page.getByTestId("photo-lightbox-delete"));
+    await page.getByTestId("photo-lightbox-delete").click();
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete photo" })
+    );
     await expect(items).toHaveCount(1);
   } finally {
     await page.context().close();

@@ -3,8 +3,7 @@
 // Covers create (outcome-key set stored as JSON + situation activation), end
 // (sets end_date + inverts the situation activation), delete (row + side-state),
 // and profile scoping. create returns its detail destination to the client (so
-// production creation does not depend on a thrown redirect sentinel); redirect()
-// is mocked to a no-op for delete.
+// production create/delete navigation does not depend on thrown redirect sentinels.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -13,6 +12,8 @@ import {
   createProtocol,
   updateProtocol,
   endProtocol,
+  resumeProtocol,
+  runProtocolAgain,
   deleteProtocol,
 } from "@/app/(app)/protocols/actions";
 import { getProtocols, getFrequencyTargets } from "@/lib/queries";
@@ -41,6 +42,7 @@ function protocolForm(fields: {
   intake_item_id?: number | "";
   practice_type?: string;
   practice_per_week?: number | string;
+  practice_per_week_max?: number | string;
 }): FormData {
   const form = new FormData();
   if (fields.id != null) form.set("id", String(fields.id));
@@ -58,6 +60,8 @@ function protocolForm(fields: {
     form.set("practice_type", fields.practice_type);
   if (fields.practice_per_week != null)
     form.set("practice_per_week", String(fields.practice_per_week));
+  if (fields.practice_per_week_max != null)
+    form.set("practice_per_week_max", String(fields.practice_per_week_max));
   return form;
 }
 
@@ -164,6 +168,74 @@ describe("endProtocol", () => {
     const after = getProtocols(profile.id)[0];
     expect(after.end_date).not.toBeNull();
     expect(getActiveSituations(profile.id)).not.toContain("Sauna block");
+  });
+});
+
+describe("protocol restart lifecycle", () => {
+  it("resumes a recently ended protocol in place and reactivates its situation", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Sauna block",
+        start_date: "2026-05-01",
+        situation: "Sauna block",
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+
+    await endProtocol(protocolForm({ id: original.id }));
+    expect(getActiveSituations(profile.id)).not.toContain("Sauna block");
+
+    expect(await resumeProtocol(protocolForm({ id: original.id }))).toEqual({
+      ok: true,
+    });
+    const resumed = getProtocols(profile.id)[0];
+    expect(resumed.id).toBe(original.id);
+    expect(resumed.end_date).toBeNull();
+    expect(getActiveSituations(profile.id)).toContain("Sauna block");
+  });
+
+  it("starts an expired protocol as a new run and preserves its history", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Red light block",
+        start_date: "1999-12-01",
+        end_date: "2000-01-01",
+        notes: "Morning sessions",
+        situation: "Recovery block",
+        outcome_keys: ["metric:weight"],
+        practice_type: "cardio",
+        practice_per_week: 3,
+        practice_per_week_max: 5,
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+    const originalTargetId = original.frequency_target_id;
+
+    const result = await runProtocolAgain(protocolForm({ id: original.id }));
+    expect(result).toMatchObject({
+      ok: true,
+      redirectTo: expect.stringMatching(/^\/protocols\/\d+$/),
+    });
+
+    const rows = getProtocols(profile.id);
+    expect(rows).toHaveLength(2);
+    const historical = rows.find((row) => row.id === original.id)!;
+    const restarted = rows.find((row) => row.id !== original.id)!;
+    expect(historical.end_date).toBe("2000-01-01");
+    expect(restarted).toMatchObject({
+      name: "Red light block",
+      end_date: null,
+      notes: "Morning sessions",
+      situation: "Recovery block",
+      outcomeKeys: ["metric:weight"],
+      owns_frequency_target: 1,
+    });
+    expect(restarted.start_date).not.toBe("1999-12-01");
+    expect(restarted.frequency_target_id).not.toBe(originalTargetId);
+    expect(getFrequencyTargets(profile.id)).toHaveLength(2);
+    expect(getActiveSituations(profile.id)).toContain("Recovery block");
   });
 });
 

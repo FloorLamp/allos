@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import { expectNoClippedContent, hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
 
 test("protocol creation is collapsed and templates seed inside the form (#1500)", async ({
@@ -84,7 +84,19 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
     detail.getByTestId("protocol-outcome-biomarker:Non-HDL Cholesterol")
   ).toBeVisible();
 
-  page.on("dialog", (dialog) => dialog.accept());
-  await detail.getByRole("button", { name: "Delete", exact: true }).click();
+  await hydratedClick(
+    page,
+    detail.getByRole("button", { name: "More protocol actions" })
+  );
+  await page
+    .getByRole("menu")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await settledClick(
+    page,
+    page
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "Delete protocol" })
+  );
   await page.waitForURL(/\/longevity(?:#|$)/);
 });

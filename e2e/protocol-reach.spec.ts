@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink, settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
 
 // Protocol reach (issue #660): chart annotations, the active-protocol dashboard
@@ -89,12 +89,21 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
       page.getByRole("main").getByRole("button", { name: "Protocols" })
     ).toBeVisible();
 
-    // Self-clean: delete the protocol we created.
-    page.on("dialog", (d) => d.accept());
+    // Self-clean: delete the protocol we created through the app confirmation.
     await page.goto(protocolUrl);
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "More protocol actions" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
     await settledClick(
       page,
-      page.getByRole("main").getByRole("button", { name: "Delete" })
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete protocol" })
     );
     await page.waitForURL(/\/longevity(?:#|$)/);
     await expect(page.getByRole("main")).not.toContainText(uniqueName);

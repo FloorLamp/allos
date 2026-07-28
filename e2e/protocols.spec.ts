@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { hydratedClick, settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
 // N-of-1 protocols + healthspan pillars (issue #161).
 //   1. Full create → compare flow: create a protocol with two body-metric outcomes
@@ -58,10 +59,125 @@ test.describe("protocols create → compare (issue #161)", () => {
       detailMain.getByTestId("protocol-outcome-metric:resting_hr")
     ).toBeVisible();
 
-    // Self-clean: delete it (confirm dialog) and confirm it drops off the list.
-    page.on("dialog", (d) => d.accept());
-    await detailMain.getByRole("button", { name: "Delete" }).click();
+    // End → Resume stays on the same protocol run inside the seven-day window.
+    await hydratedClick(
+      page,
+      detailMain.getByRole("button", { name: "More protocol actions" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("button", { name: "End now" })
+      .click();
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "End protocol" })
+    );
+    await expect(detailMain.getByTestId("protocol-header")).not.toContainText(
+      "ongoing"
+    );
+
+    await hydratedClick(
+      page,
+      detailMain.getByRole("button", { name: "More protocol actions" })
+    );
+    await settledClick(
+      page,
+      page.getByRole("menu").getByRole("button", { name: "Resume" })
+    );
+    await expect(detailMain.getByTestId("protocol-header")).toContainText(
+      "ongoing"
+    );
+
+    // Self-clean: delete it through the app confirmation.
+    await hydratedClick(
+      page,
+      detailMain.getByRole("button", { name: "More protocol actions" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete protocol" })
+    );
     await page.waitForURL(/\/longevity(?:#|$)/);
+    await expect(page.getByRole("main")).not.toContainText(uniqueName);
+  });
+
+  test("starts an expired protocol as a new run and preserves the old run", async ({
+    page,
+  }) => {
+    test.slow();
+    const uniqueName = `E2E Restart ${frozenNow().getTime()}`;
+    const end = new Date(frozenNow().getTime() - 20 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const start = new Date(frozenNow().getTime() - 50 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+
+    await page.goto("/longevity#protocols");
+    const main = page.getByRole("main");
+    await main.getByTestId("new-protocol-toggle").click();
+    const form = main.getByTestId("protocol-form");
+    await form.getByLabel("Name").fill(uniqueName);
+    await main.locator("#pr-start-new").fill(start);
+    await page.keyboard.press("Escape");
+    await main.locator("#pr-end-new").fill(end);
+    await page.keyboard.press("Escape");
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Create protocol" })
+    );
+    await page.waitForURL(/\/protocols\/\d+/);
+    const oldUrl = page.url();
+    const detailMain = page.getByRole("main");
+
+    await hydratedClick(
+      page,
+      detailMain.getByRole("button", { name: "More protocol actions" })
+    );
+    await settledClick(
+      page,
+      page.getByRole("menu").getByRole("button", { name: "Run again" })
+    );
+    await page.waitForURL((url) => url.href !== oldUrl);
+    const newUrl = page.url();
+    expect(newUrl).not.toBe(oldUrl);
+    await expect(detailMain.getByTestId("protocol-header")).toContainText(
+      "ongoing"
+    );
+
+    // The expired run remains addressable after the new run starts.
+    await page.goto(oldUrl);
+    await expect(detailMain.getByTestId("protocol-header")).not.toContainText(
+      "ongoing"
+    );
+
+    // Clean up both runs.
+    for (const url of [oldUrl, newUrl]) {
+      await page.goto(url);
+      await hydratedClick(
+        page,
+        detailMain.getByRole("button", { name: "More protocol actions" })
+      );
+      await page
+        .getByRole("menu")
+        .getByRole("button", { name: "Delete", exact: true })
+        .click();
+      await settledClick(
+        page,
+        page
+          .getByTestId("confirm-dialog")
+          .getByRole("button", { name: "Delete protocol" })
+      );
+      await page.waitForURL(/\/longevity(?:#|$)/);
+    }
     await expect(page.getByRole("main")).not.toContainText(uniqueName);
   });
 });
