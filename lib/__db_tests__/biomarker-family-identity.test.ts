@@ -395,7 +395,8 @@ describe("the A1c retest clock and interval key on the same identity (#1394/#139
     // Premise: the family's representative really is the eAG line, whose name the
     // curated dataset does not carry.
     const current = getMedicalRecords(p.profileId, { current: true }).filter(
-      (r) => biomarkerFamily(r.canonical_name ?? r.name) === "family:hemoglobin-a1c"
+      (r) =>
+        biomarkerFamily(r.canonical_name ?? r.name) === "family:hemoglobin-a1c"
     );
     expect(current).toHaveLength(1);
     expect(current[0].canonical_name).toBe("Estimated Average Glucose");

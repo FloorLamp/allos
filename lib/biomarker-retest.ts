@@ -61,7 +61,10 @@ export function retestDaysForBiomarker(
   if (!name) return null;
   const trimmed = name.trim();
   if (!trimmed) return null;
-  return RETEST_BY_IDENTITY.get(biomarkerRetestIdentity(trimmed).toLowerCase()) ?? null;
+  return (
+    RETEST_BY_IDENTITY.get(biomarkerRetestIdentity(trimmed).toLowerCase()) ??
+    null
+  );
 }
 
 // The retest-WORTHY families (issue #546): the RETEST-clock identity of every curated

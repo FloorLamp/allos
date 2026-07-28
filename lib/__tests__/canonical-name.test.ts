@@ -328,15 +328,17 @@ describe("biomarkerFamily (unified identity — #482)", () => {
       "Vitamin D3, 25-Hydroxy"
     );
     // A non-family analyte is its own anchor (trimmed), so this is a no-op for it.
-    expect(biomarkerFamilyAnchor("  LDL Cholesterol  ")).toBe("LDL Cholesterol");
+    expect(biomarkerFamilyAnchor("  LDL Cholesterol  ")).toBe(
+      "LDL Cholesterol"
+    );
     expect(biomarkerFamilyAnchor("")).toBe("");
     expect(biomarkerFamilyAnchor(null)).toBe("");
   });
 
   it("every family anchor is a real dataset name inside its own family", () => {
     const vocab = new Set(
-      (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers.map((b) =>
-        b.name.toLowerCase()
+      (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers.map(
+        (b) => b.name.toLowerCase()
       )
     );
     for (const fam of BIOMARKER_FAMILIES) {
