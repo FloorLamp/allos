@@ -32,6 +32,7 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
 import {
   ANNOTATION_KIND_META,
+  annotationTooltipLabel,
   snapAnnotationsToDates,
   snapWindowsToDates,
   type TrendAnnotation,
@@ -61,6 +62,7 @@ export default function LineChartCard({
   groupYTicks = false,
   syncId,
   sparkline = false,
+  sparklineDots = false,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
@@ -110,6 +112,9 @@ export default function LineChartCard({
   // than on axis chrome that is unreadable at tile width. The caller supplies the
   // numbers the axes would have carried as inline text — see TrendMiniCard.
   sparkline?: boolean;
+  // Show resting points in sparkline mode. The shared density limit still removes
+  // them when they would fuse into a heavy line.
+  sparklineDots?: boolean;
   // Event annotations, pre-filtered to the enabled kinds by
   // the parent. Drawn as vertical reference lines, snapped to the nearest charted
   // date (recharts positions a category-axis ReferenceLine only on an actual point).
@@ -149,6 +154,11 @@ export default function LineChartCard({
         data.map((d) => d.date)
       )
     : [];
+  const tooltipLabel = (value: string) => {
+    const date = String(value);
+    const formatted = labelFmt ? labelFmt(date) : date;
+    return annotationTooltipLabel(formatted, date, snapped, snappedWindows);
+  };
   if (data.length === 0) {
     return (
       <div
@@ -190,7 +200,7 @@ export default function LineChartCard({
               }${unit}`,
               label,
             ]}
-            labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
+            labelFormatter={(value) => tooltipLabel(String(value))}
             {...chartTooltipProps(c, motion)}
           />
           {snappedWindows.map((w, i) => {
@@ -204,7 +214,6 @@ export default function LineChartCard({
                 fillOpacity={0.08}
                 stroke={color}
                 strokeOpacity={0.3}
-                label={chartAnnotationLabel(w.label, color, "insideTopLeft")}
               />
             );
           })}
@@ -231,12 +240,7 @@ export default function LineChartCard({
               x={a.date}
               stroke={ANNOTATION_KIND_META[a.kind].color}
               strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.85}
-              label={chartAnnotationLabel(
-                a.label,
-                ANNOTATION_KIND_META[a.kind].color,
-                "top"
-              )}
+              strokeOpacity={0.6}
             />
           ))}
           <Line
@@ -247,9 +251,9 @@ export default function LineChartCard({
             dot={chartLineDot(c, {
               color,
               pointCount: data.length,
-              // A sparkline is a shape, not a set of readings: per-point dots at
-              // tile width fuse into a thicker line. Hover still gets its dot.
-              enabled: showDots && !sparkline,
+              // Tile sparklines opt into resting points; dense series still fall
+              // through chartLineDot's shared clutter threshold.
+              enabled: showDots && (!sparkline || sparklineDots),
             })}
             activeDot={chartActiveDot(color)}
             {...chartMarkMotion(motion)}

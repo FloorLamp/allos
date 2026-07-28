@@ -45,6 +45,7 @@ export default async function BodyHygieneFindings() {
         />
       }
       testid="body-hygiene-findings"
+      collapsible
     />
   );
 }

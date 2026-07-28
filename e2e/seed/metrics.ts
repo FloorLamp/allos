@@ -20,6 +20,9 @@ import {
   VITALS_DAY_PROFILE,
   VITALS_DAY_TEMP_TIME,
   VITALS_DAY_RESTING_HR,
+  VITALS_DAY_WEIGHT_KG,
+  VITALS_DAY_BODY_FAT,
+  VITALS_DAY_STEPS,
   APP_BADGE_PROFILE,
   SOURCE_COMPARE_PROFILE,
   E2E_LOGIN_CEL_IMPORT,
@@ -646,6 +649,7 @@ export function seedVitalsToday(): void {
     db.prepare("DELETE FROM hr_minutes WHERE profile_id = ?").run(vdId);
     db.prepare("DELETE FROM medical_records WHERE profile_id = ?").run(vdId);
     db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(vdId);
+    db.prepare("DELETE FROM metric_samples WHERE profile_id = ?").run(vdId);
 
     // Per-minute HR, 06:00 → 08:30 local, then nothing (the wear gap the 1D chart
     // must render as a BREAK, not a straight line).
@@ -700,6 +704,7 @@ export function seedVitalsToday(): void {
     timedVital("Blood Pressure Diastolic", "mmHg", 82, "09:40");
     timedVital("Oxygen Saturation", "%", 97, "07:12");
     timedVital("Oxygen Saturation", "%", 96, "09:42");
+    timedVital("Respiratory Rate", "/min", 15, "09:45");
 
     // A manual temperature — the OTHER way a reading carries a clock time.
     db.prepare(
@@ -710,10 +715,31 @@ export function seedVitalsToday(): void {
              'Body Temperature', 'manual', ?)`
     ).run(vdId, vdToday, VITALS_DAY_TEMP_TIME);
 
-    // A day-granular aggregate: value, no time, never an intraday chart.
+    // Day-granular body/composition aggregates: values without times. These make
+    // the Body → Today card prove that composition is included while the seeded
+    // oxygen readings above are deliberately excluded from that concise card.
     db.prepare(
-      "INSERT INTO body_metrics (profile_id, date, resting_hr, source) VALUES (?, ?, ?, 'health-connect')"
-    ).run(vdId, vdToday, Number(VITALS_DAY_RESTING_HR));
+      `INSERT INTO body_metrics
+       (profile_id, date, weight_kg, body_fat_pct, resting_hr, source)
+       VALUES (?, ?, ?, ?, ?, 'health-connect')`
+    ).run(
+      vdId,
+      vdToday,
+      VITALS_DAY_WEIGHT_KG,
+      VITALS_DAY_BODY_FAT,
+      Number(VITALS_DAY_RESTING_HR)
+    );
+    db.prepare(
+      `INSERT INTO metric_samples
+       (profile_id, source, metric, date, start_time, end_time, value)
+       VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
+    ).run(
+      vdId,
+      vdToday,
+      `${vdToday}T00:00:00`,
+      `${vdToday}T23:59:59`,
+      VITALS_DAY_STEPS
+    );
 
     seedMemberLogin(E2E_LOGIN_VITALS_DAY, vdId, "write");
     console.log(

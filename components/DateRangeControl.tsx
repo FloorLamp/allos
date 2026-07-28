@@ -59,8 +59,9 @@ function rangePillClass(active: boolean): string {
 // from/to back to `basePath` (carrying `hiddenParams` — the Timeline's category,
 // the hub's active tab), plus 7D/30D/90D/All-time quick-range pills built through
 // `buildHref` so each surface preserves its own extra params. `rightSlot` holds
-// surface-specific extras (the Timeline's Through/Latest/Oldest affordances) and
-// `trailingChips` rides the END of the chip row (the Trends hub's saved views).
+// surface-specific extras (the Timeline's Through/Latest/Oldest affordances),
+// `trailingChips` rides the END of the chip row, and `companionSlot` places a
+// related control below the pills on phones and beside them on desktop.
 //
 // Mobile (#1455): below `sm` the chip row is the PRIMARY control — it renders
 // first and the From/To card collapses behind its "Custom…" pill (open by default
@@ -75,6 +76,7 @@ export default function DateRangeControl({
   LinkComponent = DefaultLink,
   rightSlot,
   trailingChips,
+  companionSlot,
   extraRanges = [],
   idPrefix = "range",
 }: {
@@ -86,6 +88,7 @@ export default function DateRangeControl({
   LinkComponent?: LinkLike;
   rightSlot?: ReactNode;
   trailingChips?: ReactNode;
+  companionSlot?: ReactNode;
   extraRanges?: QuickRange[];
   idPrefix?: string;
 }) {
@@ -148,8 +151,7 @@ export default function DateRangeControl({
 
         {/* The chip row. One horizontally-scrolling row on a phone: quick ranges
             and the "Custom…" toggle. Desktop surfaces may hang trailing controls
-            off the end (Trends saved views live there); it wraps normally from
-            `sm` up.
+            off the end; it wraps normally from `sm` up.
 
             #1485 D: when the row overflows, cut-off content with no affordance
             reads as broken layout, not as "scroll me".
@@ -159,41 +161,44 @@ export default function DateRangeControl({
             on an edge that actually has content past it, so from `sm` up (where the
             row wraps and `sm:overflow-visible` wins over the component's own base
             `overflow-x-auto`) there is nothing to scroll and no fade. */}
-        <ScrollFade
-          data-testid={`${idPrefix}-chip-row`}
-          className="order-1 flex items-center gap-2 pb-1 sm:order-2 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0"
-        >
-          <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
-            {qrs.map((qr) => (
+        <div className="order-1 flex flex-col gap-2 sm:order-2 sm:flex-row sm:items-center sm:gap-3">
+          <ScrollFade
+            data-testid={`${idPrefix}-chip-row`}
+            className="flex min-w-0 flex-1 items-center gap-2 pb-1 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0"
+          >
+            <div className="flex w-max min-w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:min-w-0 sm:justify-start sm:flex-wrap">
+              {qrs.map((qr) => (
+                <LinkComponent
+                  key={qr.label}
+                  href={buildHref({ from: qr.from, to: qr.to })}
+                  className={rangePillClass(isQuickRangeActive(range, qr))}
+                  aria-current={
+                    isQuickRangeActive(range, qr) ? "page" : undefined
+                  }
+                >
+                  {qr.label}
+                </LinkComponent>
+              ))}
               <LinkComponent
-                key={qr.label}
-                href={buildHref({ from: qr.from, to: qr.to })}
-                className={rangePillClass(isQuickRangeActive(range, qr))}
-                aria-current={
-                  isQuickRangeActive(range, qr) ? "page" : undefined
-                }
+                href={buildHref({})}
+                className={rangePillClass(isAllTimeRange(range))}
+                aria-current={isAllTimeRange(range) ? "page" : undefined}
               >
-                {qr.label}
+                All time
               </LinkComponent>
-            ))}
-            <LinkComponent
-              href={buildHref({})}
-              className={rangePillClass(isAllTimeRange(range))}
-              aria-current={isAllTimeRange(range) ? "page" : undefined}
-            >
-              All time
-            </LinkComponent>
-            <CustomRangeToggle
-              className={`shrink-0 sm:hidden ${rangePillClass(customActive)}`}
-            />
-            {trailingChips}
-          </div>
-          {rightSlot && (
-            <div className="ml-auto flex shrink-0 items-center gap-2 text-sm">
-              {rightSlot}
+              <CustomRangeToggle
+                className={`shrink-0 sm:hidden ${rangePillClass(customActive)}`}
+              />
+              {trailingChips}
             </div>
-          )}
-        </ScrollFade>
+            {rightSlot && (
+              <div className="ml-auto flex shrink-0 items-center gap-2 text-sm">
+                {rightSlot}
+              </div>
+            )}
+          </ScrollFade>
+          {companionSlot && <div className="shrink-0">{companionSlot}</div>}
+        </div>
       </CustomRangeDisclosure>
     </div>
   );

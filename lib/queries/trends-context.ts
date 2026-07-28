@@ -45,6 +45,7 @@ import { getMoodLogs } from "./mood";
 // Card → `metric_samples.metric`. One grouped query answers all of them.
 const METRIC_SAMPLE_CARDS: Readonly<Partial<Record<BodyCardId, string>>> = {
   steps: "steps",
+  "active-calories": "active_kcal",
   sleep: "sleep_min",
   hrv: HRV_METRIC,
   "skin-temp": SKIN_TEMP_DELTA_METRIC,

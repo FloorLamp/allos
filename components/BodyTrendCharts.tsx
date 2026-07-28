@@ -27,7 +27,6 @@ export interface BodyChartSpec {
   // document outline (sr-only), so the card is still named for a screen reader.
   hideTitle?: boolean;
   data: { date: string; value: number | null }[];
-  label: string;
   unit: string;
   color: string;
   // A goal's target line (already in this chart's display unit), when the metric
@@ -100,6 +99,7 @@ export default function BodyTrendCharts({
   sections,
   annotations,
   windows = [],
+  singleColumn = false,
 }: {
   charts?: BodyChartSpec[];
   // The merged Body tab's grouped form (#1486) — mutually exclusive with `charts`
@@ -109,6 +109,10 @@ export default function BodyTrendCharts({
   // Protocol intervention windows (issue #660), shaded across every chart via the
   // same toggle bar as the point annotations.
   windows?: TrendWindow[];
+  // A detail surface already devotes its primary content column to one chart.
+  // Keep that single chart full-width instead of inheriting the overview's
+  // two-up desktop grid and leaving an empty sibling column.
+  singleColumn?: boolean;
 }) {
   const presentKinds = annotationKindsPresent(annotations, windows);
   // #1493 A: on the Trends hub the ONE pill row lives in the context bar's expanded
@@ -120,7 +124,11 @@ export default function BodyTrendCharts({
   const shownWindows = enabled.protocol ? windows : [];
 
   const grid = (list: BodyChartSpec[]) => (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div
+      className={`grid gap-6 ${
+        singleColumn || list.length === 1 ? "" : "lg:grid-cols-2"
+      }`}
+    >
       {list.map((chart) => (
         <ChartCard
           key={chart.key}
@@ -146,7 +154,7 @@ export default function BodyTrendCharts({
         >
           <LineChartCard
             data={chart.data}
-            label={chart.label}
+            label={chart.title}
             unit={chart.unit}
             color={chart.color}
             annotations={shown}

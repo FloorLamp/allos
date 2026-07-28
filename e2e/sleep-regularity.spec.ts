@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
-// Issue #160 / #1066: the Trends → Body section surfaces a COMPACT sleep summary
-// tile (the SRI + last-night duration) once enough nights of sleep sessions exist;
-// the detailed regularity caption/trend moved to the dedicated /sleep page (#1066).
+// Issue #160 / #1066: Trends → Body charts nightly sleep duration and keeps the SRI
+// as supporting context once enough nights of sleep sessions exist; the detailed
+// regularity and stage analysis lives on the dedicated /sleep page (#1066).
 // e2e/seed-events.ts seeds 28 nightly sleep sessions for profile 1 (the default
 // authed profile), so the rolling 28-night window clears the minimum-nights gate
 // and both the tile and the SRI figure render.
@@ -9,7 +9,7 @@ import { test, expect } from "./fixtures";
 // Isolation: everything is scoped to getByRole("main") and reads only the seeded
 // SRI fixture; it mutates no rows, so it can't disturb other specs.
 
-test("Trends → Body renders the compact sleep tile with the SRI (#160/#1066)", async ({
+test("Trends → Body renders the sleep chart with the SRI (#160/#1066)", async ({
   page,
 }) => {
   await page.goto("/trends?tab=body");
@@ -21,6 +21,7 @@ test("Trends → Body renders the compact sleep tile with the SRI (#160/#1066)",
   const main = page.getByRole("main");
   const tile = main.getByTestId("sleep-summary-tile");
   await expect(tile).toBeVisible();
+  await expect(tile.getByRole("application")).toBeVisible();
 
   // The SRI headline value is an integer in −100..100. The seeded schedule is
   // highly regular, so it renders a high positive number.
@@ -34,6 +35,9 @@ test("Trends → Body renders the compact sleep tile with the SRI (#160/#1066)",
   expect(sri).toBeGreaterThan(0);
   expect(sri).toBeLessThanOrEqual(100);
 
-  // The tile is the deep-link to the full Sleep page (#1066).
-  await expect(tile).toHaveAttribute("href", "/sleep");
+  // The matching full-bleed header is the deep-link to the full Sleep page.
+  await expect(tile.getByTestId("chart-card-header-link")).toHaveAttribute(
+    "href",
+    "/sleep"
+  );
 });

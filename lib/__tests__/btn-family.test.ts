@@ -21,16 +21,8 @@ import { fileURLToPath } from "node:url";
 //   - toggle/tab/segmented `? "bg-brand-600 text-white"` fragments (no hover+px),
 //   - icon-only round controls sized with h-/w- (no px),
 //   - `file:bg-brand-600 … hover:file:bg-brand-700` file-input chrome (prefixed).
-// The one intentional pill variant is allowlisted below.
-
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
-
-// Deliberate leaves — true action buttons kept off the .btn family on purpose.
-// SavedViewsBar's "Save" is a compact rounded-full pill inside an h-7 inline
-// mini-form (next to an h-7 text-xs input); the .btn/.btn-sm rectangle would
-// tower over its row. Reviewed under #794 cluster 2 and left as-is.
-const ALLOWLIST = new Set(["components/SavedViewsBar.tsx"]);
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -82,7 +74,6 @@ describe("btn family guard (issue #794 cluster 2)", () => {
   it("no component hand-rolls a bg-brand-600/bg-rose-600 action button", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {
-      if (ALLOWLIST.has(rel)) continue;
       text.split("\n").forEach((line, i) => {
         if (isHandRolledButton(line)) offenders.push(`${rel}:${i + 1}`);
       });

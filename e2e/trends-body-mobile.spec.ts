@@ -1,9 +1,15 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { shiftDateStr } from "@/lib/date";
 import { loginAs } from "./nav";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
-import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
+import { frozenNow } from "./worker-env";
+import {
+  E2E_MEMBER_PASSWORD,
+  E2E_LOGIN_TRENDS_BODY,
+  TRENDS_BODY_OLD_DAY,
+} from "./fixture-logins";
 
 // Trends → Body responsive layouts. On mobile the tab used to force scrolling past
 // three quick-add forms and a fixed single-column chart stack before the metric you
@@ -17,7 +23,7 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 //      SAME visible list, so a chartless metric has no option.
 //
 // Fixture (#868 hygiene): a dedicated read-only member/profile (Trends Body (e2e))
-// seeded with a KNOWN, PARTIAL metric set (weight+HR, steps, sleep, HR-daily —
+// seeded with a KNOWN, PARTIAL metric set (weight+HR/BMI, steps, sleep, HR-daily —
 // but NO hydration/BMR/calories/…), so the present/absent option assertions are
 // deterministic under --repeat-each. The spec only navigates + scrolls (no writes).
 
@@ -40,7 +46,7 @@ async function openBodyTab(
 test.describe("Trends → Body responsive views (#1067)", () => {
   // The former "quick-adds collapse to a chip row" test retired with that chip row
   // itself (#1486): the three quick-adds merged into ONE "Log measurements" form,
-  // hidden behind a desktop "+ Log" expander and absent from the phone entirely
+  // hidden behind a desktop "+ Log" modal and absent from the phone entirely
   // (the #1468 overlay is the mobile path). That behaviour is covered by
   // e2e/trends-body-merge.mobile.spec.ts, which owns the merged tab.
 
@@ -65,24 +71,187 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     // Tiles use the shared range rather than a hidden fixed 30-day window.
     const weightTile = page.getByTestId("body-tile-weight");
     await expect(weightTile).toContainText("77.9 kg");
+    const tileHeader = weightTile.getByTestId("trend-mini-header-link");
+    const tileBox = await weightTile.boundingBox();
+    const tileHeaderBox = await tileHeader.boundingBox();
+    expect(tileBox).not.toBeNull();
+    expect(tileHeaderBox).not.toBeNull();
+    expect(tileHeaderBox!.height).toBeGreaterThanOrEqual(44);
+    expect(tileHeaderBox!.width).toBeGreaterThan(tileBox!.width * 0.75);
+    const tileHeaderBackground = await tileHeader.evaluate(
+      (element) => getComputedStyle(element).backgroundColor
+    );
+    await tileHeader.hover();
+    await expect
+      .poll(() =>
+        tileHeader.evaluate(
+          (element) => getComputedStyle(element).backgroundColor
+        )
+      )
+      .not.toBe(tileHeaderBackground);
     await expandTrendsContext(page);
     await followLink(
       page,
       page.getByRole("link", { name: "1D", exact: true }),
-      /from=2026-07-26.*to=2026-07-26/
+      /from=\d{4}-\d{2}-\d{2}.*to=\d{4}-\d{2}-\d{2}/
+    );
+    const oneDayUrl = new URL(page.url());
+    expect(oneDayUrl.searchParams.get("from")).toBe(
+      oneDayUrl.searchParams.get("to")
     );
     await expect(weightTile).toContainText("No data in this range");
+    await expect(page.getByTestId("body-tile-bmi")).toContainText(
+      "No data in this range"
+    );
+    const emptyWeightBox = await weightTile.boundingBox();
+    const populatedStepsBox = await page
+      .getByTestId("body-tile-steps")
+      .boundingBox();
+    expect(emptyWeightBox).not.toBeNull();
+    expect(populatedStepsBox).not.toBeNull();
+    expect(
+      Math.abs(emptyWeightBox!.height - populatedStepsBox!.height)
+    ).toBeLessThan(2);
 
-    // With the redundant controls gone, the tiles start at the panel top without
-    // reintroducing horizontal clipping.
-    const panelBox = await page.getByRole("tabpanel").boundingBox();
+    // With the redundant controls gone, the tiles follow the Today card directly
+    // without reintroducing horizontal clipping.
+    const todayBox = await page.getByTestId("vitals-today-strip").boundingBox();
     const tilesBox = await tiles.boundingBox();
-    expect(panelBox).not.toBeNull();
+    expect(todayBox).not.toBeNull();
     expect(tilesBox).not.toBeNull();
-    if (panelBox && tilesBox) {
-      expect(tilesBox.y - panelBox.y).toBeLessThanOrEqual(9);
+    if (todayBox && tilesBox) {
+      expect(tilesBox.y - (todayBox.y + todayBox.height)).toBeLessThanOrEqual(
+        9
+      );
     }
     await expectNoClippedContent(page);
+  });
+
+  test("range-empty sleep sinks behind populated tiles", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TRENDS_BODY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.setViewportSize(PHONE);
+    const yesterday = shiftDateStr(frozenNow().toISOString().slice(0, 10), -1);
+    await page.goto(`/trends?tab=body&from=${yesterday}&to=${yesterday}`);
+
+    const sleep = page.getByTestId("body-tile-sleep");
+    await expect(sleep).toContainText("No data in this range");
+    await expect(page.getByTestId("body-tile-bmi")).not.toContainText(
+      "No data in this range"
+    );
+
+    const renderedOrder = await page
+      .getByTestId("body-metric-tiles")
+      .locator(":scope > div")
+      .evaluateAll((items) =>
+        items.map(
+          (item) =>
+            item.firstElementChild?.getAttribute("data-testid") ?? "unknown"
+        )
+      );
+    expect(renderedOrder.indexOf("body-tile-sleep")).toBeGreaterThan(
+      renderedOrder.indexOf("body-tile-bmi")
+    );
+    expect(renderedOrder.indexOf("body-tile-sleep")).toBeGreaterThan(
+      renderedOrder.indexOf("body-tile-steps")
+    );
+
+    await page.context().close();
+  });
+
+  test("historical ranges use their own HR and sleep data", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TRENDS_BODY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.setViewportSize(PHONE);
+    await page.goto(
+      `/trends?tab=body&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
+    );
+
+    await expect(page.getByTestId("body-tile-hr")).toContainText("88 bpm");
+    const sleep = page.getByTestId("body-tile-sleep");
+    await expect(sleep).toBeVisible();
+    await expect(sleep).toContainText("7 h");
+    await expect(sleep.getByRole("application")).toBeVisible();
+    await expect(sleep.getByTestId("trend-mini-header-link")).toHaveAttribute(
+      "href",
+      "/sleep"
+    );
+    const weight = page.getByTestId("body-tile-weight");
+    await expect(weight).toContainText("No data in this range");
+
+    const renderedOrder = await page
+      .getByTestId("body-metric-tiles")
+      .locator(":scope > div")
+      .evaluateAll((items) =>
+        items.map(
+          (item) =>
+            item.firstElementChild?.getAttribute("data-testid") ?? "unknown"
+        )
+      );
+    expect(renderedOrder.indexOf("body-tile-weight")).toBeGreaterThan(
+      renderedOrder.indexOf("body-tile-hr")
+    );
+    expect(renderedOrder.indexOf("body-tile-weight")).toBeGreaterThan(
+      renderedOrder.indexOf("body-tile-sleep")
+    );
+
+    await page.context().close();
+  });
+
+  test("desktop tiles keep empty states the same height as populated charts", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TRENDS_BODY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.setViewportSize(DESKTOP);
+    await page.goto(
+      `/trends?tab=body&view=tiles&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
+    );
+
+    const empty = page.getByTestId("body-tile-weight");
+    const populated = page.getByTestId("body-tile-sleep");
+    await expect(empty).toContainText("No data in this range");
+    await expect(populated.getByRole("application")).toBeVisible();
+    const emptyHeader = empty.getByTestId("trend-mini-header-link");
+    const [emptyTitleBox, emptyMessageBox] = await Promise.all([
+      // Responsive title spans intentionally contain the same text for Weight;
+      // the desktop form is the second span.
+      emptyHeader.getByText("Weight", { exact: true }).last().boundingBox(),
+      emptyHeader
+        .getByText("No data in this range", { exact: true })
+        .boundingBox(),
+    ]);
+    expect(emptyTitleBox).not.toBeNull();
+    expect(emptyMessageBox).not.toBeNull();
+    expect(emptyMessageBox!.y).toBeGreaterThanOrEqual(
+      emptyTitleBox!.y + emptyTitleBox!.height
+    );
+    const desktopLabelSize = await emptyHeader
+      .getByText("Weight", { exact: true })
+      .last()
+      .evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+    expect(desktopLabelSize).toBeGreaterThanOrEqual(16);
+
+    await expect
+      .poll(async () => {
+        const emptyBox = await empty.boundingBox();
+        const populatedBox = await populated.boundingBox();
+        if (!emptyBox || !populatedBox) return null;
+        return Math.abs(emptyBox.height - populatedBox.height);
+      })
+      .toBeLessThan(2);
+
+    await page.context().close();
   });
 
   test("desktop chart menu shares the view-control row and scrolls to a chart", async ({
@@ -93,29 +262,51 @@ test.describe("Trends → Body responsive views (#1067)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(DESKTOP);
-    await openBodyTab(page, { view: "all" });
+    await openBodyTab(page);
 
     const controls = page.getByTestId("body-view-controls");
     const jumpMenu = page.getByTestId("chart-jump-menu");
     const trigger = page.getByTestId("chart-jump-menu-trigger");
     await expect(controls).toContainText("All charts");
+    await expect(controls.getByText("Jump to", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("body-view-all")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await expect(page.getByTestId("body-view-tiles")).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
     await expect(jumpMenu).toBeVisible();
     await expect(trigger).toBeVisible();
-    await expect(controls.locator("> *")).toHaveCount(2);
+    await expect(controls.locator("> *")).toHaveCount(3);
+    const logButton = controls.getByTestId("log-measurements-toggle");
+    await expect(logButton).toBeVisible();
+    await expect(logButton).toHaveClass(/btn/);
     await expect(page.getByTestId("chart-jump-chips")).toHaveCount(0);
 
     // Toggle first, menu second, with matched vertical centers and only the
     // compact 8px control-to-content gap.
     const viewBox = await page.getByTestId("body-view-toggle").boundingBox();
     const menuBox = await jumpMenu.boundingBox();
+    const logBox = await logButton.boundingBox();
     const controlsBox = await controls.boundingBox();
     const chartsBox = await page.getByTestId("body-charts-all").boundingBox();
     expect(viewBox).not.toBeNull();
     expect(menuBox).not.toBeNull();
+    expect(logBox).not.toBeNull();
     expect(controlsBox).not.toBeNull();
     expect(chartsBox).not.toBeNull();
-    if (viewBox && menuBox && controlsBox && chartsBox) {
-      expect(menuBox.x).toBeGreaterThan(viewBox.x + viewBox.width - 1);
+    if (viewBox && menuBox && logBox && controlsBox && chartsBox) {
+      expect(
+        Math.abs(
+          viewBox.x +
+            viewBox.width / 2 -
+            (controlsBox.x + controlsBox.width / 2)
+        )
+      ).toBeLessThanOrEqual(1);
+      expect(menuBox.x + menuBox.width).toBeLessThan(viewBox.x + 1);
+      expect(logBox.x).toBeGreaterThan(viewBox.x + viewBox.width - 1);
       expect(
         Math.abs(
           viewBox.y + viewBox.height / 2 - (menuBox.y + menuBox.height / 2)
@@ -127,7 +318,30 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     }
 
     await hydratedClick(page, trigger);
-    await expect(page.getByTestId("chart-jump-menu-options")).toBeVisible();
+    const menuOptions = page.getByTestId("chart-jump-menu-options");
+    await expect(menuOptions).toBeVisible();
+    await expect(menuOptions).toHaveCSS("z-index", "50");
+
+    // The open menu must win the stacking order where it overlaps the first chart.
+    const optionsBox = await menuOptions.boundingBox();
+    expect(optionsBox).not.toBeNull();
+    const triggerBox = await trigger.boundingBox();
+    expect(triggerBox).not.toBeNull();
+    if (optionsBox && triggerBox) {
+      expect(Math.abs(optionsBox.x - triggerBox.x)).toBeLessThanOrEqual(1);
+      const topmostTestId = await page.evaluate(
+        ({ x, y }) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest<HTMLElement>("[data-testid]")
+            ?.getAttribute("data-testid"),
+        {
+          x: optionsBox.x + optionsBox.width / 2,
+          y: Math.min(optionsBox.y + 32, DESKTOP.height - 4),
+        }
+      );
+      expect(topmostTestId).toMatch(/^chart-jump-/);
+    }
 
     // Present metrics get a menu option (the fixture seeds these).
     await expect(page.getByTestId("chart-jump-body-composition")).toBeVisible();
@@ -144,9 +358,25 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     // comparison would miss.
     await expectNoClippedContent(page);
 
+    // A section with one useful chart uses the analysis width instead of leaving
+    // a vacant second column. The fixture has only Resting HR in Vitals.
+    const vitals = page.getByTestId("body-section-vitals");
+    const restingHr = page.getByTestId("vitals-resting-hr");
+    const [vitalsBox, restingHrBox] = await Promise.all([
+      vitals.boundingBox(),
+      restingHr.boundingBox(),
+    ]);
+    expect(vitalsBox).not.toBeNull();
+    expect(restingHrBox).not.toBeNull();
+    expect(restingHrBox!.width).toBeGreaterThan(vitalsBox!.width * 0.9);
+
     // Selecting an option scrolls its chart into view (plain `#id` anchor).
     const sleepTile = page.getByTestId("sleep-summary-tile");
     await expect(sleepTile).not.toBeInViewport();
+    await expect(sleepTile.getByRole("application")).toBeVisible();
+    await expect(
+      sleepTile.getByTestId("chart-card-header-link")
+    ).toHaveAttribute("href", "/sleep");
     await page.getByTestId("chart-jump-sleep").click();
     await expect(sleepTile).toBeInViewport();
     await expect(page.getByTestId("chart-jump-menu-options")).toHaveCount(0);

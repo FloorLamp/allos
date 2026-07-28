@@ -73,6 +73,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // ("On Monday, July 6 you logged …", #1020).
     resetBodyHygieneDismissals();
     await page.goto("/trends?tab=body");
+    await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
       page
         .getByRole("main")
@@ -118,6 +119,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // finding, same dedupeKey, reshaped text (#1020).
     resetBodyHygieneDismissals();
     await page.goto("/trends?tab=body");
+    await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
       page
         .getByRole("main")

@@ -71,7 +71,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
     <nav
       aria-label="Jump to chart"
       data-testid="chart-jump-menu"
-      className="flex items-center"
+      className="relative z-50 flex items-center"
     >
       <div className="relative inline-flex items-center">
         <button
@@ -107,7 +107,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
           <>
             <div
               aria-hidden="true"
-              className="fixed inset-0 z-20"
+              className="fixed inset-0 z-40"
               onClick={() => setOpen(false)}
             />
             <div
@@ -126,7 +126,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
                   optionRefs.current[items.length - 1]?.focus();
                 }
               }}
-              className="absolute top-full right-0 z-30 mt-1 min-w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900"
+              className="absolute top-full left-0 z-50 mt-1 min-w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900"
             >
               {items.map((item, index) => {
                 const selected = item.id === active;

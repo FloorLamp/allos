@@ -153,6 +153,13 @@ describe("buildTodayVitalsStrip", () => {
       rows: [bpRow({ id: 3, value_num: 98.64, notes: "08:05" })],
       decimals: 1,
     },
+    {
+      key: "steps",
+      label: "Steps",
+      unit: "steps",
+      rows: [bpRow({ id: 4, value_num: 4321 })],
+      groupThousands: true,
+    },
     { key: "spo2", label: "Oxygen sat.", unit: "%", rows: [] },
   ];
 
@@ -171,6 +178,13 @@ describe("buildTodayVitalsStrip", () => {
         value: "98.6",
         unit: "°F",
         time: "08:05",
+      },
+      {
+        key: "steps",
+        label: "Steps",
+        value: "4,321",
+        unit: "steps",
+        time: null,
       },
     ]);
   });

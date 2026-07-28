@@ -126,6 +126,8 @@ export interface TodayVitalSpec {
   rows: VitalReadingRow[];
   pairRows?: VitalReadingRow[];
   decimals?: number;
+  // Cumulative quantities such as steps are easier to scan with digit grouping.
+  groupThousands?: boolean;
 }
 
 export interface TodayVitalRow {
@@ -155,7 +157,9 @@ export function buildTodayVitalsStrip(
     const primary = latestVitalOn(spec.rows, date, tz);
     if (!primary) continue;
     const decimals = spec.decimals ?? 0;
-    let value = formatValue(primary.value, decimals);
+    let value = spec.groupThousands
+      ? Math.round(primary.value).toLocaleString("en-US")
+      : formatValue(primary.value, decimals);
     if (spec.pairRows) {
       const secondary = latestVitalOn(spec.pairRows, date, tz);
       if (secondary)

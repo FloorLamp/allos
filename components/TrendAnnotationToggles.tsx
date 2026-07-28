@@ -11,7 +11,14 @@ import {
   type ReactNode,
 } from "react";
 import AnnotationToggleBar from "./AnnotationToggleBar";
-import { ANNOTATION_KINDS, type AnnotationKind } from "@/lib/trend-annotations";
+import type { AnnotationKind } from "@/lib/trend-annotations";
+import {
+  TREND_ANNOTATION_VISIBILITY_KEY,
+  defaultAnnotationVisibility,
+  parseAnnotationVisibility,
+  serializeAnnotationVisibility,
+  type AnnotationVisibility,
+} from "@/lib/trend-annotation-visibility";
 
 // The Trends hub's event-annotation / protocol-window toggles, HOISTED (issue
 // #1493 A).
@@ -40,7 +47,8 @@ import { ANNOTATION_KINDS, type AnnotationKind } from "@/lib/trend-annotations";
 // The toggles are display state, not window state, so they stay OUT of the
 // collapsed context LABEL (lib/trends-context.ts): the label answers "which tab,
 // which window", and a filter that hides a marker does not change what the charts
-// are OF. Nothing here touches the URL.
+// are OF. Nothing here touches the URL. Visibility is a per-device preference in
+// localStorage, shared by the provider and provider-less detail charts.
 
 interface AnnotationToggleContext {
   enabled: Record<AnnotationKind, boolean>;
@@ -51,12 +59,50 @@ interface AnnotationToggleContext {
 
 const Ctx = createContext<AnnotationToggleContext | null>(null);
 
-/** Every kind on: the default a chart host has always started from. */
-function allEnabled(): Record<AnnotationKind, boolean> {
-  return Object.fromEntries(ANNOTATION_KINDS.map((k) => [k, true])) as Record<
-    AnnotationKind,
-    boolean
-  >;
+function usePersistedVisibility(
+  active = true
+): [AnnotationVisibility, (kind: AnnotationKind) => void] {
+  const [enabled, setEnabled] = useState<AnnotationVisibility>(
+    defaultAnnotationVisibility
+  );
+
+  useEffect(() => {
+    if (!active) return;
+    try {
+      setEnabled(
+        parseAnnotationVisibility(
+          window.localStorage.getItem(TREND_ANNOTATION_VISIBILITY_KEY)
+        )
+      );
+    } catch {
+      // localStorage may be unavailable in hardened/private browser contexts.
+      // The in-memory default remains fully usable for the current page.
+    }
+
+    const syncFromAnotherTab = (event: StorageEvent) => {
+      if (event.key !== TREND_ANNOTATION_VISIBILITY_KEY) return;
+      setEnabled(parseAnnotationVisibility(event.newValue));
+    };
+    window.addEventListener("storage", syncFromAnotherTab);
+    return () => window.removeEventListener("storage", syncFromAnotherTab);
+  }, [active]);
+
+  const toggle = useCallback((kind: AnnotationKind) => {
+    setEnabled((current) => {
+      const next = { ...current, [kind]: !current[kind] };
+      try {
+        window.localStorage.setItem(
+          TREND_ANNOTATION_VISIBILITY_KEY,
+          serializeAnnotationVisibility(next)
+        );
+      } catch {
+        // Keep the current page interactive even when persistence is unavailable.
+      }
+      return next;
+    });
+  }, []);
+
+  return [enabled, toggle];
 }
 
 /** A stable, order-independent identity for a kind set, so registration can be an
@@ -69,16 +115,11 @@ function kindsKey(kinds: readonly AnnotationKind[]): string {
 // charts it governs share one state. `children` is mostly server-rendered content
 // passed straight through.
 export function TrendAnnotationProvider({ children }: { children: ReactNode }) {
-  const [enabled, setEnabled] =
-    useState<Record<AnnotationKind, boolean>>(allEnabled);
+  const [enabled, toggle] = usePersistedVisibility();
   // Which kinds actually have markers on this page's charts. Empty until a host
   // registers, which is what keeps the control off a tab that has no annotated
   // chart (Overview, Nutrition) instead of showing dead pills there.
   const [present, setPresent] = useState<AnnotationKind[]>([]);
-
-  const toggle = useCallback((kind: AnnotationKind) => {
-    setEnabled((e) => ({ ...e, [kind]: !e[kind] }));
-  }, []);
 
   const register = useCallback((kinds: AnnotationKind[]) => {
     setPresent((prev) => (kindsKey(prev) === kindsKey(kinds) ? prev : kinds));
@@ -101,7 +142,7 @@ export function TrendAnnotationControls() {
   const ctx = useContext(Ctx);
   if (!ctx || ctx.present.length === 0) return null;
   return (
-    <div className="mt-2" data-testid="trend-annotation-controls">
+    <div data-testid="trend-annotation-controls">
       <AnnotationToggleBar
         kinds={ctx.present}
         enabled={ctx.enabled}
@@ -126,8 +167,7 @@ export function useAnnotationToggles(present: AnnotationKind[]): {
   hoisted: boolean;
 } {
   const ctx = useContext(Ctx);
-  const [local, setLocal] =
-    useState<Record<AnnotationKind, boolean>>(allEnabled);
+  const [local, onToggleLocal] = usePersistedVisibility(ctx == null);
   // The effect fires on a CHANGE of kind set, not on every render's fresh array —
   // hence the sorted key in the deps. The array itself rides a ref so the pills keep
   // the host's DISPLAY order (annotationKindsPresent sorts them by kind, not
@@ -139,10 +179,6 @@ export function useAnnotationToggles(present: AnnotationKind[]): {
   useEffect(() => {
     register?.(presentRef.current);
   }, [register, key]);
-
-  const onToggleLocal = useCallback((kind: AnnotationKind) => {
-    setLocal((e) => ({ ...e, [kind]: !e[kind] }));
-  }, []);
 
   if (ctx) {
     return { enabled: ctx.enabled, onToggle: ctx.toggle, hoisted: true };

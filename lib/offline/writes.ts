@@ -88,7 +88,7 @@ function applyDoseIntent(
 
 export interface BodyMetricWrite {
   date: string;
-  weight: string; // raw, in `weightUnit`
+  weight: string | null; // raw, in `weightUnit`; nullable for body-fat/HR detail entry
   weightUnit: WeightUnit;
   bodyFatPct: string | null;
   restingHr: string | null;
@@ -101,26 +101,29 @@ function numOrNull(v: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Persist one body-metrics row. Mirrors the addBodyMetric action's guards exactly:
-// reject a non-ISO date or a missing/non-finite weight (never write a NaN weight_kg
-// or an impossible date), skip non-finite optional numbers rather than storing NaN,
-// and convert the raw weight to canonical kg via the captured unit. Returns false on
-// a rejected input, true on a successful insert.
+// Persist one body-metrics row. At least ONE measurement is required, but weight is
+// not: body_fat_pct and resting_hr are nullable columns and metric-detail entry can
+// record either independently. A present weight is still validated and converted
+// to canonical kg exactly as before.
 export function insertBodyMetric(
   profileId: number,
   w: BodyMetricWrite
 ): boolean {
-  if (!isRealIsoDate(w.date) || String(w.weight).trim() === "") return false;
-  const weight = Number(w.weight);
-  if (!Number.isFinite(weight)) return false;
+  if (!isRealIsoDate(w.date)) return false;
+  const weightRaw = String(w.weight ?? "").trim();
+  const weight = weightRaw === "" ? null : Number(weightRaw);
+  if (weight != null && !Number.isFinite(weight)) return false;
+  const bodyFat = numOrNull(w.bodyFatPct);
+  const restingHr = numOrNull(w.restingHr);
+  if (weight == null && bodyFat == null && restingHr == null) return false;
   db.prepare(
     `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, profile_id)
      VALUES (?,?,?,?,?,?)`
   ).run(
     w.date,
-    toKg(weight, w.weightUnit),
-    numOrNull(w.bodyFatPct),
-    numOrNull(w.restingHr),
+    weight == null ? null : toKg(weight, w.weightUnit),
+    bodyFat,
+    restingHr,
     w.notes && w.notes.trim() ? w.notes.trim() : null,
     profileId
   );

@@ -91,6 +91,57 @@ test("a later deep-linked Training tab is brought into the visible tab row", asy
     .toBe(true);
 });
 
+test("the Training tabs fill the strip at 640px instead of clustering left", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.goto("/training?tab=overview");
+
+  const tabs = page.getByTestId("shell-tab-strip").getByTestId("training-tabs");
+  const items = tabs.getByRole("tab");
+  await expect(items).toHaveCount(6);
+
+  const [stripBox, firstBox, lastBox] = await Promise.all([
+    tabs.boundingBox(),
+    items.first().boundingBox(), // first-ok: the six-tab strip's first edge is the assertion
+    items.last().boundingBox(),
+  ]);
+  expect(stripBox).not.toBeNull();
+  expect(firstBox).not.toBeNull();
+  expect(lastBox).not.toBeNull();
+  expect(Math.abs(firstBox!.x - stripBox!.x)).toBeLessThan(2);
+  expect(
+    Math.abs(lastBox!.x + lastBox!.width - (stripBox!.x + stripBox!.width))
+  ).toBeLessThan(2);
+  expect(
+    await tabs.evaluate((element) => element.scrollWidth <= element.clientWidth)
+  ).toBe(true);
+});
+
+test("the desktop Training tabs remain a compact left-aligned strip", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/training?tab=overview");
+
+  const tabs = page.getByTestId("training-page").getByTestId("training-tabs");
+  const items = tabs.getByRole("tab");
+  await expect(items).toHaveCount(6);
+
+  const [stripBox, firstBox, lastBox] = await Promise.all([
+    tabs.boundingBox(),
+    items.first().boundingBox(), // first-ok: the six-tab strip's first edge is the assertion
+    items.last().boundingBox(),
+  ]);
+  expect(stripBox).not.toBeNull();
+  expect(firstBox).not.toBeNull();
+  expect(lastBox).not.toBeNull();
+  expect(Math.abs(firstBox!.x - stripBox!.x)).toBeLessThan(2);
+  expect(lastBox!.x + lastBox!.width).toBeLessThan(
+    stripBox!.x + stripBox!.width - 100
+  );
+});
+
 test("no chart card renders on Overview — the volume/intensity block moved to Trends → Fitness", async ({
   page,
 }) => {

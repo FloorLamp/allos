@@ -20,17 +20,25 @@ export interface BodyMetricRawInput {
 export const MAX_PLAUSIBLE_WEIGHT = 2000;
 
 // Returns a human-readable error for the first invalid field, or null if the
-// input is acceptable. Weight is required; body fat and resting HR are optional
-// but, when provided, must be in range.
+// input is acceptable. The combined measurements form requires weight for its
+// body-composition row by default. A metric detail page can set `requireWeight:
+// false` when it deliberately exposes only body fat or resting HR — both columns
+// are nullable in body_metrics and are valid observations in their own right.
 export function validateBodyMetricInput(
-  input: BodyMetricRawInput
+  input: BodyMetricRawInput,
+  options: { requireWeight?: boolean } = {}
 ): string | null {
+  const requireWeight = options.requireWeight ?? true;
   const weightRaw = input.weight ?? "";
+  const hasWeight = weightRaw.trim() !== "";
   const weight = Number(weightRaw);
-  if (weightRaw.trim() === "" || !Number.isFinite(weight) || weight <= 0) {
+  if (
+    (requireWeight && !hasWeight) ||
+    (hasWeight && (!Number.isFinite(weight) || weight <= 0))
+  ) {
     return "Enter a weight greater than 0.";
   }
-  if (weight > MAX_PLAUSIBLE_WEIGHT) {
+  if (hasWeight && weight > MAX_PLAUSIBLE_WEIGHT) {
     return "That weight looks too high to be real — please check the value.";
   }
 

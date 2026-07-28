@@ -46,7 +46,11 @@ function tabClassName({
   mobileColumns: MobileTabColumns;
   mobileLayout: "equal" | "scroll";
 }) {
-  return `-mb-px min-w-0 shrink-0 whitespace-nowrap border-b-2 text-center transition ${
+  const sizing =
+    prominentOnMobile && mobileLayout === "scroll"
+      ? "min-w-max flex-1 shrink-0 md:flex-none"
+      : "min-w-0 shrink-0";
+  return `-mb-px ${sizing} whitespace-nowrap border-b-2 text-center transition ${
     prominentOnMobile
       ? mobileLayout === "scroll"
         ? "px-4 py-3 text-sm font-semibold md:px-4 md:py-2 md:text-sm md:font-medium"

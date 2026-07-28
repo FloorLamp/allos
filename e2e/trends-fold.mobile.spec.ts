@@ -171,8 +171,8 @@ test.describe("one focused mobile range row (C + D)", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Save current" })
-    ).toBeHidden();
-    await expect(page.getByText("Views", { exact: true })).toBeHidden();
+    ).toHaveCount(0);
+    await expect(page.getByText("Views", { exact: true })).toHaveCount(0);
 
     const fill = await page.getByTestId("trends-chip-row").evaluate((row) => {
       const inner = row.firstElementChild?.getBoundingClientRect();

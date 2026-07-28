@@ -141,6 +141,29 @@ describe("addMeasurements — one form, three stores", () => {
     expect(medRows(profile.id, "Oxygen Saturation")).toHaveLength(0);
   });
 
+  it("writes body fat and resting HR independently from metric detail forms", async () => {
+    const { profile } = seedActor();
+    await addMeasurements(fd({ date: DATE, body_fat_pct: "18.5" }));
+    await addMeasurements(fd({ date: DATE, resting_hr: "54" }));
+
+    expect(bodyRows(profile.id)).toEqual([
+      {
+        date: DATE,
+        weight_kg: null,
+        body_fat_pct: 18.5,
+        resting_hr: null,
+        notes: null,
+      },
+      {
+        date: DATE,
+        weight_kg: null,
+        body_fat_pct: null,
+        resting_hr: 54,
+        notes: null,
+      },
+    ]);
+  });
+
   it("is a no-op (and does not revalidate) on an empty or invalid submission", async () => {
     const { profile } = seedActor();
     await addMeasurements(fd({ date: DATE }));

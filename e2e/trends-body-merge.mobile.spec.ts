@@ -129,8 +129,8 @@ test.describe("one tab, vitals first (#1486)", () => {
   });
 });
 
-test.describe("logging: desktop expands, mobile uses the overlay (#1486)", () => {
-  test("desktop shows a collapsed '+ Log' that expands the combined form", async ({
+test.describe("logging: desktop uses a modal, mobile uses the overlay (#1486)", () => {
+  test("desktop '+ Log' opens the combined form in a modal", async ({
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
@@ -142,22 +142,33 @@ test.describe("logging: desktop expands, mobile uses the overlay (#1486)", () =>
     await expect(page.getByTestId("measurements-quick-add")).toHaveCount(0);
 
     await hydratedClick(page, toggle);
-    const form = page.getByTestId("measurements-quick-add");
+    const dialog = page.getByRole("dialog", { name: "Log measurements" });
+    await expect(dialog).toBeVisible();
+    const form = dialog.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
     await expect(
-      form.getByRole("heading", { name: "Log measurements" })
+      dialog.getByRole("heading", { name: "Log measurements" })
     ).toBeVisible();
+    await expect(form).not.toHaveClass(/card/);
 
     // The adult field set, in the issue's static order.
     await expect(form.getByLabel("Weight (kg)")).toBeVisible();
-    await expect(form.getByLabel("Body fat (%)")).toBeVisible();
-    await expect(form.getByLabel("Systolic (mmHg)")).toBeVisible();
-    await expect(form.getByLabel("Diastolic (mmHg)")).toBeVisible();
-    await expect(form.getByLabel("Oxygen sat. (%)")).toBeVisible();
-    await expect(form.getByLabel("HRV (ms)")).toBeVisible();
+    await expect(form.getByLabel("Body Fat (%)")).toBeVisible();
+    await expect(
+      form.getByLabel("Blood Pressure (Systolic) (mmHg)")
+    ).toBeVisible();
+    await expect(
+      form.getByLabel("Blood Pressure (Diastolic) (mmHg)")
+    ).toBeVisible();
+    await expect(form.getByLabel("Oxygen Saturation (%)")).toBeVisible();
+    await expect(form.getByLabel("Heart Rate Variability (ms)")).toBeVisible();
     // Adults never see the growth fields.
     await expect(form.getByLabel("Height")).toHaveCount(0);
     expect(await form.getAttribute("data-life-stage")).toBe("adult");
+
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
 
   test("mobile carries NO on-page form; a focus= deep link opens the overlay", async ({
@@ -226,8 +237,10 @@ test.describe("the form is life-stage gated (#1486)", () => {
       expect(await form.getAttribute("data-life-stage")).toBe("minor");
       await expect(form.getByLabel("Height", { exact: true })).toBeVisible();
       // Body fat + HRV are gated OFF for a growth-tracked profile (#493).
-      await expect(form.getByLabel("Body fat (%)")).toHaveCount(0);
-      await expect(form.getByLabel("HRV (ms)")).toHaveCount(0);
+      await expect(form.getByLabel("Body Fat (%)")).toHaveCount(0);
+      await expect(form.getByLabel("Heart Rate Variability (ms)")).toHaveCount(
+        0
+      );
 
       // ── The same ONE component in the #1468 overlay ─────────────────────
       await child.setViewportSize(PHONE);
@@ -240,7 +253,7 @@ test.describe("the form is life-stage gated (#1486)", () => {
       await expect(
         sheetForm.getByLabel("Height", { exact: true })
       ).toBeVisible();
-      await expect(sheetForm.getByLabel("Body fat (%)")).toHaveCount(0);
+      await expect(sheetForm.getByLabel("Body Fat (%)")).toHaveCount(0);
     } finally {
       await child.context().close();
     }

@@ -278,12 +278,12 @@ body::before {
   }
   /* ── Responsive tables (issue #1426) ────────────────────────────────────────
      Below `sm`, a `.table-cards` table stops being a table and becomes a stack of
-     cards — over the SAME DOM. There is no second content tree and no
+     flat divider rows — over the SAME DOM. There is no second content tree and no
      `hidden md:*` twin pair to drift (the responsive-surface rule in AGENTS.md):
      every cell is authored once, in one `<td>`, and declares where it lands on the
      card via `data-card` (components/ResponsiveTable.tsx → lib/card-row.ts).
 
-     Placement is a flex row with wrapping, so DOM order doesn't dictate card order:
+     Placement is a flex row with wrapping, so DOM order doesn't dictate phone order:
        order 1 title   — the row's identity, grows to fill the first line
        order 2 actions — pinned to that line's right edge
        order 3 value   — full-width, the headline number/state
@@ -298,8 +298,8 @@ body::before {
   .table-cards {
     @apply max-sm:block;
   }
-  /* Headers are gone in card mode (each cell carries its own label instead), so a
-     sortable card list pairs this with components/TableSortSelect.tsx. */
+  /* Headers are gone in stacked-row mode (each cell carries its own label instead),
+     so a sortable list pairs this with components/TableSortSelect.tsx. */
   .table-cards thead {
     @apply max-sm:hidden;
   }
@@ -307,10 +307,10 @@ body::before {
     @apply max-sm:block;
   }
   .table-cards tr {
-    @apply max-sm:mb-2 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-3 max-sm:gap-y-1 max-sm:rounded-xl max-sm:border max-sm:border-black/5 max-sm:bg-white/50 max-sm:p-3 max-sm:dark:border-white/10 max-sm:dark:bg-ink-800/40;
+    @apply max-sm:mb-0 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-3 max-sm:gap-y-1 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:border-b max-sm:border-black/5 max-sm:bg-transparent max-sm:p-3 max-sm:dark:border-white/10;
   }
   .table-cards tr:last-child {
-    @apply max-sm:mb-0;
+    @apply max-sm:border-b-0;
   }
   /* A SECTION HEADER row (issue #1499's panel groups) is not a record card — it is
      the index entry above one. In card mode it drops the card frame entirely and
@@ -342,6 +342,45 @@ body::before {
   .table-cards td[data-card="full"] {
     @apply max-sm:order-5 max-sm:w-full max-sm:basis-full;
   }
+  /* A metric detail page already gives its readings one containing card. Flatten
+     those phone rows into compact divider-separated records so they do not read
+     as padded cards nested inside another card. Desktop keeps the table grid. */
+  .metric-readings-list tr {
+    @apply max-sm:mb-0 max-sm:items-center max-sm:gap-x-2 max-sm:gap-y-0.5 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:bg-transparent max-sm:pr-0 max-sm:pl-2 max-sm:pt-0 max-sm:pb-2;
+  }
+  .metric-readings-list tr:last-child {
+    @apply max-sm:border-b-0;
+  }
+  .metric-readings-list td[data-card="value"] {
+    @apply max-sm:order-2 max-sm:ml-auto max-sm:w-auto max-sm:basis-auto max-sm:text-right max-sm:text-[0.9375rem] max-sm:font-medium;
+  }
+  .metric-readings-list td[data-card="actions"] {
+    @apply max-sm:order-3 max-sm:ml-0;
+  }
+  /* Keep the readings row compact without shrinking the menu's effective touch
+     target: the visible control occupies 32px in layout while its pseudo-element
+     extends the clickable button box to 40px. */
+  .metric-readings-list
+    td[data-card="actions"]
+    [data-testid="overflow-menu-trigger"] {
+    @apply max-sm:relative max-sm:h-8 max-sm:w-8;
+  }
+  .metric-readings-list
+    td[data-card="actions"]
+    [data-testid="overflow-menu-trigger"]::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+  .metric-readings-list td[data-card="meta"] {
+    @apply max-sm:flex max-sm:w-full max-sm:basis-full max-sm:justify-between max-sm:gap-3 max-sm:text-right;
+  }
+  .metric-readings-list td[data-card="meta"] .card-cell-label {
+    @apply max-sm:mr-0 max-sm:shrink-0;
+  }
+  .metric-readings-list td.metric-reading-source {
+    @apply max-sm:justify-start max-sm:gap-1 max-sm:text-left;
+  }
   /* The column's own label, shown only in card mode (the `<th>` is hidden there). */
   /* The passing muted pairing (#794): the label is set apart from its value by
      case and size, never by dropping below the contrast floor. */
@@ -371,6 +410,7 @@ body::before {
      therefore cannot silently reintroduce a per-chart height vocabulary. */
   .chart-card-plot > * {
     height: 100%;
+    width: 100%;
   }
 }
 

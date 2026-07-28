@@ -37,6 +37,8 @@ import {
 } from "@/lib/chart-time-axis";
 import {
   ANNOTATION_KIND_META,
+  annotationTooltipLabel,
+  snapAnnotationsToDates,
   type TrendAnnotation,
   type TrendWindow,
 } from "@/lib/trend-annotations";
@@ -118,6 +120,9 @@ export default function BiomarkerChart({
   const xTicks = timeAxisTicks(xDomain);
   const withYear = spansYearBoundary(xDomain);
   const dates = data.map((d) => d.date);
+  const tooltipAnnotations = annotations?.length
+    ? snapAnnotationsToDates(annotations, dates)
+    : [];
   const windowAreas = windows?.length
     ? protocolWindowEpochs(windows, dates)
     : [];
@@ -210,7 +215,6 @@ export default function BiomarkerChart({
                 fillOpacity={0.08}
                 stroke={color}
                 strokeOpacity={0.3}
-                label={chartAnnotationLabel(w.label, color, "insideTopLeft")}
               />
             );
           })}
@@ -221,12 +225,7 @@ export default function BiomarkerChart({
               x={dateToEpoch(a.date)}
               stroke={ANNOTATION_KIND_META[a.kind].color}
               strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.85}
-              label={chartAnnotationLabel(
-                a.label,
-                ANNOTATION_KIND_META[a.kind].color,
-                "top"
-              )}
+              strokeOpacity={0.6}
             />
           ))}
           <Tooltip
@@ -234,9 +233,15 @@ export default function BiomarkerChart({
               `${(item?.payload as ChartPoint | undefined)?.bound ?? ""}${fmt(Number(v))}`,
               "Value",
             ]}
-            labelFormatter={(v) =>
-              formatLongDate(epochToISO(Number(v)), formatPrefs)
-            }
+            labelFormatter={(value) => {
+              const date = epochToISO(Number(value));
+              return annotationTooltipLabel(
+                formatLongDate(date, formatPrefs),
+                date,
+                tooltipAnnotations,
+                windows ?? []
+              );
+            }}
             {...chartTooltipProps(c, motion)}
           />
           <Line

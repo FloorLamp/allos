@@ -80,6 +80,7 @@ describe("#1485 G — the sparse-series tile falls back to the latest reading", 
     expect(tile.outsideWindow?.date).toBe(staleDate);
     // The age is the honesty marker and is never absent.
     expect(tile.outsideWindow?.age).toBe("1y ago");
+    expect(tile.outsideWindow?.rangeLabel).toBe("90D");
     // The title node stays EXACTLY the analyte name (the age lives in its own
     // field, so an exact-text lookup for the analyte still matches — e2e relies
     // on this).

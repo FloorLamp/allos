@@ -69,53 +69,77 @@ export default function MetricReadingsTable({
 }) {
   if (readOnlyReason) {
     return (
-      <div className="card" data-testid="metric-readings">
-        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-          Readings
-        </h2>
-        <EmptyState message={readOnlyReason} />
+      <div className="card overflow-hidden !p-0" data-testid="metric-readings">
+        <ReadingsHeader />
+        <div
+          className="px-2 pb-2 sm:px-5 sm:pb-5"
+          data-testid="metric-readings-body"
+        >
+          <EmptyState message={readOnlyReason} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="card" data-testid="metric-readings">
-      <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+    <div className="card overflow-hidden !p-0" data-testid="metric-readings">
+      <ReadingsHeader />
+      <div
+        className="px-2 pb-2 sm:px-5 sm:pb-5"
+        data-testid="metric-readings-body"
+      >
+        {rows.length === 0 ? (
+          <EmptyState message="No readings recorded yet." />
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <ResponsiveTable
+                className="metric-readings-list w-full"
+                data-testid="metric-readings-table"
+              >
+                <thead>
+                  <tr className="border-b border-black/5 dark:border-white/10">
+                    <th className="th">Date</th>
+                    <th className="th">Value</th>
+                    <th className="th">Source</th>
+                    <th className="th">Notes</th>
+                    <th className="th" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <ReadingRow
+                      key={row.id}
+                      kind={kind}
+                      row={row}
+                      unit={unit}
+                    />
+                  ))}
+                </tbody>
+              </ResponsiveTable>
+            </div>
+            {truncated && (
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Showing the most recent readings. The full set (and bulk delete)
+                lives on Data → Manage.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReadingsHeader() {
+  return (
+    <div
+      className="px-4 pt-2.5 pb-1 sm:px-5 sm:pt-4 sm:pb-3"
+      data-testid="metric-readings-header"
+    >
+      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Readings
       </h2>
-      {rows.length === 0 ? (
-        <EmptyState message="No readings recorded yet." />
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <ResponsiveTable
-              className="w-full"
-              data-testid="metric-readings-table"
-            >
-              <thead>
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th">Date</th>
-                  <th className="th">Value</th>
-                  <th className="th">Source</th>
-                  <th className="th">Notes</th>
-                  <th className="th" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <ReadingRow key={row.id} kind={kind} row={row} unit={unit} />
-                ))}
-              </tbody>
-            </ResponsiveTable>
-          </div>
-          {truncated && (
-            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-              Showing the most recent readings. The full set (and bulk delete)
-              lives on Data → Manage.
-            </p>
-          )}
-        </>
-      )}
     </div>
   );
 }
@@ -165,7 +189,7 @@ function ReadingRow({
       <Td slot="title" className="whitespace-nowrap">
         {row.date}
       </Td>
-      <Td slot="value" label="Value">
+      <Td slot="value">
         {editing ? (
           <span className="flex items-center gap-1">
             <input
@@ -215,7 +239,12 @@ function ReadingRow({
           </span>
         )}
       </Td>
-      <Td slot="meta" label="Source" empty={!row.source}>
+      <Td
+        slot="meta"
+        label="Source"
+        empty={!row.source}
+        className="metric-reading-source"
+      >
         {row.source ?? "—"}
         {/* The #133 lock, made visible: this row was hand-corrected, so the next
             re-push of its source's rolling window will leave it alone. */}

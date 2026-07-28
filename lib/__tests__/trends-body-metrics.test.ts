@@ -2,10 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   BODY_METRIC_META,
   BODY_METRIC_SLUGS,
+  bodyMetricSlugForSavedId,
   isBodyMetricSlug,
+  savedMetricIdForBodySlug,
   resolveBodyMetricUnit,
   buildBodyMetricTile,
   orderBodyMetricTiles,
+  stableEmptyLast,
   bodyMetricPeriodStats,
   collapseCoincidentPeriods,
   seriesCoverageNote,
@@ -45,6 +48,49 @@ describe("BODY_METRIC_META registry", () => {
     expect(BODY_METRIC_META.steps.windowed).toBe(false);
     expect(BODY_METRIC_META.hr.windowed).toBe(false);
   });
+
+  it("owns full chart names and concise/composite context names", () => {
+    expect(BODY_METRIC_META.steps.title).toBe("Daily Steps");
+    expect(BODY_METRIC_META.steps.label).toBe("Steps");
+    expect(BODY_METRIC_META["resting-hr"].title).toBe("Resting Heart Rate");
+    expect(BODY_METRIC_META["resting-hr"].label).toBe("RHR");
+    expect(BODY_METRIC_META["skin-temp"].title).toBe(
+      "Skin Temperature Variation"
+    );
+    expect(BODY_METRIC_META["skin-temp"].label).toBe("Skin Temp");
+    expect(BODY_METRIC_META.systolic.summaryTitle).toBe("Blood Pressure");
+    expect(BODY_METRIC_META.diastolic.summaryTitle).toBe("Blood Pressure");
+    expect(BODY_METRIC_META.hr.summaryTitle).toBe("Heart Rate");
+  });
+
+  it("capitalizes every word in user-facing labels", () => {
+    for (const meta of Object.values(BODY_METRIC_META)) {
+      for (const value of [meta.label, meta.title, meta.summaryTitle]) {
+        if (!value) continue;
+        for (const word of value.split(/\s+/)) {
+          const firstLetter = word.match(/[A-Za-z]/)?.[0];
+          if (firstLetter) {
+            expect(firstLetter, `${meta.slug}: ${value}`).toBe(
+              firstLetter.toUpperCase()
+            );
+          }
+        }
+      }
+    }
+  });
+
+  it("maps detail slugs to stable saved ids and back", () => {
+    expect(savedMetricIdForBodySlug("weight")).toBe("weight");
+    expect(savedMetricIdForBodySlug("body-fat")).toBe("bodyfat");
+    expect(savedMetricIdForBodySlug("resting-hr")).toBe("resting_hr");
+    expect(savedMetricIdForBodySlug("steps")).toBe("steps");
+
+    expect(bodyMetricSlugForSavedId("weight")).toBe("weight");
+    expect(bodyMetricSlugForSavedId("bodyfat")).toBe("body-fat");
+    expect(bodyMetricSlugForSavedId("resting_hr")).toBe("resting-hr");
+    expect(bodyMetricSlugForSavedId("steps")).toBe("steps");
+    expect(bodyMetricSlugForSavedId("not-a-metric")).toBeNull();
+  });
 });
 
 describe("buildBodyMetricTile", () => {
@@ -59,6 +105,7 @@ describe("buildBodyMetricTile", () => {
       to: "2026-07-31",
     });
     expect(tile.slug).toBe("weight");
+    expect(tile.title).toBe("Weight");
     expect(tile.href).toBe("/trends/metric/weight");
     expect(tile.unit).toBe(" kg");
     expect(tile.present).toBe(true);
@@ -74,6 +121,8 @@ describe("buildBodyMetricTile", () => {
       "kg",
       { from: "2026-07-01", to: "2026-07-31" }
     );
+    expect(tile.title).toBe("Daily Steps");
+    expect(tile.label).toBe("Steps");
     expect(tile.present).toBe(true);
     expect(tile.latestDate).toBe("2026-01-01");
     expect(tile.points).toEqual([]);
@@ -115,6 +164,65 @@ describe("orderBodyMetricTiles", () => {
       ["weight"]
     );
     expect(ordered.map((t) => t.slug)).toEqual(["weight", "sun"]);
+  });
+
+  it("sinks selected-range empty tiles while preserving rank within each group", () => {
+    const ordered = orderBodyMetricTiles(
+      [
+        {
+          slug: "weight",
+          id: "weight",
+          label: "Weight",
+          present: true,
+          empty: true,
+        },
+        {
+          slug: "steps",
+          id: "steps",
+          label: "Steps",
+          present: true,
+          empty: false,
+        },
+        {
+          slug: "sleep",
+          id: "sleep",
+          label: "Sleep",
+          present: true,
+          empty: false,
+        },
+        {
+          slug: "bmi",
+          id: "bmi",
+          label: "BMI",
+          present: true,
+          empty: true,
+        },
+      ],
+      ["weight", "steps", "bmi", "sleep"]
+    );
+    expect(ordered.map((tile) => tile.slug)).toEqual([
+      "steps",
+      "sleep",
+      "weight",
+      "bmi",
+    ]);
+  });
+});
+
+describe("stableEmptyLast", () => {
+  it("is a stable partition", () => {
+    const items = [
+      { id: "empty-a", empty: true },
+      { id: "filled-a", empty: false },
+      { id: "empty-b", empty: true },
+      { id: "filled-b", empty: false },
+    ];
+    expect(stableEmptyLast(items, (item) => item.empty)).toEqual([
+      items[1],
+      items[3],
+      items[0],
+      items[2],
+    ]);
   });
 });
 

@@ -34,6 +34,7 @@ import {
 } from "@/lib/queries";
 import { weightTrend } from "@/lib/household";
 import { zone2Adherence } from "@/lib/training-zones";
+import { BODY_METRIC_META } from "@/lib/trends-body-metrics";
 import { weekWindow } from "@/lib/week-window";
 import { shiftDateStr, startOfWeekStr } from "@/lib/date";
 import {
@@ -103,6 +104,19 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
     );
   });
 
+  it("routes Overview metrics to their detailed chart surfaces", () => {
+    const byKey = new Map(
+      buildMetricSeries(profileId, 1, {}, false).map((series) => [
+        series.key,
+        series.href,
+      ])
+    );
+    expect(byKey.get("metric:weight")).toBe("/trends/metric/weight");
+    expect(byKey.get("metric:bodyfat")).toBe("/trends/metric/body-fat");
+    expect(byKey.get("metric:resting_hr")).toBe("/trends/metric/resting-hr");
+    expect(byKey.get("metric:volume")).toBe("/training?tab=analyze");
+  });
+
   it("household current weight + trend arrow match the dashboard and compare DAYS not devices (#396)", () => {
     // The page now derives the displayed value from getDashboardStats().latestWeight…
     const displayed = getDashboardStats(profileId).latestWeight;
@@ -152,7 +166,9 @@ describe("logical outcome identity", () => {
 
     const digest = buildDigestSeries(profileId, 1, {}, false);
     expect(
-      digest.filter((series) => series.label === "Resting heart rate")
+      digest.filter(
+        (series) => series.label === BODY_METRIC_META["resting-hr"].title
+      )
     ).toHaveLength(1);
     expect(
       digest.find((series) => series.key === "metric:resting_hr")?.points

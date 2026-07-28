@@ -93,11 +93,11 @@ export const SHELL_DOSE_ITEM = "Shell Overlay Vitamin (e2e)";
 export const SHELL_DOSE_AMOUNT = "1000 IU";
 
 // #1466 — the Trends → Vitals tab's Today strip + 1D (intraday) view. A DEDICATED
-// member login + adult profile carrying a full VITALS day: per-minute HR across the
-// morning (the 1D heart-rate chart), two TIMED blood-pressure pairs and two timed
-// SpO2 readings ingest-shaped so each carries its reading instant (the time-positioned
-// point charts), one manual temperature whose clock time rides its note, and a
-// day-granular resting HR (the strip entry that has a value but no time). Dedicated
+// member login + adult profile carrying a full BODY day: today's weight/body fat,
+// per-minute HR across the morning (the 1D heart-rate chart), two TIMED
+// blood-pressure pairs and two timed SpO2 readings ingest-shaped so each carries
+// its reading instant (the time-positioned point charts), one manual temperature
+// whose clock time rides its note, and a day-granular resting HR. Dedicated
 // on purpose: the 1D charts key on hr_minutes, which profile 1 has only inside the
 // zone-ride window that training-zones.spec pins — a full morning of wear there would
 // move those totals. Synthetic, no PHI; the spec only reads.
@@ -108,6 +108,9 @@ export const VITALS_DAY_BP_LATER = "126/82";
 export const VITALS_DAY_BP_LATER_TIME = "09:40";
 export const VITALS_DAY_TEMP_TIME = "08:05";
 export const VITALS_DAY_RESTING_HR = "54";
+export const VITALS_DAY_WEIGHT_KG = 78.4;
+export const VITALS_DAY_BODY_FAT = 21.7;
+export const VITALS_DAY_STEPS = 4321;
 
 // A member granted a dedicated ADULT profile carrying NOTHING but the two
 // age-derived preventive findings every adult profile gets (COVID-19, Influenza),

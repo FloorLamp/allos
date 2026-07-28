@@ -1,7 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { getTrendViews } from "@/lib/settings";
 import {
   ALL_TIME_RANGE_PARAM,
   ALL_TIME_RANGE_VALUE,
@@ -19,7 +18,6 @@ import { PageHeader } from "@/components/ui";
 import { NavTabsStrip } from "@/components/NavTabs";
 import TrendsContextBar from "@/components/TrendsContextBar";
 import DateRangeControl from "@/components/DateRangeControl";
-import SavedViewsBar from "@/components/SavedViewsBar";
 import {
   TrendAnnotationControls,
   TrendAnnotationProvider,
@@ -74,7 +72,6 @@ export default async function TrendsPage(props: {
   const { profile } = await requireSession();
   const todayStr = today(profile.id);
   const restricted = isTrainingRestricted(profile.id);
-  const savedViews = getTrendViews(profile.id);
 
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
@@ -261,61 +258,38 @@ export default async function TrendsPage(props: {
             />
           }
           controls={
-            <>
-              <DateRangeControl
-                basePath="/trends"
-                range={range}
-                todayStr={todayStr}
-                hiddenParams={{
-                  tab: activeTab === "overview" ? undefined : activeTab,
-                  cmpA,
-                  cmpB,
-                  cmpn: cmpNormalized ? "1" : undefined,
-                  view: activeTab === "body" ? bodyView : undefined,
-                }}
-                buildHref={buildRangeHref}
-                idPrefix="trends"
-                extraRanges={extraRanges}
-                // The saved views ride the END of the chip row rather than a second
-                // full-width row of their own (#1455 C).
-                // The RESOLVED window goes to the saved-views bar, not the raw URL params
-                // (#1485 G): "Save current" on a default load must capture the 90D window
-                // the user is looking at, not the empty param bag that produced it —
-                // otherwise every view saved from a default load would re-apply as all time.
-                // `view` travels with the window for the same reason (#1493 C): the
-                // Body tab's tiles/all layout is state the user chose, and a "Save
-                // current" that drops part of the current state is a bug by its own
-                // name. It is passed from the SERVER-resolved value (not the URL) so a
-                // view saved on the responsive default captures the layout that was
-                // actually rendered; off the Body tab it is undefined and nothing is
-                // captured.
-                trailingChips={
-                  <SavedViewsBar
-                    views={savedViews}
-                    range={range}
-                    view={activeTab === "body" ? bodyView : undefined}
-                  />
-                }
-                // Only a CUSTOM window needs a summary chip: with a preset lit, the chip
-                // just repeats that pill's own label (the duplicate "All time" — #1455 D).
-                rightSlot={
-                  isCustomRange(range, todayStr, extraRanges) ? (
-                    <span
-                      data-testid="range-summary-chip"
-                      className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400"
-                    >
-                      {rangeSummaryLabel(range, todayStr)}
-                    </span>
-                  ) : undefined
-                }
-              />
-              {/* The event / protocol-window toggles (#1493 A), LAST because they are
-                the most specific context: the tab says what the charts are of, the
-                pills say over what window, these say which life events are drawn
-                over them. Renders nothing until a chart on the active tab actually
-                registers markers, so Overview and Nutrition show no dead pills. */}
-              <TrendAnnotationControls />
-            </>
+            <DateRangeControl
+              basePath="/trends"
+              range={range}
+              todayStr={todayStr}
+              hiddenParams={{
+                tab: activeTab === "overview" ? undefined : activeTab,
+                cmpA,
+                cmpB,
+                cmpn: cmpNormalized ? "1" : undefined,
+                view: activeTab === "body" ? bodyView : undefined,
+              }}
+              buildHref={buildRangeHref}
+              idPrefix="trends"
+              extraRanges={extraRanges}
+              // Only a CUSTOM window needs a summary chip: with a preset lit, the chip
+              // just repeats that pill's own label (the duplicate "All time" — #1455 D).
+              rightSlot={
+                isCustomRange(range, todayStr, extraRanges) ? (
+                  <span
+                    data-testid="range-summary-chip"
+                    className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400"
+                  >
+                    {rangeSummaryLabel(range, todayStr)}
+                  </span>
+                ) : undefined
+              }
+              // Event / protocol-window toggles are the most specific context:
+              // the tab says what charts show, the pills say over what window,
+              // and these say which life events are drawn over them. The shared
+              // row stacks on phones and aligns the controls on desktop.
+              companionSlot={<TrendAnnotationControls />}
+            />
           }
         />
 

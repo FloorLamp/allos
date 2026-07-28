@@ -123,13 +123,21 @@ test("a sparse saved biomarker shows its latest reading and age, not 'No data'",
   await expect(fallback).toBeVisible();
   await expect(fallback).toContainText(SPARSE_LATEST);
   await expect(tile).not.toContainText("No data in this range");
+  const singleReading = tile.getByTestId("trend-mini-single-reading");
+  await expect(singleReading).toBeVisible();
+  await expect(singleReading).toHaveAttribute("data-reading-scope", "outside");
+  await expect(singleReading).toContainText("Latest recorded ·");
+  await expect(singleReading.locator("time")).toHaveAttribute(
+    "datetime",
+    /\d{4}-\d{2}-\d{2}/
+  );
 
   // The age is the honesty marker: it is the only thing stopping a year-old value
   // from reading as current, so it is asserted as hard as the value is. (Pattern,
   // not a literal: the reading's date is fixed in the seed while "today" is the
   // run's own clock, so the exact bucket drifts with the calendar.)
   await expect(fallback).toContainText(/\d+(y|mo|w|d) ago/);
-  await expect(fallback).toContainText("outside this range");
+  await expect(fallback).toContainText("outside 90D range");
 
   // The same tile under an explicit all-time window draws the real series — the
   // fallback is a property of the WINDOW, not of the analyte.

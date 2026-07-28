@@ -28,6 +28,8 @@ test("Trends → Body shows a data-hygiene finding for the weight jump (#45)", a
   await page.goto("/trends?tab=body");
   const card = page.getByRole("main").getByTestId("body-hygiene-findings");
   await expect(card).toBeVisible();
+  await expect(card).not.toHaveAttribute("open", "");
+  await card.getByTestId("body-hygiene-findings-toggle").click();
   await expect(card).toContainText(/unusual weight reading/i);
 });
 
@@ -66,6 +68,7 @@ test("a body-hygiene finding can be dismissed (#45)", async ({ page }) => {
   resetBodyHygieneDismissals();
   await page.goto("/trends?tab=body");
   const main = page.getByRole("main");
+  await main.getByTestId("body-hygiene-findings-toggle").click();
   // Target the SEEDED 92 kg anomaly specifically: in the full suite other specs
   // (offline-queue, manual-vitals) log weights of their own before this file runs,
   // which can trip additional >3% findings — a bare "Unusual weight reading"

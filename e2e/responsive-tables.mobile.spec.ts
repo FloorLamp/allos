@@ -20,8 +20,8 @@ const BIOMARKERS = "/results/biomarkers";
 // bounded, fixture-agnostic one — "Cholesterol" is present in every seeded profile.
 const CARD_ROWS = `${BIOMARKERS}?q=Cholesterol`;
 
-test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
-  test("the biomarkers table stacks as cards — no header row, prominent value, no sideways scroll", async ({
+test.describe("responsive tables: stacked rows below sm (#1426)", () => {
+  test("the biomarkers table stacks as flat rows — no header row, prominent value, no sideways scroll", async ({
     page,
   }) => {
     await page.goto(CARD_ROWS);
@@ -31,11 +31,13 @@ test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
     // The header strip is gone in card mode; each cell carries its own label instead.
     await expect(table.locator("thead")).toBeHidden();
 
-    // Skip the group's own header row — the card under test is a READING.
+    // Skip the group's own header row — the row under test is a READING.
     const card = table
       .locator("tbody tr")
       .filter({ has: page.locator('td[data-card="title"]') })
       .first(); // first-ok: the spec asserts the card SHAPE, never which row is first
+    await expect(card).toHaveCSS("border-radius", "0px");
+    await expect(card).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(card.locator('td[data-card="title"]')).toBeVisible();
     // The value (with its out-of-range flag) is on the card, not scrolled off it.
     const value = card.locator('td[data-card="value"]');
@@ -56,7 +58,7 @@ test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
     await expectNoClippedContent(page);
   });
 
-  test("tapping a card's name opens the same biomarker detail the desktop row links to", async ({
+  test("tapping a row's name opens the same biomarker detail the desktop row links to", async ({
     page,
   }) => {
     await page.goto(CARD_ROWS);
@@ -71,7 +73,7 @@ test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
     await expect(page.locator("h1")).toBeVisible();
   });
 
-  test("sorting still works in card mode, through the compact sort select", async ({
+  test("sorting still works in stacked-row mode, through the compact sort select", async ({
     page,
   }) => {
     await page.goto(CARD_ROWS);
@@ -92,7 +94,7 @@ test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
       .not.toBe(ascending);
   });
 
-  test("the training analyze sessions table stacks as cards too", async ({
+  test("the training analyze sessions table stacks as flat rows too", async ({
     page,
   }) => {
     await page.goto("/training?tab=analyze");
@@ -100,6 +102,8 @@ test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
     await expect(table).toBeVisible();
     await expect(table.locator("thead")).toBeHidden();
     const card = table.locator("tbody tr").first(); // first-ok: the spec asserts the card shape of a session row, not which session
+    await expect(card).toHaveCSS("border-radius", "0px");
+    await expect(card).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     // Date is the card title (and still the deep link into the log); the view's
     // leading metric is the headline value.
     await expect(card.locator('td[data-card="title"] a')).toBeVisible();

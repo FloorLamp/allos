@@ -77,6 +77,7 @@ export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
   "mood",
   // Synced daily metrics.
   "steps",
+  "active-calories",
   "sleep",
   "hr",
   "hr-day",

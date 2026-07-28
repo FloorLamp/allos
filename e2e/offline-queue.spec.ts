@@ -19,7 +19,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
 
   await page.goto("/trends?tab=body");
   // #1486: the body quick-add is now the combined "Log measurements" form behind
-  // the desktop "+ Log" expander — open it before going offline.
+  // the desktop "+ Log" modal — open it before going offline.
   await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
   const form = page.getByTestId("measurements-quick-add");
   await expect(form).toBeVisible();
@@ -76,7 +76,7 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
 
   await page.goto("/trends?tab=body");
   // #1486: the body quick-add is now the combined "Log measurements" form behind
-  // the desktop "+ Log" expander — open it before going offline.
+  // the desktop "+ Log" modal — open it before going offline.
   await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
   const form = page.getByTestId("measurements-quick-add");
   await expect(form).toBeVisible();

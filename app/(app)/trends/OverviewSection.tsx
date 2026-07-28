@@ -3,11 +3,14 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { getSavedItems } from "@/lib/queries/saved";
 import {
   buildMetricSeries,
+  buildSavedBodyMetricSeries,
   buildSavedBiomarkerTile,
   listCompareOptions,
   type TrendSeries,
 } from "@/lib/trends-series";
 import { today } from "@/lib/db";
+import { formatMonthDay } from "@/lib/format-date";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import {
   isSeriesKeySaved,
   metricSeriesKey,
@@ -56,6 +59,7 @@ import TrendingDigest from "./TrendingDigest";
 export default async function OverviewSection({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   // The profile's today, for the age label on a sparse tile's out-of-window
   // reading (#1485 G) — profile timezone, never the server's local day.
   const todayStr = today(profile.id);
@@ -79,7 +83,15 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
   const tiles: TrendSeries[] = [];
   for (const ref of savedRefs) {
     if (ref.kind === "trend-metric") {
-      const tile = metricByKey.get(metricSeriesKey(ref.key));
+      const tile =
+        metricByKey.get(metricSeriesKey(ref.key)) ??
+        buildSavedBodyMetricSeries(
+          profile.id,
+          login.id,
+          ref.key,
+          range,
+          todayStr
+        );
       if (tile) tiles.push(tile);
     } else {
       tiles.push(buildSavedBiomarkerTile(profile.id, ref.key, range, todayStr));
@@ -107,9 +119,9 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
   const renderTile = (t: TrendSeries, compact: boolean) => (
     <TrendMiniCard
       title={t.label}
+      mobileTitle={t.shortLabel}
       href={t.href}
       data={t.points}
-      label={t.label}
       unit={t.unit}
       color={t.color}
       decimals={t.decimals}
@@ -117,6 +129,14 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
       minPctChange={t.minPctChange}
       applyBiomarkerDomain={t.kind === "biomarker"}
       outsideWindow={t.outsideWindow ?? null}
+      readingDateLabel={(() => {
+        const readingDate =
+          t.outsideWindow?.date ??
+          (t.points.length === 1 ? t.points[0].date : null);
+        return readingDate
+          ? formatMonthDay(readingDate, formatPrefs)
+          : undefined;
+      })()}
       // #1485 D: the mark follows the job. Decided once, from the series key, by
       // lib/trend-sparkline.ts — training volume's rest days are real zeros, so a
       // line through them draws a slope over training that never happened.

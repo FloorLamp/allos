@@ -57,30 +57,45 @@ import type { AppRoute } from "@/lib/hrefs";
 // robust endpoint, so the tile still names the current value.
 export default function TrendMiniCard({
   title,
+  mobileTitle,
   href,
   data,
-  label,
   unit = "",
   color,
   decimals = 1,
   range = null,
   minPctChange,
+  headline,
+  showChange = true,
   menu,
   compact = false,
   applyBiomarkerDomain = false,
+  yDomain,
+  emptyMessage = "No data in this range",
   outsideWindow = null,
+  readingDateLabel,
   sparklineShape = "line",
+  singleReadingAsChart = false,
   testid = "trend-mini-card",
 }: {
   title: string;
+  // Compact surfaces use the registry's short label on phones while retaining the
+  // full chart title on larger screens. Omitted for non-registry series such as
+  // biomarkers, where `title` is already the canonical display name.
+  mobileTitle?: string;
   href: AppRoute;
   data: { date: string; value: number | null }[];
-  label: string;
   unit?: string;
   color?: string;
   decimals?: number;
   range?: { low: number | null; high: number | null } | null;
   minPctChange?: number;
+  // Optional semantic headline for a metric whose latest value is not honestly
+  // expressed as number+unit (for example an ordinal growth percentile).
+  headline?: ReactNode;
+  // Percentile movement is not inherently good or bad, so composite growth turns
+  // off the green/red directional badge while retaining its plotted trajectory.
+  showChange?: boolean;
   // The tile's corner ⋯ menu (star / reorder). Omitted by tile grids that carry no
   // per-tile controls (the Body tab's).
   menu?: ReactNode;
@@ -96,17 +111,33 @@ export default function TrendMiniCard({
   // chart (0-clamp for a non-negative analyte; a flat/near-flat series gets a small
   // window) instead of recharts' bare ["auto","auto"]. Metric tiles leave it off.
   applyBiomarkerDomain?: boolean;
+  // Explicit chart scale for bounded domains such as a percentile (0–100).
+  yDomain?: [number, number];
+  // Optional reason for a chart-shaped empty state that is not range-driven
+  // (growth references can be age-inapplicable).
+  emptyMessage?: string;
   // #1485 G: the latest reading BEHIND the window, for a series with no points in
   // it. Optional and off by default, so the range-driven Overview tiles opt in
   // while BodyMetricTiles keeps the plain empty state. Rendered only when `data`
   // is empty — it is a fallback FOR the empty state, never an annotation on a
   // drawn series.
-  outsideWindow?: { text: string; age: string } | null;
+  outsideWindow?: {
+    date: string;
+    text: string;
+    age: string;
+    rangeLabel?: string;
+  } | null;
+  // Pref-formatted calendar date for the single reading represented by the
+  // marker. The raw ISO date stays on <time dateTime>; callers own display prefs.
+  readingDateLabel?: string;
   // Which MARK the sparkline draws (#1485 D). Decided ONCE, per series, by
   // lib/trend-sparkline.ts — a tile grid passes the answer through rather than
   // re-deciding. "line" (the default) is a level; "bar" is a per-day quantity whose
   // missing days are real zeros, where a line would draw a slope through a rest day.
   sparklineShape?: SparklineShape;
+  // Keep a one-point line series chart-shaped. Sleep uses this because its tile is
+  // a chart at every range; ordinary sparse metrics use the denser value marker.
+  singleReadingAsChart?: boolean;
 }) {
   const values = data.map((d) => d.value).filter((v): v is number => v != null);
   const latest = values.length > 0 ? values[values.length - 1] : null;
@@ -117,8 +148,9 @@ export default function TrendMiniCard({
   const summary = robustSeriesSummary({ points: data, range, minPctChange });
   // The tile draws no reference bands, so band-inclusion is moot — only the
   // value-and-range-driven [lo, hi] matters. Skipped when there are no points.
-  const yDomain =
-    applyBiomarkerDomain && values.length > 0
+  const chartYDomain =
+    yDomain ??
+    (applyBiomarkerDomain && values.length > 0
       ? ((): [number, number] => {
           const { lo, hi } = biomarkerAxisDomain(values, {
             refLow: range?.low ?? null,
@@ -126,130 +158,219 @@ export default function TrendMiniCard({
           });
           return [lo, hi];
         })()
-      : undefined;
+      : undefined);
   const deltaSign = summary && summary.absChange > 0 ? "+" : "";
-
-  const titleLink = (
-    <Link
-      href={href}
-      className="truncate text-sm font-medium text-slate-500 transition hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-300"
-    >
-      {title}
-    </Link>
-  );
+  const isEmpty = latest == null && outsideWindow == null;
+  // A line needs two points to describe a direction. Recharts' sparkline mode
+  // deliberately hides per-point dots, so a one-reading series previously spent
+  // 80px on a completely blank plot and then printed the same value as both Low
+  // and High. Sparse biomarkers had the same awkward empty lower half when their
+  // latest reading sat outside the selected range. Give both honest value-only
+  // states a deliberate single-marker treatment instead.
+  const showSingleReading =
+    outsideWindow != null ||
+    (sparklineShape === "line" && values.length === 1 && !singleReadingAsChart);
+  const readingDate =
+    outsideWindow?.date ??
+    (sparklineShape === "line" && data.length === 1 ? data[0].date : null);
+  const footerTextClass =
+    "text-xs tabular-nums text-slate-500 dark:text-slate-400";
 
   // The one-line variant: name · "no data in this range" · the same corner menu.
   if (compact) {
     return (
       <div
-        className="card flex items-center justify-between gap-2 py-1.5 sm:py-1.5"
+        className="card flex items-stretch overflow-hidden !p-0"
         data-testid={testid}
       >
-        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          {titleLink}
+        <Link
+          href={href}
+          data-testid="trend-mini-header-link"
+          className="group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:hover:bg-brand-950/40"
+        >
+          <span
+            className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:whitespace-normal sm:text-clip dark:text-slate-400 dark:group-hover:text-brand-300"
+            title={title}
+          >
+            {mobileTitle && mobileTitle !== title ? (
+              <>
+                <span className="sm:hidden">{mobileTitle}</span>
+                <span className="hidden sm:inline">{title}</span>
+              </>
+            ) : (
+              title
+            )}
+          </span>
           <span className="truncate text-xs text-slate-500 dark:text-slate-400">
             No data in this range
           </span>
-        </span>
-        {menu}
+        </Link>
+        {menu && (
+          <div className="flex shrink-0 items-center px-2 sm:px-3">{menu}</div>
+        )}
       </div>
     );
   }
 
+  const value =
+    latest != null ? (
+      <span className="flex flex-wrap items-baseline gap-1.5 sm:shrink-0 sm:flex-nowrap sm:whitespace-nowrap">
+        <span className="text-2xl font-semibold leading-tight tabular-nums text-slate-900 dark:text-slate-100">
+          {headline ?? (
+            <>
+              {round(latest, decimals)}
+              {unit}
+            </>
+          )}
+        </span>
+        {showChange && summary && summary.material && (
+          <span
+            className={`flex items-center gap-0.5 whitespace-nowrap text-xs ${
+              summary.direction === "up"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-rose-600 dark:text-rose-400"
+            }`}
+          >
+            {summary.direction === "up" ? (
+              <IconArrowUpRight className="h-3.5 w-3.5" stroke={2} />
+            ) : (
+              <IconArrowDownRight className="h-3.5 w-3.5" stroke={2} />
+            )}
+            {deltaSign}
+            {round(summary.absChange, decimals)}
+          </span>
+        )}
+      </span>
+    ) : outsideWindow ? (
+      // Sparse-series fallback (#1485 G). The window is genuinely empty, so there
+      // is nothing to plot — but the series has history, and the latest reading is
+      // the number the tile exists to show. It takes the headline slot in the muted
+      // tone, ALWAYS with its age and an explicit "outside this range": the value is
+      // real, its currency is not.
+      <span
+        className="flex min-w-0 flex-col sm:items-end"
+        data-testid="trend-mini-outside-window"
+      >
+        <span className="text-2xl font-semibold leading-tight tabular-nums text-slate-600 dark:text-slate-300">
+          {outsideWindow.text}
+        </span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {outsideWindow.age} · outside {outsideWindow.rangeLabel ?? "selected"}{" "}
+          range
+        </span>
+      </span>
+    ) : (
+      <span className="text-sm text-slate-500 dark:text-slate-400">
+        {emptyMessage}
+      </span>
+    );
+
   return (
-    <div className="card" data-testid={testid}>
-      <div className="flex items-start justify-between gap-1">
-        <div className="flex min-w-0 flex-col">
-          {titleLink}
-          {latest != null ? (
-            <span className="flex flex-wrap items-baseline gap-1.5">
-              <span className="text-2xl font-semibold leading-tight tabular-nums text-slate-900 dark:text-slate-100">
-                {round(latest, decimals)}
-                {unit}
-              </span>
-              {summary && summary.material && (
-                <span
-                  className={`flex items-center gap-0.5 whitespace-nowrap text-xs ${
-                    summary.direction === "up"
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-rose-600 dark:text-rose-400"
-                  }`}
-                >
-                  {summary.direction === "up" ? (
-                    <IconArrowUpRight className="h-3.5 w-3.5" stroke={2} />
-                  ) : (
-                    <IconArrowDownRight className="h-3.5 w-3.5" stroke={2} />
-                  )}
-                  {deltaSign}
-                  {round(summary.absChange, decimals)}
-                </span>
-              )}
-            </span>
-          ) : outsideWindow ? (
-            // Sparse-series fallback (#1485 G). The window is genuinely empty, so
-            // there is nothing to plot — but the series has history, and the latest
-            // reading is the number the tile exists to show. It takes the headline
-            // slot in the muted tone, ALWAYS with its age and an explicit "outside
-            // this range": the value is real, its currency is not, and the label is
-            // what keeps a five-month-old reading from being read as today's.
-            <span
-              className="flex min-w-0 flex-col"
-              data-testid="trend-mini-outside-window"
-            >
-              <span className="text-2xl font-semibold leading-tight tabular-nums text-slate-600 dark:text-slate-300">
-                {outsideWindow.text}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {outsideWindow.age} · outside this range
-              </span>
-            </span>
-          ) : (
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              No data in this range
-            </span>
-          )}
-        </div>
-        {menu}
+    <div className="card flex h-full flex-col" data-testid={testid}>
+      <div className="-mx-4 -mt-4 flex items-start sm:-mx-5 sm:-mt-5">
+        <Link
+          href={href}
+          data-testid="trend-mini-header-link"
+          className={`group flex min-h-11 min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-tl-xl px-4 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:bg-brand-50/80 hover:text-brand-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:text-slate-400 dark:hover:bg-brand-950/40 dark:hover:text-brand-300 ${
+            isEmpty
+              ? ""
+              : "sm:flex-row sm:items-baseline sm:justify-between sm:gap-3"
+          } ${menu ? "" : "rounded-tr-xl"}`}
+        >
+          <span
+            className="min-w-0 truncate group-hover:underline sm:flex-1 sm:whitespace-normal sm:text-clip sm:text-base sm:font-semibold"
+            title={title}
+          >
+            {mobileTitle && mobileTitle !== title ? (
+              <>
+                <span className="sm:hidden">{mobileTitle}</span>
+                <span className="hidden sm:inline">{title}</span>
+              </>
+            ) : (
+              title
+            )}
+          </span>
+          {value}
+        </Link>
+        {menu && <div className="shrink-0 px-2 py-1.5 sm:px-3">{menu}</div>}
       </div>
-      {data.length > 0 && (
-        <div className="mt-2" data-sparkline-shape={sparklineShape}>
-          {sparklineShape === "bar" ? (
-            <BarSparkline
-              data={data}
-              label={label}
-              unit={unit}
-              color={color}
-              decimals={decimals}
-              heightClass="h-20"
-            />
-          ) : (
-            <LineChartCard
-              data={data}
-              label={label}
-              unit={unit}
-              color={color}
-              decimals={decimals}
-              heightClass="h-20"
-              yDomain={yDomain}
-              sparkline
-            />
-          )}
-          {lo != null && hi != null && (
-            <div
-              className="mt-1 flex items-baseline justify-between gap-2 text-xs tabular-nums text-slate-500 dark:text-slate-400"
-              data-testid="trend-mini-range"
-            >
-              <span>
-                Low {round(lo, decimals)}
-                {unit}
-              </span>
-              <span>
-                High {round(hi, decimals)}
-                {unit}
-              </span>
-            </div>
-          )}
+      {showSingleReading ? (
+        <div
+          className="mt-auto pt-2"
+          data-testid="trend-mini-single-reading"
+          data-reading-scope={outsideWindow ? "outside" : "inside"}
+        >
+          <div
+            className="flex h-20 items-center px-3"
+            data-testid="trend-mini-single-marker"
+            aria-hidden="true"
+          >
+            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-slate-300 dark:to-slate-600" />
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15">
+              <span
+                className="h-2.5 w-2.5 rounded-full bg-brand-500"
+                style={color ? { backgroundColor: color } : undefined}
+              />
+            </span>
+            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-slate-300 dark:to-slate-600" />
+          </div>
+          <p className={`-mt-1 text-center ${footerTextClass}`}>
+            {readingDate && readingDateLabel ? (
+              <>
+                {outsideWindow ? "Latest recorded" : "Single reading"} ·{" "}
+                <time dateTime={readingDate}>{readingDateLabel}</time>
+              </>
+            ) : outsideWindow ? (
+              "Latest recorded value"
+            ) : (
+              "Single reading in this range"
+            )}
+          </p>
         </div>
+      ) : (
+        data.length > 0 && (
+          <div className="mt-auto pt-2" data-sparkline-shape={sparklineShape}>
+            {sparklineShape === "bar" ? (
+              <BarSparkline
+                data={data}
+                label={title}
+                unit={unit}
+                color={color}
+                decimals={decimals}
+                heightClass="h-20"
+              />
+            ) : (
+              <LineChartCard
+                data={data}
+                label={title}
+                unit={unit}
+                color={color}
+                decimals={decimals}
+                heightClass="h-20"
+                yDomain={chartYDomain}
+                sparkline
+                // Dots are part of the shared tile grammar. The chart scaffold
+                // still suppresses them for genuinely dense series.
+                sparklineDots
+              />
+            )}
+            {lo != null && hi != null && (
+              <div
+                className={`mt-1 flex items-baseline justify-between gap-2 ${footerTextClass}`}
+                data-testid="trend-mini-range"
+              >
+                <span>
+                  Low {round(lo, decimals)}
+                  {unit}
+                </span>
+                <span>
+                  High {round(hi, decimals)}
+                  {unit}
+                </span>
+              </div>
+            )}
+          </div>
+        )
       )}
     </div>
   );

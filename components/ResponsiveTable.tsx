@@ -8,12 +8,13 @@ import { cardCellAttrs, type CardSlot } from "@/lib/card-row";
 // matter scroll out of sight, rows are hard to tap, and (before #794's wrap-and-
 // scroll rule) some of it clipped outright.
 //
-// APPROACH. Below `sm` the table stops being a table and becomes a stack of cards
-// — WITHOUT a second content tree. This is the responsive-surface rule (AGENTS.md:
+// APPROACH. Below `sm` the table stops being a table and becomes a stack of flat,
+// divider-separated records — WITHOUT a second content tree. This is the
+// responsive-surface rule (AGENTS.md:
 // "never author into a single branch of a `hidden md:*` pair") taken to its
 // conclusion: there is exactly ONE `<table>` in the DOM, exactly one set of cells,
-// and the card layout is pure CSS over that same markup (the `.table-cards` block
-// in app/globals.css re-lays `tr`/`td` as a flex card and hides `thead`). A
+// and the phone layout is pure CSS over that same markup (the `.table-cards` block
+// in app/globals.css re-lays `tr`/`td` as a flex row and hides `thead`). A
 // `hidden md:table-cell` twin pair can't drift here because there is no twin: a
 // cell is authored once and rendered once.
 //
@@ -25,7 +26,7 @@ import { cardCellAttrs, type CardSlot } from "@/lib/card-row";
 //
 // Because `thead` is hidden below `sm`, a `meta` cell carries its own `label`,
 // rendered `sm:hidden` inside the cell. That keeps the column's meaning available
-// to sighted and assistive users in card mode, where the `<th>` is gone.
+// to sighted and assistive users in stacked-row mode, where the `<th>` is gone.
 //
 // SORTING. Header-click sorting lives in the (hidden) `thead`, so a sortable table
 // pairs this with `components/TableSortSelect.tsx` — a compact `sm:hidden` select
