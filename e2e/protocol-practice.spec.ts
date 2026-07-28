@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { expectNoClippedContent, hydratedClick, settledClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 
 // Recovery gear + practice adherence on protocols (issue #344). Creates a protocol
@@ -194,8 +199,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   // Self-clean.
   const detailLink = row.getByRole("link");
   await expect(detailLink).toHaveAttribute("href", /\/protocols\/\d+/);
-  await detailLink.press("Enter");
-  await expect(page).toHaveURL(/\/protocols\/\d+/);
+  await followLink(page, detailLink, /\/protocols\/\d+/);
   await hydratedClick(
     page,
     page.getByRole("main").getByRole("button", {
