@@ -164,6 +164,29 @@ export function getPracticeUsageInWindow(
   return row;
 }
 
+export function getPracticeDayUsageInWindow(
+  profileId: number,
+  practice: string,
+  start: string,
+  end: string
+): { date: string; count: number }[] {
+  const spellings = getPracticeSpellings(profileId, practice);
+  if (spellings.length === 0) return [];
+  return db
+    .prepare(
+      `SELECT date, COUNT(*) AS count
+         FROM practice_logs
+        WHERE profile_id = ? AND practice IN (${inClause(spellings)})
+          AND date >= ? AND date <= ?
+        GROUP BY date
+        ORDER BY date ASC`
+    )
+    .all(profileId, ...spellings, start, end) as {
+    date: string;
+    count: number;
+  }[];
+}
+
 export function getPracticeSession(
   profileId: number,
   id: number

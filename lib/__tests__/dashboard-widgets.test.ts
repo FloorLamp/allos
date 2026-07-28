@@ -5,6 +5,7 @@ import {
   DASHBOARD_WIDGETS,
   DATA_QUALITY_GAPS_CAP,
   capDashboardList,
+  capActionableDashboardList,
   customizableWidgetDefs,
   dashboardHabitDomain,
   dashboardGoalsHabitsLayout,
@@ -352,6 +353,60 @@ describe("capDashboardList (#1219)", () => {
     expect(COACHING_OBSERVATIONS_CAP).toBe(2);
     expect(DATA_QUALITY_GAPS_CAP).toBe(3);
     expect(ACTIVE_PROTOCOLS_CAP).toBe(3);
+  });
+});
+
+describe("capActionableDashboardList (#1584)", () => {
+  it("shows every actionable row and fills only the remaining cap with info", () => {
+    const items = [
+      ...Array.from({ length: 5 }, (_, index) => ({
+        id: `action-${index}`,
+        actionable: true,
+      })),
+      ...Array.from({ length: 3 }, (_, index) => ({
+        id: `info-${index}`,
+        actionable: false,
+      })),
+    ];
+
+    const { shown, overflow } = capActionableDashboardList(
+      items,
+      3,
+      (item) => item.actionable
+    );
+
+    expect(shown.map((item) => item.id)).toEqual([
+      "action-0",
+      "action-1",
+      "action-2",
+      "action-3",
+      "action-4",
+    ]);
+    expect(overflow.map((item) => item.id)).toEqual([
+      "info-0",
+      "info-1",
+      "info-2",
+    ]);
+  });
+
+  it("fills remaining slots after actionable rows", () => {
+    const items = [
+      { id: "action", actionable: true },
+      { id: "info-1", actionable: false },
+      { id: "info-2", actionable: false },
+      { id: "info-3", actionable: false },
+    ];
+    const { shown, overflow } = capActionableDashboardList(
+      items,
+      3,
+      (item) => item.actionable
+    );
+    expect(shown.map((item) => item.id)).toEqual([
+      "action",
+      "info-1",
+      "info-2",
+    ]);
+    expect(overflow.map((item) => item.id)).toEqual(["info-3"]);
   });
 });
 

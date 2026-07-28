@@ -21,8 +21,13 @@ import type { WorkoutPresence } from "@/lib/workout-presence";
 import ActivityOverlay from "./ActivityOverlay";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
 import WorkoutDock from "./WorkoutDock";
-import { buildRepeatPrefill, todayStr } from "./activity-form/model";
+import {
+  buildActivityTypePrefill,
+  buildRepeatPrefill,
+  todayStr,
+} from "./activity-form/model";
 import { useTimezone } from "./TimezoneProvider";
+import type { PracticeType } from "@/lib/protocol-practice";
 
 // The training route hosts the inline docked editor (JournalView registers a dock
 // column), so the app-wide bottom bar is suppressed there — the session is already
@@ -30,7 +35,7 @@ import { useTimezone } from "./TimezoneProvider";
 const JOURNAL_ROUTE = "/training";
 
 interface ActivityEditorApi {
-  openCreate: () => void;
+  openCreate: (prefill?: { type?: PracticeType }) => void;
   // Start a LIVE workout (issue #340): opens a fresh create form (date=today,
   // start=now) in the in-gym layout — the rest timer + set check-off flow. A
   // no-op for an age-restricted profile (strength is gated, #489); gate the
@@ -185,12 +190,17 @@ export default function ActivityEditorProvider({
   // render (dock registration churns on journal mount/unmount).
   const api: ActivityEditorApi = useMemo(
     () => ({
-      openCreate: () => {
+      openCreate: (createPrefill) => {
         setEditData(null);
-        setPrefill(null);
+        setPrefill(
+          createPrefill?.type
+            ? buildActivityTypePrefill(createPrefill.type, todayStr(tz))
+            : null
+        );
         setLive(false);
         setLiveStartEpoch(null);
         setMinimized(false);
+        if (createPrefill?.type) setRepeatNonce((n) => n + 1);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },

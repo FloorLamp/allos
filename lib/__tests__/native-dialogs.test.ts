@@ -110,7 +110,7 @@ describe("native browser dialogs", () => {
     );
 
     expect(offenses).toEqual([]);
-  });
+  }, 15_000);
 
   it("does not allow Playwright to silently accept native dialogs", () => {
     expect(

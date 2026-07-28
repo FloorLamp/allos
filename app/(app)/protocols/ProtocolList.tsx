@@ -2,14 +2,18 @@ import Link from "next/link";
 import { IconFlask2, IconChevronRight } from "@tabler/icons-react";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { Protocol } from "@/lib/types";
+import type { ProtocolHeatmap } from "@/lib/protocol-heatmap";
+import ProtocolWindowHeatmap from "./ProtocolWindowHeatmap";
 
 // The protocol list — ongoing protocols carry a live badge; each row deep-links to
 // its before/during detail page. Server-rendered (plain data in).
 export default function ProtocolList({
   items,
+  heatmaps,
   formatPrefs,
 }: {
   items: Protocol[];
+  heatmaps: Record<number, ProtocolHeatmap>;
   formatPrefs: DisplayFormatPrefs;
 }) {
   if (items.length === 0) {
@@ -62,6 +66,7 @@ export default function ProtocolList({
                     </>
                   )}
                 </div>
+                <ProtocolWindowHeatmap data={heatmaps[p.id]} />
               </div>
               <IconChevronRight
                 className="h-4 w-4 shrink-0 text-slate-400"

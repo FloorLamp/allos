@@ -54,7 +54,11 @@ async function clearPresurgery(page: import("@playwright/test").Page) {
   if ((await toggle.count()) === 0) return;
   if ((await toggle.getAttribute("aria-pressed")) !== "true") return;
   await settledClick(page, toggle);
-  await expect(toggle).not.toHaveAttribute("aria-pressed", "true");
+  // Background Server Action polls can satisfy settledClick's POST wait before
+  // this toggle's refresh lands; the durable inactive state is the real settle.
+  await expect(toggle).not.toHaveAttribute("aria-pressed", "true", {
+    timeout: 15_000,
+  });
 }
 
 // Leave the shared seed profile exactly as found even when the test body throws

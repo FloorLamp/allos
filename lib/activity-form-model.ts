@@ -87,6 +87,30 @@ export interface ActivityEditData {
   }[];
 }
 
+// Minimal create prefill for a protocol's activity-type action (#1584). This is
+// deliberately a complete ActivityEditData value because ActivityForm already has
+// one tested prefill path; the provider passes it as `prefill` (never `editData`),
+// so it creates a fresh activity while seeding only the protocol-owned type.
+export function buildActivityTypePrefill(
+  type: "strength" | "cardio" | "sport",
+  todayDate: string
+): ActivityEditData {
+  return {
+    id: 0,
+    type,
+    title: "",
+    date: todayDate,
+    duration_min: null,
+    distance_km: null,
+    intensity: null,
+    start_time: null,
+    end_time: null,
+    components: null,
+    notes: null,
+    sets: [],
+  };
+}
+
 // Build a create-prefill from a stored activity for "Log again" / "Repeat last"
 // (issue #29). Keeps the title, component structure, and every set, but resets
 // the identity and session context: no id/provenance (the form treats it as a

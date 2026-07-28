@@ -64,8 +64,12 @@ import type { QuickEntryForm } from "@/lib/quick-log";
 // eagerly-propped ActivityEditorProvider next door is the shape being avoided.
 
 interface QuickEntryApi {
-  open: (form: QuickEntryForm) => void;
+  open: (form: QuickEntryForm, prefill?: QuickEntryPrefill) => void;
   close: () => void;
+}
+
+export interface QuickEntryPrefill {
+  foodGroup?: string;
 }
 
 const Ctx = createContext<QuickEntryApi | null>(null);
@@ -101,6 +105,7 @@ export default function QuickEntryProvider({
   // The form is RETAINED after close so the panel keeps its content through the
   // sheet's exit animation instead of blanking on the way out.
   const [form, setForm] = useState<QuickEntryForm | null>(null);
+  const [prefill, setPrefill] = useState<QuickEntryPrefill | null>(null);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   // Ignore a response that lost its race — tapping weight then dose before the
   // first gather returns must not paint the weight form into the dose sheet.
@@ -108,20 +113,24 @@ export default function QuickEntryProvider({
 
   const close = useCallback(() => setOpen(false), []);
 
-  const openForm = useCallback((next: QuickEntryForm) => {
-    const token = ++requestRef.current;
-    setForm(next);
-    setState({ status: "loading" });
-    setOpen(true);
-    void loadQuickEntry(next).then(
-      (data) => {
-        if (requestRef.current === token) setState({ status: "ready", data });
-      },
-      () => {
-        if (requestRef.current === token) setState({ status: "error" });
-      }
-    );
-  }, []);
+  const openForm = useCallback(
+    (next: QuickEntryForm, nextPrefill?: QuickEntryPrefill) => {
+      const token = ++requestRef.current;
+      setForm(next);
+      setPrefill(nextPrefill ?? null);
+      setState({ status: "loading" });
+      setOpen(true);
+      void loadQuickEntry(next).then(
+        (data) => {
+          if (requestRef.current === token) setState({ status: "ready", data });
+        },
+        () => {
+          if (requestRef.current === token) setState({ status: "error" });
+        }
+      );
+    },
+    []
+  );
 
   const api = useMemo<QuickEntryApi>(
     () => ({ open: openForm, close }),
@@ -146,7 +155,7 @@ export default function QuickEntryProvider({
           titleHidden={sheet.ownsHeading}
         >
           <div data-testid="quick-entry-body" data-form={form}>
-            <QuickEntryBody state={state} onDone={close} />
+            <QuickEntryBody state={state} prefill={prefill} onDone={close} />
           </div>
         </BottomSheet>
       )}
@@ -156,9 +165,11 @@ export default function QuickEntryProvider({
 
 function QuickEntryBody({
   state,
+  prefill,
   onDone,
 }: {
   state: LoadState;
+  prefill: QuickEntryPrefill | null;
   onDone: () => void;
 }) {
   if (state.status === "loading") {
@@ -210,6 +221,7 @@ function QuickEntryBody({
             groupsBySlot={data.groupsBySlot}
             excludedGroups={data.excludedGroups}
             slot={data.slot}
+            initialFoodGroup={prefill?.foodGroup}
           />
         </FoodSelectedDateProvider>
       );

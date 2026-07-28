@@ -107,5 +107,16 @@ test("wellness practices own identity, detailed history, corrections, and Traini
   await expect(finalCard.getByTestId("wellness-practice-usage")).toContainText(
     "no sessions yet"
   );
+
+  // Removing the target stops weekly tracking/reminders. With no remaining
+  // sessions, the session-only practice disappears from the list.
+  await finalCard.getByTestId("wellness-practice-untrack").click();
+  const untrackDialog = page.getByTestId("confirm-dialog");
+  await expect(untrackDialog).toBeVisible();
+  await settledClick(
+    page,
+    untrackDialog.getByRole("button", { name: "Stop tracking" })
+  );
+  await expect(finalCard).toHaveCount(0);
   await expectNoClippedContent(page);
 });

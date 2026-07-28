@@ -41,12 +41,20 @@ import type { Betterness } from "../protocol-compare";
 import { daysBetweenDateStr } from "../date";
 import { protocolPracticeLabel } from "../protocol-practice";
 import { protocolHref, type AppRoute } from "../hrefs";
-import { getPracticeUsageInWindow } from "../practice-log";
+import {
+  getPracticeDayCount,
+  getPracticeDayUsageInWindow,
+} from "../practice-log";
 import {
   biomarkerOutcomeOption,
   type OutcomeOption,
 } from "../protocol-outcome-picker";
 import { preferredOutcomeKeyForBiomarker } from "../outcome-identity";
+import {
+  buildProtocolHeatmap,
+  type ProtocolDayUsage,
+  type ProtocolHeatmap,
+} from "../protocol-heatmap";
 
 export type { OutcomeOption } from "../protocol-outcome-picker";
 
@@ -234,17 +242,23 @@ export interface ProtocolUsage {
   lastUsed: string | null;
 }
 
-export function getProtocolUsage(
+type ProtocolUsageScope =
+  | { kind: "practice"; value: string }
+  | { kind: "food_group"; value: string }
+  | {
+      kind: "activity";
+      equipmentId: number | null;
+      activityType: string | null;
+    }
+  | { kind: "none" };
+
+// Resolve the protocol intervention once. Both the scalar summary and per-day
+// heatmap consume this seam, so a new scope cannot land on one without the other.
+function protocolUsageScope(
   profileId: number,
-  protocol: Protocol,
-  today: string
-): ProtocolUsage {
-  const end = protocol.end_date ?? today;
-  // The practice from the linked frequency target: an activity type (counted over
-  // activities) or a food group (#580 — counted over food_log).
-  let practiceType: string | null = null;
-  let practiceFoodGroup: string | null = null;
-  let wellnessPractice: string | null = null;
+  protocol: Protocol
+): ProtocolUsageScope {
+  let activityType: string | null = null;
   if (protocol.frequency_target_id != null) {
     const t = db
       .prepare(
@@ -253,66 +267,108 @@ export function getProtocolUsage(
       )
       .get(protocol.frequency_target_id, profileId) as
       { scope_kind: string; scope_value: string } | undefined;
-    if (t && t.scope_kind === "type") practiceType = t.scope_value;
-    else if (t && t.scope_kind === "food_group")
-      practiceFoodGroup = t.scope_value;
-    else if (t && t.scope_kind === "practice") wellnessPractice = t.scope_value;
+    if (t?.scope_kind === "practice") {
+      return { kind: "practice", value: t.scope_value };
+    }
+    if (t?.scope_kind === "food_group") {
+      return { kind: "food_group", value: t.scope_value };
+    }
+    if (t?.scope_kind === "type") activityType = t.scope_value;
   }
 
-  if (wellnessPractice != null) {
-    return getPracticeUsageInWindow(
+  if (protocol.equipment_id != null || activityType != null) {
+    return {
+      kind: "activity",
+      equipmentId: protocol.equipment_id,
+      activityType,
+    };
+  }
+  return { kind: "none" };
+}
+
+export function getProtocolUsageByDay(
+  profileId: number,
+  protocol: Protocol,
+  today: string
+): ProtocolDayUsage[] {
+  const end = protocol.end_date ?? today;
+  const scope = protocolUsageScope(profileId, protocol);
+
+  if (scope.kind === "practice") {
+    return getPracticeDayUsageInWindow(
       profileId,
-      wellnessPractice,
+      scope.value,
       protocol.start_date,
       end
     );
   }
 
-  // Food-group practice: sum the serving tally stored in each daily group row.
-  if (practiceFoodGroup != null) {
-    const row = db
+  if (scope.kind === "food_group") {
+    return db
       .prepare(
-        `SELECT COALESCE(SUM(servings), 0) AS sessions, MAX(date) AS lastUsed
+        `SELECT date, CAST(SUM(servings) AS INTEGER) AS count
            FROM food_log
           WHERE profile_id = ? AND date >= ? AND date <= ?
-            AND group_key = ? AND servings > 0`
+            AND group_key = ? AND servings > 0` +
+          " GROUP BY date ORDER BY date ASC"
       )
-      .get(profileId, protocol.start_date, end, practiceFoodGroup) as {
-      sessions: number;
-      lastUsed: string | null;
-    };
-    return {
-      sessions: row.sessions,
-      lastUsed: row.lastUsed,
-    };
+      .all(
+        profileId,
+        protocol.start_date,
+        end,
+        scope.value
+      ) as ProtocolDayUsage[];
   }
 
-  if (protocol.equipment_id == null && practiceType == null)
-    return { sessions: 0, lastUsed: null };
+  if (scope.kind === "none") return [];
 
-  const row = db
+  return db
     .prepare(
-      `SELECT COUNT(*) AS sessions, MAX(date) AS lastUsed FROM activities
+      `SELECT date, COUNT(*) AS count FROM activities
         WHERE profile_id = ? AND date >= ? AND date <= ?
           AND (
             (? IS NOT NULL AND equipment_id = ?)
             OR (? IS NOT NULL AND type = ?)
-          )`
+          )
+        GROUP BY date
+        ORDER BY date ASC`
     )
-    .get(
+    .all(
       profileId,
       protocol.start_date,
       end,
-      protocol.equipment_id,
-      protocol.equipment_id,
-      practiceType,
-      practiceType
-    ) as { sessions: number; lastUsed: string | null };
+      scope.equipmentId,
+      scope.equipmentId,
+      scope.activityType,
+      scope.activityType
+    ) as ProtocolDayUsage[];
+}
 
+export function getProtocolUsage(
+  profileId: number,
+  protocol: Protocol,
+  today: string
+): ProtocolUsage {
+  const days = getProtocolUsageByDay(profileId, protocol, today);
   return {
-    sessions: row.sessions,
-    lastUsed: row.lastUsed,
+    sessions: days.reduce((sum, day) => sum + day.count, 0),
+    lastUsed: days.at(-1)?.date ?? null,
   };
+}
+
+export function getProtocolHeatmap(
+  profileId: number,
+  protocol: Protocol,
+  today: string,
+  weekStart = 0
+): ProtocolHeatmap {
+  const end = protocol.end_date ?? today;
+  return buildProtocolHeatmap(
+    getProtocolUsageByDay(profileId, protocol, today),
+    protocol.start_date,
+    end,
+    weekStart
+  );
 }
 
 // The protocol's CONFIGURED practice (issue #344, generalized in #580): the linked
@@ -501,11 +557,11 @@ export interface ActiveProtocolSummary {
     // At/above the ceiling — the calm "that's plenty" state (#1259).
     atCeiling: boolean;
     label: string;
-    // The practice NAME when this is a wellness-practice adherence (#1259), enabling the
-    // widget's one-tap "Log session" button; null for type/food_group adherence (which
-    // are logged elsewhere — a workout, a food serving).
-    practiceName: string | null;
   } | null;
+  // All three practice scopes are actionable (#1584). The dashboard passes this
+  // same model to ProtocolLogButton as the detail page.
+  practice: ProtocolPractice | null;
+  practiceTodayCount: number;
   primaryOutcome: {
     label: string;
     betterness: Betterness;
@@ -555,10 +611,13 @@ export function getActiveProtocolSummaries(
                   practice.scopeKind,
                   practice.value
                 ),
-                practiceName:
-                  practice.scopeKind === "practice" ? practice.value : null,
               }
             : null,
+        practice,
+        practiceTodayCount:
+          practice?.scopeKind === "practice"
+            ? getPracticeDayCount(profileId, practice.value, today)
+            : 0,
         primaryOutcome: primary
           ? {
               label: primary.label,

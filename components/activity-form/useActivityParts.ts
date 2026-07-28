@@ -51,6 +51,7 @@ export function useActivityParts({
   equipmentList,
   isKnown,
   customFlags,
+  defaultCustomType,
   onSetCheckedOff,
 }: {
   seed: ActivityEditData | null;
@@ -60,6 +61,9 @@ export function useActivityParts({
   equipmentList: Equipment[];
   isKnown: (name: string) => boolean;
   customFlags: (name: string) => Partial<PartEntry>;
+  // Type-scoped protocol creates keep their requested cardio/sport type as the
+  // fallback for a newly committed free-text name whose type cannot be inferred.
+  defaultCustomType: "cardio" | "sport" | null;
   // Fires when a set is "checked off" (a new set added) — the parent starts the
   // live-mode rest timer off this (#340).
   onSetCheckedOff: () => void;
@@ -208,7 +212,7 @@ export function useActivityParts({
     updatePart(i, {
       name,
       custom: true,
-      customType: inferFreeTextType(name),
+      customType: inferFreeTextType(name) ?? defaultCustomType,
       equipmentId: null,
       perSide: false,
     });

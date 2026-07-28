@@ -11,7 +11,10 @@ import {
 } from "./practice";
 import { getPracticeSessions, renamePracticeSessions } from "./practice-log";
 import type { FrequencyTarget, PracticeLog } from "./types";
-import { getFrequencyTargetProgress } from "./queries/training/goals";
+import {
+  getFrequencyTargetProgress,
+  getFrequencyTargets,
+} from "./queries/training/goals";
 
 export interface WellnessPractice {
   identity: string;
@@ -32,6 +35,8 @@ export type SavePracticeOutcome =
   | { kind: "invalid" }
   | { kind: "not-found" }
   | { kind: "duplicate" };
+export type UntrackPracticeOutcome =
+  { kind: "untracked"; targetId: number } | { kind: "not-found" };
 
 function parseCadence(
   floorRaw: number,
@@ -49,14 +54,15 @@ function parseCadence(
 }
 
 export function getPracticeTargets(profileId: number): FrequencyTarget[] {
-  return db
-    .prepare(
-      `SELECT id, scope_kind, scope_value, per_week, per_week_max, created_at
-         FROM frequency_targets
-        WHERE profile_id = ? AND scope_kind = 'practice'
-        ORDER BY scope_value COLLATE NOCASE, id`
+  return getFrequencyTargets(profileId)
+    .filter((target) => target.scope_kind === "practice")
+    .sort(
+      (a, b) =>
+        a.scope_value.localeCompare(b.scope_value, undefined, {
+          sensitivity: "base",
+        }) || a.id - b.id
     )
-    .all(profileId) as FrequencyTarget[];
+    .map((target) => ({ ...target }));
 }
 
 export function findPracticeTarget(
@@ -203,6 +209,36 @@ export function updateWellnessPractice(
     }
     renamePracticeSessions(profileId, current.scope_value, name);
     return { kind: "saved", targetId };
+  });
+}
+
+// Stop a weekly practice target without erasing its session ledger. Protocol links
+// are nullable by design; unlink them first so the target can be removed under the
+// FK, while the historical sessions remain visible as a session-only practice that
+// can receive a new target later.
+export function untrackWellnessPractice(
+  profileId: number,
+  targetId: number
+): UntrackPracticeOutcome {
+  const target = db
+    .prepare(
+      `SELECT id FROM frequency_targets
+        WHERE id = ? AND profile_id = ? AND scope_kind = 'practice'`
+    )
+    .get(targetId, profileId) as { id: number } | undefined;
+  if (!target) return { kind: "not-found" };
+
+  return writeTx(() => {
+    db.prepare(
+      `UPDATE protocols
+          SET frequency_target_id = NULL, owns_frequency_target = 0
+        WHERE profile_id = ? AND frequency_target_id = ?`
+    ).run(profileId, targetId);
+    db.prepare(
+      `DELETE FROM frequency_targets
+        WHERE id = ? AND profile_id = ? AND scope_kind = 'practice'`
+    ).run(targetId, profileId);
+    return { kind: "untracked", targetId };
   });
 }
 

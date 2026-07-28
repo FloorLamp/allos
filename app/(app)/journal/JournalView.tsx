@@ -621,7 +621,7 @@ export default function JournalView({
           Start workout
         </button>
       )}
-      <button type="button" onClick={openCreate} className="btn">
+      <button type="button" onClick={() => openCreate()} className="btn">
         <IconPlus className="h-4 w-4" stroke={2.5} />
         New activity
       </button>

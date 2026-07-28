@@ -6,7 +6,11 @@ import { requireWriteAccess } from "@/lib/auth";
 import { getActiveSituations, setActiveSituations } from "@/lib/settings";
 import { isRealIsoDate } from "@/lib/date";
 import { normalizeOutcomeKeys } from "@/lib/protocol-metrics";
-import { getProtocol, situationUsedByOtherProtocol } from "@/lib/queries";
+import {
+  getFrequencyTargets,
+  getProtocol,
+  situationUsedByOtherProtocol,
+} from "@/lib/queries";
 import { getEquipmentById } from "@/lib/equipment";
 import { parseScopedPractice } from "@/lib/protocol-practice";
 import { findPracticeTarget } from "@/lib/practice-store";
@@ -403,8 +407,10 @@ export async function runProtocolAgain(
     let frequencyTargetId = existing.frequency_target_id;
     let ownsFrequencyTarget = 0;
 
-    // An owned cadence belongs to one protocol run. Clone it so later edits or
-    // deletion of either run cannot mutate the other's historical setup.
+    // An owned cadence belongs to one protocol run. Preserve the old target as
+    // the historical snapshot and give the new run a distinct active target.
+    // Uniquely constrained scopes cannot be duplicated, so their target is
+    // transferred to the new run instead.
     if (existing.owns_frequency_target && frequencyTargetId != null) {
       const target = db
         .prepare(
@@ -421,21 +427,56 @@ export async function runProtocolAgain(
           }
         | undefined;
       if (target) {
-        const info = db
-          .prepare(
-            `INSERT INTO frequency_targets
-              (profile_id, scope_kind, scope_value, per_week, per_week_max)
-             VALUES (?, ?, ?, ?, ?)`
-          )
-          .run(
-            profile.id,
-            target.scope_kind,
-            target.scope_value,
-            target.per_week,
-            target.per_week_max
-          );
-        frequencyTargetId = Number(info.lastInsertRowid);
-        ownsFrequencyTarget = 1;
+        if (
+          target.scope_kind === "food_group" ||
+          target.scope_kind === "substance"
+        ) {
+          db.prepare(
+            `UPDATE protocols SET owns_frequency_target = 0
+              WHERE id = ? AND profile_id = ?`
+          ).run(existing.id, profile.id);
+          ownsFrequencyTarget = 1;
+        } else {
+          const activeTargets = getFrequencyTargets(profile.id);
+          const activeMatch =
+            target.scope_kind === "practice"
+              ? findPracticeTarget(profile.id, target.scope_value)
+              : activeTargets.find(
+                  (candidate) =>
+                    candidate.scope_kind === target.scope_kind &&
+                    candidate.scope_value === target.scope_value
+                );
+          if (activeMatch) {
+            if (activeMatch.id === frequencyTargetId) {
+              // A sibling ongoing protocol already keeps this shared target
+              // active. Transfer ownership to the new run instead of creating a
+              // second active target for the same cadence.
+              db.prepare(
+                `UPDATE protocols SET owns_frequency_target = 0
+                  WHERE id = ? AND profile_id = ?`
+              ).run(existing.id, profile.id);
+              ownsFrequencyTarget = 1;
+            } else {
+              frequencyTargetId = activeMatch.id;
+            }
+          } else {
+            const info = db
+              .prepare(
+                `INSERT INTO frequency_targets
+                  (profile_id, scope_kind, scope_value, per_week, per_week_max)
+                 VALUES (?, ?, ?, ?, ?)`
+              )
+              .run(
+                profile.id,
+                target.scope_kind,
+                target.scope_value,
+                target.per_week,
+                target.per_week_max
+              );
+            frequencyTargetId = Number(info.lastInsertRowid);
+            ownsFrequencyTarget = 1;
+          }
+        }
       } else {
         frequencyTargetId = null;
       }

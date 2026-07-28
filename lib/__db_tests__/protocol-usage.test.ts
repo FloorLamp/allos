@@ -12,6 +12,8 @@ import { createEquipment } from "@/lib/equipment";
 import {
   getProtocol,
   getProtocolUsage,
+  getProtocolUsageByDay,
+  getProtocolHeatmap,
   getProtocolPractice,
   getProtocolAdherence,
 } from "@/lib/queries";
@@ -106,6 +108,10 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
     const usage = getProtocolUsage(1, p, "2026-07-31");
     expect(usage.sessions).toBe(3);
     expect(usage.lastUsed).toBe("2026-06-10");
+    expect(getProtocolUsageByDay(1, p, "2026-07-31")).toEqual([
+      { date: "2026-06-03", count: 1 },
+      { date: "2026-06-10", count: 2 },
+    ]);
   });
 
   it("counts practice-log rows across identity variants and excludes outside-window sessions", () => {
@@ -131,9 +137,24 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
               (1, 'Sauna', '2026-07-01')`
     ).run();
 
-    expect(getProtocolUsage(1, getProtocol(1, pid)!, "2026-07-31")).toEqual({
+    const protocol = getProtocol(1, pid)!;
+    expect(getProtocolUsage(1, protocol, "2026-07-31")).toEqual({
       sessions: 2,
       lastUsed: "2026-06-10",
+    });
+    expect(getProtocolUsageByDay(1, protocol, "2026-07-31")).toEqual([
+      { date: "2026-06-10", count: 2 },
+    ]);
+    const cells = getProtocolHeatmap(
+      1,
+      protocol,
+      "2026-07-31",
+      0
+    ).columns.flat();
+    expect(cells.find((cell) => cell.date === "2026-06-10")).toMatchObject({
+      count: 2,
+      level: 2,
+      outside: false,
     });
   });
 
@@ -159,10 +180,15 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
               (1, '2026-06-10', 'fatty_fish', 0),
               (1, '2026-07-01', 'fatty_fish', 1)`
     ).run();
-    expect(getProtocolUsage(1, getProtocol(1, pid)!, "2026-07-31")).toEqual({
+    const protocol = getProtocol(1, pid)!;
+    expect(getProtocolUsage(1, protocol, "2026-07-31")).toEqual({
       sessions: 3,
       lastUsed: "2026-06-09",
     });
+    expect(getProtocolUsageByDay(1, protocol, "2026-07-31")).toEqual([
+      { date: "2026-06-08", count: 2 },
+      { date: "2026-06-09", count: 1 },
+    ]);
   });
 
   it("uses today as the window end for an ongoing protocol", () => {

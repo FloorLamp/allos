@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import {
   getProtocols,
+  getProtocolHeatmap,
   getProtocolOutcomeOptions,
   getProtocolIntakeOptions,
 } from "@/lib/queries";
@@ -13,6 +14,8 @@ import ProtocolFormModal from "@/app/(app)/protocols/ProtocolFormModal";
 import ProtocolList from "@/app/(app)/protocols/ProtocolList";
 import { createProtocol } from "@/app/(app)/protocols/actions";
 import type { ProtocolTemplate } from "@/lib/protocol-templates";
+import { today } from "@/lib/db";
+import { getWeekStart } from "@/lib/settings";
 
 // Longevity §5 — Protocols / N-of-1 experiments (#1042 phase 4): the absorbed
 // /protocols hub (issue #161), now the page's INTERVENTIONS section — the
@@ -32,6 +35,14 @@ export default async function ProtocolsSection({
 }) {
   const { login, profile } = await requireSession();
   const protocols = getProtocols(profile.id);
+  const todayStr = today(profile.id);
+  const weekStart = getWeekStart(profile.id);
+  const heatmaps = Object.fromEntries(
+    protocols.map((protocol) => [
+      protocol.id,
+      getProtocolHeatmap(profile.id, protocol, todayStr, weekStart),
+    ])
+  );
   const options = getProtocolOutcomeOptions(profile.id);
   // "Recovery gear" (issue #592): the picker studies a recovery device, so filter
   // the inventory to recovery + uncategorized gear (kindOf) instead of offering
@@ -87,6 +98,7 @@ export default async function ProtocolsSection({
       <div className="rounded-xl border border-black/5 bg-white/25 p-2 dark:border-white/5 dark:bg-white/[0.02]">
         <ProtocolList
           items={protocols}
+          heatmaps={heatmaps}
           formatPrefs={getDisplayFormatPrefs(login.id)}
         />
       </div>

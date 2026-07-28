@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   blankPart,
+  buildActivityTypePrefill,
   buildRepeatPrefill,
   initialPartsFromSeed,
   partIntent,
@@ -46,6 +47,21 @@ const storedSet = (
 });
 
 const part = (o: Partial<PartEntry>): PartEntry => ({ ...blankPart(), ...o });
+
+describe("buildActivityTypePrefill (#1584)", () => {
+  it("seeds only the protocol-owned activity type on a fresh form", () => {
+    expect(buildActivityTypePrefill("cardio", "2026-07-28")).toMatchObject({
+      id: 0,
+      type: "cardio",
+      title: "",
+      date: "2026-07-28",
+      duration_min: null,
+      distance_km: null,
+      notes: null,
+      sets: [],
+    });
+  });
+});
 
 describe("buildRepeatPrefill", () => {
   const source: ActivityEditData = {

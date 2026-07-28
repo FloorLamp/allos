@@ -408,8 +408,11 @@ missed medication) and rides the shared suppression bus keyed by the SAME
 the push goes quiet too, with the daily `notify_last_practice` marker frozen
 (set only on a delivered message, the #227 discipline). It is waking-window +
 once-per-day gated and only sends where Telegram is deliverable (the defining
-feature is the button; a practice target only exists once the user created a
-practice protocol — that IS the opt-in). Each behind practice carries an inline
+feature is the button; a practice target exists only after the user creates one
+on Wellness or through a protocol — that IS the opt-in, and Stop tracking removes
+the target without erasing its session ledger). A target owned only by ended
+protocols is historical and therefore excluded from this active progress/nudge
+gather. Each behind practice carries an inline
 **"Done ✓"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
 one session for TODAY through the shared write core (`logPracticeByTargetId` →
 `logPracticeSession`); the handler answers from the typed `PracticeLogOutcome`

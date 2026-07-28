@@ -264,7 +264,11 @@ test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async (
   // The result list is the palette's listbox; scope to it so the sidebar's own
   // "Allergies" nav link can't satisfy the assertions.
   const results = page.getByRole("listbox", { name: "Results" });
-  await expect(results.getByText("Allergies", { exact: true })).toBeVisible();
+  // The debounced server search can outlive the default assertion budget under
+  // full-shard contention; wait on the result itself rather than network quiet.
+  await expect(results.getByText("Allergies", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
   const hit = results.getByRole("option", { name: /Penicillin/i });
   // Selecting it navigates to Problems › Allergies, the pane that owns the record.
   await followLink(page, hit.first(), /\/records\/problems\/allergies$/); // first-ok: the command-palette Penicillin allergy result — order-agnostic
