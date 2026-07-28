@@ -7,13 +7,16 @@
 // login's display unit HERE (the units boundary), keeping the engine unit-agnostic.
 
 import { db } from "../db";
-import { getBiomarkerSeries, getCanonicalBiomarker } from "./medical";
-import { getBodyMetrics } from "./metrics";
+import { getCanonicalBiomarker } from "./medical";
+import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
 import {
   getFrequencyTargetProgress,
   type FrequencyTargetProgress,
 } from "./training";
-import { getBioAgeReadings } from "./derived";
+import {
+  getBiomarkerSeriesWithDerived,
+  getUsedCanonicalNamesWithDerived,
+} from "./derived";
 import { getSleepRegularityTrend } from "./sleep";
 import { kgTo } from "../units";
 import type { WeightUnit } from "../settings";
@@ -21,8 +24,10 @@ import type { Protocol } from "../types";
 import {
   FIXED_OUTCOME_METRICS,
   fixedMetricDef,
+  normalizeOutcomeKeys,
   outcomeMetricLabel,
   parseOutcomeKey,
+  preferredOutcomeKey,
   type OutcomeDirection,
 } from "../protocol-metrics";
 import {
@@ -36,8 +41,14 @@ import type { Betterness } from "../protocol-compare";
 import { daysBetweenDateStr } from "../date";
 import { protocolPracticeLabel } from "../protocol-practice";
 import { protocolHref, type AppRoute } from "../hrefs";
-import { getUsedCanonicalNames } from "./medical";
 import { getPracticeUsageInWindow } from "../practice-log";
+import {
+  biomarkerOutcomeOption,
+  type OutcomeOption,
+} from "../protocol-outcome-picker";
+import { preferredOutcomeKeyForBiomarker } from "../outcome-identity";
+
+export type { OutcomeOption } from "../protocol-outcome-picker";
 
 interface ProtocolRow {
   id: number;
@@ -61,7 +72,9 @@ function parseOutcomeKeys(v: string | null): string[] {
   try {
     const arr = JSON.parse(v);
     return Array.isArray(arr)
-      ? arr.filter((x): x is string => typeof x === "string")
+      ? normalizeOutcomeKeys(
+          arr.filter((x): x is string => typeof x === "string")
+        )
       : [];
   } catch {
     return [];
@@ -174,8 +187,10 @@ export function getProtocolWindowsForOutcome(
   profileId: number,
   outcomeKey: string
 ): ProtocolWindowInput[] {
+  const preferred = preferredOutcomeKey(outcomeKey);
+  if (!preferred) return [];
   return getProtocols(profileId)
-    .filter((p) => p.outcomeKeys.includes(outcomeKey))
+    .filter((p) => p.outcomeKeys.includes(preferred))
     .map((p) => ({
       name: p.name,
       startDate: p.start_date,
@@ -253,11 +268,12 @@ export function getProtocolUsage(
     );
   }
 
-  // Food-group practice: event rows with positive servings in the protocol window.
+  // Food-group practice: sum the serving tally stored in each daily group row.
   if (practiceFoodGroup != null) {
     const row = db
       .prepare(
-        `SELECT COUNT(*) AS sessions, MAX(date) AS lastUsed FROM food_log
+        `SELECT COALESCE(SUM(servings), 0) AS sessions, MAX(date) AS lastUsed
+           FROM food_log
           WHERE profile_id = ? AND date >= ? AND date <= ?
             AND group_key = ? AND servings > 0`
       )
@@ -360,27 +376,17 @@ export function getProtocolAdherence(
   );
 }
 
-// An option in the outcome-metric picker: the fixed metrics plus the profile's
-// tracked biomarkers. Grouped so the form can render headings.
-export interface OutcomeOption {
-  key: string;
-  label: string;
-  group: "Body & indices" | "Biomarkers";
-}
-
 export function getProtocolOutcomeOptions(profileId: number): OutcomeOption[] {
   const fixed: OutcomeOption[] = FIXED_OUTCOME_METRICS.map((m) => ({
     key: m.key,
     label: m.label,
     group: "Body & indices",
+    panel: null,
+    searchTerms: [],
   }));
-  const biomarkers: OutcomeOption[] = getUsedCanonicalNames(profileId).map(
-    (name) => ({
-      key: `biomarker:${name}`,
-      label: name,
-      group: "Biomarkers",
-    })
-  );
+  const biomarkers = getUsedCanonicalNamesWithDerived(profileId)
+    .filter((name) => preferredOutcomeKeyForBiomarker(name) == null)
+    .map(biomarkerOutcomeOption);
   return [...fixed, ...biomarkers];
 }
 
@@ -393,16 +399,21 @@ export function resolveOutcomeSeries(
   key: string,
   weightUnit: WeightUnit
 ): OutcomeSeries | null {
-  const parsed = parseOutcomeKey(key);
+  const canonicalKey = preferredOutcomeKey(key);
+  if (!canonicalKey) return null;
+  const parsed = parseOutcomeKey(canonicalKey);
   if (!parsed) return null;
 
   if (parsed.kind === "biomarker") {
     const cb = getCanonicalBiomarker(parsed.id);
-    const samples: OutcomeSample[] = getBiomarkerSeries(profileId, parsed.id)
+    const samples: OutcomeSample[] = getBiomarkerSeriesWithDerived(
+      profileId,
+      parsed.id
+    )
       .filter((r) => r.value_num != null)
       .map((r) => ({ date: r.date, value: r.value_num as number }));
     return {
-      key,
+      key: canonicalKey,
       label: parsed.id,
       unit: cb?.unit ?? null,
       direction: (cb?.direction as OutcomeDirection | undefined) ?? "in_range",
@@ -411,21 +422,19 @@ export function resolveOutcomeSeries(
   }
 
   if (parsed.kind === "body") {
-    const def = fixedMetricDef(key);
-    const rows = getBodyMetrics(profileId);
-    const samples: OutcomeSample[] = [];
-    for (const r of rows) {
-      if (parsed.id === "weight" && r.weight_kg != null) {
-        samples.push({ date: r.date, value: kgTo(r.weight_kg, weightUnit) });
-      } else if (parsed.id === "resting_hr" && r.resting_hr != null) {
-        samples.push({ date: r.date, value: r.resting_hr });
-      } else if (parsed.id === "body_fat" && r.body_fat_pct != null) {
-        samples.push({ date: r.date, value: r.body_fat_pct });
-      }
-    }
+    const def = fixedMetricDef(canonicalKey);
+    const samples: OutcomeSample[] = getLogicalBodyMetricDailySeries(
+      profileId,
+      parsed.id as "weight" | "resting_hr" | "body_fat",
+      -1
+    ).map((point) => ({
+      date: point.date,
+      value:
+        parsed.id === "weight" ? kgTo(point.value, weightUnit) : point.value,
+    }));
     return {
-      key,
-      label: def?.label ?? outcomeMetricLabel(key),
+      key: canonicalKey,
+      label: def?.label ?? outcomeMetricLabel(canonicalKey),
       unit: parsed.id === "weight" ? weightUnit : (def?.unit ?? null),
       direction: def?.direction ?? "neutral",
       samples,
@@ -433,13 +442,12 @@ export function resolveOutcomeSeries(
   }
 
   // index:*
-  const def = fixedMetricDef(key);
+  const def = fixedMetricDef(canonicalKey);
   let samples: OutcomeSample[] = [];
   if (parsed.id === "phenoage") {
-    samples = getBioAgeReadings(profileId).draws.map((d) => ({
-      date: d.date,
-      value: d.bioAge,
-    }));
+    samples = getBiomarkerSeriesWithDerived(profileId, "PhenoAge")
+      .filter((row) => row.value_num != null)
+      .map((row) => ({ date: row.date, value: row.value_num as number }));
   } else if (parsed.id === "sri") {
     samples = getSleepRegularityTrend(profileId).map((t) => ({
       date: t.date,
@@ -447,8 +455,8 @@ export function resolveOutcomeSeries(
     }));
   }
   return {
-    key,
-    label: def?.label ?? outcomeMetricLabel(key),
+    key: canonicalKey,
+    label: def?.label ?? outcomeMetricLabel(canonicalKey),
     unit: def?.unit ?? null,
     direction: def?.direction ?? "neutral",
     samples,

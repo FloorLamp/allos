@@ -20,7 +20,11 @@ import {
   upsertBodyMetrics,
   upsertHrMinutes,
 } from "@/lib/integrations/normalize";
-import { buildMetricSeries } from "@/lib/trends-series";
+import {
+  buildDigestSeries,
+  buildMetricSeries,
+  listCompareOptions,
+} from "@/lib/trends-series";
 import {
   getBodyMetricDailySeries,
   getDashboardStats,
@@ -122,6 +126,37 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
       .all(profileId) as { weight_kg: number }[];
     const rawTrend = weightTrend(rawTwo[0]?.weight_kg, rawTwo[1]?.weight_kg);
     expect(rawTrend?.dir).not.toBe("flat"); // the device offset masquerading as a change
+  });
+});
+
+describe("logical outcome identity", () => {
+  it("absorbs legacy body biomarkers into the metric option and series", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('LogicalOutcomes')").run()
+        .lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit)
+       VALUES (?, '2024-05-01', 'lab', 'Resting Heart Rate',
+               'Resting Heart Rate', 61, 'bpm')`
+    ).run(profileId);
+
+    const options = listCompareOptions(profileId, false);
+    expect(options.metrics.map((option) => option.key)).toContain(
+      "metric:resting_hr"
+    );
+    expect(options.biomarkers.map((option) => option.key)).not.toContain(
+      "bio:Resting Heart Rate"
+    );
+
+    const digest = buildDigestSeries(profileId, 1, {}, false);
+    expect(
+      digest.filter((series) => series.label === "Resting heart rate")
+    ).toHaveLength(1);
+    expect(
+      digest.find((series) => series.key === "metric:resting_hr")?.points
+    ).toEqual([{ date: "2024-05-01", value: 61 }]);
   });
 });
 

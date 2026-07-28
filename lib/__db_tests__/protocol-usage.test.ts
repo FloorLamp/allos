@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — protocol practice/usage reads (issue #344).
 //
-// getProtocolUsage (usage-during-window: distinct activity days that used the
-// linked gear and/or logged the practice type within [start, end??today]),
+// getProtocolUsage (usage-during-window: activity/practice events or food-serving
+// totals within [start, end??today]),
 // getProtocolPractice (the configured type + per-week), and getProtocolAdherence
 // (the SAME weekly-count computation the routine widget uses) against the real
 // schema. The db singleton is a per-file temp DB (setup.ts); profile 1 exists.
@@ -137,7 +137,7 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
     });
   });
 
-  it("counts positive food-log event rows rather than days or serving totals", () => {
+  it("sums food servings across the protocol window", () => {
     const tid = Number(
       db
         .prepare(
@@ -160,7 +160,7 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
               (1, '2026-07-01', 'fatty_fish', 1)`
     ).run();
     expect(getProtocolUsage(1, getProtocol(1, pid)!, "2026-07-31")).toEqual({
-      sessions: 2,
+      sessions: 3,
       lastUsed: "2026-06-09",
     });
   });

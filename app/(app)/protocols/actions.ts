@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { requireWriteAccess } from "@/lib/auth";
 import { getActiveSituations, setActiveSituations } from "@/lib/settings";
 import { isRealIsoDate } from "@/lib/date";
@@ -12,6 +12,13 @@ import { getEquipmentById } from "@/lib/equipment";
 import { parseScopedPractice } from "@/lib/protocol-practice";
 import { findPracticeTarget } from "@/lib/practice-store";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("protocols");
+
+type CreateProtocolResult =
+  | { ok: true; redirectTo: `/protocols/${number}` }
+  | { ok: false; error: string };
 
 function revalidateProtocols(id?: number) {
   // The hub lives on the Longevity page's #protocols section (#1042 phase 4);
@@ -197,7 +204,9 @@ function cleanupStaleOwnedTarget(
     maybeDeleteOwnedTarget(profileId, staleOwnedTargetId, exceptProtocolId);
 }
 
-export async function createProtocol(formData: FormData): Promise<FormResult> {
+export async function createProtocol(
+  formData: FormData
+): Promise<CreateProtocolResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Name your protocol.");
@@ -213,38 +222,54 @@ export async function createProtocol(formData: FormData): Promise<FormResult> {
   );
   const equipmentId = resolveEquipmentId(profile.id, formData);
   const intakeItemId = resolveIntakeItemId(profile.id, formData);
-  // On create there is no prior practice link, so no stale-target cleanup applies.
-  const practice = syncPracticeTarget(profile.id, formData, {
-    frequency_target_id: null,
-    owns_frequency_target: 0,
-  });
+  let protocolId: number;
+  try {
+    protocolId = writeTx(() => {
+      // On create there is no prior practice link, so no stale-target cleanup
+      // applies. Keep the optional target, protocol row, and situation activation
+      // atomic so a failed row write cannot leave an orphan target behind.
+      const practice = syncPracticeTarget(profile.id, formData, {
+        frequency_target_id: null,
+        owns_frequency_target: 0,
+      });
 
-  const info = db
-    .prepare(
-      `INSERT INTO protocols
-        (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
-         equipment_id, frequency_target_id, owns_frequency_target, intake_item_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      profile.id,
-      name,
-      start,
-      end,
-      notes,
-      JSON.stringify(outcomeKeys),
-      situation,
-      equipmentId,
-      practice.frequency_target_id,
-      practice.owns_frequency_target,
-      intakeItemId
-    );
+      const info = db
+        .prepare(
+          `INSERT INTO protocols
+            (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
+             equipment_id, frequency_target_id, owns_frequency_target, intake_item_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          profile.id,
+          name,
+          start,
+          end,
+          notes,
+          JSON.stringify(outcomeKeys),
+          situation,
+          equipmentId,
+          practice.frequency_target_id,
+          practice.owns_frequency_target,
+          intakeItemId
+        );
 
-  // Starting an ongoing protocol activates its situation (if any).
-  if (situation && !end) activateSituation(profile.id, situation);
+      // Starting an ongoing protocol activates its situation (if any).
+      if (situation && !end) activateSituation(profile.id, situation);
+      return Number(info.lastInsertRowid);
+    });
+  } catch (err) {
+    // Keep the client response free of database detail; the persisted server log
+    // carries the actionable cause for Settings → Errors.
+    log.error("protocol create failed", {
+      profileId: profile.id,
+      err: err instanceof Error ? err : String(err),
+    });
+    return formError("Couldn't create that protocol. Try again.");
+  }
 
   revalidateProtocols();
-  redirect(`/protocols/${info.lastInsertRowid}`);
+  return { ok: true, redirectTo: `/protocols/${protocolId}` };
 }
 
 export async function updateProtocol(formData: FormData): Promise<FormResult> {

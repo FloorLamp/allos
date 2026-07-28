@@ -497,7 +497,7 @@ export async function settledSelect(
   page: Page,
   select: Locator,
   value: string,
-  opts: { timeout?: number } = {}
+  opts: { timeout?: number; destination?: RegExp } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 10_000;
   await expect(select).toBeVisible();
@@ -512,6 +512,13 @@ export async function settledSelect(
     expect(hydrated, "select not hydrated yet").toBe(true);
     await select.selectOption(value);
     await expect(select).toHaveValue(value, { timeout: 2_000 });
+    // A controlled select can update its own DOM value before a router.push()
+    // finishes. When the selection navigates, make that destination part of the
+    // same retry boundary so a swallowed or slow transition re-selects the
+    // absolute value instead of leaving the caller to time out on the source URL.
+    if (opts.destination) {
+      await expect(page).toHaveURL(opts.destination, { timeout: 2_000 });
+    }
   }).toPass({ timeout });
 }
 

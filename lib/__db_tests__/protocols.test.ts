@@ -17,6 +17,8 @@ import {
   getProtocolWindowsForOutcome,
   getActiveProtocolSummaries,
   getProtocolIntakeItem,
+  getProtocolOutcomeOptions,
+  resolveOutcomeSeries,
   situationUsedByOtherProtocol,
 } from "@/lib/queries";
 import { captureDelete } from "@/lib/undo-delete-db";
@@ -167,6 +169,102 @@ describe("protocol comparison seam", () => {
   });
 });
 
+describe("protocol outcome options (#1586)", () => {
+  it("includes a computed derived index and resolves its virtual series", () => {
+    const profile = newProfile("Proto Derived Outcomes");
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit)
+       VALUES (?, '2026-05-01', 'lab', ?, ?, ?, 'mg/dL')`
+    );
+    insert.run(profile, "Total Cholesterol", "Total Cholesterol", 210);
+    insert.run(profile, "HDL Cholesterol", "HDL Cholesterol", 50);
+
+    const options = getProtocolOutcomeOptions(profile);
+    expect(options.map((option) => option.key)).toContain(
+      "biomarker:Non-HDL Cholesterol"
+    );
+    expect(
+      resolveOutcomeSeries(profile, "biomarker:Non-HDL Cholesterol", "kg")
+        ?.samples
+    ).toEqual([{ date: "2026-05-01", value: 160 }]);
+  });
+
+  it("offers one logical option and merges legacy body-metric readings", () => {
+    const profile = newProfile("Proto Deduped Outcomes");
+    db.prepare(
+      `INSERT INTO body_metrics
+         (profile_id, date, resting_hr, source)
+       VALUES (?, '2026-05-01', 58, 'manual')`
+    ).run(profile);
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit)
+       VALUES (?, ?, 'lab', ?, ?, ?, ?)`
+    );
+    insert.run(
+      profile,
+      "2026-04-01",
+      "Resting Heart Rate",
+      "Resting Heart Rate",
+      62,
+      "bpm"
+    );
+    // The authoritative body_metrics value wins on an overlapping date.
+    insert.run(
+      profile,
+      "2026-05-01",
+      "Resting Heart Rate",
+      "Resting Heart Rate",
+      70,
+      "bpm"
+    );
+    insert.run(
+      profile,
+      "2026-05-01",
+      "Body Fat Percentage",
+      "Body Fat Percentage",
+      20,
+      "%"
+    );
+    insert.run(profile, "2026-05-01", "PhenoAge", "PhenoAge", 44, "yrs");
+
+    const optionKeys = getProtocolOutcomeOptions(profile).map(
+      (option) => option.key
+    );
+    expect(optionKeys).toEqual(
+      expect.arrayContaining([
+        "metric:resting_hr",
+        "metric:body_fat",
+        "index:phenoage",
+      ])
+    );
+    expect(optionKeys).not.toEqual(
+      expect.arrayContaining([
+        "biomarker:Resting Heart Rate",
+        "biomarker:Body Fat Percentage",
+        "biomarker:PhenoAge",
+      ])
+    );
+
+    expect(
+      resolveOutcomeSeries(profile, "biomarker:Resting Heart Rate", "kg")
+    ).toMatchObject({
+      key: "metric:resting_hr",
+      samples: [
+        { date: "2026-04-01", value: 62 },
+        { date: "2026-05-01", value: 58 },
+      ],
+    });
+    expect(
+      resolveOutcomeSeries(profile, "biomarker:PhenoAge", "kg")
+    ).toMatchObject({
+      key: "index:phenoage",
+      samples: [{ date: "2026-05-01", value: 44 }],
+    });
+  });
+});
+
 describe("protocol chart windows (issue #660)", () => {
   it("returns every protocol as a window and narrows to a targeting outcome", () => {
     const profile = newProfile("Proto Windows");
@@ -197,6 +295,24 @@ describe("protocol chart windows (issue #660)", () => {
     expect(getProtocolWindowsForOutcome(profile, "metric:weight")).toHaveLength(
       1
     );
+  });
+
+  it("normalizes legacy stored aliases without requiring a data migration", () => {
+    const profile = newProfile("Proto Legacy Outcome Keys");
+    const id = insertProtocol(profile, {
+      name: "Legacy HR trial",
+      start: "2026-03-01",
+      keys: ["biomarker:Resting Heart Rate", "metric:resting_hr"],
+    });
+
+    expect(getProtocol(profile, id)?.outcomeKeys).toEqual([
+      "metric:resting_hr",
+    ]);
+    expect(
+      getProtocolWindowsForOutcome(profile, "biomarker:Resting Heart Rate").map(
+        (window) => window.name
+      )
+    ).toEqual(["Legacy HR trial"]);
   });
 });
 

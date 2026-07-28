@@ -17,6 +17,7 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
     const main = page.getByRole("main");
 
     // The add form offers the seeded Creatine supplement as an intervention.
+    await main.getByTestId("new-protocol-toggle").click();
     const select = main.getByTestId("protocol-intake-item");
     await expect(select).toBeVisible();
     await expect(
@@ -62,14 +63,16 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
 
     await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
+    await main.getByTestId("new-protocol-toggle").click();
     const form = main.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
     await main.locator("#pr-start-new").fill(start);
-    // Dismiss the DateField popover so it doesn't intercept the checkbox click.
+    // Dismiss the DateField popover so it doesn't intercept the outcome picker.
     await page.keyboard.press("Escape");
+    await form.getByLabel("Filter outcome metrics").fill("LDL Cholesterol");
     await form
-      .locator('input[name="outcome_keys"][value="biomarker:LDL Cholesterol"]')
-      .check();
+      .getByRole("button", { name: "LDL Cholesterol", exact: true })
+      .click();
     await settledClick(
       page,
       form.getByRole("button", { name: "Create protocol" })

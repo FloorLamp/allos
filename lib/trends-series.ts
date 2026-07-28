@@ -7,7 +7,7 @@
 // through an already profile-scoped query, so the scoping guard is unaffected.
 
 import {
-  getBodyMetricDailySeries,
+  getLogicalBodyMetricDailySeries,
   getVolumeByDate,
   getBiomarkerSeriesWithDerived,
   getUsedCanonicalNamesWithDerived,
@@ -17,6 +17,7 @@ import {
   getAppointments,
   getProtocolWindows,
 } from "./queries";
+import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import {
   getUnitPrefs,
   getUserSex,
@@ -167,23 +168,29 @@ export function buildMetricSeries(
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
-      // Weight / body-fat / resting-HR all read through getBodyMetricDailySeries
-      // (the one-source-per-day reconciled series the Body tab charts, #14/#395),
-      // NOT raw all-source rows — so a two-device day can't double back the line
-      // and the tile's latest agrees with the deduped Body chart. Series is already
+      // Weight / body-fat / resting-HR all read through the logical series: the
+      // one-source-per-day body_metrics data the Body tab charts (#14/#395), plus
+      // legacy medical-record dates only when body_metrics has no value. A
+      // two-device day therefore can't double back the line. Series is already
       // oldest→newest in canonical units.
       case "weight":
-        return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(
-          (p) => ({ date: p.date, value: dispWeight(p.value, wu) })
-        );
+        return getLogicalBodyMetricDailySeries(
+          profileId,
+          "weight",
+          ALL_ROWS
+        ).map((p) => ({ date: p.date, value: dispWeight(p.value, wu) }));
       case "bodyfat":
-        return getBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).map(
-          (p) => ({ date: p.date, value: round(p.value, 1) })
-        );
+        return getLogicalBodyMetricDailySeries(
+          profileId,
+          "body_fat",
+          ALL_ROWS
+        ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
       case "resting_hr":
-        return getBodyMetricDailySeries(profileId, "resting_hr", ALL_ROWS).map(
-          (p) => ({ date: p.date, value: Math.round(p.value) })
-        );
+        return getLogicalBodyMetricDailySeries(
+          profileId,
+          "resting_hr",
+          ALL_ROWS
+        ).map((p) => ({ date: p.date, value: Math.round(p.value) }));
       case "volume":
         return getVolumeByDate(profileId).map((v) => ({
           date: v.date,
@@ -423,13 +430,13 @@ export function listCompareOptions(
     label: d.label,
     kind: "metric" as const,
   }));
-  const biomarkers = getUsedCanonicalNamesWithDerived(profileId).map(
-    (name) => ({
+  const biomarkers = getUsedCanonicalNamesWithDerived(profileId)
+    .filter((name) => bodyMetricKindForBiomarker(name) == null)
+    .map((name) => ({
       key: bioSeriesKey(name),
       label: name,
       kind: "biomarker" as const,
-    })
-  );
+    }));
   return { metrics, biomarkers };
 }
 
@@ -506,6 +513,7 @@ export function buildDigestSeries(
 ): TrendSeries[] {
   const out = buildMetricSeries(profileId, loginId, range, restricted);
   for (const name of getUsedCanonicalNamesWithDerived(profileId)) {
+    if (bodyMetricKindForBiomarker(name) != null) continue;
     const s = buildBiomarkerSeries(profileId, name, range);
     if (s) out.push(s);
   }

@@ -2,8 +2,9 @@
 //
 // Covers create (outcome-key set stored as JSON + situation activation), end
 // (sets end_date + inverts the situation activation), delete (row + side-state),
-// and profile scoping. redirect() is mocked to a no-op since it's the last
-// statement of create/delete.
+// and profile scoping. create returns its detail destination to the client (so
+// production creation does not depend on a thrown redirect sentinel); redirect()
+// is mocked to a no-op for delete.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -75,7 +76,7 @@ function seedIntakeItem(profileId: number, name = "Creatine"): number {
 describe("createProtocol", () => {
   it("stores the protocol with a normalized outcome-key set and activates the situation", async () => {
     const { profile } = seedActor();
-    await createProtocol(
+    const result = await createProtocol(
       protocolForm({
         name: "Creatine 5 g/day",
         start_date: "2026-05-01",
@@ -88,6 +89,10 @@ describe("createProtocol", () => {
         ],
       })
     );
+    expect(result).toMatchObject({
+      ok: true,
+      redirectTo: expect.stringMatching(/^\/protocols\/\d+$/),
+    });
 
     const rows = getProtocols(profile.id);
     expect(rows).toHaveLength(1);

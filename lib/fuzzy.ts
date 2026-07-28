@@ -56,3 +56,27 @@ export function fuzzyFilter(
     .slice(0, limit)
     .map((r) => r.o);
 }
+
+// Alias-aware variant for a picker whose visible label is not its only searchable
+// spelling. Each option keeps its visible value; hidden terms only contribute a
+// score. Existing Combobox callers stay on fuzzyFilter unless they opt in.
+export function fuzzyFilterWithTerms(
+  options: string[],
+  query: string,
+  termsFor: (option: string) => readonly string[],
+  limit = Infinity
+): string[] {
+  const q = query.trim();
+  if (q === "") return options.slice(0, limit);
+  return options
+    .map((o, i) => {
+      const scores = [o, ...termsFor(o)]
+        .map((term) => fuzzyScore(term, q))
+        .filter((score): score is number => score !== null);
+      return { o, i, s: scores.length > 0 ? Math.max(...scores) : null };
+    })
+    .filter((r): r is { o: string; i: number; s: number } => r.s !== null)
+    .sort((a, b) => b.s - a.s || a.i - b.i)
+    .slice(0, limit)
+    .map((r) => r.o);
+}

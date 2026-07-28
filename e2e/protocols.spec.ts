@@ -26,20 +26,20 @@ test.describe("protocols create → compare (issue #161)", () => {
     await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
 
+    await main.getByTestId("new-protocol-toggle").click();
     const form = main.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
     await main.locator("#pr-start-new").fill(start);
     // Filling the date field opens its DateField popover, which floats over the
-    // outcome-metric checkboxes below and would intercept their clicks — dismiss
-    // it (the picker closes on Escape) before checking the boxes.
+    // outcome picker below — dismiss it before choosing outcomes.
     await page.keyboard.press("Escape");
-    await form.getByRole("checkbox", { name: "Body weight" }).check();
-    // Resting HR is offered from two metric namespaces (a device `metric:` and a
-    // discrete `biomarker:` reading), so its label matches two checkboxes — target
-    // the device-metric one unambiguously by value.
+    const outcomeSearch = form.getByLabel("Filter outcome metrics");
+    await outcomeSearch.fill("Body weight");
+    await form.getByRole("button", { name: "Body weight" }).click();
+    await outcomeSearch.fill("Resting heart rate");
     await form
-      .locator('input[name="outcome_keys"][value="metric:resting_hr"]')
-      .check();
+      .getByRole("button", { name: "Resting heart rate", exact: true })
+      .click();
     await form.getByRole("button", { name: "Create protocol" }).click();
 
     // Redirects to the detail page.
@@ -77,6 +77,7 @@ test.describe("protocols recovery-gear filter (#592)", () => {
   }) => {
     test.slow();
     await page.goto("/longevity#protocols");
+    await page.getByTestId("new-protocol-toggle").click();
     const select = page.getByTestId("protocol-equipment");
     await expect(select).toBeVisible();
 

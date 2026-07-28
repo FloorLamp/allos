@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { IconFlask2, IconSparkles } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import {
@@ -12,10 +13,7 @@ import ProtocolForm from "@/app/(app)/protocols/ProtocolForm";
 import ProtocolList from "@/app/(app)/protocols/ProtocolList";
 import ListRailLayout from "@/components/ListRailLayout";
 import { createProtocol } from "@/app/(app)/protocols/actions";
-import {
-  PROTOCOL_TEMPLATES,
-  type ProtocolTemplate,
-} from "@/lib/protocol-templates";
+import type { ProtocolTemplate } from "@/lib/protocol-templates";
 
 // Longevity §5 — Protocols / N-of-1 experiments (#1042 phase 4): the absorbed
 // /protocols hub (issue #161), now the page's INTERVENTIONS section — the
@@ -29,8 +27,8 @@ import {
 export default async function ProtocolsSection({
   template,
 }: {
-  // The starter template (issue #571) selected from the templates strip
-  // (?template= on /longevity), seeding the add form. Null when none requested.
+  // The starter template selected by a durable ?template= link. It expands and
+  // seeds the otherwise-collapsed form; the picker itself now lives in that form.
   template: ProtocolTemplate | null;
 }) {
   const { login, profile } = await requireSession();
@@ -47,61 +45,39 @@ export default async function ProtocolsSection({
     <section
       id="protocols"
       data-testid="longevity-protocols"
-      className="scroll-mt-20"
+      className="scroll-mt-20 border-t border-black/5 pt-6 dark:border-white/5"
     >
-      <div className="mb-3">
-        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-          Protocols &amp; experiments
-        </h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          Run an N-of-1 experiment: pick an intervention, declare the outcomes
-          you care about, and Allos compares the baseline window against the
-          intervention window — no p-value theater, just the honest shift.
-        </p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="rounded-xl bg-brand-50 p-2.5 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
+            <IconFlask2 className="h-5 w-5" aria-hidden />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Experiments
+            </h2>
+            <p className="mt-0.5 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
+              Compare an intervention with your baseline using outcomes you
+              already track.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/wellness"
+          className="btn-ghost btn-sm"
+          data-testid="longevity-wellness-link"
+        >
+          <IconSparkles className="h-4 w-4" aria-hidden />
+          Wellness practices
+        </Link>
       </div>
 
       <ListRailLayout
         rail={
-          <>
-            <div className="card space-y-2" data-testid="protocol-templates">
-              <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                Start from a template
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {PROTOCOL_TEMPLATES.map((t) => (
-                  <Link
-                    key={t.id}
-                    href={`/longevity?template=${t.id}#protocols`}
-                    data-testid={`protocol-template-${t.id}`}
-                    className={`badge transition ${
-                      template?.id === t.id
-                        ? "bg-brand-600 text-white"
-                        : "bg-brand-50 text-brand-700 hover:ring-1 hover:ring-current dark:bg-brand-500/15 dark:text-brand-300"
-                    }`}
-                    title={t.blurb}
-                  >
-                    {t.label}
-                  </Link>
-                ))}
-                {template ? (
-                  <Link
-                    href="/longevity#protocols"
-                    className="badge bg-slate-100 text-slate-600 hover:ring-1 hover:ring-current dark:bg-ink-800 dark:text-slate-300"
-                  >
-                    Clear
-                  </Link>
-                ) : null}
-              </div>
-              {template ? (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {template.blurb} The form below is prefilled — review and
-                  edit, then save.
-                </p>
-              ) : null}
-            </div>
+          <div className="space-y-2">
             <ProtocolForm
-              // Remount the form when the template changes so its uncontrolled
-              // defaults re-seed.
+              // A legacy ?template= navigation remounts the form. In-form template
+              // changes use ProtocolForm's keyed field seed instead.
               key={template?.id ?? "blank"}
               action={createProtocol}
               options={options}
@@ -109,17 +85,19 @@ export default async function ProtocolsSection({
               intakeItems={intakeItems}
               template={template}
             />
-            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-              Comparisons are descriptive (mean/median shift with n per window),
-              not statistical inference.
+            <p className="px-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Results are descriptive: the shift and sample size in each window,
+              without invented certainty.
             </p>
-          </>
+          </div>
         }
       >
-        <ProtocolList
-          items={protocols}
-          formatPrefs={getDisplayFormatPrefs(login.id)}
-        />
+        <div className="rounded-xl border border-black/5 bg-white/25 p-2 dark:border-white/5 dark:bg-white/[0.02]">
+          <ProtocolList
+            items={protocols}
+            formatPrefs={getDisplayFormatPrefs(login.id)}
+          />
+        </div>
       </ListRailLayout>
     </section>
   );

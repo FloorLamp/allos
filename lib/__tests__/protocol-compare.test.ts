@@ -199,6 +199,26 @@ describe("outcome metric keys", () => {
     ).toEqual(["metric:weight", "biomarker:ApoB"]);
   });
 
+  it("collapses legacy biomarker aliases onto one logical outcome key", () => {
+    expect(
+      normalizeOutcomeKeys([
+        "biomarker:Body Weight",
+        "metric:weight",
+        "biomarker:Resting Heart Rate",
+        "metric:resting_hr",
+        "biomarker:Body Fat Percentage",
+        "metric:body_fat",
+        "biomarker:PhenoAge",
+        "index:phenoage",
+      ])
+    ).toEqual([
+      "metric:weight",
+      "metric:resting_hr",
+      "metric:body_fat",
+      "index:phenoage",
+    ]);
+  });
+
   it("labels fixed metrics and falls back to the canonical name for biomarkers", () => {
     expect(outcomeMetricLabel("metric:resting_hr")).toBe("Resting heart rate");
     expect(outcomeMetricLabel("biomarker:ApoB")).toBe("ApoB");

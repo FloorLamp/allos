@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fuzzyScore, fuzzyFilter } from "@/lib/fuzzy";
+import { fuzzyScore, fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
 
 describe("fuzzyScore", () => {
   it("matches a non-adjacent subsequence", () => {
@@ -81,5 +81,19 @@ describe("fuzzyFilter", () => {
       "Decline",
       "Destroy",
     ]);
+  });
+});
+
+describe("fuzzyFilterWithTerms", () => {
+  it("matches a hidden alias while returning the visible option", () => {
+    const options = ["Hemoglobin A1c", "Glucose"];
+    expect(
+      fuzzyFilterWithTerms(
+        options,
+        "HbA1c",
+        (option) => (option === "Hemoglobin A1c" ? ["HbA1c", "A1c"] : []),
+        8
+      )
+    ).toEqual(["Hemoglobin A1c"]);
   });
 });
