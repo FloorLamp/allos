@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { requireWriteAccess } from "@/lib/auth";
 import { getActiveSituations, setActiveSituations } from "@/lib/settings";
 import { isRealIsoDate } from "@/lib/date";
@@ -224,7 +224,7 @@ export async function createProtocol(
   const intakeItemId = resolveIntakeItemId(profile.id, formData);
   let protocolId: number;
   try {
-    protocolId = db.transaction(() => {
+    protocolId = writeTx(() => {
       // On create there is no prior practice link, so no stale-target cleanup
       // applies. Keep the optional target, protocol row, and situation activation
       // atomic so a failed row write cannot leave an orphan target behind.
@@ -257,7 +257,7 @@ export async function createProtocol(
       // Starting an ongoing protocol activates its situation (if any).
       if (situation && !end) activateSituation(profile.id, situation);
       return Number(info.lastInsertRowid);
-    })();
+    });
   } catch (err) {
     // Keep the client response free of database detail; the persisted server log
     // carries the actionable cause for Settings → Errors.

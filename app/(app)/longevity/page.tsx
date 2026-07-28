@@ -106,7 +106,7 @@ export default async function LongevityPage({
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             <Link
               href="/data"
-              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
             >
               <IconTestPipe
                 className="h-4 w-4 shrink-0 text-brand-500"
@@ -116,7 +116,7 @@ export default async function LongevityPage({
             </Link>
             <Link
               href="/sleep"
-              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
             >
               <IconMoonStars
                 className="h-4 w-4 shrink-0 text-violet-500"
@@ -126,7 +126,7 @@ export default async function LongevityPage({
             </Link>
             <Link
               href="/training?tab=fitness"
-              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
             >
               <IconRun className="h-4 w-4 shrink-0 text-rose-500" aria-hidden />
               Run a fitness check

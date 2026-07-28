@@ -127,6 +127,7 @@ test("the longevity adherence select renders its default label unclipped (#1450 
   page,
 }) => {
   await page.goto("/longevity");
+  await page.getByTestId("new-protocol-toggle").click();
 
   const select = page.getByTestId("protocol-practice-type");
   await expect(select).toBeVisible();
