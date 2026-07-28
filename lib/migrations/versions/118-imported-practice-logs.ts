@@ -53,6 +53,31 @@ export function up(db: Database.Database): void {
              SELECT 1 FROM activity_videos v WHERE v.activity_id = a.id
            );
 
+      -- The migration runner disables FK enforcement while applying migrations, so
+      -- fitness_assessments.activity_id's ON DELETE SET NULL cannot fire here.
+      -- Perform the inbound-link transition explicitly for exactly the activities
+      -- that the following DELETE will remove.
+      UPDATE fitness_assessments
+         SET activity_id = NULL
+       WHERE activity_id IN (
+         SELECT a.id
+           FROM activities a
+          WHERE a.source = 'fitbit-takeout'
+            AND a.external_id IS NOT NULL
+            AND a.external_id <> ''
+            AND COALESCE(a.edited, 0) = 0
+            AND LOWER(TRIM(a.title)) IN ('meditating', 'meditation')
+            AND NOT EXISTS (
+              SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM activity_routes r WHERE r.activity_id = a.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM activity_videos v WHERE v.activity_id = a.id
+            )
+       );
+
       DELETE FROM activities
        WHERE source = 'fitbit-takeout'
          AND external_id IS NOT NULL

@@ -30,6 +30,21 @@ function isPracticeDateAccepted(profileId: number, date: string): boolean {
   return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
 }
 
+// An imported historical session may be far outside the new-log window but still
+// needs ordinary correction. Accept a date near that existing row as well as the
+// normal today-relative window; this keeps forged edits bounded without making an
+// old session impossible to save even when its date is unchanged.
+function isPracticeEditDateAccepted(
+  profileId: number,
+  currentDate: string,
+  nextDate: string
+): boolean {
+  if (!isRealIsoDate(nextDate)) return false;
+  if (isPracticeDateAccepted(profileId, nextDate)) return true;
+  const diff = daysBetweenDateStr(currentDate, nextDate);
+  return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
+}
+
 // SQL cannot call practiceIdentity(), so resolve its finite preimage from the
 // profile's stored target/log spellings once, then bind that exact set into reads.
 // This catches legacy "Sauna" / " sauna " / "SAUNA" variants without interpolating
@@ -214,10 +229,10 @@ export function updatePracticeSession(
     notes?: string | null;
   }
 ): PracticeSessionMutationOutcome {
-  if (!isPracticeDateAccepted(profileId, input.date))
-    return { kind: "invalid-date" };
   const current = getPracticeSession(profileId, id);
   if (!current) return { kind: "not-found" };
+  if (!isPracticeEditDateAccepted(profileId, current.date, input.date))
+    return { kind: "invalid-date" };
   const time =
     input.time && /^\d{2}:\d{2}$/.test(input.time) ? input.time : null;
   const durationMin =
@@ -289,10 +304,15 @@ export function renamePracticeSessions(
   if (spellings.length === 0) return 0;
   const info = db
     .prepare(
-      `UPDATE practice_logs SET practice = ?
+      `UPDATE practice_logs
+          SET practice = ?,
+              edited = CASE
+                WHEN external_id IS NOT NULL AND practice <> ? THEN 1
+                ELSE edited
+              END
         WHERE profile_id = ? AND practice IN (${inClause(spellings)})`
     )
-    .run(next, profileId, ...spellings);
+    .run(next, next, profileId, ...spellings);
   return info.changes;
 }
 

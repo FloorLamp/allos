@@ -139,7 +139,22 @@ export function upsertPracticeLogs(
         SET practice = ?, date = ?, time = ?, duration_min = ?, source = ?
       WHERE id = ? AND profile_id = ?`
   );
+  // Fitbit meditations originally landed in activities. Migration 118 moves the
+  // untouched rows, but deliberately leaves a user-edited/attached activity in
+  // place. Preserve that cross-table occupancy on every later re-import so the same
+  // provider record cannot also appear as a practice.
+  const findLegacyActivity = db.prepare(
+    `SELECT edited FROM activities
+      WHERE profile_id = ? AND external_id = ?`
+  );
   const tombstoned = loadImportTombstones(profileId, "practice_logs");
+  // A meditation deleted before migration 118 has its suppression recorded against
+  // the old target table. The provider identity did not change when its destination
+  // did, so that deletion must continue to suppress the rerouted practice.
+  const legacyActivityTombstones = loadImportTombstones(
+    profileId,
+    "activities"
+  );
   const counts = emptyCounts();
 
   for (const row of rows) {
@@ -179,9 +194,21 @@ export function upsertPracticeLogs(
         });
       }
       tallyUpsert(counts, disposition);
-    } else if (tombstoned.has(row.external_id)) {
+    } else if (
+      tombstoned.has(row.external_id) ||
+      legacyActivityTombstones.has(row.external_id)
+    ) {
       counts.suppressed++;
     } else {
+      const legacyActivity = findLegacyActivity.get(
+        profileId,
+        row.external_id
+      ) as { edited: number | null } | undefined;
+      if (legacyActivity) {
+        if (isEditLocked(legacyActivity.edited)) counts.edited++;
+        else counts.suppressed++;
+        continue;
+      }
       const info = insert.run(
         profileId,
         row.practice,

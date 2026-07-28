@@ -31,6 +31,10 @@ describe("migration 118 — imported wellness practices", () => {
         id INTEGER PRIMARY KEY,
         activity_id INTEGER NOT NULL
       );
+      CREATE TABLE fitness_assessments (
+        id INTEGER PRIMARY KEY,
+        activity_id INTEGER REFERENCES activities(id) ON DELETE SET NULL
+      );
       CREATE TABLE practice_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         profile_id INTEGER NOT NULL,
@@ -55,10 +59,15 @@ describe("migration 118 — imported wellness practices", () => {
         (5, 1, 'fitbit-takeout', NULL, 0, 'Meditating',
          '2026-06-17', '17:00', 15);
       INSERT INTO exercise_sets (id, activity_id) VALUES (1, 4);
+      INSERT INTO fitness_assessments (id, activity_id) VALUES (1, 1);
     `);
 
+    // Match the production migration runner: FK actions are disabled while the
+    // migration applies, so migration 118 itself must clear inbound links.
+    mem.pragma("foreign_keys = OFF");
     up(mem);
     up(mem);
+    mem.pragma("foreign_keys = ON");
 
     expect(
       mem
@@ -84,6 +93,10 @@ describe("migration 118 — imported wellness practices", () => {
       { id: 4 },
       { id: 5 },
     ]);
+    expect(
+      mem.prepare(`SELECT activity_id FROM fitness_assessments`).get()
+    ).toEqual({ activity_id: null });
+    expect(mem.pragma("foreign_key_check")).toEqual([]);
 
     mem.close();
   });
