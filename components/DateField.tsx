@@ -195,6 +195,7 @@ export default function DateField({
     <div
       className="relative"
       ref={ref}
+      data-escape-layer={open ? "true" : undefined}
       // Keep Escape from bubbling to a parent modal/dialog when the picker is open.
       onKeyDown={(e) => {
         if (e.key === "Escape" && open) {
@@ -271,6 +272,7 @@ export default function DateField({
           <div
             ref={popRef}
             data-testid="date-field-calendar"
+            data-escape-layer="true"
             style={{
               position: "fixed",
               top: pos?.top ?? 0,

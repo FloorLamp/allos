@@ -59,7 +59,7 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
   await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
-  const form = main.getByTestId("protocol-form");
+  const form = page.getByTestId("protocol-form");
   await form.getByLabel("Name").fill(protocolName);
   await form
     .getByTestId("protocol-practice-type")

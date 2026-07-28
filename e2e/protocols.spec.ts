@@ -28,9 +28,9 @@ test.describe("protocols create → compare (issue #161)", () => {
     const main = page.getByRole("main");
 
     await main.getByTestId("new-protocol-toggle").click();
-    const form = main.getByTestId("protocol-form");
+    const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
-    await main.locator("#pr-start-new").fill(start);
+    await form.locator("#pr-start-new").fill(start);
     // Filling the date field opens its DateField popover, which floats over the
     // outcome picker below — dismiss it before choosing outcomes.
     await page.keyboard.press("Escape");
@@ -58,6 +58,22 @@ test.describe("protocols create → compare (issue #161)", () => {
     await expect(
       detailMain.getByTestId("protocol-outcome-metric:resting_hr")
     ).toBeVisible();
+
+    // Edit opens the same wide modal as creation instead of replacing the narrow
+    // detail card inline.
+    await hydratedClick(
+      page,
+      detailMain.getByRole("button", { name: "More protocol actions" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("button", { name: "Edit", exact: true })
+      .click();
+    const editDialog = page.getByRole("dialog", { name: "Edit protocol" });
+    await expect(editDialog).toBeVisible();
+    await expect(editDialog.getByLabel("Name")).toHaveValue(uniqueName);
+    await editDialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(editDialog).toHaveCount(0);
 
     // End → Resume stays on the same protocol run inside the seven-day window.
     await hydratedClick(
@@ -124,11 +140,11 @@ test.describe("protocols create → compare (issue #161)", () => {
     await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
     await main.getByTestId("new-protocol-toggle").click();
-    const form = main.getByTestId("protocol-form");
+    const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
-    await main.locator("#pr-start-new").fill(start);
+    await form.locator("#pr-start-new").fill(start);
     await page.keyboard.press("Escape");
-    await main.locator("#pr-end-new").fill(end);
+    await form.locator("#pr-end-new").fill(end);
     await page.keyboard.press("Escape");
     await settledClick(
       page,

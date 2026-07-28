@@ -18,11 +18,15 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
 
     // The add form offers the seeded Creatine supplement as an intervention.
     await main.getByTestId("new-protocol-toggle").click();
-    const select = main.getByTestId("protocol-intake-item");
+    const select = page.getByTestId("protocol-intake-item");
     await expect(select).toBeVisible();
     await expect(
       select.locator("option", { hasText: "Creatine Monohydrate" })
     ).toHaveCount(1);
+    await page
+      .getByRole("dialog", { name: "New protocol" })
+      .getByRole("button", { name: "Close" })
+      .click();
 
     // The seeded protocol's detail page shows the intervention link to the
     // supplement surface (Nutrition → Supplements).
@@ -64,9 +68,9 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
     await main.getByTestId("new-protocol-toggle").click();
-    const form = main.getByTestId("protocol-form");
+    const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
-    await main.locator("#pr-start-new").fill(start);
+    await form.locator("#pr-start-new").fill(start);
     // Dismiss the DateField popover so it doesn't intercept the outcome picker.
     await page.keyboard.press("Escape");
     await form.getByLabel("Filter outcome metrics").fill("LDL Cholesterol");

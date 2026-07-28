@@ -32,10 +32,10 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
-  const form = main.getByTestId("protocol-form");
+  const form = page.getByTestId("protocol-form");
 
   await form.getByLabel("Name").fill(uniqueName);
-  await main.locator("#pr-start-new").fill(start);
+  await form.locator("#pr-start-new").fill(start);
   await page.keyboard.press("Escape"); // dismiss the date popover
 
   // Reference the seeded sauna and declare a sport 4×/week practice.
@@ -113,10 +113,10 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
   await main.getByTestId("new-protocol-toggle").click();
-  const form = main.getByTestId("protocol-form");
+  const form = page.getByTestId("protocol-form");
 
   await form.getByLabel("Name", { exact: true }).fill(uniqueName);
-  await main.locator("#pr-start-new").fill(start);
+  await form.locator("#pr-start-new").fill(start);
   await page.keyboard.press("Escape"); // dismiss the date popover
 
   // A 3–5×/week custom wellness practice (the CREATE-owned path).

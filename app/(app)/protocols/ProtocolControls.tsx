@@ -9,6 +9,7 @@ import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
+import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -138,117 +139,122 @@ export default function ProtocolControls({
     }
   }
 
-  if (editing) {
-    return (
-      <ProtocolForm
-        action={updateAction}
-        options={options}
-        equipment={equipment}
-        intakeItems={intakeItems}
-        protocol={protocol}
-        practice={practice}
-        onDone={() => setEditing(false)}
-      />
-    );
-  }
-
   return (
-    <div className="card space-y-3" data-testid="protocol-header">
-      {/* The shared PageHeader, not a hand-rolled <h1> (issue #1416, section D):
-      this IS the protocol detail page's heading, so it gets the same treatment —
-      including the compact mobile size — as every other page. */}
-      <PageHeader
-        title={protocol.name}
-        subtitle={
-          ongoing
-            ? `Started ${formatLongDate(protocol.start_date, formatPrefs)} · ongoing`
-            : `${formatLongDate(protocol.start_date, formatPrefs)} – ${formatLongDate(
-                protocol.end_date!,
-                formatPrefs
-              )}`
-        }
-        action={
-          <div className="flex items-center gap-1">
-            {ongoing && (
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                Ongoing
-              </span>
-            )}
-            <OverflowMenu
-              label="More protocol actions"
-              open={menuOpen}
-              onOpenChange={setMenuOpen}
-            >
-              {({ close }) => (
-                <>
-                  <button
-                    type="button"
-                    className={MENU_ITEM}
-                    disabled={busy}
-                    data-testid="protocol-edit"
-                    onClick={() => {
-                      close();
-                      setEditing(true);
-                    }}
-                  >
-                    Edit
-                  </button>
-                  {ongoing && (
-                    <button
-                      type="button"
-                      className={MENU_ITEM}
-                      disabled={busy}
-                      onClick={() => void onEnd()}
-                    >
-                      End now
-                    </button>
-                  )}
-                  {reopen.kind === "eligible" && (
-                    <button
-                      type="button"
-                      className={MENU_ITEM}
-                      disabled={busy}
-                      onClick={() =>
-                        void mutate(resumeAction, "Protocol resumed")
-                      }
-                    >
-                      Resume
-                    </button>
-                  )}
-                  {reopen.kind === "expired" && (
-                    <button
-                      type="button"
-                      className={MENU_ITEM}
-                      disabled={busy}
-                      onClick={() => void onRunAgain()}
-                    >
-                      Run again
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className={MENU_ITEM_DANGER}
-                    disabled={busy}
-                    onClick={() => void onDelete()}
-                  >
-                    Delete
-                  </button>
-                </>
+    <>
+      <div className="card space-y-3" data-testid="protocol-header">
+        {/* The shared PageHeader, not a hand-rolled <h1> (issue #1416, section D):
+        this IS the protocol detail page's heading, so it gets the same treatment —
+        including the compact mobile size — as every other page. */}
+        <PageHeader
+          title={protocol.name}
+          subtitle={
+            ongoing
+              ? `Started ${formatLongDate(protocol.start_date, formatPrefs)} · ongoing`
+              : `${formatLongDate(protocol.start_date, formatPrefs)} – ${formatLongDate(
+                  protocol.end_date!,
+                  formatPrefs
+                )}`
+          }
+          action={
+            <div className="flex items-center gap-1">
+              {ongoing && (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                  Ongoing
+                </span>
               )}
-            </OverflowMenu>
-          </div>
-        }
-      />
-      {protocol.situation && (
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          Situation: <span className="font-medium">{protocol.situation}</span>
-        </p>
+              <OverflowMenu
+                label="More protocol actions"
+                open={menuOpen}
+                onOpenChange={setMenuOpen}
+              >
+                {({ close }) => (
+                  <>
+                    <button
+                      type="button"
+                      className={MENU_ITEM}
+                      disabled={busy}
+                      data-testid="protocol-edit"
+                      onClick={() => {
+                        close();
+                        setEditing(true);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    {ongoing && (
+                      <button
+                        type="button"
+                        className={MENU_ITEM}
+                        disabled={busy}
+                        onClick={() => void onEnd()}
+                      >
+                        End now
+                      </button>
+                    )}
+                    {reopen.kind === "eligible" && (
+                      <button
+                        type="button"
+                        className={MENU_ITEM}
+                        disabled={busy}
+                        onClick={() =>
+                          void mutate(resumeAction, "Protocol resumed")
+                        }
+                      >
+                        Resume
+                      </button>
+                    )}
+                    {reopen.kind === "expired" && (
+                      <button
+                        type="button"
+                        className={MENU_ITEM}
+                        disabled={busy}
+                        onClick={() => void onRunAgain()}
+                      >
+                        Run again
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={MENU_ITEM_DANGER}
+                      disabled={busy}
+                      onClick={() => void onDelete()}
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </OverflowMenu>
+            </div>
+          }
+        />
+        {protocol.situation && (
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Situation: <span className="font-medium">{protocol.situation}</span>
+          </p>
+        )}
+        <NotesText
+          as="p"
+          notes={protocol.notes}
+          className="text-sm text-slate-600 dark:text-slate-300"
+        />
+      </div>
+      {editing && (
+        <ModalShell
+          title="Edit protocol"
+          onClose={() => setEditing(false)}
+          className="w-full max-w-5xl rounded-xl bg-white p-4 shadow-xl outline-none sm:p-6 dark:bg-ink-900"
+        >
+          <ProtocolForm
+            action={updateAction}
+            options={options}
+            equipment={equipment}
+            intakeItems={intakeItems}
+            protocol={protocol}
+            practice={practice}
+            onDone={() => setEditing(false)}
+          />
+        </ModalShell>
       )}
-      <NotesText
-        as="p"
-        notes={protocol.notes}
-        className="text-sm text-slate-600 dark:text-slate-300"
-      />
-    </div>
+    </>
   );
 }
