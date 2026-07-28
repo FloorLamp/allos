@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { IconPencil } from "@tabler/icons-react";
+import { useRouter } from "next/navigation";
+import { IconPencil, IconTrash } from "@tabler/icons-react";
 import LogPracticeButton from "@/app/(app)/protocols/LogPracticeButton";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useToast } from "@/components/Toast";
 import { practiceCadenceText, PRACTICE_PLENTY_TEXT } from "@/lib/practice";
 import { formatUsageSummary } from "@/lib/usage-format";
 import type { PracticeLog } from "@/lib/types";
 import type { WellnessPractice } from "@/lib/practice-store";
 import PracticeEditor from "./PracticeEditor";
 import PracticeSessionHistory from "./PracticeSessionHistory";
+import { untrackPractice } from "./actions";
 
 export default function PracticeCard({
   practice,
@@ -20,6 +24,39 @@ export default function PracticeCard({
   today: string;
 }) {
   const [editing, setEditing] = useState(false);
+  const [untracking, setUntracking] = useState(false);
+  const router = useRouter();
+  const confirm = useConfirm();
+  const toast = useToast();
+
+  async function untrack() {
+    if (practice.targetId == null) return;
+    const ok = await confirm({
+      title: "Stop tracking this practice?",
+      message:
+        "The weekly target and its reminders will be removed. Logged sessions will stay in your history, and protocols using this target will stop measuring it.",
+      confirmLabel: "Stop tracking",
+      danger: true,
+    });
+    if (!ok) return;
+    setUntracking(true);
+    const fd = new FormData();
+    fd.set("target_id", String(practice.targetId));
+    try {
+      const result = await untrackPractice(fd);
+      if (!result.ok) {
+        toast(result.error, { tone: "error" });
+        return;
+      }
+      setEditing(false);
+      toast("Practice target removed");
+      router.refresh();
+    } catch {
+      toast("Couldn't stop tracking that practice.", { tone: "error" });
+    } finally {
+      setUntracking(false);
+    }
+  }
 
   return (
     <article className="card space-y-4" data-testid="wellness-practice-card">
@@ -43,15 +80,29 @@ export default function PracticeCard({
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setEditing((value) => !value)}
-          className="btn-ghost inline-flex items-center gap-1.5"
-          data-testid="wellness-practice-edit"
-        >
-          <IconPencil className="h-4 w-4" stroke={1.75} />
-          {practice.targetId == null ? "Set target" : "Edit"}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setEditing((value) => !value)}
+            className="btn-ghost inline-flex items-center gap-1.5"
+            data-testid="wellness-practice-edit"
+          >
+            <IconPencil className="h-4 w-4" stroke={1.75} />
+            {practice.targetId == null ? "Set target" : "Edit"}
+          </button>
+          {practice.targetId != null && (
+            <button
+              type="button"
+              onClick={() => void untrack()}
+              disabled={untracking}
+              className="btn-ghost inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400"
+              data-testid="wellness-practice-untrack"
+            >
+              <IconTrash className="h-4 w-4" stroke={1.75} />
+              {untracking ? "Removing…" : "Stop tracking"}
+            </button>
+          )}
+        </div>
       </div>
 
       {editing && (

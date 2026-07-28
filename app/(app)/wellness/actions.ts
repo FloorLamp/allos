@@ -10,6 +10,7 @@ import {
 } from "@/lib/practice-log";
 import {
   createWellnessPractice,
+  untrackWellnessPractice,
   updateWellnessPractice,
 } from "@/lib/practice-store";
 import {
@@ -94,6 +95,17 @@ export async function savePractice(formData: FormData): Promise<FormResult> {
     return formError("Enter a practice name and a weekly target from 1 to 14.");
   if (outcome.kind === "duplicate")
     return formError("That practice already has a weekly target.");
+  if (outcome.kind === "not-found")
+    return formError("Couldn't find that practice.");
+  revalidatePracticeSurfaces();
+  return formOk();
+}
+
+export async function untrackPractice(formData: FormData): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const targetId = Number(formData.get("target_id"));
+  if (!targetId) return formError("Couldn't find that practice.");
+  const outcome = untrackWellnessPractice(profile.id, targetId);
   if (outcome.kind === "not-found")
     return formError("Couldn't find that practice.");
   revalidatePracticeSurfaces();

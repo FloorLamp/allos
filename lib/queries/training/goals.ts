@@ -126,10 +126,31 @@ export function getGoalProgressMap(
 }
 
 // ---- Weekly frequency targets ----
+// Targets created and owned by a protocol are active only while at least one
+// protocol using them is ongoing. Ended protocol rows keep their target reference
+// as a historical cadence snapshot, but that snapshot must not keep producing
+// dashboard progress, Upcoming items, or notifications forever. Standalone targets
+// (no protocol owner) remain active until the user explicitly untracks them.
 export function getFrequencyTargets(profileId: number): FrequencyTarget[] {
   return db
     .prepare(
-      "SELECT * FROM frequency_targets WHERE profile_id = ? ORDER BY created_at, id"
+      `SELECT ft.* FROM frequency_targets ft
+        WHERE ft.profile_id = ?
+          AND (
+            NOT EXISTS (
+              SELECT 1 FROM protocols owner
+               WHERE owner.profile_id = ft.profile_id
+                 AND owner.frequency_target_id = ft.id
+                 AND owner.owns_frequency_target = 1
+            )
+            OR EXISTS (
+              SELECT 1 FROM protocols live
+               WHERE live.profile_id = ft.profile_id
+                 AND live.frequency_target_id = ft.id
+                 AND live.end_date IS NULL
+            )
+          )
+        ORDER BY ft.created_at, ft.id`
     )
     .all(profileId) as FrequencyTarget[];
 }

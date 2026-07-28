@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildProtocolHeatmap } from "@/lib/protocol-heatmap";
+import {
+  buildProtocolHeatmap,
+  MAX_PROTOCOL_HEATMAP_WEEKS,
+} from "@/lib/protocol-heatmap";
 
 describe("buildProtocolHeatmap (#1588)", () => {
   it("keeps event-count intensity and distinguishes window padding from zero", () => {
@@ -37,16 +40,25 @@ describe("buildProtocolHeatmap (#1588)", () => {
     expect(heatmap.activeDays).toBe(3);
   });
 
-  it("spans long windows without dropping early days", () => {
+  it("bounds long-window cells while retaining full-window totals", () => {
     const heatmap = buildProtocolHeatmap(
-      [{ date: "2025-01-01", count: 1 }],
-      "2025-01-01",
+      [
+        { date: "1900-01-01", count: 2 },
+        { date: "2026-01-01", count: 1 },
+      ],
+      "1900-01-01",
       "2026-01-01",
       1
     );
     const cells = heatmap.columns.flat();
-    expect(heatmap.columns.length).toBeGreaterThanOrEqual(53);
-    expect(cells.some((cell) => cell.date === "2025-01-01")).toBe(true);
+    expect(heatmap.columns).toHaveLength(MAX_PROTOCOL_HEATMAP_WEEKS);
+    expect(cells).toHaveLength(MAX_PROTOCOL_HEATMAP_WEEKS * 7);
+    expect(cells.some((cell) => cell.date === "1900-01-01")).toBe(false);
     expect(cells.some((cell) => cell.date === "2026-01-01")).toBe(true);
+    expect(heatmap).toMatchObject({
+      truncated: true,
+      totalSessions: 3,
+      activeDays: 2,
+    });
   });
 });

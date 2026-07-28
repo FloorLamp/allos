@@ -22,9 +22,13 @@ export interface ProtocolHeatmap {
   columns: ProtocolHeatmapCell[][];
   start: string;
   end: string;
+  visibleStart: string;
+  truncated: boolean;
   totalSessions: number;
   activeDays: number;
 }
+
+export const MAX_PROTOCOL_HEATMAP_WEEKS = 53;
 
 export function buildProtocolHeatmap(
   days: readonly ProtocolDayUsage[],
@@ -32,14 +36,22 @@ export function buildProtocolHeatmap(
   end: string,
   weekStart = 0
 ): ProtocolHeatmap {
-  const gridStart = startOfWeekStr(start, weekStart);
+  const fullGridStart = startOfWeekStr(start, weekStart);
   const endWeekStart = startOfWeekStr(end, weekStart);
-  const weekSpan = daysBetweenDateStr(gridStart, endWeekStart);
-  const weeks = Math.max(1, Math.floor((weekSpan ?? 0) / 7) + 1);
+  const weekSpan = daysBetweenDateStr(fullGridStart, endWeekStart);
+  const fullWeeks = Math.max(1, Math.floor((weekSpan ?? 0) / 7) + 1);
+  const weeks = Math.min(fullWeeks, MAX_PROTOCOL_HEATMAP_WEEKS);
+  const truncated = fullWeeks > weeks;
+  const gridStart = truncated
+    ? shiftDateStr(endWeekStart, -(weeks - 1) * 7)
+    : fullGridStart;
   const byDate = new Map(days.map((day) => [day.date, day.count]));
   const columns: ProtocolHeatmapCell[][] = [];
-  let totalSessions = 0;
-  let activeDays = 0;
+  const inWindowDays = days.filter(
+    (day) => day.date >= start && day.date <= end && day.count > 0
+  );
+  const totalSessions = inWindowDays.reduce((sum, day) => sum + day.count, 0);
+  const activeDays = inWindowDays.length;
 
   for (let column = 0; column < weeks; column++) {
     const cells: ProtocolHeatmapCell[] = [];
@@ -47,10 +59,6 @@ export function buildProtocolHeatmap(
       const date = shiftDateStr(gridStart, column * 7 + row);
       const outside = date < start || date > end;
       const count = outside ? 0 : (byDate.get(date) ?? 0);
-      if (count > 0) {
-        totalSessions += count;
-        activeDays += 1;
-      }
       cells.push({
         date,
         count,
@@ -61,5 +69,13 @@ export function buildProtocolHeatmap(
     columns.push(cells);
   }
 
-  return { columns, start, end, totalSessions, activeDays };
+  return {
+    columns,
+    start,
+    end,
+    visibleStart: gridStart < start ? start : gridStart,
+    truncated,
+    totalSessions,
+    activeDays,
+  };
 }

@@ -37,8 +37,13 @@ export default function ProtocolWindowHeatmap({
       data-testid="protocol-heatmap"
       data-start={data.start}
       data-end={data.end}
+      data-visible-start={data.visibleStart}
       role="img"
-      aria-label={`Protocol activity from ${data.start} to ${data.end}: ${summary}`}
+      aria-label={`Protocol activity from ${data.start} to ${data.end}: ${summary}${
+        data.truncated
+          ? `. Heatmap shows the most recent ${data.columns.length} weeks from ${data.visibleStart}`
+          : ""
+      }`}
     >
       <div className="max-w-full overflow-x-auto pb-0.5">
         <div className={`flex w-max ${density.gap}`}>
@@ -69,7 +74,9 @@ export default function ProtocolWindowHeatmap({
         </div>
       </div>
       <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-        {summary}
+        {data.truncated
+          ? `Recent ${data.columns.length} weeks · ${summary}`
+          : summary}
       </span>
     </div>
   );

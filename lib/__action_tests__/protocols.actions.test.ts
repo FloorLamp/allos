@@ -234,8 +234,44 @@ describe("protocol restart lifecycle", () => {
     });
     expect(restarted.start_date).not.toBe("1999-12-01");
     expect(restarted.frequency_target_id).not.toBe(originalTargetId);
-    expect(getFrequencyTargets(profile.id)).toHaveLength(2);
+    // The historical target remains addressable from the original protocol but
+    // no longer participates in weekly progress/reminders.
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?"
+        )
+        .get(profile.id)
+    ).toEqual({ n: 2 });
+    expect(getFrequencyTargets(profile.id)).toHaveLength(1);
     expect(getActiveSituations(profile.id)).toContain("Recovery block");
+  });
+
+  it("runs an expired food-habit protocol again without violating target uniqueness", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Fatty fish block",
+        start_date: "1999-12-01",
+        end_date: "2000-01-01",
+        practice_type: "food_group:fatty_fish",
+        practice_per_week: 2,
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+    const originalTargetId = original.frequency_target_id;
+
+    const result = await runProtocolAgain(protocolForm({ id: original.id }));
+    expect(result).toMatchObject({ ok: true });
+
+    const rows = getProtocols(profile.id);
+    const restarted = rows.find((row) => row.id !== original.id)!;
+    expect(restarted.frequency_target_id).toBe(originalTargetId);
+    expect(restarted.owns_frequency_target).toBe(1);
+    expect(
+      rows.find((row) => row.id === original.id)?.owns_frequency_target
+    ).toBe(0);
+    expect(getFrequencyTargets(profile.id)).toHaveLength(1);
   });
 });
 

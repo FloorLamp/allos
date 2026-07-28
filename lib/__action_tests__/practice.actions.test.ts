@@ -17,6 +17,7 @@ import {
   logPractice,
   removePracticeSession,
   savePractice,
+  untrackPractice,
 } from "@/app/(app)/wellness/actions";
 import { deleteProfile } from "@/app/(app)/settings/family/actions";
 import { logUpcomingPractice } from "@/app/(app)/upcoming/actions";
@@ -196,6 +197,48 @@ describe("logPractice action (#1259)", () => {
     expect(rows(profile.id).map((row) => row.practice)).toEqual([
       "Heat therapy",
     ]);
+  });
+
+  it("stops weekly tracking without deleting sessions and unlinks protocols", async () => {
+    const admin = createLogin({ role: "admin" });
+    const profile = createProfile("Untrack");
+    actAs(admin, profile);
+    await logPractice(fd({ practice: "Sauna" }));
+    await savePractice(fd({ name: "Sauna", per_week: 3 }));
+    const target = db
+      .prepare(
+        `SELECT id FROM frequency_targets
+          WHERE profile_id = ? AND scope_kind = 'practice'`
+      )
+      .get(profile.id) as { id: number };
+    const protocolId = Number(
+      db
+        .prepare(
+          `INSERT INTO protocols
+             (profile_id, name, start_date, frequency_target_id)
+           VALUES (?, 'Sauna block', ?, ?)`
+        )
+        .run(profile.id, today(profile.id), target.id).lastInsertRowid
+    );
+
+    expect(await untrackPractice(fd({ target_id: target.id }))).toEqual({
+      ok: true,
+    });
+    expect(
+      db
+        .prepare(
+          "SELECT 1 FROM frequency_targets WHERE id = ? AND profile_id = ?"
+        )
+        .get(target.id, profile.id)
+    ).toBeUndefined();
+    expect(
+      db
+        .prepare(
+          "SELECT frequency_target_id FROM protocols WHERE id = ? AND profile_id = ?"
+        )
+        .get(protocolId, profile.id)
+    ).toEqual({ frequency_target_id: null });
+    expect(rows(profile.id)).toHaveLength(1);
   });
 
   it("Upcoming logs by stable target id and returns the core outcome", async () => {

@@ -259,7 +259,18 @@ whose **adherence** is the same weekly-count your Weekly routine targets use (so
 "sauna 4×/week" shows "2 / 4 this week"), plus a usage-during-window tally ("23
 sessions · last 3 days ago") over the protocol's dates; the practice reuses a
 matching weekly routine target if you already have one, or creates one it cleans
-up on delete.
+up on delete. The experiment list adds a compact day-density heatmap bounded to
+the most recent 53 weeks while its session and active-day summary still covers
+the complete protocol window. A recently ended protocol can resume the same run;
+an older one starts a new run without leaving its historical cadence active as a
+second weekly reminder.
+
+**Wellness practices** (`/wellness`) manage named modalities such as sauna,
+meditation, breathwork, and light exposure independently of a protocol. Each
+practice can carry a weekly floor and optional ceiling, log multiple detailed
+sessions per day, and retain editable session history. **Stop tracking** removes
+the weekly target and its reminders without deleting logged sessions; any
+protocol using that target is explicitly unlinked.
 
 **Start from a template** prefills the form for a common experiment — the **Sun
 exposure** template pairs daily **outdoor daylight minutes** (intersecting your
