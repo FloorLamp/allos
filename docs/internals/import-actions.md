@@ -4,11 +4,12 @@ Status: **shipped** (#1071)
 
 The document/import surfaces used to carry a thicket of near-synonym verbs —
 "Reprocess" / "Re-extract" / "Re-import" — for operations whose real distinction
-(re-run the AI vs replay the saved result vs batch vs preview-first) was invisible,
-plus two contradictory "Reprocess" controls on one page (one preview-first and
-safe, one fire-and-replace and destructive). Issue #1071 consolidated them: **one
-verb per operation, labelled by the attribute that differs** (#531/#534), and the
-safe preview-first flow is the ONLY per-document reprocess.
+(re-run the AI vs replay the saved result vs batch vs preview-first) was
+invisible, plus two contradictory "Reprocess" controls on one page (one
+preview-first and safe, one fire-and-replace and destructive). Issue #1071
+consolidated them: **one verb per operation, labelled by the attribute that
+differs** (#531/#534), and the safe preview-first flow is the ONLY per-document
+reprocess.
 
 This note is the source of truth for those verbs so the next surface reuses them
 instead of coining a fifth synonym.
@@ -29,36 +30,38 @@ instead of coining a fifth synonym.
 
 1. **A control says exactly what happens.** "Preview changes" never writes; the
    button that writes is "Save changes". There is no button labelled "Reprocess"
-   that is secretly a read (the pre-#1071 bug), and no immediate fire-and-replace
-   twin of the preview flow (`ExtractedRecords`' old reprocess icon was removed —
-   the sole per-document reprocess is the preview→save pair).
+   that is secretly a read (the pre-#1071 bug), and no immediate
+   fire-and-replace twin of the preview flow (`ExtractedRecords`' old reprocess
+   icon was removed — the sole per-document reprocess is the preview→save pair).
 
-2. **The no-change preview disables the commit.** When a fresh re-extraction would
-   change nothing, the preview says so as the headline ("Re-extraction produced
-   identical results — nothing to save.") and "Save changes" is disabled — a user
-   can never commit a pointless full row-replacement of identical content. The
-   decision is the pure `reprocessPreviewView` (`lib/reprocess-preview-view.ts`),
-   unit-tested since the ok/no-change branch isn't reachable in the extractor-less
-   e2e env. This is distinct from the "skipped" (content-hash) case, which DID not
-   run and keeps its "Re-extract anyway" override.
+2. **The no-change preview disables the commit.** When a fresh re-extraction
+   would change nothing, the preview says so as the headline ("Re-extraction
+   produced identical results — nothing to save.") and "Save changes" is
+   disabled — a user can never commit a pointless full row-replacement of
+   identical content. The decision is the pure `reprocessPreviewView`
+   (`lib/reprocess-preview-view.ts`), unit-tested since the ok/no-change branch
+   isn't reachable in the extractor-less e2e env. This is distinct from the
+   "skipped" (content-hash) case, which DID not run and keeps its "Re-extract
+   anyway" override.
 
 ## Raw views go through one component (#1318)
 
 Every raw payload / raw-extraction surface renders through the shared
-`components/RawDataViewer.tsx` — never a bare `<pre>` dump. It sniffs JSON vs XML vs
-plain text once (`lib/raw-data-tree.ts`, pure) and renders JSON and XML through the
-SAME collapsible tree (two node adapters over one fold/depth/a11y machinery, #221),
-with copy-the-full-text, a depth default, and a size guard; anything that parses as
-neither (incl. a DOMParser `parsererror`) is the plain-text last resort. Consumers:
-the import-detail **Raw extraction** disclosure and the admin **`RawPayloadViewer`**
-(sync-event payloads). Gating stays with the callers — the viewer is
-presentation-only. A new raw surface reuses it instead of hand-rolling another
-`<pre>`.
+`components/RawDataViewer.tsx` — never a bare `<pre>` dump. It sniffs JSON vs
+XML vs plain text once (`lib/raw-data-tree.ts`, pure) and renders JSON and XML
+through the SAME collapsible tree (two node adapters over one fold/depth/a11y
+machinery, #221), with copy-the-full-text, a depth default, and a size guard;
+anything that parses as neither (incl. a DOMParser `parsererror`) is the
+plain-text last resort. Consumers: the import-detail **Raw extraction**
+disclosure and the admin **`RawPayloadViewer`** (sync-event payloads). Gating
+stays with the callers — the viewer is presentation-only. A new raw surface
+reuses it instead of hand-rolling another `<pre>`.
 
 ## One home per document
 
 An uploaded document has ONE action home — its **import detail** page
-(`/import/<id>`), reached from Data → **Review**. It does not appear as a peer row
-on the Import tab (that tab carries paste/CSV jobs, the integrations grid, and a
-link to Review). The footer "Import history & review →" link and the profile-menu
-badge both point at the Review tab; "Review" means the tab, one destination.
+(`/import/<id>`), reached from Data → **Review**. It does not appear as a peer
+row on the Import tab (that tab carries paste/CSV jobs, the integrations grid,
+and a link to Review). The footer "Import history & review →" link and the
+profile-menu badge both point at the Review tab; "Review" means the tab, one
+destination.

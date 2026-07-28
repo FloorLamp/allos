@@ -2,34 +2,511 @@
 
 Status: **shipped** · extracted verbatim from AGENTS.md (#597)
 
-Maintainer documentation for `lib/notifications/`: delivery channels and the hourly tick, the delivery-health marker, the two suppression contracts, the two-way Telegram button principle, and the channel chokepoint — with the full design history and issue trail. The load-bearing invariants are summarized in AGENTS.md; the user-facing setup guide is [`notifications.md`](notifications.md).
+Maintainer documentation for `lib/notifications/`: delivery channels and the
+hourly tick, the delivery-health marker, the two suppression contracts, the
+two-way Telegram button principle, and the channel chokepoint — with the full
+design history and issue trail. The load-bearing invariants are summarized in
+AGENTS.md; the user-facing setup guide is
+[`notifications.md`](notifications.md).
 
 ---
 
-**Channels belong to LOGINS, not profiles (#1072).** A notification **channel** is scoped to the **login** (a person with a phone), while an **event** is scoped to the **profile** (the data subject it's about). A toddler has no phone; their caregiver does — so a per-profile event **fans out** to the logins that **manage** that profile. This replaced (not layered over) the old per-profile `profile_settings.telegram_chat_id`: the chat now lives in `login_settings` (`telegram_chat_id` / `telegram_enabled` / `telegram_notify_disabled_kinds`, via `getLoginTelegram`/`setLoginTelegram`), and Web Push subscriptions were already login-keyed (`push_subscriptions.login_id`).
+**Channels belong to LOGINS, not profiles (#1072).** A notification **channel**
+is scoped to the **login** (a person with a phone), while an **event** is scoped
+to the **profile** (the data subject it's about). A toddler has no phone; their
+caregiver does — so a per-profile event **fans out** to the logins that
+**manage** that profile. This replaced (not layered over) the old per-profile
+`profile_settings.telegram_chat_id`: the chat now lives in `login_settings`
+(`telegram_chat_id` / `telegram_enabled` / `telegram_notify_disabled_kinds`, via
+`getLoginTelegram`/`setLoginTelegram`), and Web Push subscriptions were already
+login-keyed (`push_subscriptions.login_id`).
 
-- **Fan-out scope = EXPLICIT grants (`login_profiles`) + the login's own profile (#1013, null until it lands) — NEVER admin-bypass-all.** This is the ONE place the "admins reach every profile" rule is deliberately not inherited: a notification is a push into someone's pocket, so an admin who can act as every profile must OPT specific profiles into their notification scope by granting themselves. The resolution lives in `lib/notifications/fan-out.ts` — `managingLoginIdsForProfile(profileId)` (grants only, id-ordered), the pure `dedupeRecipientsByChat` (first login wins per distinct chat, empties dropped), and `resolveTelegramRecipients(profileId)` (managing logins that have Telegram enabled + a chat + haven't muted the profile, deduped by chat). The push audience (`getPushSubscriptionsForProfile`) is the same grants-minus-mute set with the old `role='admin'` bypass removed.
-- **What stayed profile-keyed vs moved login-keyed.** The **fire decision** stays event-keyed **profile+slot+day** — one evaluation, unchanged: every `notify_last_*` marker, the per-profile **schedule** (digest hour, recap day, waking window, supplement hours, preventive/milestone toggles), and the per-subject content opt-ins (food/mood/sleep) stay in `profile_settings`. What moved to the **login** is the **channel** (chat id + enable + Telegram/push disabled-kinds), the **per-(login,profile) mute** (`isProfileMutedForLogin`, a `notify_mute_profile_<id>` login_settings key — "don't notify me about Grandpa", affects only that login's fan-out; safety-tier mute is allowed but off by default), and the post-migration **review flag** (`notify_review_needed`). The **delivery-health marker stays GLOBAL** (one shared bot — a broken token/chat is an instance-level signal on Settings → Server); its channel-aware clear (#192) is unchanged.
-- **Delivery dedup by resolved chat id.** A single dispatch fans Telegram out over `resolveTelegramRecipients` and sends once per DISTINCT chat, so a family group two logins both point at gets ONE message (the profile-name-in-title #380 is now universal). Escalation (`runEscalations`) fans out the same way but its `escalate_chat_id` supplement override, when set, supersedes the fan-out (per-item caregiver routing). Callback taps resolve **chat → login → in-scope profiles** (`getProfilesByTelegramChatId` rewritten over `login_settings`+`login_profiles`); the button token still names the acting profile, so the tap logic is unchanged.
-- **Migration (105-login-notification-channels).** Best-effort, non-data-lossy (a wrong channel is a recoverable missed notification, never lost health data): for each login, the most-common enabled chat among its accessible profiles wins (ties → lowest profile id); an explicit `login_profiles` grant is materialized for every profile that contributed the winning chat (preserving delivery without admin bypass — the single-admin bootstrap keeps working); MORE than one distinct enabled chat raises `notify_review_needed`; the old `profile_settings` telegram keys are read once then deleted; a one-shot reconciliation summary lands in the `notify_channel_migration_report` global setting.
-- **Settings surfaces.** The Telegram channel + its matrix column + the "send test" moved to the **login** tier (`app/(app)/settings/actions.ts` — `saveLoginTelegram`/`saveLoginTelegramNotifyKinds`/`sendTestNotification`, `requireSession()` gate, allowed for read-only members since the chat is theirs); the schedule + food/mood/sleep stay on the **profile** tier (`saveNotificationPrefs`, `requireWriteAccess`); the per-profile mute is a login-tier action (`saveProfileNotifyMute`, validated against `canAccessProfile`). The Notifications page renders "This login" (Telegram + Push), "This profile" (Reminders & schedule + mute + Home Assistant), and admin-only "Server".
+- **Fan-out scope = EXPLICIT grants (`login_profiles`) + the login's own profile
+  (#1013, null until it lands) — NEVER admin-bypass-all.** This is the ONE place
+  the "admins reach every profile" rule is deliberately not inherited: a
+  notification is a push into someone's pocket, so an admin who can act as every
+  profile must OPT specific profiles into their notification scope by granting
+  themselves. The resolution lives in `lib/notifications/fan-out.ts` —
+  `managingLoginIdsForProfile(profileId)` (grants only, id-ordered), the pure
+  `dedupeRecipientsByChat` (first login wins per distinct chat, empties
+  dropped), and `resolveTelegramRecipients(profileId)` (managing logins that
+  have Telegram enabled + a chat + haven't muted the profile, deduped by chat).
+  The push audience (`getPushSubscriptionsForProfile`) is the same
+  grants-minus-mute set with the old `role='admin'` bypass removed.
+- **What stayed profile-keyed vs moved login-keyed.** The **fire decision**
+  stays event-keyed **profile+slot+day** — one evaluation, unchanged: every
+  `notify_last_*` marker, the per-profile **schedule** (digest hour, recap day,
+  waking window, supplement hours, preventive/milestone toggles), and the
+  per-subject content opt-ins (food/mood/sleep) stay in `profile_settings`. What
+  moved to the **login** is the **channel** (chat id + enable + Telegram/push
+  disabled-kinds), the **per-(login,profile) mute** (`isProfileMutedForLogin`, a
+  `notify_mute_profile_<id>` login_settings key — "don't notify me about
+  Grandpa", affects only that login's fan-out; safety-tier mute is allowed but
+  off by default), and the post-migration **review flag**
+  (`notify_review_needed`). The **delivery-health marker stays GLOBAL** (one
+  shared bot — a broken token/chat is an instance-level signal on Settings →
+  Server); its channel-aware clear (#192) is unchanged.
+- **Delivery dedup by resolved chat id.** A single dispatch fans Telegram out
+  over `resolveTelegramRecipients` and sends once per DISTINCT chat, so a family
+  group two logins both point at gets ONE message (the profile-name-in-title
+  #380 is now universal). Escalation (`runEscalations`) fans out the same way
+  but its `escalate_chat_id` supplement override, when set, supersedes the
+  fan-out (per-item caregiver routing). Callback taps resolve **chat → login →
+  in-scope profiles** (`getProfilesByTelegramChatId` rewritten over
+  `login_settings`+`login_profiles`); the button token still names the acting
+  profile, so the tap logic is unchanged.
+- **Migration (105-login-notification-channels).** Best-effort, non-data-lossy
+  (a wrong channel is a recoverable missed notification, never lost health
+  data): for each login, the most-common enabled chat among its accessible
+  profiles wins (ties → lowest profile id); an explicit `login_profiles` grant
+  is materialized for every profile that contributed the winning chat
+  (preserving delivery without admin bypass — the single-admin bootstrap keeps
+  working); MORE than one distinct enabled chat raises `notify_review_needed`;
+  the old `profile_settings` telegram keys are read once then deleted; a
+  one-shot reconciliation summary lands in the `notify_channel_migration_report`
+  global setting.
+- **Settings surfaces.** The Telegram channel + its matrix column + the "send
+  test" moved to the **login** tier (`app/(app)/settings/actions.ts` —
+  `saveLoginTelegram`/`saveLoginTelegramNotifyKinds`/`sendTestNotification`,
+  `requireSession()` gate, allowed for read-only members since the chat is
+  theirs); the schedule + food/mood/sleep stay on the **profile** tier
+  (`saveNotificationPrefs`, `requireWriteAccess`); the per-profile mute is a
+  login-tier action (`saveProfileNotifyMute`, validated against
+  `canAccessProfile`). The Notifications page renders "This login" (Telegram +
+  Push), "This profile" (Reminders & schedule + mute + Home Assistant), and
+  admin-only "Server".
 
-**Notifications** (`lib/notifications/`) are delivered over three channels — Telegram, Web Push, and an outbound Home Assistant webhook — driven by an hourly tick (`npm run notify` / the `notify` Docker service). Sends are deduped per day/slot; timing follows the DB-stored timezone (Settings → Timezone). Inbound button taps arrive either via the webhook route (`app/api/telegram/webhook`) or, when the app has no public URL, a `getUpdates` long-poll loop (`npm run notify -- poll`, run by the Docker sidecar); both delegate to `lib/notifications/telegram-callbacks.ts`. The mode is a setting (`telegram_mode`), and the shared public URL lives in `getPublicUrl()` (`lib/settings.ts`). **Delivery-health marker (#131 → lifecycle state #942):** `dispatch()` (`lib/notifications/index.ts`) folds every send fan-out into a global delivery-health marker — set on any failed channel, cleared on the next all-OK send — so a revoked bot token / wrong chat id surfaces on **Settings → Notifications** (the admin Server section) instead of only as the tick's exit code; the login-scoped **Send test** button (#1072) is the remediation path (a successful test clears it). As of #942 the marker is a first-class **lifecycle row** (`notify_lifecycle`, migration 061, keyed `'delivery-health'`) rather than three ad-hoc `notify_last_error*` settings keys: presence of a `state='failing'` row = a live failure, a healthy dispatch DELETEs it, and `getNotifyError()` returns the identical shape it always did (the row I/O is `lib/notifications/delivery-marker.ts`; migration 061 copies any live legacy marker into the row on upgrade and retires the old keys). The pure decision half is `lib/notifications/delivery-status.ts` (`pickDispatchError`/`isDeliveryHealthy`/`decideMarker`, unit-tested), whose `decideMarker` now speaks the shared **set/clear/freeze** `MarkerLifecycleAction` vocabulary (`lib/lifecycle.ts`) — "freeze" (formerly "keep") is the third state, the marker left exactly as it stood. **Clearing is channel-aware (#192):** the marker records _which_ channel failed, and a healthy dispatch only clears it when it actually attempted that channel (`decideMarker`) — so in a tick's per-profile fan-out, a Telegram-only profile can't clear a still-broken push recorded by a both-channels profile earlier in the same tick. **Two suppression contracts (#227):** tick nudges split into **bus-gated nudges** and **safety reminders**. A _bus-gated_ nudge (the **refill**, **preventive**, **workout**, and **illness-care** pushes, plus the retest lines inside the morning digest's **Today** section (#1108)) consults the SHARED findings-suppression bus (`getFindingSuppressions(profileId)` over `upcoming_dismissals`) before sending, keyed by the **identical `dedupeKey` its Upcoming twin carries** — `refill:<id>` via `refillSignalKey` (`lib/refill-nudge.ts`), `<kind>:<ruleKey>` via `preventiveSignalKey` (`lib/preventive-upcoming.ts`), `training:<id>` via `trainingSignalKey` (`lib/workout-nudge.ts`), `illness-care:<variant>:<situation>:<start>:<symptom>` via `illnessCareDedupeKey` (`lib/illness-care.ts`, #805) — so a page dismiss/snooze silences the push too ("dismiss once, silence everywhere"). **The illness-care nudge (`runIllnessCare`, #805)** is care-tier, not safety-tier — a logged symptom crossing a CITED duration/trajectory line is a reminder-class care finding, not a dose-safety signal, so it is deliberately bus-gated (a parent already at the doctor can dismiss it once and silence every surface, `planIllnessCareNudges`), and — like refill/preventive — held to the waking window and assessed once per profile-local day. **The temperature red-flag nudge (`runTempRedFlag`, #859) is its bus-gated sibling but is NOT day-gated (#1025):** its input is the open episode's LATEST reading, which changes intra-day exactly during the fever days that matter, so the tick assesses it EVERY waking tick (dedup is owned by the per-finding `notify_last_tempredflag_<dedupeKey>` marker — the key embeds the reading's date + rule — plus the bus), and the temperature WRITE paths (the log action, the Telegram temp reply, the Health Connect vitals ingest) dispatch it immediately via `dispatchTempRedFlagForReading`/`queueTempRedFlagDispatch` (fire-and-forget; a cheap dataset pre-check keeps ordinary readings free of notification work). The write-path dispatch follows the REDOSE quiet-hours precedent, not the episode-nudge one: a 2 AM 106 °F reading is the overnight-emergency case and only exists because a caregiver is awake logging it; the tick path keeps its waking window and is the fallback for readings that arrive without an event (a backfilled import row never fires — the open-episode + latest-reading framing bounds it). Suppression is a **third "frozen" source** alongside the preventive covered-visit case (#183): a suppressed item is held out of BOTH the send set and the marker-clear set, so its once-per-episode `notify_last_*` marker is frozen exactly as it stood — un-dismissing (or a snooze expiring) resumes the normal lifecycle without re-nudging a same-episode item (the pure decisions are `planRefillNudges`/`planPreventiveNudges`, unit-tested). **The workout nudge (#245)** joined the bus after #227 deferred it — the #221 unified core (`lib/workout-recommendation.ts`) synthesizes ONE "train today" suggestion, so it carries its originating behind-target ids and, when **every** matching `training:<id>` finding is dismissed, `recommendWorkout` returns null (the pure gate is `isWorkoutNudgeSuppressed`); returning null holds it out of the send AND freezes its daily `notify_last_workout` slot marker (the tick only marks a slot on a delivered message), while a habit/rest/on-track nudge with no behind target — or partial suppression with a still-live target — still fires. Safety-tier generators stay ungated. **Situation-aware quiet (#837):** `recommendWorkout` ALSO returns null (slot quiet) during an open flagged-illness episode and through the post-close ease-back ramp — a fever week needs no "time to train" ping. The pure gate is `illnessCoachingMode(input.illness, today)` off the SAME shared `gatherCoachingInput` the dashboard coaching card reads, so the two can't drift (#221); the coaching engine holds the gap/pace nags in lockstep. On episode close the tick sends **one** ease-back re-entry note (`runEaseBack`, `lib/notifications/ease-back.ts`) — a per-episode one-shot keyed by `notify_ease_back_<episodeId>` (an id-keyed marker, #203-safe) and waking-gated — then goes quiet again; it's a one-time transition courtesy (like the weekly-recap/milestone one-shots), NOT the recurring coaching stream #449 keeps off notifications. A _safety_ reminder — scheduled **dose reminders**, **missed-dose escalation**, and the **PRN redose notice** (#798) — is DELIBERATELY **not** bus-gated (same non-hideable-safety reasoning as #171's attention strip): a page dismissal must never silence a possibly-critical medication signal, so their per-day/slot (or per-administration) markers stay the only dedup. As of #942, missed-dose escalation is the **first lifecycle tenant**: it declares `ESCALATION_SUPPRESSION_POLICY = "safety-ungated"` (`lib/notifications/escalation.ts`), the #449 carve-out expressed as DATA in the shared `LifecycleSuppressionPolicy` vocabulary (`lib/lifecycle.ts`, `isHiddenUnderPolicy` — `normal` / `snooze-only` / `safety-ungated`, the ONE decision the bus-gated nudges, the overdue-follow-up persistence contract #700, and the safety carve-out all route through). The send path still never reads the bus (structural non-consultation is the stronger guarantee); the declared policy is the machine-checked assertion of that — `isHiddenUnderPolicy("safety-ungated", <any dismiss/snooze>, today)` is always false, pinned in `lib/__tests__/lifecycle.test.ts` and end-to-end in the #673 notify-orchestrators harness. **The PRN redose notice (`lib/notifications/redose.ts`, `runRedoseNotices`)** is a per-item, opt-in, **administration-armed one-shot**: for each opted-in PRN med with CONFIRMED `min_interval_hours`/`max_daily_count` (an unconfirmed/empty field ⇒ no notice, ever — the liability line), the pure `redoseNoticeDecision` (`lib/prn-redose.ts`) fires ONCE when the minimum interval elapses since the latest logged administration, keyed by that administration's id in the `notify_last_redose_<itemId>` marker (the `notify_last_*` discipline). It **re-arms only on the next administration** (a newer id ≠ the marker) and is **suppressed at the confirmed daily max**. It carries a "Log dose" button that reuses the `/dose` `prn:` callback → `logAdministration` through the ONE chokepoint (NOT idempotent — a dedup nonce + `logAdministration`'s short-window guard), and sends via `dispatch()` so push mirrors the content-safe body (#692) and the delivery marker folds like any other send. **QUIET-HOURS EXCEPTION (deliberate):** unlike the episode nudges (refill/preventive/milestone), the tick calls `runRedoseNotices` UNCONDITIONALLY — it is NOT gated by `inWakingWindow`, and `redoseNoticeDecision` has no waking/hour input at all (pinned by `lib/__tests__/prn-redose.test.ts`). A redose due at 3am is exactly the overnight fever case, and it can only fire from a dose the user actually logged, so nighttime delivery is the feature working, not spam. The DELIVERED half of over-max — an administration count EXCEEDING the confirmed max — is a separate **care-tier** finding (the `prn-max:<itemId>` Upcoming generator, the #148 UL-warning shape per-day), which IS bus-suppressible; only the redose reminder itself is the ungated safety signal. Request-time engines (coaching, AI insight) are out of this contract. **Two-way button principle (#233):** a nudge earns an inline action button only when the expected response is ONE idempotent, low-risk state change with an EXISTING server function (else deep-link) — preventive ✅ Done/🚫 Not applicable/⏰ Remind later route onto `recordPreventiveDone`/`setPreventiveOverride`/bus-snooze — plus (#1083) a **deep-link "go do it" button** carrying the concrete next action per class (the SAME per-class link + CTA the Upcoming row shows, from `preventiveNudgeAction` in `lib/preventive-upcoming.ts` — `<page>?screen=<INSTRUMENT>` for an instrument, the prefilled biomarker/procedure add form for a lab/procedure, the vitals quick-add for a vital, the Book path for a visit); the absolute URL is built from `getPublicUrl()` and the button is omitted when no public URL is configured (a relative URL can't be a Telegram button), while Web Push carries the same link as its notification click-through (`buildPushPayload`/`pushClickThroughUrl` in `push-core.ts`) and Home Assistant forwards it in the payload's `links[]`, refill 📦 Ordered onto a `refillSignalKey` bus-snooze (+ deep link; no amount-bearing "mark refilled"), escalation ✅ Confirmed taken/👍 I'm on it onto `markDoseTaken`/an ack that sets the episode marker without logging the dose. Payloads carry **ids only** (never names — 64-byte limit, AUTOINCREMENT ids never recycle), every handler answers from a **typed outcome union** (the `DoseTakenOutcome` pattern — never unconditionally confirm; a stale/foreign tap gets the outdated-message replacement), buttons are removed/replaced on consumption, and escalation taps authorize by **chat id** (any chat the escalation fanned out to for that profile — the managing logins' chats — OR the supplement's `escalate_chat_id`; anyone in the caregiver chat may confirm, by design, #1072). Pure parse/decide lives in `lib/notifications/callback-data.ts` (unit-tested); the handler flows in `telegram-callbacks.ts`. **Channel chokepoint (#454):** every outbound Telegram write — the tick's channel send, escalation's explicit-chat send, and the callback edit/rebuild paths — routes through the ONE chokepoint module `lib/notifications/telegram.ts` (`telegramChannel` / `sendTelegramMessage` / `rebuildMessage` / `closeMessage` / `updateMessageKeyboard`), the sole importer of the guarded raw primitives in `telegram-api.ts` (`sendMessageRaw`/`editMessageTextRaw`/`editMessageReplyMarkupRaw`). The chokepoint owns the four cross-cutting obligations so they can't diverge or be forgotten per call site: **limits** (4096-char split + 100-button cap, `telegram-limits.ts`, #379), **attribution** (the `[Name]` prefix via `prefixForProfile` in `attribution.ts`, re-applied on a rebuild so it can't drop the send-time label, #377/#429), **escaping** (`renderMessageHtml` in the pure `telegram-render.ts`), and **delivery accounting** (a throw feeds `dispatch()`'s marker fold). A source-scan test (`lib/__tests__/telegram-chokepoint.test.ts`) fails CI if any other module imports those guarded primitives — a new sender must go through the chokepoint. Messages that self-attribute in their body (refill/preventive/digest/escalation) don't take the title prefix; only dose/workout reminders (and their rebuilds) do.
+**Notifications** (`lib/notifications/`) are delivered over three channels —
+Telegram, Web Push, and an outbound Home Assistant webhook — driven by an hourly
+tick (`npm run notify` / the `notify` Docker service). Sends are deduped per
+day/slot; timing follows the DB-stored timezone
+(Settings → Health profile → Timezone). Inbound
+button taps arrive either via the webhook route (`app/api/telegram/webhook`) or,
+when the app has no public URL, a `getUpdates` long-poll loop
+(`npm run notify -- poll`, run by the Docker sidecar); both delegate to
+`lib/notifications/telegram-callbacks.ts`. The mode is a setting
+(`telegram_mode`), and the shared public URL lives in `getPublicUrl()`
+(`lib/settings.ts`). **Delivery-health marker (#131 → lifecycle state #942):**
+`dispatch()` (`lib/notifications/index.ts`) folds every send fan-out into a
+global delivery-health marker — set on any failed channel, cleared on the next
+all-OK send — so a revoked bot token / wrong chat id surfaces on **Settings →
+Notifications** (the admin Server section) instead of only as the tick's exit
+code; the login-scoped **Send test** button (#1072) is the remediation path (a
+successful test clears it). As of #942 the marker is a first-class **lifecycle
+row** (`notify_lifecycle`, migration 061, keyed `'delivery-health'`) rather than
+three ad-hoc `notify_last_error*` settings keys: presence of a `state='failing'`
+row = a live failure, a healthy dispatch DELETEs it, and `getNotifyError()`
+returns the identical shape it always did (the row I/O is
+`lib/notifications/delivery-marker.ts`; migration 061 copies any live legacy
+marker into the row on upgrade and retires the old keys). The pure decision half
+is `lib/notifications/delivery-status.ts`
+(`pickDispatchError`/`isDeliveryHealthy`/`decideMarker`, unit-tested), whose
+`decideMarker` now speaks the shared **set/clear/freeze**
+`MarkerLifecycleAction` vocabulary (`lib/lifecycle.ts`) — "freeze" (formerly
+"keep") is the third state, the marker left exactly as it stood. **Clearing is
+channel-aware (#192):** the marker records _which_ channel failed, and a healthy
+dispatch only clears it when it actually attempted that channel (`decideMarker`)
+— so in a tick's per-profile fan-out, a Telegram-only profile can't clear a
+still-broken push recorded by a both-channels profile earlier in the same tick.
+**Two suppression contracts (#227):** tick nudges split into **bus-gated
+nudges** and **safety reminders**. A _bus-gated_ nudge (the **refill**,
+**preventive**, **workout**, and **illness-care** pushes, plus the retest lines
+inside the morning digest's **Today** section (#1108)) consults the SHARED
+findings-suppression bus (`getFindingSuppressions(profileId)` over
+`upcoming_dismissals`) before sending, keyed by the **identical `dedupeKey` its
+Upcoming twin carries** — `refill:<id>` via `refillSignalKey`
+(`lib/refill-nudge.ts`), `<kind>:<ruleKey>` via `preventiveSignalKey`
+(`lib/preventive-upcoming.ts`), `training:<id>` via `trainingSignalKey`
+(`lib/workout-nudge.ts`), `illness-care:<variant>:<situation>:<start>:<symptom>`
+via `illnessCareDedupeKey` (`lib/illness-care.ts`, #805) — so a page
+dismiss/snooze silences the push too ("dismiss once, silence everywhere"). **The
+illness-care nudge (`runIllnessCare`, #805)** is care-tier, not safety-tier — a
+logged symptom crossing a CITED duration/trajectory line is a reminder-class
+care finding, not a dose-safety signal, so it is deliberately bus-gated (a
+parent already at the doctor can dismiss it once and silence every surface,
+`planIllnessCareNudges`), and — like refill/preventive — held to the waking
+window and assessed once per profile-local day. **The temperature red-flag nudge
+(`runTempRedFlag`, #859) is its bus-gated sibling but is NOT day-gated
+(#1025):** its input is the open episode's LATEST reading, which changes
+intra-day exactly during the fever days that matter, so the tick assesses it
+EVERY waking tick (dedup is owned by the per-finding
+`notify_last_tempredflag_<dedupeKey>` marker — the key embeds the reading's
+date + rule — plus the bus), and the temperature WRITE paths (the log action,
+the Telegram temp reply, the Health Connect vitals ingest) dispatch it
+immediately via `dispatchTempRedFlagForReading`/`queueTempRedFlagDispatch`
+(fire-and-forget; a cheap dataset pre-check keeps ordinary readings free of
+notification work). The write-path dispatch follows the REDOSE quiet-hours
+precedent, not the episode-nudge one: a 2 AM 106 °F reading is the
+overnight-emergency case and only exists because a caregiver is awake logging
+it; the tick path keeps its waking window and is the fallback for readings that
+arrive without an event (a backfilled import row never fires — the
+open-episode + latest-reading framing bounds it). Suppression is a **third
+"frozen" source** alongside the preventive covered-visit case (#183): a
+suppressed item is held out of BOTH the send set and the marker-clear set, so
+its once-per-episode `notify_last_*` marker is frozen exactly as it stood —
+un-dismissing (or a snooze expiring) resumes the normal lifecycle without
+re-nudging a same-episode item (the pure decisions are
+`planRefillNudges`/`planPreventiveNudges`, unit-tested). **The workout nudge
+(#245)** joined the bus after #227 deferred it — the #221 unified core
+(`lib/workout-recommendation.ts`) synthesizes ONE "train today" suggestion, so
+it carries its originating behind-target ids and, when **every** matching
+`training:<id>` finding is dismissed, `recommendWorkout` returns null (the pure
+gate is `isWorkoutNudgeSuppressed`); returning null holds it out of the send AND
+freezes its daily `notify_last_workout` slot marker (the tick only marks a slot
+on a delivered message), while a habit/rest/on-track nudge with no behind target
+— or partial suppression with a still-live target — still fires. Safety-tier
+generators stay ungated. **Situation-aware quiet (#837):** `recommendWorkout`
+ALSO returns null (slot quiet) during an open flagged-illness episode and
+through the post-close ease-back ramp — a fever week needs no "time to train"
+ping. The pure gate is `illnessCoachingMode(input.illness, today)` off the SAME
+shared `gatherCoachingInput` the dashboard coaching card reads, so the two can't
+drift (#221); the coaching engine holds the gap/pace nags in lockstep. On
+episode close the tick sends **one** ease-back re-entry note (`runEaseBack`,
+`lib/notifications/ease-back.ts`) — a per-episode one-shot keyed by
+`notify_ease_back_<episodeId>` (an id-keyed marker, #203-safe) and waking-gated
+— then goes quiet again; it's a one-time transition courtesy (like the
+weekly-recap/milestone one-shots), NOT the recurring coaching stream #449 keeps
+off notifications. A _safety_ reminder — scheduled **dose reminders**,
+**missed-dose escalation**, and the **PRN redose notice** (#798) — is
+DELIBERATELY **not** bus-gated (same non-hideable-safety reasoning as #171's
+attention strip): a page dismissal must never silence a possibly-critical
+medication signal, so their per-day/slot (or per-administration) markers stay
+the only dedup. As of #942, missed-dose escalation is the **first lifecycle
+tenant**: it declares `ESCALATION_SUPPRESSION_POLICY = "safety-ungated"`
+(`lib/notifications/escalation.ts`), the #449 carve-out expressed as DATA in the
+shared `LifecycleSuppressionPolicy` vocabulary (`lib/lifecycle.ts`,
+`isHiddenUnderPolicy` — `normal` / `snooze-only` / `safety-ungated`, the ONE
+decision the bus-gated nudges, the overdue-follow-up persistence contract #700,
+and the safety carve-out all route through). The send path still never reads the
+bus (structural non-consultation is the stronger guarantee); the declared policy
+is the machine-checked assertion of that —
+`isHiddenUnderPolicy("safety-ungated", <any dismiss/snooze>, today)` is always
+false, pinned in `lib/__tests__/lifecycle.test.ts` and end-to-end in the #673
+notify-orchestrators harness. **The PRN redose notice
+(`lib/notifications/redose.ts`, `runRedoseNotices`)** is a per-item, opt-in,
+**administration-armed one-shot**: for each opted-in PRN med with CONFIRMED
+`min_interval_hours`/`max_daily_count` (an unconfirmed/empty field ⇒ no notice,
+ever — the liability line), the pure `redoseNoticeDecision`
+(`lib/prn-redose.ts`) fires ONCE when the minimum interval elapses since the
+latest logged administration, keyed by that administration's id in the
+`notify_last_redose_<itemId>` marker (the `notify_last_*` discipline). It
+**re-arms only on the next administration** (a newer id ≠ the marker) and is
+**suppressed at the confirmed daily max**. It carries a "Log dose" button that
+reuses the `/dose` `prn:` callback → `logAdministration` through the ONE
+chokepoint (NOT idempotent — a dedup nonce + `logAdministration`'s short-window
+guard), and sends via `dispatch()` so push mirrors the content-safe body (#692)
+and the delivery marker folds like any other send. **QUIET-HOURS EXCEPTION
+(deliberate):** unlike the episode nudges (refill/preventive/milestone), the
+tick calls `runRedoseNotices` UNCONDITIONALLY — it is NOT gated by
+`inWakingWindow`, and `redoseNoticeDecision` has no waking/hour input at all
+(pinned by `lib/__tests__/prn-redose.test.ts`). A redose due at 3am is exactly
+the overnight fever case, and it can only fire from a dose the user actually
+logged, so nighttime delivery is the feature working, not spam. The DELIVERED
+half of over-max — an administration count EXCEEDING the confirmed max — is a
+separate **care-tier** finding (the `prn-max:<itemId>` Upcoming generator, the
+\#148 UL-warning shape per-day), which IS bus-suppressible; only the redose
+reminder itself is the ungated safety signal. Request-time engines (coaching, AI
+insight) are out of this contract. **Two-way button principle (#233):** a nudge
+earns an inline action button only when the expected response is ONE idempotent,
+low-risk state change with an EXISTING server function (else deep-link) —
+preventive ✅ Done/🚫 Not applicable/⏰ Remind later route onto
+`recordPreventiveDone`/`setPreventiveOverride`/bus-snooze — plus (#1083) a
+**deep-link "go do it" button** carrying the concrete next action per class (the
+SAME per-class link + CTA the Upcoming row shows, from `preventiveNudgeAction`
+in `lib/preventive-upcoming.ts` — `<page>?screen=<INSTRUMENT>` for an
+instrument, the prefilled biomarker/procedure add form for a lab/procedure, the
+vitals quick-add for a vital, the Book path for a visit); the absolute URL is
+built from `getPublicUrl()` and the button is omitted when no public URL is
+configured (a relative URL can't be a Telegram button), while Web Push carries
+the same link as its notification click-through
+(`buildPushPayload`/`pushClickThroughUrl` in `push-core.ts`) and Home Assistant
+forwards it in the payload's `links[]`, refill 📦 Ordered onto a
+`refillSignalKey` bus-snooze (+ deep link; no amount-bearing "mark refilled"),
+escalation ✅ Confirmed taken/👍 I'm on it onto `markDoseTaken`/an ack that sets
+the episode marker without logging the dose. Payloads carry **ids only** (never
+names — 64-byte limit, AUTOINCREMENT ids never recycle), every handler answers
+from a **typed outcome union** (the `DoseTakenOutcome` pattern — never
+unconditionally confirm; a stale/foreign tap gets the outdated-message
+replacement), buttons are removed/replaced on consumption, and escalation taps
+authorize by **chat id** (any chat the escalation fanned out to for that profile
+— the managing logins' chats — OR the supplement's `escalate_chat_id`; anyone in
+the caregiver chat may confirm, by design, #1072). Pure parse/decide lives in
+`lib/notifications/callback-data.ts` (unit-tested); the handler flows in
+`telegram-callbacks.ts`. **Channel chokepoint (#454):** every outbound Telegram
+write — the tick's channel send, escalation's explicit-chat send, and the
+callback edit/rebuild paths — routes through the ONE chokepoint module
+`lib/notifications/telegram.ts` (`telegramChannel` / `sendTelegramMessage` /
+`rebuildMessage` / `closeMessage` / `updateMessageKeyboard`), the sole importer
+of the guarded raw primitives in `telegram-api.ts`
+(`sendMessageRaw`/`editMessageTextRaw`/`editMessageReplyMarkupRaw`). The
+chokepoint owns the four cross-cutting obligations so they can't diverge or be
+forgotten per call site: **limits** (4096-char split + 100-button cap,
+`telegram-limits.ts`, #379), **attribution** (the `[Name]` prefix via
+`prefixForProfile` in `attribution.ts`, re-applied on a rebuild so it can't drop
+the send-time label, #377/#429), **escaping** (`renderMessageHtml` in the pure
+`telegram-render.ts`), and **delivery accounting** (a throw feeds `dispatch()`'s
+marker fold). A source-scan test (`lib/__tests__/telegram-chokepoint.test.ts`)
+fails CI if any other module imports those guarded primitives — a new sender
+must go through the chokepoint. Messages that self-attribute in their body
+(refill/preventive/digest/escalation) don't take the title prefix; only
+dose/workout reminders (and their rebuilds) do.
 
-**Telegram household dose round (#1459).** The cross-profile twin of the scheduled dose reminder, for the caregiver standing at the breakfast table: at the RECEIVING profile's own schedule slots, ONE message listing the due-unconfirmed doses of the household members that profile explicitly subscribed to, each with an inline confirm. Before it, household dose confirmation existed only as a DESTINATION (the Household page's per-member confirm buttons) while the Telegram reminder that actually reaches a caregiver carries exactly ONE profile — so confirming the morning round meant navigating to `/household` after all. **Subscription (§1).** Two `profile_settings` keys on the RECEIVING profile (`household_round_enabled`, `household_round_members`) — no schema change; `getProfileHouseholdRound`/`setProfileHouseholdRound`. The bridge between per-profile Telegram targets and per-login grants is stated ONCE, in `lib/notifications/household-round-access.ts`: **a member M is covered by R's round iff at least one login whose OWN profile is R (`logins.own_profile_id`, #1013) currently holds WRITE access to M**, and M ≠ R. "Own profile" rather than "any login granted R" is deliberate — the round is a push into the RECEIVER's pocket, so it must be their account, else a co-parent with a read grant on R could conjure a round about someone else's children. Access is read through lib/auth's `accessForProfile`/`accessibleProfilesForLogin`, the SAME functions the in-app cross-profile confirm gates on, so the Telegram round and the Household page can never disagree about who may log for whom. The stored member list is **data, not an auth check** (the ProfileScope stance): it is re-validated against live grants at send time, again at button-tap time, AND narrowed on write in the action (the form is client-side, so a posted read-only or ungranted id is dropped three times over). A revoked member drops out silently; a profile that is no login's own profile has no offerable members and the settings card says so. **Composition (§2).** Rides the existing hourly tick and the receiver's slots with its OWN per-day markers (`notify_last_household_<slot>`, on the receiver — the round is the receiver's notification), so a receiver whose personal reminder already fired this slot still gets the round. Each member's due set is computed in THAT member's own context — `today(memberId)`, their timezone, situations, workout-conditioned dueness, PRN exclusion — via the SAME `collectWindowDoses` + #1156 priority floor the member's own reminder uses (#221: this module adds no dueness logic of its own). This is the #1095 loop-composed case, NOT a `profile_id IN` reader. Names are disambiguated (#534) before formatting; **an empty round sends nothing**, and members with nothing due are omitted. Members' own reminders and escalation are completely untouched — the round is additive. The PreWorkout pseudo-slot is excluded (it is workout-relative to the RECEIVER, which says nothing about another member's doses). **Buttons (§3).** Per-dose `✓ <Member> · <Item>` actions grouped one row per member, tokens carrying **ids only** under a new `hh:<receiver>:<member>:<dose>:<item>:<date>` kind — note the date is the MEMBER's own profile-local day, so a round spanning two timezones logs each dose against the right date. Past `HOUSEHOLD_ROUND_MAX_BUTTONS` (12) the keyboard degrades to a single "Open Household →" deep link (a wall of taps is a page, not a message). The handler re-resolves access (chat owns the receiver → still subscribed → grant still holds), then calls the existing idempotent `markDoseTaken(memberProfileId, …)` and answers from its typed `DoseTakenOutcome`; each of the three refusals gets its own honest toast and writes nothing — never an unconditional ✓. Only the tapped button is consumed (a row is a MEMBER, so dropping the row would take their other doses with it). **Safety (§4).** The message carries `kind: "dose"` deliberately (the #924 precedent) so it inherits the dose kind's safety-tier routing and per-login toggle instead of minting a parallel kind: it is never bus-gated and never quiet-hours-gated. **Missed-dose escalation is NOT aggregated into the round** — folding a critical signal into a convenience digest could soften it — and the `safety-ungated` carve-out stands untouched. A failed send folds into the delivery-health marker like any other dispatch. Everything ships through the ONE chokepoint. Split for testability: pure formatter + token (`household-round-format.ts`, `callback-data.ts`), DB-touching builder (`household-round.ts`) with a #448 two-timezone fixture test, access rule (`household-round-access.ts`). Settings → Notifications carries the toggle, the access-filtered member checklist and a send-test.
+**Telegram household dose round (#1459).** The cross-profile twin of the
+scheduled dose reminder, for the caregiver standing at the breakfast table: at
+the RECEIVING profile's own schedule slots, ONE message listing the
+due-unconfirmed doses of the household members that profile explicitly
+subscribed to, each with an inline confirm. Before it, household dose
+confirmation existed only as a DESTINATION (the Household page's per-member
+confirm buttons) while the Telegram reminder that actually reaches a caregiver
+carries exactly ONE profile — so confirming the morning round meant navigating
+to `/household` after all. **Subscription (§1).** Two `profile_settings` keys on
+the RECEIVING profile (`household_round_enabled`, `household_round_members`) —
+no schema change; `getProfileHouseholdRound`/`setProfileHouseholdRound`. The
+bridge between per-profile Telegram targets and per-login grants is stated ONCE,
+in `lib/notifications/household-round-access.ts`: **a member M is covered by R's
+round iff at least one login whose OWN profile is R (`logins.own_profile_id`,
+\#1013) currently holds WRITE access to M**, and M ≠ R. "Own profile" rather
+than "any login granted R" is deliberate — the round is a push into the
+RECEIVER's pocket, so it must be their account, else a co-parent with a read
+grant on R could conjure a round about someone else's children. Access is read
+through lib/auth's `accessForProfile`/`accessibleProfilesForLogin`, the SAME
+functions the in-app cross-profile confirm gates on, so the Telegram round and
+the Household page can never disagree about who may log for whom. The stored
+member list is **data, not an auth check** (the ProfileScope stance): it is
+re-validated against live grants at send time, again at button-tap time, AND
+narrowed on write in the action (the form is client-side, so a posted read-only
+or ungranted id is dropped three times over). A revoked member drops out
+silently; a profile that is no login's own profile has no offerable members and
+the settings card says so. **Composition (§2).** Rides the existing hourly tick
+and the receiver's slots with its OWN per-day markers
+(`notify_last_household_<slot>`, on the receiver — the round is the receiver's
+notification), so a receiver whose personal reminder already fired this slot
+still gets the round. Each member's due set is computed in THAT member's own
+context — `today(memberId)`, their timezone, situations, workout-conditioned
+dueness, PRN exclusion — via the SAME `collectWindowDoses` + #1156 priority
+floor the member's own reminder uses (#221: this module adds no dueness logic of
+its own). This is the #1095 loop-composed case, NOT a `profile_id IN` reader.
+Names are disambiguated (#534) before formatting; **an empty round sends
+nothing**, and members with nothing due are omitted. Members' own reminders and
+escalation are completely untouched — the round is additive. The PreWorkout
+pseudo-slot is excluded (it is workout-relative to the RECEIVER, which says
+nothing about another member's doses). **Buttons (§3).** Per-dose
+`✓ <Member> · <Item>` actions grouped one row per member, tokens carrying **ids
+only** under a new `hh:<receiver>:<member>:<dose>:<item>:<date>` kind — note the
+date is the MEMBER's own profile-local day, so a round spanning two timezones
+logs each dose against the right date. Past `HOUSEHOLD_ROUND_MAX_BUTTONS` (12)
+the keyboard degrades to a single "Open Household →" deep link (a wall of taps
+is a page, not a message). The handler re-resolves access (chat owns the
+receiver → still subscribed → grant still holds), then calls the existing
+idempotent `markDoseTaken(memberProfileId, …)` and answers from its typed
+`DoseTakenOutcome`; each of the three refusals gets its own honest toast and
+writes nothing — never an unconditional ✓. Only the tapped button is consumed (a
+row is a MEMBER, so dropping the row would take their other doses with it).
+**Safety (§4).** The message carries `kind: "dose"` deliberately (the #924
+precedent) so it inherits the dose kind's safety-tier routing and per-login
+toggle instead of minting a parallel kind: it is never bus-gated and never
+quiet-hours-gated. **Missed-dose escalation is NOT aggregated into the round** —
+folding a critical signal into a convenience digest could soften it — and the
+`safety-ungated` carve-out stands untouched. A failed send folds into the
+delivery-health marker like any other dispatch. Everything ships through the ONE
+chokepoint. Split for testability: pure formatter + token
+(`household-round-format.ts`, `callback-data.ts`), DB-touching builder
+(`household-round.ts`) with a #448 two-timezone fixture test, access rule
+(`household-round-access.ts`). Settings → Notifications carries the toggle, the
+access-filtered member checklist and a send-test.
 
-**Display units in notification copy (#1019).** Notifications render measurements in **canonical units (kg / km / °F)** — unit prefs are per-**login**, notifications per-**profile**, so there is no pref to consult (the weekly-recap comment made this stance per-file; it's policy now). The ONE exception: **safety-critical temperature renders dual-unit** (`fmtTempDual`, "38.5 °C / 101.3 °F") — the temperature red-flag nudge passes `"dual"` into `tempRedFlagFindingFor` so a mixed-preference household reads a fever number correctly either way. Web surfaces always follow the viewer's login pref instead. Full policy (including the identity/cited-text rules): `docs/internals/findings.md` § "Display units on finding surfaces".
+**Display units in notification copy (#1019).** Notifications render
+measurements in **canonical units (kg / km / °F)** — unit prefs are
+per-**login**, notifications per-**profile**, so there is no pref to consult
+(the weekly-recap comment made this stance per-file; it's policy now). The ONE
+exception: **safety-critical temperature renders dual-unit** (`fmtTempDual`,
+"38.5 °C / 101.3 °F") — the temperature red-flag nudge passes `"dual"` into
+`tempRedFlagFindingFor` so a mixed-preference household reads a fever number
+correctly either way. Web surfaces always follow the viewer's login pref
+instead. Full policy (including the identity/cited-text rules):
+`docs/internals/findings.md` § "Display units on finding surfaces".
 
-**Finish-triggered post-workout nudge + stale-session suggest (#921).** Two nudges ride derived **workout presence** (`workoutPresence` / `getWorkoutPresence`, `lib/workout-presence.ts` + `lib/queries/presence.ts`) — the ONE computation that reads a session as `active` / `finished` / `idle` off existing `activities` rows (no new tables), shared with the app-wide workout dock, the household presence chip, and the rest-coaching tense. **`runPostWorkoutFinish` (`lib/notifications/workout-presence.ts`)** is the flagship: the moment a session transitions to `finished` (its end instant inside the 60-min trailing window; imports also freshness-capped on first-seen so a delayed bulk sync about this morning's run can't fire evening nudges), it delivers the due, unresolved `post_workout` supplement doses IMMEDIATELY instead of waiting for the next scheduled `supp_<W>` slot. It is a **dose reminder = SAFETY tier**: NOT bus-gated and NOT waking-gated (it's timed to a real event, exactly as the scheduled slot is timed to a real hour), a **one-shot per activity id** (`notify_last_post_workout_<activityId>`, an id-keyed marker, #203-safe, stamped only on delivery), and **only-when-pending** (a finish with every post_workout dose already logged sends nothing and does NOT burn the one-shot). `isPostWorkoutReady` stays the dueness truth — this changes DELIVERY timing only, and the scheduled slot remains the fallback when a finish was never observed. The 60-min finished window guarantees the hourly tick observes every finish exactly once. **`runStaleWorkoutSuggest`** sends ONE gentle "Still working out? Finish or discard" note when an `active` session's draft has gone quiet past `STALE_MIN` (45 min) — suggest-only (#560), never auto-ends, one-shot per activity id (`notify_stale_workout_<activityId>`), waking-gated (a soft coaching suggest, not a safety signal). **Actionable finish (#1205):** the nudge now carries a **🏁 Finish workout** and **🗑 Discard** inline button alongside the "Open workout" deep-link (the two-way principle — ids only: `wofinish:<profileId>:<activityId>` / `wodiscard:<profileId>:<activityId>`; the callback resolves activity→profile against the chat like every other family-chat button). Finish stamps `end_time = now` through the SHARED, auth-blind `finishWorkoutSession` core (`lib/workout-finish.ts`, the same core the request-path `finishWorkout` action uses) and **transforms this message in place** into the #924 post-workout-dose summary — the SAME `renderPostWorkoutFinishMessage` the tick sends (#221), with its take/skip dose buttons, or a plain "Workout finished ✅" when nothing is pending — while setting the `notify_last_post_workout_<activityId>` finish marker as delivered so the hourly tick sends NO second notification. The handler answers from a typed outcome union (`finished` / `already-finished` / `empty-draft` / `not-found`) — a re-tap on an already-finished session says so (no false confirm, no re-edit surprise), an empty draft keeps its buttons so the user can Discard, and Web Push / Home Assistant (no stateful callback) fall back to the "Open workout" deep-link + the normal separate #924 dispatch. All edits ride the `telegram.ts` chokepoint (re-applying the shared-chat `[Name]` prefix). **Reminder-collision presence gates — revisited and shipped (#981):** presence-as-a-send-gate was DECLINED in #921 ("revisit if it annoys in practice"), and it did — the slot fired MID-workout and, once #921's presence-aware tense fix shipped, its rest line even read "you're training now". The revisit trigger hit, so `recommendWorkout` now consults the ONE derived `workoutPresence` (never a second derivation, #221) through the pure `workoutPresenceGate` (`lib/workout-presence-gate.ts`) over the SAME tracked target scopes the nudge already reads: (1) **`active` ⇒ HOLD** — a live session is running (the #837 illness-hold shape: null holds the slot out of the send AND the daily `notify_last_workout` marker, so a discarded false start doesn't consume the day); (2) **a credit-bearing finish inside the finished window ⇒ SKIP this attempt** — the finish/recap message (#924) owns that moment, but STRICTLY window-scoped and marker-neutral, so a dog walk crediting a "walk 5×/week" habit quiets only this one attempt, never the day's lift reminder, and the next scheduled attempt evaluates fresh. "Credits a tracked scope" reuses `getFrequencyTargetProgress`'s scope rules (`getFinishedActivityCredit`, `lib/queries/presence.ts`), so a finish crediting NOTHING tracked (a synced walk with no walking target) still fires — type-awareness comes from target SCOPING, not from "did anything finish", and a generic finish never holds. Both gates are marker-neutral by construction (the tick marks the slot only on a delivered message); the pure gate matrix + finished-window boundary is pinned in `lib/__tests__/workout-presence-gate.test.ts`, the marker-neutrality end-to-end in `lib/__db_tests__/workout-presence-gate.test.ts`.
+**Finish-triggered post-workout nudge + stale-session suggest (#921).** Two
+nudges ride derived **workout presence** (`workoutPresence` /
+`getWorkoutPresence`, `lib/workout-presence.ts` + `lib/queries/presence.ts`) —
+the ONE computation that reads a session as `active` / `finished` / `idle` off
+existing `activities` rows (no new tables), shared with the app-wide workout
+dock, the household presence chip, and the rest-coaching tense.
+**`runPostWorkoutFinish` (`lib/notifications/workout-presence.ts`)** is the
+flagship: the moment a session transitions to `finished` (its end instant inside
+the 60-min trailing window; imports also freshness-capped on first-seen so a
+delayed bulk sync about this morning's run can't fire evening nudges), it
+delivers the due, unresolved `post_workout` supplement doses IMMEDIATELY instead
+of waiting for the next scheduled `supp_<W>` slot. It is a **dose reminder =
+SAFETY tier**: NOT bus-gated and NOT waking-gated (it's timed to a real event,
+exactly as the scheduled slot is timed to a real hour), a **one-shot per
+activity id** (`notify_last_post_workout_<activityId>`, an id-keyed marker,
+\#203-safe, stamped only on delivery), and **only-when-pending** (a finish with
+every post_workout dose already logged sends nothing and does NOT burn the
+one-shot). `isPostWorkoutReady` stays the dueness truth — this changes DELIVERY
+timing only, and the scheduled slot remains the fallback when a finish was never
+observed. The 60-min finished window guarantees the hourly tick observes every
+finish exactly once. **`runStaleWorkoutSuggest`** sends ONE gentle "Still
+working out? Finish or discard" note when an `active` session's draft has gone
+quiet past `STALE_MIN` (45 min) — suggest-only (#560), never auto-ends, one-shot
+per activity id (`notify_stale_workout_<activityId>`), waking-gated (a soft
+coaching suggest, not a safety signal). **Actionable finish (#1205):** the nudge
+now carries a **🏁 Finish workout** and **🗑 Discard** inline button alongside
+the "Open workout" deep-link (the two-way principle — ids only:
+`wofinish:<profileId>:<activityId>` / `wodiscard:<profileId>:<activityId>`; the
+callback resolves activity→profile against the chat like every other family-chat
+button). Finish stamps `end_time = now` through the SHARED, auth-blind
+`finishWorkoutSession` core (`lib/workout-finish.ts`, the same core the
+request-path `finishWorkout` action uses) and **transforms this message in
+place** into the #924 post-workout-dose summary — the SAME
+`renderPostWorkoutFinishMessage` the tick sends (#221), with its take/skip dose
+buttons, or a plain "Workout finished ✅" when nothing is pending — while
+setting the `notify_last_post_workout_<activityId>` finish marker as delivered
+so the hourly tick sends NO second notification. The handler answers from a
+typed outcome union (`finished` / `already-finished` / `empty-draft` /
+`not-found`) — a re-tap on an already-finished session says so (no false
+confirm, no re-edit surprise), an empty draft keeps its buttons so the user can
+Discard, and Web Push / Home Assistant (no stateful callback) fall back to the
+"Open workout" deep-link + the normal separate #924 dispatch. All edits ride the
+`telegram.ts` chokepoint (re-applying the shared-chat `[Name]` prefix).
+**Reminder-collision presence gates — revisited and shipped (#981):**
+presence-as-a-send-gate was DECLINED in #921 ("revisit if it annoys in
+practice"), and it did — the slot fired MID-workout and, once #921's
+presence-aware tense fix shipped, its rest line even read "you're training now".
+The revisit trigger hit, so `recommendWorkout` now consults the ONE derived
+`workoutPresence` (never a second derivation, #221) through the pure
+`workoutPresenceGate` (`lib/workout-presence-gate.ts`) over the SAME tracked
+target scopes the nudge already reads: (1) **`active` ⇒ HOLD** — a live session
+is running (the #837 illness-hold shape: null holds the slot out of the send AND
+the daily `notify_last_workout` marker, so a discarded false start doesn't
+consume the day); (2) **a credit-bearing finish inside the finished window ⇒
+SKIP this attempt** — the finish/recap message (#924) owns that moment, but
+STRICTLY window-scoped and marker-neutral, so a dog walk crediting a "walk
+5×/week" habit quiets only this one attempt, never the day's lift reminder, and
+the next scheduled attempt evaluates fresh. "Credits a tracked scope" reuses
+`getFrequencyTargetProgress`'s scope rules (`getFinishedActivityCredit`,
+`lib/queries/presence.ts`), so a finish crediting NOTHING tracked (a synced walk
+with no walking target) still fires — type-awareness comes from target SCOPING,
+not from "did anything finish", and a generic finish never holds. Both gates are
+marker-neutral by construction (the tick marks the slot only on a delivered
+message); the pure gate matrix + finished-window boundary is pinned in
+`lib/__tests__/workout-presence-gate.test.ts`, the marker-neutrality end-to-end
+in `lib/__db_tests__/workout-presence-gate.test.ts`.
 
-**Pace-aware wellness-practice nudge (#1259).** A wellness-practice frequency target (scope_kind `practice` — red light, sauna, meditation, …) with a min–max weekly RANGE gets a coaching-tier, BUS-GATED reminder built by `buildPracticeReminder` (`lib/notifications/practices.ts`): it fires ONLY when the target is behind its FLOOR late in the week (the workout-nudge pace pattern — `shouldNudgePractice`/`behindPractices` over `getFrequencyTargetProgress`, one computation with the Upcoming `practiceItems` twin), is QUIET on-pace, and is SILENT at/above the CEILING (a dose-limited practice is never pushed toward more). It is DELIBERATELY never safety-tier (a missed red-light session is not a missed medication) and rides the shared suppression bus keyed by the SAME `practice:<targetId>` `dedupeKey` its Upcoming twin carries (`practiceSignalKey`, `lib/practice.ts`) — dismiss the Upcoming item once and the push goes quiet too, with the daily `notify_last_practice` marker frozen (set only on a delivered message, the #227 discipline). It is waking-window + once-per-day gated and only sends where Telegram is deliverable (the defining feature is the button; a practice target only exists once the user created a practice protocol — that IS the opt-in). Each behind practice carries an inline **"Done ✓"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs one session for TODAY through the shared write core (`logPracticeByTargetId` → `logPracticeSession`); the handler answers from the typed `PracticeLogOutcome` (never an unconditional confirm — a session log is NOT idempotent, multi-session days are supported) and CONSUMES the tapped button (siblings survive) so a stale message can’t double-log.
+**Pace-aware wellness-practice nudge (#1259).** A wellness-practice frequency
+target (scope_kind `practice` — red light, sauna, meditation, …) with a min–max
+weekly RANGE gets a coaching-tier, BUS-GATED reminder built by
+`buildPracticeReminder` (`lib/notifications/practices.ts`): it fires ONLY when
+the target is behind its FLOOR late in the week (the workout-nudge pace pattern
+— `shouldNudgePractice`/`behindPractices` over `getFrequencyTargetProgress`, one
+computation with the Upcoming `practiceItems` twin), is QUIET on-pace, and is
+SILENT at/above the CEILING (a dose-limited practice is never pushed toward
+more). It is DELIBERATELY never safety-tier (a missed red-light session is not a
+missed medication) and rides the shared suppression bus keyed by the SAME
+`practice:<targetId>` `dedupeKey` its Upcoming twin carries
+(`practiceSignalKey`, `lib/practice.ts`) — dismiss the Upcoming item once and
+the push goes quiet too, with the daily `notify_last_practice` marker frozen
+(set only on a delivered message, the #227 discipline). It is waking-window +
+once-per-day gated and only sends where Telegram is deliverable (the defining
+feature is the button; a practice target only exists once the user created a
+practice protocol — that IS the opt-in). Each behind practice carries an inline
+**"Done ✓"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
+one session for TODAY through the shared write core (`logPracticeByTargetId` →
+`logPracticeSession`); the handler answers from the typed `PracticeLogOutcome`
+(never an unconditional confirm — a session log is NOT idempotent, multi-session
+days are supported) and CONSUMES the tapped button (siblings survive) so a stale
+message can’t double-log.
 
-**Recap-led finish nudge (#924).** `runPostWorkoutFinish` now OPENS with a one-line **session recap** ("Push day done · 47 min · 14 sets · Bench press PR · all targets hit"), then the due post-workout supplement section. The composition (`composeFinishNudge` / `recapNudgeLine`, `lib/notifications/workout-recap-format.ts`, both pure) is: **recap line** — gated by the new `workout-recap` NotificationKind, which is ONE row of the #928 kind×channel matrix (`TOGGLEABLE_NOTIFICATION_KINDS`, on by default; zero new settings surface). `runPostWorkoutFinish` includes the line unless workout-recap is turned OFF on EVERY profile-scoped channel (Telegram + Home Assistant, via `isKindEnabled` over each channel's disabled-kinds); the login-scoped push channel gates its own copy at dispatch. The line is ALSO gated by there being real strength working sets (a pure-cardio/freshly-synced-import finish yields no recap line, so #921's dose-only behavior is unchanged and a "run done" note can't spam); **supplement section** — the existing dose reminder, gated by dueness. **Either alone still sends; both absent ⇒ no send** (and the one-shot marker is not burned). A combined message keeps the dose message's `kind: "dose"` so its SAFETY-tier routing/actions are preserved; a **recap-only** message is classified `kind: "workout-recap"`. The recap line comes from the ONE server-side `getSessionRecap` gather (`lib/queries/session-recap.ts`) over the pure `sessionRecap` (`lib/session-recap.ts`) — the SAME computation the finished-window dashboard card and the live "Session complete" step render, so the three surfaces can't drift (#221). Everything still routes through the Telegram chokepoint with the usual delivery accounting. **Weekly-remaining line (#981 §3, corrected by #1122):** the recap line gains a forward-looking, pace-framed status leading with the target the session just advanced ("Legs — 1 of 2 this week, one more to go"; calm all-met line when every workout target is met; omitted otherwise), computed by `weeklyRemainingLine` as a **workout-scoped FORMATTER** over the SAME `getFrequencyTargetProgress` rollup (#221). Two #1122 fixes over the original "N of M met" tally: it (1) SCOPES to workout-affectable targets (`region`/`group`/`type` only — `food_group`/`mobility_region` dropped, since a barbell session can't move veg-servings or mobility days, which is how it read "0 of 4"), and (2) reports PACE via each target's `count`, not the all-or-nothing `met`, so a session that rarely _completes_ a 2–4×/week goal still reads as progress. It rides WITH the recap line inside the congratulatory message where its tone is natural — which is what makes #981's silent reminder-skip (rather than a softened second ping) correct: one moment, one message.
+**Recap-led finish nudge (#924).** `runPostWorkoutFinish` now OPENS with a
+one-line **session recap** ("Push day done · 47 min · 14 sets · Bench press PR ·
+all targets hit"), then the due post-workout supplement section. The composition
+(`composeFinishNudge` / `recapNudgeLine`,
+`lib/notifications/workout-recap-format.ts`, both pure) is: **recap line** —
+gated by the new `workout-recap` NotificationKind, which is ONE row of the #928
+kind×channel matrix (`TOGGLEABLE_NOTIFICATION_KINDS`, on by default; zero new
+settings surface). `runPostWorkoutFinish` includes the line unless workout-recap
+is turned OFF on EVERY profile-scoped channel (Telegram + Home Assistant, via
+`isKindEnabled` over each channel's disabled-kinds); the login-scoped push
+channel gates its own copy at dispatch. The line is ALSO gated by there being
+real strength working sets (a pure-cardio/freshly-synced-import finish yields no
+recap line, so #921's dose-only behavior is unchanged and a "run done" note
+can't spam); **supplement section** — the existing dose reminder, gated by
+dueness. **Either alone still sends; both absent ⇒ no send** (and the one-shot
+marker is not burned). A combined message keeps the dose message's
+`kind: "dose"` so its SAFETY-tier routing/actions are preserved; a
+**recap-only** message is classified `kind: "workout-recap"`. The recap line
+comes from the ONE server-side `getSessionRecap` gather
+(`lib/queries/session-recap.ts`) over the pure `sessionRecap`
+(`lib/session-recap.ts`) — the SAME computation the finished-window dashboard
+card and the live "Session complete" step render, so the three surfaces can't
+drift (#221). Everything still routes through the Telegram chokepoint with the
+usual delivery accounting. **Weekly-remaining line (#981 §3, corrected by
+\#1122):** the recap line gains a forward-looking, pace-framed status leading
+with the target the session just advanced ("Legs — 1 of 2 this week, one more to
+go"; calm all-met line when every workout target is met; omitted otherwise),
+computed by `weeklyRemainingLine` as a **workout-scoped FORMATTER** over the
+SAME `getFrequencyTargetProgress` rollup (#221). Two #1122 fixes over the
+original "N of M met" tally: it (1) SCOPES to workout-affectable targets
+(`region`/`group`/`type` only — `food_group`/`mobility_region` dropped, since a
+barbell session can't move veg-servings or mobility days, which is how it read
+"0 of 4"), and (2) reports PACE via each target's `count`, not the
+all-or-nothing `met`, so a session that rarely _completes_ a 2–4×/week goal
+still reads as progress. It rides WITH the recap line inside the congratulatory
+message where its tone is natural — which is what makes #981's silent
+reminder-skip (rather than a softened second ping) correct: one moment, one
+message.
 
-**Morning digest (one merged message, #1108).** The tick sends ONE summary per profile per day at `digest_hour`, hard-deduped by the single `notify_last_digest` marker. Sections in order: **Illness** (open-episode headline) → **Today** → **Yesterday** (activities/adherence/weight) → **Sleep** (#1117; ON by default when the digest is enabled as of #1378 — an opt-OUT toggle, `getProfileSleepDigest` reads absent-means-on, a stored `"0"` still off, and the freshness + no-data gates in `gatherDigestSleep` are unchanged so a profile with no fresh sleep still sees no section) → **New** (newly-flagged biomarkers + documents). The **Today** section is a formatter over `collectUpcoming` (the SAME banded aggregation the Upcoming page/hero read): a dose-count glance headline plus the `groupUpcoming` band summaries + high-priority "why" highlights (#656), with the `dose` domain excluded from the band counts (the headline summarizes them). Because it reads `collectUpcoming`, the morning message inherits the findings-suppression bus (a page dismiss/snooze silences the digest too — the #221 one-computation guarantee) and the #558 predicted-training-day dose dueness. **Derived-situation acknowledgment (#1292/#1298):** the Today section also carries the SAME basis-aware state lines the Supplements bar + check-in disclosure show ("Rough night (…) — N sleep-support items active today (auto)"; "Period logged — N items active"), via the ONE shared `getDerivedSituationLines` formatter, so a Telegram-first user isn't surprised by the extra due items a derived Poor sleep / Period context put on the list (the digest's dose dueness reads `getEffectiveActiveSituations`, declared ∪ derived). The separate "what's due" upcoming digest and its `notify_last_upcoming` marker are **retired** (migration 093 sweeps the dead key); the `upcoming` NotificationKind is retained in the type union / `parseDisabledKinds` for back-compat but is no longer a toggleable matrix row — the single `digest` kind governs the merged message.
+**Morning digest (one merged message, #1108).** The tick sends ONE summary per
+profile per day at `digest_hour`, hard-deduped by the single
+`notify_last_digest` marker. Sections in order: **Illness** (open-episode
+headline) → **Today** → **Yesterday** (activities/adherence/weight) → **Sleep**
+(#1117; ON by default when the digest is enabled as of #1378 — an opt-OUT
+toggle, `getProfileSleepDigest` reads absent-means-on, a stored `"0"` still off,
+and the freshness + no-data gates in `gatherDigestSleep` are unchanged so a
+profile with no fresh sleep still sees no section) → **New** (newly-flagged
+biomarkers + documents). The **Today** section is a formatter over
+`collectUpcoming` (the SAME banded aggregation the Upcoming page/hero read): a
+dose-count glance headline plus the `groupUpcoming` band summaries +
+high-priority "why" highlights (#656), with the `dose` domain excluded from the
+band counts (the headline summarizes them). Because it reads `collectUpcoming`,
+the morning message inherits the findings-suppression bus (a page dismiss/snooze
+silences the digest too — the #221 one-computation guarantee) and the #558
+predicted-training-day dose dueness. **Derived-situation acknowledgment
+(#1292/#1298):** the Today section also carries the SAME basis-aware state lines
+the Supplements bar + check-in disclosure show ("Rough night (…) — N
+sleep-support items active today (auto)"; "Period logged — N items active"), via
+the ONE shared `getDerivedSituationLines` formatter, so a Telegram-first user
+isn't surprised by the extra due items a derived Poor sleep / Period context put
+on the list (the digest's dose dueness reads `getEffectiveActiveSituations`,
+declared ∪ derived). The separate "what's due" upcoming digest and its
+`notify_last_upcoming` marker are **retired** (migration 093 sweeps the dead
+key); the `upcoming` NotificationKind is retained in the type union /
+`parseDisabledKinds` for back-compat but is no longer a toggleable matrix row —
+the single `digest` kind governs the merged message.
 
-**Delayed completion dispatch + no-finish fallback (#1154 §B).** `runPostWorkoutFinish` delegates to the shared per-activity core `runPostWorkoutForActivity`; the live Finish / retroactive save (`saveActivity`) and the integration syncs arm a ~60s re-armable timer (`lib/notifications/post-workout-queue.ts`, fire-time completed-today verification) that runs the SAME core, so the post-workout dose reminder lands moments after completion instead of on the next tick. Both paths share the stamp-on-delivery one-shot marker (`notify_last_post_workout_<activityId>`); the hourly tick remains the mandatory backstop (and flushes tick-armed timers before exiting). Deliberately not quiet-hours-gated — a post-completion send answers an action the user just took.
+**Delayed completion dispatch + no-finish fallback (#1154 §B).**
+`runPostWorkoutFinish` delegates to the shared per-activity core
+`runPostWorkoutForActivity`; the live Finish / retroactive save (`saveActivity`)
+and the integration syncs arm a ~60s re-armable timer
+(`lib/notifications/post-workout-queue.ts`, fire-time completed-today
+verification) that runs the SAME core, so the post-workout dose reminder lands
+moments after completion instead of on the next tick. Both paths share the
+stamp-on-delivery one-shot marker (`notify_last_post_workout_<activityId>`); the
+hourly tick remains the mandatory backstop (and flushes tick-armed timers before
+exiting). Deliberately not quiet-hours-gated — a post-completion send answers an
+action the user just took.
 
-**One supplement reminder per hour (#1154).** Every slot due in a tick-hour — the four windows plus the PreWorkout pseudo-slot (an `anytime` pre_workout dose timed one hour before the inferred training hour) — coalesces into ONE message (`buildIntakeReminderForSlots`/`renderMergedIntakeMessage`); each contributing slot's `notify_last_supp_<slot>` marker is stamped on delivery. Telegram rebuilds re-render the whole merged keyboard footprint.
+**One supplement reminder per hour (#1154).** Every slot due in a tick-hour —
+the four windows plus the PreWorkout pseudo-slot (an `anytime` pre_workout dose
+timed one hour before the inferred training hour) — coalesces into ONE message
+(`buildIntakeReminderForSlots`/`renderMergedIntakeMessage`); each contributing
+slot's `notify_last_supp_<slot>` marker is stamped on delivery. Telegram
+rebuilds re-render the whole merged keyboard footprint.
 
-**Priority floor (#1156).** `doseReminderNotifies` (`lib/supplement-schedule.ts`): low-priority SUPPLEMENTS are excluded from every dose-reminder send (window/merged/post-workout/digest count/buttons) at the send-assembly layer (`notifiableWindowDoses`); medications are never gated, and the escalation gather deliberately reads the unfiltered `collectWindowDoses` — the safety tier is structurally never priority-gated. An all-low send is silent BY DESIGN.
+**Priority floor (#1156).** `doseReminderNotifies`
+(`lib/supplement-schedule.ts`): low-priority SUPPLEMENTS are excluded from every
+dose-reminder send (window/merged/post-workout/digest count/buttons) at the
+send-assembly layer (`notifiableWindowDoses`); medications are never gated, and
+the escalation gather deliberately reads the unfiltered `collectWindowDoses` —
+the safety tier is structurally never priority-gated. An all-low send is silent
+BY DESIGN.
