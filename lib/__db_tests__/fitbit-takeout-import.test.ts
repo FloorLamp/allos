@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { ZipBuilder } from "@/lib/zip-write";
 import { importTakeoutArchive } from "@/lib/integrations/fitbit-takeout-import";
+import { captureDelete } from "@/lib/undo-delete-db";
 
 // DB INTEGRATION TIER — the Fitbit Google Takeout importer end to end: a REAL zip on
 // disk → selective walk → parse → chunked upsert → sync event.
@@ -509,5 +510,29 @@ describe("Fitbit Takeout import", () => {
     expect(ev.received).toBeGreaterThan(0);
     const details = JSON.parse(ev.details) as { warnings: string[] };
     expect(details.warnings.join(" ")).toMatch(/Health Connect/);
+  });
+
+  it("records tombstone-suppressed rows on the sync event", () => {
+    const activity = db
+      .prepare(
+        `SELECT id FROM activities
+          WHERE profile_id = ? AND source = 'fitbit-takeout'
+            AND external_id IS NOT NULL
+          ORDER BY id LIMIT 1`
+      )
+      .get(profileId) as { id: number };
+    expect(captureDelete("activity", profileId, activity.id)).not.toBeNull();
+
+    const result = importTakeoutArchive(profileId, archive);
+    expect(result.counts.suppressed).toBe(1);
+    expect(
+      db
+        .prepare(
+          `SELECT suppressed FROM integration_sync_events
+            WHERE profile_id = ? AND provider = 'fitbit-takeout'
+            ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileId)
+    ).toEqual({ suppressed: 1 });
   });
 });

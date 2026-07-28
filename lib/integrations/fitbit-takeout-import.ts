@@ -303,6 +303,7 @@ export function importTakeoutArchive(
     inserted: counts.inserted,
     updated: counts.updated,
     unchanged: counts.unchanged,
+    suppressed: counts.suppressed,
     edited: counts.edited,
     skipped: parsed.skipped,
     // Serialized here, not by recordSyncEvent — `details` is a JSON STRING column and
