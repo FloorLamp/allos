@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CARDIO_ACTIVITIES,
+  RECOVERY_ACTIVITIES,
+  SPORTS,
+} from "@/lib/activities-catalog";
+import {
   classifyTakeoutEntry,
   isHealthConnectRoundTrip,
   parseTakeoutCsv,
@@ -12,6 +17,8 @@ import {
   parseVendorScoreCsv,
   parseComputedTemperatureCsv,
   parseExerciseJson,
+  fitbitActivityIdentity,
+  fitbitComponentName,
   parseSleepJson,
   hhmmToMinutes,
   minutesToHhmm,
@@ -741,6 +748,181 @@ describe("the archive's TWO timestamp conventions", () => {
     // window for the duplicate detector's high-confidence overlap path.
     expect(out.activities[0].start_time).toBe("09:05");
     expect(out.activities[0].end_time).toBe("11:10");
+  });
+
+  it("adds one canonical component to each Fitbit exercise summary", () => {
+    const out = parseExerciseJson(
+      JSON.stringify([
+        {
+          logId: 1,
+          activityName: "Walk",
+          startTime: "06/13/26 13:05:01",
+          activeDuration: 20 * 60000,
+        },
+        {
+          logId: 2,
+          activityName: "Outdoor Bike",
+          startTime: "06/13/26 14:05:01",
+          activeDuration: 40 * 60000,
+          distance: 10,
+          distanceUnit: "Kilometer",
+        },
+        {
+          logId: 3,
+          activityName: "Swim",
+          startTime: "06/13/26 15:05:01",
+          activeDuration: 15 * 60000,
+          distance: 500,
+          distanceUnit: "Meter",
+        },
+        {
+          logId: 4,
+          activityName: "Spinning",
+          startTime: "06/13/26 16:05:01",
+          activeDuration: 50 * 60000,
+        },
+      ]),
+      TZ
+    );
+
+    expect(out.activities.map((a) => a.components)).toEqual([
+      [
+        {
+          name: "Walking",
+          type: "cardio",
+          distance_km: null,
+          duration_min: 20,
+        },
+      ],
+      [
+        {
+          name: "Cycling",
+          type: "cardio",
+          distance_km: 10,
+          duration_min: 40,
+        },
+      ],
+      [
+        {
+          name: "Swimming",
+          type: "cardio",
+          distance_km: 0.5,
+          duration_min: 15,
+        },
+      ],
+      [
+        {
+          name: "Stationary Bike",
+          type: "cardio",
+          distance_km: null,
+          duration_min: 50,
+        },
+      ],
+    ]);
+  });
+
+  it("keeps an unknown Fitbit label intact as its component name", () => {
+    expect(fitbitComponentName("Snowshoe Adventure")).toBe(
+      "Snowshoe Adventure"
+    );
+    expect(fitbitComponentName("Spinning")).toBe("Stationary Bike");
+  });
+
+  it("classifies every curated activity through the shared taxonomy", () => {
+    for (const name of CARDIO_ACTIVITIES) {
+      expect(fitbitActivityIdentity(name), name).toEqual({
+        name,
+        type: "cardio",
+      });
+    }
+    for (const name of SPORTS) {
+      expect(fitbitActivityIdentity(name), name).toEqual({
+        name,
+        type: "sport",
+      });
+    }
+    for (const name of RECOVERY_ACTIVITIES) {
+      expect(fitbitActivityIdentity(name), name).toEqual({
+        name,
+        type: "recovery",
+      });
+    }
+  });
+
+  it("normalizes Fitbit-specific cardio and broad strength labels", () => {
+    expect(fitbitActivityIdentity("Indoor Cycling")).toEqual({
+      name: "Stationary Bike",
+      type: "cardio",
+    });
+    expect(fitbitActivityIdentity("Stairclimber")).toEqual({
+      name: "Stair Climber",
+      type: "cardio",
+    });
+    expect(fitbitActivityIdentity("Jumping rope")).toEqual({
+      name: "Jump Rope",
+      type: "cardio",
+    });
+    expect(fitbitActivityIdentity("Rowing Machine")).toEqual({
+      name: "Rowing",
+      type: "cardio",
+    });
+    expect(fitbitActivityIdentity("Tabata Workout")).toEqual({
+      name: "HIIT",
+      type: "cardio",
+    });
+    expect(fitbitActivityIdentity("Roller blading")).toEqual({
+      name: "Rollerblading",
+      type: "cardio",
+    });
+    for (const name of ["Weights", "Weight Training", "Strength Training"]) {
+      expect(fitbitActivityIdentity(name), name).toEqual({
+        name: "Weight Training",
+        type: "strength",
+      });
+    }
+    expect(fitbitActivityIdentity("Bench Press")).toEqual({
+      name: "Bench Press",
+      type: "strength",
+    });
+    expect(fitbitActivityIdentity("TRX")).toEqual({
+      name: "TRX",
+      type: "strength",
+    });
+  });
+
+  it("uses free-text keywords and keeps truly unknown labels conservative", () => {
+    expect(fitbitActivityIdentity("Snowshoe Adventure")).toEqual({
+      name: "Snowshoe Adventure",
+      type: "cardio",
+    });
+    expect(fitbitActivityIdentity("Mystery Motion")).toEqual({
+      name: "Mystery Motion",
+      type: "sport",
+    });
+  });
+
+  it("routes Fitbit meditation to wellness instead of training", () => {
+    const out = parseExerciseJson(
+      JSON.stringify([
+        {
+          logId: 5,
+          activityName: "Meditating",
+          startTime: "06/13/26 17:05:01",
+          activeDuration: 30 * 60000,
+        },
+      ]),
+      TZ
+    );
+    expect(out.activities).toEqual([]);
+    expect(out.practices).toEqual([
+      {
+        external_id: "fitbit-takeout:5",
+        practice: "Meditation",
+        date: "2026-06-13",
+        time: "13:05",
+        duration_min: 30,
+      },
+    ]);
   });
 
   it("leaves a T-separated SLEEP stamp alone — that one really is local", () => {

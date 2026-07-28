@@ -20,6 +20,7 @@ import {
   upsertBodyMetrics,
   upsertHrMinutes,
   upsertMetricSamples,
+  upsertPracticeLogs,
   upsertVitals,
 } from "./normalize";
 import { recordSyncEvent } from "./connections";
@@ -74,6 +75,7 @@ export interface TakeoutImportResult {
     hrMinutes: number;
     samples: number;
     activities: number;
+    practices: number;
     vitals: number;
   };
   skipped: number;
@@ -150,6 +152,7 @@ function mergeInto(acc: TakeoutParsed, add: TakeoutParsed): void {
   acc.hrMinutes.push(...add.hrMinutes);
   acc.samples.push(...add.samples);
   acc.activities.push(...add.activities);
+  acc.practices.push(...add.practices);
   acc.vitals.push(...add.vitals);
   acc.skipped += add.skipped;
   acc.roundTripSkipped += add.roundTripSkipped;
@@ -251,6 +254,11 @@ export function importTakeoutArchive(
       counts,
       writeTx(() => upsertActivities(profileId, slice, FITBIT_TAKEOUT_ID)),
     ]);
+  for (const slice of chunk(parsed.practices, chunkSize))
+    counts = foldCounts([
+      counts,
+      writeTx(() => upsertPracticeLogs(profileId, slice, FITBIT_TAKEOUT_ID)),
+    ]);
   for (const slice of chunk(parsed.vitals, chunkSize))
     counts = foldCounts([
       counts,
@@ -273,6 +281,7 @@ export function importTakeoutArchive(
       parsed.hrMinutes.length +
       parsed.samples.length +
       parsed.activities.length +
+      parsed.practices.length +
       parsed.vitals.length,
     inserted: counts.inserted,
     updated: counts.updated,
@@ -294,6 +303,7 @@ export function importTakeoutArchive(
       hrMinutes: parsed.hrMinutes.length,
       samples: parsed.samples.length,
       activities: parsed.activities.length,
+      practices: parsed.practices.length,
       vitals: parsed.vitals.length,
     },
     skipped: parsed.skipped,

@@ -124,6 +124,51 @@ const FILES: [string, string | Buffer][] = [
         calories: 1270,
         averageHeartRate: 155,
       },
+      {
+        logId: 90000000001,
+        activityName: "Walk",
+        startTime: "06/20/26 12:00:00",
+        duration: 1200000,
+        activeDuration: 1200000,
+        calories: 100,
+        averageHeartRate: 90,
+      },
+      {
+        logId: 90000000002,
+        activityName: "Spinning",
+        startTime: "06/21/26 18:00:00",
+        duration: 3000000,
+        activeDuration: 3000000,
+        calories: 400,
+        averageHeartRate: 135,
+      },
+      {
+        logId: 90000000003,
+        activityName: "Yoga",
+        startTime: "06/22/26 17:00:00",
+        duration: 2400000,
+        activeDuration: 2400000,
+        calories: 120,
+        averageHeartRate: 85,
+      },
+      {
+        logId: 90000000004,
+        activityName: "Weights",
+        startTime: "06/23/26 16:00:00",
+        duration: 2700000,
+        activeDuration: 2700000,
+        calories: 250,
+        averageHeartRate: 110,
+      },
+      {
+        logId: 90000000005,
+        activityName: "Meditating",
+        startTime: "06/24/26 15:00:00",
+        duration: 1800000,
+        activeDuration: 1800000,
+        calories: 20,
+        averageHeartRate: 65,
+      },
     ]),
   ],
   // Intraday: per-second HR, and the two summable minute streams. The steps file
@@ -272,7 +317,7 @@ describe("Fitbit Takeout import", () => {
 
     const acts = db
       .prepare(
-        `SELECT date, type, title, distance_km, duration_min, avg_hr FROM activities
+        `SELECT date, type, title, distance_km, duration_min, avg_hr, components FROM activities
           WHERE profile_id = ? ORDER BY date`
       )
       .all(profileId) as {
@@ -282,16 +327,89 @@ describe("Fitbit Takeout import", () => {
       distance_km: number | null;
       duration_min: number | null;
       avg_hr: number | null;
+      components: string | null;
     }[];
-    expect(acts).toHaveLength(2);
+    expect(acts).toHaveLength(6);
     // Miles → km, stored at the metric's 2dp precision. Ignoring `distanceUnit`
     // would store the raw 0.17 and under-report the swim by ~38%.
     const swim = acts.find((a) => a.title === "Swim")!;
     expect(swim.type).toBe("cardio");
     expect(swim.distance_km).toBe(0.27);
+    expect(JSON.parse(swim.components!)).toEqual([
+      {
+        name: "Swimming",
+        type: "cardio",
+        distance_km: 0.27,
+        duration_min: 17,
+      },
+    ]);
     const bike = acts.find((a) => a.title === "Outdoor Bike")!;
     expect(bike.type).toBe("cardio");
     expect(bike.avg_hr).toBe(155);
+    expect(JSON.parse(bike.components!)).toEqual([
+      {
+        name: "Cycling",
+        type: "cardio",
+        distance_km: null,
+        duration_min: 125,
+      },
+    ]);
+    const walk = acts.find((a) => a.title === "Walk")!;
+    expect(JSON.parse(walk.components!)).toEqual([
+      {
+        name: "Walking",
+        type: "cardio",
+        distance_km: null,
+        duration_min: 20,
+      },
+    ]);
+    const spinning = acts.find((a) => a.title === "Spinning")!;
+    expect(JSON.parse(spinning.components!)).toEqual([
+      {
+        name: "Stationary Bike",
+        type: "cardio",
+        distance_km: null,
+        duration_min: 50,
+      },
+    ]);
+    const yoga = acts.find((a) => a.title === "Yoga")!;
+    expect(yoga.type).toBe("recovery");
+    expect(JSON.parse(yoga.components!)).toEqual([
+      {
+        name: "Yoga",
+        type: "recovery",
+        distance_km: null,
+        duration_min: 40,
+      },
+    ]);
+    const weights = acts.find((a) => a.title === "Weights")!;
+    expect(weights.type).toBe("strength");
+    expect(JSON.parse(weights.components!)).toEqual([
+      {
+        name: "Weight Training",
+        type: "strength",
+        distance_km: null,
+        duration_min: 45,
+      },
+    ]);
+
+    const practices = db
+      .prepare(
+        `SELECT practice, date, time, duration_min, source, external_id, edited
+           FROM practice_logs WHERE profile_id = ?`
+      )
+      .all(profileId);
+    expect(practices).toEqual([
+      {
+        practice: "Meditation",
+        date: "2026-06-24",
+        time: "11:00",
+        duration_min: 30,
+        source: "fitbit-takeout",
+        external_id: "fitbit-takeout:90000000005",
+        edited: 0,
+      },
+    ]);
 
     const vitals = db
       .prepare(

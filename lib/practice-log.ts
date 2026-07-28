@@ -18,6 +18,7 @@ import type {
   PracticeLogOutcome,
   PracticeSessionMutationOutcome,
 } from "./types";
+import { writeImportTombstoneForRow } from "./integrations/tombstones";
 
 // A far-off (forged) date can't land a misdated session row (the #614 dose-log posture);
 // a legitimate late correction within the window still logs to its own day.
@@ -132,7 +133,8 @@ export function getPracticeSessions(
   args.push(boundedLimit);
   return db
     .prepare(
-      `SELECT id, practice, date, time, duration_min, notes, created_at
+      `SELECT id, practice, date, time, duration_min, notes,
+              source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND practice IN (${inClause(spellings)})
           ${windowSql}
@@ -194,7 +196,8 @@ export function getPracticeSession(
   return (
     (db
       .prepare(
-        `SELECT id, practice, date, time, duration_min, notes, created_at
+        `SELECT id, practice, date, time, duration_min, notes,
+                source, external_id, edited, created_at
            FROM practice_logs WHERE id = ? AND profile_id = ?`
       )
       .get(id, profileId) as PracticeLog | undefined) ?? null
@@ -226,7 +229,7 @@ export function updatePracticeSession(
   const notes = input.notes?.trim() || null;
   db.prepare(
     `UPDATE practice_logs
-        SET date = ?, time = ?, duration_min = ?, notes = ?
+        SET date = ?, time = ?, duration_min = ?, notes = ?, edited = 1
       WHERE id = ? AND profile_id = ?`
   ).run(input.date, time, durationMin, notes, id, profileId);
   const session = getPracticeSession(profileId, id);
@@ -257,10 +260,19 @@ export function deletePracticeSession(
   profileId: number,
   id: number
 ): PracticeSessionMutationOutcome {
-  const info = db
-    .prepare("DELETE FROM practice_logs WHERE id = ? AND profile_id = ?")
-    .run(id, profileId);
-  return info.changes === 1 ? { kind: "deleted", id } : { kind: "not-found" };
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT external_id FROM practice_logs WHERE id = ? AND profile_id = ?`
+      )
+      .get(id, profileId) as { external_id: string | null } | undefined;
+    if (!row) return { kind: "not-found" };
+    writeImportTombstoneForRow(profileId, "practice_logs", row);
+    const info = db
+      .prepare("DELETE FROM practice_logs WHERE id = ? AND profile_id = ?")
+      .run(id, profileId);
+    return info.changes === 1 ? { kind: "deleted", id } : { kind: "not-found" };
+  });
 }
 
 // Re-key every stored spelling in one identity family after a practice rename.
