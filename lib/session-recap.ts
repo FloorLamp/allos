@@ -54,6 +54,10 @@ export interface RecapSet {
 
 export interface RecapExercise {
   exercise: string; // the logged variant name
+  // The registry implement the session's sets were performed on (first non-null),
+  // or null for the unassigned lane — the LOAD CONTEXT the vs-last delta compares
+  // within (#1610). Optional so a caller with no implement data reads as unassigned.
+  equipmentId?: number | null;
   sets: RecapSet[];
 }
 
@@ -87,6 +91,9 @@ export interface RecapHistorySession {
   activityId: number;
   date: string;
   exercise: string;
+  // The prior session's load context (#1610) — RecentSession ships it, so an
+  // ExerciseHistoryMap stays structurally assignable with no mapping layer.
+  equipmentId?: number | null;
   baseKg: number; // bodyweight folded into loads for this session (0 = none)
   sets: RecapHistorySet[];
 }
@@ -270,7 +277,12 @@ export function sessionRecap(
     // Delta vs the previous session (implement-appropriate seed), by best e1RM.
     let deltaE1rmKg: number | null = null;
     if (curBest && prior.length > 0) {
-      const seed = pickSeedSessions(prior, ex.exercise);
+      // Same LOAD CONTEXT as the session just logged (#1610): a hotel machine's
+      // numbers are not a delta against the home machine's, so when this session's
+      // implement has no prior history the recap shows no delta rather than a
+      // meaningless one. RecentSession ships equipmentId, so pickSeedSessions
+      // resolves the lane here exactly as the editor and coaching surfaces do.
+      const seed = pickSeedSessions(prior, ex.exercise, ex.equipmentId ?? null);
       const seedSides = seed.flatMap((s) => historySides(s.sets, s.baseKg));
       const prevBest = sessionBest(seedSides);
       if (prevBest) deltaE1rmKg = round(curBest.e1rm - prevBest.e1rm, 1);
@@ -321,15 +333,18 @@ export function sessionRecap(
 // Group flattened set rows (first-seen order) into RecapExercises. Shared by both
 // mappers so exercise ordering + grouping can't diverge between the paths.
 function groupExercises(
-  rows: { exercise: string; set: RecapSet }[]
+  rows: { exercise: string; equipmentId: number | null; set: RecapSet }[]
 ): RecapExercise[] {
   const out: RecapExercise[] = [];
-  for (const { exercise, set } of rows) {
+  for (const { exercise, equipmentId, set } of rows) {
     let e = out.find((x) => x.exercise === exercise);
     if (!e) {
-      e = { exercise, sets: [] };
+      e = { exercise, equipmentId: null, sets: [] };
       out.push(e);
     }
+    // First non-null implement of the exercise, exactly how RecentSession resolves a
+    // session's equipment — so the recap's load context matches the history's.
+    if (e.equipmentId == null && equipmentId != null) e.equipmentId = equipmentId;
     e.sets.push(set);
   }
   return out;
@@ -353,6 +368,7 @@ export function recapSessionFromPayload(
 ): RecapInputSession {
   const rows = flat.map((s) => ({
     exercise: s.exercise,
+    equipmentId: s.equipmentId,
     set: {
       weightKg: s.weight != null ? toKg(s.weight, unit) : null,
       reps: s.reps,
@@ -378,6 +394,7 @@ export function recapSessionFromEditData(
   const ordered = [...data.sets].sort((a, b) => a.set_number - b.set_number);
   const rows = ordered.map((s) => ({
     exercise: s.exercise,
+    equipmentId: s.equipment_id,
     set: {
       weightKg: s.weight_kg,
       reps: s.reps,

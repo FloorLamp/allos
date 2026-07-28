@@ -17,9 +17,18 @@
 // with its rationale; the boundaries are unit-tested in
 // lib/__tests__/training-observations.test.ts.
 
-import { liftInfo, type MovementPattern } from "./lifts";
+import {
+  exerciseHistoryKey,
+  liftInfo,
+  movementLoadKey,
+  type MovementPattern,
+} from "./lifts";
 import { theilSenSlopePerDay, median, type DatedPoint } from "./robust-stats";
-import { plateauFindingDetail, type UpcomingDeload } from "./plateau-advice";
+import {
+  plateauFindingDetail,
+  plateauSubject,
+  type UpcomingDeload,
+} from "./plateau-advice";
 
 // Re-exported for the historical import path — the type moved to lib/plateau-advice
 // (the one-computation home of the plateau-break copy, #1203).
@@ -47,6 +56,12 @@ export interface TrainingObservation {
   // The exercise a stale/plateau finding is about (null for the push/pull balance
   // finding, which spans the whole rotation). Used for the deep link + re-key.
   exercise: string | null;
+  // The LOAD CONTEXT a plateau finding is about (#1610): the registry equipment the
+  // stalled series was measured on. null for the unassigned lane, for stale (a
+  // movement-wide signal) and for the balance finding. Carried so downstream
+  // surfaces — notably the activity form's inline hint — can match a finding to the
+  // implement actually selected on the part rather than to any implement.
+  equipmentId: number | null;
 }
 
 // ---- Signal keys (single source of truth) ---------------------------------
@@ -67,17 +82,38 @@ export const PLATEAU_LEVEL_BUCKET_KG = 5;
 // The old key shapes, kept only so a dismissal stored before #436 still suppresses
 // the current finding via Finding.supersedes rather than orphaning. Never written as
 // a fresh dismissal — the *SignalKey builders below (with the episode anchor) are.
+//
+// IDENTITY (#1399/#1610): these are NOT keyed on the raw display name. A name-keyed
+// dismissal drifts as which variant spelling is the group's newest name, so
+// dismissing "Barbell Curl"'s plateau failed to silence the same lift logged as
+// "Curl" (#482's "must not drift as which member is newest"; #203's recycled-name
+// wrong-suppression). Each key now follows exactly the identity ITS series groups on:
+//
+//   • stale   → exerciseHistoryKey — a MOVEMENT going quiet. Which implement it was
+//               last done on is irrelevant to "you stopped doing it".
+//   • plateau → movementLoadKey — the same variant-collapsed movement PLUS the
+//               equipment lane, because that is how the e1RM series is grouped once
+//               load contexts exist (#1610). Two machines stall independently and
+//               neither dismissal may silence the other.
+//
+// Re-keying is the #482 name-keyed re-key: a dismissal stored under the old raw-name
+// key goes inert and the finding resurfaces once, exactly as biomarkerDismissalKey's
+// re-key did. There is no compatible dual-read for the old shape — the old string
+// carried a display name we can no longer reconstruct an identity from.
 
 export function trainingBalanceLegacyKey(): string {
   return `${TRAINING_OBS_PREFIX}balance:push-pull`;
 }
 
 export function staleExerciseLegacyKey(exercise: string): string {
-  return `${TRAINING_OBS_PREFIX}stale:${exercise.trim().toLowerCase()}`;
+  return `${TRAINING_OBS_PREFIX}stale:${exerciseHistoryKey(exercise)}`;
 }
 
-export function plateauLegacyKey(exercise: string): string {
-  return `${TRAINING_OBS_PREFIX}plateau:${exercise.trim().toLowerCase()}`;
+export function plateauLegacyKey(
+  exercise: string,
+  equipmentId: number | null = null
+): string {
+  return `${TRAINING_OBS_PREFIX}plateau:${movementLoadKey(exercise, equipmentId)}`;
 }
 
 // ---- Episodic key builders (#436) ----
@@ -104,9 +140,10 @@ export function staleExerciseSignalKey(
 // the same load keeps one anchor so the dismissal sticks.
 export function plateauSignalKey(
   exercise: string,
-  levelAnchor: string
+  levelAnchor: string,
+  equipmentId: number | null = null
 ): string {
-  return `${plateauLegacyKey(exercise)}:${levelAnchor}`;
+  return `${plateauLegacyKey(exercise, equipmentId)}:${levelAnchor}`;
 }
 
 // The e1RM-level episode anchor for a plateau (the working load bucketed to
@@ -183,6 +220,7 @@ export function detectPushPullImbalance(
       `sets — noticeably more ${heavier} than ${lighter}. Adding a little more ` +
       `${lighter} volume keeps the two sides in balance.`,
     exercise: null,
+    equipmentId: null,
   };
 }
 
@@ -238,6 +276,9 @@ export function detectStaleExercises(
           `You trained ${s.exercise} regularly but haven't in about ${weeks} ` +
           `weeks. If it's still part of your plan, work it back into the rotation.`,
         exercise: s.exercise,
+        // Staleness is a MOVEMENT-wide signal: "you stopped doing this lift", not
+        // "you stopped doing it on that machine". No load context (#1610).
+        equipmentId: null,
       },
     });
   }
@@ -283,6 +324,12 @@ export interface E1rmPoint extends DatedPoint {
 export interface E1rmSeries {
   exercise: string;
   points: E1rmPoint[]; // { date, value: e1rmKg, reps }, any order
+  // The LOAD CONTEXT this series was measured in (#1610): the registry equipment id
+  // the sets were performed on and its label, or null/null for the unassigned lane.
+  // Absent when the caller grouped movement-wide, which reads as the unassigned lane
+  // — the pre-#1610 shape, unchanged.
+  equipmentId?: number | null;
+  equipment?: string | null;
 }
 
 // Whether a single lift's windowed e1RM series is flat (a plateau). Pure over the
@@ -343,16 +390,26 @@ export function detectPlateaus(
     );
     // Copy is the shared one-computation plateau-break advice (#1203/#221) — the
     // deload magnitude and the named variations phrased identically across every
-    // surface; the scheduled-deload-week cross-reference (#741) is preserved.
-    const detail = plateauFindingDetail(s.exercise, upcomingDeload);
+    // surface; the scheduled-deload-week cross-reference (#741) is preserved. The
+    // load context only NAMES the subject (#1610); the catalog lookups behind the
+    // advice still run on the raw exercise.
+    const equipmentId = s.equipmentId ?? null;
+    const equipment = s.equipment ?? null;
+    const detail = plateauFindingDetail(s.exercise, upcomingDeload, equipment);
     out.push({
       kind: "plateau",
-      key: plateauSignalKey(s.exercise, levelAnchor),
-      legacyKey: plateauLegacyKey(s.exercise),
-      title: `${s.exercise} has plateaued`,
+      key: plateauSignalKey(s.exercise, levelAnchor, equipmentId),
+      legacyKey: plateauLegacyKey(s.exercise, equipmentId),
+      title: `${plateauSubject(s.exercise, equipment)} has plateaued`,
       detail,
       exercise: s.exercise,
+      equipmentId,
     });
   }
-  return out.sort((a, b) => a.exercise!.localeCompare(b.exercise!));
+  // Alphabetical for deterministic ordering, then by key so two load contexts of ONE
+  // movement (same display name) keep a stable order too (#1610).
+  return out.sort(
+    (a, b) =>
+      a.exercise!.localeCompare(b.exercise!) || a.key.localeCompare(b.key)
+  );
 }
