@@ -92,6 +92,25 @@ export function seedIntegrationSyncEvents(): void {
     "2026-07-08 07:00:00"
   );
 
+  // One-off Fitbit archive import. Unlike the recurring sources below, this belongs
+  // in Review's chronological Imports feed beside documents and paste jobs.
+  ins.run(
+    PROFILE_ID,
+    "fitbit-takeout",
+    "2026-07-10 10:00:00",
+    1,
+    null,
+    null,
+    5, // received
+    5, // written
+    3, // inserted
+    0, // updated
+    2, // unchanged
+    0, // skipped
+    null, // raw_ref
+    null
+  );
+
   // ---- #1333 per-row provenance drill-in fixture -----------------------------
   // Attach integration_sync_rows to the healthy Health Connect event above so its
   // Connected-sources card renders the "What this wrote" drill-in with resolvable deep

@@ -28,8 +28,9 @@ import type {
 // duplicate/conflict pairs (issue #10, Phase 2) span both, then
 // (c) "Connected sources" (<ConnectedSources>) — the RECURRING per-provider streams
 // collapsed to latest-state with a Sync now / push explainer — and
-// (d) "Imports" (<ImportFeed>) — the chronological one-off feed of documents +
-// paste jobs. Server component — the page reads everything via lib/queries.
+// (d) "Imports" (<ImportFeed>) — the chronological one-off feed of documents,
+// archive imports, and paste jobs. Server component — the page reads everything via
+// lib/queries.
 
 function providerName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;

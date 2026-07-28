@@ -14,10 +14,14 @@ import RelativeTime from "./RelativeTime";
 export default function IntegrationSyncHistoryLink({
   lastSuccessAt,
   connected,
+  surface = "sources",
 }: {
   lastSuccessAt: string | null;
   connected: boolean;
+  surface?: "sources" | "imports";
 }) {
+  const destination =
+    surface === "imports" ? "Review’s Imports" : "Review’s Connected sources";
   return (
     <Link
       href="/data?section=review"
@@ -36,13 +40,15 @@ export default function IntegrationSyncHistoryLink({
                 value={lastSuccessAt}
                 className="font-medium text-slate-600 dark:text-slate-300"
               />
-              . See every sync — what it wrote, skipped, or errored — in
-              Review’s Connected sources.
+              . See every sync — what it wrote, skipped, or errored — in{" "}
+              {destination}.
             </>
+          ) : surface === "imports" ? (
+            `No successful import yet. Track each attempt — what it wrote, skipped, or errored — in ${destination}.`
           ) : connected ? (
-            "No successful sync yet. Track each sync — what it wrote, skipped, or errored — in Review’s Connected sources."
+            `No successful sync yet. Track each sync — what it wrote, skipped, or errored — in ${destination}.`
           ) : (
-            "Not connected. Once this syncs, follow each run in Review’s Connected sources."
+            `Not connected. Once this syncs, follow each run in ${destination}.`
           )}
         </p>
       </div>

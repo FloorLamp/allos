@@ -123,6 +123,7 @@ export default async function FitbitTakeoutPage() {
           <IntegrationSyncHistoryLink
             lastSuccessAt={lastImport}
             connected={conn?.status === "connected"}
+            surface="imports"
           />
         </div>
       </div>

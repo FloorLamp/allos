@@ -5,7 +5,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { ZipBuilder } from "@/lib/zip-write";
-import { importTakeoutArchive } from "@/lib/integrations/fitbit-takeout-import";
+import {
+  FitbitTakeoutWriteError,
+  importTakeoutArchive,
+} from "@/lib/integrations/fitbit-takeout-import";
 import { captureDelete } from "@/lib/undo-delete-db";
 
 // DB INTEGRATION TIER — the Fitbit Google Takeout importer end to end: a REAL zip on
@@ -496,18 +499,29 @@ describe("Fitbit Takeout import", () => {
   it("records ONE sync event per import, with the round-trip note", () => {
     const ev = db
       .prepare(
-        `SELECT ok, received, skipped, details FROM integration_sync_events
+        `SELECT ok, received, written, inserted, updated, unchanged,
+                suppressed, edited, skipped, details
+           FROM integration_sync_events
           WHERE profile_id = ? AND provider = 'fitbit-takeout'
           ORDER BY id DESC LIMIT 1`
       )
       .get(profileId) as {
       ok: number;
       received: number;
+      written: number;
+      inserted: number;
+      updated: number;
+      unchanged: number;
+      suppressed: number;
+      edited: number;
       skipped: number;
       details: string;
     };
     expect(ev.ok).toBe(1);
-    expect(ev.received).toBeGreaterThan(0);
+    expect(ev.written).toBe(ev.inserted + ev.updated + ev.unchanged);
+    expect(ev.received).toBe(
+      ev.written + ev.suppressed + ev.edited + ev.skipped
+    );
     const details = JSON.parse(ev.details) as { warnings: string[] };
     expect(details.warnings.join(" ")).toMatch(/Health Connect/);
   });
@@ -534,5 +548,125 @@ describe("Fitbit Takeout import", () => {
         )
         .get(profileId)
     ).toEqual({ suppressed: 1 });
+  });
+
+  it("records committed chunks and provenance when a later chunk fails", () => {
+    const partialProfile = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('TAKEOUT-PARTIAL')").run()
+        .lastInsertRowid
+    );
+    setTimezone(partialProfile, TZ);
+
+    const exerciseName = `${ROOT}/Global Export Data/exercise-partial.json`;
+    const externalIds = [
+      "fitbit-takeout:99000000001",
+      "fitbit-takeout:99000000002",
+    ];
+    const exercises = [
+      {
+        logId: 99000000001,
+        activityName: "Walk",
+        startTime: "07/20/26 09:00:00",
+        duration: 1200000,
+        activeDuration: 1200000,
+        calories: 100,
+      },
+      {
+        logId: 99000000002,
+        activityName: "Walk",
+        startTime: "07/21/26 09:00:00",
+        duration: 1200000,
+        activeDuration: 1200000,
+        calories: 100,
+      },
+    ];
+    const zb = new ZipBuilder();
+    const partialArchive = path.join(
+      os.tmpdir(),
+      `allos-takeout-partial-${process.pid}.zip`
+    );
+    fs.writeFileSync(
+      partialArchive,
+      Buffer.concat([
+        zb.file(exerciseName, Buffer.from(JSON.stringify(exercises))),
+        zb.end(),
+      ])
+    );
+
+    db.exec("DROP TRIGGER IF EXISTS fitbit_partial_failure_test");
+    db.exec(`
+      CREATE TRIGGER fitbit_partial_failure_test
+      BEFORE INSERT ON activities
+      WHEN NEW.profile_id = ${partialProfile}
+       AND NEW.external_id = '${externalIds[1]}'
+      BEGIN
+        SELECT RAISE(ABORT, 'synthetic Fitbit chunk failure');
+      END
+    `);
+
+    try {
+      expect(() =>
+        importTakeoutArchive(partialProfile, partialArchive, 1)
+      ).toThrow(FitbitTakeoutWriteError);
+
+      const activities = db
+        .prepare(
+          `SELECT external_id FROM activities
+            WHERE profile_id = ? AND source = 'fitbit-takeout'
+            ORDER BY external_id`
+        )
+        .all(partialProfile) as { external_id: string }[];
+      expect(activities.map((row) => row.external_id)).toEqual([
+        externalIds[0],
+      ]);
+
+      const event = db
+        .prepare(
+          `SELECT id, ok, received, written, inserted, updated, unchanged,
+                  suppressed, edited, skipped, error
+             FROM integration_sync_events
+            WHERE profile_id = ? AND provider = 'fitbit-takeout'
+            ORDER BY id DESC LIMIT 1`
+        )
+        .get(partialProfile) as {
+        id: number;
+        ok: number;
+        received: number;
+        written: number;
+        inserted: number;
+        updated: number;
+        unchanged: number;
+        suppressed: number;
+        edited: number;
+        skipped: number;
+        error: string;
+      };
+      expect(event).toMatchObject({
+        ok: 0,
+        received: 1,
+        written: 1,
+        inserted: 1,
+        updated: 0,
+        unchanged: 0,
+        suppressed: 0,
+        edited: 0,
+        skipped: 0,
+      });
+      expect(event.error).toMatch(/writing 1 record/);
+
+      const rows = db
+        .prepare(
+          `SELECT target_table, disposition
+             FROM integration_sync_rows
+            WHERE event_id = ?`
+        )
+        .all(event.id);
+      expect(rows).toEqual([
+        { target_table: "activities", disposition: "inserted" },
+      ]);
+    } finally {
+      db.exec("DROP TRIGGER IF EXISTS fitbit_partial_failure_test");
+      fs.rmSync(partialArchive, { force: true });
+    }
   });
 });

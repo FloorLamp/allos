@@ -38,6 +38,7 @@ import {
 } from "@/lib/produced-count";
 import type { PersistInput } from "@/lib/import-shape";
 import { db } from "@/lib/db";
+import { recordSyncEvent } from "@/lib/integrations/connections";
 
 const DATE = "2020-05-01";
 
@@ -411,6 +412,40 @@ describe("getDocumentProduced", () => {
         `${snapshot} extracted · ${live} remain (2 deleted, merged, or reassigned)`
       );
     }
+  });
+
+  it("includes profile-scoped Fitbit archive events in the one-off Imports feed", () => {
+    const eventA = recordSyncEvent(profileA, "fitbit-takeout", {
+      ok: true,
+      received: 5,
+      written: 5,
+      inserted: 3,
+      updated: 0,
+      unchanged: 2,
+      suppressed: 0,
+      edited: 0,
+      skipped: 0,
+    });
+    const eventB = recordSyncEvent(profileB, "fitbit-takeout", {
+      ok: false,
+      error: "Other profile's archive failed.",
+    });
+    expect(eventA).not.toBeNull();
+    expect(eventB).not.toBeNull();
+
+    const syncs = getImportDocumentsFeed(profileA, 100).filter(
+      (entry) => entry.stream === "sync"
+    );
+    expect(syncs).toHaveLength(1);
+    expect(syncs[0]).toMatchObject({
+      stream: "sync",
+      event: {
+        id: eventA,
+        provider: "fitbit-takeout",
+        inserted: 3,
+        unchanged: 2,
+      },
+    });
   });
 
   it("is profile-scoped: asking A about B's document finds nothing", () => {

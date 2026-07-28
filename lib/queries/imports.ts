@@ -31,6 +31,8 @@ import {
   mergeFeed,
   documentEntry,
   jobEntry,
+  syncEntry,
+  type FeedSyncEvent,
   type FeedEntry,
 } from "../import-feed";
 import {
@@ -117,14 +119,32 @@ export function getImportLog(profileId: number): ImportLogRow[] {
   ]);
 }
 
+// A profile's archive-import sync events, newest first. Fitbit Takeout is a one-off
+// user upload, not a recurring connected source, so its event history belongs beside
+// uploaded documents and paste jobs in Review's chronological Imports feed.
+function getArchiveImportSyncEvents(
+  profileId: number,
+  limit: number
+): FeedSyncEvent[] {
+  return db
+    .prepare(
+      `SELECT id, provider, at, ok, window_start, window_end,
+              inserted, updated, unchanged, written, suppressed, edited, skipped,
+              error, raw_ref
+         FROM integration_sync_events
+        WHERE profile_id = ? AND provider = 'fitbit-takeout'
+        ORDER BY at DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, limit) as FeedSyncEvent[];
+}
+
 // The "Imports" feed behind Data → Review: a profile's ONE-OFF imports — uploaded
-// documents + paste/CSV jobs — merged newest-first, where chronology is the point.
-// Background integration syncs are deliberately NOT here (issue #208): recurring
-// per-provider streams live in their own "Connected sources" section
-// (getConnectedSources), collapsed to latest-state, so the hourly sync noise can't
-// drown the occasional document row. Composes the existing profile-scoped reads
-// (getImportLogDocuments, getImportLogJobs) — so scoping is inherited — and hands
-// the merge/humanize to the pure lib/import-feed. Capped at `limit` after the merge.
+// documents, paste/CSV jobs, and archive imports — merged newest-first, where
+// chronology is the point. Recurring integration syncs remain in their own
+// "Connected sources" section (getConnectedSources), collapsed to latest-state, so
+// hourly sync noise cannot drown the occasional import. Capped at `limit` after the
+// merge.
 export function getImportDocumentsFeed(
   profileId: number,
   limit = 40
@@ -144,7 +164,8 @@ export function getImportDocumentsFeed(
     })
   );
   const jobs = getImportLogJobs(profileId).map(jobEntry);
-  return mergeFeed([...documents, ...jobs]).slice(0, limit);
+  const archives = getArchiveImportSyncEvents(profileId, limit).map(syncEntry);
+  return mergeFeed([...documents, ...jobs, ...archives]).slice(0, limit);
 }
 
 // Read a single scalar COUNT(*) from a prepared statement result.
