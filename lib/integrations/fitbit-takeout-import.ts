@@ -14,7 +14,12 @@ import {
   parseEocd,
   type ZipIndexEntry,
 } from "@/lib/zip-index";
-import { emptyCounts, foldCounts, type UpsertCounts } from "./sync-log";
+import {
+  emptyCounts,
+  foldCounts,
+  type ProvenanceEntry,
+  type UpsertCounts,
+} from "./sync-log";
 import {
   upsertActivities,
   upsertBodyMetrics,
@@ -23,7 +28,7 @@ import {
   upsertPracticeLogs,
   upsertVitals,
 } from "./normalize";
-import { recordSyncEvent } from "./connections";
+import { recordSyncEvent, recordSyncRows } from "./connections";
 import {
   FITBIT_TAKEOUT_ID,
   classifyTakeoutEntry,
@@ -234,10 +239,13 @@ export function importTakeoutArchive(
   const { parsed, entriesRead, entriesSkipped } = parseTakeoutArchive(path, tz);
 
   let counts = emptyCounts();
+  const provenance: ProvenanceEntry[] = [];
   for (const slice of chunk(parsed.bodyMetrics, chunkSize))
     counts = foldCounts([
       counts,
-      writeTx(() => upsertBodyMetrics(profileId, slice, FITBIT_TAKEOUT_ID)),
+      writeTx(() =>
+        upsertBodyMetrics(profileId, slice, FITBIT_TAKEOUT_ID, provenance)
+      ),
     ]);
   for (const slice of chunk(parsed.hrMinutes, chunkSize))
     counts = foldCounts([
@@ -247,22 +255,31 @@ export function importTakeoutArchive(
   for (const slice of chunk(parsed.samples, chunkSize))
     counts = foldCounts([
       counts,
-      writeTx(() => upsertMetricSamples(profileId, slice, FITBIT_TAKEOUT_ID)),
+      writeTx(() =>
+        upsertMetricSamples(profileId, slice, FITBIT_TAKEOUT_ID, provenance)
+      ),
     ]);
   for (const slice of chunk(parsed.activities, chunkSize))
     counts = foldCounts([
       counts,
-      writeTx(() => upsertActivities(profileId, slice, FITBIT_TAKEOUT_ID)),
+      writeTx(() =>
+        upsertActivities(profileId, slice, FITBIT_TAKEOUT_ID, provenance)
+      ),
     ]);
   for (const slice of chunk(parsed.practices, chunkSize))
     counts = foldCounts([
       counts,
-      writeTx(() => upsertPracticeLogs(profileId, slice, FITBIT_TAKEOUT_ID)),
+      writeTx(() =>
+        upsertPracticeLogs(profileId, slice, FITBIT_TAKEOUT_ID, provenance)
+      ),
     ]);
   for (const slice of chunk(parsed.vitals, chunkSize))
     counts = foldCounts([
       counts,
-      writeTx(() => upsertVitals(profileId, slice, FITBIT_TAKEOUT_ID)).counts,
+      writeTx(
+        () =>
+          upsertVitals(profileId, slice, FITBIT_TAKEOUT_ID, provenance).counts
+      ),
     ]);
 
   const warnings = [...parsed.warnings];
@@ -274,7 +291,7 @@ export function importTakeoutArchive(
       `${parsed.roundTripSkipped} rows already synced through Health Connect were left to that provider.`
     );
 
-  recordSyncEvent(profileId, FITBIT_TAKEOUT_ID, {
+  const eventId = recordSyncEvent(profileId, FITBIT_TAKEOUT_ID, {
     ok: true,
     received:
       parsed.bodyMetrics.length +
@@ -293,6 +310,7 @@ export function importTakeoutArchive(
     // warnings surface with no reader change.
     details: JSON.stringify({ warnings, origins: [] }),
   });
+  recordSyncRows(eventId, provenance);
 
   return {
     entriesRead,

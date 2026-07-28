@@ -121,7 +121,8 @@ export interface NormPracticeLog {
 export function upsertPracticeLogs(
   profileId: number,
   rows: NormPracticeLog[],
-  source: string
+  source: string,
+  sink?: SyncRowSink
 ): UpsertCounts {
   const compareCols = ["practice", "date", "time", "duration_min", "source"];
   const find = db.prepare(
@@ -171,12 +172,17 @@ export function upsertPracticeLogs(
           found.id,
           profileId
         );
+        sink?.push({
+          target_table: "practice_logs",
+          target_id: found.id,
+          disposition,
+        });
       }
       tallyUpsert(counts, disposition);
     } else if (tombstoned.has(row.external_id)) {
       counts.suppressed++;
     } else {
-      insert.run(
+      const info = insert.run(
         profileId,
         row.practice,
         row.date,
@@ -185,7 +191,13 @@ export function upsertPracticeLogs(
         source,
         row.external_id
       );
-      tallyUpsert(counts, classifyUpsert(false, false));
+      const disposition = classifyUpsert(false, false);
+      tallyUpsert(counts, disposition);
+      sink?.push({
+        target_table: "practice_logs",
+        target_id: Number(info.lastInsertRowid),
+        disposition: "inserted",
+      });
     }
   }
   return counts;

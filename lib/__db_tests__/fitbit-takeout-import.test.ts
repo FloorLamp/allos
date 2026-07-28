@@ -410,6 +410,17 @@ describe("Fitbit Takeout import", () => {
         edited: 0,
       },
     ]);
+    const practiceProvenance = db
+      .prepare(
+        `SELECT r.target_id, r.disposition
+           FROM integration_sync_rows r
+           JOIN integration_sync_events e ON e.id = r.event_id
+          WHERE e.profile_id = ? AND e.provider = 'fitbit-takeout'
+            AND r.target_table = 'practice_logs'`
+      )
+      .all(profileId);
+    expect(practiceProvenance).toHaveLength(1);
+    expect(practiceProvenance[0]).toMatchObject({ disposition: "inserted" });
 
     const vitals = db
       .prepare(

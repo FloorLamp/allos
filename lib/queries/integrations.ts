@@ -524,6 +524,9 @@ export function getSyncRowProvenance(
   const findRecord = db.prepare(
     "SELECT date, name, canonical_name FROM medical_records WHERE id = ? AND profile_id = ?"
   );
+  const findPractice = db.prepare(
+    "SELECT date, practice FROM practice_logs WHERE id = ? AND profile_id = ?"
+  );
 
   const out: SyncRowLink[] = [];
   for (const r of rows) {
@@ -552,7 +555,7 @@ export function getSyncRowProvenance(
       date = rec?.date ?? null;
       label = rec?.metric ?? "Metric";
       href = date ? timelineDayHref(date) : timelineDayHref("");
-    } else {
+    } else if (r.target_table === "medical_records") {
       // medical_records → Results (biomarker view when canonical, else the list).
       const rec = findRecord.get(r.target_id, profileId) as
         | { date: string; name: string | null; canonical_name: string | null }
@@ -564,6 +567,13 @@ export function getSyncRowProvenance(
       // label reads "URIC ACID" on a row that opens "Uric Acid".
       label = rec?.canonical_name?.trim() || rec?.name || "Lab result";
       href = biomarkerViewHref(rec?.canonical_name ?? null, rec?.name ?? null);
+    } else {
+      const rec = findPractice.get(r.target_id, profileId) as
+        { date: string; practice: string } | undefined;
+      deleted = !rec;
+      date = rec?.date ?? null;
+      label = rec?.practice || "Wellness practice";
+      href = date ? timelineDayHref(date) : timelineDayHref("");
     }
     out.push({
       id: r.id,

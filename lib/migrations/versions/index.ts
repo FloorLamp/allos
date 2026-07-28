@@ -117,6 +117,7 @@ import { migration as m115 } from "./115-metric-sample-edit-lock";
 import { migration as m116 } from "./116-food-event-meal-slot";
 import { migration as m117 } from "./117-fitbit-activity-components";
 import { migration as m118 } from "./118-imported-practice-logs";
+import { migration as m119 } from "./119-practice-sync-provenance";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -243,4 +244,5 @@ export const MIGRATIONS: Migration[] = [
   m116,
   m117,
   m118,
+  m119,
 ];
