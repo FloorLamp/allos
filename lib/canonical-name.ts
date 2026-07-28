@@ -538,12 +538,19 @@ export function distinguishVitaminDIsoform(
 export interface BiomarkerFamily {
   // The stable family key (unprefixed). biomarkerFamily() returns `family:<key>`.
   key: string;
-  // Lowercased member spellings — the finite SQL preimage. A stored row whose
-  // display name (canonical-or-raw) lowercases into this set is a family member.
+  // Lowercased member spellings — the family's enumerated vocabulary. A stored row
+  // whose display name (canonical-or-raw) lowercases into this set is a family
+  // member. Still the finite preimage (#394) the PANEL taxonomy realizes in SQL
+  // (lib/biomarker-panels.panelMemberSpellings) and the corpus the JS↔SQL parity
+  // tests pin — but no longer the family KEY's only SQL realization (see `match`).
   members: string[];
-  // Optional JS-only matcher for freeform spellings the SQL preimage can't list
-  // (e.g. "25-OH Vitamin D3 (Cholecalciferol)"). SQL surfaces rely on the finite
-  // member list; the retest generator (pure JS) gets the full regex coverage.
+  // Freeform matcher for spellings an enumeration can't list (e.g.
+  // "25-OH Vitamin D3 (Cholecalciferol)", an AI-coined A1c name that escaped
+  // snapCanonicalName). This is NOT JS-only: the SQL family key calls
+  // biomarkerFamily() through the `biomarker_family()` user function
+  // (lib/sql-functions.ts), so the dedup / is_latest partitions honour the regex
+  // exactly like the star, retest, and dismissal surfaces do (#1401). Keep it as
+  // tight as `members` — a name it accepts is folded into the family EVERYWHERE.
   match?: (lowerName: string) => boolean;
 }
 
@@ -629,10 +636,12 @@ export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
 // The identity of a biomarker name: its `family:<key>` when the name belongs to a
 // registered family, else the trimmed name itself (its own singleton identity).
 // This is the ONE grouping every biomarker surface keys on so they can't disagree
-// about what "Vitamin D" is. Returns "" for empty input. Non-family names are
-// returned unchanged (only case is folded downstream) so the JS result and the
-// SQL biomarkerFamilyKey() CASE-ELSE (which returns the raw display name) agree
-// under a COLLATE NOCASE compare.
+// about what "Vitamin D" is — including the SQL surfaces, which call THIS function
+// through the `biomarker_family()` user function (lib/sql-functions.ts) rather than
+// re-realizing it as an enumerated CASE that could only see `members` (#1401).
+// Returns "" for empty input. Non-family names are returned trimmed-but-unchanged
+// (only case is folded downstream), so a JS-derived key and the SQL key agree under
+// a COLLATE NOCASE compare.
 export function biomarkerFamily(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return "";

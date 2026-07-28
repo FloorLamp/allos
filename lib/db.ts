@@ -17,6 +17,7 @@ import {
 // into the Edge middleware / client bundles (where fs is unavailable) — keeping
 // log.ts itself Edge-safe.
 import "./error-log";
+import { registerSqlFunctions } from "./sql-functions";
 import { setTierConfigProvider } from "./ai-client";
 import { getTierConfigs } from "./settings/ai-tiers";
 
@@ -45,6 +46,11 @@ function createDb(): Database.Database {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   }
   const db = new Database(dbPath);
+  // Shared SQL user functions (lib/sql-functions.ts) — registered on the handle
+  // BEFORE anything prepares a statement, since a query that calls one fails to
+  // prepare if the function is missing. They are pure and deterministic; the only
+  // one today is biomarker_family(), the SQL half of the #482 identity family.
+  registerSqlFunctions(db);
   // busy_timeout MUST be the FIRST pragma set — before journal_mode = WAL (issue
   // #581). Parallel `next build` workers all open this same file on a cold boot and
   // race to establish WAL; switching journal mode to WAL takes a database lock, and

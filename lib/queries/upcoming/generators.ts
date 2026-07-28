@@ -346,7 +346,15 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
   const items: UpcomingItem[] = [];
   for (const r of byFamily.values()) {
     const name = r.canonical_name?.trim() || r.name;
-    const retestDays = retestDaysForBiomarker(r.canonical_name?.trim() || null);
+    // The cadence is looked up on the SAME display identity everything else in this
+    // loop uses (canonical-or-raw name), and resolves through the SAME retest family
+    // the readings were grouped by above (#1394/#1395) — so a family whose newest
+    // member the dataset doesn't name (an eAG line representing the A1c family, a
+    // vitamin-D fraction representing the 25-OH clock) keeps the family's curated
+    // interval instead of dropping to the flat 365-day default. Passing the bare
+    // `canonical_name` here also silently gave a legacy row with only a raw name no
+    // cadence at all, while its clock still grouped off that raw name.
+    const retestDays = retestDaysForBiomarker(name);
     // Fold in input freshness for a derived analyte (empty for everything else).
     let effectiveDate = r.date;
     for (const input of derivedInputCanonicalNamesFor(

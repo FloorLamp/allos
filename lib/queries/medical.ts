@@ -1,6 +1,7 @@
 import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
-import { biomarkerFamily, BIOMARKER_FAMILIES } from "../canonical-name";
+import { biomarkerFamily } from "../canonical-name";
+import { BIOMARKER_FAMILY_FN } from "../sql-functions";
 import {
   panelKeyOfExpr,
   panelOrderOfPanelExpr,
@@ -89,27 +90,28 @@ const BIOMARKER_NAME_KEY = biomarkerNameKey();
 // every biomarker surface partitions/matches on so none of them can disagree about
 // what "Vitamin D" is: the dedup partition, the is_latest/current marker, the
 // chart/detail series, and the starred tile all key on THIS instead of the bare
-// per-name key. It is the finite-preimage (#394) realization of the pure
-// biomarkerFamily(): SQL can't call the JS matcher, so each family's member
-// spellings are inlined as an `IN (...)` preimage (from the shared BIOMARKER_FAMILIES
-// data — one source of truth with the JS side) and every other name falls through to
-// the plain display-name key, byte-for-byte the pre-#482 grouping for non-family
-// analytes. Family keys and member strings are hardcoded constants (single-quote
-// escaped), so this is injection-safe. Pass a table alias for a self-join.
-function sqlStringLiteral(s: string): string {
-  return `'${s.replace(/'/g, "''")}'`;
-}
-// The family CASE over an arbitrary name expression — reused both for the records
-// grouping key (over the canonical-or-raw display name) and the star store (over
-// its bare canonical_name column), so both key on the identical family identity.
+// per-name key.
+//
+// It calls the SAME pure biomarkerFamily() the JS surfaces do, through the
+// `biomarker_family()` SQLite user function lib/db.ts registers (see
+// lib/sql-functions.ts) — literally one computation, not two realizations of it.
+// This USED to be a finite-preimage (#394) `CASE WHEN lower(name) IN (<members>)`
+// built from BIOMARKER_FAMILIES, which could only enumerate each family's finite
+// member list and structurally dropped the family's freeform `match` matcher. A
+// stored name caught only by that regex (an un-snapped AI-coined A1c spelling) was
+// then one family to the JS star/retest/dismissal surfaces and its OWN singleton
+// to the partitions below — the same measurement double-counted on one date and
+// markable "current" twice (#1401). Behavior is otherwise unchanged: an enumerated
+// member resolves to the identical `family:<key>` string, and every non-family name
+// still resolves to its own display name (now trimmed on both sides rather than
+// only the JS side), byte-for-byte the pre-#482 grouping for non-family analytes.
+//
+// Reused both for the records grouping key (over the canonical-or-raw display name)
+// and the star store (over its bare `key` column), so both key on the identical
+// family identity. The function name is a hardcoded constant, so this is
+// injection-safe. Pass a table alias for a self-join.
 function familyKeyOfExpr(nameExpr: string): string {
-  const whens = BIOMARKER_FAMILIES.map((fam) => {
-    const inList = fam.members.map(sqlStringLiteral).join(", ");
-    return `WHEN lower(${nameExpr}) IN (${inList}) THEN ${sqlStringLiteral(
-      `family:${fam.key}`
-    )}`;
-  }).join(" ");
-  return `CASE ${whens} ELSE ${nameExpr} END`;
+  return `${BIOMARKER_FAMILY_FN}(${nameExpr})`;
 }
 export function biomarkerFamilyKey(alias = ""): string {
   return familyKeyOfExpr(biomarkerNameKey(alias));
