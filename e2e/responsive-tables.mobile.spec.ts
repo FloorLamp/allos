@@ -81,12 +81,12 @@ test.describe("responsive tables: stacked card rows below sm (#1426)", () => {
     const ascending = (await firstTitle.innerText()).trim();
 
     const select = page.getByTestId("table-sort-select");
-    await settledSelect(page, select, "name:desc");
+    await settledSelect(page, select, "name:desc", {
+      destination: /sort=name&dir=desc/,
+    });
 
     // One sort model: the select writes the same `?sort=`/`?dir=` params the
     // (hidden) SortableHeader writes, and the server re-orders.
-    await expect(page).toHaveURL(/sort=name/);
-    await expect(page).toHaveURL(/dir=desc/);
     await expect
       .poll(async () => (await firstTitle.innerText()).trim())
       .not.toBe(ascending);
