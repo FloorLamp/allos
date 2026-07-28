@@ -152,7 +152,9 @@ export default function ActivityPartsList({
   // is open, so at most one overlay exists no matter how many parts are entered.
   const [guideFor, setGuideFor] = useState<number | null>(null);
   const guidePart =
-    guideFor != null && parts[guideFor] && getExerciseGuide(parts[guideFor].name)
+    guideFor != null &&
+    parts[guideFor] &&
+    getExerciseGuide(parts[guideFor].name)
       ? parts[guideFor]
       : null;
   return (
@@ -267,7 +269,7 @@ export default function ActivityPartsList({
                         type="button"
                         onClick={() => setGuideFor(pi)}
                         data-testid="exercise-guide-open"
-                        className="inline-flex h-11 shrink-0 items-center gap-1 rounded px-2 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-600 sm:h-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                        className="inline-flex h-11 shrink-0 items-center gap-1 rounded px-2 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-600 max-sm:mr-auto sm:h-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
                       >
                         <IconInfoCircle className="h-4 w-4" />
                         How to
