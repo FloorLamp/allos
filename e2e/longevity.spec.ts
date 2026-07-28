@@ -10,7 +10,7 @@ import {
 //   1. Every section renders for seeded profile 1 (it owns a complete PhenoAge
 //      panel, a VO2 Max reading, nightly sleep sessions, labs with curated
 //      ranges, and two guided fitness checks) — including the absorbed
-//      #protocols hub (templates strip + add form).
+//      #protocols hub (collapsed add form).
 //   2. The dashboard widget's pillar cards deep-link to /longevity#<anchor>.
 //   3. Absent pillars don't render: the activity-free EMPTY_TRAINING fixture
 //      (#809 — nothing logged at all) gets NO pillar sections, only the
@@ -63,11 +63,15 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
     biomarkers.getByTestId("longevity-biomarker-row").first() // first-ok: asserts a biomarker row renders in the scoped longevity section — order-agnostic presence
   ).toBeVisible();
 
-  // §5 Protocols — the absorbed hub: templates strip + add form present.
+  // §5 Protocols — the absorbed hub: rare-cadence creation stays collapsed.
   const protocols = main.getByTestId("longevity-protocols");
   await expect(protocols).toBeVisible();
-  await expect(protocols.getByTestId("protocol-templates")).toBeVisible();
-  await expect(protocols.getByTestId("protocol-form")).toBeVisible();
+  await expect(protocols.getByTestId("protocol-templates")).toHaveCount(0);
+  await expect(protocols.getByTestId("protocol-form")).toHaveCount(0);
+  await expect(protocols.getByTestId("new-protocol-toggle")).toBeVisible();
+  await expect(
+    protocols.getByTestId("longevity-wellness-link")
+  ).toHaveAttribute("href", "/wellness");
 });
 
 test("dashboard pillar cards deep-link to the Longevity anchors", async ({
@@ -100,7 +104,7 @@ test("absent pillars drop their sections; the interventions section always rende
   try {
     await page.goto("/longevity");
     const main = page.getByRole("main");
-    // The interventions section (and its create form) is the one constant.
+    // The interventions section (and its collapsed creation entry) is constant.
     await expect(main.getByTestId("longevity-protocols")).toBeVisible();
     await expect(main.getByTestId("longevity-empty")).toBeVisible();
     await expect(main.getByTestId("longevity-bio-age")).toHaveCount(0);
@@ -118,6 +122,6 @@ test("the old /protocols hub URL permanently redirects into #protocols", async (
   await page.goto("/protocols");
   await expect(page).toHaveURL(/\/longevity#protocols$/);
   await expect(
-    page.getByRole("main").getByTestId("protocol-templates")
+    page.getByRole("main").getByTestId("new-protocol-toggle")
   ).toBeVisible();
 });

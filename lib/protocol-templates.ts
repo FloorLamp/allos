@@ -19,7 +19,7 @@ export interface ProtocolTemplate {
   name: string;
   notes: string;
   // Outcome metric keys to pre-select (only those the profile actually tracks will
-  // render as checkboxes). Biomarker keys use the `biomarker:<canonical>` form.
+  // render as selected chips). Biomarker keys use the `biomarker:<canonical>` form.
   outcomeKeys: string[];
   // Suggested situation label + adherence practice (activity type × N/week).
   situation: string;

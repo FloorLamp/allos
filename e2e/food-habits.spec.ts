@@ -56,7 +56,9 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
   // Create a protocol that adopts the "Shellfish" food habit as its practice — the
   // #580 protocol↔target link. This also creates the shellfish habit target.
   await page.goto("/longevity#protocols");
-  const form = page.getByRole("main").getByTestId("protocol-form");
+  const main = page.getByRole("main");
+  await main.getByTestId("new-protocol-toggle").click();
+  const form = main.getByTestId("protocol-form");
   await form.getByLabel("Name").fill(protocolName);
   await form
     .getByTestId("protocol-practice-type")

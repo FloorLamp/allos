@@ -1,3 +1,11 @@
+import Link from "next/link";
+import {
+  IconActivityHeartbeat,
+  IconFlask2,
+  IconMoonStars,
+  IconRun,
+  IconTestPipe,
+} from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { getHealthspanPillars } from "@/lib/queries";
 import { longevitySections } from "@/lib/longevity";
@@ -37,31 +45,94 @@ export default async function LongevityPage({
   const fitness = byAnchor.get("fitness");
   const sleep = byAnchor.get("sleep");
   const biomarkers = byAnchor.get("biomarkers");
-  // A starter protocol template (issue #571) selected from the templates strip,
-  // seeding the add form. Null when no/unknown template is requested.
+  // A durable starter-template deep link (issue #571), expanding and seeding the
+  // otherwise-collapsed add form. Null when no/unknown template is requested.
   const template = protocolTemplateById((await searchParams).template);
 
   return (
-    <div>
+    <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Longevity"
-        subtitle="Evidence-backed healthspan pillars — each expands below as its data arrives — and the N-of-1 experiments you run against them. Pillars, never a composite score."
+        subtitle="Follow the signals that shape healthspan, then test what moves them."
       />
 
-      <BioAgeSection />
-      {fitness && <FitnessSection section={fitness} />}
-      {sleep && <SleepSection section={sleep} />}
-      {biomarkers && <BiomarkersSection section={biomarkers} />}
+      {sections.length > 0 && (
+        <nav
+          aria-label="Longevity sections"
+          className="-mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-1"
+        >
+          {sections.map((section) => (
+            <Link
+              key={section.anchor}
+              href={`#${section.anchor}`}
+              className="btn-ghost btn-sm shrink-0"
+            >
+              {section.title}
+            </Link>
+          ))}
+          <Link href="#protocols" className="btn-ghost btn-sm shrink-0">
+            <IconFlask2 className="h-4 w-4" aria-hidden />
+            Experiments
+          </Link>
+        </nav>
+      )}
+
+      <div className="space-y-4">
+        <BioAgeSection />
+        {fitness && <FitnessSection section={fitness} />}
+        {sleep && <SleepSection section={sleep} />}
+        {biomarkers && <BiomarkersSection section={biomarkers} />}
+      </div>
 
       {pillars.length === 0 && (
-        <p
-          className="mb-6 text-sm text-slate-500 dark:text-slate-400"
+        <section
+          className="card mb-6 overflow-hidden border-brand-100 dark:border-brand-950"
           data-testid="longevity-empty"
         >
-          No pillars yet — they appear as their data arrives: labs for
-          biological age and optimal-range share, sleep sessions for regularity,
-          and a fitness check or VO₂ reading for fitness percentiles.
-        </p>
+          <div className="flex items-start gap-3">
+            <span className="rounded-xl bg-brand-50 p-2.5 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
+              <IconActivityHeartbeat className="h-5 w-5" aria-hidden />
+            </span>
+            <div>
+              <h2 className="font-semibold text-slate-900 dark:text-slate-100">
+                Build your healthspan picture
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
+                Your overview appears as data arrives. Start with any signal;
+                there is no single longevity score to chase.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <Link
+              href="/data"
+              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+            >
+              <IconTestPipe
+                className="h-4 w-4 shrink-0 text-brand-500"
+                aria-hidden
+              />
+              Import lab results
+            </Link>
+            <Link
+              href="/sleep"
+              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+            >
+              <IconMoonStars
+                className="h-4 w-4 shrink-0 text-violet-500"
+                aria-hidden
+              />
+              Add sleep data
+            </Link>
+            <Link
+              href="/training?tab=fitness"
+              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+            >
+              <IconRun className="h-4 w-4 shrink-0 text-rose-500" aria-hidden />
+              Run a fitness check
+            </Link>
+          </div>
+        </section>
       )}
 
       <ProtocolsSection template={template} />

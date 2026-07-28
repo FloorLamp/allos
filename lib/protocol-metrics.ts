@@ -12,6 +12,8 @@
 // biomarker metrics resolve label/unit/direction from the canonical dataset at
 // read time (they're per-analyte and open-ended), so they are NOT listed below.
 
+import { preferredOutcomeKeyForBiomarker } from "./outcome-identity";
+
 // How "better" is judged for an outcome shift. `neutral` = goal-dependent (e.g.
 // body weight can be a cut or a bulk), so the engine reports the shift without a
 // good/bad verdict.
@@ -116,6 +118,16 @@ export function fixedMetricDef(key: string): OutcomeMetricDef | null {
   return FIXED_BY_KEY.get(key) ?? null;
 }
 
+// Map a valid key onto the single public identity for its logical outcome.
+// Legacy biomarker keys remain readable, but new writes collapse body-metric and
+// PhenoAge aliases onto their fixed keys.
+export function preferredOutcomeKey(key: string): string | null {
+  const parsed = parseOutcomeKey(key.trim());
+  if (!parsed) return null;
+  if (parsed.kind !== "biomarker") return key.trim();
+  return preferredOutcomeKeyForBiomarker(parsed.id) ?? `biomarker:${parsed.id}`;
+}
+
 // Normalize + dedupe a user-selected set of outcome keys, dropping blanks and
 // anything that doesn't parse. Order-preserving (first occurrence wins) so the
 // stored set is stable. Shared by the create/update actions.
@@ -123,9 +135,8 @@ export function normalizeOutcomeKeys(keys: Iterable<string>): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of keys) {
-    const k = (raw ?? "").trim();
+    const k = preferredOutcomeKey(raw ?? "");
     if (!k || seen.has(k)) continue;
-    if (!parseOutcomeKey(k)) continue;
     seen.add(k);
     out.push(k);
   }

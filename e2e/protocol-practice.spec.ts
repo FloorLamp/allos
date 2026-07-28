@@ -31,6 +31,7 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
 
   await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
+  await main.getByTestId("new-protocol-toggle").click();
   const form = main.getByTestId("protocol-form");
 
   await form.getByLabel("Name").fill(uniqueName);
@@ -99,6 +100,7 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
 
   await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
+  await main.getByTestId("new-protocol-toggle").click();
   const form = main.getByTestId("protocol-form");
 
   await form.getByLabel("Name", { exact: true }).fill(uniqueName);

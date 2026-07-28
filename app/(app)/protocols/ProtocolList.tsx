@@ -14,14 +14,13 @@ export default function ProtocolList({
 }) {
   if (items.length === 0) {
     return (
-      <div className="card text-sm text-slate-500 dark:text-slate-400">
-        No protocols yet. Start one to compare an intervention against your
-        baseline.
+      <div className="rounded-lg border border-dashed border-black/10 px-4 py-8 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
+        No experiments yet. Start one when you have a change worth testing.
       </div>
     );
   }
   return (
-    <ul className="space-y-3" data-testid="protocol-list">
+    <ul className="space-y-1" data-testid="protocol-list">
       {items.map((p) => {
         const ongoing = p.end_date == null;
         const range = ongoing
@@ -34,7 +33,7 @@ export default function ProtocolList({
           <li key={p.id}>
             <Link
               href={`/protocols/${p.id}`}
-              className="card flex items-center gap-3 transition hover:border-brand-300 dark:hover:border-brand-700"
+              className="flex items-center gap-3 rounded-lg px-3 py-3 transition hover:bg-white/70 dark:hover:bg-white/5"
               data-testid={`protocol-row-${p.id}`}
             >
               <IconFlask2
