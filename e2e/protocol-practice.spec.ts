@@ -192,8 +192,10 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await expectNoClippedContent(page);
 
   // Self-clean.
-  await row.click();
-  await page.waitForURL(/\/protocols\/\d+/);
+  const detailLink = row.getByRole("link");
+  await expect(detailLink).toHaveAttribute("href", /\/protocols\/\d+/);
+  await detailLink.press("Enter");
+  await expect(page).toHaveURL(/\/protocols\/\d+/);
   await hydratedClick(
     page,
     page.getByRole("main").getByRole("button", {
