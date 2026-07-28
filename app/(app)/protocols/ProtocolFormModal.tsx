@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import ModalShell from "@/components/ModalShell";
-import ProtocolForm, { type ProtocolFormProps } from "./ProtocolForm";
+import ProtocolForm, {
+  PROTOCOL_MODAL_CLASS,
+  type ProtocolFormProps,
+} from "./ProtocolForm";
 
 type CreateProtocolFormProps = Omit<
   ProtocolFormProps,
@@ -29,7 +32,7 @@ export default function ProtocolFormModal(props: CreateProtocolFormProps) {
         <ModalShell
           title="New protocol"
           onClose={() => setOpen(false)}
-          className="w-full max-w-5xl rounded-xl bg-white p-4 shadow-xl outline-none sm:p-6 dark:bg-ink-900"
+          className={PROTOCOL_MODAL_CLASS}
         >
           <ProtocolForm {...props} onDone={() => setOpen(false)} />
         </ModalShell>

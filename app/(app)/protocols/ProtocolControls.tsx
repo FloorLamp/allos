@@ -20,7 +20,7 @@ import type {
   ProtocolPractice,
   IntakeItemOption,
 } from "@/lib/queries/protocols";
-import ProtocolForm from "./ProtocolForm";
+import ProtocolForm, { PROTOCOL_MODAL_CLASS } from "./ProtocolForm";
 
 // Detail-page header + lifecycle controls for one protocol: an inline edit toggle
 // (reusing ProtocolForm with the update action), an "End now" action for an
@@ -242,7 +242,7 @@ export default function ProtocolControls({
         <ModalShell
           title="Edit protocol"
           onClose={() => setEditing(false)}
-          className="w-full max-w-5xl rounded-xl bg-white p-4 shadow-xl outline-none sm:p-6 dark:bg-ink-900"
+          className={PROTOCOL_MODAL_CLASS}
         >
           <ProtocolForm
             action={updateAction}

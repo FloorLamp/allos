@@ -30,6 +30,11 @@ export type ProtocolFormResult =
   | { ok: true; redirectTo?: `/protocols/${number}` }
   | { ok: false; error: string };
 
+// One geometry for both creation and edit. Wide enough for the outcome picker,
+// but deliberately below the app shell's largest work-surface modal.
+export const PROTOCOL_MODAL_CLASS =
+  "w-full max-w-4xl rounded-xl bg-white p-4 shadow-xl outline-none sm:p-6 dark:bg-ink-900";
+
 const PRACTICE_TYPE_LABELS: Record<string, string> = {
   strength: "Strength",
   cardio: "Cardio",
@@ -434,7 +439,7 @@ export default function ProtocolForm({
             id={`pr-notes-${uid}`}
             name="notes"
             className="input"
-            rows={2}
+            rows={5}
             defaultValue={protocol?.notes ?? activeTemplate?.notes ?? ""}
           />
         </div>
