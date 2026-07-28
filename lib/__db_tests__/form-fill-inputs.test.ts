@@ -20,7 +20,10 @@ import {
 import { buildActivePlateauHints } from "@/lib/rule-findings";
 import { dismissFinding, restoreFinding } from "@/lib/queries";
 import { exerciseHistoryKey } from "@/lib/lifts";
-import { TRAINING_OBS_PREFIX } from "@/lib/training-observations";
+import {
+  TRAINING_OBS_PREFIX,
+  plateauLegacyKey,
+} from "@/lib/training-observations";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -131,13 +134,15 @@ describe("buildActivePlateauHints (#923)", () => {
     const hints = buildActivePlateauHints(profileId, anchor);
     expect(hints).toHaveLength(1);
     expect(hints[0].exerciseKey).toBe(exerciseHistoryKey("Skullcrusher"));
+    // The lift carries no implement link, so the hint sits in the unassigned load
+    // lane and matches a part with no equipment selected (#1610).
+    expect(hints[0].equipmentId).toBeNull();
     expect(
       hints[0].dedupeKey.startsWith(`${TRAINING_OBS_PREFIX}plateau:`)
     ).toBe(true);
-    // The legacy (episode-less) key is carried for the #436 dual-read.
-    expect(hints[0].supersedes).toBe(
-      `${TRAINING_OBS_PREFIX}plateau:skullcrusher`
-    );
+    // The legacy (episode-less) key is carried for the #436 dual-read. It is built
+    // from the shared identity builder, not a raw display name (#1399).
+    expect(hints[0].supersedes).toBe(plateauLegacyKey("Skullcrusher"));
     // The pre-rendered inline copy carries the shared plateau-break advice (#1203):
     // the ~10% deload magnitude and named same-muscle variations.
     expect(hints[0].hintText).toContain("~10%");
