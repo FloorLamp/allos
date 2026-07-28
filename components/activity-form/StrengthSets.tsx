@@ -53,12 +53,8 @@ import {
   IconBarbell,
   IconAlertTriangle,
   IconCheck,
-  IconInfoCircle,
   IconTrendingDown,
 } from "@tabler/icons-react";
-import { getExerciseGuide } from "@/lib/exercise-guides";
-import ModalShell from "@/components/ModalShell";
-import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import {
   partIntent,
   partTotal,
@@ -116,12 +112,16 @@ function BrandedCheckbox({
 // seeds a working rating. The rating rides onto the set's declared intent — it
 // never replaces target reps / to-failure.
 //
-// SIZED TO THE OPTIONS COLUMN: the whole control fits the row's w-16 (64px)
-// options column (w-4 + w-7 + w-4 + borders = 62px), stacked above the warmup/
-// remove buttons — it must never widen that column, because the weight/reps
-// inputs' tap-target width is a pinned ergonomics contract (#337; the
+// SIZED TO THE OPTIONS COLUMN FROM `sm` UP: the whole control fits the row's
+// w-16 (64px) options column (w-4 + w-7 + w-4 + borders = 62px), stacked above
+// the warmup/remove buttons — it must never widen that column, because the
+// weight/reps inputs' tap-target width is a pinned ergonomics contract (#337; the
 // entry-ergonomics spec asserts the weight input keeps ≥64px). An optional,
 // blank-by-default control shrinks first; the load/reps inputs never do.
+//
+// BELOW `sm` there is no options column to fit (#1612): the set's identity and its
+// options share one horizontal toolbar row of their own, so the ± targets take the
+// 44px phone minimum there instead of the 16px-wide desktop sliver.
 function RpeStepper({
   value,
   onChange,
@@ -142,7 +142,7 @@ function RpeStepper({
         tabIndex={-1}
         onClick={() => onChange(stepRpe(value, -1))}
         aria-label="Decrease RPE"
-        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+        className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
         −
       </button>
@@ -162,7 +162,7 @@ function RpeStepper({
         tabIndex={-1}
         onClick={() => onChange(stepRpe(value, 1))}
         aria-label="Increase RPE"
-        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+        className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
         +
       </button>
@@ -248,17 +248,11 @@ export default function StrengthSets({
 }) {
   const formatPrefs = useFormatPrefs();
   const p = part;
-  // The how-to guide for the current lift (#734). Catalog lifts have one; a
-  // custom (non-catalog) lift resolves to undefined, so the ⓘ affordance simply
-  // doesn't render. The overlay reuses the SAME guide section the exercise detail
-  // panel embeds — one guide component, never a second exercise surface.
-  const [guideOpen, setGuideOpen] = useState(false);
   // Plateau hints dismissed in this session (#923) — an optimistic local hide so the
   // inline hint vanishes on tap while the shared-bus write persists it everywhere else.
   const [dismissedPlateaus, setDismissedPlateaus] = useState<Set<string>>(
     () => new Set()
   );
-  const guide = getExerciseGuide(p.name);
   // Recent attempts as a reference — shown when logging fresh AND while editing
   // (issue #188). The current session is always excluded (`currentActivityId`),
   // so a session never appears in its own "Recent": in create that's the
@@ -504,7 +498,8 @@ export default function StrengthSets({
     ghostReps?: number | null,
     onGhostFocus?: () => void,
     onEnter?: () => void,
-    segmented = false
+    segmented = false,
+    testId?: string
   ) => {
     if (!timed) {
       return (
@@ -512,6 +507,7 @@ export default function StrengthSets({
           type="number"
           min="1"
           inputMode="numeric"
+          data-testid={testId}
           value={value}
           onChange={(e) => onChange(stripNonPositive(e.target.value))}
           onFocus={onGhostFocus}
@@ -543,6 +539,7 @@ export default function StrengthSets({
       <input
         type="text"
         inputMode="numeric"
+        data-testid={testId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="m:ss"
@@ -571,33 +568,11 @@ export default function StrengthSets({
     );
   return (
     <>
-      {/* A "How to" affordance for the current lift (#734) — shown only when a
-          catalog guide exists (custom lifts have none). Opens the shared guide
-          section in an overlay, scoped to the selected implement. */}
-      {guide && (
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setGuideOpen(true)}
-            data-testid="exercise-guide-open"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-          >
-            <IconInfoCircle className="h-4 w-4" />
-            How to
-          </button>
-        </div>
-      )}
-      {guideOpen && guide && (
-        <ModalShell
-          title={`How to: ${p.name}`}
-          onClose={() => setGuideOpen(false)}
-        >
-          <ExerciseGuideSection
-            name={p.name}
-            equipment={variantOf(p.name)?.equipment ?? null}
-          />
-        </ModalShell>
-      )}
+      {/* The "How to" affordance for this lift (#734) now rides in the part
+          header's action toolbar (ActivityPartsList), which also owns the
+          overlay state — it used to consume a mostly empty right-aligned row of
+          its own here, which is exactly the row a phone could least afford
+          (#1613). */}
       {showBodyweightPrompt && (
         <div className="mt-2 rounded-md border border-brand-200 bg-brand-50 px-2.5 py-2 text-xs dark:border-brand-900 dark:bg-brand-950/40">
           <div className="font-medium text-slate-600 dark:text-slate-300">
@@ -945,14 +920,23 @@ export default function StrengthSets({
       )}
       {/* On phones, keep the set schema immediately below the sticky exercise
           picker while long sessions scroll. Desktop has room to keep the whole
-          editor context visible, so the row returns to normal flow there. */}
+          editor context visible, so the row returns to normal flow there.
+          `--set-schema-top` is published by the part container (ActivityPartsList),
+          because the phone header is one row taller when it carries an action
+          toolbar (#1613) and this row has to clear it.
+
+          Below `sm` the row shows ONLY the value schema — `Weight (unit) × Reps`,
+          aligned to the steppers under it (#1612). The `Set` / `Options` headings
+          are desktop table furniture: on a phone each set states its own identity
+          in its toolbar row, so repeating them here only bought a second detached
+          band of headings. */}
       <div
         data-testid="set-column-headings"
-        className="sticky top-11 z-[9] -mx-1 mt-2 flex flex-wrap items-center gap-2 bg-white/95 sm:flex-nowrap px-1 py-1 section-label backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
+        className="sticky top-[var(--set-schema-top)] z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
       >
-        <span className="w-12 shrink-0">Set</span>
+        <span className="hidden w-12 shrink-0 sm:block">Set</span>
         {!timed && !isBodyweight(p.name) ? (
-          <div className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 text-center sm:order-none sm:basis-0">
+          <div className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-center">
             {p.perSide && <span className="w-4 shrink-0" aria-hidden />}
             <span
               data-testid="weight-column-heading"
@@ -972,25 +956,39 @@ export default function StrengthSets({
             </span>
           </div>
         ) : (
-          <span className="order-last basis-full flex-1 text-center sm:order-none sm:basis-0">
+          <span className="flex-1 basis-0 text-center">
             {timed ? "Hold time" : "Reps"}
           </span>
         )}
-        <span className="ml-auto w-16 shrink-0 text-right sm:ml-0">
+        <span className="hidden w-16 shrink-0 text-right sm:block">
           Options
         </span>
       </div>
       <div className="mt-2 space-y-2">
         {p.sets.map((s, si) => (
+          // TWO ROWS BELOW `sm`, one table row from `sm` up (#1612). The wrap
+          // ordering is unchanged — identity + options on the first line, the
+          // values `order-last basis-full` on the second — but the options
+          // container is a horizontal toolbar on a phone instead of a 64px
+          // two-line column, so the first line reads as ONE compact band
+          // ("Set 3 … RPE W ×") tied to the values directly under it, rather
+          // than the three disconnected bands #1450's wrap left behind.
           <div
             key={si}
-            className="flex flex-wrap items-start gap-2 sm:flex-nowrap"
+            data-testid={`set-row-${si + 1}`}
+            className="flex flex-wrap items-start gap-x-2 gap-y-1 sm:flex-nowrap sm:gap-2"
           >
-            <span className="w-12 shrink-0 pt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span
+              data-testid={`set-label-${si + 1}`}
+              className="w-12 shrink-0 self-center text-xs font-medium text-slate-500 sm:self-start sm:pt-2 dark:text-slate-400"
+            >
               Set {si + 1}
             </span>
             {p.perSide ? (
-              <div className="order-last basis-full flex-1 space-y-1.5 sm:order-none sm:basis-0">
+              <div
+                data-testid={`set-values-${si + 1}`}
+                className="order-last basis-full flex-1 space-y-1.5 sm:order-none sm:basis-0"
+              >
                 {(["", "Right"] as const).map((_, sideIdx) => {
                   const isRight = sideIdx === 1;
                   const sideW = isRight ? s.weightRight : s.weight;
@@ -1153,7 +1151,10 @@ export default function StrengthSets({
                 })}
               </div>
             ) : (
-              <div className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-none sm:basis-0">
+              <div
+                data-testid={`set-values-${si + 1}`}
+                className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-none sm:basis-0"
+              >
                 {!timed && !isBodyweight(p.name) ? (
                   <div
                     data-testid={
@@ -1179,7 +1180,7 @@ export default function StrengthSets({
                       step="0.5"
                       min="0"
                       inputMode="decimal"
-                      data-testid={si === 0 ? "set1-weight" : undefined}
+                      data-testid={`set${si + 1}-weight`}
                       value={s.weight}
                       onChange={(e) =>
                         onUpdateSet(si, {
@@ -1216,7 +1217,7 @@ export default function StrengthSets({
                     step="0.5"
                     min="0"
                     inputMode="decimal"
-                    data-testid={si === 0 ? "set1-weight" : undefined}
+                    data-testid={`set${si + 1}-weight`}
                     value={s.weight}
                     onChange={(e) =>
                       onUpdateSet(si, {
@@ -1280,7 +1281,8 @@ export default function StrengthSets({
                         ? () => onApplySuggestion(ghost)
                         : undefined,
                       canAddSet ? onAddSet : undefined,
-                      true
+                      true,
+                      `set${si + 1}-reps`
                     )}
                     <button
                       type="button"
@@ -1306,13 +1308,18 @@ export default function StrengthSets({
                 )}
               </div>
             )}
-            <div className="ml-auto flex w-16 shrink-0 flex-col items-end gap-1 sm:ml-0">
+            <div
+              data-testid={`set-options-${si + 1}`}
+              className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:w-16 sm:flex-col sm:items-end"
+            >
               {/* Optional per-set RPE selector (#743) — shown for rep-based sets
                 (a timed hold's effort is its duration). Blank by default; the
                 rating rides onto the set without replacing target reps. Stacked
                 INSIDE the same w-16 options column the row always had — widening
                 this column shrinks the weight/reps inputs below their pinned
-                #337 tap-target width (see RpeStepper's sizing note). */}
+                #337 tap-target width (see RpeStepper's sizing note). Below `sm`
+                the column unrolls into one horizontal band on the set's toolbar
+                row (#1612), where there is room for full-size targets. */}
               {!timed && (
                 <RpeStepper
                   value={s.rpe}
@@ -1320,7 +1327,7 @@ export default function StrengthSets({
                   testId={si === 0 ? "set1-rpe" : undefined}
                 />
               )}
-              <div className="flex items-start justify-end gap-1">
+              <div className="flex items-center justify-end gap-1 sm:items-start">
                 {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
                 set (both sides of a per-side set share it). */}
@@ -1338,7 +1345,7 @@ export default function StrengthSets({
                   aria-label={
                     s.warmup ? "Unmark warmup set" : "Mark warmup set"
                   }
-                  className={`mt-1 flex h-8 w-7 shrink-0 items-center justify-center rounded text-xs font-bold ${
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded text-xs font-bold sm:mt-1 sm:h-8 sm:w-7 ${
                     s.warmup
                       ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
                       : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
@@ -1350,7 +1357,8 @@ export default function StrengthSets({
                   <button
                     type="button"
                     onClick={() => onRemoveSet(si)}
-                    className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                    data-testid={`set-remove-${si + 1}`}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                     aria-label="Remove set"
                   >
                     <IconX className="h-4 w-4" />
