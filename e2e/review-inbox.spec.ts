@@ -6,7 +6,7 @@ import { followLink } from "./helpers";
 // top: "Needs attention" (a currently-failing integration) spans both, then
 // "Connected sources" (recurring per-provider streams, collapsed to latest-state
 // with a Sync now / push explainer) and "Imports" (the chronological one-off feed
-// of documents + paste jobs). Plus the profile-menu badge count.
+// of documents + archive imports + paste jobs). Plus the profile-menu badge count.
 test.describe("Data → Review import inbox", () => {
   test("splits connected sources from one-off imports, with a failing integration on top", async ({
     page,
@@ -176,7 +176,7 @@ test.describe("Data → Review import inbox", () => {
     ).toHaveCount(0);
   });
 
-  test("the Imports feed merges uploaded documents and paste jobs, not syncs", async ({
+  test("the Imports feed merges documents, paste jobs, and archive imports—not recurring syncs", async ({
     page,
   }) => {
     await page.goto("/data?section=review");
@@ -212,8 +212,17 @@ test.describe("Data → Review import inbox", () => {
     await expect(feed.getByText("Pasted labs")).toBeVisible();
     await expect(feed.getByText(/review to save/)).toBeVisible();
 
-    // Recurring integration syncs are NOT in this feed anymore — they live in the
-    // "Connected sources" section above.
+    // The one-off Fitbit Takeout event is an archive import, so its accounting lives
+    // here rather than masquerading as a recurring connection.
+    const fitbit = feed
+      .getByRole("listitem")
+      .filter({ hasText: "Fitbit (Google Takeout)" });
+    await expect(fitbit).toBeVisible();
+    await expect(fitbit.getByText("3 new · 2 unchanged")).toBeVisible();
+
+    // Recurring integration syncs are NOT in this feed — they live in the
+    // "Connected sources" section above. The seeded no-op Strava rows would produce
+    // "No new data" if they leaked into this one-off list.
     await expect(feed.getByText("No new data")).toHaveCount(0);
 
     // Following the document link lands on its import-detail page. A click can

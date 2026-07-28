@@ -1,4 +1,6 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // The Fitbit / Google Takeout integration page — the one `archive` provider. Unlike
 // every other integration there is nothing to connect: the page is instructions plus
@@ -77,5 +79,28 @@ test.describe("Fitbit (Google Takeout) integration", () => {
 
     // A rejected upload must not claim an import happened.
     await expect(page.getByTestId("takeout-result")).toHaveCount(0);
+
+    // The attempt is attributable in Review, not just a transient browser error.
+    // Remove only this spec-owned failure afterward so it cannot replace the seeded
+    // successful Fitbit event for another spec sharing this worker database.
+    const db = new Database(workerDbPath());
+    let event: { id: number; error: string } | undefined;
+    try {
+      event = db
+        .prepare(
+          `SELECT id, error FROM integration_sync_events
+            WHERE profile_id = 1 AND provider = 'fitbit-takeout' AND ok = 0
+            ORDER BY id DESC LIMIT 1`
+        )
+        .get() as { id: number; error: string } | undefined;
+      expect(event?.error).toMatch(/not a valid zip archive/i);
+    } finally {
+      if (event) {
+        db.prepare(
+          "DELETE FROM integration_sync_events WHERE id = ? AND profile_id = 1"
+        ).run(event.id);
+      }
+      db.close();
+    }
   });
 });

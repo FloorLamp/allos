@@ -87,7 +87,8 @@ export function getWellnessPractices(profileId: number): WellnessPractice[] {
   );
   const logs = db
     .prepare(
-      `SELECT id, practice, date, time, duration_min, notes, created_at
+      `SELECT id, practice, date, time, duration_min, notes,
+              source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ?
         ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC`

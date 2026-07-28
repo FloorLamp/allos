@@ -1,7 +1,10 @@
 import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
+import { resolveActivityType } from "@/lib/activity-meta";
+import type { ActivityType } from "@/lib/types";
 import type {
   NormActivity,
+  NormPracticeLog,
   NormBodyMetric,
   NormHrMinute,
   NormMetricSample,
@@ -330,6 +333,7 @@ export interface TakeoutParsed {
   hrMinutes: NormHrMinute[];
   samples: NormMetricSample[];
   activities: NormActivity[];
+  practices: NormPracticeLog[];
   vitals: NormVital[];
   // Records dropped for any reason, so the Review feed's tally reflects them
   // instead of silently vanishing data (#419).
@@ -348,6 +352,7 @@ export function emptyTakeoutParsed(): TakeoutParsed {
     hrMinutes: [],
     samples: [],
     activities: [],
+    practices: [],
     vitals: [],
     skipped: 0,
     roundTripSkipped: 0,
@@ -879,30 +884,78 @@ export function parseSleepJson(text: string): TakeoutParsed {
 //
 // One Fitbit exercise log → an activity. Unlike the Health Connect path there is no
 // numeric enum to decode: Takeout writes the human name ("Outdoor Bike", "Swim",
-// "Walk", "Spinning"), so the shared cardio-vs-sport keyword classification applies
-// directly.
+// "Walk", "Spinning"). Provider aliases are canonicalized below, then the shared
+// activity taxonomy assigns cardio/sport/strength/recovery exactly as manual logs do.
 //
 // Distance carries its own UNIT and it is not metric — a real archive stamps
 // `"distance": 0.170877, "distanceUnit": "Mile"`. Storing that number as km would
 // under-report a swim by 60%, so the unit is honoured and an unrecognized one drops
 // the distance (never the session, matching the HC parser's field-level sanitizing).
-const CARDIO_HINTS = [
-  "run",
-  "walk",
-  "hik",
-  "cycl",
-  "bik",
-  "swim",
-  "row",
-  "elliptic",
-  "stair",
-  "treadmill",
-  "jog",
-  "ski",
-  "skat",
-  "cardio",
-  "spin",
-];
+// Fitbit's exercise title is provider-owned display text, but components are the
+// app's canonical grouping identity. Keep the raw title on the parent activity and
+// normalize the known Fitbit labels here, mirroring Strava/Oura's one-component
+// summaries. Unknown labels remain intact rather than being guessed.
+const FITBIT_COMPONENT_NAMES: Readonly<Record<string, string>> = {
+  run: "Running",
+  running: "Running",
+  walk: "Walking",
+  walking: "Walking",
+  hike: "Hiking",
+  hiking: "Hiking",
+  swim: "Swimming",
+  swimming: "Swimming",
+  row: "Rowing",
+  rowing: "Rowing",
+  "rowing machine": "Rowing",
+  "jumping rope": "Jump Rope",
+  "tabata workout": "HIIT",
+  "roller blading": "Rollerblading",
+  "outdoor bike": "Cycling",
+  "outdoor cycling": "Cycling",
+  bike: "Cycling",
+  bicycling: "Cycling",
+  cycling: "Cycling",
+  spinning: "Stationary Bike",
+  "indoor cycling": "Stationary Bike",
+  "exercise bike": "Stationary Bike",
+  stairclimber: "Stair Climber",
+  "stair climbing": "Stair Climber",
+  weights: "Weight Training",
+  "weight training": "Weight Training",
+  "strength training": "Weight Training",
+};
+
+export function fitbitComponentName(activityName: string): string {
+  const trimmed = activityName.trim();
+  return FITBIT_COMPONENT_NAMES[trimmed.toLowerCase()] ?? trimmed;
+}
+
+const FITBIT_STRENGTH_LABELS: ReadonlySet<string> = new Set([
+  "weights",
+  "weight training",
+  "strength training",
+  "trx",
+]);
+
+export interface FitbitActivityIdentity {
+  name: string;
+  type: ActivityType;
+}
+
+// Fitbit's broad lifting categories are session labels rather than individual lifts,
+// so they are explicit here. Everything else delegates to the app's one canonical
+// taxonomy; an unrecognized provider label remains intact and conservatively becomes
+// a sport rather than being guessed into a health-specific category.
+export function fitbitActivityIdentity(
+  activityName: string
+): FitbitActivityIdentity {
+  const raw = activityName.trim();
+  const name = fitbitComponentName(raw);
+  const type = FITBIT_STRENGTH_LABELS.has(raw.toLowerCase())
+    ? "strength"
+    : (resolveActivityType(name) ?? "sport");
+  return { name, type };
+}
 
 const MILES_TO_KM = 1.609344;
 
@@ -998,7 +1051,6 @@ export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
       typeof log.activityName === "string" && log.activityName.trim()
         ? log.activityName.trim()
         : "Workout";
-    const norm = name.toLowerCase();
     const ms =
       typeof log.activeDuration === "number"
         ? log.activeDuration
@@ -1007,19 +1059,41 @@ export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
           : null;
     const durationMin =
       ms != null ? boundedOrNull("duration_min", Math.round(ms / 60000)) : null;
+    const externalId = `${FITBIT_TAKEOUT_ID}:${logId}`;
+    if (["meditating", "meditation"].includes(name.toLowerCase())) {
+      out.practices.push({
+        external_id: externalId,
+        practice: "Meditation",
+        date: stamp.date,
+        time: stamp.hhmm,
+        duration_min: durationMin,
+      });
+      continue;
+    }
+    const identity = fitbitActivityIdentity(name);
+    const type = identity.type;
+    const distanceKm = boundedOrNull(
+      "distance_km",
+      fitbitDistanceKm(
+        typeof log.distance === "number" ? log.distance : null,
+        typeof log.distanceUnit === "string" ? log.distanceUnit : null
+      )
+    );
     out.activities.push({
-      external_id: `${FITBIT_TAKEOUT_ID}:${logId}`,
+      external_id: externalId,
       date: stamp.date,
-      type: CARDIO_HINTS.some((h) => norm.includes(h)) ? "cardio" : "sport",
+      type,
       title: name,
       duration_min: durationMin,
-      distance_km: boundedOrNull(
-        "distance_km",
-        fitbitDistanceKm(
-          typeof log.distance === "number" ? log.distance : null,
-          typeof log.distanceUnit === "string" ? log.distanceUnit : null
-        )
-      ),
+      distance_km: distanceKm,
+      components: [
+        {
+          name: identity.name,
+          type,
+          distance_km: distanceKm,
+          duration_min: durationMin,
+        },
+      ],
       start_time: stamp.hhmm,
       // DERIVED from start + duration, not left null. The archive gives both, and the
       // end clock is what lets the import-review duplicate detector use its

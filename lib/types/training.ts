@@ -328,6 +328,9 @@ export interface PracticeLog {
   // Canonical minutes (the Units rule); null when not recorded.
   duration_min: number | null;
   notes: string | null;
+  source: string | null;
+  external_id: string | null;
+  edited: number;
   created_at: string;
 }
 

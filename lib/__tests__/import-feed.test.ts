@@ -130,10 +130,39 @@ describe("feedItemView — sync", () => {
 
   it("marks a failed sync with the error tone", () => {
     const v = feedItemView(
-      syncEntry(sync({ ok: 0, error: "token refresh failed" })),
+      syncEntry(
+        sync({
+          ok: 0,
+          inserted: null,
+          updated: null,
+          unchanged: null,
+          written: null,
+          error: "token refresh failed",
+        })
+      ),
       providerName
     );
     expect(v.tone).toBe("error");
+    expect(v.detail).toBe("import failed");
+  });
+
+  it("retains the committed split on a failed chunked archive import", () => {
+    const v = feedItemView(
+      syncEntry(
+        sync({
+          ok: 0,
+          provider: "fitbit-takeout",
+          inserted: 3,
+          updated: 1,
+          unchanged: 0,
+          written: 4,
+          error: "Takeout import stopped after writing 4 records.",
+        })
+      ),
+      providerName
+    );
+    expect(v.tone).toBe("error");
+    expect(v.detail).toBe("import failed · 3 new · 1 changed");
   });
 });
 

@@ -108,6 +108,128 @@ export interface NormActivity {
   components?: ActivityComponent[] | null;
 }
 
+// A provider-owned wellness-practice session. Unlike training activities, practices
+// live in their own ledger and carry no exercise type, distance, sets, or components.
+export interface NormPracticeLog {
+  external_id: string;
+  practice: string;
+  date: string;
+  time: string | null;
+  duration_min: number | null;
+}
+
+export function upsertPracticeLogs(
+  profileId: number,
+  rows: NormPracticeLog[],
+  source: string,
+  sink?: SyncRowSink
+): UpsertCounts {
+  const compareCols = ["practice", "date", "time", "duration_min", "source"];
+  const find = db.prepare(
+    `SELECT id, edited, practice, date, time, duration_min, source
+       FROM practice_logs WHERE profile_id = ? AND external_id = ?`
+  );
+  const insert = db.prepare(
+    `INSERT INTO practice_logs
+       (profile_id, practice, date, time, duration_min, source, external_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  const update = db.prepare(
+    `UPDATE practice_logs
+        SET practice = ?, date = ?, time = ?, duration_min = ?, source = ?
+      WHERE id = ? AND profile_id = ?`
+  );
+  // Fitbit meditations originally landed in activities. Migration 118 moves the
+  // untouched rows, but deliberately leaves a user-edited/attached activity in
+  // place. Preserve that cross-table occupancy on every later re-import so the same
+  // provider record cannot also appear as a practice.
+  const findLegacyActivity = db.prepare(
+    `SELECT edited FROM activities
+      WHERE profile_id = ? AND external_id = ?`
+  );
+  const tombstoned = loadImportTombstones(profileId, "practice_logs");
+  // A meditation deleted before migration 118 has its suppression recorded against
+  // the old target table. The provider identity did not change when its destination
+  // did, so that deletion must continue to suppress the rerouted practice.
+  const legacyActivityTombstones = loadImportTombstones(
+    profileId,
+    "activities"
+  );
+  const counts = emptyCounts();
+
+  for (const row of rows) {
+    const found = find.get(profileId, row.external_id) as
+      | (Record<string, unknown> & { id: number; edited: number | null })
+      | undefined;
+    if (found && isEditLocked(found.edited)) {
+      counts.edited++;
+      continue;
+    }
+    if (found) {
+      const post: Record<string, unknown> = {
+        practice: row.practice,
+        date: row.date,
+        time: row.time,
+        duration_min: row.duration_min,
+        source,
+      };
+      const disposition = classifyUpsert(
+        true,
+        rowsEqual(compareCols, found, post)
+      );
+      if (disposition === "updated") {
+        update.run(
+          row.practice,
+          row.date,
+          row.time,
+          row.duration_min,
+          source,
+          found.id,
+          profileId
+        );
+        sink?.push({
+          target_table: "practice_logs",
+          target_id: found.id,
+          disposition,
+        });
+      }
+      tallyUpsert(counts, disposition);
+    } else if (
+      tombstoned.has(row.external_id) ||
+      legacyActivityTombstones.has(row.external_id)
+    ) {
+      counts.suppressed++;
+    } else {
+      const legacyActivity = findLegacyActivity.get(
+        profileId,
+        row.external_id
+      ) as { edited: number | null } | undefined;
+      if (legacyActivity) {
+        if (isEditLocked(legacyActivity.edited)) counts.edited++;
+        else counts.suppressed++;
+        continue;
+      }
+      const info = insert.run(
+        profileId,
+        row.practice,
+        row.date,
+        row.time,
+        row.duration_min,
+        source,
+        row.external_id
+      );
+      const disposition = classifyUpsert(false, false);
+      tallyUpsert(counts, disposition);
+      sink?.push({
+        target_table: "practice_logs",
+        target_id: Number(info.lastInsertRowid),
+        disposition: "inserted",
+      });
+    }
+  }
+  return counts;
+}
+
 // A GPS route for an activity → activity_routes (issue #569). Provider-agnostic:
 // carries the encoded polyline as delivered plus optional start/end coordinates,
 // keyed to its parent activity by `external_id` (resolved to the activity's DB id

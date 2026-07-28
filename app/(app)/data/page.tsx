@@ -91,7 +91,7 @@ export default async function DataPage(
         issues={importIssues}
         // The recurring per-provider streams for the "Connected sources" section.
         sources={getConnectedSources(profile.id)}
-        // The one-off "Imports" feed (documents + paste jobs) behind Review.
+        // The one-off "Imports" feed (documents + archives + paste jobs) behind Review.
         feed={getImportDocumentsFeed(profile.id)}
         // The profile's own name(s), for the document provenance-mismatch flag.
         knownNames={[getUserFullName(profile.id), profile.name]}
