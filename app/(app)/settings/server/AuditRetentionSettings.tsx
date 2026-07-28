@@ -40,11 +40,11 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
         The security audit trail (logins, medical-file access, admin/family
-        changes — Settings → AI logs is separate) is kept for this many months,
-        then the hourly notify tick prunes older events. The default is generous
-        (24 months); raise or lower it to match your own retention needs.
-        Allowed range: {MIN_AUDIT_RETENTION_MONTHS}–{MAX_AUDIT_RETENTION_MONTHS}{" "}
-        months.
+        changes — Settings → Logs & audit → AI logs is separate) is kept for
+        this many months, then the hourly notify tick prunes older events. The
+        default is generous (24 months); raise or lower it to match your own
+        retention needs. Allowed range: {MIN_AUDIT_RETENTION_MONTHS}–
+        {MAX_AUDIT_RETENTION_MONTHS} months.
       </p>
 
       <div className="flex items-end gap-2">

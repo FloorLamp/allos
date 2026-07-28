@@ -1,7 +1,7 @@
 // Persisted AI activity log. Every AI call (extraction, suggestions,
 // auto-suggest, insight) and its outcome is appended as a JSON line to
 // data/logs/ai.jsonl — an audit trail that's readable directly on the host
-// (under the data volume) and streamed into the Settings → AI logs tab.
+// (under the data volume) and streamed into Settings → Logs & audit → AI logs.
 //
 // Multi-user: the log mixes extraction content across
 // profiles, so each event is tagged with the acting loginId/profileId when

@@ -1,23 +1,38 @@
 # Charts — palette contract, form selection, mark specs, motion
 
-Status: **partial** (#1488's chart card + tap-through guard shipped; #1445 Parts 1, 2 — including the owner-added sparkline variant — 3a, 3c and 4a–4e shipped: validated palette, scaffold chokepoint, CI palette validation, ramp exports, motion policy, guards. Part 3b — the slope/dumbbell, bullet-tile and dot-strip FORMS — is still unbuilt; the form table below marks them so.)
+Status: **partial** (#1488's chart card + tap-through guard shipped; #1445 Parts
+1, 2 — including the owner-added sparkline variant — 3a, 3c and 4a–4e shipped:
+validated palette, scaffold chokepoint, CI palette validation, ramp exports,
+motion policy, guards. Part 3b — the slope/dumbbell, bullet-tile and dot-strip
+FORMS — is still unbuilt; the form table below marks them so.)
 
-Charts are the app's densest surface and its easiest one to get quietly wrong. This page holds the rules; the one-line pointer stays in AGENTS.md's conventions.
+Charts are the app's densest surface and its easiest one to get quietly wrong.
+This page holds the rules; the one-line pointer stays in AGENTS.md's
+conventions.
 
-The short version: **the color part is computable, so it is computed.** Nothing here asks anyone to eyeball a palette.
+The short version: **the color part is computable, so it is computed.** Nothing
+here asks anyone to eyeball a palette.
 
 ---
 
 ## 1. The palette contract
 
-**One module owns every chart color: `lib/chart-colors.ts`.** Recharts, SVG and canvas take plain color strings, so a mark's color has to be a literal somewhere; that is the one place it may live. Two guards keep it that way, and they answer different questions:
+**One module owns every chart color: `lib/chart-colors.ts`.** Recharts, SVG and
+canvas take plain color strings, so a mark's color has to be a literal
+somewhere; that is the one place it may live. Two guards keep it that way, and
+they answer different questions:
 
 | Guard                                     | Question it answers                                                                                   |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `lib/__tests__/chart-colors-scan.test.ts` | _Where_ may a color live? (no raw hex in `app/`/`components/`; no hand-rolled same-hue `bg-*` ladder) |
 | `lib/__tests__/chart-palette.test.ts`     | Is the palette any _good_? (the six checks, computed)                                                 |
 
-**Changing the palette means editing `lib/chart-colors.ts` and letting the validation test judge you.** `lib/chart-palette-validate.ts` is pure math — sRGB→OKLab/OKLCH, Machado CVD simulation at severity 1.0, WCAG contrast — and the test runs it over the real exports against both real chart surfaces (`#ffffff`, `#0f172a`). A failing edit prints the offending pair and its ΔE, not `expected true`.
+**Changing the palette means editing `lib/chart-colors.ts` and letting the
+validation test judge you.** `lib/chart-palette-validate.ts` is pure math —
+sRGB→OKLab/OKLCH, Machado CVD simulation at severity 1.0, WCAG contrast — and
+the test runs it over the real exports against both real chart surfaces
+(`#ffffff`, `#0f172a`). A failing edit prints the offending pair and its ΔE, not
+`expected true`.
 
 The checks and their thresholds:
 
@@ -29,7 +44,12 @@ The checks and their thresholds:
 | Normal-vision floor | worst-pair ΔE ≥ 15                                         | **hard gate.** Below it, full-color readers can't separate the pair either, and no amount of labelling fixes that |
 | Contrast vs surface | ≥ 3:1                                                      | a mark has to be visible on the card it sits on                                                                   |
 
-**Why this exists.** The #794 palette passed every guard the repo had and was still broken: the sky/cyan/teal→emerald hue-fold left `brand #16a34a` and `emerald #10b981` at ΔE **8.1** — the app's two most-used series colors, below the 15 floor — while the warm 500-steps sat at 2.5:1 and 2.2:1 on white and `slate` fell under the chroma floor. Arithmetic was the only thing that could have caught it. (#1445)
+**Why this exists.** The #794 palette passed every guard the repo had and was
+still broken: the sky/cyan/teal→emerald hue-fold left `brand #16a34a` and
+`emerald #10b981` at ΔE **8.1** — the app's two most-used series colors, below
+the 15 floor — while the warm 500-steps sat at 2.5:1 and 2.2:1 on white and
+`slate` fell under the chroma floor. Arithmetic was the only thing that could
+have caught it. (#1445)
 
 ### The set
 
@@ -41,20 +61,36 @@ rose    #e11d48   rose-600     red/pink
 violet  #8b5cf6   violet-500   purple
 ```
 
-Five slots, **in fixed order**. A 6th series is not a generated hue — fold it into an explicit "other", facet it, or pick a different form.
+Five slots, **in fixed order**. A 6th series is not a generated hue — fold it
+into an explicit "other", facet it, or pick a different form.
 
-`chartNeutral` (`#64748b`, slate-500) is **not** in the set. It fails the chroma floor, so as an Nth series it reads as scaffolding. Legitimate uses: chart chrome inside a hand-drawn SVG, and a bucket that genuinely means _other / none_.
+`chartNeutral` (`#64748b`, slate-500) is **not** in the set. It fails the chroma
+floor, so as an Nth series it reads as scaffolding. Legitimate uses: chart
+chrome inside a hand-drawn SVG, and a bucket that genuinely means _other /
+none_.
 
-**The one pair the checks let through, deliberately:** `brand` vs `rose` is ΔE 2.7 under deuteranopia. That is red-vs-green, no re-stepping fixes it, and both slots are load-bearing (the brand's own hue; the "out of range / missed" hue). They are legal only because of **mandatory secondary encoding** — see §4.
+**The one pair the checks let through, deliberately:** `brand` vs `rose` is ΔE
+2.7 under deuteranopia. That is red-vs-green, no re-stepping fixes it, and both
+slots are load-bearing (the brand's own hue; the "out of range / missed" hue).
+They are legal only because of **mandatory secondary encoding** — see §4.
 
 ### Sequential cell ramps
 
-Calendar heatmaps are charts whose cells are Tailwind **classes**, which is exactly how three hand-rolled `emerald-200/900` ladders drifted past a guard built to scan hex. So a ramp ships **both halves** — `stepClasses` (what renders) and per-theme hexes (what the validator checks) — and both move together:
+Calendar heatmaps are charts whose cells are Tailwind **classes**, which is
+exactly how three hand-rolled `emerald-200/900` ladders drifted past a guard
+built to scan hex. So a ramp ships **both halves** — `stepClasses` (what
+renders) and per-theme hexes (what the validator checks) — and both move
+together:
 
-- `chartActivityRamp` — brand green, 4 steps over a neutral empty cell. `WorkoutHeatmap`, `ActiveDaysStrip`.
-- `chartAdherenceState` — `taken`/`partial` are two steps of the same brand ramp, `skipped` the neutral, `missed` the rose. `AdherenceCalendar`.
+- `chartActivityRamp` — brand green, 4 steps over a neutral empty cell.
+  `WorkoutHeatmap`, `ActiveDaysStrip`.
+- `chartAdherenceState` — `taken`/`partial` are two steps of the same brand
+  ramp, `skipped` the neutral, `missed` the rose. `AdherenceCalendar`.
 
-A ramp is validated as a ramp (`validateCellRamp`): one hue, monotone lightness, ΔL ≥ 0.06 between every neighbouring cell **including the empty one**, saturated end ≥ 3:1. The pale end is anchored to the ramp's own empty cell, not the card surface — in a grid, every cell's neighbour is another cell.
+A ramp is validated as a ramp (`validateCellRamp`): one hue, monotone lightness,
+ΔL ≥ 0.06 between every neighbouring cell **including the empty one**, saturated
+end ≥ 3:1. The pale end is anchored to the ramp's own empty cell, not the card
+surface — in a grid, every cell's neighbour is another cell.
 
 ---
 
@@ -76,19 +112,34 @@ A ramp is validated as a ramp (`validateCellRamp`): one hue, monotone lightness,
 | _actual vs target vs pace (not built)_           | _bullet tile_                             | —                                                        |
 | _"what's my normal range" (not built)_           | _dot strip with a median marker_          | —                                                        |
 
-**No dual axis without a unit difference.** Two y-scales make line crossings an artifact of the scale choice rather than a fact about the data. `CompareChart` already enforces this (#400): normalized mode and same-unit pairs share ONE axis; only genuinely different units get a second one, and the tab copy says so. Do not widen it.
+**No dual axis without a unit difference.** Two y-scales make line crossings an
+artifact of the scale choice rather than a fact about the data. `CompareChart`
+already enforces this (#400): normalized mode and same-unit pairs share ONE
+axis; only genuinely different units get a second one, and the tab copy says so.
+Do not widen it.
 
-**Rejected forms:** radar/spider for muscle coverage (small multiples of bars read better); any dual-axis expansion.
+**Rejected forms:** radar/spider for muscle coverage (small multiples of bars
+read better); any dual-axis expansion.
 
-**A new chart surface composes an existing card.** `lib/__tests__/chart-scaffold-scan.test.ts` fails a `recharts` import outside the blessed card list — that list _is_ the form inventory. A genuinely new FORM registers there with a justification and gets a row above; "a line chart, but for my page" does not.
+**A new chart surface composes an existing card.**
+`lib/__tests__/chart-scaffold-scan.test.ts` fails a `recharts` import outside
+the blessed card list — that list _is_ the form inventory. A genuinely new FORM
+registers there with a justification and gets a row above; "a line chart, but
+for my page" does not.
 
 ---
 
 ## 3. Mark specs — and the scaffold that owns them
 
-**`components/chart-scaffold.tsx` is the chokepoint.** Every card consumes its prop bags; the conventions below are its defaults, not per-file copies. This is the point: eight cards each hand-copying `<CartesianGrid strokeDasharray="3 3">` is why the mark conventions could not be fixed once.
+**`components/chart-scaffold.tsx` is the chokepoint.** Every card consumes its
+prop bags; the conventions below are its defaults, not per-file copies. This is
+the point: eight cards each hand-copying `<CartesianGrid strokeDasharray="3 3">`
+is why the mark conventions could not be fixed once.
 
-It exports **prop bags, not wrapper components** — recharts identifies children by component type, so a `<ChartGrid/>` wrapping a `<CartesianGrid/>` renders no grid at all. (`ChartLegend` is a real component only because it sits outside the recharts tree.)
+It exports **prop bags, not wrapper components** — recharts identifies children
+by component type, so a `<ChartGrid/>` wrapping a `<CartesianGrid/>` renders no
+grid at all. (`ChartLegend` is a real component only because it sits outside the
+recharts tree.)
 
 | Decision         | Rule                                                                                                  | Export                   |
 | ---------------- | ----------------------------------------------------------------------------------------------------- | ------------------------ |
@@ -102,31 +153,60 @@ It exports **prop bags, not wrapper components** — recharts identifies childre
 | Stacked segments | 2px surface gap, so segments read as discrete quantities                                              | `chartStackSegmentProps` |
 | Legend           | every ≥ 2-series chart has one                                                                        | `ChartLegend`            |
 
-**Text wears text tokens, never the series color.** Including axis ticks on a dual-axis chart: identity belongs to the marks and the legend, and a tick painted in a series color is a number wearing a data color.
+**Text wears text tokens, never the series color.** Including axis ticks on a
+dual-axis chart: identity belongs to the marks and the legend, and a tick
+painted in a series color is a number wearing a data color.
 
 ### The sparkline variant
 
-**A mini tile is not a small chart — it is a different chart.** `TrendMiniCard` reused the full `LineChartCard` at `h-40`, so every Overview/Body tile carried a complete X+Y axis: 11px ticks and the margin reservations sized for a 256px-tall chart, squeezed into a tile ~150px wide on a 390px phone. The ticks collided and the plot — the only part carrying information — got what was left.
+**A mini tile is not a small chart — it is a different chart.** `TrendMiniCard`
+reused the full `LineChartCard` at `h-40`, so every Overview/Body tile carried a
+complete X+Y axis: 11px ticks and the margin reservations sized for a 256px-tall
+chart, squeezed into a tile ~150px wide on a 390px phone. The ticks collided and
+the plot — the only part carrying information — got what was left.
 
-The variant is a flag on the same card (`sparkline`), never a sixth hand-styled chart:
+The variant is a flag on the same card (`sparkline`), never a sixth hand-styled
+chart:
 
-- **Axes hidden, not removed.** They still SCALE the series; `hide` stops them painting _and_ stops them reserving space, which is the actual win at tile width.
+- **Axes hidden, not removed.** They still SCALE the series; `hide` stops them
+  painting _and_ stops them reserving space, which is the actual win at tile
+  width.
 - **No grid**, margins near-zero.
-- **The numbers the axes supplied become inline text.** `TrendMiniCard` renders latest (in its header, with the change badge) plus low/high under the plot — legible at any width, which an 11px tick in a 150px box is not.
+- **The numbers the axes supplied become inline text.** `TrendMiniCard` renders
+  latest (in its header, with the change badge) plus low/high under the plot —
+  legible at any width, which an 11px tick in a 150px box is not.
 - **Hover survives.** The tooltip is how a sparkline reports a single point.
 
-**The MARK follows the data, not the tile (#1485 D).** A line asserts continuity — the quantity existed between two readings and moved smoothly between them. That is true of a level (weight, resting HR, an analyte: it has a value on the days you did not sample it) and false of a per-day TOTAL whose missing days are real zeros. Training volume is the second kind, and its line drew a slope across rest days that had no training in them at all — a sawtooth that reads as noise at tile width. So the sparkline has a bar twin (`BarSparkline`, registered in the scan's form inventory), and **which series get it is one pure decision** — `lib/trend-sparkline.ts`, keyed on the shared `metric:` / `bio:` series vocabulary, with a short justified list rather than a runtime "does it oscillate?" heuristic (a mark that changed shape as you moved the range would be worse than one that is occasionally conservative). The mark's own styling is a scaffold prop bag like every other (`chartSparklineBarProps`).
+**The MARK follows the data, not the tile (#1485 D).** A line asserts continuity
+— the quantity existed between two readings and moved smoothly between them.
+That is true of a level (weight, resting HR, an analyte: it has a value on the
+days you did not sample it) and false of a per-day TOTAL whose missing days are
+real zeros. Training volume is the second kind, and its line drew a slope across
+rest days that had no training in them at all — a sawtooth that reads as noise
+at tile width. So the sparkline has a bar twin (`BarSparkline`, registered in
+the scan's form inventory), and **which series get it is one pure decision** —
+`lib/trend-sparkline.ts`, keyed on the shared `metric:` / `bio:` series
+vocabulary, with a short justified list rather than a runtime "does it
+oscillate?" heuristic (a mark that changed shape as you moved the range would be
+worse than one that is occasionally conservative). The mark's own styling is a
+scaffold prop bag like every other (`chartSparklineBarProps`).
 
-Hiding axes is the MINI-TILE decision, not a global one: a full-size chart keeps the axis a reader traces a value along. `e2e/trends-sparkline.mobile.spec.ts` pins both halves at 390px — no axis inside a tile, axes still present (and ticks still ≥ 10px) on a full-size chart.
+Hiding axes is the MINI-TILE decision, not a global one: a full-size chart keeps
+the axis a reader traces a value along. `e2e/trends-sparkline.mobile.spec.ts`
+pins both halves at 390px — no axis inside a tile, axes still present (and ticks
+still ≥ 10px) on a full-size chart.
 
 ---
 
 ## 4. Identity is never color-alone
 
-A legend on every ≥ 2-series chart is not a nicety — it is the secondary encoding that makes `brand` vs `rose` legal at all (§1), and it is the same family of rule as #1220 (status never carried by color alone). Concretely:
+A legend on every ≥ 2-series chart is not a nicety — it is the secondary
+encoding that makes `brand` vs `rose` legal at all (§1), and it is the same
+family of rule as #1220 (status never carried by color alone). Concretely:
 
 - ≥ 2 series → `ChartLegend` (a colored dot + a label in ink).
-- The adherence grid → per-cell `title`, a `data-state` attribute, and a counted text legend.
+- The adherence grid → per-cell `title`, a `data-state` attribute, and a counted
+  text legend.
 - A single-series chart needs no legend: its title names it.
 
 ---
@@ -141,36 +221,46 @@ Minimal and meaningful; a medical-data surface is not a place for decoration.
 | Hover (active dot, tooltip) | ~150ms ease-out       | `chartTooltipProps` + two rules in `globals.css` for what recharts styles in the DOM                                                             |
 | Dashboard hero count-up     | 400ms, once, on mount | `CountUpNumber`, currently the steps tile only                                                                                                   |
 
-**`prefers-reduced-motion: reduce` disables all of it** — `isAnimationActive={false}` through `useChartMotion()`, and the CSS transitions are dropped in a media query. (This settles #794's open 8d checkbox for the chart layer.)
+**`prefers-reduced-motion: reduce` disables all of it** —
+`isAnimationActive={false}` through `useChartMotion()`, and the CSS transitions
+are dropped in a media query. (This settles #794's open 8d checkbox for the
+chart layer.)
 
-`CountUpNumber` renders the FINAL value on the server and on the first client paint; the count-up is a client-only embellishment layered on afterwards, so no reader — human, screen reader, or test — ever sees a partial number. It is for a hero **count**, not a general number wrapper; don't wrap a value an exact-text assertion reads.
+`CountUpNumber` renders the FINAL value on the server and on the first client
+paint; the count-up is a client-only embellishment layered on afterwards, so no
+reader — human, screen reader, or test — ever sees a partial number. It is for a
+hero **count**, not a general number wrapper; don't wrap a value an exact-text
+assertion reads.
 
-**Not doing:** animated gradients, perpetual pulsing on live values, per-point stagger.
+**Not doing:** animated gradients, perpetual pulsing on live values, per-point
+stagger.
 
 ---
 
 ## 5b. The card, and where a chart goes when you tap it
 
-A full-size chart on Trends is not a picture — it is the way in. Every one renders
-through `components/ChartCard.tsx` (issue #1488), which owns four things at once:
+A full-size chart on Trends is not a picture — it is the way in. Every one
+renders through `components/ChartCard.tsx` (issue #1488), which owns four things
+at once:
 
-- **The tap contract.** The header row — the title plus the latest-value headline —
-  is a link to the chart's detail page, with a small expand icon top-right carrying an
-  accessible name. The PLOT is never inside that link: on touch, tapping the plot is
-  how a point is read, and that gesture must stay tooltip inspection. Anything that
-  wraps a plot in an anchor has broken the chart.
+- **The tap contract.** The header row — the title plus the latest-value
+  headline — is a link to the chart's detail page, with a small expand icon
+  top-right carrying an accessible name. The PLOT is never inside that link: on
+  touch, tapping the plot is how a point is read, and that gesture must stay
+  tooltip inspection. Anything that wraps a plot in an anchor has broken the
+  chart.
 - **`detailHref`, required.** `null` is allowed only with a same-line
   `detail-none: <why>` comment. The destination for a registered body metric is
-  `metricDetailHref(slug)` → `/trends/metric/<slug>`; an aggregate/composite chart
-  (training volume, macros, zone minutes) points at the existing full-depth surface
-  its bars are summed from, named at the call site.
+  `metricDetailHref(slug)` → `/trends/metric/<slug>`; an aggregate/composite
+  chart (training volume, macros, zone minutes) points at the existing
+  full-depth surface its bars are summed from, named at the call site.
 - **The plot height.** The card owns it — square below `sm`, `plotHeightClass`
   (default `sm:h-64`) above — through the `.chart-card-plot > *` rule in
-  `app/globals.css`. A call site does not pass `heightClass`; that is what keeps every
-  state of a card (populated, empty, loading, error, offline fallback) on one
-  footprint, so a stack does not reflow because one series is empty.
-- **Desktop is unchanged.** The square is a mobile-only rule; from `sm` up the card is
-  exactly the proportions it had before, pinned by a browser test.
+  `app/globals.css`. A call site does not pass `heightClass`; that is what keeps
+  every state of a card (populated, empty, loading, error, offline fallback) on
+  one footprint, so a stack does not reflow because one series is empty.
+- **Desktop is unchanged.** The square is a mobile-only rule; from `sm` up the
+  card is exactly the proportions it had before, pinned by a browser test.
 
 ## 6. The guards, and what each one catches
 
@@ -182,6 +272,11 @@ through `components/ChartCard.tsx` (issue #1488), which owns four things at once
 | `lib/__tests__/micro-text-size.test.ts`     | `text-[9px]` **and** numeric `fontSize: 9`                                                                                                                            |
 | `lib/__tests__/chart-detail-href.test.ts`   | a Trends chart drawn outside `ChartCard` (a dead end); a `detailHref={null}` with no `detail-none:` justification; a registry kind the detail page can't resolve      |
 
-Hand-drawn fixed-viewBox SVG panels (`IntradayPanel`, `FeverChart`, `MuscleAnatomy`) are exempt from the px-denominated rules, with justification in each allowlist: their lengths are viewBox user units scaled by the container, so a px floor cannot be applied to them. They are still bound by the palette.
+Hand-drawn fixed-viewBox SVG panels (`IntradayPanel`, `FeverChart`,
+`MuscleAnatomy`) are exempt from the px-denominated rules, with justification in
+each allowlist: their lengths are viewBox user units scaled by the container, so
+a px floor cannot be applied to them. They are still bound by the palette.
 
-**Deliberately not doing:** pixel-diff screenshot testing. The repo prefers stable testids over brittle pixel assertions, and every guard above fails with an explanation.
+**Deliberately not doing:** pixel-diff screenshot testing. The repo prefers
+stable testids over brittle pixel assertions, and every guard above fails with
+an explanation.

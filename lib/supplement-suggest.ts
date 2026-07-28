@@ -543,7 +543,7 @@ export async function autoSuggestFromBiomarkers(
   if (!isTaskConfigured("suggestions") || recordIds.length === 0) return 0;
   if (!getAiPrefs().autoSupplementSuggestions) {
     // Leave a trace in the AI log so "why no suggestions after import?" is
-    // answerable from Settings → AI logs.
+    // answerable from Settings → Logs & audit → AI logs.
     recordAiEvent({
       feature: "auto-suggest",
       status: "skipped",

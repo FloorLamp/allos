@@ -3,7 +3,7 @@ name: Publish image
 # Build the image on a GitHub-hosted runner and push it to GHCR. Deploying it is
 # the box's job, not this workflow's: pull the freshly published tag and restart
 # (docker compose pull && up -d), by hand or from a host cron/systemd timer — see
-# README "Deploy with Docker". (An earlier revision drove the restart from a
+# README "Quick start with Docker". (An earlier revision drove the restart from a
 # self-hosted runner job here; that job has been removed.)
 #
 # Triggered on merges to main, plus a manual "Run workflow".

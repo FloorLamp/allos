@@ -24,11 +24,10 @@
 //   • `stampSubjects` — one disambiguated-name/avatar resolution (#534), so no
 //     surface re-implements subject identity.
 //
-// #1096 (multi-profile viewing + the persisted per-session view-set) and #1013 (the
-// own-profile display layer) build ON this primitive; they are NOT built here. The
-// scope carries the SHAPE they consume — `viewIds` (defaulting to `[actingProfileId]`
-// until #1096 persists a real view-set) and `ownProfileId` (null until #1013's
-// association lands) — so those PRs add data, not new plumbing.
+// Multi-profile viewing (#1096) and the own-profile display layer (#1013) build on
+// this primitive. `viewIds` carries the persisted, access-validated session view
+// set, and `ownProfileId` carries the access-validated login association (or null
+// when it is unset).
 
 import {
   requireSession,
@@ -71,8 +70,8 @@ export interface ProfileScope {
 }
 
 // DB-callable core: build a ProfileScope from an already-resolved session (the auth
-// decision) plus an OPTIONAL raw view-set (the ids a future persisted
-// sessions.view_profile_ids would carry — #1096). Split from requireScope so the
+// decision) plus an optional raw view-set (the ids stored in
+// sessions.view_profile_ids by #1096). Split from requireScope so the
 // resolution — accessible set, disambiguation, access map, and the viewIds ∩
 // accessible validation — is testable without a request.
 //
@@ -142,7 +141,7 @@ export function resolveScope(
 // (the overwhelmingly common case) — this ADDS a primitive, it does not move the app
 // to multi-profile-by-default.
 //
-// `rawViewIds` is the persisted view-set hook (#1096). When the caller passes
+// `rawViewIds` is the persisted view set (#1096). When the caller passes
 // nothing (`undefined`), requireScope LOADS the session's persisted
 // `sessions.view_profile_ids` (migration 101) and validates it here — so a
 // multi-view page just calls `requireScope()` and reads `scope.viewIds`. Passing an

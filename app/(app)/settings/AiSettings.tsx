@@ -84,7 +84,7 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
           The ceiling on cadence-driven AI runs (supplement suggestions + daily
           insight) for any one profile in a day. Scheduled cadence already caps
           at one run per day; this backstops upload/manual bursts. Set each
-          profile’s cadence on its Profile tab.
+          profile’s cadence under Coaching & AI.
         </p>
       </div>
     </div>
