@@ -538,6 +538,16 @@ export function distinguishVitaminDIsoform(
 export interface BiomarkerFamily {
   // The stable family key (unprefixed). biomarkerFamily() returns `family:<key>`.
   key: string;
+  // The family's ANCHOR spelling: the canonical dataset name that answers the
+  // family's question, and the one a surface should NAME the family by. Which
+  // member happens to be a profile's newest reading is an accident of how a lab
+  // ordered its lines, so a label, a copy line, or a curated-rule lookup keyed on
+  // that member drifts row by row — the A1c family reads "Estimated Average
+  // Glucose" whenever the eAG line lands with the higher id, and the diabetes risk
+  // rule (which targets "hemoglobin a1c") then fails to tighten the cadence
+  // (#1394/#1395). Resolve through biomarkerFamilyAnchor() instead. Must be a real
+  // canonical dataset name that is itself a member of this family (pinned by test).
+  anchor: string;
   // Lowercased member spellings — the family's enumerated vocabulary. A stored row
   // whose display name (canonical-or-raw) lowercases into this set is a family
   // member. Still the finite preimage (#394) the PANEL taxonomy realizes in SQL
@@ -589,6 +599,7 @@ export const HEMOGLOBIN_A1C_FAMILY = "hemoglobin-a1c";
 export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
   {
     key: VITAMIN_D_25OH_FAMILY,
+    anchor: "Vitamin D, 25-Hydroxy",
     // IDENTITY scope (#1193): the TOTAL 25-OH storage marker's spellings ONLY. The
     // D2/D3 fractions are DELIBERATELY EXCLUDED here (they were folded in by #482 —
     // an over-collapse: the family key drives the cross-source dedup partition, the
@@ -618,6 +629,7 @@ export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
   },
   {
     key: HEMOGLOBIN_A1C_FAMILY,
+    anchor: "Hemoglobin A1c",
     members: [
       "hemoglobin a1c",
       "hba1c",
@@ -652,6 +664,27 @@ export function biomarkerFamily(name: string | null | undefined): string {
     }
   }
   return trimmed;
+}
+
+const FAMILY_BY_IDENTITY: ReadonlyMap<string, BiomarkerFamily> = new Map(
+  BIOMARKER_FAMILIES.map((f) => [`family:${f.key}` as string, f])
+);
+
+// The name to LABEL a biomarker identity by: its family's anchor spelling when the
+// name belongs to a registered family, else the trimmed name itself. Use this
+// wherever a surface names, or looks a curated rule up by, the analyte a group of
+// readings stands for — a title, a copy line, a risk-rule match — so the answer
+// doesn't drift with which member happens to be the newest reading (#1394/#1395).
+//
+// Deliberately keyed on the IDENTITY family (biomarkerFamily), NOT the wider retest
+// identity: a vitamin-D D2/D3 fraction shares the total's redraw CLOCK but is its
+// own series with its own band, so it keeps its own name and its own link. The A1c
+// ↔ eAG family is one identity, so an eAG-representative nudge correctly names (and
+// matches curated rules as) "Hemoglobin A1c". Returns "" for empty input.
+export function biomarkerFamilyAnchor(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "";
+  return FAMILY_BY_IDENTITY.get(biomarkerFamily(trimmed))?.anchor ?? trimmed;
 }
 
 // The RETEST-clock grouping key (#1193). BROADER than biomarkerFamily's identity
