@@ -19,11 +19,14 @@ test("bare /results redirects to the Biomarkers tab and renders it (#1079)", asy
   await expect(
     page.getByRole("heading", { name: "Results", exact: true })
   ).toBeVisible();
-  // The bounded biomarkers table always shows its pagination footer (#114).
+  // The browser renders as the collapsed panel index, whole — the #114 pager it used
+  // to carry was retired in #1581, so the tab's proof of life is a group header.
   const biomarkers = page.getByTestId("results-biomarkers");
-  await expect(biomarkers.getByTestId("biomarkers-pagination")).toContainText(
-    "Showing"
-  );
+  await expect(biomarkers.getByTestId("biomarkers-table")).toBeVisible();
+  await expect(
+    biomarkers.getByTestId("biomarker-panel-header").first() // first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
+  ).toBeVisible();
+  await expect(biomarkers.getByTestId("biomarkers-pagination")).toHaveCount(0);
 });
 
 test("mobile Results starts with four shell-owned route tabs", async ({

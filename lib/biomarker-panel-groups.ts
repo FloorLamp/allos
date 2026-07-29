@@ -26,11 +26,15 @@
 // (#1331) — and the count must agree with the name headings the expansion draws, so
 // this takes it rather than inventing a second grouping.
 //
-// SCOPE. The groups describe the rows they are GIVEN. The browser ships one bounded
-// page (#114, BIOMARKER_PAGE_SIZE), so a header's counts describe that page — the
-// pager below still reports the full total, and `?panel=` is the full single-panel
-// view. Counting a group's full history here would need a second, unbounded read
-// and would print numbers the expansion could not show.
+// SCOPE. The groups describe the rows they are GIVEN, and since #1581 that is the
+// WHOLE filtered set: the browser no longer pages. Readings are observations, not
+// analytes (a 6-analyte lipid panel with 12 draws is 72 rows), so a row-denominated
+// page could be smaller than a single panel — one panel then rendered on two pages
+// with partial counts on each, and the header's "6" described the sliver that
+// happened to land there. Ungrouped, the collapsed index is bounded by CONSTRUCTION
+// instead: PANEL_IDS is a closed 35-entry taxonomy, so the header list can never
+// exceed it however long a lab history grows. A header's counts are now the panel's,
+// full stop, and they are still the same object the expansion draws from.
 
 import {
   OTHER_PANEL,
@@ -125,26 +129,43 @@ export function groupRowsByPanel<T extends PanelGroupRow>(
 // answer and reads as "no results" — the failure mode section A calls out for
 // search. It also keeps a small spec-owned or new-user profile behaving like the
 // flat list it effectively is.
+//
+// Since #1581 this counts the WHOLE filtered set rather than one 50-row page, which
+// is the number the rule always meant: "is this person's result set short?", not "is
+// this page short?". A page total could never answer that — a full page said
+// "long" whether it was page 1 of 1 or 1 of 16 — so the threshold stays where it was
+// and only its denominator became honest.
 export const AUTO_OPEN_ROW_LIMIT = 12;
 
-// The filters that mean "the user has already narrowed this to what they wanted".
+// The filters that mean "the user has already narrowed this to what they wanted" —
+// every control in the browser's filter bar. `current` ("Current values only") joined
+// them in #1581: it is the reader asking for their current picture, which is a request
+// to see VALUES, and leaving it out was also the last way a filter change could
+// re-collapse a group the reader had opened.
 export interface PanelGroupFilters {
   q?: string;
   panel?: PanelId;
   range?: string;
   category?: string;
+  current?: boolean;
 }
 
 /**
  * Which groups start EXPANDED.
  *
- * Two rules, both about not hiding an answer the user already asked for:
- *   1. A NARROWING filter is active (`?q=` search, the `?panel=` facet, a range or
- *      category filter). Every rendered row already matched it, so every group
- *      opens — "search expands matching groups". A search that hit inside a
- *      collapsed group must never look like no-results.
+ * Three rules, all about not hiding an answer the user already asked for:
+ *   1. A NARROWING filter is active — any control in the filter bar (`?q=` search,
+ *      the `?panel=` facet, a range or category filter, "current values only").
+ *      Every rendered row already matched it, so every group opens — "search expands
+ *      matching groups". A search that hit inside a collapsed group must never look
+ *      like no-results, and no filter change may collapse what the reader opened.
  *   2. The whole result set is short (≤ AUTO_OPEN_ROW_LIMIT). There is nothing to
  *      index, so the index would only cost a tap.
+ *   3. There is only ONE group. An index of one entry is not an index — it is a
+ *      lone header the reader must tap to reach the only thing behind it. Reachable
+ *      since #1581 dropped the pager: a page used to hold one to four groups
+ *      routinely, so "one group" said nothing about the data; over the whole set it
+ *      means the profile really does have readings in a single panel.
  *
  * Otherwise nothing opens: the default view IS the index. The returned ids are the
  * INITIAL state only — once the reader has opened or closed a group, a re-render
@@ -159,9 +180,11 @@ export function defaultOpenPanels<T>(
     !!filters.q?.trim() ||
     !!filters.panel ||
     !!filters.range ||
-    !!filters.category;
+    !!filters.category ||
+    !!filters.current;
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
-  if (narrowed || total <= rowLimit) return groups.map((g) => g.panel);
+  if (narrowed || groups.length <= 1 || total <= rowLimit)
+    return groups.map((g) => g.panel);
   return [];
 }
 

@@ -143,3 +143,21 @@ export const PANEL_GROUPS_PROFILE = "Panel Groups (e2e)";
 // The one un-canonicalized analyte: reported under a vendor heading the taxonomy has
 // nothing to say about, so it resolves to `other` and proves nothing is dropped.
 export const PANEL_GROUPS_OTHER_ANALYTE = "E2E Unmapped Assay";
+
+// ── Results-hub panel INDEX, unpaged and phone-first (#1581 / #1578) ──────────
+// A member granted a dedicated ADULT profile whose lab history is deliberately
+// LARGER than the retired 50-row page (#114): ~90 readings across seven #1502
+// panels, so the index proves it lists every panel present rather than whichever
+// ones a 50-row alphabetical slice happened to reach.
+//
+// It also carries the two cards #1578 caps: six starred analytes (past the phone
+// tile cap) and one complete nine-analyte PhenoAge draw (so the bio-age hero renders
+// its headline variant, not the checklist). Both are needed on ONE profile because
+// the geometry assertion — "the first panel header is inside the first viewport" —
+// is about their combined height.
+//
+// Spec-owned (#868): the index publishes counts and the specs assert an exact panel
+// list, neither of which can be said about a shared seed. Read-only in its specs
+// (only client-side disclosure is driven), so it is repeat-safe with no reset.
+export const E2E_LOGIN_PANELINDEX = "e2e_panelindex";
+export const PANEL_INDEX_PROFILE = "Panel Index (e2e)";

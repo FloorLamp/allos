@@ -24,7 +24,12 @@ import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { biomarkerViewHref, importHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
-import { multiViewGroupKey, tablePanelId } from "@/lib/derived-table";
+import {
+  multiViewGroupKey,
+  tablePanelId,
+  DEFAULT_BIOMARKER_SORT,
+  type BiomarkerSortColumn,
+} from "@/lib/derived-table";
 import { OTHER_PANEL, panelLabel, type PanelId } from "@/lib/biomarker-panels";
 import {
   defaultOpenPanels,
@@ -57,15 +62,13 @@ export interface BiomarkersMultiView {
 // "sorted by date" means.
 const SORT_CHOICES = [
   { column: "name", label: "Name" },
-  { column: "panel", label: "Panel" },
   { column: "date", label: "Date", defaultDir: "desc" as const },
 ];
 
-// The column ordered when the URL names none — `panel` since #1499 made the browser
-// a panel index (see BiomarkersSection's parseFilters for why). Stated once here so
-// the (hidden) header arrows and the card-mode select agree about what is active on
-// a fresh load; the server's parseSortColumn fallback is its twin.
-const DEFAULT_SORT = "panel";
+// The column ordered when the URL names none. Read from lib/derived-table rather than
+// restated, so the (hidden) header arrows, the card-mode select and the server's
+// parseBiomarkerSortColumn fallback are ONE value instead of twins that can drift.
+const DEFAULT_SORT = DEFAULT_BIOMARKER_SORT;
 
 // The active-filter context threaded through to build the panel/category filter
 // links (each preserves the current sort/range/etc., matching the server-built
@@ -75,7 +78,7 @@ interface FilterCtx {
   panel?: PanelId;
   range?: string;
   q?: string;
-  sort: "name" | "panel" | "date";
+  sort: BiomarkerSortColumn;
   dir: "asc" | "desc";
   current: boolean;
 }
@@ -261,6 +264,16 @@ function PanelCell({
   );
 }
 
+// The class that tightens a reading row NESTED INSIDE an open panel group (#1581
+// section C). In card mode the group already provides the container, so the reading
+// under it does not also need the full row padding — that is the #1539 double-frame
+// pattern, and with the pager gone an expanded group is the whole panel rather than
+// whatever slice a page held. Same mechanism as `.table-section-row` one rule above
+// it: an element+class selector that outranks `.table-cards tr`, which a utility
+// class on the row could not. Desktop is untouched (the rule is `max-sm:` only), and
+// tables that render UNGROUPED never carry the class.
+const NESTED_ROW = "table-nested-row";
+
 // One biomarker reading row. Display mode keeps the rich Biomarkers presentation
 // (canonical-name grouping heading + Stale badge, panel/category filter links,
 // relative-age date, responsive column hiding) and adds a kebab menu; edit swaps
@@ -327,7 +340,9 @@ function BiomarkerRow({
 
   if (editing) {
     return (
-      <tr className="border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60">
+      <tr
+        className={`${NESTED_ROW} border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60`}
+      >
         <Td slot="full" colSpan={multiView ? 9 : 8} className="py-3">
           <RecordForm
             mode="edit"
@@ -349,7 +364,7 @@ function BiomarkerRow({
   if (r.derived) {
     return (
       <tr
-        className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}
+        className={`${NESTED_ROW}${isEnd ? " border-b border-black/5 dark:border-white/10" : ""}`}
       >
         {subjectCell}
         {titleCell}
@@ -397,7 +412,9 @@ function BiomarkerRow({
     );
   }
   return (
-    <tr className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}>
+    <tr
+      className={`${NESTED_ROW}${isEnd ? " border-b border-black/5 dark:border-white/10" : ""}`}
+    >
       {subjectCell}
       {titleCell}
       <PanelCell
@@ -596,27 +613,24 @@ function PanelGroupHeader({
 // The Biomarkers results table. Client-side so each row can swap in place for an
 // inline editor and offer delete — but the display, grouping, sorting, staleness,
 // and filter links are unchanged from the prior server-rendered table.
-// Bounded-payload pagination (#114): the server ships ONE page of deduped rows,
-// and this pager round-trips the page via `?p=` (URL navigation, preserving the
-// active filters/sort) rather than the client holding the whole history in memory.
-interface Pagination {
-  total: number;
-  page: number; // 1-based, already clamped server-side
-  pageCount: number;
-  pageSize: number;
-}
-
+//
+// NO PAGER (#1581 section A). It used to ship one 50-row page (#114) and round-trip
+// the rest through `?p=`, which is a ROW-denominated bound over a surface whose unit
+// is the PANEL: a six-analyte lipid panel with twelve draws is seventy-two rows, so a
+// panel could straddle a page boundary and render on both with partial counts, and
+// paging re-collapsed every group the reader had opened. The collapsed index is
+// bounded by construction instead — PANEL_IDS is a closed 35-entry taxonomy, so the
+// header list has a hard ceiling no lab history can exceed, and a collapsed group
+// renders no reading rows at all.
 export default function BiomarkersTable({
   records,
   now,
   filters,
-  pagination,
   multiView,
 }: {
   records: TableRecord[];
   now: string;
   filters: FilterCtx;
-  pagination?: Pagination;
   // Present ONLY when more than one profile is in view (#1331) — turns on the
   // leading Profile column, the subject-scoped grouping, and per-row write
   // targeting. Omitted in single view → byte-identical render.
@@ -654,7 +668,6 @@ export default function BiomarkersTable({
     sort,
     dir,
     current,
-    pagination?.page ?? 1,
   ]);
   const [openState, setOpenState] = useState(() => ({
     signature: openSignature,
@@ -674,18 +687,6 @@ export default function BiomarkersTable({
       return { signature: prev.signature, open };
     });
 
-  // Preserve the active filters/sort when moving between pages; page 1 drops `p`.
-  const pageHref = (n: number) =>
-    qs({
-      category,
-      panel,
-      range,
-      q,
-      sort,
-      dir,
-      current: current ? "1" : undefined,
-      p: n > 1 ? String(n) : undefined,
-    });
   return (
     <div className="card mb-6 overflow-hidden p-0">
       {/* Stacked-row mode hides `thead`, so the header's sort links go with it — this
@@ -718,13 +719,13 @@ export default function BiomarkersTable({
               />
               {/* Panel, Notes and Category hide below `md` so the table fits a
               phone without side-scrolling; panel/category stay reachable through
-              the filters above and the biomarker detail page. */}
-              <SortableHeader
-                column="panel"
-                label="Panel"
-                defaultSort={DEFAULT_SORT}
-                className="hidden md:table-cell"
-              />
+              the filters above and the biomarker detail page. Panel is NOT sortable:
+              the rows are already partitioned into panel groups emitted in curated
+              clinical order, so a panel sort would reorder rows within groups that
+              no ordering can move (#1581 section B). */}
+              <th className="th sticky top-0 z-10 hidden bg-white md:table-cell dark:bg-ink-900">
+                Panel
+              </th>
               <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
                 Value
               </th>
@@ -810,48 +811,6 @@ export default function BiomarkersTable({
           })}
         </ResponsiveTable>
       </div>
-      {pagination && pagination.total > 0 && (
-        <div
-          data-testid="biomarkers-pagination"
-          className="flex items-center justify-between gap-3 border-t border-black/5 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
-        >
-          <span>
-            {(() => {
-              const start = (pagination.page - 1) * pagination.pageSize;
-              return `Showing ${start + 1}–${start + records.length} of ${pagination.total}`;
-            })()}
-          </span>
-          {pagination.pageCount > 1 && (
-            <div className="flex items-center gap-2">
-              {pagination.page > 1 ? (
-                <Link
-                  href={pageHref(pagination.page - 1)}
-                  className="btn-ghost text-sm"
-                  rel="prev"
-                >
-                  Prev
-                </Link>
-              ) : (
-                <span className="btn-ghost text-sm opacity-40">Prev</span>
-              )}
-              <span className="text-slate-500 dark:text-slate-400">
-                Page {pagination.page} of {pagination.pageCount}
-              </span>
-              {pagination.page < pagination.pageCount ? (
-                <Link
-                  href={pageHref(pagination.page + 1)}
-                  className="btn-ghost text-sm"
-                  rel="next"
-                >
-                  Next
-                </Link>
-              ) : (
-                <span className="btn-ghost text-sm opacity-40">Next</span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

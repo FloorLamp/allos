@@ -17,9 +17,35 @@ import {
   type PanelId,
 } from "./biomarker-panels";
 import { latestByGroup } from "./latest-per-group";
+import { parseSortColumn } from "./table-sort";
 import type { MedicalRecord } from "./types";
 import type { MedicalSortColumn, SortDirection } from "./queries/medical";
 import type { RangeFilter } from "./queries/medical";
+
+// ---- The Biomarkers browser's sort vocabulary (#1581 section B) --------------
+
+// The sort columns the BROWSER offers. A strict subset of MedicalSortColumn: the
+// query layer still knows how to order by `panel` (the document view's extracted-
+// records table offers it, where rows are not panel-grouped), but the browser does
+// not, because it partitions its rows into panel groups emitted in curated clinical
+// order — "sort by panel" would reorder groups that no ordering can move, which is a
+// control that does nothing a reader can perceive.
+export const BIOMARKER_SORT_COLUMNS = ["name", "date"] as const;
+export type BiomarkerSortColumn = (typeof BIOMARKER_SORT_COLUMNS)[number];
+
+// The column ordered when the URL names none. `name` ascending, which orders the
+// readings of one analyte date DESCENDING (medicalOrderBy's `name, date DESC`) —
+// newest first under each heading.
+export const DEFAULT_BIOMARKER_SORT: BiomarkerSortColumn = "name";
+
+// Resolve a raw `?sort=` value for the browser. Anything unrecognized — including
+// the `panel` an old #1499-era bookmark carries — falls back to the default rather
+// than failing the parse.
+export function parseBiomarkerSortColumn(
+  raw: string | undefined
+): BiomarkerSortColumn {
+  return parseSortColumn(raw, BIOMARKER_SORT_COLUMNS, DEFAULT_BIOMARKER_SORT);
+}
 
 // Display identity: canonical name when present, else the raw name — mirrors
 // biomarkerNameKey() in the SQL layer. Used for the VISIBLE name sort/heading.
@@ -176,9 +202,8 @@ export function prepareTableRecords(
 // filter / the family dedup are recomputed PER (profile, family), NEVER across
 // members — a family collapse must never merge two people's readings into one
 // series (the per-profile-context trap the issue calls out). Single view never
-// touches these functions: its path (getMedicalRecords → prepareTableRecords →
-// paginateRecords) is unchanged and byte-identical; the multi-view path is
-// structurally additive.
+// touches these functions: its path (getMedicalRecords → prepareTableRecords) is
+// unchanged and byte-identical; the multi-view path is structurally additive.
 
 export type WithProfile<T> = T & { profileId: number };
 
@@ -250,7 +275,7 @@ function mvComparator(
 // derived analyte's newest reading flags current within its OWN member, never
 // against another's), applies the `current` filter over that per-member latest, then
 // orders with the subject dimension woven into the sort key (mvComparator) for a
-// readable, stably-paginated merge. Pure — no DB, no auth. Rows keep their
+// readable, deterministically ordered merge. Pure — no DB, no auth. Rows keep their
 // `profileId` tag so stampSubjects can attach subject identity for the chip.
 export function prepareMultiViewTableRecords(
   stored: WithProfile<MedicalRecord>[],
@@ -270,48 +295,4 @@ export function prepareMultiViewTableRecords(
     ? withLatest.filter((r) => r.is_latest === 1)
     : withLatest;
   return filtered.sort(mvComparator(opts.sort, opts.dir ?? "asc"));
-}
-
-// How many biomarker rows the table ships (and renders) per page. The full
-// content-deduped list is built server-side (prepareTableRecords over the single
-// getMedicalRecords dedup pass), but only ONE page is serialized into the client
-// BiomarkersTable — so the RSC payload is bounded regardless of lab history
-// instead of shipping every deduped row (#114: 2,594 rows ≈ 2.97 MB unbounded).
-export const BIOMARKER_PAGE_SIZE = 50;
-
-export interface TablePage<T = MedicalRecord> {
-  // The rows to render for the current page. Generic so the multi-view path can
-  // paginate profile-tagged rows (WithProfile<MedicalRecord>) without losing the tag.
-  rows: T[];
-  // Total rows across all pages (for the "N of M" footer and pager math).
-  total: number;
-  // The resolved 1-based page (clamped into [1, pageCount]).
-  page: number;
-  pageCount: number;
-  pageSize: number;
-}
-
-// Slice the already-built, already-sorted combined table list to one page.
-// `page` is 1-based and may be any user-supplied value (from `?p=`); it's clamped
-// into [1, pageCount] so an out-of-range or garbage value lands on a real page.
-// Pure — no DB; this only bounds what the client component receives, not the DB
-// read (the window-CTE dedup still runs once in getMedicalRecords). An empty list
-// reads as page 1 of 1.
-export function paginateRecords<T = MedicalRecord>(
-  records: T[],
-  page: number,
-  pageSize: number = BIOMARKER_PAGE_SIZE
-): TablePage<T> {
-  const total = records.length;
-  const count = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
-  const clamped = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
-  const current = Math.min(clamped, count);
-  const start = (current - 1) * pageSize;
-  return {
-    rows: records.slice(start, start + pageSize),
-    total,
-    page: current,
-    pageCount: count,
-    pageSize,
-  };
 }

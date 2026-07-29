@@ -39,6 +39,8 @@ import {
   E2E_LOGIN_PANELGROUPS,
   PANEL_GROUPS_PROFILE,
   PANEL_GROUPS_OTHER_ANALYTE,
+  E2E_LOGIN_PANELINDEX,
+  PANEL_INDEX_PROFILE,
 } from "../fixture-logins";
 import {
   PROFILE_ID,
@@ -853,5 +855,129 @@ export function seedPanelGroups(): void {
   seedMemberLogin(E2E_LOGIN_PANELGROUPS, pid, "write");
   console.log(
     `e2e: seeded panel-groups fixture — ${E2E_LOGIN_PANELGROUPS} granted ${PANEL_GROUPS_PROFILE} (${pid}) (#1499)`
+  );
+}
+
+// ── Results-hub panel INDEX, unpaged and phone-first (#1581 / #1578) ──────────
+// A dedicated ADULT profile carrying more lab history than the retired 50-row page
+// (#114) held: twenty-seven analytes across SEVEN #1502 panels, three draws each, so
+// the browser must ship eighty-one rows to list every panel present. Under the page
+// this fixture is the exact failure the issue describes — a name-sorted 50-row slice
+// stops partway through the alphabet, and the panels whose analytes sort after it
+// simply have no header.
+//
+// The same profile carries the two cards #1578 caps, because the geometry claim
+// ("the first panel header is inside the first phone viewport") is about their
+// COMBINED height and cannot be tested on two profiles:
+//   • SIX starred analytes — past PHONE_STARRED_TILE_CAP, so the fold is exercised
+//     rather than skipped.
+//   • one COMPLETE nine-analyte PhenoAge draw plus sex/birthdate, so the bio-age hero
+//     renders its headline variant (the tall one) and not the checklist CTA.
+//
+// The nine PhenoAge inputs are seeded in their CANONICAL units, so the derived
+// indices compute without a unit conversion the fixture would then be pinning. Those
+// derived rows are part of the point: eGFR joins Kidney, HOMA-IR joins Glucose &
+// insulin, Non-HDL and TG/HDL join Lipids, and PhenoAge is the only member of
+// Biological age — which is the end-to-end proof of #1581 section D's "verify before
+// removing" (the panel is reachable, so the facet keeps offering it).
+//
+// Idempotent: rows, saves and settings are deleted per profile before insert.
+export function seedPanelIndex(): void {
+  const pid = fixtureProfileId(PANEL_INDEX_PROFILE);
+  db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(pid);
+  db.prepare(
+    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'`
+  ).run(pid);
+  db.prepare(
+    `DELETE FROM profile_settings WHERE profile_id = ? AND key IN ('sex', 'birthdate')`
+  ).run(pid);
+
+  // Adult male with a fixed birthdate — eGFR and PhenoAge are adult-population
+  // models and refuse to compute without a known age.
+  for (const [key, value] of [
+    ["sex", "male"],
+    ["birthdate", "1978-03-12"],
+  ] as const)
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)`
+    ).run(pid, key, value);
+
+  const anchor = today(pid);
+  // Three draws, all deep past relative to the frozen clock so no reading is "today".
+  const draws = [
+    shiftDateStr(anchor, -40),
+    shiftDateStr(anchor, -400),
+    shiftDateStr(anchor, -760),
+  ];
+
+  // [canonical name, canonical unit, value, flag]. Values are ordinary adult numbers
+  // and internally consistent (LDL + HDL + VLDL ≈ total). Only the LIPIDS panel is out
+  // of range — a coherent dyslipidemia picture that also drags the DERIVED Non-HDL
+  // (total − HDL = 190, over its 130 reference ceiling) out of range with it, which is
+  // the point: a derived index counts toward a header's flag tally exactly like a
+  // stored analyte. Every other panel is the unflagged contrast.
+  const analytes: [string, string, number, string | null][] = [
+    // Lipids
+    ["Total Cholesterol", "mg/dL", 244, "high"],
+    ["LDL Cholesterol", "mg/dL", 168, "high"],
+    ["HDL Cholesterol", "mg/dL", 54, null],
+    ["Triglycerides", "mg/dL", 108, null],
+    ["VLDL Cholesterol", "mg/dL", 21, null],
+    // Glucose & insulin
+    ["Glucose", "mg/dL", 92, null],
+    ["Hemoglobin A1c", "%", 5.3, null],
+    ["Insulin", "uIU/mL", 6.1, null],
+    // Inflammation
+    ["High-Sensitivity C-Reactive Protein (hs-CRP)", "mg/L", 0.8, null],
+    ["Homocysteine", "umol/L", 9.4, null],
+    // Kidney
+    ["Creatinine", "mg/dL", 0.95, null],
+    ["Blood Urea Nitrogen (BUN)", "mg/dL", 14, null],
+    ["Uric Acid", "mg/dL", 5.2, null],
+    // Liver & protein
+    ["Albumin", "g/dL", 4.4, null],
+    ["Alkaline Phosphatase", "U/L", 68, null],
+    ["Alanine Aminotransferase (ALT)", "U/L", 22, null],
+    ["Aspartate Aminotransferase (AST)", "U/L", 20, null],
+    ["Total Bilirubin", "mg/dL", 0.7, null],
+    // Complete blood count
+    ["Hemoglobin", "g/dL", 14.8, null],
+    ["Hematocrit", "%", 44, null],
+    ["White Blood Cell Count", "10^3/uL", 5.8, null],
+    ["Mean Corpuscular Volume (MCV)", "fL", 89, null],
+    ["Red Cell Distribution Width (RDW)", "%", 13.1, null],
+    ["Lymphocytes", "%", 30, null],
+    ["Platelet Count", "10^3/uL", 232, null],
+    // Thyroid
+    ["Thyroid-Stimulating Hormone (TSH)", "uIU/mL", 2.2, null],
+    ["Free T4", "ng/dL", 1.3, null],
+  ];
+
+  const add = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, flag, panel, source)
+     VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, ?, 'E2E Lab', 'manual')`
+  );
+  for (const date of draws)
+    for (const [name, unit, value, flag] of analytes)
+      add.run(pid, date, name, String(value), value, unit, name, flag);
+
+  // Six stars — two past the phone tile cap, so the fold has something to reveal.
+  const starred = [
+    "LDL Cholesterol",
+    "Hemoglobin A1c",
+    "High-Sensitivity C-Reactive Protein (hs-CRP)",
+    "Creatinine",
+    "Albumin",
+    "Thyroid-Stimulating Hormone (TSH)",
+  ];
+  const star = db.prepare(
+    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+  );
+  for (const name of starred) star.run(pid, name);
+
+  seedMemberLogin(E2E_LOGIN_PANELINDEX, pid, "write");
+  console.log(
+    `e2e: seeded panel-index fixture — ${E2E_LOGIN_PANELINDEX} granted ${PANEL_INDEX_PROFILE} (${pid}) — ${draws.length * analytes.length} readings (#1581/#1578)`
   );
 }

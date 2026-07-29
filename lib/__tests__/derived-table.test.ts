@@ -5,8 +5,9 @@ import {
   prepareTableRecords,
   prepareMultiViewTableRecords,
   multiViewGroupKey,
-  paginateRecords,
-  BIOMARKER_PAGE_SIZE,
+  parseBiomarkerSortColumn,
+  BIOMARKER_SORT_COLUMNS,
+  DEFAULT_BIOMARKER_SORT,
   type WithProfile,
 } from "../derived-table";
 import type { MedicalRecord } from "../types";
@@ -122,53 +123,6 @@ describe("filterDerivedForTable", () => {
     expect(
       filterDerivedForTable(rows, { excludeCategories: ["lab"] })
     ).toHaveLength(0);
-  });
-});
-
-describe("paginateRecords (#114 bounded payload)", () => {
-  const many = Array.from({ length: 125 }, (_, i) => rec({ id: i + 1 }));
-
-  it("slices to one page and reports the total", () => {
-    const p = paginateRecords(many, 1, 50);
-    expect(p.rows).toHaveLength(50);
-    expect(p.rows[0].id).toBe(1);
-    expect(p.total).toBe(125);
-    expect(p.pageCount).toBe(3);
-    expect(p.page).toBe(1);
-  });
-
-  it("returns the requested middle page", () => {
-    const p = paginateRecords(many, 2, 50);
-    expect(p.rows[0].id).toBe(51);
-    expect(p.rows).toHaveLength(50);
-  });
-
-  it("returns a short final page", () => {
-    const p = paginateRecords(many, 3, 50);
-    expect(p.rows).toHaveLength(25);
-    expect(p.rows[0].id).toBe(101);
-  });
-
-  it("clamps an out-of-range page to the last page", () => {
-    expect(paginateRecords(many, 99, 50).page).toBe(3);
-    expect(paginateRecords(many, 99, 50).rows[0].id).toBe(101);
-  });
-
-  it("clamps garbage/NaN/zero to page 1", () => {
-    expect(paginateRecords(many, NaN, 50).page).toBe(1);
-    expect(paginateRecords(many, 0, 50).page).toBe(1);
-    expect(paginateRecords(many, -4, 50).page).toBe(1);
-  });
-
-  it("an empty list reads as page 1 of 1", () => {
-    const p = paginateRecords([], 1);
-    expect(p).toMatchObject({ total: 0, page: 1, pageCount: 1, rows: [] });
-  });
-
-  it("defaults to BIOMARKER_PAGE_SIZE", () => {
-    const p = paginateRecords(many, 1);
-    expect(p.pageSize).toBe(BIOMARKER_PAGE_SIZE);
-    expect(p.rows).toHaveLength(BIOMARKER_PAGE_SIZE);
   });
 });
 
@@ -465,5 +419,27 @@ describe("prepareMultiViewTableRecords", () => {
     expect(mv.map((r) => [r.id, r.is_latest])).toEqual(
       single.map((r) => [r.id, r.is_latest])
     );
+  });
+});
+
+// #1581 section B — the browser's sort vocabulary. `panel` is gone from it: the rows
+// are already partitioned into panel groups emitted in curated clinical order, so a
+// panel sort reorders groups no ordering can move.
+describe("parseBiomarkerSortColumn (#1581 section B)", () => {
+  it("defaults to name", () => {
+    expect(DEFAULT_BIOMARKER_SORT).toBe("name");
+    expect(parseBiomarkerSortColumn(undefined)).toBe("name");
+    expect(parseBiomarkerSortColumn("")).toBe("name");
+  });
+
+  it("accepts the columns the browser offers", () => {
+    expect(BIOMARKER_SORT_COLUMNS).toEqual(["name", "date"]);
+    expect(parseBiomarkerSortColumn("name")).toBe("name");
+    expect(parseBiomarkerSortColumn("date")).toBe("date");
+  });
+
+  it("falls an old ?sort=panel bookmark back to name rather than failing", () => {
+    expect(parseBiomarkerSortColumn("panel")).toBe("name");
+    expect(parseBiomarkerSortColumn("nonsense")).toBe("name");
   });
 });

@@ -50,13 +50,16 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   await expect(sleep).toBeVisible();
   await expect(sleep.getByRole("application")).toBeVisible();
 
-  // #114: the biomarkers browser (/results#biomarkers) ships only one bounded page of rows, so its
-  // table always renders the pagination footer ("Showing N of M") — a cheap proof
-  // the bounded-payload table surfaced regardless of lab-history size.
+  // The biomarkers browser renders as the collapsed panel index, whole — the #114
+  // pager this used to assert was retired in #1581 (the index is bounded by the
+  // closed panel taxonomy instead), so the cheap proof the table surfaced is a
+  // panel group header, matching results-page.spec.ts.
   await page.goto("/results");
-  const pager = page.getByTestId("biomarkers-pagination");
-  await expect(pager).toBeVisible();
-  await expect(pager).toContainText("Showing");
+  const biomarkers = page.getByTestId("results-biomarkers");
+  await expect(biomarkers.getByTestId("biomarkers-table")).toBeVisible();
+  await expect(
+    biomarkers.getByTestId("biomarker-panel-header").first() // first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
+  ).toBeVisible();
 });
 
 // #843 (door B): the measurements form carries an optional temperature reading time
