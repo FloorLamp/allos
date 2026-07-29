@@ -280,8 +280,7 @@ export function getLatestMetricSample(
           ORDER BY end_time DESC LIMIT 1`
       )
       .get(profileId, metric, ...cond.params) as
-      | { value: number; date: string }
-      | undefined;
+      { value: number; date: string } | undefined;
     if (row) return row;
     if (chosen.strict) return null;
   }

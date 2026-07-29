@@ -138,11 +138,15 @@ export function parseMetricSourcePriority(
     const out: MetricSourcePriority = {};
     for (const [metric, value] of Object.entries(parsed)) {
       if (typeof value === "string") {
-        if (isValidSourceId(value)) out[metric] = { source: value, strict: false };
+        if (isValidSourceId(value))
+          out[metric] = { source: value, strict: false };
         continue;
       }
       if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-      const { source, strict } = value as { source?: unknown; strict?: unknown };
+      const { source, strict } = value as {
+        source?: unknown;
+        strict?: unknown;
+      };
       if (typeof source !== "string" || !isValidSourceId(source)) continue;
       out[metric] = { source, strict: strict === true };
     }
@@ -373,7 +377,9 @@ export interface SourceSeriesLike {
 // picker's "Documents" option: ONE scan is already worth electing the class over
 // that scan's own id, because the NEXT scan (a new document id) is covered
 // without re-picking.
-export function hasDocumentSeries(series: readonly SourceSeriesLike[]): boolean {
+export function hasDocumentSeries(
+  series: readonly SourceSeriesLike[]
+): boolean {
   return series.some((s) => documentSourceId(s.source) != null);
 }
 
@@ -410,7 +416,9 @@ export function withDocumentsClassSeries<T extends SourceSeriesLike>(
       .map(([date, { sum, n }]) => ({ date, value: sum / n }))
       .sort((a, b) => (a.date < b.date ? -1 : 1)),
   };
-  const firstMember = series.findIndex((s) => documentSourceId(s.source) != null);
+  const firstMember = series.findIndex(
+    (s) => documentSourceId(s.source) != null
+  );
   const out: (T | SourceSeriesLike)[] = [...series];
   out.splice(firstMember, 0, aggregate);
   return out;

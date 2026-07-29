@@ -303,3 +303,17 @@ them on read:
   Strava; picking a source makes it authoritative for that metric's totals,
   charts, and latest-value surfaces (with a fallback whenever it has no data).
   The section is invisible until a second source actually shows up.
+- **Documents as one source.** A reading extracted from a medical document
+  carries that document's own provenance, so each report is its own source. The
+  picker also offers **Documents** — a source _class_ covering every document —
+  whenever any document reports the metric, and the overlay adds one aggregated
+  **Documents** series (across all reports) as soon as two documents do. The
+  per-document series and their labels remain; the class is an addition. Electing
+  it means "my scans", including the next one, which is a new document.
+- **Only this source.** The picker's **Only this source** checkbox turns the
+  choice from a preference into an exclusion: days the elected source did not
+  cover stay empty instead of falling back, additive rollups count only its rows,
+  and a latest-value surface with no reading from it shows the empty state rather
+  than another source's number. Unchecking it (or returning to "Automatic")
+  restores the fallback behavior exactly. Strict mode plus the Documents class is
+  how a profile gets a scans-only chart against a denser everyday source.

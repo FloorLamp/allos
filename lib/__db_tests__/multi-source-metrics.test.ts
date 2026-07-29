@@ -709,9 +709,8 @@ describe("documents source class + strict mode", () => {
 
   beforeAll(() => {
     p = Number(
-      db
-        .prepare("INSERT INTO profiles (name) VALUES ('scan vs scale')")
-        .run().lastInsertRowid
+      db.prepare("INSERT INTO profiles (name) VALUES ('scan vs scale')").run()
+        .lastInsertRowid
     );
     // Real document rows so the provenance strings name something that exists;
     // the resolution itself keys on the 'document:<id>' string, not a join.
@@ -823,6 +822,8 @@ describe("documents source class + strict mode", () => {
     expect(getMetricDailyTotals(p, "hrv_ms")).toEqual([]);
     // Preference mode restores today's stale-pick fallback exactly.
     setMetricSourcePriorityEntry(p, "hrv_ms", "oura");
-    expect(getMetricDailyTotals(p, "hrv_ms")).toEqual([{ date: DAY, value: 44 }]);
+    expect(getMetricDailyTotals(p, "hrv_ms")).toEqual([
+      { date: DAY, value: 44 },
+    ]);
   });
 });

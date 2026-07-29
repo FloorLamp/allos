@@ -357,7 +357,10 @@ describe("sourceGroupKey (issue #1640)", () => {
 });
 
 describe("withDocumentsClassSeries / hasDocumentSeries (issue #1640)", () => {
-  const manual = { source: "manual", data: [{ date: "2026-03-01", value: 20 }] };
+  const manual = {
+    source: "manual",
+    data: [{ date: "2026-03-01", value: 20 }],
+  };
   const docA = {
     source: "document:5",
     data: [{ date: "2026-01-10", value: 21.4 }],
@@ -400,9 +403,9 @@ describe("withDocumentsClassSeries / hasDocumentSeries (issue #1640)", () => {
   });
 
   it("adds no aggregate for zero or one document, but still OFFERS the class at one", () => {
-    expect(withDocumentsClassSeries([manual, docA]).map((s) => s.source)).toEqual(
-      ["manual", "document:5"]
-    );
+    expect(
+      withDocumentsClassSeries([manual, docA]).map((s) => s.source)
+    ).toEqual(["manual", "document:5"]);
     expect(withDocumentsClassSeries([manual]).map((s) => s.source)).toEqual([
       "manual",
     ]);

@@ -592,7 +592,10 @@ Results**, even when nutrition may influence them.
 
 **Compare** puts two ranges or sources on the same metric without summing
 overlapping provider streams. A chosen primary source drives the authoritative
-series while alternatives remain inspectable.
+series while alternatives remain inspectable. All document-extracted readings can
+be elected together as one **Documents** source, and any choice can be made
+strict ("only this source"), which leaves honest gaps on the days it did not
+cover instead of falling back.
 
 Event overlays shade medication, appointment, situation, and protocol windows.
 **Situation impact** compares values during and outside a selected situation as

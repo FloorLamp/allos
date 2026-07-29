@@ -138,7 +138,10 @@ export default function SourceComparison({
   // the class is still the right forward-looking choice: the NEXT scan is a new
   // document id, and the class already covers it.
   const options = series.map((s) => ({ value: s.key, label: s.label }));
-  if (hasDocumentSeries(raw) && !options.some((o) => o.value === DOCUMENTS_SOURCE_CLASS)) {
+  if (
+    hasDocumentSeries(raw) &&
+    !options.some((o) => o.value === DOCUMENTS_SOURCE_CLASS)
+  ) {
     const firstDoc = options.findIndex(
       (o) => documentSourceId(o.value) != null
     );

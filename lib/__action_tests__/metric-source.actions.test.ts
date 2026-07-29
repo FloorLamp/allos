@@ -147,9 +147,17 @@ describe("setMetricPrimarySource", () => {
       end_time: `${date}T23:59`,
       value,
     });
-    upsertMetricSamples(profile.id, [day("2024-03-01", 9000)], "health-connect");
+    upsertMetricSamples(
+      profile.id,
+      [day("2024-03-01", 9000)],
+      "health-connect"
+    );
     upsertMetricSamples(profile.id, [day("2024-03-01", 7500)], "oura");
-    upsertMetricSamples(profile.id, [day("2024-03-02", 8800)], "health-connect");
+    upsertMetricSamples(
+      profile.id,
+      [day("2024-03-02", 8800)],
+      "health-connect"
+    );
 
     await setMetricPrimarySource(fd({ metric: "steps", source: "oura" }));
     expect(getMetricDailyTotals(profile.id, "steps")).toEqual([
