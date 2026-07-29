@@ -1,12 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession, requireWriteAccess } from "@/lib/auth";
+import {
+  getAccessibleProfiles,
+  requireSession,
+  requireWriteAccess,
+} from "@/lib/auth";
 import {
   setAttentionHeroCollapsed,
   setDashboardLayout,
   setIllnessHeroUi,
 } from "@/lib/settings";
+import { dismissRecentlyResolvedEpisode } from "@/lib/recently-resolved";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { snoozeUntil } from "@/lib/upcoming";
@@ -58,6 +63,36 @@ export async function saveIllnessHeroState(
 export async function saveAttentionHeroCollapsed(collapsed: boolean) {
   const { login } = await requireSession();
   setAttentionHeroCollapsed(login.id, collapsed === true);
+}
+
+// Persist the VIEWER's hide of one "Recently resolved — reopen?" line (issue #1548),
+// so the X stops resurrecting on reload for the rest of the episode's 7-day window.
+//
+// Gated on requireSession, NOT requireWriteAccess, for the same reason as
+// saveAttentionHeroCollapsed: this writes only to the acting LOGIN's own settings row
+// (a per-login viewer preference), so a read-only caregiver is still entitled to tidy
+// their own dashboard. It grants no reach in the other direction either — the hide is
+// per-login, so a co-caregiver's copy of the line is untouched.
+//
+// AUTHORIZATION OF THE ID lives here, at the request boundary: the login's accessible
+// profiles are resolved and handed to the auth-blind write core, which refuses any
+// episode id outside that set's currently-reopen-eligible ids. So a tampered payload
+// can neither name a stranger's episode nor pad the stored list. The refusal is a
+// silent no-op by design — the action is idempotent and the caller has already hidden
+// the row optimistically; there is nothing for a viewer to correct.
+//
+// Revalidates "/": unlike the collapse preference, the dismissal changes WHICH server-
+// rendered band the dashboard's household-history promo link belongs to (#1549), so
+// the page must re-render rather than trust the client's optimistic hide.
+export async function dismissRecentlyResolved(episodeId: number) {
+  const { login } = await requireSession();
+  const accessible = await getAccessibleProfiles();
+  dismissRecentlyResolvedEpisode(
+    login.id,
+    accessible.map((p) => p.id),
+    typeof episodeId === "number" ? episodeId : Number(episodeId)
+  );
+  revalidatePath("/");
 }
 
 // "Snooze" on the dashboard Coaching widget (findings bus, #39; renamed from "Not

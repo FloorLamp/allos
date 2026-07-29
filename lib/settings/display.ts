@@ -413,3 +413,47 @@ export function setAttentionHeroCollapsed(
 ): void {
   setLoginSetting(loginId, "attention_hero_collapsed", collapsed ? "1" : "0");
 }
+
+// The dashboard "Recently resolved — reopen?" lines the VIEWER has dismissed (issue
+// #1548), as a set of episode ids. Per-LOGIN, exactly like the attention hero's
+// collapse preference above and for the same reason: this is a statement about the
+// reader's own screen, not a fact about the person whose episode it is. Another login
+// with access to the same profile still sees the line — deliberately.
+//
+// Why NOT the findings bus (`upcoming_dismissals`): the reopen line is a calm
+// convenience, not a finding — it carries no dedupeKey, never reaches Upcoming, the
+// digest, or a notification, and the #449 tiers stay untouched. Putting a viewer
+// preference on the medical suppression bus would give it reach it must not have.
+//
+// Stored as a JSON array of integers rather than a flag-per-key, because the ids are
+// a SET whose membership is pruned as a whole on every write (see
+// dismissRecentlyResolvedEpisode). Read defensively — a hand-edited or older value
+// must degrade to "nothing dismissed", never throw on the dashboard's render path.
+export function getRecentlyResolvedDismissed(loginId: number): number[] {
+  const raw = getLoginSetting(loginId, "recently_resolved_dismissed");
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (v): v is number => typeof v === "number" && Number.isInteger(v) && v > 0
+    );
+  } catch {
+    return [];
+  }
+}
+
+// Replaces the stored set wholesale (the caller has already pruned it). Sorted so the
+// stored value is stable across equivalent writes and diffable by eye.
+export function setRecentlyResolvedDismissed(
+  loginId: number,
+  episodeIds: number[]
+): void {
+  const unique = [...new Set(episodeIds.filter((id) => Number.isInteger(id)))];
+  unique.sort((a, b) => a - b);
+  setLoginSetting(
+    loginId,
+    "recently_resolved_dismissed",
+    JSON.stringify(unique)
+  );
+}
