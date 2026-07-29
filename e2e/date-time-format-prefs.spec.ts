@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { censusRevealed } from "./trends-chrome";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
@@ -73,6 +74,9 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // ("On Monday, July 6 you logged …", #1020).
     resetBodyHygieneDismissals();
     await page.goto("/trends");
+    // The body census streams onto the landing surface (#1644): wait for it to be
+    // revealed INTO its section before querying its content.
+    await censusRevealed(page, "body", "trends-body");
     await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
       page
@@ -119,6 +123,9 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // finding, same dedupeKey, reshaped text (#1020).
     resetBodyHygieneDismissals();
     await page.goto("/trends");
+    // The body census streams onto the landing surface (#1644): wait for it to be
+    // revealed INTO its section before querying its content.
+    await censusRevealed(page, "body", "trends-body");
     await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
       page

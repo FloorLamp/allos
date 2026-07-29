@@ -12,8 +12,6 @@ import {
   bodyCardId,
   bodyCardOrder,
   conditionMonitorTags,
-  growthCardLeads,
-  orderCardSections,
   presenceLevel,
   rankBodyCards,
   TRENDS_CARD_TABLE,
@@ -386,71 +384,48 @@ describe("applyCardOrder", () => {
   });
 });
 
-describe("growthCardLeads", () => {
-  it("is true when growth outranks every card in the chart block", () => {
-    const order = rankBodyCards(ctx({ growthTracked: true }));
-    expect(growthCardLeads(order, ["systolic", "weight", "height"])).toBe(true);
-  });
-
-  it("is false for an adult, whose growth card trails the chart block", () => {
-    const order = rankBodyCards(NEUTRAL);
-    expect(growthCardLeads(order, ["systolic", "weight"])).toBe(false);
-  });
-
-  it("stays true for a growth-tracked profile that pinned a chart (#1643)", () => {
-    // A ★ cannot displace the life-stage lead, so the percentile card still heads
-    // the stack for a child whose parent starred the weight card.
-    const order = bodyCardOrder(ctx({ growthTracked: true }), ["weight"]);
-    expect(growthCardLeads(order, ["weight"])).toBe(true);
-  });
-
-  it("is false when the growth card is not in the order at all", () => {
-    expect(growthCardLeads(["weight", "systolic"], ["weight"])).toBe(false);
-  });
-});
-
-describe("orderCardSections", () => {
-  const SECTIONS = [
-    { id: "vitals", keys: ["systolic", "diastolic", "hrv"] },
-    { id: "body-composition", keys: ["weight", "body-fat"] },
-  ];
-  const ordered = (ctxValue: TrendsSubjectContext) =>
-    orderCardSections(SECTIONS, rankBodyCards(ctxValue), (s) => s.keys).map(
-      (s) => s.id
+// `growthCardLeads` and `orderCardSections` were tested here until #1674 retired
+// their subjects with the census's titled boxes. What replaced both is the flat
+// stack's single ordering pass, so the properties they approximated are now
+// assertions about the ORDER itself:
+//
+//   • "the growth card leads" is `bodyCardOrder(...)[0] === "growth"` for a
+//     growth-tracked profile — no predicate needed, and a ★ still cannot displace it;
+//   • "a promotion is visible" is the promoted card's own index, with no run to lift.
+describe("the flat stack replaces run-level ordering (#1674)", () => {
+  it("leads with the growth card for a growth-tracked profile, ★ or not", () => {
+    expect(rankBodyCards(ctx({ growthTracked: true }))[0]).toBe("growth");
+    // #1643's precedence: an explicit ★ beats the presence floor but not the
+    // life-stage tier, so the percentile card still heads a child's stack.
+    expect(bodyCardOrder(ctx({ growthTracked: true }), ["weight"])[0]).toBe(
+      "growth"
     );
-
-  it("follows the base layout's run sequence when no signal fires", () => {
-    // Composition leads under the everyday-first base (#1659): a run ranks by its
-    // best member, and `weight` is the layout's first card. This is the "run
-    // grouping must agree with the base sequence" half of that issue — the visual
-    // narrative and the rank can't contradict each other.
-    expect(ordered(NEUTRAL)).toEqual(["body-composition", "vitals"]);
   });
 
-  it("lifts the run holding a promoted card, so the promotion is visible", () => {
-    // A monitored condition promotes `systolic`; the Vitals run it lives in has to
-    // come with it, or the promotion is invisible under the leading Composition run.
-    expect(ordered(ctx({ monitors: ["blood-pressure"] }))).toEqual([
-      "vitals",
-      "body-composition",
-    ]);
+  it("does not lead with it for an adult", () => {
+    expect(rankBodyCards(NEUTRAL)[0]).not.toBe("growth");
   });
 
-  it("keeps Vitals leading for a monitored hypertensive profile", () => {
-    expect(
-      ordered(ctx({ monitors: ["blood-pressure"], goalMetrics: ["weight"] }))
-    ).toEqual(["vitals", "body-composition"]);
+  it("makes a promotion visible without lifting a box around it", () => {
+    // A monitored condition promotes `systolic` ITSELF above the everyday cards it
+    // used to ride behind — the #1674 bug class, stated as the property that fixes
+    // it: the clinical card moves, its old box-mates do not come along.
+    const monitored = rankBodyCards(ctx({ monitors: ["blood-pressure"] }));
+    const neutral = rankBodyCards(NEUTRAL);
+    expect(monitored.indexOf("systolic")).toBeLessThan(
+      neutral.indexOf("systolic")
+    );
+    // …and a card that shared the retired "Vitals" box with it is NOT dragged up
+    // with it (respiratory rate is not what the monitor watches).
+    expect(monitored.indexOf("systolic")).toBeLessThan(
+      monitored.indexOf("respiratory-rate")
+    );
   });
 
-  it("leaves a run with no ranked cards at the end", () => {
-    const sections = [
-      { id: "mystery", keys: ["nothing-here"] },
-      { id: "vitals", keys: ["systolic"] },
-    ];
-    expect(
-      orderCardSections(sections, rankBodyCards(NEUTRAL), (s) => s.keys).map(
-        (s) => s.id
-      )
-    ).toEqual(["vitals", "mystery"]);
+  it("ranks the synced-daily cards against the clinical ones, not below them", () => {
+    // The reported case (#1674): under the everyday-first base, steps outrank SpO₂
+    // — impossible while the synced block sat outside the ordering entirely.
+    const order = rankBodyCards(NEUTRAL);
+    expect(order.indexOf("steps")).toBeLessThan(order.indexOf("spo2"));
   });
 });

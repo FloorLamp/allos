@@ -155,7 +155,10 @@ export function primaryQuickLog(
   // (which lands on that same default) gets the same answer, and so a Fitness or
   // Nutrition tab still falls through to "log activity". (#1486 folded the former
   // Vitals tab into this census, so the one form covers both.)
-  if (under(pathname, "/trends") && parseTab(tab ?? undefined) === DEFAULT_TRENDS_TAB) {
+  if (
+    under(pathname, "/trends") &&
+    parseTab(tab ?? undefined) === DEFAULT_TRENDS_TAB
+  ) {
     return quickLogItem("log-measurements");
   }
   return quickLogItem(LOG_ACTIVITY_ID);

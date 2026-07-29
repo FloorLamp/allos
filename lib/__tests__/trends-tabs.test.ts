@@ -109,7 +109,11 @@ describe("trendsTabStrip", () => {
 
   it("keeps Insights for a restricted profile, dropping only Fitness (#1489)", () => {
     const strip = trendsTabStrip(true);
-    expect(strip.map((t) => t.id)).toEqual(["overview", "nutrition", "insights"]);
+    expect(strip.map((t) => t.id)).toEqual([
+      "overview",
+      "nutrition",
+      "insights",
+    ]);
     // Insights survives because compare — its age-NEUTRAL section — lives there
     // now; the gated AI half is hidden inside the section, not by the strip.
     expect(strip.map((t) => t.id)).toContain("insights");

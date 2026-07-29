@@ -408,45 +408,18 @@ export function applyCardOrder<T>(
     .map((e) => e.item);
 }
 
-// A titled RUN of cards (the Body tab's "Vitals" and "Composition" sections) ranks
-// by its best member: a run containing the top-ranked card leads. That is what makes
-// a promotion VISIBLE — a live weight goal that lifts `weight` to the front is
-// pointless if the Composition run it lives in is nailed below Vitals. With no
-// signal firing the runs keep their declared order (every run's best member is its
-// base-order best), so the identity property survives.
-export function orderCardSections<T>(
-  sections: readonly T[],
-  order: readonly BodyCardId[],
-  keysOf: (section: T) => readonly string[]
-): T[] {
-  const pos = new Map<string, number>();
-  order.forEach((id, i) => pos.set(id, i));
-  const bestOf = (section: T): number => {
-    let best = Number.MAX_SAFE_INTEGER;
-    for (const key of keysOf(section)) {
-      const at = pos.get(bodyCardId(key));
-      if (at != null && at < best) best = at;
-    }
-    return best;
-  };
-  return sections
-    .map((section, index) => ({ section, index, best: bestOf(section) }))
-    .sort((a, b) => a.best - b.best || a.index - b.index)
-    .map((e) => e.section);
-}
-
-// Does the growth-percentile card lead the whole chart stack? True exactly when it
-// outranks every card rendered inside the chart-section block — the ranked
-// replacement for `plan.growthCardFirst`, so the pediatric layout is now one
-// consequence of the ranking rather than a second age fork.
-export function growthCardLeads(
-  order: readonly BodyCardId[],
-  chartBlockIds: readonly string[]
-): boolean {
-  const growthAt = order.indexOf(GROWTH_LEAD);
-  if (growthAt < 0) return false;
-  return chartBlockIds.every((key) => {
-    const at = order.indexOf(bodyCardId(key));
-    return at < 0 || growthAt < at;
-  });
-}
+// `orderCardSections` and `growthCardLeads` lived here until #1674.
+//
+// They existed to reconcile the ranker with a SECOND source of order — the Body
+// census's titled "Vitals"/"Composition" boxes: a run ranked by its best member so a
+// promotion inside it stayed visible, and a predicate asking whether the growth card
+// outranked everything in the chart block. Both were maintenance on that redundancy,
+// and it still broke: a clinical card rode into the everyday tier inside its box
+// (SpO₂ above steps), the synced-daily block never entered the ordering at all, and
+// #1643's contiguous starred run was unsatisfiable — three stars in three boxes can
+// only move three boxes.
+//
+// The census renders ONE flat stack now, so promotion visibility is native (a
+// promoted card is simply first) and the growth card leads exactly when the
+// life-stage boost ranks it first — which is what the retired helper was
+// approximating. `applyCardOrder` over every member is the whole mechanism.
