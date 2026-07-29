@@ -75,11 +75,15 @@ export async function addAllergy(formData: FormData): Promise<FormResult> {
   // setAllergyReactions below writes the full list.
   const first = reactions?.find((r) => r.manifestation.trim());
   const reaction =
-    (first ? first.manifestation : String(formData.get("reaction") ?? "")).trim() ||
-    null;
+    (first
+      ? first.manifestation
+      : String(formData.get("reaction") ?? "")
+    ).trim() || null;
   const severity =
-    (first ? (first.severity ?? "") : String(formData.get("severity") ?? "")).trim() ||
-    null;
+    (first
+      ? (first.severity ?? "")
+      : String(formData.get("severity") ?? "")
+    ).trim() || null;
   const status = statusOf(formData.get("status"));
   const criticality = criticalityOf(formData.get("criticality"));
   const verification = verificationOf(formData.get("verification_status"));
@@ -125,11 +129,15 @@ export async function updateAllergy(formData: FormData): Promise<FormResult> {
   const reactions = postedReactions(formData);
   const first = reactions?.find((r) => r.manifestation.trim());
   const reaction =
-    (first ? first.manifestation : String(formData.get("reaction") ?? "")).trim() ||
-    null;
+    (first
+      ? first.manifestation
+      : String(formData.get("reaction") ?? "")
+    ).trim() || null;
   const severity =
-    (first ? (first.severity ?? "") : String(formData.get("severity") ?? "")).trim() ||
-    null;
+    (first
+      ? (first.severity ?? "")
+      : String(formData.get("severity") ?? "")
+    ).trim() || null;
   const status = statusOf(formData.get("status"));
   const criticality = criticalityOf(formData.get("criticality"));
   const verification = verificationOf(formData.get("verification_status"));

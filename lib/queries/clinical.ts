@@ -67,7 +67,10 @@ export function getAllergies(profileId: number): Allergy[] {
 // child-table convention the profile-scoping test enforces.
 function allergyReactionRows(
   profileId: number
-): Map<number, { manifestation: string; severity: string | null; position: number }[]> {
+): Map<
+  number,
+  { manifestation: string; severity: string | null; position: number }[]
+> {
   const rows = db
     .prepare(
       `SELECT r.allergy_id AS allergyId, r.manifestation, r.severity, r.position

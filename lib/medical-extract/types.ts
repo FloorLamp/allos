@@ -59,6 +59,15 @@ export interface ExtractedImmunization {
   date: string | null; // YYYY-MM-DD
   dose_label: string | null;
   notes: string | null;
+  // Administration attributes printed on a vaccine card / immunization record
+  // (#1406). Raw strings; `route` is mapped onto the CHECK-pinned vocabulary in
+  // import-shape, and anything unrecognized lands as NULL rather than a guess.
+  // OPTIONAL (the #709/#702 fixture convention) so existing done-result fixtures
+  // need no change; the real extract path always sets them.
+  lot_number?: string | null;
+  route?: string | null;
+  site?: string | null;
+  reaction?: string | null;
 }
 
 // The clinical-narrative domains the AI extractor now emits (parity with the
@@ -82,6 +91,11 @@ export interface ExtractedAllergy {
   reaction: string | null;
   severity: string | null;
   status: string | null; // raw clinical status; normalized in import-shape
+  // FHIR criticality / verificationStatus as printed (#1405). Raw strings,
+  // normalized to the CHECK sets in import-shape; unrecognized → NULL (unstated),
+  // never a guessed 'confirmed'. OPTIONAL for the same fixture reason as above.
+  criticality?: string | null;
+  verification_status?: string | null;
   onset_date: string | null; // YYYY-MM-DD
 }
 

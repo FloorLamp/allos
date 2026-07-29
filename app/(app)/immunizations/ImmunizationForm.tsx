@@ -8,7 +8,11 @@ import ProviderCombobox from "@/components/ProviderCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { PICKER_NAMES, vaccineDisplayName } from "@/lib/immunization-catalog";
-import { IMMUNIZATION_ROUTES, type FormResult, type Immunization } from "@/lib/types";
+import {
+  IMMUNIZATION_ROUTES,
+  type FormResult,
+  type Immunization,
+} from "@/lib/types";
 
 // Human labels for the CHECK-pinned route vocabulary (#1406). "Not stated" is the
 // default and a real answer — never a guessed 'intramuscular'.

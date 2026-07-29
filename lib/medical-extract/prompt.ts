@@ -63,7 +63,8 @@ Rules:
   one entry per administered dose in the "immunizations" array — vaccine (the name or brand
   EXACTLY as printed, e.g. "Vaxelis", "Tdap", "Boostrix", "Shingrix", "Yellow Fever"), date
   (ISO YYYY-MM-DD of administration), dose_label (e.g. "Dose 1", "Booster") if shown else null,
-  and a short note else null. Set document_type to "immunization" for such documents. A lab
+  lot_number / route / site / reaction when the card prints them else null, and a short note
+  else null. Set document_type to "immunization" for such documents. A lab
   report with antibody TITERS (e.g. "Measles IgG", "Hepatitis B Surface Antibody") is NOT an
   immunization record — put those in results as normal lab analytes, not in immunizations.
 - clinical entities: when the document is a CLINICAL NARRATIVE (a discharge / after-visit
@@ -73,8 +74,9 @@ Rules:
   field null when it isn't printed. Each array is empty for a plain lab/scan report:
   - conditions: problem-list diagnoses (name + ICD-10/SNOMED code when printed; status
     "active"/"inactive"/"resolved" when stated; onset/resolved dates ISO YYYY-MM-DD).
-  - allergies: allergies / intolerances (substance + reaction + severity + status). Do NOT emit a
-    row for an explicit "no known allergies" / "NKDA" statement — leave the array empty.
+  - allergies: allergies / intolerances (substance + reaction + severity + status, plus
+    criticality and verification_status when the document states them — never inferred). Do NOT
+    emit a row for an explicit "no known allergies" / "NKDA" statement — leave the array empty.
   - procedures: procedures / surgical history (name + code + performed date ISO YYYY-MM-DD).
   - encounters: the visit(s) the document describes (date, end/discharge date, type e.g.
     "Office Visit"/"Emergency", class_code AMB/IMP/EMER, reason, attending provider name, facility
@@ -291,6 +293,25 @@ export const TOOL: Anthropic.Tool = {
             },
             dose_label: { type: ["string", "null"] },
             notes: { type: ["string", "null"] },
+            lot_number: {
+              type: ["string", "null"],
+              description: "Lot number exactly as printed, else null",
+            },
+            route: {
+              type: ["string", "null"],
+              description:
+                "Route as printed, e.g. 'IM', 'intramuscular', 'SC', 'oral', 'intranasal'. Null if not stated.",
+            },
+            site: {
+              type: ["string", "null"],
+              description:
+                "Body site as printed, e.g. 'Left deltoid', 'R thigh'. Null if not stated.",
+            },
+            reaction: {
+              type: ["string", "null"],
+              description:
+                "Adverse reaction to THIS dose, if the record states one, else null",
+            },
           },
           required: ["vaccine"],
         },
@@ -358,6 +379,16 @@ export const TOOL: Anthropic.Tool = {
             status: {
               type: ["string", "null"],
               description: "active, inactive, or resolved. Null if not stated.",
+            },
+            criticality: {
+              type: ["string", "null"],
+              description:
+                "Criticality of a FUTURE exposure: 'low', 'high', or 'unable-to-assess'. Null if not stated — do NOT infer it from the severity.",
+            },
+            verification_status: {
+              type: ["string", "null"],
+              description:
+                "'confirmed', 'suspected', 'unconfirmed', 'refuted', or 'entered-in-error' when the document states it. Null if not stated.",
             },
             onset_date: {
               type: ["string", "null"],

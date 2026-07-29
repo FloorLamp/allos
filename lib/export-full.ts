@@ -176,11 +176,33 @@ export function collectFhirExportInput(
 
   const allergies = db
     .prepare(
-      `SELECT substance, substance_code, substance_code_system, reaction,
-              severity, status, onset_date
+      `SELECT id, substance, substance_code, substance_code_system, reaction,
+              severity, status, criticality, verification_status, onset_date
          FROM allergies WHERE profile_id = ? ORDER BY substance`
     )
-    .all(profileId) as FhirExportAllergy[];
+    .all(profileId) as (FhirExportAllergy & { id: number })[];
+  // Attach the graded manifestation list (#1405). A CHILD table with no profile_id
+  // of its own — scoped through the JOIN to its parent, per the child-table
+  // convention. Rows whose reactions only ever existed as the parent's cached scalar
+  // get an empty list here and fall back to it in the resource builder.
+  const allergyReactionRows = db
+    .prepare(
+      `SELECT r.allergy_id AS allergyId, r.manifestation, r.severity
+         FROM allergy_reactions r
+         JOIN allergies a ON a.id = r.allergy_id
+        WHERE a.profile_id = ?
+        ORDER BY r.allergy_id, r.position, r.id`
+    )
+    .all(profileId) as {
+    allergyId: number;
+    manifestation: string;
+    severity: string | null;
+  }[];
+  for (const a of allergies) {
+    a.reactions = allergyReactionRows
+      .filter((r) => r.allergyId === a.id)
+      .map((r) => ({ manifestation: r.manifestation, severity: r.severity }));
+  }
 
   const procedures = db
     .prepare(
@@ -191,7 +213,7 @@ export function collectFhirExportInput(
 
   const immunizations = db
     .prepare(
-      `SELECT vaccine, date, dose_label
+      `SELECT vaccine, date, dose_label, lot_number, route, site, reaction
          FROM immunizations WHERE profile_id = ? ORDER BY date DESC, id DESC`
     )
     .all(profileId) as FhirExportImmunization[];

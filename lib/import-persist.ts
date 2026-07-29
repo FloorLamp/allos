@@ -659,8 +659,9 @@ function insertImportRows(
 
   const insImm = db.prepare(
     `INSERT OR IGNORE INTO immunizations
-       (date, vaccine, dose_label, notes, source, external_id, provider_id, profile_id)
-     VALUES (?,?,?,?,?,?,?,?)`
+       (date, vaccine, dose_label, notes, lot_number, route, site, reaction,
+        source, external_id, provider_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insMetric = db.prepare(
     `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, source, profile_id)
@@ -744,8 +745,9 @@ function insertImportRows(
   const insAllergy = db.prepare(
     `INSERT OR IGNORE INTO allergies
        (substance, substance_code, substance_code_system, reaction, severity,
-        status, onset_date, source, document_id, external_id, profile_id, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+        status, criticality, verification_status, onset_date, source, document_id,
+        external_id, profile_id, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insCondition = db.prepare(
     `INSERT OR IGNORE INTO conditions
@@ -901,6 +903,12 @@ function insertImportRows(
       im.vaccine,
       im.dose_label,
       im.notes,
+      // Administration attributes (#1406) — `?? null` so a PersistInput literal that
+      // predates them (the DB-tier fixtures) still writes an honest NULL.
+      im.lot_number ?? null,
+      im.route ?? null,
+      im.site ?? null,
+      im.reaction ?? null,
       docSource,
       scopedExternalId(im.external_id),
       providerIdFor(im.provider),
@@ -1008,6 +1016,10 @@ function insertImportRows(
       a.reaction,
       a.severity,
       a.status,
+      // Safety attributes (#1405) — `?? null` for the same fixture-compatibility
+      // reason as the immunization ones above.
+      a.criticality ?? null,
+      a.verification_status ?? null,
       a.onset_date,
       docSource,
       docId,

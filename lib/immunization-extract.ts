@@ -15,6 +15,13 @@ export interface DocImmunization {
   date: string; // YYYY-MM-DD
   dose_label: string | null;
   notes: string | null;
+  // Administration attributes as printed on the card (#1406), clipped like every
+  // other extracted string. `route` is still the RAW word here; import-shape maps it
+  // onto the CHECK-pinned vocabulary (an unrecognized route becomes NULL, not a guess).
+  lot_number: string | null;
+  route: string | null;
+  site: string | null;
+  reaction: string | null;
 }
 
 // Validate calendar-real ISO dates (rejects 2025-13-45 / 2025-02-30), the same
@@ -50,6 +57,10 @@ export function immunizationsFromExtraction(
       date,
       dose_label: clip(it?.dose_label, 60),
       notes: clip(it?.notes, 200),
+      lot_number: clip(it?.lot_number, 60),
+      route: clip(it?.route, 40),
+      site: clip(it?.site, 60),
+      reaction: clip(it?.reaction, 200),
     });
   }
   // Collapse duplicate (vaccine, date) rows a card might repeat.

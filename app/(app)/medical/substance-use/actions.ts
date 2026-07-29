@@ -280,7 +280,8 @@ export async function updateSubstanceInstrumentAction(
     date: dateRaw,
     total,
   });
-  if (outcome.kind === "not-found") return formError("Couldn't find that score.");
+  if (outcome.kind === "not-found")
+    return formError("Couldn't find that score.");
   if (outcome.kind === "answers-derived")
     return formError(
       "This score was answered item by item, so its total comes from those answers. Delete it and answer again to correct it."

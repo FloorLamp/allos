@@ -22,7 +22,7 @@ const CRITICALITY_OPTIONS: Record<
 > = {
   low: "Low — unlikely to be life-threatening",
   high: "High — could be life-threatening",
-  "unable-to-assess": "Unable to assess",
+  "unable-to-assess": "Not assessable",
 };
 
 const VERIFICATION_OPTIONS: Record<
@@ -69,7 +69,10 @@ export default function AllergyForm({
     const seeded = composeAllergyReactions(
       allergy ?? { reaction: null, severity: null },
       (allergy?.reactions ?? []).map((r, i) => ({ ...r, position: i }))
-    ).map((r) => ({ manifestation: r.manifestation, severity: r.severity ?? "" }));
+    ).map((r) => ({
+      manifestation: r.manifestation,
+      severity: r.severity ?? "",
+    }));
     return seeded.length > 0 ? seeded : [{ ...EMPTY_ROW }];
   });
 

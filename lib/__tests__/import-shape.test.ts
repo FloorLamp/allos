@@ -220,6 +220,12 @@ describe("extractionToPersistInput (AI path)", () => {
         vaccine: "tdap",
         dose_label: null,
         notes: null,
+        // Administration attributes (#1406): absent on the card → honest NULLs,
+        // never a guessed route.
+        lot_number: null,
+        route: null,
+        site: null,
+        reaction: null,
         external_id: null,
         provider: null,
       },

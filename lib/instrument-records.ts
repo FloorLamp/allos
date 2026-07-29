@@ -193,9 +193,9 @@ export function updateInstrumentScore(
             AND canonical_name IN (${ALL_INSTRUMENT_NAMES.map(() => "?").join(",")})`
       )
       .get(id, profileId, ...ALL_INSTRUMENT_NAMES) as
-      | { canon: string | null; total: number | null }
-      | undefined;
-    if (!row || instrumentForName(row.canon) == null) return { kind: "not-found" };
+      { canon: string | null; total: number | null } | undefined;
+    if (!row || instrumentForName(row.canon) == null)
+      return { kind: "not-found" };
 
     const answered = db
       .prepare(
@@ -219,8 +219,7 @@ export function updateInstrumentScore(
 }
 
 export type DeleteInstrumentOutcome =
-  | { kind: "deleted"; undoId: number | null }
-  | { kind: "not-found" };
+  { kind: "deleted"; undoId: number | null } | { kind: "not-found" };
 
 // Remove ONE stored score. Goes through the SHARED undo capture (#30) under the
 // existing `biomarker-record` kind — the score IS a medical_records row — so a
