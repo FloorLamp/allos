@@ -16,7 +16,6 @@ import {
 //      (#809 — nothing logged at all) gets NO pillar sections, only the
 //      always-present interventions section. Read-only on that fixture, so it
 //      never perturbs the training-first-run spec's empty contract.
-//   4. The old /protocols hub URL permanently redirects into #protocols.
 // All reads — no mutations — so the spec is repeat-safe and contention-free.
 
 test("every section renders for the seeded profile (#1042 phase 4)", async ({
@@ -114,14 +113,4 @@ test("absent pillars drop their sections; the interventions section always rende
   } finally {
     await page.context().close();
   }
-});
-
-test("the old /protocols hub URL permanently redirects into #protocols", async ({
-  page,
-}) => {
-  await page.goto("/protocols");
-  await expect(page).toHaveURL(/\/longevity#protocols$/);
-  await expect(
-    page.getByRole("main").getByTestId("new-protocol-toggle")
-  ).toBeVisible();
 });

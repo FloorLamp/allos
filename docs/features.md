@@ -260,7 +260,8 @@ spread, trend), and the per-marker breakdown behind **“N of M biomarkers
 optimal”** — the same pillar model the dashboard widget renders (each widget
 card deep-links to its section), pillars and never a composite score, with
 absent pillars simply not rendering. Its **#protocols** section absorbed the
-former Protocols page (`/protocols` permanently redirects there).
+former Protocols page (the old `/protocols` hub URL was removed in #1635 and
+404s).
 
 **Protocols** — run an **N-of-1 experiment**: name a dated intervention
 (creatine, a sauna block, Zone 2 emphasis, time-restricted eating), pick the
@@ -778,7 +779,7 @@ Vitals, labs, genomics — the **Biomarkers** browser, **imaging studies**, and
 to route-per-tab in #1079: `/results`, Medical → Results, as three tabs
 `/results/biomarkers` / `/results/imaging` / `/results/genomics` — bare
 `/results` lands on Biomarkers; the old `/biomarkers`, `/imaging`, and
-`/genomics` index routes 308-redirect to the matching tab, and the per-biomarker
+`/genomics` index routes were removed in #1635 and 404, and the per-biomarker
 detail page `/biomarkers/view` survives at its own route). The record-style
 index pages (conditions, allergies, procedures, immunizations, family history,
 visits, providers, background, care plan, and health goals) likewise share one
@@ -791,16 +792,14 @@ goals) · Providers; Specialty → Vision · Dental · Skin · Mental health ·
 Substance use. Bare `/records` lands on `/records/history/visits`; the old
 `/conditions`, `/allergies`, `/procedures`, `/immunizations`, `/family-history`,
 `/encounters`, `/providers`, `/care-plan`, `/care-goals`, and
-`/medical/background` index routes 308-redirect to the pane that now owns each
-section, while the per-provider, per-encounter, and per-vaccine detail pages
-survive at their own routes; (**Coverage gaps** was briefly a section here
-through #1042 phase 6 — #1086 moved it to Data → Coverage as a
-catalog/data-management workflow, and `/coverage` now redirects to
-`/data?section=coverage`;) the five specialty surfaces — Vision / Dental / Skin
-/ Mental health / Substance use — are the Specialty group's sub-tabs, the old
-`/vision`, `/dental`, `/skin`, and `/medical/instruments` routes 308-redirecting
-to `/records/specialty/{vision,dental,skin,mental-health}` (the old standalone
-`/medical/substance-use` route was removed with no redirect), with Vision/Dental
+`/medical/background` index routes were removed in #1635 and 404, while the
+per-provider, per-encounter, and per-vaccine detail pages survive at their own
+routes; (**Coverage gaps** was briefly a section here through #1042 phase 6 —
+#1086 moved it to Data → Coverage as a catalog/data-management workflow, and the
+old `/coverage` route is likewise gone;) the five specialty surfaces — Vision /
+Dental / Skin / Mental health / Substance use — are the Specialty group's
+sub-tabs; the old `/vision`, `/dental`, `/skin`, and `/medical/instruments`
+routes were removed too (as was `/medical/substance-use`, ahead of #1635), with Vision/Dental
 data-gated on data presence (a hidden sub-tab's route re-gates server-side),
 Substance use life-stage-gated to adults + unknown-age profiles (hidden for a
 known minor, its instruments being adult-validated), and Skin/Mental health
@@ -1168,7 +1167,7 @@ data) hides it, as does an unknown sex or age. The gate is cosmetic —
 
 Validated screening **instruments** on **Health record → Specialty → Mental
 health** (`/records/specialty/mental-health`; the old `/medical/instruments`
-route 308-redirects there — the pane always renders, since the in-app instrument
+route is gone — the pane always renders, since the in-app instrument
 flow is the only creation path and the crisis line travels with it): **PHQ-9**
 (depression) and **GAD-7** (anxiety) tracked as numeric, **severity-banded**
 scores (PHQ-9 minimal / mild / moderate / moderately-severe / severe; GAD-7
@@ -1568,7 +1567,7 @@ needs when you can't speak for yourself: allergies (worst first), active
 medications with doses, major conditions, blood type, and an emergency contact —
 with an "as of" date so a reader knows how fresh it is. It lives as the
 **Emergency Card section of the Passport page** (**Medical → Passport**,
-`/profile#emergency`; the old `/emergency` route permanently redirects there).
+`/profile#emergency`; the old `/emergency` route was removed in #1635).
 It reuses the same records as the Passport, so it never disagrees with them.
 Print it with the section's **Print** button — the printout is scoped to the
 card alone (the passport summary above it is dropped, and the passport's own

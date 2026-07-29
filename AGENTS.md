@@ -241,9 +241,9 @@ See `docs/internals/notifications.md`.
 
 Supplements and medications share `intake_items`; do not split their common
 dose, adherence, refill, interaction, or warning machinery. Supplements render
-at `/nutrition?tab=supplements`; medications render at `/medications`.
-`/medicine` permanently redirects to the supplements tab. Use
-`intakeHref(kind)` for kind-to-surface links.
+at `/nutrition?tab=supplements`; medications render at `/medications`. The
+former combined `/medicine` route is gone and 404s. Use `intakeHref(kind)` for
+kind-to-surface links.
 
 Important invariants:
 
@@ -329,7 +329,11 @@ See `docs/internals/e2e-hygiene.md`.
   `createLogger()`.
 - Internal route fields and props use `AppRoute`. Add an href helper only when
   it owns routing policy; otherwise use the typed literal.
-- Preserve permanent compatibility redirects used by external links.
+- Removing or merging a route does not earn a compatibility redirect. The legacy
+  redirect table was deleted in #1635 and `next.config.js` ships none; a retired
+  URL 404s, and adding a redirect back is a per-case product decision, not the
+  default. Auth-flow and tab-default redirects are current-IA plumbing, not
+  compatibility shims, and stay.
 
 ### Shared behavior and data integrity
 

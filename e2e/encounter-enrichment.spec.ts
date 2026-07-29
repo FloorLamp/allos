@@ -82,7 +82,7 @@ test.describe("encounter detail enrichment (#1350/#1353)", () => {
   });
 
   test("a document-sourced record's provenance deep-links to the source import (#1353)", async () => {
-    await page.goto("/conditions");
+    await page.goto("/records/problems/conditions");
     await expect(page.getByTestId("record-provenance-link")).toBeVisible();
     // The manual condition keeps a plain (non-link) 'Manual' label — so exactly one
     // provenance deep-link exists on this dedicated profile's list.
