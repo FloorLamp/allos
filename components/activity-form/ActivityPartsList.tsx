@@ -52,6 +52,7 @@ export default function ActivityPartsList({
   currentActivityId,
   editedDate,
   equipmentList,
+  onEquipmentCreated,
   overallDuration,
   // Bodyweight prompt (folded into the first bodyweight part's StrengthSets).
   bwKnown,
@@ -102,6 +103,8 @@ export default function ActivityPartsList({
   currentActivityId: number | null;
   editedDate: string | null;
   equipmentList: Equipment[];
+  // Pass-through for the strength picker's in-form equipment creation (#1611).
+  onEquipmentCreated: (equipment: Equipment) => void;
   overallDuration: number | null;
   bwKnown: boolean;
   firstBwPart: number;
@@ -336,6 +339,7 @@ export default function ActivityPartsList({
                   currentActivityId={currentActivityId}
                   editedDate={editedDate}
                   equipmentList={equipmentList}
+                  onEquipmentCreated={onEquipmentCreated}
                   showBodyweightPrompt={!bwKnown && pi === firstBwPart}
                   bwInput={bwInput}
                   bwSaving={bwSaving}

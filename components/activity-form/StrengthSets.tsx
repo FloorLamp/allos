@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
@@ -41,6 +42,7 @@ import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import { dismissTrainingObservation } from "@/app/(app)/training/actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
+import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
 import { stepRpe, fmtRpe, rpeSummaryText } from "@/lib/rpe";
 import {
   dispWeight,
@@ -187,6 +189,7 @@ export default function StrengthSets({
   currentActivityId,
   editedDate,
   equipmentList,
+  onEquipmentCreated,
   showBodyweightPrompt,
   bwInput,
   bwSaving,
@@ -222,6 +225,9 @@ export default function StrengthSets({
   // The edited session's date in edit mode (else null): drops later sessions.
   editedDate: string | null;
   equipmentList: Equipment[];
+  // Append a just-created implement to the editor's local equipment state (#1611),
+  // so the row is pickable on every part of this open activity without a reload.
+  onEquipmentCreated: (equipment: Equipment) => void;
   showBodyweightPrompt: boolean;
   bwInput: string;
   bwSaving: boolean;
@@ -253,6 +259,8 @@ export default function StrengthSets({
   const [dismissedPlateaus, setDismissedPlateaus] = useState<Set<string>>(
     () => new Set()
   );
+  // Whether the in-form equipment quick-add is open (#1611).
+  const [addingEquipment, setAddingEquipment] = useState(false);
   // Recent attempts as a reference — shown when logging fresh AND while editing
   // (issue #188). The current session is always excluded (`currentActivityId`),
   // so a session never appears in its own "Recent": in create that's the
@@ -263,8 +271,18 @@ export default function StrengthSets({
   // Canonical, variant-collapsed key so a typed variant ("Barbell Curl") finds
   // its merged history keyed under the base (#331).
   const hist = p.name.trim() ? history[exerciseHistoryKey(p.name)] : undefined;
+  // …then narrowed to the LOAD CONTEXT actually selected on this part (#1610). Two
+  // registry machines serialize as the same exact exercise name, so the merged
+  // history alone would show the home machine's 80 kg while the hotel machine is
+  // selected. Filtering on the equipment LANE only (not the exact variant) keeps the
+  // panel the movement-wide reference #331 made it, while a machine with no history
+  // yet correctly shows nothing rather than another machine's ghost. For a profile
+  // that owns no strength equipment every session is in the same (unassigned) lane,
+  // so this is a no-op.
+  const inLane = (s: { equipmentId?: number | null }) =>
+    (s.equipmentId ?? null) === (p.equipmentId ?? null);
   const recent = recentSessionsForForm(
-    hist?.sessions,
+    hist?.sessions.filter(inLane),
     currentActivityId,
     isEdit ? editedDate : null
   );
@@ -276,16 +294,21 @@ export default function StrengthSets({
   const past = !isEdit
     ? hist?.sessions.filter((s) => s.activityId !== currentActivityId)
     : undefined;
-  // Seed off the prior session of the EXACT variant the user is entering
-  // (`p.name`), falling back to the newest session overall — the merged history
-  // (#331) interleaves implements, and a per-hand dumbbell load is a different
-  // progression from a barbell total (#393). pickSeedSessions is the same ONE
+  // Seed off the prior session of the EXACT variant the user is entering (`p.name`)
+  // ON THE SELECTED IMPLEMENT (`p.equipmentId`, #1610) — the merged history (#331)
+  // interleaves implements, a per-hand dumbbell load is a different progression from
+  // a barbell total (#393), and two registry machines logged under one exact name are
+  // different progressions again. A load context with no history seeds NOTHING rather
+  // than borrowing another machine's numbers. pickSeedSessions is the same ONE
   // decision getStrengthByExercise's lastSessionBest/lastSessionSets use, so the
   // seed is implement-appropriate identically on both surfaces. Two same-day
   // activities are still one session (as in getStrengthByExercise) — the anchor
   // plus every working set so progression judges the session, not the single
   // best set (#330).
-  const seed = hist && past?.length ? pickSeedSessions(past, p.name) : [];
+  const seed =
+    hist && past?.length
+      ? pickSeedSessions(past, p.name, p.equipmentId ?? null)
+      : [];
   const seedSets = seed.flatMap((s) => s.sets);
   const seedBase = seed[0]?.baseKg ?? 0;
   // Deload-week shave (#923): a lift that resolves (variant-collapsed via
@@ -357,13 +380,17 @@ export default function StrengthSets({
       ? buildSuggestion(sideSets(seedSets, "right"))
       : null;
   // The active plateau finding for this lift, if any (#923) — matched by the canonical
-  // exerciseHistoryKey so a typed variant finds its merged plateau. It yields to the
-  // deload rationale on a deload week (the plateau→deload cross-link already de-dupes this
-  // advice at the findings layer, lib/rule-findings), and to an in-session dismissal.
+  // exerciseHistoryKey so a typed variant finds its merged plateau, AND by the load
+  // context selected on the part (#1610) so the home machine's stall isn't reported
+  // against the hotel machine. It yields to the deload rationale on a deload week (the
+  // plateau→deload cross-link already de-dupes this advice at the findings layer,
+  // lib/rule-findings), and to an in-session dismissal.
   const plateauHint =
     p.name.trim() !== ""
       ? (plateauHints.find(
-          (h) => h.exerciseKey === exerciseHistoryKey(p.name)
+          (h) =>
+            h.exerciseKey === exerciseHistoryKey(p.name) &&
+            (h.equipmentId ?? null) === (p.equipmentId ?? null)
         ) ?? null)
       : null;
   const showPlateauHint =
@@ -452,6 +479,29 @@ export default function StrengthSets({
   // barbell lift (the "Barbell" variant chip, or plain lifts like Back Squat).
   const selectedEq = equipmentList.find((e) => e.id === p.equipmentId);
   const showPlate = isBarbell(selectedEq?.category) || isBarbellLift(p.name);
+  // Select a custom implement on this part, matching the lift NAME (and therefore
+  // its strength grouping) to the implement's type: a Barbell/Machine implement
+  // composes that variant, "Other" falls back to the base lift. `created` carries a
+  // row that isn't in `equipmentList` yet — the just-created one (#1611), since the
+  // parent's state update hasn't reached this render.
+  const selectEquipment = (id: number | null, created?: Equipment) => {
+    if (id != null) {
+      const v = variantOf(p.name);
+      if (v) {
+        const row =
+          created?.id === id ? created : equipmentList.find((x) => x.id === id);
+        const cat = (row?.category ?? "").trim().toLowerCase();
+        const wantEquip =
+          cat === "barbell" ? "Barbell" : cat === "machine" ? "Machine" : null;
+        const name =
+          wantEquip !== null && v.group.equipment.includes(wantEquip)
+            ? composeVariant(v.group, wantEquip)
+            : v.group.name;
+        if (name !== p.name) onUpdatePartName(name);
+      }
+    }
+    onUpdatePart({ equipmentId: id });
+  };
   // Small button that opens the plate builder for a specific weight field.
   const plateButton = (si: number, field: "weight" | "weightRight") => (
     <button
@@ -600,91 +650,112 @@ export default function StrengthSets({
           </div>
         </div>
       )}
-      {(variant || defaultEq || equipmentList.length > 0) && (
-        <div
-          className={`mt-2 flex flex-wrap items-center gap-1.5 ${
-            fault === "equipment"
-              ? `-mx-1.5 -my-1 rounded-lg px-1.5 py-1 ${blockedRing}`
-              : ""
-          }`}
-        >
-          {variant &&
-            variant.group.equipment.map((eq) => {
-              // A variant equipment and a custom implement are mutually
-              // exclusive, so a variant chip is active only when no custom
-              // implement is chosen.
-              const active = variant.equipment === eq && p.equipmentId == null;
-              return (
-                <button
-                  key={eq}
-                  type="button"
-                  onClick={() => {
-                    onUpdatePartName(composeVariant(variant.group, eq));
-                    onUpdatePart({ equipmentId: null });
-                  }}
-                  className={chipCls(active)}
-                >
-                  {eq}
-                </button>
-              );
-            })}
-          {/* This lift's default implement — click to clear any custom
+      {/* The equipment row is UNGATED (#1611): it used to render only when the lift
+          had a variant/default implement or the profile already owned equipment,
+          which hid the only door to the registry from exactly the users who needed
+          it — a profile with no strength gear, and a traveller who must register the
+          hotel machine mid-workout. */}
+      <div
+        className={`mt-2 flex flex-wrap items-center gap-1.5 ${
+          fault === "equipment"
+            ? `-mx-1.5 -my-1 rounded-lg px-1.5 py-1 ${blockedRing}`
+            : ""
+        }`}
+      >
+        {variant &&
+          variant.group.equipment.map((eq) => {
+            // A variant equipment and a custom implement are mutually
+            // exclusive, so a variant chip is active only when no custom
+            // implement is chosen.
+            const active = variant.equipment === eq && p.equipmentId == null;
+            return (
+              <button
+                key={eq}
+                type="button"
+                onClick={() => {
+                  onUpdatePartName(composeVariant(variant.group, eq));
+                  onUpdatePart({ equipmentId: null });
+                }}
+                className={chipCls(active)}
+              >
+                {eq}
+              </button>
+            );
+          })}
+        {/* This lift's default implement — click to clear any custom
               implement and use the default; highlighted while it's active. */}
-          {defaultEq && (
-            <button
-              type="button"
-              onClick={() => onUpdatePart({ equipmentId: null })}
-              title="Use the default equipment"
-              className={chipCls(p.equipmentId == null)}
-            >
-              {defaultEq}
-            </button>
-          )}
-          {/* User-defined implement: a compact dropdown sharing the chip row.
+        {defaultEq && (
+          <button
+            type="button"
+            onClick={() => onUpdatePart({ equipmentId: null })}
+            title="Use the default equipment"
+            className={chipCls(p.equipmentId == null)}
+          >
+            {defaultEq}
+          </button>
+        )}
+        {/* User-defined implement: a compact dropdown sharing the chip row.
               Selecting one drops any variant equipment (resets to the base). */}
-          {equipmentList.length > 0 && (
-            <select
-              value={p.equipmentId ?? ""}
-              onChange={(e) => {
-                const id = e.target.value ? Number(e.target.value) : null;
-                if (id != null) {
-                  // Match the name (and strength grouping) to the implement's
-                  // type: a Barbell/Machine implement composes that variant,
-                  // "Other" falls back to the base lift.
-                  const v = variantOf(p.name);
-                  if (v) {
-                    const cat = (
-                      equipmentList.find((x) => x.id === id)?.category ?? ""
-                    )
-                      .trim()
-                      .toLowerCase();
-                    const wantEquip =
-                      cat === "barbell"
-                        ? "Barbell"
-                        : cat === "machine"
-                          ? "Machine"
-                          : null;
-                    const name =
-                      wantEquip !== null &&
-                      v.group.equipment.includes(wantEquip)
-                        ? composeVariant(v.group, wantEquip)
-                        : v.group.name;
-                    if (name !== p.name) onUpdatePartName(name);
-                  }
-                }
-                onUpdatePart({ equipmentId: id });
-              }}
-              className={chipCls(p.equipmentId != null)}
-            >
-              <option value="">Equipment</option>
-              {equipmentList.map((eq) => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        {equipmentList.length > 0 && (
+          <select
+            value={p.equipmentId ?? ""}
+            data-testid="strength-equipment-select"
+            onChange={(e) =>
+              selectEquipment(e.target.value ? Number(e.target.value) : null)
+            }
+            className={chipCls(p.equipmentId != null)}
+          >
+            <option value="">Equipment</option>
+            {equipmentList.map((eq) => (
+              <option key={eq.id} value={eq.id}>
+                {eq.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {/* Compact in-form creation (#1611) — the travel-workout path. Registering
+            the hotel machine here keeps the in-progress sets intact AND gives it a
+            distinct equipment id, which is what makes its history/seed separate from
+            the home machine's (#1610). */}
+        {!addingEquipment && (
+          <button
+            type="button"
+            onClick={() => setAddingEquipment(true)}
+            data-testid="strength-equipment-add"
+            className={chipCls(false)}
+          >
+            + Equipment
+          </button>
+        )}
+        {/* Full management stays on /equipment, opened in a NEW TAB so the workout
+            is never interrupted — the same door ActivityEquipmentPicker renders for
+            non-strength activities (#592). */}
+        <Link
+          href="/equipment"
+          target="_blank"
+          data-testid="strength-equipment-link"
+          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
+          {equipmentList.length === 0 ? "Add equipment →" : "Manage equipment"}
+        </Link>
+      </div>
+      {addingEquipment && (
+        <EquipmentQuickAdd
+          // Default the category from the lift's built-in variant when it's
+          // unambiguous ("Machine Chest Press" → Machine); otherwise the field is
+          // empty and required rather than guessed.
+          defaultCategory={categoryForVariant(variant?.equipment ?? defaultEq)}
+          unit={units.weightUnit}
+          onCreated={(eq) => {
+            // Editor-local state gains the row (so every OTHER part of this same
+            // open activity can pick it too) and the current part selects it
+            // immediately — no reopen, no re-entered sets.
+            onEquipmentCreated(eq);
+            selectEquipment(eq.id, eq);
+            setAddingEquipment(false);
+          }}
+          onCancel={() => setAddingEquipment(false)}
+        />
       )}
       {recent.length > 0 && (
         <div

@@ -1058,6 +1058,67 @@ export function exerciseHistoryNames(name: string): string[] {
   );
 }
 
+/**
+ * The LOAD CONTEXT lane of a logged set — the registry equipment instance it was
+ * performed on, or the explicit "unassigned/default" lane when the set carries no
+ * `exercise_sets.equipment_id` (#1610).
+ *
+ * Load comparability is a SECOND identity, distinct from the movement identity
+ * `exerciseHistoryKey` owns. Two registry machines both serialize as the exact same
+ * logged name ("Machine Chest Press"), so no name-derived key can tell a home chest
+ * press from a hotel one whose stack geometry makes 50 kg the right load. Every
+ * load-sensitive builder therefore appends this lane to whichever NAME identity it
+ * already uses, through the two composers below.
+ *
+ * A NULL equipment id is a lane of its own, never a wildcard: historical rows and
+ * built-in-variant work with no custom row stay in the unassigned lane and we never
+ * guess which machine produced them.
+ */
+export function equipmentLoadLane(
+  equipmentId: number | null | undefined
+): string {
+  return equipmentId == null ? "none" : String(equipmentId);
+}
+
+/**
+ * Load identity for a SEED — the next-set suggestion, the repeat-fill of a prior
+ * session, and the "Recent" reference the editor shows (#1610).
+ *
+ * Name axis: the EXACT logged variant, lowercased/trimmed. #393 established that a
+ * per-hand "Dumbbell Curl" load and a "Barbell Curl" total are different
+ * progressions even though #331 merges them into one movement history, and that
+ * separation survives here for profiles that own no custom equipment at all.
+ * Load axis: `equipmentLoadLane`, so two machines logged under one exact name never
+ * seed each other.
+ *
+ * Sibling of `movementLoadKey` below: SAME lane suffix, different name axis, because
+ * a seed asks "what did I last do on this exact implement" while a progression series
+ * asks "how is this movement trending on this implement".
+ */
+export function strengthLoadKey(
+  exercise: string,
+  equipmentId: number | null | undefined
+): string {
+  return `${exercise.trim().toLowerCase()}@${equipmentLoadLane(equipmentId)}`;
+}
+
+/**
+ * Load identity for a movement's AGGREGATE progression on one implement — the
+ * plateau e1RM series and the plateau finding's dedupe key (#1610 + #1399).
+ *
+ * Name axis: the canonical `exerciseHistoryKey`, so "Barbell Curl" and "Curl" remain
+ * ONE series and ONE dismissal (the #432 series fix and the #1399 dismissal-key twin
+ * it left open — the dismissal follows exactly the identity the series groups on).
+ * Load axis: `equipmentLoadLane`, so a plateau on the home machine is not the same
+ * signal as one on the hotel machine and neither dismissal silences the other.
+ */
+export function movementLoadKey(
+  exercise: string,
+  equipmentId: number | null | undefined
+): string {
+  return `${exerciseHistoryKey(exercise)}@${equipmentLoadLane(equipmentId)}`;
+}
+
 /** Look up a lift by name (case-insensitive, with a loose contains fallback). */
 export function liftInfo(name: string): LiftDef | undefined {
   const key = name.trim().toLowerCase();

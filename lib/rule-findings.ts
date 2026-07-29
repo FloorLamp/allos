@@ -813,9 +813,15 @@ export function buildTrainingObservationFindings(
   const setCounts = getExerciseSetCountsSince(profileId, since);
   // detectPlateaus only inspects points within the trailing PLATEAU_WINDOW_DAYS, so
   // bound the (otherwise all-history) rep-bearing scan to that same window (#389).
+  // byLoadContext (#1610): one series per (movement, registry implement), so a home
+  // chest press and a hotel chest press are never averaged into one fabricated flat
+  // slope — and their findings carry distinct dedupe keys, so dismissing one leaves
+  // the other live.
   const e1rmSeries = getExerciseE1rmSeries(
     profileId,
-    shiftDateStr(today, -PLATEAU_WINDOW_DAYS)
+    shiftDateStr(today, -PLATEAU_WINDOW_DAYS),
+    undefined,
+    { byLoadContext: true }
   );
 
   const observations: TrainingObservation[] = [];
@@ -854,6 +860,10 @@ export function buildTrainingObservationFindings(
 // key namespace: this reuses detectPlateaus and its `training-obs:plateau:…` key exactly.
 export interface PlateauFormHint {
   exerciseKey: string;
+  // The LOAD CONTEXT the plateau was measured in (#1610) — the registry equipment id,
+  // or null for the unassigned lane. The form matches BOTH this and exerciseKey, so
+  // selecting the hotel machine doesn't inherit the home machine's plateau hint.
+  equipmentId: number | null;
   dedupeKey: string;
   supersedes: string;
   // The rendered one-liner (#1203) — the SHARED plateau-break advice (same ~10%
@@ -873,7 +883,9 @@ export function buildActivePlateauHints(
 ): PlateauFormHint[] {
   const e1rmSeries = getExerciseE1rmSeries(
     profileId,
-    shiftDateStr(today, -PLATEAU_WINDOW_DAYS)
+    shiftDateStr(today, -PLATEAU_WINDOW_DAYS),
+    undefined,
+    { byLoadContext: true }
   );
   const cycle = getRoutineCycleStatus(profileId, today);
   const upcomingDeload =
@@ -891,6 +903,7 @@ export function buildActivePlateauHints(
     .filter((o) => o.exercise && activeKeys.has(o.key))
     .map((o) => ({
       exerciseKey: exerciseHistoryKey(o.exercise!),
+      equipmentId: o.equipmentId,
       dedupeKey: o.key,
       supersedes: o.legacyKey,
       hintText: plateauInlineHint(o.exercise!),

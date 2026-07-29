@@ -185,6 +185,14 @@ export default function ActivityForm({
   // Local copy so a bar created from the plate builder appears immediately in
   // both the equipment selector and the builder without waiting on a refetch.
   const [equipmentList, setEquipmentList] = useState<Equipment[]>(equipment);
+  // ONE editor-local append for every in-form equipment creation path — the plate
+  // builder's bar (#335) and the strength picker's quick-add (#1611) — so a row
+  // created mid-workout is immediately pickable on every part without a reload and
+  // without discarding the activity being edited.
+  const addEquipment = (e: Equipment) =>
+    setEquipmentList((prev) =>
+      prev.some((x) => x.id === e.id) ? prev : [...prev, e]
+    );
 
   // Equipment-aware base ordering for the exercise combobox (issue #345): de-rank
   // lifts whose implement kind the profile doesn't own, so cold suggestions prefer
@@ -908,6 +916,7 @@ export default function ActivityForm({
             currentActivityId={editData?.id ?? createdId}
             editedDate={editData?.date ?? null}
             equipmentList={equipmentList}
+            onEquipmentCreated={addEquipment}
             overallDuration={overallDuration}
             bwKnown={bwKnown}
             firstBwPart={firstBwPart}
@@ -1090,7 +1099,7 @@ export default function ActivityForm({
               0)
           }
           onUse={applyPlateBuild}
-          onCreated={(e) => setEquipmentList((prev) => [...prev, e])}
+          onCreated={addEquipment}
           onClose={() => setPlateTarget(null)}
         />
       )}
