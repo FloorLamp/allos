@@ -99,8 +99,8 @@ export function seedHouseholdRollup(): void {
     const supp = db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, condition, priority, active, source)
-       VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+         (profile_id, name, condition, obligation, active, source)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual')`
       )
       .run(HOUSEHOLD_PROFILE_ID, HOUSEHOLD_SUPP_NAME);
     // One daily dose, no taken-log for today → surfaces as a due dose on the card.
@@ -123,8 +123,8 @@ export function seedHouseholdRollup(): void {
     const roSupp = db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, condition, priority, active, source)
-       VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+         (profile_id, name, condition, obligation, active, source)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual')`
       )
       .run(HOUSEHOLD_PROFILE_ID, HOUSEHOLD_RO_SUPP_NAME);
     db.prepare(
@@ -290,8 +290,8 @@ export function seedMultiProfile(): void {
         const supp = db
           .prepare(
             `INSERT INTO intake_items
-             (profile_id, name, condition, priority, active, source)
-           VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+             (profile_id, name, condition, obligation, active, source)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual')`
           )
           .run(profileId, name);
         // One daily dose, no taken-log for today → surfaces as a due dose on Upcoming.
@@ -431,8 +431,8 @@ export function seedMultiProfile(): void {
         const med = db
           .prepare(
             `INSERT INTO intake_items
-             (profile_id, name, kind, condition, priority, active, as_needed, source)
-           VALUES (?, ?, 'medication', 'daily', 'high', 1, 0, 'manual')`
+             (profile_id, name, kind, condition, obligation, active, source)
+         VALUES (?, ?, 'medication', 'daily', 'should', 1, 'manual')`
           )
           .run(profileId, name);
         db.prepare(
@@ -565,8 +565,8 @@ export function seedMultiProfile(): void {
         const supp = db
           .prepare(
             `INSERT INTO intake_items
-             (profile_id, name, condition, priority, active, source)
-           VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+             (profile_id, name, condition, obligation, active, source)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual')`
           )
           .run(profileId, name);
         db.prepare(
@@ -674,8 +674,8 @@ export function seedTelegramDoseRound(): void {
     ) {
       const item = db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, 'HH Round Vitamin D (e2e)', 1, 'supplement', 'daily', 'high', 0)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'HH Round Vitamin D (e2e)', 1, 'supplement', 'daily', 'should')`
         )
         .run(hhWardId);
       db.prepare(

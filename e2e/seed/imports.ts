@@ -290,10 +290,8 @@ export function seedRecordsBrowser(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (name, notes, active, condition, priority, kind, as_needed,
-          document_id, source, provider_id, import_key, profile_id)
-       VALUES (?, NULL, 1, 'daily', 'high', 'medication', 1,
-               ?, 'extracted', NULL, ?, ?)`
+         (name, notes, active, condition, obligation, kind, document_id, source, provider_id, import_key, profile_id)
+         VALUES (?, NULL, 1, 'daily', 'may', 'medication', ?, 'extracted', NULL, ?, ?)`
       )
       .run(
         "E2E Loratadine",
@@ -459,8 +457,8 @@ export function seedRecordsBrowser(): void {
       const supp = db
         .prepare(
           `INSERT INTO intake_items
-           (profile_id, name, condition, priority, active, source, created_at)
-         VALUES (?, ?, 'daily', 'high', 1, 'manual', ?)`
+           (profile_id, name, condition, obligation, active, source, created_at)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual', ?)`
         )
         .run(PROFILE_ID, name, doseOrderCreatedAt);
       db.prepare(

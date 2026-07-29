@@ -61,7 +61,7 @@ export const DEMOTION_MAX_TAKEN_RATE = 0.25;
 // suppression bus, and it never becomes a notification (the #449 reach policy).
 // Keyed on the ITEM id (AUTOINCREMENT, never recycles — #203), because priority is
 // an item-level tag; a re-timed or re-added dose must not re-attach a stale dismissal.
-export const DEMOTION_PREFIX = "demote-priority:";
+export const DEMOTION_PREFIX = "demote-obligation:";
 
 // Episode-anchored (#436): the builder appends a coarse period anchor (the current
 // year, YYYY), so a lapse that recurs a year after being dismissed lands in a new

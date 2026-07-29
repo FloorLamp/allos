@@ -45,7 +45,7 @@ export function seedMedicationCards(): void {
   // A topical med whose name carries a PERCENT strength ("Hydrocortisone 2.5%
   // Cream"). Its educational "What is this?" explainer only renders when the name
   // normalizer strips the percent strength before the description lookup — the
-  // regression this fixture pins in the browser. PRN (as_needed=1, the Ibuprofen
+  // regression this fixture pins in the browser. PRN (obligation 'may', the Ibuprofen
   // precedent) so it adds no scheduled-due dose to reminder/digest fixtures, and
   // hydrocortisone appears in no interaction dataset, so other specs are
   // undisturbed. Synthetic prescriber — no real PHI.
@@ -58,10 +58,8 @@ export function seedMedicationCards(): void {
     const pctMed = db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, notes, condition, priority, kind, prescriber,
-          active, as_needed)
-       VALUES (?, ?, 'Topical steroid — apply to affected area', 'daily',
-               'low', 'medication', 'Dr. Test Provider', 1, 1)`
+         (profile_id, name, notes, condition, obligation, kind, prescriber, active)
+         VALUES (?, ?, 'Topical steroid — apply to affected area', 'daily', 'may', 'medication', 'Dr. Test Provider', 1)`
       )
       .run(PROFILE_ID, PCT_MED_NAME);
     const pctMedId = Number(pctMed.lastInsertRowid);
@@ -98,10 +96,8 @@ export function seedMedicationCards(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, notes, condition, priority, kind, prescriber,
-          active, as_needed, quantity_on_hand, qty_per_dose)
-       VALUES (?, ?, 'Daily maintenance med — e2e parity fixture', 'daily',
-               'low', 'medication', 'Dr. Test Provider', 1, 0, 90, 1)`
+         (profile_id, name, notes, condition, obligation, kind, prescriber, active, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 'Daily maintenance med — e2e parity fixture', 'daily', 'should', 'medication', 'Dr. Test Provider', 1, 90, 1)`
       )
       .run(PROFILE_ID, PARITY_MED_NAME).lastInsertRowid
   );
@@ -140,7 +136,7 @@ export function seedMedicationCards(): void {
 // ── PRN administration ledger ──
 export function seedPrnLedger(): void {
   // ── PRN administration ledger fixture (issue #797) ───────────────────────────
-  // A CURRENT, active PRN (as_needed) medication with refill tracking and TWO
+  // A CURRENT, active PRN (`may`) medication with refill tracking and TWO
   // administrations already logged TODAY (real given_at times), so BOTH the
   // Medications-page card ("2 today · last …") and the dashboard "Log a PRN dose"
   // widget render a populated PRN med, and the widget's "Log" button can add a
@@ -158,10 +154,8 @@ export function seedPrnLedger(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, notes, condition, priority, kind, prescriber,
-          active, as_needed, quantity_on_hand, qty_per_dose)
-       VALUES (?, ?, 'As-needed med — e2e PRN quick-log fixture', 'daily',
-               'low', 'medication', 'Dr. Test Provider', 1, 1, 60, 1)`
+         (profile_id, name, notes, condition, obligation, kind, prescriber, active, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 'As-needed med — e2e PRN quick-log fixture', 'daily', 'may', 'medication', 'Dr. Test Provider', 1, 60, 1)`
       )
       .run(PROFILE_ID, PRN_MED_NAME).lastInsertRowid
   );
@@ -216,11 +210,8 @@ export function seedPrnLedger(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, notes, condition, priority, kind, prescriber,
-          active, as_needed, quantity_on_hand, qty_per_dose,
-          min_interval_hours, max_daily_count, redose_notice)
-       VALUES (?, ?, 'As-needed med — e2e redose fixture', 'daily',
-               'low', 'medication', 'Dr. Test Provider', 1, 1, 60, 1, 6, 4, 1)`
+         (profile_id, name, notes, condition, obligation, kind, prescriber, active, quantity_on_hand, qty_per_dose, min_interval_hours, max_daily_count, redose_notice)
+         VALUES (?, ?, 'As-needed med — e2e redose fixture', 'daily', 'may', 'medication', 'Dr. Test Provider', 1, 60, 1, 6, 4, 1)`
       )
       .run(PROFILE_ID, REDOSE_MED_NAME).lastInsertRowid
   );
@@ -270,10 +261,8 @@ export function seedLowSupply(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, notes, condition, priority, kind, prescriber,
-          active, as_needed, quantity_on_hand, qty_per_dose, last_fill_size)
-       VALUES (?, ?, 'e2e low-supply refill fixture', 'daily', 'low',
-               'medication', 'Dr. Test Provider', 1, 0, 3, 10, 30)`
+         (profile_id, name, notes, condition, obligation, kind, prescriber, active, quantity_on_hand, qty_per_dose, last_fill_size)
+         VALUES (?, ?, 'e2e low-supply refill fixture', 'daily', 'should', 'medication', 'Dr. Test Provider', 1, 3, 10, 30)`
       )
       .run(PROFILE_ID, LOW_SUPPLY_MED_NAME).lastInsertRowid
   );
@@ -319,8 +308,8 @@ export function seedDrugAllergyCrosscheck(): void {
   ).run(drugAllergyId);
   for (const medName of ["Amoxicillin 500 mg", "Cephalexin 250 mg"]) {
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
-     VALUES (?, ?, 1, 'medication', 1)`
+      `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+         VALUES (?, ?, 1, 'medication', 'may')`
     ).run(drugAllergyId, medName);
   }
   seedMemberLogin(E2E_LOGIN_DRUG_ALLERGY, drugAllergyId, "write");
@@ -353,9 +342,8 @@ export function seedPrnCounter(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, active, kind, condition, priority, as_needed,
-          redose_notice, min_interval_hours, max_daily_count)
-       VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, 1, 6, 4)`
+         (profile_id, name, active, kind, condition, obligation, redose_notice, min_interval_hours, max_daily_count)
+         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'may', 1, 6, 4)`
       )
       .run(prnFamilyId).lastInsertRowid
   );
@@ -367,8 +355,8 @@ export function seedPrnCounter(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, active, kind, condition, priority, as_needed)
-       VALUES (?, 'Ibuprofen 800 mg', 1, 'medication', 'daily', 'high', 1)`
+         (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Ibuprofen 800 mg', 1, 'medication', 'daily', 'may')`
       )
       .run(prnFamilyId).lastInsertRowid
   );
@@ -418,8 +406,8 @@ export function seedSafetyCoverage(): void {
   db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(coverageId);
   for (const medName of ["Loratadine 10 mg", "Sertraline 50 mg"]) {
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
-     VALUES (?, ?, 1, 'medication', 1)`
+      `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+         VALUES (?, ?, 1, 'medication', 'may')`
     ).run(coverageId, medName);
   }
   seedMemberLogin(E2E_LOGIN_COVERAGE, coverageId, "write");
@@ -472,9 +460,8 @@ export function seedSharedSupplyPools(): void {
         db
           .prepare(
             `INSERT INTO intake_items
-             (profile_id, name, kind, condition, priority, active, as_needed, source,
-              quantity_on_hand, qty_per_dose, supply_id)
-           VALUES (?, ?, 'medication', 'daily', 'high', 1, 0, 'manual', NULL, 1, ?)`
+             (profile_id, name, kind, condition, obligation, active, source, quantity_on_hand, qty_per_dose, supply_id)
+         VALUES (?, ?, 'medication', 'daily', 'should', 1, 'manual', NULL, 1, ?)`
           )
           .run(profileId, name, supplyId).lastInsertRowid
       );

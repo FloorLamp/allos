@@ -209,8 +209,8 @@ type DoseRow = {
 
 // Parent intake_items read (supplements + medications). The page reader appends
 // LIMIT/OFFSET; both filter profile_id directly.
-const ITEMS_SELECT = `SELECT id, name, kind, brand, product, condition, priority, situation,
-          stack, active, critical, as_needed, prescriber, pharmacy, rx_number,
+const ITEMS_SELECT = `SELECT id, name, kind, brand, product, condition, obligation, situation,
+          stack, active, critical, prescriber, pharmacy, rx_number,
           quantity_on_hand, notes
    FROM intake_items WHERE profile_id = ?`;
 // Dose-schedule read, scoped to the profile through the intake_items JOIN. The
@@ -631,12 +631,11 @@ export const DATASETS: ExportDataset[] = [
       "brand",
       "product",
       "condition",
-      "priority",
+      "obligation",
       "situation",
       "stack",
       "active",
       "critical",
-      "as_needed",
       "prescriber",
       "pharmacy",
       "rx_number",

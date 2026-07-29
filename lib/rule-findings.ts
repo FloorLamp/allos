@@ -1259,7 +1259,7 @@ export function buildDemotionSuggestionFindings(
   }));
 
   return detectDemotionCandidates(inputs).map((c) => ({
-    domain: "demote-priority",
+    domain: "demote-obligation",
     dedupeKey: c.key,
     supersedes: c.legacyKey,
     title: c.title,

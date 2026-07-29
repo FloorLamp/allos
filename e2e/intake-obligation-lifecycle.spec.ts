@@ -71,10 +71,10 @@ function dropItem(db: Database.Database, itemId: number | null): void {
   ).run(itemId);
   db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(itemId);
   db.prepare("DELETE FROM upcoming_dismissals WHERE signal_key = ?").run(
-    `demote-priority:${itemId}`
+    `demote-obligation:${itemId}`
   );
   db.prepare("DELETE FROM upcoming_dismissals WHERE signal_key LIKE ?").run(
-    `demote-priority:${itemId}:%`
+    `demote-obligation:${itemId}:%`
   );
   db.prepare("DELETE FROM intake_items WHERE id = ?").run(itemId);
 }

@@ -143,8 +143,8 @@ export function seedRuleDomains(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, condition, priority, active, source, created_at)
-       VALUES (?, ?, 'daily', 'high', 1, 'manual', ?)`
+         (profile_id, name, condition, obligation, active, source, created_at)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual', ?)`
       )
       .run(PROFILE_ID, ADHERE_ITEM, adhereBorn).lastInsertRowid
   );

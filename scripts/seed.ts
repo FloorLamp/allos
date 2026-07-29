@@ -1086,13 +1086,13 @@ med.run(
   "Pollen sensitization; oral allergy syndrome pattern"
 );
 
-// Supplements — scheduling context, priority, brand/product, stacks, food
+// Supplements — scheduling context, obligation, brand/product, stacks, food
 // timing, split dosing, a situational example, and an interaction pair so every
 // feature is demoable.
 const sup = db.prepare(
   `INSERT INTO intake_items
-     (profile_id, name, notes, condition, priority, brand, product, situation, stack)
-   VALUES (1,?,?,?,?,?,?,?,?)`
+     (profile_id, name, notes, condition, obligation, brand, product, situation, stack)
+         VALUES (1, ?, ?, ?, 'should', ?, ?, ?, ?)`
 );
 const dose = db.prepare(
   `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
@@ -1104,7 +1104,7 @@ function addSupp(
     name: string;
     notes?: string | null;
     condition?: string;
-    priority?: string;
+    obligation?: string;
     brand?: string | null;
     product?: string | null;
     situation?: string | null;
@@ -1117,7 +1117,7 @@ function addSupp(
       s.name,
       s.notes ?? null,
       s.condition ?? "daily",
-      s.priority ?? "high",
+      s.obligation ?? "should",
       s.brand ?? null,
       s.product ?? null,
       s.situation ?? null,
@@ -1132,7 +1132,7 @@ function addSupp(
 addSupp(
   {
     name: "Vitamin D3",
-    priority: "mandatory",
+    obligation: "must",
     brand: "Thorne",
     product: "Vitamin D/K2",
     stack: "D3 + K2",
@@ -1140,19 +1140,19 @@ addSupp(
   },
   [{ amount: "2000 IU", time: "Morning", food: "with_fat" }]
 );
-addSupp({ name: "Vitamin K2", priority: "high", stack: "D3 + K2" }, [
+addSupp({ name: "Vitamin K2", obligation: "should", stack: "D3 + K2" }, [
   { amount: "100 mcg", time: "Morning", food: "with_fat" },
 ]);
 const creatineId = addSupp(
-  { name: "Creatine Monohydrate", condition: "post_workout", priority: "low" },
+  { name: "Creatine Monohydrate", condition: "post_workout", obligation: "may" },
   [{ amount: "5 g", time: "Anytime", food: "any" }]
 );
 // Split dose across two fat-containing meals.
-addSupp({ name: "Omega-3", priority: "high", brand: "Nordic Naturals" }, [
+addSupp({ name: "Omega-3", obligation: "should", brand: "Nordic Naturals" }, [
   { amount: "600 mg", time: "Midday", food: "with_fat" },
   { amount: "600 mg", time: "Evening", food: "with_fat" },
 ]);
-addSupp({ name: "Magnesium Glycinate", priority: "high", notes: "Sleep" }, [
+addSupp({ name: "Magnesium Glycinate", obligation: "should", notes: "Sleep" }, [
   { amount: "400 mg", time: "Before sleep", food: "any" },
 ]);
 // A SECOND magnesium form so the stack TOTAL (400 + 200 = 600 mg elemental)
@@ -1161,7 +1161,7 @@ addSupp({ name: "Magnesium Glycinate", priority: "high", notes: "Sleep" }, [
 addSupp(
   {
     name: "Magnesium Citrate",
-    priority: "low",
+    obligation: "may",
     notes: "Digestion; adds to the magnesium stack total",
   },
   [{ amount: "200 mg", time: "Morning", food: "any" }]
@@ -1170,22 +1170,22 @@ addSupp(
   {
     name: "Whey Protein",
     condition: "post_workout",
-    priority: "low",
+    obligation: "may",
     brand: "Optimum Nutrition",
   },
   [{ amount: "30 g", time: "Anytime", food: "any" }]
 );
 // Before-meal example.
 addSupp(
-  { name: "Plant Sterols", priority: "low", notes: "Cholesterol support" },
+  { name: "Plant Sterols", obligation: "may", notes: "Cholesterol support" },
   [{ amount: "2 g", time: "Evening", food: "before_meal" }]
 );
 // A "keep apart" pair: calcium blocks iron absorption.
-const calId = addSupp({ name: "Calcium", priority: "low" }, [
+const calId = addSupp({ name: "Calcium", obligation: "may" }, [
   { amount: "500 mg", time: "Midday", food: "with_food" },
 ]);
 const ironId = addSupp(
-  { name: "Iron", priority: "low", notes: "Empty stomach for absorption" },
+  { name: "Iron", obligation: "may", notes: "Empty stomach for absorption" },
   [{ amount: "18 mg", time: "Morning", food: "empty_stomach" }]
 );
 // Situational: only surfaces while "Illness" is active.
@@ -1193,7 +1193,7 @@ const zincId = addSupp(
   {
     name: "Zinc",
     condition: "situational",
-    priority: "low",
+    obligation: "may",
     situation: "Illness",
     notes: "Immune support",
   },
@@ -1212,8 +1212,8 @@ db.prepare(
 // course history + side effects, plus a fully discontinued med for the Past list.
 const medIns = db.prepare(
   `INSERT INTO intake_items
-     (profile_id, name, notes, condition, priority, kind, prescriber, active)
-   VALUES (1,?,?,?,?, 'medication', ?, ?)`
+     (profile_id, name, notes, condition, obligation, kind, prescriber, active)
+         VALUES (1, ?, ?, ?, 'should', 'medication', ?, ?)`
 );
 const courseIns = db.prepare(
   `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
@@ -1272,10 +1272,8 @@ const atorvastatinId = Number(
   db
     .prepare(
       `INSERT INTO intake_items
-         (profile_id, name, notes, active, condition, priority, kind, as_needed,
-          document_id, source)
-       VALUES (1, 'Atorvastatin', 'Preventive', 0, 'daily', 'high',
-               'medication', 1, NULL, 'extracted')`
+         (profile_id, name, notes, active, condition, obligation, kind, document_id, source)
+         VALUES (1, 'Atorvastatin', 'Preventive', 0, 'daily', 'may', 'medication', NULL, 'extracted')`
     )
     .run().lastInsertRowid
 );
@@ -1323,7 +1321,7 @@ const ibuprofenId = Number(
     1
   ).lastInsertRowid
 );
-db.prepare("UPDATE intake_items SET as_needed = 1 WHERE id = ?").run(
+db.prepare("UPDATE intake_items SET obligation = 'may' WHERE id = ?").run(
   ibuprofenId
 );
 const ibuprofenDoseId = Number(
@@ -1412,7 +1410,7 @@ const hyzaarId = Number(
   ).lastInsertRowid
 );
 db.prepare(
-  "UPDATE intake_items SET rxcui = ?, rxcui_ingredients = ?, as_needed = 1 WHERE id = ?"
+  "UPDATE intake_items SET rxcui = ?, rxcui_ingredients = ?, obligation = 'may' WHERE id = ?"
 ).run("979464", '["52175","5487"]', hyzaarId);
 medDose.run(hyzaarId, "50-12.5 mg", "Anytime", "any", 0);
 courseIns.run(hyzaarId, daysAgo(40), null, null, "Ongoing for blood pressure");
@@ -1427,7 +1425,7 @@ const klorConId = Number(
     1
   ).lastInsertRowid
 );
-db.prepare("UPDATE intake_items SET as_needed = 1 WHERE id = ?").run(klorConId);
+db.prepare("UPDATE intake_items SET obligation = 'may' WHERE id = ?").run(klorConId);
 medDose.run(klorConId, "10 mEq", "Anytime", "with_food", 0);
 courseIns.run(klorConId, daysAgo(40), null, null, "Ongoing potassium support");
 

@@ -103,7 +103,7 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
   "adherence:": () => "Supplement adherence pattern",
   // #1505: keyed on the ITEM id, so there is no name in the key to render — the
   // label names the decision instead ("you chose to keep the current priority").
-  "demote-priority:": () => "Priority demotion suggestion",
+  "demote-obligation:": () => "Obligation demotion suggestion",
   "food-suggest:": (t) => {
     const n = titleize(t.replace(/[_-]/g, " "));
     return n ? `Food suggestion — ${n}` : "Food suggestion";
