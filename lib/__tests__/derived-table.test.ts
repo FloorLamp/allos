@@ -5,6 +5,9 @@ import {
   prepareTableRecords,
   prepareMultiViewTableRecords,
   multiViewGroupKey,
+  parseBiomarkerSortColumn,
+  BIOMARKER_SORT_COLUMNS,
+  DEFAULT_BIOMARKER_SORT,
   type WithProfile,
 } from "../derived-table";
 import type { MedicalRecord } from "../types";
@@ -416,5 +419,27 @@ describe("prepareMultiViewTableRecords", () => {
     expect(mv.map((r) => [r.id, r.is_latest])).toEqual(
       single.map((r) => [r.id, r.is_latest])
     );
+  });
+});
+
+// #1581 section B — the browser's sort vocabulary. `panel` is gone from it: the rows
+// are already partitioned into panel groups emitted in curated clinical order, so a
+// panel sort reorders groups no ordering can move.
+describe("parseBiomarkerSortColumn (#1581 section B)", () => {
+  it("defaults to name", () => {
+    expect(DEFAULT_BIOMARKER_SORT).toBe("name");
+    expect(parseBiomarkerSortColumn(undefined)).toBe("name");
+    expect(parseBiomarkerSortColumn("")).toBe("name");
+  });
+
+  it("accepts the columns the browser offers", () => {
+    expect(BIOMARKER_SORT_COLUMNS).toEqual(["name", "date"]);
+    expect(parseBiomarkerSortColumn("name")).toBe("name");
+    expect(parseBiomarkerSortColumn("date")).toBe("date");
+  });
+
+  it("falls an old ?sort=panel bookmark back to name rather than failing", () => {
+    expect(parseBiomarkerSortColumn("panel")).toBe("name");
+    expect(parseBiomarkerSortColumn("nonsense")).toBe("name");
   });
 });

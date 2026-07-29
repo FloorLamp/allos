@@ -17,9 +17,35 @@ import {
   type PanelId,
 } from "./biomarker-panels";
 import { latestByGroup } from "./latest-per-group";
+import { parseSortColumn } from "./table-sort";
 import type { MedicalRecord } from "./types";
 import type { MedicalSortColumn, SortDirection } from "./queries/medical";
 import type { RangeFilter } from "./queries/medical";
+
+// ---- The Biomarkers browser's sort vocabulary (#1581 section B) --------------
+
+// The sort columns the BROWSER offers. A strict subset of MedicalSortColumn: the
+// query layer still knows how to order by `panel` (the document view's extracted-
+// records table offers it, where rows are not panel-grouped), but the browser does
+// not, because it partitions its rows into panel groups emitted in curated clinical
+// order — "sort by panel" would reorder groups that no ordering can move, which is a
+// control that does nothing a reader can perceive.
+export const BIOMARKER_SORT_COLUMNS = ["name", "date"] as const;
+export type BiomarkerSortColumn = (typeof BIOMARKER_SORT_COLUMNS)[number];
+
+// The column ordered when the URL names none. `name` ascending, which orders the
+// readings of one analyte date DESCENDING (medicalOrderBy's `name, date DESC`) —
+// newest first under each heading.
+export const DEFAULT_BIOMARKER_SORT: BiomarkerSortColumn = "name";
+
+// Resolve a raw `?sort=` value for the browser. Anything unrecognized — including
+// the `panel` an old #1499-era bookmark carries — falls back to the default rather
+// than failing the parse.
+export function parseBiomarkerSortColumn(
+  raw: string | undefined
+): BiomarkerSortColumn {
+  return parseSortColumn(raw, BIOMARKER_SORT_COLUMNS, DEFAULT_BIOMARKER_SORT);
+}
 
 // Display identity: canonical name when present, else the raw name — mirrors
 // biomarkerNameKey() in the SQL layer. Used for the VISIBLE name sort/heading.

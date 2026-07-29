@@ -7,11 +7,12 @@ import {
 import { today } from "@/lib/db";
 import { EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
-import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
+import { parseSortDir } from "@/lib/table-sort";
 import {
   filterDerivedForTable,
   prepareTableRecords,
   prepareMultiViewTableRecords,
+  parseBiomarkerSortColumn,
 } from "@/lib/derived-table";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
@@ -94,11 +95,7 @@ function parseFilters(searchParams: BiomarkersSearchParams) {
   // emits the panels in curated clinical order, so "sort by panel" reorders groups
   // that are no longer paged apart and does nothing visible. An old `?sort=panel`
   // bookmark falls back to `name` through parseSortColumn rather than failing.
-  const sort = parseSortColumn(
-    searchParams.sort,
-    ["name", "date"] as const,
-    "name"
-  );
+  const sort = parseBiomarkerSortColumn(searchParams.sort);
   const dir = parseSortDir(searchParams.dir);
   const current = searchParams.current === "1";
   return { category, panel, range, q, sort, dir, current };

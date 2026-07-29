@@ -18,6 +18,7 @@ import {
 } from "@/lib/bio-age";
 import { formatLongDate } from "@/lib/format-date";
 import { biomarkerViewHref } from "@/lib/hrefs";
+import PhoneFold from "./PhoneFold";
 
 // The biological-age hero (issue #209). Surfaces the derived PhenoAge index (#157)
 // as a headline "how am I aging" result rather than a buried table row: the
@@ -29,6 +30,13 @@ import { biomarkerViewHref } from "@/lib/hrefs";
 // ADULT-GATED exactly as the computation is: hidden for child profiles (PhenoAge is
 // an adult population model). Self-contained so it drops in above the Biomarkers
 // table with no props.
+//
+// PHONE FOLD (#1578): the headline — the number, the delta, the pace — is the answer,
+// and it is four lines. The nine-input "Built from" provenance list is another nine,
+// which at 390px is most of the card's height and all of what pushed the panel index
+// below the first screen. Below `sm` that list folds behind a toggle; from `sm` up it
+// renders exactly as before. The ESTIMATE CAVEAT never folds: it qualifies the number
+// itself, so it has to travel with it at every width.
 
 const BIOMARKER_VIEW = (name: string) => biomarkerViewHref(name);
 
@@ -205,30 +213,38 @@ export default async function BioAgeHero() {
       </p>
 
       {/* The nine inputs it was built from, each linking to its own series (the
-          "why", and an honest-uncertainty affordance). */}
-      <div className="mt-4">
-        <h3 className="mb-2 section-label">Built from</h3>
-        <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-3">
-          {latest.inputs.map((inp) => (
-            <li
-              key={inp.name}
-              className="flex items-center justify-between gap-2 text-sm"
-              data-testid="bio-age-input"
-            >
-              <Link
-                href={BIOMARKER_VIEW(inp.name)}
-                className="truncate text-brand-700 hover:underline dark:text-brand-400"
-              >
-                {inp.name}
-              </Link>
-              <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
-                {inp.value}
-                {inp.unit ? ` ${inp.unit}` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
+          "why", and an honest-uncertainty affordance). One authored list, folded
+          below `sm` (#1578) and inline from `sm` up. */}
+      <PhoneFold
+        testId="bio-age-inputs-fold"
+        showLabel={`Show the ${latest.inputs.length} inputs`}
+        hideLabel="Hide inputs"
+        folded={
+          <div className="mt-4">
+            <h3 className="mb-2 section-label">Built from</h3>
+            <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-3">
+              {latest.inputs.map((inp) => (
+                <li
+                  key={inp.name}
+                  className="flex items-center justify-between gap-2 text-sm"
+                  data-testid="bio-age-input"
+                >
+                  <Link
+                    href={BIOMARKER_VIEW(inp.name)}
+                    className="truncate text-brand-700 hover:underline dark:text-brand-400"
+                  >
+                    {inp.name}
+                  </Link>
+                  <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+                    {inp.value}
+                    {inp.unit ? ` ${inp.unit}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        }
+      />
 
       <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
         As of {formatLongDate(latest.date, formatPrefs)}

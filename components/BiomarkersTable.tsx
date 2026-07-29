@@ -24,7 +24,12 @@ import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { biomarkerViewHref, importHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
-import { multiViewGroupKey, tablePanelId } from "@/lib/derived-table";
+import {
+  multiViewGroupKey,
+  tablePanelId,
+  DEFAULT_BIOMARKER_SORT,
+  type BiomarkerSortColumn,
+} from "@/lib/derived-table";
 import { OTHER_PANEL, panelLabel, type PanelId } from "@/lib/biomarker-panels";
 import {
   defaultOpenPanels,
@@ -60,11 +65,10 @@ const SORT_CHOICES = [
   { column: "date", label: "Date", defaultDir: "desc" as const },
 ];
 
-// The column ordered when the URL names none — `name` (see BiomarkersSection's
-// parseFilters for why `panel` stopped being both the default and an option at all).
-// Stated once here so the (hidden) header arrows and the card-mode select agree about
-// what is active on a fresh load; the server's parseSortColumn fallback is its twin.
-const DEFAULT_SORT = "name";
+// The column ordered when the URL names none. Read from lib/derived-table rather than
+// restated, so the (hidden) header arrows, the card-mode select and the server's
+// parseBiomarkerSortColumn fallback are ONE value instead of twins that can drift.
+const DEFAULT_SORT = DEFAULT_BIOMARKER_SORT;
 
 // The active-filter context threaded through to build the panel/category filter
 // links (each preserves the current sort/range/etc., matching the server-built
@@ -74,7 +78,7 @@ interface FilterCtx {
   panel?: PanelId;
   range?: string;
   q?: string;
-  sort: "name" | "date";
+  sort: BiomarkerSortColumn;
   dir: "asc" | "desc";
   current: boolean;
 }
