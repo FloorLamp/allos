@@ -116,6 +116,14 @@ export interface PersistRecord {
   // The performing provider (CCD observation <performer>), resolved into the
   // shared registry and linked via provider_id. Null on the AI path.
   provider: ImportedProvider | null;
+  // The result LIFECYCLE + collection attributes (#1404), when the source states
+  // them: FHIR `Observation.status` on the deterministic path, the printed
+  // "CORRECTED REPORT" / "Fasting: Yes" / "Specimen: Serum" lines on the AI path.
+  // Optional so existing PersistRecord constructors need no change; every adapter
+  // sets them (null when the document doesn't say).
+  result_status?: string | null;
+  fasting?: number | null;
+  specimen?: string | null;
   // Derived medication COURSES, set only on prescription records by
   // the deterministic CCD/FHIR path; null/absent on the AI path (which has no
   // structured period/status). The persist layer creates medication_courses from
@@ -559,6 +567,13 @@ export function extractionToPersistInput(
       external_id: null,
       loinc: null,
       provider: null,
+      // The lifecycle + collection attributes the model read off the page (#1404):
+      // a "CORRECTED REPORT" banner, a "Fasting: Yes" line, a printed specimen.
+      // Null whenever the document doesn't state one (the persist boundary
+      // normalizes an unrecognized word to null rather than guessing).
+      result_status: r.result_status ?? null,
+      fasting: r.fasting ?? null,
+      specimen: r.specimen ?? null,
       // Structured medication period (a single open course from the printed start
       // date) + attribution, when the label carried them (#414); else null and the
       // persist layer's parsePrescription fallback fills what it can.
@@ -931,6 +946,11 @@ export function healthRecordToPersistInput(
     external_id: r.external_id,
     loinc: r.loinc ?? null,
     provider: r.provider ?? null,
+    // FHIR `Observation.status` (#1404) when the bundle stated one; the CCD path
+    // leaves it null (C-CDA's observation statusCode is a completion state, not the
+    // preliminary/corrected/amended result lifecycle, so mapping it would invent a
+    // claim the document never made).
+    result_status: r.result_status ?? null,
     // Derived medication courses ride on prescription records.
     courses: r.courses ?? null,
     // Structured attribution rides on prescription records (#417).

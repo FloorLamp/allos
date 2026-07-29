@@ -335,6 +335,10 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
        SELECT *,
               (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
                 AS provider_name,
+              -- The ORDERING clinician (#1404), a separate link from the performing
+              -- lab above, resolved for display the same way.
+              (SELECT p.name FROM providers p WHERE p.id = medical_records.ordering_provider_id)
+                AS ordering_provider_name,
               (${LATEST_IN_GROUP}) AS is_latest FROM medical_records ${clause} ORDER BY ${orderBy}`
     )
     .all(profileId, profileId, ...args) as MedicalRecord[];
@@ -562,7 +566,9 @@ export function getRecordsForDocument(
     .prepare(
       `SELECT *,
               (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
-                AS provider_name
+                AS provider_name,
+              (SELECT p.name FROM providers p WHERE p.id = medical_records.ordering_provider_id)
+                AS ordering_provider_name
          FROM medical_records WHERE ${where.join(" AND ")} ORDER BY ${orderBy}`
     )
     .all(...args) as MedicalRecord[];

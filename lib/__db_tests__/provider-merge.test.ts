@@ -56,6 +56,12 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO medical_records (profile_id, date, category, name, provider_id)
      VALUES (?, '2020-01-01', 'lab', 'Glucose', ?)`
   ).run(profileId, providerId);
+  // A reading also carries the ORDERING clinician (#1404), a second link like
+  // imaging's ordering/reading pair — one row per PROVIDER_LINK_COLUMNS entry.
+  db.prepare(
+    `INSERT INTO medical_records (profile_id, date, category, name, ordering_provider_id)
+     VALUES (?, '2020-01-01', 'lab', 'Potassium', ?)`
+  ).run(profileId, providerId);
   db.prepare(
     `INSERT INTO immunizations (profile_id, date, vaccine, provider_id)
      VALUES (?, '2020-01-01', 'mmr', ?)`
@@ -179,8 +185,9 @@ describe("getProviderMergeImpact (count-only, global across profiles)", () => {
     // Two encounter rows (attending + facility) per profile → 4 visits total.
     const visits = impact.perTable.find((t) => t.table === "encounters");
     expect(visits?.count).toBe(4);
+    // Two reading rows (performed-by + ordered-by, #1404) per profile → 4 readings.
     const labs = impact.perTable.find((t) => t.table === "medical_records");
-    expect(labs?.count).toBe(2);
+    expect(labs?.count).toBe(4);
     expect(impact.profiles).toBe(2);
   });
 });

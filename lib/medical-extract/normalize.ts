@@ -12,6 +12,11 @@ import {
   isGarbageCanonical,
 } from "../canonical-name";
 import { unitAwareCanonical } from "../canonical-unit-guard";
+import {
+  normalizeResultStatus,
+  parseFasting,
+  sanitizeSpecimen,
+} from "../lab-result-lifecycle";
 import { canonicalBiomarkerForName } from "../datasets/canonical-biomarkers";
 import { CATEGORIES, FLAGS } from "./constants";
 import type {
@@ -248,6 +253,13 @@ export function normalizeResults(
       flag,
       collected_date: str(r?.collected_date),
       notes: str(r?.notes),
+      // The lifecycle + collection attributes the report printed (#1404). Normalized
+      // through the SAME pure helpers the importer and the record form use, so a
+      // model that answers "Corrected report" or "yes" lands on the stored
+      // vocabulary and anything else lands as null ("the document didn't say").
+      result_status: normalizeResultStatus(str(r?.result_status)),
+      fasting: parseFasting(r?.fasting),
+      specimen: sanitizeSpecimen(str(r?.specimen)),
       // Only a medication result carries structured prescription fields (#414);
       // anything the model attached to a lab/scan row is ignored.
       prescription:

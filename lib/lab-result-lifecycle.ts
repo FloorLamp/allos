@@ -96,7 +96,9 @@ export function parseFasting(raw: unknown): FastingState {
   return null;
 }
 
-export function fastingLabel(value: FastingState | number | null): string | null {
+export function fastingLabel(
+  value: FastingState | number | null
+): string | null {
   if (value === 1) return "Fasting";
   if (value === 0) return "Non-fasting";
   return null;
@@ -124,7 +126,9 @@ export const SPECIMEN_SUGGESTIONS = [
 
 // Trim/collapse a specimen string; blank becomes null. Capped like the other short
 // free-text fields on a reading.
-export function sanitizeSpecimen(raw: string | null | undefined): string | null {
+export function sanitizeSpecimen(
+  raw: string | null | undefined
+): string | null {
   const v = (raw ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
   return v || null;
 }
@@ -149,7 +153,10 @@ function sameText(a: unknown, b: unknown): boolean {
   return x === y;
 }
 
-function sameNumber(a: number | null | undefined, b: number | null | undefined) {
+function sameNumber(
+  a: number | null | undefined,
+  b: number | null | undefined
+) {
   if (a == null || b == null) return a == null && b == null;
   return a === b;
 }
