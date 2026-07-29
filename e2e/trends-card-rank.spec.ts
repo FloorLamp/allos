@@ -8,20 +8,31 @@ import {
   E2E_LOGIN_TRENDS_RANK_PLAIN,
 } from "./fixture-logins";
 
-// Ranked DEFAULT chart-card order on Trends → Body (#1490).
+// Ranked DEFAULT chart-card order on Trends → Body (#1490), re-sequenced
+// everyday-first by #1659.
 //
-// A profile that has never arranged the tab gets an order decided from STABLE
-// subject facts — life stage, live goals, monitored conditions, data presence.
-// Nothing reshuffles live, and an arranged tab is never re-ranked at all (that half
-// is pinned at the action tier, lib/__action_tests__/trends-card-order.actions.test.ts,
-// since the drag affordance that writes an arrangement is #1485-C's extension).
+// A profile whose ★-pinned set does not decide a card's slot gets an order from
+// STABLE subject facts — life stage, live goals, monitored conditions, data
+// presence — over the base layout. Nothing reshuffles live. The USER's half of the
+// order (a ★ leads the stack) is e2e/trends-card-pin.spec.ts.
+//
+// #1659 changed what "the base layout" means here: it used to run the clinical
+// vitals block first, so a wearable profile — for which SpO₂ is rich the moment
+// steps is — led with SpO₂-class charts on a pure presence TIE. The base is now
+// composition → daily activity → clinical, and the runs follow it: Composition leads
+// Vitals whenever no signal says otherwise.
 //
 // Three dedicated read-only fixtures (#868), one per scenario:
 //   PEDS  — ~6-year-old with heights → the growth-percentile card leads the stack.
-//   GOAL  — adult with a LIVE weight goal → Composition (and weight) leads Vitals.
+//   GOAL  — adult with a LIVE weight goal → BMI, the goal's other card, climbs out
+//           of the synced tail past the vitals.
 //   PLAIN — the SAME data shape as GOAL, minus the goal → the static layout,
 //           EXACTLY. The identity case is the regression guard: it fails the moment
 //           a signal starts firing for a profile the app knows nothing about.
+//
+// GOAL and PLAIN are read against BMI rather than the Composition run: under the
+// everyday-first base that run leads for BOTH, so a section-order assertion would no
+// longer be a controlled contrast between them.
 
 // Read the DOM order of a set of cards, keeping only the ones present. Document
 // order IS the assertion here, so this compares positions rather than counting
@@ -97,7 +108,7 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     ).toEqual(["body-tile-growth-height", "body-tile-height"]);
   });
 
-  test("an adult with a live weight goal leads with weight", async ({
+  test("an adult with a live weight goal lifts BMI out of the synced tail", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -107,7 +118,8 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     await openBodyStack(page);
 
     // The goal-tracked card's whole RUN leads: promoting `weight` inside a
-    // Composition run pinned below Vitals would be an invisible promotion.
+    // Composition run pinned below Vitals would be an invisible promotion. (Under
+    // #1659's base that run also leads for the PLAIN twin — see the note above.)
     expect(
       await domOrder(page, [
         "body-section-vitals",
@@ -118,15 +130,30 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
       await domOrder(page, ["body-chart-weight", "vitals-systolic"])
     ).toEqual(["body-chart-weight", "vitals-systolic"]);
 
+    // BMI is the goal's OTHER card, and its base slot is the synced tail — behind
+    // steps. The goal boost carries it to the front of that tail, which is the one
+    // position only the goal can explain (the PLAIN twin below has it last).
+    expect(await domOrder(page, ["bmi", "steps"])).toEqual(["bmi", "steps"]);
+
     // The tile grid reads the SAME order, so the two view modes can't disagree.
     await page.goto("/trends?tab=body&view=tiles");
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
     expect(
-      await domOrder(page, ["body-tile-weight", "body-tile-systolic"])
-    ).toEqual(["body-tile-weight", "body-tile-systolic"]);
+      await domOrder(page, [
+        "body-tile-weight",
+        "body-tile-bmi",
+        "body-tile-steps",
+        "body-tile-systolic",
+      ])
+    ).toEqual([
+      "body-tile-weight",
+      "body-tile-bmi",
+      "body-tile-steps",
+      "body-tile-systolic",
+    ]);
   });
 
-  test("a never-arranged profile with no signals gets today's layout EXACTLY", async ({
+  test("a profile with no signals gets today's layout EXACTLY", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -137,14 +164,16 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
 
     // Same data shape as the GOAL fixture, minus the goal: an adult, no monitored
     // condition, evenly tracked. Every card falls back to the static layout —
-    // vitals run first in its declared sequence, then composition, then the synced
-    // charts. This is the "ranked default == the layout you already had" proof.
+    // composition first, then the vitals run in its declared sequence, then the
+    // synced charts. This is the "ranked default == the base layout" proof, and
+    // since #1659 it is also the proof that a both-rich tie no longer leads with
+    // clinical vitals: `steps` precedes every BP card.
     expect(
       await domOrder(page, [
         "body-section-vitals",
         "body-section-body-composition",
       ])
-    ).toEqual(["body-section-vitals", "body-section-body-composition"]);
+    ).toEqual(["body-section-body-composition", "body-section-vitals"]);
 
     expect(
       await domOrder(page, [
@@ -155,11 +184,31 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
         "steps",
       ])
     ).toEqual([
+      "body-chart-weight",
+      "vitals-hrv",
       "vitals-systolic",
       "vitals-diastolic",
-      "vitals-hrv",
-      "body-chart-weight",
       "steps",
+    ]);
+
+    // Without the goal, BMI stays where the base layout puts it: the synced tail,
+    // behind steps. This is the controlled half of the GOAL assertion above.
+    expect(await domOrder(page, ["bmi", "steps"])).toEqual(["steps", "bmi"]);
+
+    await page.goto("/trends?tab=body&view=tiles");
+    await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+    expect(
+      await domOrder(page, [
+        "body-tile-weight",
+        "body-tile-steps",
+        "body-tile-systolic",
+        "body-tile-bmi",
+      ])
+    ).toEqual([
+      "body-tile-weight",
+      "body-tile-steps",
+      "body-tile-systolic",
+      "body-tile-bmi",
     ]);
 
     // No growth card for an adult, and nothing pediatric leaked in.

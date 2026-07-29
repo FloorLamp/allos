@@ -548,6 +548,24 @@ self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
+The star is the **one arrangement gesture** across both tabs. Starring a body
+metric — on its own page, which every Body card opens — is the same save as
+starring an Overview tile, and starred cards lead the Body tab in the order the
+Overview grid holds them, so pinned cards are re-sequenced by dragging them (or
+using their overflow arrows) on Overview. There is no second reorder surface on
+Body.
+
+Everything unstarred follows a **ranked default** built from stable subject
+facts — life stage, live goals, monitored conditions, and whether a series has
+data at all — never today's values, so the page never reshuffles because a
+device synced. Its base reading order is everyday-first: composition, then daily
+activity and the heart-rate family, then the daily subjective and environment
+cards, then clinical vitals, then the synced composition tail. Clinical cards
+rise when a monitored condition or a live goal actually watches them. A
+growth-tracked profile still leads with its percentile card whatever is starred:
+which cards exist for an age, and the pediatric lead, are membership decisions
+that the star does not override.
+
 ### Fitness and Nutrition
 
 Fitness separates:
