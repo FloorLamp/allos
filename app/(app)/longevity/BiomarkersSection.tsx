@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { getOptimalShareRows } from "@/lib/queries";
 import { biomarkerViewHref } from "@/lib/hrefs";
-import type { OptimalShareRow } from "@/lib/healthspan-pillars";
+import type { OptimalShareRow } from "@/lib/longevity-pillars";
 import type { LongevitySection } from "@/lib/longevity";
 import { MedicalValue } from "@/components/ui";
 import PillarStat from "./PillarStat";

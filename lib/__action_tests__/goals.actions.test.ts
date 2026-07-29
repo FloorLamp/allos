@@ -7,7 +7,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { createGoal, setStatus, updateGoal } from "@/app/(app)/goals/actions";
+import {
+  createGoal,
+  setStatus,
+  updateGoal,
+} from "@/app/(app)/training/goal-actions";
 import {
   getGoals,
   dismissFinding,

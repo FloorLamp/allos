@@ -15,7 +15,10 @@ import {
   updateInstrumentAction,
   deleteInstrumentAction,
 } from "@/app/(app)/medical/instruments/actions";
-import { addAllergy, updateAllergy } from "@/app/(app)/allergies/actions";
+import {
+  addAllergy,
+  updateAllergy,
+} from "@/app/(app)/records/problems/allergies/actions";
 import {
   addImmunization,
   updateImmunization,

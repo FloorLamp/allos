@@ -35,12 +35,15 @@ import {
   type PresenceLevel,
   type TrendsSubjectContext,
 } from "../trends-card-rank";
+import { bodyCardIdForSeriesKey } from "../trends-body-metrics";
+import { seriesKeyOfSavedRef } from "../saved-items";
 import type { BodyMetricKind } from "../types";
 import { getConditions } from "./clinical";
 import { getGoals } from "./training";
 import { getBiomarkerSeries } from "./medical";
 import { getLatestHrDay } from "./metrics";
 import { getMoodLogs } from "./mood";
+import { getSavedItems } from "./saved";
 
 // Card → `metric_samples.metric`. One grouped query answers all of them.
 const METRIC_SAMPLE_CARDS: Readonly<Partial<Record<BodyCardId, string>>> = {
@@ -206,4 +209,30 @@ export function buildTrendsSubjectContext(
   presence.sun = getHomeLocation(profileId) ? "sparse" : "none";
 
   return { growthTracked, goalMetrics, monitors, presence };
+}
+
+// The Body tab's ★-PINNED cards, in the profile's SAVED order (#1643).
+//
+// The other half of the tab's order, and the reason it is a read rather than a
+// second store: `saved_items` is the ONE arrangement substrate on Trends, so the
+// sequence the Overview grid's drag (and its ⋯-menu arrow fallback) writes is the
+// sequence the Body stack leads with. `getSavedItems` already returns canonical
+// saved order — explicitly positioned rows first, then unpositioned newest-star
+// first — so a freshly starred card leads, and a dragged one lands where it was
+// dropped, with no ordering decided here.
+//
+// Saved refs that name no Body card (a biomarker, training volume) are simply
+// absent; the mapping is the ONE correspondence in lib/trends-body-metrics.ts.
+// Membership is NOT applied here — a pinned card the tab does not render for this
+// profile stays absent at render time (the #1487 saved-ref-with-no-tile skip),
+// which keeps this read a pure ordering input.
+export function getBodyCardPins(profileId: number): BodyCardId[] {
+  const out: BodyCardId[] = [];
+  for (const row of getSavedItems(profileId, "trend-metric")) {
+    const id = bodyCardIdForSeriesKey(
+      seriesKeyOfSavedRef({ kind: row.kind, key: row.key })
+    );
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
 }

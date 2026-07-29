@@ -59,7 +59,11 @@ function parsePairs(
 }
 
 function revalidateVisitLinks() {
-  revalidatePath("/encounters", "layout");
+  // The visits surface lives at /records/history/visits (#1079); only the per-visit
+  // DETAIL page still sits under /encounters. Revalidating "/encounters" alone was a
+  // no-op — that path serves nothing (#1636).
+  revalidatePath("/records/history/visits");
+  revalidatePath("/encounters/[id]", "page");
   revalidatePath("/records");
   revalidatePath("/results");
   revalidatePath("/medications", "layout");

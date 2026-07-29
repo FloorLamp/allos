@@ -73,7 +73,7 @@ import {
   resolveFollowUp,
   dismissMultiviewHintAction,
 } from "./actions";
-import { confirmConditionSuggestion } from "@/app/(app)/conditions/actions";
+import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
 import PracticeLogButton from "./PracticeLogButton";
 
 export const dynamic = "force-dynamic";

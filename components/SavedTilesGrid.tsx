@@ -12,7 +12,7 @@ import { CSS } from "@dnd-kit/utilities";
 import SortableOrder from "@/components/SortableOrder";
 import { useToast } from "@/components/Toast";
 import { moveInOrder } from "@/lib/saved-items";
-import { reorderSaved } from "@/app/(app)/saved/actions";
+import { reorderSaved } from "@/app/(app)/saved-actions";
 
 // The Trends Overview "★ Starred" grid, made DRAGGABLE (issue #1485 C).
 //

@@ -192,7 +192,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       }
     }
 
-    await page.goto("/imaging");
+    await page.goto("/results/imaging");
     // Entry lives behind "+ Add imaging study" since #1499 section C.
     await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");

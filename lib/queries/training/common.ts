@@ -3,8 +3,6 @@ import { shiftDateStr } from "../../date";
 import { db, today } from "../../db";
 import { decayedWeight } from "../../decay";
 import { RECENT_WINDOW_DAYS } from "../../exercise-window";
-import { getWeekMode, getWeekStart } from "../../settings";
-import { weekWindow } from "../../week-window";
 import type { ActivityComponent } from "../../types";
 import { parseComponents } from "../../types";
 import { cache } from "../../request-cache";
@@ -22,19 +20,6 @@ export { cache };
 // freshness gate (isSeedFresh) shares with this windowed scan (#331).
 export function recentWindowStart(profileId: number): string {
   return shiftDateStr(today(profileId), -RECENT_WINDOW_DAYS);
-}
-
-// Inclusive start date (YYYY-MM-DD) of a profile's "this week" window: either the
-// current calendar week (from the configured week-start day) or a rolling 7-day
-// window, per the profile's week_mode. Delegates to the shared `weekWindow`
-// computation (lib/week-window.ts) so the weekly-routine counters, the journal
-// week summary, and the weekly recap all agree on which days count (issue #223).
-export function weekWindowStart(profileId: number): string {
-  return weekWindow(
-    today(profileId),
-    getWeekMode(profileId),
-    getWeekStart(profileId)
-  ).start;
 }
 
 // All dated weights ascending, for bodyweightAsOf lookups. Weightless

@@ -6,7 +6,10 @@ import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Trends → the MERGED Body tab (issue #1486). The Vitals tab retired into Body,
-// whose sections now read: Today → Vitals → Composition → growth/history. Logging
+// whose sections read: Today → the two ranked chart runs → growth/history. (#1486
+// declared those runs Vitals-then-Composition; #1659 re-sequenced the base layout
+// everyday-first, so with no signal firing they now read Composition-then-Vitals —
+// the runs rank by their best member.) Logging
 // moved to ONE combined "Log measurements" form, behind a collapsed "+ Log" on
 // desktop and reachable ONLY through the #1468 quick-entry overlay on a phone.
 //
@@ -36,7 +39,7 @@ async function openBody(page: Page, query = ""): Promise<void> {
   );
 }
 
-test.describe("one tab, vitals first (#1486)", () => {
+test.describe("one tab, one ordered stack (#1486)", () => {
   test("the tab strip carries no Vitals tab", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await openBody(page);
@@ -64,7 +67,7 @@ test.describe("one tab, vitals first (#1486)", () => {
     expect(page.url()).toContain("tab=vitals");
   });
 
-  test("the sections render in order: Vitals before Composition", async ({
+  test("the sections render in one stack, Composition before Vitals", async ({
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
@@ -76,17 +79,22 @@ test.describe("one tab, vitals first (#1486)", () => {
     await expect(vitals).toBeVisible();
     await expect(composition).toBeVisible();
 
-    // Document order is the reading order the issue specifies.
-    const vitalsFirst = await page.evaluate(() => {
+    // ONE stack in a decided order — the merge's actual claim. #1486 landed it
+    // vitals-first, from the page narrative; #1659 re-sequenced the base layout
+    // everyday-first because that order was also the TIE-BREAK, and on a tie it put
+    // the clinical block above the metrics a wearable profile checks daily. The runs
+    // rank by their best member, so Composition now leads when no signal fires. The
+    // Today strip still opens with the vitals — that narrative kept its job.
+    const compositionFirst = await page.evaluate(() => {
       const v = document.querySelector('[data-testid="body-section-vitals"]');
       const c = document.querySelector(
         '[data-testid="body-section-body-composition"]'
       );
       if (!v || !c) return null;
       // Node.DOCUMENT_POSITION_FOLLOWING === 4
-      return (v.compareDocumentPosition(c) & 4) !== 0;
+      return (c.compareDocumentPosition(v) & 4) !== 0;
     });
-    expect(vitalsFirst).toBe(true);
+    expect(compositionFirst).toBe(true);
 
     // The Today strip precedes both (it is section 1).
     const strip = page.getByTestId("vitals-today-strip");

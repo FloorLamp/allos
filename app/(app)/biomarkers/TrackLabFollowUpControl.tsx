@@ -15,7 +15,7 @@ import type { LabFollowUpSummary } from "@/lib/queries";
 // "Recheck <name>" via trackLabFollowUp; an intraocular-pressure reading ("iop") tracks
 // the bilateral "Recheck IOP / glaucoma workup" via trackIopFollowUp (#698 §6). Only the
 // posted action, the button copy, and the test hooks differ. The imaging twin is
-// app/(app)/imaging/TrackFollowUpControl.tsx.
+// app/(app)/results/imaging/TrackFollowUpControl.tsx.
 const INTERVALS: { label: string; days: number }[] = [
   { label: "3 months", days: 91 },
   { label: "6 months", days: 182 },

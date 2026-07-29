@@ -70,7 +70,7 @@ import {
 } from "@/lib/queries";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { SYMPTOMS } from "@/lib/symptoms";
-import SymptomLogBar from "../symptoms/SymptomLogBar";
+import SymptomLogBar from "../../../components/illness/SymptomLogBar";
 import SymptomEntryCard from "./SymptomEntryCard";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import {

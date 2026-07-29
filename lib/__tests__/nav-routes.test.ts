@@ -132,6 +132,94 @@ function dueSignalPaths(file: string): string[] {
   return [...out];
 }
 
+// ── revalidatePath targets (issue #1636) ────────────────────────────────────────
+//
+// `revalidatePath` takes a PLAIN STRING, so `typedRoutes` can never catch a dead
+// one: after the #1042/#1079 route merges several Server Actions kept revalidating
+// URLs that no longer serve anything (`/encounters`, `/journal`, `/body`), which
+// made the refresh a silent no-op and left the moved surface stale. This guard
+// closes that gap the same way the nav/due-signal guards close theirs.
+//
+// The target set is the FULL route tree — dynamic segments included, kept as their
+// literal `[param]` form — because a dynamic route is a legitimate revalidation
+// target both as a written literal (`revalidatePath("/medical/episodes/[id]",
+// "page")`) and as an interpolated one (`revalidatePath(`/providers/${id}`)`),
+// which normalizes to `/providers/*` below.
+function collectAllRoutePaths(dir: string, urlSegments: string[]): Set<string> {
+  const routes = new Set<string>();
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isFile() && PAGE_FILES.has(entry.name)) {
+      routes.add("/" + urlSegments.join("/"));
+    }
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const name = entry.name;
+    if (name.startsWith("@")) continue;
+    const isRouteGroup = name.startsWith("(") && name.endsWith(")");
+    const nextSegments = isRouteGroup ? urlSegments : [...urlSegments, name];
+    for (const r of collectAllRoutePaths(path.join(dir, name), nextSegments)) {
+      routes.add(r);
+    }
+  }
+  return routes;
+}
+
+const ALL_ROUTES = [...collectAllRoutePaths(APP_DIR, [])].map(normalize);
+
+// Every `.ts`/`.tsx` under app/ (the only place Server Actions and route handlers
+// live), so the sweep can never miss a file by being enumerated by hand.
+function appSourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...appSourceFiles(full));
+    else if (/\.tsx?$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+// Path literals handed to `revalidatePath` in one file: the direct call form
+// (quoted or template), plus every ARRAY LITERAL whose elements are ALL `/`-rooted
+// strings — the `for (const p of [...]) revalidatePath(p)` and
+// `EDIT_LOCK_REVALIDATE`-style fan-outs that carry most of the targets and that a
+// call-site-only regex would miss. Template expressions collapse to `*`, which the
+// matcher below accepts against a `[param]` segment.
+function revalidateTargets(file: string): string[] {
+  const src = stripComments(fs.readFileSync(file, "utf8"));
+  if (!src.includes("revalidatePath")) return [];
+  const out = new Set<string>();
+  const call = /revalidatePath\(\s*(["`])([^"`]*)\1/g;
+  let m: RegExpExecArray | null;
+  while ((m = call.exec(src)) !== null) out.add(m[2]);
+  const arrays = /\[\s*((?:["`][^"`]*["`]\s*,\s*)*["`][^"`]*["`]\s*,?)\s*\]/g;
+  while ((m = arrays.exec(src)) !== null) {
+    const items = [...m[1].matchAll(/["`]([^"`]*)["`]/g)].map((x) => x[1]);
+    if (items.length > 0 && items.every((i) => i.startsWith("/"))) {
+      for (const i of items) out.add(i);
+    }
+  }
+  return [...out].filter((p) => p.startsWith("/"));
+}
+
+// A revalidation target resolves when some real route matches it segment for
+// segment, where an interpolated segment (`*`) matches a dynamic one (`[id]`).
+// EXACT segment count — unlike a nav href, a revalidation path is the page being
+// refreshed, not a section root, so `/encounters` must NOT pass on the strength of
+// `/encounters/[id]` existing (that was the #1636 bug).
+function revalidateResolves(target: string): boolean {
+  const clean = target.split(/[?#]/)[0].replace(/\$\{[^}]*\}/g, "*");
+  const want = clean === "/" ? [] : clean.replace(/^\/|\/$/g, "").split("/");
+  return ALL_ROUTES.some((route) => {
+    const have = route === "/" ? [] : route.replace(/^\//, "").split("/");
+    if (have.length !== want.length) return false;
+    return have.every(
+      (seg, i) => seg === want[i] || (seg.startsWith("[") && want[i] === "*")
+    );
+  });
+}
+
 // Extract internal redirect destinations from next.config.js. Source-scanned
 // (not executed) to keep this test pure and side-effect-free. We dropped the
 // legacy redirects, so today there are none — the empty case is expected and
@@ -205,5 +293,27 @@ describe("nav ↔ route consistency", () => {
         `${path.relative(REPO, file)} links routes with no matching page under app/: ${missing.join(", ")}`
       ).toEqual([]);
     }
+  });
+  it("every revalidatePath target under app/ resolves to a real route (issue #1636)", () => {
+    const files = appSourceFiles(APP_DIR);
+    const bad: string[] = [];
+    let seen = 0;
+    for (const file of files) {
+      for (const target of revalidateTargets(file)) {
+        seen++;
+        if (!revalidateResolves(target)) {
+          bad.push(`${path.relative(REPO, file)} → ${target}`);
+        }
+      }
+    }
+    // Sanity anchor: the sweep must not go quietly empty.
+    expect(
+      seen,
+      "no revalidatePath targets found — extractor broken?"
+    ).toBeGreaterThan(50);
+    expect(
+      bad,
+      `revalidatePath targets with no matching route under app/ (the refresh is a silent no-op):\n${bad.join("\n")}`
+    ).toEqual([]);
   });
 });

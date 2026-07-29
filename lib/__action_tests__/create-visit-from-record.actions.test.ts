@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import {
   createVisitFromRecordAction,
   declineCreateVisitAction,
-} from "@/app/(app)/visit-links/actions";
+} from "@/app/(app)/visit-link-actions";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);

@@ -234,34 +234,124 @@ describe("rankBodyCards", () => {
   });
 });
 
-describe("bodyCardOrder (the stored-arrangement override)", () => {
-  it("uses the ranked default for a never-arranged profile", () => {
+describe("the everyday-first tie-break (#1659)", () => {
+  // Both-rich is the NORMAL state for a wearable profile: an Oura ring or a watch
+  // reports SpO₂ nightly, so SpO₂ is "rich" the moment steps is and the presence
+  // signal fires equally for both. The static layout is then the whole decision.
+  const WEARABLE = ctx({
+    presence: {
+      steps: "rich",
+      spo2: "rich",
+      "resting-hr": "rich",
+      hrv: "rich",
+      sleep: "rich",
+      systolic: "rich",
+      weight: "rich",
+    },
+  });
+
+  it("leads a both-rich wearable profile with the everyday block, not clinical vitals", () => {
+    const order = rankBodyCards(WEARABLE);
+    expect(at(order, "steps")).toBeLessThan(at(order, "spo2"));
+    expect(at(order, "sleep")).toBeLessThan(at(order, "spo2"));
+    expect(at(order, "resting-hr")).toBeLessThan(at(order, "systolic"));
+    expect(at(order, "hrv")).toBeLessThan(at(order, "spo2"));
+    expect(at(order, "weight")).toBeLessThan(at(order, "systolic"));
+  });
+
+  it("still lifts SpO₂ for a profile whose condition actually watches it", () => {
+    // Clinical-when-relevant is the SIGNAL's job, not the base order's — which is
+    // the whole reason the base could be re-sequenced without losing anything.
+    const order = rankBodyCards({ ...WEARABLE, monitors: ["respiratory"] });
+    expect(at(order, "spo2")).toBeLessThan(at(order, "steps"));
+    expect(at(order, "respiratory-rate")).toBeLessThan(at(order, "steps"));
+  });
+
+  it("keeps the layout's own judgment calls: sun is everyday, hrv is a HR-family card", () => {
+    expect(at(BODY_CARD_LAYOUT, "sun")).toBeLessThan(
+      at(BODY_CARD_LAYOUT, "systolic")
+    );
+    expect(at(BODY_CARD_LAYOUT, "hrv")).toBeLessThan(
+      at(BODY_CARD_LAYOUT, "mood")
+    );
+    expect(at(BODY_CARD_LAYOUT, "resting-hr")).toBeLessThan(
+      at(BODY_CARD_LAYOUT, "systolic")
+    );
+    // The synced composition tail stays behind the clinical run.
+    expect(at(BODY_CARD_LAYOUT, "temperature")).toBeLessThan(
+      at(BODY_CARD_LAYOUT, "bmi")
+    );
+  });
+});
+
+describe("bodyCardOrder (★-pinned first, ranked remainder — #1643)", () => {
+  it("uses the ranked default for a profile that has pinned nothing", () => {
+    expect(bodyCardOrder(NEUTRAL, null)).toEqual([...BODY_CARD_LAYOUT]);
+    expect(bodyCardOrder(NEUTRAL, [])).toEqual([...BODY_CARD_LAYOUT]);
     expect(bodyCardOrder(ctx({ goalMetrics: ["weight"] }), null)[0]).toBe(
       "weight"
     );
   });
 
-  it("lets a stored arrangement win over every signal, forever", () => {
-    const stored = ["mood", "steps", "weight"];
+  it("leads with the pinned cards, in the SAVED order, over every ordinary signal", () => {
     const order = bodyCardOrder(
       ctx({
-        growthTracked: true,
         goalMetrics: ["weight"],
         monitors: ["blood-pressure"],
+        presence: { steps: "rich", systolic: "rich", weight: "rich" },
       }),
-      stored
+      ["mood", "steps", "weight"]
     );
     expect(order.slice(0, 3)).toEqual(["mood", "steps", "weight"]);
   });
 
-  it("appends a card the arrangement has never seen without reshuffling it", () => {
+  it("ranks everything unpinned behind the pinned run, undisturbed", () => {
+    const order = bodyCardOrder(ctx({ monitors: ["blood-pressure"] }), [
+      "mood",
+    ]);
+    expect(order[0]).toBe("mood");
+    // The remainder is exactly the ranked default with the pin removed.
+    expect(order.slice(1)).toEqual(
+      rankBodyCards(ctx({ monitors: ["blood-pressure"] })).filter(
+        (id) => id !== "mood"
+      )
+    );
+  });
+
+  it("lets an explicit ★ beat the no-data floor", () => {
+    // The floor sinks an empty card below every card with data — a neutral signal.
+    // A pin is not neutral: the user said this card matters, so it renders in the
+    // pinned run rather than at the bottom of the tab.
+    const c = ctx({ presence: { hrv: "none", steps: "rich" } });
+    expect(rankBodyCards(c).at(-1)).toBe("hrv");
+    expect(bodyCardOrder(c, ["hrv"])[0]).toBe("hrv");
+  });
+
+  it("drops a pin that names no card, rather than leaving a hole", () => {
+    const order = bodyCardOrder(NEUTRAL, ["retired-card", "mood"]);
+    expect(order[0]).toBe("mood");
+    expect(order).toHaveLength(BODY_CARD_LAYOUT.length);
+    expect(new Set(order).size).toBe(BODY_CARD_LAYOUT.length);
+  });
+
+  it("keeps LIFE STAGE above the pins — membership is not a preference", () => {
+    // planBodyCharts' `growthCardFirst` was a MEMBERSHIP-tier fork before #1490
+    // moved it into the signal table, and #1643's precedence rule says membership
+    // wins over ★. So a growth-tracked profile still leads with its percentile card
+    // and its growth-charted measures, whatever it has starred.
     const order = bodyCardOrder(ctx({ growthTracked: true }), [
       "mood",
       "steps",
+      "weight",
     ]);
-    expect(order.slice(0, 2)).toEqual(["mood", "steps"]);
-    // growth is boosted to the top of what REMAINS, never above the arrangement.
-    expect(order[2]).toBe("growth");
+    expect(order.slice(0, 3)).toEqual(["growth", "height", "head-circ"]);
+    expect(order.slice(3, 6)).toEqual(["mood", "steps", "weight"]);
+  });
+
+  it("leaves an adult's pins untouched by the structural rule", () => {
+    // Nothing is structural for an adult, so the pinned run really is the front.
+    const order = bodyCardOrder(ctx({ goalMetrics: ["weight"] }), ["sun"]);
+    expect(order[0]).toBe("sun");
   });
 });
 
@@ -307,12 +397,15 @@ describe("growthCardLeads", () => {
     expect(growthCardLeads(order, ["systolic", "weight"])).toBe(false);
   });
 
-  it("is false once a user's arrangement puts a chart above growth", () => {
-    const order = bodyCardOrder(ctx({ growthTracked: true }), [
-      "weight",
-      "growth",
-    ]);
-    expect(growthCardLeads(order, ["weight"])).toBe(false);
+  it("stays true for a growth-tracked profile that pinned a chart (#1643)", () => {
+    // A ★ cannot displace the life-stage lead, so the percentile card still heads
+    // the stack for a child whose parent starred the weight card.
+    const order = bodyCardOrder(ctx({ growthTracked: true }), ["weight"]);
+    expect(growthCardLeads(order, ["weight"])).toBe(true);
+  });
+
+  it("is false when the growth card is not in the order at all", () => {
+    expect(growthCardLeads(["weight", "systolic"], ["weight"])).toBe(false);
   });
 });
 
@@ -326,16 +419,20 @@ describe("orderCardSections", () => {
       (s) => s.id
     );
 
-  it("keeps the declared run order when no signal fires", () => {
-    expect(ordered(NEUTRAL)).toEqual(["vitals", "body-composition"]);
+  it("follows the base layout's run sequence when no signal fires", () => {
+    // Composition leads under the everyday-first base (#1659): a run ranks by its
+    // best member, and `weight` is the layout's first card. This is the "run
+    // grouping must agree with the base sequence" half of that issue — the visual
+    // narrative and the rank can't contradict each other.
+    expect(ordered(NEUTRAL)).toEqual(["body-composition", "vitals"]);
   });
 
   it("lifts the run holding a promoted card, so the promotion is visible", () => {
-    // A live weight goal promotes `weight`; the Composition run it lives in has to
-    // come with it, or the promotion is invisible under a pinned Vitals run.
-    expect(ordered(ctx({ goalMetrics: ["weight"] }))).toEqual([
-      "body-composition",
+    // A monitored condition promotes `systolic`; the Vitals run it lives in has to
+    // come with it, or the promotion is invisible under the leading Composition run.
+    expect(ordered(ctx({ monitors: ["blood-pressure"] }))).toEqual([
       "vitals",
+      "body-composition",
     ]);
   });
 

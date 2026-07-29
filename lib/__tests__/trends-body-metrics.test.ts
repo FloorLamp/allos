@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   BODY_METRIC_META,
   BODY_METRIC_SLUGS,
+  bodyCardIdForSeriesKey,
   bodyMetricSlugForSavedId,
+  seriesKeyForBodyCard,
   isBodyMetricSlug,
   savedMetricIdForBodySlug,
   resolveBodyMetricUnit,
@@ -90,6 +92,41 @@ describe("BODY_METRIC_META registry", () => {
     expect(bodyMetricSlugForSavedId("resting_hr")).toBe("resting-hr");
     expect(bodyMetricSlugForSavedId("steps")).toBe("steps");
     expect(bodyMetricSlugForSavedId("not-a-metric")).toBeNull();
+  });
+});
+
+describe("the ★ ↔ Body-card correspondence (#1643)", () => {
+  it("round-trips every pinnable card between its id and its series key", () => {
+    for (const slug of BODY_METRIC_SLUGS) {
+      const key = seriesKeyForBodyCard(slug);
+      expect(key, slug).not.toBeNull();
+      expect(bodyCardIdForSeriesKey(key as string)).toBe(slug);
+    }
+  });
+
+  it("speaks the stored saved-id vocabulary, legacy ids included", () => {
+    // The store holds "bodyfat" / "resting_hr"; the tab holds "body-fat" /
+    // "resting-hr". ONE table reconciles them (#482) — a second one per surface is
+    // exactly how a starred card would fail to pin.
+    expect(seriesKeyForBodyCard("body-fat")).toBe("metric:bodyfat");
+    expect(seriesKeyForBodyCard("resting-hr")).toBe("metric:resting_hr");
+    expect(bodyCardIdForSeriesKey("metric:bodyfat")).toBe("body-fat");
+    expect(bodyCardIdForSeriesKey("metric:resting_hr")).toBe("resting-hr");
+  });
+
+  it("answers null for the cards that have no savable series", () => {
+    // The percentile card, the Sleep summary and the intraday HR zoom are cards but
+    // not metrics — they can only ever occupy their ranked slot.
+    expect(seriesKeyForBodyCard("growth")).toBeNull();
+    expect(seriesKeyForBodyCard("sleep")).toBeNull();
+    expect(seriesKeyForBodyCard("hr-day")).toBeNull();
+  });
+
+  it("answers null for a saved ref that names no Body card", () => {
+    expect(bodyCardIdForSeriesKey("metric:volume")).toBeNull();
+    expect(bodyCardIdForSeriesKey("bio:ApoB")).toBeNull();
+    expect(bodyCardIdForSeriesKey("weight")).toBeNull();
+    expect(bodyCardIdForSeriesKey("")).toBeNull();
   });
 });
 

@@ -4,7 +4,10 @@
 
 import { describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
-import { saveActivity, finishWorkout } from "@/app/(app)/journal/actions";
+import {
+  saveActivity,
+  finishWorkout,
+} from "@/app/(app)/training/activity-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 
 function row(id: number): {

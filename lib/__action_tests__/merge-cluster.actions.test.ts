@@ -11,8 +11,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { mergeActivityCluster } from "@/app/(app)/data/review-actions";
-import { mergeActivities } from "@/app/(app)/journal/actions";
-import { undoDeletes } from "@/app/(app)/undo/actions";
+import { mergeActivities } from "@/app/(app)/training/activity-actions";
+import { undoDeletes } from "@/app/(app)/undo-actions";
 import { getPairDecisions } from "@/lib/queries";
 import {
   ACTIVITY_DOMAIN,

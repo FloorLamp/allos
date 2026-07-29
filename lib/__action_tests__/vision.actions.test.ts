@@ -12,7 +12,7 @@ import {
   addOpticalPrescription,
   updateOpticalPrescription,
   deleteOpticalPrescription,
-} from "@/app/(app)/vision/actions";
+} from "@/app/(app)/records/specialty/vision/actions";
 import { getOpticalPrescriptions } from "@/lib/queries";
 import { seedActor, createProfile, actAs, fd } from "./harness";
 

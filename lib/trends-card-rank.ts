@@ -30,6 +30,7 @@ import {
   defineRankTable,
   itemsFromLayout,
   mergeStoredOrder,
+  rankItems,
   rankedIds,
   type RankItem,
 } from "./rank-core";
@@ -48,39 +49,59 @@ import type { BodyMetricKind } from "./types";
 // (its own /sleep surface), and the "HR (day)" intraday card.
 export type BodyCardId = BodyMetricSlug | "growth" | "sleep" | "hr-day";
 
-// THE BASE LAYOUT: the Body tab's current ADULT reading order, flattened across its
-// runs (vitals → composition → growth → mood → synced daily). This array IS the
-// stable tie-break — with no signal firing the ranker returns it unchanged, which is
-// the identity property the pure + browser tiers both pin. Editing it changes the
-// default layout for every never-arranged profile, so edit it on purpose.
+// THE BASE LAYOUT: the Body tab's ADULT reading order, flattened across its runs.
+// This array IS the stable tie-break — with no signal firing the ranker returns it
+// unchanged, which is the identity property the pure + browser tiers both pin.
+// Editing it changes the default layout for every never-arranged profile, so edit
+// it on purpose.
+//
+// EVERYDAY-FIRST (#1659). It used to run vitals-first, inherited from #1486's page
+// narrative. That order is only ever consulted on a TIE, and both-rich is the normal
+// state for a wearable profile — Oura and watches report SpO₂ nightly, so SpO₂ is
+// "rich" the moment steps is, and `BOOST_PRESENCE_RICH` fires equally for both. The
+// tie-break therefore decided the whole tab, and it led every wearable profile with
+// the clinical-vitals block above the metrics they actually check daily.
+//
+// So the base sequence is now the order a reader reaches for: composition, then the
+// growth card's adult slot, then daily activity + the heart-rate family, then the
+// daily subjective/environment pair, then clinical vitals, then the synced
+// composition tail. Clinical cards are not demoted — they are lifted BY SIGNAL when
+// they matter (a monitored condition promotes BP/SpO₂/respiratory rate), which is
+// the signal's job rather than the base order's. The Today strip (#1486) keeps the
+// vitals-first narrative; the card stack stops inheriting it.
 export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
-  // Vitals (#1486).
-  "systolic",
-  "diastolic",
-  "spo2",
-  "respiratory-rate",
-  "resting-hr",
-  "hrv",
-  "skin-temp",
-  "sun",
-  "temperature",
-  // Body composition. `height`/`head-circ` only exist for a growth-tracked profile
-  // (membership is still planBodyCharts'); their ADULT-layout base position is here,
-  // and the life-stage signal is what lifts them above weight for a child.
+  // Composition — what people check daily. `height`/`head-circ` only exist for a
+  // growth-tracked profile (membership is still planBodyCharts'); their ADULT-layout
+  // base position is here, and the life-stage signal is what lifts them above weight
+  // for a child.
   "weight",
   "body-fat",
   "height",
   "head-circ",
-  // The growth-percentile card sits after the composition run for an adult (where
-  // it is empty anyway) and is lifted to the top of the stack for a child.
+  // The growth-percentile card's ADULT base position (where it is empty anyway);
+  // life stage lifts it to the top of the stack for a child.
   "growth",
-  "mood",
-  // Synced daily metrics.
+  // Daily activity + the heart-rate family. `hrv` joins its family here rather than
+  // staying in the clinical run, and `resting-hr` counts as everyday (widely tracked
+  // and goal-linked).
   "steps",
   "active-calories",
   "sleep",
+  "resting-hr",
   "hr",
   "hr-day",
+  "hrv",
+  // Daily subjective + environment. `sun` is outdoor time, not a vital.
+  "mood",
+  "sun",
+  // Clinical vitals — condition and goal signals still lift these when they matter.
+  "systolic",
+  "diastolic",
+  "spo2",
+  "respiratory-rate",
+  "skin-temp",
+  "temperature",
+  // Synced composition tail.
   "bmi",
   "lean-mass",
   "bone-mass",
@@ -324,15 +345,47 @@ export function rankBodyCards(ctx: TrendsSubjectContext): BodyCardId[] {
   return rankedIds(BODY_ITEMS, TRENDS_CARD_TABLE, ctx);
 }
 
-// The order the tab actually renders: the user's STORED arrangement wins forever,
-// with anything it has never seen appended in ranked order (#1490's override —
-// #1485-C's drag writes the stored order; until a profile arranges the tab, `stored`
-// is null and the ranked default is the whole answer).
+// The SIGNAL a ★ may not outrank. Life stage is not a preference competing with the
+// user's pins — it is the membership-tier fork `planBodyCharts().growthCardFirst`
+// used to encode positionally, which #1490 moved into this table (the same tier that
+// drops body fat for a growth-tracked profile whatever the user starred). #1643's own
+// precedence rule says membership wins over ★, and this is that rule applied to the
+// half of membership that became a signal.
+const STRUCTURAL_SIGNAL = "life-stage";
+
+// The order the tab actually renders (#1643): the profile's ★-PINNED cards first, in
+// their saved order, then the ranked default for everything unpinned.
+//
+// There is ONE arrangement substrate on Trends — `saved_items`, the store the
+// Overview grid's star, drag and ⋯-menu arrows already write. The Body tab used to
+// have a second, order-only one (`trends_card_order` in profile settings) that no UI
+// ever wrote; #1643 retired it rather than completing a parallel language for one job
+// (#1485-C's convergence, at the data model instead of the interaction).
+//
+// `pinned` therefore arrives as saved-order card ids (lib/queries/trends-context.ts
+// resolves them through the one series-key ↔ card-id mapping), and the composition is
+// the shared `mergeStoredOrder`: pinned ids keep their saved sequence, everything else
+// follows in ranked order, and a stale id naming no card is simply dropped.
+//
+// Two precedence consequences, both deliberate:
+//   • An explicit ★ beats the `data-present` FLOOR — a pinned sparse card leads the
+//     stack, because user intent outranks the neutral presence signal.
+//   • It does NOT beat the structural signal above: a growth-tracked profile still
+//     leads with its percentile card and its growth-charted measures, whatever is
+//     starred. MEMBERSHIP is likewise untouched — a starred card the tab does not
+//     render for this profile stays absent (the saved-ref-with-no-tile skip, #1487).
 export function bodyCardOrder(
   ctx: TrendsSubjectContext,
-  stored?: readonly string[] | null
+  pinned?: readonly string[] | null
 ): BodyCardId[] {
-  return mergeStoredOrder(rankBodyCards(ctx), stored);
+  const ranked = rankItems(BODY_ITEMS, TRENDS_CARD_TABLE, ctx);
+  const isStructural = (id: BodyCardId): boolean =>
+    ranked.some(
+      (r) => r.id === id && r.boosts.some((b) => b.key === STRUCTURAL_SIGNAL)
+    );
+  const structural = ranked.map((r) => r.id).filter(isStructural);
+  const rest = ranked.map((r) => r.id).filter((id) => !isStructural(id));
+  return [...structural, ...mergeStoredOrder(rest, pinned)];
 }
 
 // Sort a renderer's already-built list into a card order. Items whose key is not in

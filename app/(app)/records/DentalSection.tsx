@@ -6,9 +6,9 @@ import {
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
-import DentalProcedureForm from "@/app/(app)/dental/DentalProcedureForm";
-import DentalProcedureList from "@/app/(app)/dental/DentalProcedureList";
-import { addDentalProcedure } from "@/app/(app)/dental/actions";
+import DentalProcedureForm from "@/app/(app)/records/specialty/dental/DentalProcedureForm";
+import DentalProcedureList from "@/app/(app)/records/specialty/dental/DentalProcedureList";
+import { addDentalProcedure } from "@/app/(app)/records/specialty/dental/actions";
 
 // Dental (former /dental index, #1042 final tail): the profile's structured dental
 // records — tooth-anchored procedures (fillings/crowns/extractions with tooth +
@@ -17,7 +17,7 @@ import { addDentalProcedure } from "@/app/(app)/dental/actions";
 // Captured from an uploaded dental exam/treatment record via AI extraction, or added
 // manually. Periodontal MEASUREMENTS (pocket depth, bleeding-on-probing) are
 // biomarkers and trend on Results; dental X-rays are imaging studies. Server Actions
-// + client components stayed in app/(app)/dental/; the page body moved here.
+// + client components stayed in app/(app)/records/specialty/dental/; the page body moved here.
 export default function DentalSection({ profileId }: { profileId: number }) {
   const records = getDentalProcedures(profileId);
   const followUps = getDentalProcedureFollowUps(profileId);

@@ -6,7 +6,7 @@ import { rangeBadgeFlag } from "@/lib/reference-range";
 import {
   optimalShareRows,
   type NamedBiomarkerReading,
-} from "@/lib/healthspan-pillars";
+} from "@/lib/longevity-pillars";
 import type { CanonicalBiomarker } from "@/lib/types";
 
 // Biomarker rows render the CANONICAL name, and lead with the value (#1501).

@@ -142,7 +142,7 @@ test("the longevity adherence select renders its default label unclipped (#1450 
 test("a date field displays its own value without clipping (#1450 A / #1448)", async ({
   page,
 }) => {
-  await page.goto("/encounters");
+  await page.goto("/records/history/visits");
 
   // The appointment Date field is the site the census captured as
   // "Friday, July 2‹" at BOTH widths.

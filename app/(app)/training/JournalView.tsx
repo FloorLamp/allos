@@ -29,7 +29,7 @@ import SportDetailPanel from "@/components/SportDetailPanel";
 import JournalCard from "./JournalCard";
 import type { MergeSibling } from "./ActivityCardMenu";
 import { detectFieldConflicts } from "@/lib/import-review/conflicts";
-import { loadJournalPage } from "./actions";
+import { loadJournalPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 

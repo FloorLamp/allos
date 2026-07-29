@@ -30,8 +30,8 @@ the same table. **Surfaces (#746):** the two kinds render on separate pages —
 supplements on **Nutrition → Supplements** (`/nutrition?tab=supplements`, a tab
 of the Food | Supplements umbrella), medications on the standalone
 **Medications** page (`/medications`, Medical nav group). The former combined
-`/medicine` route permanently redirects to the Supplements tab (historical deep
-links). This is a UI/route split only: one `intake_items` table, and the write
+`/medicine` route was removed outright (#1635) and now 404s — historical deep
+links to it are not kept alive. This is a UI/route split only: one `intake_items` table, and the write
 cores are shared — the kind-agnostic dose/item CRUD lives in
 `app/(app)/nutrition/supplement-actions.ts` (imported by both surfaces), the
 medication-lifecycle actions (stop/restart/side effects) in

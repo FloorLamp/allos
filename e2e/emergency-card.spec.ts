@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 // Offline Emergency Card (issue #42), living as the #emergency section of the
-// Passport page since the #1042 phase-3 merge (the old /emergency route 308-
-// redirects to /profile#emergency). This spec runs in its OWN unauthenticated
+// Passport page since the #1042 phase-3 merge (the old /emergency route was
+// removed outright in #1635 and 404s). This spec runs in its OWN unauthenticated
 // context and logs in by hand (rather than reusing the shared storageState),
 // because it exercises logout — which destroys the session row server-side, and
 // would otherwise invalidate the shared cookie every other spec relies on.
@@ -79,11 +79,11 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   // enabling is one tap, no bounce (#1087).
   await expect(page.getByTestId("emergency-card")).toBeVisible();
 
-  // 2. The removed /emergency route 308-redirects to the passport page WITH the
-  //    #emergency anchor, where the card renders the seeded allergy + active
-  //    medication, both artifacts stack on one page, and the card's own scoped
-  //    Print affordance is offered.
-  await page.goto("/emergency");
+  // 2. The passport page's #emergency anchor, where the card renders the seeded
+  //    allergy + active medication, both artifacts stack on one page, and the
+  //    card's own scoped Print affordance is offered. (The old /emergency route
+  //    was removed outright in #1635 — this deep link is the only one left.)
+  await page.goto("/profile#emergency");
   await expect(page).toHaveURL(/\/profile#emergency$/);
   await expect(page.getByTestId("emergency-card")).toBeVisible();
   await expect(
@@ -178,9 +178,9 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   );
   expect(afterLogout).toBeNull();
 
-  // A direct visit to the card now redirects to login (no session): the old
-  // route's 308 lands on /profile, whose session gate bounces to /login.
-  await page.goto("/emergency");
+  // A direct visit to the card now redirects to login (no session): /profile's
+  // session gate bounces to /login.
+  await page.goto("/profile#emergency");
   await expect(page).toHaveURL(/\/login/);
 
   // And the offline fallback no longer offers the card (nothing cached).

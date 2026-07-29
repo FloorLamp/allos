@@ -1,4 +1,4 @@
-import { toggleSavedItem } from "@/app/(app)/saved/actions";
+import { toggleSavedItem } from "@/app/(app)/saved-actions";
 
 // Add a tile to Trends Overview (issue #1487) — the picker that used to be "Pin a
 // biomarker", then "Star a biomarker", and is now the grid's ONE add-entry point.
