@@ -4,6 +4,20 @@
       "date": "2026-07-29",
       "entries": [
         {
+          "pr": 1641,
+          "title": "Machine-aware progress reaches comparisons, Trends, PRs, and goals",
+          "body": "The equipment-aware strength tracking from earlier today now runs end to end. The Trends strength-progression chart shows one labeled series per machine (\"Machine Chest Press (Hotel chest press)\") instead of blending them; personal records are per-machine everywhere they appear — Trends, Training, the weekly recap, and coaching; the Analyze comparison offers a labeled machine picker so you compare like against like; and a weight goal can now name the machine it's set on. Goals you already have keep their movement-wide meaning — nothing re-scopes — and a goal that names no machine still counts every context. Deleting equipment widens its goals back to movement-wide rather than orphaning them.",
+          "kind": "feature",
+          "issues": [1610]
+        },
+        {
+          "pr": 1639,
+          "title": "Corrected lab results stop erasing history — and readings learn how they were drawn",
+          "body": "When a lab re-issues a result — a corrected potassium, an amended differential — the previous value is now preserved beside the reading instead of being silently overwritten: the biomarker page shows \"Corrected — was 5.2 mmol/L\" under the live value, which never charts or counts twice. Readings can also record their result status (preliminary / final / corrected / amended), whether the draw was fasting, the specimen (serum, plasma, urine…), and the clinician who ordered the test separately from the lab that ran it. Everything stays honest by default: an unstated attribute stays unstated — never a guessed \"final\" or \"non-fasting\" — and your own hand-corrected readings are still never touched by a re-sync. One filing fix rode along: a freeform lab spelling now files under its family's clinical panel instead of stranding in \"Other\".",
+          "kind": "feature",
+          "issues": [1404, 1629]
+        },
+        {
           "pr": 1630,
           "title": "Syncs stop overstating themselves",
           "body": "Three honesty fixes for Data → Review. A Strava, Oura, or Withings sync cut short by the provider (a page cap or rate limit) now shows a caution icon and a \"partial\" chip with a plain explanation — the next sync picks up where it left off — instead of reading as a clean green run. A phone push that fails partway now reports exactly which records landed before the stop, with the same drill-in as a successful sync. And Weather & UV finally has a home in Review's Connected sources, so its sync history is reachable from its settings page. Separately, two devices that agree on a reading — say both recorded 55 bpm resting heart rate — no longer appear in Review as a conflict to resolve: identical numbers are normal multi-source coverage, and only genuine disagreements ask for your decision. Recovery baselines now count each day once, however many devices covered it.",
