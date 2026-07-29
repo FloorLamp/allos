@@ -18,6 +18,7 @@ import type {
   PracticeLogOutcome,
   PracticeSessionMutationOutcome,
 } from "./types";
+import { writeImportTombstoneForRow } from "./integrations/tombstones";
 
 // A far-off (forged) date can't land a misdated session row (the #614 dose-log posture);
 // a legitimate late correction within the window still logs to its own day.
@@ -26,6 +27,21 @@ export const PRACTICE_LOG_DATE_WINDOW_DAYS = 30;
 function isPracticeDateAccepted(profileId: number, date: string): boolean {
   if (!isRealIsoDate(date)) return false;
   const diff = daysBetweenDateStr(today(profileId), date);
+  return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
+}
+
+// An imported historical session may be far outside the new-log window but still
+// needs ordinary correction. Accept a date near that existing row as well as the
+// normal today-relative window; this keeps forged edits bounded without making an
+// old session impossible to save even when its date is unchanged.
+function isPracticeEditDateAccepted(
+  profileId: number,
+  currentDate: string,
+  nextDate: string
+): boolean {
+  if (!isRealIsoDate(nextDate)) return false;
+  if (isPracticeDateAccepted(profileId, nextDate)) return true;
+  const diff = daysBetweenDateStr(currentDate, nextDate);
   return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
 }
 
@@ -132,7 +148,8 @@ export function getPracticeSessions(
   args.push(boundedLimit);
   return db
     .prepare(
-      `SELECT id, practice, date, time, duration_min, notes, created_at
+      `SELECT id, practice, date, time, duration_min, notes,
+              source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND practice IN (${inClause(spellings)})
           ${windowSql}
@@ -194,7 +211,8 @@ export function getPracticeSession(
   return (
     (db
       .prepare(
-        `SELECT id, practice, date, time, duration_min, notes, created_at
+        `SELECT id, practice, date, time, duration_min, notes,
+                source, external_id, edited, created_at
            FROM practice_logs WHERE id = ? AND profile_id = ?`
       )
       .get(id, profileId) as PracticeLog | undefined) ?? null
@@ -211,10 +229,10 @@ export function updatePracticeSession(
     notes?: string | null;
   }
 ): PracticeSessionMutationOutcome {
-  if (!isPracticeDateAccepted(profileId, input.date))
-    return { kind: "invalid-date" };
   const current = getPracticeSession(profileId, id);
   if (!current) return { kind: "not-found" };
+  if (!isPracticeEditDateAccepted(profileId, current.date, input.date))
+    return { kind: "invalid-date" };
   const time =
     input.time && /^\d{2}:\d{2}$/.test(input.time) ? input.time : null;
   const durationMin =
@@ -226,7 +244,7 @@ export function updatePracticeSession(
   const notes = input.notes?.trim() || null;
   db.prepare(
     `UPDATE practice_logs
-        SET date = ?, time = ?, duration_min = ?, notes = ?
+        SET date = ?, time = ?, duration_min = ?, notes = ?, edited = 1
       WHERE id = ? AND profile_id = ?`
   ).run(input.date, time, durationMin, notes, id, profileId);
   const session = getPracticeSession(profileId, id);
@@ -257,10 +275,19 @@ export function deletePracticeSession(
   profileId: number,
   id: number
 ): PracticeSessionMutationOutcome {
-  const info = db
-    .prepare("DELETE FROM practice_logs WHERE id = ? AND profile_id = ?")
-    .run(id, profileId);
-  return info.changes === 1 ? { kind: "deleted", id } : { kind: "not-found" };
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT external_id FROM practice_logs WHERE id = ? AND profile_id = ?`
+      )
+      .get(id, profileId) as { external_id: string | null } | undefined;
+    if (!row) return { kind: "not-found" };
+    writeImportTombstoneForRow(profileId, "practice_logs", row);
+    const info = db
+      .prepare("DELETE FROM practice_logs WHERE id = ? AND profile_id = ?")
+      .run(id, profileId);
+    return info.changes === 1 ? { kind: "deleted", id } : { kind: "not-found" };
+  });
 }
 
 // Re-key every stored spelling in one identity family after a practice rename.
@@ -277,10 +304,15 @@ export function renamePracticeSessions(
   if (spellings.length === 0) return 0;
   const info = db
     .prepare(
-      `UPDATE practice_logs SET practice = ?
+      `UPDATE practice_logs
+          SET practice = ?,
+              edited = CASE
+                WHEN external_id IS NOT NULL AND practice <> ? THEN 1
+                ELSE edited
+              END
         WHERE profile_id = ? AND practice IN (${inClause(spellings)})`
     )
-    .run(next, profileId, ...spellings);
+    .run(next, next, profileId, ...spellings);
   return info.changes;
 }
 

@@ -5,8 +5,14 @@ import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { requireWriteAccess } from "@/lib/auth";
 import { createLogger } from "@/lib/log";
-import { importTakeoutArchive } from "@/lib/integrations/fitbit-takeout-import";
-import { upsertConnection } from "@/lib/integrations/connections";
+import {
+  FitbitTakeoutWriteError,
+  importTakeoutArchive,
+} from "@/lib/integrations/fitbit-takeout-import";
+import {
+  recordSyncEvent,
+  upsertConnection,
+} from "@/lib/integrations/connections";
 import { FITBIT_TAKEOUT_ID } from "@/lib/integrations/fitbit-takeout";
 import { SESSION_COOKIE } from "@/lib/session-cookie";
 import { ZipIndexError } from "@/lib/zip-index";
@@ -77,6 +83,10 @@ export async function POST(req: Request) {
   // write access, so nothing below runs unauthorized.
   const { profile } = await requireWriteAccess();
   if (!req.body) {
+    recordSyncEvent(profile.id, FITBIT_TAKEOUT_ID, {
+      ok: false,
+      error: "Takeout import rejected: no archive was uploaded.",
+    });
     return Response.json(
       { ok: false, error: "no file uploaded" },
       { status: 400 }
@@ -96,6 +106,10 @@ export async function POST(req: Request) {
       bytes = await streamToFile(req.body, staged, max);
     } catch (err) {
       if (err instanceof Error && err.message === "too-large") {
+        recordSyncEvent(profile.id, FITBIT_TAKEOUT_ID, {
+          ok: false,
+          error: "Takeout archive exceeded the configured upload limit.",
+        });
         return Response.json(
           { ok: false, error: "file too large" },
           { status: 413 }
@@ -104,6 +118,10 @@ export async function POST(req: Request) {
       throw err;
     }
     if (bytes === 0) {
+      recordSyncEvent(profile.id, FITBIT_TAKEOUT_ID, {
+        ok: false,
+        error: "Takeout import rejected: the uploaded archive was empty.",
+      });
       return Response.json(
         { ok: false, error: "empty upload" },
         { status: 400 }
@@ -129,7 +147,20 @@ export async function POST(req: Request) {
         profileId: profile.id,
         reason: err.message,
       });
+      recordSyncEvent(profile.id, FITBIT_TAKEOUT_ID, {
+        ok: false,
+        error: err.message,
+      });
       return Response.json({ ok: false, error: err.message }, { status: 400 });
+    }
+    // A chunked write failure already recorded the committed split + provenance in
+    // the importer. Every other exception happened before that event boundary, so
+    // append one safe, attributable failure instead of letting the attempt vanish.
+    if (!(err instanceof FitbitTakeoutWriteError && err.syncEventRecorded)) {
+      recordSyncEvent(profile.id, FITBIT_TAKEOUT_ID, {
+        ok: false,
+        error: "Takeout import failed after the archive was uploaded.",
+      });
     }
     // The generic message is deliberate (#478) — a zip/parse failure must not leak
     // paths or internals to the caller; the cause goes to the error log.

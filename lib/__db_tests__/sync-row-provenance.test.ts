@@ -10,6 +10,7 @@ import { db, writeTx } from "@/lib/db";
 import {
   upsertActivities,
   upsertBodyMetrics,
+  upsertPracticeLogs,
   upsertVitals,
   type NormActivity,
   type NormBodyMetric,
@@ -52,6 +53,7 @@ beforeEach(() => {
   db.exec("DELETE FROM activities");
   db.exec("DELETE FROM body_metrics");
   db.exec("DELETE FROM medical_records");
+  db.exec("DELETE FROM practice_logs");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('SYNC-PROV')").run()
       .lastInsertRowid
@@ -179,6 +181,67 @@ describe("integration_sync_rows provenance (#1333)", () => {
         .lastInsertRowid
     );
     expect(getSyncRowProvenance(other, eventId!)).toHaveLength(0);
+  });
+
+  it("records and resolves wellness-practice rows", () => {
+    const sink: ProvenanceEntry[] = [];
+    const practice = {
+      external_id: "fitbit-takeout:practice-1",
+      practice: "Meditation",
+      date: "2026-03-03",
+      time: "07:30",
+      duration_min: 20,
+    };
+    writeTx(() =>
+      upsertPracticeLogs(profileId, [practice], "fitbit-takeout", sink)
+    );
+    expect(sink).toHaveLength(1);
+    expect(sink[0]).toMatchObject({
+      target_table: "practice_logs",
+      disposition: "inserted",
+    });
+
+    const eventId = recordSyncEvent(profileId, "fitbit-takeout", {
+      ok: true,
+      inserted: 1,
+    });
+    recordSyncRows(eventId, sink);
+
+    const links = getSyncRowProvenance(profileId, eventId!);
+    expect(links).toMatchObject([
+      {
+        targetTable: "practice_logs",
+        disposition: "inserted",
+        date: "2026-03-03",
+        label: "Meditation",
+        deleted: false,
+      },
+    ]);
+    expect(links[0].href).toContain("/timeline?from=2026-03-03");
+
+    const updated: ProvenanceEntry[] = [];
+    writeTx(() =>
+      upsertPracticeLogs(
+        profileId,
+        [{ ...practice, duration_min: 25 }],
+        "fitbit-takeout",
+        updated
+      )
+    );
+    expect(updated).toMatchObject([
+      { target_table: "practice_logs", disposition: "updated" },
+    ]);
+
+    const unchanged: ProvenanceEntry[] = [];
+    writeTx(() =>
+      upsertPracticeLogs(
+        profileId,
+        [{ ...practice, duration_min: 25 }],
+        "fitbit-takeout",
+        unchanged
+      )
+    );
+    expect(unchanged).toEqual([]);
   });
 
   it("marks a since-deleted target as removed but still lists it", () => {

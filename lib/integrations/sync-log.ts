@@ -44,13 +44,17 @@ export function emptyCounts(): UpsertCounts {
 // to them. Only the value-changing dispositions are recorded — an `unchanged` re-send
 // of the rolling window is deliberately not captured (an hourly push re-states a 48h
 // window whose rows are almost all unchanged; persisting them would explode the
-// store). `target_table` is one of the four user-meaningful tables (hr_minutes has no
+// store). `target_table` is one of the user-meaningful tables (hr_minutes has no
 // row id, activity_routes drills into its parent — both excluded per #1212). Pure
 // data shape, so it lives here in the accounting module the upserts already import;
 // the impure writer is recordSyncRows (connections.ts) and the reader is
 // getSyncRowProvenance (lib/queries/integrations.ts).
 export type ProvenanceTable =
-  "activities" | "body_metrics" | "metric_samples" | "medical_records";
+  | "activities"
+  | "body_metrics"
+  | "metric_samples"
+  | "medical_records"
+  | "practice_logs";
 
 export interface ProvenanceEntry {
   target_table: ProvenanceTable;

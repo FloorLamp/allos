@@ -12,10 +12,11 @@ import { isProvenanceMismatch } from "@/lib/import-log";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import ReprocessButton from "@/components/ReprocessButton";
+import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
 
 // Data → Review, "Imports": the chronological feed of ONE-OFF imports into this
-// profile — uploaded documents and pasted/CSV jobs — merged newest-first, where
-// chronology is the point. Recurring per-provider syncs live in their own
+// profile — uploaded documents/archives and pasted/CSV jobs — merged newest-first,
+// where chronology is the point. Recurring per-provider syncs live in their own
 // "Connected sources" section now (issue #208), so this feed no longer commingles
 // hourly sync noise with the occasional document. Every entry renders through the
 // ONE <FeedRow> below; the pure lib/import-feed shapes each into a common view, so
@@ -24,6 +25,11 @@ import ReprocessButton from "@/components/ReprocessButton";
 
 function providerName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
+}
+
+function changedCount(entry: FeedEntry): number {
+  if (entry.stream !== "sync") return 0;
+  return (entry.event.inserted ?? 0) + (entry.event.updated ?? 0);
 }
 
 function ToneIcon({ tone }: { tone: FeedTone }) {
@@ -74,6 +80,9 @@ function FeedRow({
   // Admins can inspect the captured provider payload on a sync that has one (#9).
   const rawRef = entry.stream === "sync" ? entry.event.raw_ref : null;
   const rawId = entry.stream === "sync" ? entry.event.id : null;
+  const syncError =
+    entry.stream === "sync" && !entry.event.ok ? entry.event.error : null;
+  const changed = changedCount(entry);
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
@@ -124,6 +133,16 @@ function FeedRow({
         className="ml-auto text-xs text-slate-500 dark:text-slate-400"
       />
       {isAdmin && rawRef && rawId != null && <RawPayloadViewer id={rawId} />}
+      {syncError && (
+        <p className="basis-full pl-7 text-sm text-rose-700 dark:text-rose-300">
+          {syncError}
+        </p>
+      )}
+      {entry.stream === "sync" && changed > 0 && (
+        <div className="basis-full pl-7">
+          <SyncRowsDrilldown eventId={entry.event.id} count={changed} />
+        </div>
+      )}
     </li>
   );
 }
@@ -146,8 +165,8 @@ export default function ImportFeed({
             Imports
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Documents you&apos;ve uploaded and logs you&apos;ve pasted — newest
-            first. Click an item to verify what it produced.
+            Documents and archives you&apos;ve uploaded, plus logs you&apos;ve
+            pasted — newest first. Click an item to verify what it produced.
           </p>
         </div>
         {/* "Re-run extraction on all documents" lives in THIS header now (issue #208)

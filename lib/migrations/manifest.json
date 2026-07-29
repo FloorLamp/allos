@@ -114,5 +114,8 @@
   "113-saved-items.ts": "8d80fde6980afdbf2d3b9af443fdff7564dd572e33bf8d6973aab1015c06db54",
   "114-standard-metric-seeds.ts": "48f3e0b240356f9409014b04aaaaf2e72efd7b7ff70be0c20d07ef2e9e91100c",
   "115-metric-sample-edit-lock.ts": "9f641d91b17c2f18c218d7578543bbcb8b0d2ef20e848f6279c6b5b0b1a5d91b",
-  "116-food-event-meal-slot.ts": "0478ff08f753c28cd87734a4c128958866712567ced6e3f52b468f31346b55dc"
+  "116-food-event-meal-slot.ts": "0478ff08f753c28cd87734a4c128958866712567ced6e3f52b468f31346b55dc",
+  "117-fitbit-activity-components.ts": "9cedaadedc3769c1e216609df9d72cb5ebeb6d00bd9dd82eda506318c91e0b40",
+  "118-imported-practice-logs.ts": "4a189867671bf4911cf3ff3edf9756c5f362e3febdef4b901164cae90d3c0e28",
+  "119-practice-sync-provenance.ts": "6f8c12867bfa92c0ef2e2a7788488df3ff8e2e95538afd239a57da1c17d624ba"
 }

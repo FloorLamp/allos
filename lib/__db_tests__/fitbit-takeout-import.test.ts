@@ -5,7 +5,11 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { ZipBuilder } from "@/lib/zip-write";
-import { importTakeoutArchive } from "@/lib/integrations/fitbit-takeout-import";
+import {
+  FitbitTakeoutWriteError,
+  importTakeoutArchive,
+} from "@/lib/integrations/fitbit-takeout-import";
+import { captureDelete } from "@/lib/undo-delete-db";
 
 // DB INTEGRATION TIER — the Fitbit Google Takeout importer end to end: a REAL zip on
 // disk → selective walk → parse → chunked upsert → sync event.
@@ -123,6 +127,51 @@ const FILES: [string, string | Buffer][] = [
         activeDuration: 7475000,
         calories: 1270,
         averageHeartRate: 155,
+      },
+      {
+        logId: 90000000001,
+        activityName: "Walk",
+        startTime: "06/20/26 12:00:00",
+        duration: 1200000,
+        activeDuration: 1200000,
+        calories: 100,
+        averageHeartRate: 90,
+      },
+      {
+        logId: 90000000002,
+        activityName: "Spinning",
+        startTime: "06/21/26 18:00:00",
+        duration: 3000000,
+        activeDuration: 3000000,
+        calories: 400,
+        averageHeartRate: 135,
+      },
+      {
+        logId: 90000000003,
+        activityName: "Yoga",
+        startTime: "06/22/26 17:00:00",
+        duration: 2400000,
+        activeDuration: 2400000,
+        calories: 120,
+        averageHeartRate: 85,
+      },
+      {
+        logId: 90000000004,
+        activityName: "Weights",
+        startTime: "06/23/26 16:00:00",
+        duration: 2700000,
+        activeDuration: 2700000,
+        calories: 250,
+        averageHeartRate: 110,
+      },
+      {
+        logId: 90000000005,
+        activityName: "Meditating",
+        startTime: "06/24/26 15:00:00",
+        duration: 1800000,
+        activeDuration: 1800000,
+        calories: 20,
+        averageHeartRate: 65,
       },
     ]),
   ],
@@ -272,7 +321,7 @@ describe("Fitbit Takeout import", () => {
 
     const acts = db
       .prepare(
-        `SELECT date, type, title, distance_km, duration_min, avg_hr FROM activities
+        `SELECT date, type, title, distance_km, duration_min, avg_hr, components FROM activities
           WHERE profile_id = ? ORDER BY date`
       )
       .all(profileId) as {
@@ -282,16 +331,100 @@ describe("Fitbit Takeout import", () => {
       distance_km: number | null;
       duration_min: number | null;
       avg_hr: number | null;
+      components: string | null;
     }[];
-    expect(acts).toHaveLength(2);
+    expect(acts).toHaveLength(6);
     // Miles → km, stored at the metric's 2dp precision. Ignoring `distanceUnit`
     // would store the raw 0.17 and under-report the swim by ~38%.
     const swim = acts.find((a) => a.title === "Swim")!;
     expect(swim.type).toBe("cardio");
     expect(swim.distance_km).toBe(0.27);
+    expect(JSON.parse(swim.components!)).toEqual([
+      {
+        name: "Swimming",
+        type: "cardio",
+        distance_km: 0.27,
+        duration_min: 17,
+      },
+    ]);
     const bike = acts.find((a) => a.title === "Outdoor Bike")!;
     expect(bike.type).toBe("cardio");
     expect(bike.avg_hr).toBe(155);
+    expect(JSON.parse(bike.components!)).toEqual([
+      {
+        name: "Cycling",
+        type: "cardio",
+        distance_km: null,
+        duration_min: 125,
+      },
+    ]);
+    const walk = acts.find((a) => a.title === "Walk")!;
+    expect(JSON.parse(walk.components!)).toEqual([
+      {
+        name: "Walking",
+        type: "cardio",
+        distance_km: null,
+        duration_min: 20,
+      },
+    ]);
+    const spinning = acts.find((a) => a.title === "Spinning")!;
+    expect(JSON.parse(spinning.components!)).toEqual([
+      {
+        name: "Stationary Bike",
+        type: "cardio",
+        distance_km: null,
+        duration_min: 50,
+      },
+    ]);
+    const yoga = acts.find((a) => a.title === "Yoga")!;
+    expect(yoga.type).toBe("recovery");
+    expect(JSON.parse(yoga.components!)).toEqual([
+      {
+        name: "Yoga",
+        type: "recovery",
+        distance_km: null,
+        duration_min: 40,
+      },
+    ]);
+    const weights = acts.find((a) => a.title === "Weights")!;
+    expect(weights.type).toBe("strength");
+    expect(JSON.parse(weights.components!)).toEqual([
+      {
+        name: "Weight Training",
+        type: "strength",
+        distance_km: null,
+        duration_min: 45,
+      },
+    ]);
+
+    const practices = db
+      .prepare(
+        `SELECT practice, date, time, duration_min, source, external_id, edited
+           FROM practice_logs WHERE profile_id = ?`
+      )
+      .all(profileId);
+    expect(practices).toEqual([
+      {
+        practice: "Meditation",
+        date: "2026-06-24",
+        time: "11:00",
+        duration_min: 30,
+        source: "fitbit-takeout",
+        external_id: "fitbit-takeout:90000000005",
+        edited: 0,
+      },
+    ]);
+    const practiceProvenance = db
+      .prepare(
+        `SELECT r.target_id, r.disposition
+           FROM integration_sync_rows r
+           JOIN integration_sync_events e ON e.id = r.event_id
+          WHERE e.profile_id = ? AND e.provider = 'fitbit-takeout'
+            AND r.target_table = 'practice_logs'`
+      )
+      .all(profileId);
+    expect(practiceProvenance).toHaveLength(1);
+    expect(practiceProvenance[0]).toMatchObject({ disposition: "inserted" });
 
     const vitals = db
       .prepare(
@@ -366,19 +499,174 @@ describe("Fitbit Takeout import", () => {
   it("records ONE sync event per import, with the round-trip note", () => {
     const ev = db
       .prepare(
-        `SELECT ok, received, skipped, details FROM integration_sync_events
+        `SELECT ok, received, written, inserted, updated, unchanged,
+                suppressed, edited, skipped, details
+           FROM integration_sync_events
           WHERE profile_id = ? AND provider = 'fitbit-takeout'
           ORDER BY id DESC LIMIT 1`
       )
       .get(profileId) as {
       ok: number;
       received: number;
+      written: number;
+      inserted: number;
+      updated: number;
+      unchanged: number;
+      suppressed: number;
+      edited: number;
       skipped: number;
       details: string;
     };
     expect(ev.ok).toBe(1);
-    expect(ev.received).toBeGreaterThan(0);
+    expect(ev.written).toBe(ev.inserted + ev.updated + ev.unchanged);
+    expect(ev.received).toBe(
+      ev.written + ev.suppressed + ev.edited + ev.skipped
+    );
     const details = JSON.parse(ev.details) as { warnings: string[] };
     expect(details.warnings.join(" ")).toMatch(/Health Connect/);
+  });
+
+  it("records tombstone-suppressed rows on the sync event", () => {
+    const activity = db
+      .prepare(
+        `SELECT id FROM activities
+          WHERE profile_id = ? AND source = 'fitbit-takeout'
+            AND external_id IS NOT NULL
+          ORDER BY id LIMIT 1`
+      )
+      .get(profileId) as { id: number };
+    expect(captureDelete("activity", profileId, activity.id)).not.toBeNull();
+
+    const result = importTakeoutArchive(profileId, archive);
+    expect(result.counts.suppressed).toBe(1);
+    expect(
+      db
+        .prepare(
+          `SELECT suppressed FROM integration_sync_events
+            WHERE profile_id = ? AND provider = 'fitbit-takeout'
+            ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileId)
+    ).toEqual({ suppressed: 1 });
+  });
+
+  it("records committed chunks and provenance when a later chunk fails", () => {
+    const partialProfile = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('TAKEOUT-PARTIAL')").run()
+        .lastInsertRowid
+    );
+    setTimezone(partialProfile, TZ);
+
+    const exerciseName = `${ROOT}/Global Export Data/exercise-partial.json`;
+    const externalIds = [
+      "fitbit-takeout:99000000001",
+      "fitbit-takeout:99000000002",
+    ];
+    const exercises = [
+      {
+        logId: 99000000001,
+        activityName: "Walk",
+        startTime: "07/20/26 09:00:00",
+        duration: 1200000,
+        activeDuration: 1200000,
+        calories: 100,
+      },
+      {
+        logId: 99000000002,
+        activityName: "Walk",
+        startTime: "07/21/26 09:00:00",
+        duration: 1200000,
+        activeDuration: 1200000,
+        calories: 100,
+      },
+    ];
+    const zb = new ZipBuilder();
+    const partialArchive = path.join(
+      os.tmpdir(),
+      `allos-takeout-partial-${process.pid}.zip`
+    );
+    fs.writeFileSync(
+      partialArchive,
+      Buffer.concat([
+        zb.file(exerciseName, Buffer.from(JSON.stringify(exercises))),
+        zb.end(),
+      ])
+    );
+
+    db.exec("DROP TRIGGER IF EXISTS fitbit_partial_failure_test");
+    db.exec(`
+      CREATE TRIGGER fitbit_partial_failure_test
+      BEFORE INSERT ON activities
+      WHEN NEW.profile_id = ${partialProfile}
+       AND NEW.external_id = '${externalIds[1]}'
+      BEGIN
+        SELECT RAISE(ABORT, 'synthetic Fitbit chunk failure');
+      END
+    `);
+
+    try {
+      expect(() =>
+        importTakeoutArchive(partialProfile, partialArchive, 1)
+      ).toThrow(FitbitTakeoutWriteError);
+
+      const activities = db
+        .prepare(
+          `SELECT external_id FROM activities
+            WHERE profile_id = ? AND source = 'fitbit-takeout'
+            ORDER BY external_id`
+        )
+        .all(partialProfile) as { external_id: string }[];
+      expect(activities.map((row) => row.external_id)).toEqual([
+        externalIds[0],
+      ]);
+
+      const event = db
+        .prepare(
+          `SELECT id, ok, received, written, inserted, updated, unchanged,
+                  suppressed, edited, skipped, error
+             FROM integration_sync_events
+            WHERE profile_id = ? AND provider = 'fitbit-takeout'
+            ORDER BY id DESC LIMIT 1`
+        )
+        .get(partialProfile) as {
+        id: number;
+        ok: number;
+        received: number;
+        written: number;
+        inserted: number;
+        updated: number;
+        unchanged: number;
+        suppressed: number;
+        edited: number;
+        skipped: number;
+        error: string;
+      };
+      expect(event).toMatchObject({
+        ok: 0,
+        received: 1,
+        written: 1,
+        inserted: 1,
+        updated: 0,
+        unchanged: 0,
+        suppressed: 0,
+        edited: 0,
+        skipped: 0,
+      });
+      expect(event.error).toMatch(/writing 1 record/);
+
+      const rows = db
+        .prepare(
+          `SELECT target_table, disposition
+             FROM integration_sync_rows
+            WHERE event_id = ?`
+        )
+        .all(event.id);
+      expect(rows).toEqual([
+        { target_table: "activities", disposition: "inserted" },
+      ]);
+    } finally {
+      db.exec("DROP TRIGGER IF EXISTS fitbit_partial_failure_test");
+      fs.rmSync(partialArchive, { force: true });
+    }
   });
 });

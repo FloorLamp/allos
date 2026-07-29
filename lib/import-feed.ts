@@ -281,13 +281,22 @@ export function feedItemView(
   if (entry.stream === "sync") {
     const ev = entry.event;
     const { primary, muted } = formatSplitLabel(ev);
+    const hasPartialSplit =
+      ev.inserted !== null || ev.updated !== null || ev.unchanged !== null;
     return {
       key: `sync:${ev.id}`,
       tone: ev.ok ? "ok" : "error",
       title: providerName(ev.provider),
       href: null,
-      detail: primary,
-      detailMuted: muted,
+      // An archive write can fail after earlier chunks committed. Keep "failed" as
+      // the headline while retaining the completed split so Review tells the truth
+      // about what landed before the retry-safe stop.
+      detail: ev.ok
+        ? primary
+        : hasPartialSplit
+          ? `import failed · ${primary}`
+          : "import failed",
+      detailMuted: ev.ok ? muted : false,
       skipped: ev.skipped ?? 0,
       meta: formatWindow(ev.window_start, ev.window_end),
       patientName: null,

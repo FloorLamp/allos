@@ -14,15 +14,22 @@ import {
   parseEocd,
   type ZipIndexEntry,
 } from "@/lib/zip-index";
-import { emptyCounts, foldCounts, type UpsertCounts } from "./sync-log";
+import {
+  emptyCounts,
+  foldCounts,
+  summarizeSplit,
+  type ProvenanceEntry,
+  type UpsertCounts,
+} from "./sync-log";
 import {
   upsertActivities,
   upsertBodyMetrics,
   upsertHrMinutes,
   upsertMetricSamples,
+  upsertPracticeLogs,
   upsertVitals,
 } from "./normalize";
-import { recordSyncEvent } from "./connections";
+import { recordSyncEvent, recordSyncRows } from "./connections";
 import {
   FITBIT_TAKEOUT_ID,
   classifyTakeoutEntry,
@@ -74,11 +81,26 @@ export interface TakeoutImportResult {
     hrMinutes: number;
     samples: number;
     activities: number;
+    practices: number;
     vitals: number;
   };
   skipped: number;
   roundTripSkipped: number;
   warnings: string[];
+}
+
+// Marks a write-path failure whose partial, already-committed chunks have already
+// been represented by a sync event. The route uses this to avoid appending a second
+// generic failure event for the same upload; parse/upload failures do not use this
+// class and are recorded at the request boundary instead.
+export class FitbitTakeoutWriteError extends Error {
+  readonly syncEventRecorded: boolean;
+
+  constructor(cause: unknown, syncEventRecorded: boolean) {
+    super("Fitbit Takeout import failed while writing records", { cause });
+    this.name = "FitbitTakeoutWriteError";
+    this.syncEventRecorded = syncEventRecorded;
+  }
 }
 
 // Read the archive's index without inflating anything. Positional reads only: the
@@ -150,6 +172,7 @@ function mergeInto(acc: TakeoutParsed, add: TakeoutParsed): void {
   acc.hrMinutes.push(...add.hrMinutes);
   acc.samples.push(...add.samples);
   acc.activities.push(...add.activities);
+  acc.practices.push(...add.practices);
   acc.vitals.push(...add.vitals);
   acc.skipped += add.skipped;
   acc.roundTripSkipped += add.roundTripSkipped;
@@ -231,31 +254,70 @@ export function importTakeoutArchive(
   const { parsed, entriesRead, entriesSkipped } = parseTakeoutArchive(path, tz);
 
   let counts = emptyCounts();
-  for (const slice of chunk(parsed.bodyMetrics, chunkSize))
-    counts = foldCounts([
-      counts,
-      writeTx(() => upsertBodyMetrics(profileId, slice, FITBIT_TAKEOUT_ID)),
-    ]);
-  for (const slice of chunk(parsed.hrMinutes, chunkSize))
-    counts = foldCounts([
-      counts,
-      writeTx(() => upsertHrMinutes(profileId, slice, FITBIT_TAKEOUT_ID)),
-    ]);
-  for (const slice of chunk(parsed.samples, chunkSize))
-    counts = foldCounts([
-      counts,
-      writeTx(() => upsertMetricSamples(profileId, slice, FITBIT_TAKEOUT_ID)),
-    ]);
-  for (const slice of chunk(parsed.activities, chunkSize))
-    counts = foldCounts([
-      counts,
-      writeTx(() => upsertActivities(profileId, slice, FITBIT_TAKEOUT_ID)),
-    ]);
-  for (const slice of chunk(parsed.vitals, chunkSize))
-    counts = foldCounts([
-      counts,
-      writeTx(() => upsertVitals(profileId, slice, FITBIT_TAKEOUT_ID)).counts,
-    ]);
+  const provenance: ProvenanceEntry[] = [];
+  // Keep provenance transactional with its chunk. Upserts append to the supplied
+  // array while the transaction is open; if that transaction rolls back, its local
+  // array is discarded rather than leaking nonexistent target ids into the partial
+  // failure event. Only a successfully committed chunk contributes counts/rows.
+  const commitSlices = <T>(
+    rows: readonly T[],
+    upsert: (slice: T[], sink: ProvenanceEntry[]) => UpsertCounts
+  ) => {
+    for (const slice of chunk(rows, chunkSize)) {
+      const chunkProvenance: ProvenanceEntry[] = [];
+      const part = writeTx(() => upsert(slice, chunkProvenance));
+      counts = foldCounts([counts, part]);
+      provenance.push(...chunkProvenance);
+    }
+  };
+
+  try {
+    commitSlices(parsed.bodyMetrics, (slice, sink) =>
+      upsertBodyMetrics(profileId, slice, FITBIT_TAKEOUT_ID, sink)
+    );
+    commitSlices(parsed.hrMinutes, (slice) =>
+      upsertHrMinutes(profileId, slice, FITBIT_TAKEOUT_ID)
+    );
+    commitSlices(parsed.samples, (slice, sink) =>
+      upsertMetricSamples(profileId, slice, FITBIT_TAKEOUT_ID, sink)
+    );
+    commitSlices(parsed.activities, (slice, sink) =>
+      upsertActivities(profileId, slice, FITBIT_TAKEOUT_ID, sink)
+    );
+    commitSlices(parsed.practices, (slice, sink) =>
+      upsertPracticeLogs(profileId, slice, FITBIT_TAKEOUT_ID, sink)
+    );
+    commitSlices(
+      parsed.vitals,
+      (slice, sink) =>
+        upsertVitals(profileId, slice, FITBIT_TAKEOUT_ID, sink).counts
+    );
+  } catch (err) {
+    // Earlier chunks are durable by design, so represent exactly what completed.
+    // `received` is the accounted portion of this failed run (the split invariant),
+    // not a claim that every normalized archive row reached the write path.
+    const tally = summarizeSplit(counts, parsed.skipped);
+    const changed = tally.inserted + tally.updated;
+    const failure =
+      changed > 0
+        ? `Takeout import stopped after writing ${changed} ${changed === 1 ? "record" : "records"}. Completed chunks were kept; re-importing the archive is safe.`
+        : "Takeout import failed before any records changed. Re-importing the archive is safe.";
+    const eventId = recordSyncEvent(profileId, FITBIT_TAKEOUT_ID, {
+      ok: false,
+      received: tally.received,
+      written: tally.inserted + tally.updated + tally.unchanged,
+      inserted: tally.inserted,
+      updated: tally.updated,
+      unchanged: tally.unchanged,
+      suppressed: tally.suppressed,
+      edited: tally.edited,
+      skipped: tally.skipped,
+      details: JSON.stringify({ warnings: [failure], origins: [] }),
+      error: failure,
+    });
+    recordSyncRows(eventId, provenance);
+    throw new FitbitTakeoutWriteError(err, eventId !== null);
+  }
 
   const warnings = [...parsed.warnings];
   // The round-trip drop is reported EXPLICITLY rather than folded into `skipped`:
@@ -266,24 +328,23 @@ export function importTakeoutArchive(
       `${parsed.roundTripSkipped} rows already synced through Health Connect were left to that provider.`
     );
 
-  recordSyncEvent(profileId, FITBIT_TAKEOUT_ID, {
+  const tally = summarizeSplit(counts, parsed.skipped);
+  const eventId = recordSyncEvent(profileId, FITBIT_TAKEOUT_ID, {
     ok: true,
-    received:
-      parsed.bodyMetrics.length +
-      parsed.hrMinutes.length +
-      parsed.samples.length +
-      parsed.activities.length +
-      parsed.vitals.length,
-    inserted: counts.inserted,
-    updated: counts.updated,
-    unchanged: counts.unchanged,
-    edited: counts.edited,
-    skipped: parsed.skipped,
+    received: tally.received,
+    written: tally.inserted + tally.updated + tally.unchanged,
+    inserted: tally.inserted,
+    updated: tally.updated,
+    unchanged: tally.unchanged,
+    suppressed: tally.suppressed,
+    edited: tally.edited,
+    skipped: tally.skipped,
     // Serialized here, not by recordSyncEvent — `details` is a JSON STRING column and
     // the shape is the one Data → Review already renders for Health Connect, so the
     // warnings surface with no reader change.
     details: JSON.stringify({ warnings, origins: [] }),
   });
+  recordSyncRows(eventId, provenance);
 
   return {
     entriesRead,
@@ -294,6 +355,7 @@ export function importTakeoutArchive(
       hrMinutes: parsed.hrMinutes.length,
       samples: parsed.samples.length,
       activities: parsed.activities.length,
+      practices: parsed.practices.length,
       vitals: parsed.vitals.length,
     },
     skipped: parsed.skipped,

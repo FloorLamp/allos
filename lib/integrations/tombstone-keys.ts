@@ -26,6 +26,7 @@ export const TOMBSTONE_TABLES = [
   "body_metrics",
   "medical_records",
   "metric_samples",
+  "practice_logs",
 ] as const;
 export type TombstoneTable = (typeof TOMBSTONE_TABLES)[number];
 
@@ -41,6 +42,9 @@ export function activityTombstoneKey(externalId: string): string {
   return externalId;
 }
 export function medicalRecordTombstoneKey(externalId: string): string {
+  return externalId;
+}
+export function practiceLogTombstoneKey(externalId: string): string {
   return externalId;
 }
 
@@ -90,6 +94,12 @@ export function importTombstoneForRow(
       const ext = row.external_id;
       return typeof ext === "string" && ext
         ? { table: "medical_records", key: medicalRecordTombstoneKey(ext) }
+        : null;
+    }
+    case "practice_logs": {
+      const ext = row.external_id;
+      return typeof ext === "string" && ext
+        ? { table: "practice_logs", key: practiceLogTombstoneKey(ext) }
         : null;
     }
     case "body_metrics": {
