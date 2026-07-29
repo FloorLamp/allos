@@ -24,6 +24,7 @@ import {
   mapWithingsMeasureGroup,
   mapWithingsSleep,
 } from "./withings";
+import { truncatedSyncDetails } from "./sync-details";
 import { writeRawPayload } from "./raw-log";
 import {
   upsertBodyMetrics,
@@ -381,6 +382,11 @@ export async function runWithingsSync(
       suppressed: tally.suppressed,
       edited: tally.edited,
       skipped: tally.skipped,
+      // A run the provider cut short (page cap / 429) is NOT a clean success: the
+      // cursor was deliberately not advanced and data is still upstream, so the event
+      // carries a durable `truncated` marker + its Review line (#1614). Ordinary
+      // complete runs write no details at all.
+      details: truncated ? truncatedSyncDetails() : null,
       raw_ref: rawRef,
     });
     recordSyncRows(eventId, provenance);

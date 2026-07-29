@@ -331,8 +331,10 @@ export interface BodyMetricConflictPair<
   T extends BodyMetricConflictInput = BodyMetricConflictInput,
 > {
   signature: string;
-  // Which measures both rows report (and would therefore double-count): a subset
-  // of "weight" / "body fat" / "resting HR".
+  // Which measures the pair actually disagrees on (and would therefore
+  // double-count): a subset of "weight" / "body fat" / "resting HR". For a
+  // cross-source pair the exactly-equal shared measures are excluded (#1615) — an
+  // equal reading from two sources is normal multi-source storage, not a conflict.
   measures: string[];
   reason: string;
   a: T;
@@ -348,24 +350,62 @@ export function bodyMetricToken(
   return r.source ? `bm:${r.source}@${r.date}` : `id:${r.id}`;
 }
 
-// The measures both rows carry a value for — a shared measure is a double-count
-// risk. Order is stable (weight, body fat, resting HR).
+// The three measures a body_metrics row can carry, with the label the Review reason
+// uses. ONE table so "which measures overlap" and "which measures disagree" can never
+// drift apart or reorder (stable: weight, body fat, resting HR).
+const BODY_MEASURES: {
+  label: string;
+  value: (r: BodyMetricConflictInput) => number | null;
+}[] = [
+  { label: "weight", value: (r) => r.weight_kg },
+  { label: "body fat", value: (r) => r.body_fat_pct },
+  { label: "resting HR", value: (r) => r.resting_hr },
+];
+
+// The measures both rows carry a value for — the overlap, regardless of whether the
+// two values agree. Order is stable (weight, body fat, resting HR).
 export function sharedMeasures(
   a: BodyMetricConflictInput,
   b: BodyMetricConflictInput
 ): string[] {
-  const measures: string[] = [];
-  if (a.weight_kg != null && b.weight_kg != null) measures.push("weight");
-  if (a.body_fat_pct != null && b.body_fat_pct != null)
-    measures.push("body fat");
-  if (a.resting_hr != null && b.resting_hr != null) measures.push("resting HR");
-  return measures;
+  return BODY_MEASURES.filter(
+    (m) => m.value(a) != null && m.value(b) != null
+  ).map((m) => m.label);
+}
+
+// The shared measures that actually DISAGREE — what Review should ask about (#1615).
+//
+// body_metrics deliberately keeps one row per (profile_id, date, source) so source
+// comparison and per-metric source priority work (#14). Two sources reporting the
+// SAME number for a day is therefore normal multi-source storage, not an unresolved
+// conflict: there is nothing to decide, and the destructive merge would arbitrarily
+// discard one source's provenance. So for a CROSS-PROVENANCE pair only the measures
+// whose stored values differ are reportable; equality is exact in canonical storage
+// units (55 === 55 auto-resolves, 55 !== 56 stays reviewable — no tolerance).
+//
+// SAME-PROVENANCE pairs keep the old behavior: two manual (source IS NULL) rows, or
+// two rows from one source, are DUPLICATE RECORDS rather than intentional multi-source
+// observations, so identical values are still worth surfacing. Pure → unit-testable.
+export function conflictingMeasures(
+  a: BodyMetricConflictInput,
+  b: BodyMetricConflictInput
+): string[] {
+  const cross = crossSource(a, b);
+  return BODY_MEASURES.filter((m) => {
+    const av = m.value(a);
+    const bv = m.value(b);
+    if (av == null || bv == null) return false; // not shared → no double-count risk
+    return cross ? av !== bv : true;
+  }).map((m) => m.label);
 }
 
 // Find conflicting body-metric pairs: same-date rows that both report at least one
-// measure. UNLIKE activities this is NOT restricted to cross-source pairs — two
-// manual weigh-ins on one day (or a manual row plus an integration row) both risk a
-// double-count and are surfaced. Deterministic order: date desc, then signature.
+// DISAGREEING measure. UNLIKE activities this is NOT restricted to cross-source pairs
+// — two manual weigh-ins on one day (or a manual row plus an integration row) both
+// risk a double-count and are surfaced. A cross-source pair whose shared measures are
+// all exactly equal is normal multi-source storage and never enters Review (#1615);
+// when only some shared measures differ, the pair names only those.
+// Deterministic order: date desc, then signature.
 export function findBodyMetricConflicts<T extends BodyMetricConflictInput>(
   rows: T[]
 ): BodyMetricConflictPair<T>[] {
@@ -381,7 +421,7 @@ export function findBodyMetricConflicts<T extends BodyMetricConflictInput>(
       for (let j = i + 1; j < group.length; j++) {
         const a = group[i];
         const b = group[j];
-        const measures = sharedMeasures(a, b);
+        const measures = conflictingMeasures(a, b);
         if (measures.length === 0) continue;
         const ta = bodyMetricToken(a);
         const tb = bodyMetricToken(b);

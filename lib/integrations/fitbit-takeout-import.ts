@@ -17,6 +17,7 @@ import {
 import {
   emptyCounts,
   foldCounts,
+  partialWriteFailureMessage,
   summarizeSplit,
   type ProvenanceEntry,
   type UpsertCounts,
@@ -297,11 +298,11 @@ export function importTakeoutArchive(
     // `received` is the accounted portion of this failed run (the split invariant),
     // not a claim that every normalized archive row reached the write path.
     const tally = summarizeSplit(counts, parsed.skipped);
-    const changed = tally.inserted + tally.updated;
-    const failure =
-      changed > 0
-        ? `Takeout import stopped after writing ${changed} ${changed === 1 ? "record" : "records"}. Completed chunks were kept; re-importing the archive is safe.`
-        : "Takeout import failed before any records changed. Re-importing the archive is safe.";
+    const failure = partialWriteFailureMessage(
+      "Takeout import",
+      tally.inserted + tally.updated,
+      "re-importing the archive is safe."
+    );
     const eventId = recordSyncEvent(profileId, FITBIT_TAKEOUT_ID, {
       ok: false,
       received: tally.received,

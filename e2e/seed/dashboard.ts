@@ -295,8 +295,22 @@ export function seedNowStrip(): void {
   );
   insDupWeighIn.run(dupReviewId, 80.2);
   insDupWeighIn.run(dupReviewId, 81.4);
+  // Issue #1615: two CROSS-SOURCE days on the same profile. body_metrics keeps one
+  // row per (profile_id, date, source) on purpose (#14), so two devices covering one
+  // day is normal storage — when they AGREE there is nothing to decide and the day
+  // must not reach Review, while a real DISAGREEMENT still must. Distinct dates from
+  // the manual pair above so each spec assertion scopes to its own day; the whole
+  // profile's body_metrics are cleared just above, so these are collision-free.
+  const insDupSourced = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, resting_hr, source)
+   VALUES (?, ?, ?, ?)`
+  );
+  insDupSourced.run(dupReviewId, "2026-06-16", 55, "health-connect");
+  insDupSourced.run(dupReviewId, "2026-06-16", 55, "oura");
+  insDupSourced.run(dupReviewId, "2026-06-17", 55, "health-connect");
+  insDupSourced.run(dupReviewId, "2026-06-17", 56, "oura");
   console.log(
-    `e2e: seeded a same-source (two manual weigh-ins) duplicate on profile ${dupReviewId} (A/B disambiguation, #531)`
+    `e2e: seeded a same-source (two manual weigh-ins) duplicate plus agreeing/disagreeing cross-source days on profile ${dupReviewId} (#531/#1615)`
   );
 
   // A dedicated ADULT profile for the routine-BUILDER specs (#739), SEPARATE from the

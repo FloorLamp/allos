@@ -8,6 +8,7 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { writeRawPayload } from "../../lib/integrations/raw-log";
 import { upsertConnection } from "../../lib/integrations/connections";
+import { truncatedSyncDetails } from "../../lib/integrations/sync-details";
 import { PROFILE_ID, ins } from "./common";
 
 // ── Integration sync events, per-row provenance, connection states ──
@@ -178,6 +179,34 @@ export function seedIntegrationSyncEvents(): void {
       null
     );
   }
+
+  // Issue #1614: a pull run a page cap / rate limit cut short. It SUCCEEDED as far as
+  // it got — ok=1, rows landed — but the provider still had data, so the event carries
+  // the durable `truncated` marker and its Review line, and the Connected-sources card
+  // must badge it "partial" instead of a clean green success. Dated between the no-ops
+  // and the failure, so it lands in Strava's expandable history and leaves the
+  // "currently failing" state (the newest Strava event is still the failure) alone.
+  ins.run(
+    PROFILE_ID,
+    "strava",
+    "2026-07-08 10:00:00",
+    1,
+    "2026-07-01",
+    "2026-07-08",
+    6, // received
+    6, // written
+    3, // inserted
+    0, // updated
+    3, // unchanged
+    0, // skipped
+    null, // raw_ref
+    null
+  );
+  db.prepare(
+    `UPDATE integration_sync_events
+        SET details = ?
+      WHERE profile_id = ? AND provider = 'strava' AND at = ?`
+  ).run(truncatedSyncDetails(), PROFILE_ID, "2026-07-08 10:00:00");
   ins.run(
     PROFILE_ID,
     "strava",
