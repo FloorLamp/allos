@@ -106,6 +106,7 @@ export default function SidebarContent({
           <button
             type="button"
             aria-label="Close menu"
+            title="Close menu"
             onClick={onClose}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750"
           >

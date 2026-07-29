@@ -228,6 +228,7 @@ function TrackedRow({
           disabled={pending}
           data-testid="untrack-gap"
           aria-label="Stop tracking"
+          title="Stop tracking"
           className="shrink-0 text-slate-300 hover:text-rose-500 disabled:opacity-50 dark:text-slate-600"
         >
           <IconX className="h-4 w-4" />

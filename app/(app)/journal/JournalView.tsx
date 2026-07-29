@@ -551,6 +551,7 @@ export default function JournalView({
       type="button"
       onClick={dismissPanel}
       aria-label="Close details"
+      title="Close details"
       className="hidden text-slate-500 hover:text-slate-600 xl:block dark:text-slate-400 dark:hover:text-slate-300"
     >
       <IconX className="h-4 w-4" />
@@ -718,6 +719,7 @@ export default function JournalView({
                 type="button"
                 onClick={() => setQuery("")}
                 aria-label="Clear search"
+                title="Clear search"
                 className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
               >
                 <IconX className="h-4 w-4" />

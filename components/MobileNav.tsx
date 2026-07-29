@@ -239,6 +239,7 @@ export default function MobileNav({
           <button
             type="button"
             aria-label="Open menu"
+            title="Open menu"
             aria-expanded={open}
             onClick={() => setOpen(true)}
             className="tap-target press -ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -254,6 +255,7 @@ export default function MobileNav({
             <button
               type="button"
               aria-label="Search"
+              title="Search"
               data-testid="search-mobile"
               onClick={() => openGlobalSearch()}
               className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -276,6 +278,7 @@ export default function MobileNav({
                   <button
                     type="button"
                     aria-label="Start workout"
+                    title="Start workout"
                     data-testid="start-workout-mobile"
                     onClick={() => openLive()}
                     className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -302,6 +305,7 @@ export default function MobileNav({
                 <button
                   type="button"
                   aria-label="More log options"
+                  title="More log options"
                   aria-expanded={sheetOpen}
                   data-testid="quick-log-more"
                   onClick={() => setSheetOpen(true)}
