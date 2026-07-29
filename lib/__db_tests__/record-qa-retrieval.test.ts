@@ -40,6 +40,18 @@ beforeAll(() => {
     `INSERT INTO intake_items (profile_id, name, kind, active, notes)
      VALUES (?, 'Cephalexin', 'medication', 1, 'Antibiotics for a skin infection')`
   ).run(other);
+
+  // SINGULAR-named rows, for the plural-folding retrieval (#1597): a plural
+  // question term ("colds", "allergies") is not a substring of these names, so
+  // without the fold the LIKE fan-out finds nothing.
+  db.prepare(
+    `INSERT INTO encounters (profile_id, date, type, reason)
+     VALUES (?, '2026-01-09', 'Telehealth', 'Head cold check-in')`
+  ).run(mine);
+  db.prepare(
+    `INSERT INTO allergies (profile_id, substance, reaction)
+     VALUES (?, 'Peanut', 'Hives')`
+  ).run(mine);
 });
 
 describe("retrieveRecordCitations — grounded, profile-scoped retrieval (#878)", () => {
@@ -72,6 +84,21 @@ describe("retrieveRecordCitations — grounded, profile-scoped retrieval (#878)"
     expect(retrieveRecordCitations(mine, "when did I last take it?")).toEqual(
       []
     );
+  });
+
+  it("finds singular-named rows from a PLURAL question term (#1597)", () => {
+    // "%colds%" is not a substring of "Head cold check-in" — only the folded
+    // singular reaches the row, so this is the whole bug in one assertion.
+    const colds = retrieveRecordCitations(
+      mine,
+      "how did his last three colds compare?"
+    );
+    expect(colds.map((c) => c.subtitle ?? c.title).join(" ")).toContain("cold");
+    expect(colds.length).toBeGreaterThan(0);
+
+    // Same for the flagship allergy phrasing: "nuts" misses "Peanut", "nut" hits.
+    const allergies = retrieveRecordCitations(mine, "any allergies to nuts?");
+    expect(allergies.map((c) => c.title)).toContain("Peanut");
   });
 
   it("returns no citations when nothing matches", () => {

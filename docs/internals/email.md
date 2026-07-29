@@ -77,10 +77,45 @@ the invite — set the public app URL first."), and the SMTP settings card shows
 "needs public URL" note. The admin's manual password reset in Family stays as
 the always-available fallback (a family member with no email is still rescued).
 
-## Note: invite still sets an initial password
+## The invite carries the credential (#1434)
 
-Creating a login still requires a password (the invite then lets the person set
-their OWN). The value delivered is that the admin never has to **relay** a
-password out-of-band — not that the login has no password until claimed. A
-nullable-password/claim-only auth path was deliberately avoided as a larger,
-security-sensitive change.
+Creating a login with **"Email an invite"** checked now creates it
+**passwordless**: the form disables the password field and `createLogin` neither
+asks for nor accepts one. `logins.password_hash` is still `NOT NULL` — a
+nullable-password auth path remains a larger, security-sensitive change we did
+not take — so "passwordless" is a hash of freshly generated random bytes that are
+immediately discarded. Nobody, admin included, holds a credential for that login
+until the invitee spends their token. That is strictly safer than the previous
+admin-invented interim password, which stayed valid alongside the invite link.
+
+Consequences, all load-bearing:
+
+- An invite the instance **cannot send** (no email address, SMTP/public URL
+  unconfigured) is refused **before** the insert, so a login is never left with a
+  credential nobody can claim. The old code created the login and appended a
+  note.
+- The invite send failing **after** the insert still doesn't roll it back; the
+  message says the login has no password yet and to resend from its row.
+- The admin's manual **Reset password** in Family remains the rescue path.
+
+## No grantless dead end (#1434)
+
+A login that authenticates but can reach **no profile** used to mint a session,
+redirect, and then bounce off `resolveSessionToken` (which resolves a login with
+zero accessible profiles to `null`) back to an empty sign-in form, forever, with
+no message and a growing pile of unusable "active sessions".
+
+- **Access is part of creating a member.** The create-login form carries an
+  initial profile picker (defaulting to a same-named profile when exactly one
+  exists), written in the SAME transaction as the login row. Its labels — and the
+  Access matrix's and own-profile select's — run through
+  `disambiguateProfileNames` (#534), so two same-named profiles are never
+  identical rows where granting the wrong one is costliest.
+- **Both sign-in doors refuse honestly.** `loginHasProfileAccess` is checked
+  after the password (and after the second factor, so the outcome is never
+  revealed to someone holding only the password): the action returns
+  `NO_PROFILE_ACCESS` (`lib/login-security.ts`), audits `login.no-profile-access`,
+  and mints **no** session.
+- **A session that outlives its grants is torn down** on resolve rather than left
+  as a zombie row the Family screen still counts.
+- A member with zero grants is badged **"no access"** on its Logins row.

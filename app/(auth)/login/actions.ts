@@ -6,11 +6,17 @@ import { db } from "@/lib/db";
 import { verifyPassword, hashPasswordSync } from "@/lib/password";
 import {
   createSession,
+  loginHasProfileAccess,
   purgeExpiredSessions,
   sessionCookieOptions,
   SESSION_COOKIE,
+  type Role,
 } from "@/lib/auth";
-import { safeNextPath, truncateUserAgent } from "@/lib/login-security";
+import {
+  NO_PROFILE_ACCESS,
+  safeNextPath,
+  truncateUserAgent,
+} from "@/lib/login-security";
 import { TWO_FACTOR_COOKIE } from "@/lib/session-cookie";
 import {
   evaluateLockout,
@@ -49,6 +55,30 @@ const INVALID_CODE = "Incorrect or expired code.";
 // throttled — so a prober learns nothing from the response. (The empty-field
 // prompt below is not a credential check, so it stays distinct.)
 const INVALID_CREDENTIALS = "Incorrect username or password.";
+
+// The grantless refusal, shared by the password step and the second-factor step so
+// both doors behave identically: no session is minted (an unusable login must not
+// leave "active sessions" behind), the outcome is honest, and the attempt is
+// audited so the admin can see it happened. Returns null when the login CAN reach a
+// profile — i.e. "carry on and mint the session".
+function refuseWithoutProfileAccess(
+  loginId: number,
+  usernameKey: string
+): LoginState | null {
+  const acct = db
+    .prepare("SELECT role FROM logins WHERE id = ?")
+    .get(loginId) as { role: Role } | undefined;
+  if (acct && loginHasProfileAccess(loginId, acct.role)) return null;
+  log.warn("sign-in refused: login has no profile access", {
+    username: usernameKey,
+  });
+  recordAudit({
+    loginId,
+    action: AUDIT_ACTIONS.loginNoAccess,
+    detail: usernameKey,
+  });
+  return { error: NO_PROFILE_ACCESS };
+}
 
 // A valid hash of a value no one knows, verified against when the username
 // doesn't exist so an attacker can't distinguish "unknown user" from "wrong
@@ -234,6 +264,15 @@ export async function login(
     }
   }
 
+  // Credentials are good. Before minting anything, refuse the grantless login
+  // honestly (issue #1434) — a session for a login that can reach no profile is
+  // unusable by construction, so it must never be created.
+  const noAccess = refuseWithoutProfileAccess(loginRow.id, usernameKey);
+  if (noAccess) {
+    clearAttempts(usernameKey);
+    return noAccess;
+  }
+
   // Success: forget this username's failures and mint the session.
   clearAttempts(usernameKey);
   purgeExpiredSessions();
@@ -306,6 +345,14 @@ export async function verifyLoginTotp(
   // is visible in the trail).
   deleteTotpChallenge(rawChallenge);
   (await cookies()).delete(TWO_FACTOR_COOKIE);
+  // Same grantless refusal as the password step (issue #1434) — checked here, AFTER
+  // the second factor, so the outcome is never revealed to someone holding only the
+  // password. The challenge is already spent, so a retry restarts at the password.
+  const noAccess = refuseWithoutProfileAccess(challenge.loginId, usernameKey);
+  if (noAccess) {
+    clearAttempts(usernameKey);
+    return noAccess;
+  }
   clearAttempts(usernameKey);
   purgeExpiredSessions();
   const userAgent = truncateUserAgent((await headers()).get("user-agent"));

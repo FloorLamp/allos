@@ -63,6 +63,8 @@ import {
   TOAST_SWITCH_B_PROFILE,
   E2E_LOGIN_GRANTEDIT,
   GRANT_EDIT_PROFILE,
+  DUP_ACCESS_PROFILE,
+  INVITE_TARGET_PROFILE,
 } from "../fixture-logins";
 import { seedMemberLogin, fixtureProfileId, grantProfile } from "./common";
 
@@ -604,6 +606,22 @@ export function seedMultiProfile(): void {
   }
 }
 
+// Ensure EXACTLY `count` profiles share this name — the one fixture shape
+// fixtureProfileId can't express (it upserts by name, so it can only ever produce
+// one). Deliberate duplicates back the #1434/#534 disambiguation assertions: two
+// identically-named profiles must not render as identical grant rows. Idempotent for
+// a reused dev server: it tops the population up, never past `count`. Returns the ids
+// in id order (the order the disambiguation ordinals follow).
+function duplicateFixtureProfileIds(name: string, count: number): number[] {
+  const ids = (
+    db
+      .prepare("SELECT id FROM profiles WHERE name = ? ORDER BY id")
+      .all(name) as { id: number }[]
+  ).map((r) => r.id);
+  while (ids.length < count) ids.push(createFixtureProfile(db, name));
+  return ids.slice(0, count);
+}
+
 // ── Grant-matrix collapse fixture ──
 export function seedGrantMatrix(): void {
   // ── #1412 grant-matrix collapse fixture ──────────────────────────────────────
@@ -617,6 +635,19 @@ export function seedGrantMatrix(): void {
     seedMemberLogin(E2E_LOGIN_GRANTEDIT, grantEditId, "write");
     console.log(
       `e2e: seeded grant-edit fixture — login ${E2E_LOGIN_GRANTEDIT} granted profile ${grantEditId} (${GRANT_EDIT_PROFILE}) (#1412)`
+    );
+  }
+
+  // ── #1434 invite-hardening fixtures ─────────────────────────────────────────
+  // PROFILES WITHOUT LOGINS (the #1392 lesson): the specs need profiles to grant and
+  // to disambiguate, not more identities in every login's grant matrix. The duplicate
+  // pair is the point — same name, two people — and the invite target is what the
+  // emailed-invite journey grants its new member at create time.
+  {
+    const dupIds = duplicateFixtureProfileIds(DUP_ACCESS_PROFILE, 2);
+    const inviteTargetId = fixtureProfileId(INVITE_TARGET_PROFILE);
+    console.log(
+      `e2e: seeded invite-hardening fixtures — duplicate profiles ${dupIds.join(", ")} (${DUP_ACCESS_PROFILE}), invite target ${inviteTargetId} (${INVITE_TARGET_PROFILE}) (#1434)`
     );
   }
 }

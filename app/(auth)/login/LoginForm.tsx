@@ -28,6 +28,7 @@ function ErrorAlert({ message }: { message?: string }) {
   return (
     <p
       role="alert"
+      data-testid="login-error"
       className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-400"
     >
       {message}
@@ -79,7 +80,16 @@ function TotpStep() {
 // useActionState. The `next` target is carried through as a hidden field and
 // re-validated server-side. When the password succeeds but 2FA is required, the
 // action returns needsTotp and we swap to the second-factor step.
-export default function LoginForm({ next }: { next: string }) {
+export default function LoginForm({
+  next,
+  username = "",
+}: {
+  next: string;
+  // Optional prefill for the username field (issue #1434) — the invite flow hands
+  // it over after the invitee set their password. `defaultValue`, so it stays an
+  // ordinary editable field.
+  username?: string;
+}) {
   const [state, formAction] = useActionState<LoginState, FormData>(login, {});
   if (state.needsTotp) return <TotpStep />;
   return (
@@ -91,6 +101,7 @@ export default function LoginForm({ next }: { next: string }) {
           name="username"
           type="text"
           autoComplete="username"
+          defaultValue={username}
           autoFocus
           required
           className="rounded-lg border border-black/10 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
