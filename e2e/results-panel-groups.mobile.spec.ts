@@ -378,7 +378,9 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   await page.goto(`${BIOMARKERS}?panel=biological-age`);
   const bioAge = group(page, "biological-age");
   await expect(bioAge).toHaveAttribute("data-open", "true");
-  await expect(bioAge.getByTestId("derived-badge").first()).toBeVisible();
+  await expect(
+    bioAge.getByTestId("derived-badge").first() // first-ok: spec-owned e2e_panelindex; the group holds only PhenoAge rows
+  ).toBeVisible();
 
   await page.context().close();
 });

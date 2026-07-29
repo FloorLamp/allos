@@ -24,7 +24,7 @@ test("bare /results redirects to the Biomarkers tab and renders it (#1079)", asy
   const biomarkers = page.getByTestId("results-biomarkers");
   await expect(biomarkers.getByTestId("biomarkers-table")).toBeVisible();
   await expect(
-    biomarkers.getByTestId("biomarker-panel-header").first()
+    biomarkers.getByTestId("biomarker-panel-header").first() // first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
   ).toBeVisible();
   await expect(biomarkers.getByTestId("biomarkers-pagination")).toHaveCount(0);
 });

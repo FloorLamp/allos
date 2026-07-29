@@ -38,7 +38,7 @@ async function openPhone(browser: Parameters<typeof loginAs>[0]) {
 
 // Where the index starts, in document coordinates (independent of scroll position).
 async function firstHeaderTop(page: Page): Promise<number> {
-  const header = page.getByTestId("biomarker-panel-header").first();
+  const header = page.getByTestId("biomarker-panel-header").first(); // first-ok: the spec-owned e2e_panelindex profile — "where the index starts" IS the first header
   await expect(header).toBeVisible();
   return header.evaluate(
     (el) => (el as HTMLElement).getBoundingClientRect().top + window.scrollY
@@ -128,7 +128,9 @@ test("the bio-age hero folds its inputs but never its estimate caveat (#1578)", 
 
   // The nine-input provenance list is what folds: present in the DOM, not laid out.
   await expect(hero.getByTestId("bio-age-input")).toHaveCount(9);
-  await expect(hero.getByTestId("bio-age-input").first()).toBeHidden();
+  await expect(
+    hero.getByTestId("bio-age-input").first() // first-ok: spec-owned profile; any one folded input proves the list is not laid out
+  ).toBeHidden();
 
   const toggle = page.getByTestId("bio-age-inputs-fold-toggle");
   await expect(toggle).toHaveText("Show the 9 inputs");
