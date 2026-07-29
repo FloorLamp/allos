@@ -1,9 +1,14 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { expectNoClippedContent, hydratedClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  hydratedClick,
+  settledSelect,
+} from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_PANELGROUPS,
+  E2E_LOGIN_PANELINDEX,
   E2E_MEMBER_PASSWORD,
   PANEL_GROUPS_OTHER_ANALYTE,
 } from "./fixture-logins";
@@ -199,6 +204,165 @@ test("the add-a-reading form is behind '+ Add result', and deep links auto-expan
   await expect(
     page.locator("#add-result").getByLabel("Name", { exact: true })
   ).toHaveValue("Ferritin");
+
+  await page.context().close();
+});
+
+// ── The index is the WHOLE set, not a page (#1581) ────────────────────────────
+// Runs as `e2e_panelindex`, whose lab history is eighty-one readings across seven
+// panels — more than the retired 50-row page held, and deliberately so: under the
+// page a name-sorted slice stopped partway through the alphabet and the panels
+// after it had no header at all.
+
+async function openIndex(
+  browser: Parameters<typeof loginAs>[0],
+  url: string = BIOMARKERS
+) {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_PANELINDEX,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(url);
+  return page;
+}
+
+// `table-sort-select` is the shared card-mode control; scope it to this tab's own
+// section so the locator names one element rather than "whichever came first".
+function sortSelect(page: Page) {
+  return page
+    .getByTestId("results-biomarkers")
+    .getByTestId("table-sort-select");
+}
+
+// Clinical order, `other` last. Seven panels come from stored readings; `lipids`,
+// `glycemic` and `kidney` also absorb derived indices, and `biological-age` exists
+// ONLY because the derived PhenoAge row lands there.
+const INDEX_PANELS = [
+  "lipids",
+  "glycemic",
+  "inflammation",
+  "kidney",
+  "liver",
+  "cbc",
+  "thyroid",
+  "biological-age",
+];
+
+test("the index lists every panel in the data, with no pager (#1581 section A)", async ({
+  browser,
+}) => {
+  const page = await openIndex(browser);
+  await expect(page.getByTestId("biomarkers-table")).toBeVisible();
+
+  const panels = await page
+    .getByTestId("biomarker-panel-group")
+    .evaluateAll((els) => els.map((e) => e.getAttribute("data-panel")));
+  expect(panels).toEqual(INDEX_PANELS);
+
+  // The row cap this replaces existed to bound an UNBOUNDED reading list; the
+  // collapsed index is bounded by the closed panel taxonomy instead, so there is
+  // nothing left to page and no pager to scroll away from.
+  await expect(page.getByTestId("biomarkers-pagination")).toHaveCount(0);
+  await expect(page.getByText(/Showing \d+–\d+ of \d+/)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Next" })).toHaveCount(0);
+
+  // A whole panel's count, not the sliver of it that fit on a page: five stored
+  // lipid analytes plus the two derived lipid ratios.
+  await expect(
+    group(page, "lipids").getByTestId("biomarker-panel-toggle")
+  ).toHaveAttribute("aria-label", "Lipids · 7 analytes · 1 flagged");
+
+  await page.context().close();
+});
+
+test("an expansion survives a filter change (#1581 section A)", async ({
+  browser,
+}) => {
+  const page = await openIndex(browser);
+  const thyroid = group(page, "thyroid");
+  await expect(thyroid).toHaveAttribute("data-open", "false");
+
+  await hydratedClick(page, thyroid.getByTestId("biomarker-panel-toggle"));
+  await expect(thyroid).toHaveAttribute("data-open", "true");
+
+  // Re-sorting is the navigation that used to reset every disclosure, because the
+  // open-state signature carried the page number and the pager rewrote it. It no
+  // longer does, so a reorder within the groups leaves the reader where they were.
+  await settledSelect(page, sortSelect(page), "date:desc", {
+    destination: /sort=date/,
+  });
+  await expect(group(page, "thyroid")).toHaveAttribute("data-open", "true");
+  await expect(group(page, "lipids")).toHaveAttribute("data-open", "false");
+
+  await page.context().close();
+});
+
+test("sorts by name ascending by default, and an old ?sort=panel falls back to it (#1581 section B)", async ({
+  browser,
+}) => {
+  const page = await openIndex(browser);
+  const select = sortSelect(page);
+  await expect(select).toHaveValue("name:asc");
+  // `panel` is not offered at all — grouping already emits the panels in clinical
+  // order, so the control did nothing a reader could perceive.
+  const options = await select
+    .locator("option")
+    .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
+  expect(options.some((v) => v.startsWith("panel:"))).toBe(false);
+
+  // An old bookmark parses to the default rather than failing.
+  const stale = await openIndex(browser, `${BIOMARKERS}?sort=panel`);
+  await expect(sortSelect(stale)).toHaveValue("name:asc");
+  await stale.context().close();
+
+  // Within an expanded group, one analyte's readings run newest-first.
+  await hydratedClick(
+    page,
+    group(page, "thyroid").getByTestId("biomarker-panel-toggle")
+  );
+  const dates = await group(page, "thyroid")
+    .locator('td[data-card="meta"]')
+    .filter({ hasText: /\d{4}-\d{2}-\d{2}/ })
+    .evaluateAll((els) =>
+      els.map(
+        (e) => ((e.textContent ?? "").match(/\d{4}-\d{2}-\d{2}/) ?? [""])[0]
+      )
+    );
+  const freeT4 = dates.slice(0, 3);
+  expect(freeT4).toEqual([...freeT4].sort().reverse());
+
+  await page.context().close();
+});
+
+test("the panel facet offers only panels this browser can return (#1581 section D)", async ({
+  browser,
+}) => {
+  const page = await openIndex(browser);
+  const facet = page.getByTestId("panel-filter");
+  const labels = await facet
+    .locator("option")
+    .evaluateAll((els) => els.map((e) => (e.textContent ?? "").trim()));
+
+  // Gone: their analytes carry a category this browser excludes, so choosing one
+  // could only ever say "No records match these filters".
+  //   Mental health screens → `instrument`, and #1076's exclusion is a SENSITIVITY
+  //   decision — offering the facet advertised data the browser refuses to show.
+  //   Blood type → `reference`, which lives in the passport.
+  expect(labels).not.toContain("Mental health screens");
+  expect(labels).not.toContain("Blood type");
+
+  // Kept: PhenoAge still renders here as a derived row, so the panel is reachable.
+  expect(labels).toContain("Biological age");
+  // Kept: #1076 left these browsable on purpose — they have no other home.
+  for (const label of ["Vital signs", "Vision", "Hearing", "Dental", "Other"])
+    expect(labels).toContain(label);
+
+  // And the kept one actually returns its row.
+  await page.goto(`${BIOMARKERS}?panel=biological-age`);
+  const bioAge = group(page, "biological-age");
+  await expect(bioAge).toHaveAttribute("data-open", "true");
+  await expect(bioAge.getByTestId("derived-badge").first()).toBeVisible();
 
   await page.context().close();
 });
