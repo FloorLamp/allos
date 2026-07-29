@@ -280,12 +280,63 @@ bucket is honored; no cadence keeps the fold-to-Morning fallback. A dose is in
 the pseudo-slot XOR its bucket window. Escalation chases the pseudo-slot like a
 window.
 
-**Notification priority floor (#1156).** `mandatory/high/low` gains a
-notification CONSUMER (never a dueness change, #559): a low-priority supplement
-is tracked in-app but excluded from every dose-reminder send; medications are
-never gated (the #449/#942 safety carve-out). A send whose only due doses are
-low-priority supplements sends nothing — intended, not a bug ("track these,
-don't notify me").
+**Notification priority floor (#1156) → the push predicate (#1505).**
+`mandatory/high/low` gains a CONSUMER (never a dueness change, #559).
+`isPushedIntake(item)` (`lib/supplement-schedule.ts`) is the ONE predicate every
+routine PUSH surface consults: a LOW-priority SUPPLEMENT is **tracked, never
+pushed**. It keeps its schedule, its dueness (`isDueOn` is untouched), its
+adherence history, and its page presence — and is excluded from
+
+- `collectUpcoming`'s `doseItems`, and therefore the Upcoming rows, the #1504
+  aggregate count, the dashboard Needs-attention hero, the calendar feed, and the
+  Telegram digest's Today section (one model, no surface-local filtering);
+- every dose-reminder send, via `notifiableWindowDoses`;
+- the private-supply refill nudge, on Upcoming and in the tick's `runRefills`; a
+  POOLED bottle drops out only when its entire ACTIVE membership is unpushed
+  (`poolPushes`), so a shared bottle someone else depends on is never silenced.
+
+Two boundaries are load-bearing. **KIND, not priority, decides for medications** —
+a med marked low pushes exactly as before (#449/#942). And **safety signals never
+route through the predicate at all**: missed-dose escalation reads the deliberately
+UNFILTERED gather (`lib/notifications/escalate.ts`), and the interaction (#144),
+PGx (#710) and UL (#148) warnings fire identically when a low supplement is a
+member. A send whose only due doses are low-priority supplements sends nothing —
+intended, not a bug ("track these, don't push me").
+
+Adherence keeps counting low supplements — including the Household card's x/y.
+That is deliberate and not drift: adherence answers "what did I do", attention
+answers "what needs me", so the two counts differ by definition (#221 at the
+definition layer).
+
+**Adherence-based demotion SUGGESTIONS (#1505 part 2).** A `high`/`mandatory`
+SUPPLEMENT taken on ≤25% of its scheduled days over a 30-day window (with ≥10
+occurrences) becomes a **demotion candidate** — a calm, dismissible COACHING-tier
+finding under the registered `demote-priority:` prefix, rendered on Supplements &
+Meds with two decisions: accept (which writes `priority = low`) or dismiss (which
+only silences it on the shared bus). Detection is pure
+(`lib/supplement-demotion.ts`); the item-level evidence comes from the ONE shared
+gather `getIntakeHistory` (`lib/intake-history.ts`), the same strips the digest
+deltas read.
+
+The system NEVER writes priority on its own — #559 holds unchanged. The user's tap
+is the change, `demoteIntakePriority` (`lib/intake-priority-write.ts`) is a
+compare-and-swap returning a typed outcome (`demoted` / `already-low` / `inactive`
+/ `not-found`) that the card renders rather than assuming success. Medications, PRN
+items, paused items, and items younger than the window are excluded; recovered
+adherence simply stops the detection, so a stale suggestion cannot linger. Coaching
+tier means it is never a notification — nagging about a supplement someone has
+chosen not to take is the failure this whole issue removes, so the suggestion has
+no push channel by design.
+
+**Digests report DELTAS, not a fraction (#1505 part 3).** `lib/intake-deltas.ts`
+classifies the PUSHED tier's recent ledger into **notably missed** (a taken-streak
+of ≥3 occurrences just broken) and **resumed** (taken again after a miss run of ≥2),
+over a 14-day window deliberately nested inside the demotion window so the two
+engines can't fire off the same evidence. `intakeDeltaLine` is the ONE formatter;
+`getIntakeDeltaLine` the ONE server entry point. The Telegram morning digest, the
+weekly recap (and so the dashboard recap widget), and the Household card all render
+that single result — none computes a variant. A quiet window produces no line at
+all; the raw adherence fraction stays beside it as secondary detail.
 
 **Derived situations — the pattern (#1292 Poor sleep, #1298 Period).** A
 _situation_ a `situational` item keys on (`lib/situations.ts`) can be
@@ -505,7 +556,7 @@ subscribe their own profile to a **household dose round** — at their schedule
 slots, one Telegram message carrying the due-unconfirmed doses of the household
 members they explicitly ticked, each with an inline confirm. It changes NOTHING
 about this domain's rules and adds no second dueness engine: the round's
-per-member gather is the SAME `collectWindowDoses` + #1156 priority floor that
+per-member gather is the SAME `collectWindowDoses` + `isPushedIntake` floor that
 builds that member's own reminder (#221), evaluated in that member's own
 timezone/day, so a PRN item is absent (never scheduled-due), a taken or
 deliberately skipped dose (#232) is not "due", and a held item stays held. The
