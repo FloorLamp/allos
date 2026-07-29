@@ -34,9 +34,9 @@ async function answerAll(page: Page, itemCount: number, value: 0 | 1 | 2 | 3) {
 
 // The id of the score this spec just recorded, read straight from the worker's own
 // SQLite file. The row's testid is `instrument-reading-<id>`, and the History list is
-// a SHARED accumulating surface on this fixture profile — an unmarked `.first()`
-// there would be exactly the hygiene violation the harness forbids, so the spec
-// addresses ITS OWN row by id instead (#1396).
+// a SHARED accumulating surface on this fixture profile, so an unmarked positional
+// locator there would be exactly the hygiene violation the harness forbids — the
+// spec addresses ITS OWN row by id instead (#1396).
 function newestScoreId(): number {
   const db = new Database(workerDbPath());
   try {
