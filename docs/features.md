@@ -65,7 +65,9 @@ recommendation is a compact link to its own action), a compact two-item
 **Coaching observations** preview (the rest reachable in place behind a "Show N
 more" disclosure — the Data quality widget's top-3 overflows the same way, and
 the opt-in Active protocols widget caps at three rows with a "+N more" link to
-Longevity › Protocols), **weight trend**, combined **Goals and habits**,
+Longevity › Protocols; each finding family has exactly ONE dashboard home, so a
+family with its own widget never also fills the rollup, and the rollup's count
+is always what it renders), **weight trend**, combined **Goals and habits**,
 **Healthspan pillars**, and the unified **"How are you today?"** daily check-in
 — a one-tap 5-point mood log (expand for energy, calm, factor chips, and a note;
 one entry per day, never range-checked, never gamified) composed with the
@@ -99,8 +101,11 @@ focused on the height field — never a browse page. It's deliberately **not a
 completeness score** (no percentage ring — the same pillars-not-a-composite
 stance), covers **structural one-time fixes only** (never behavioral nagging
 like "log more weigh-ins"), self-hides when a profile has none, and rides the
-shared findings bus (declining a gap silences it on the widget, the coaching
-rollup, and the household line at once). The same gap model formats a compact
+shared findings bus (declining a gap silences it on the widget, the coaching tab,
+and the household line at once). The widget is the family's dedicated dashboard
+home, so a gap is never also a row in the Coaching observations rollup — hide the
+widget and the gaps fall back into that rollup rather than losing their dashboard
+reach. The same gap model formats a compact
 per-member line on the **Household** page — kids' profiles are where
 birthdate/sex gaps cluster and the caregiver is who can fix them.
 
@@ -718,7 +723,12 @@ first-class **food-habit target** — a `food_group` scope on the same
 `frequency_targets` table the training weekly-routine uses, so its progress is
 the same weekly serving rollup (one question, one computation) and it can be
 adopted by a **Protocol** as an intervention. A behind-target habit surfaces as
-a calm, dismissible **coaching** observation (never a notification). This
+a calm, dismissible **coaching** observation (never a notification). A **protein
+gauge** draws today's intake and the weekly average against a goal-scaled g/kg
+band (lean mass preferred when it's tracked); the goal behind that band is yours
+to set — **Settings → Nutrition → Protein goal** (RDA baseline / Active / Muscle
+gain / Cut), an informational range rather than a prescription, seeded to Active
+when onboarding's fitness path is chosen. This
 granularity is where dietary evidence actually lives ("2 servings of fatty fish
 a week") and is sufficient for the biomarker→food and habit-target features;
 full macro tracking stays possible later as an additive tier. Informational, not

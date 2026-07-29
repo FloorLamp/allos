@@ -103,7 +103,9 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
   const widget = main.getByTestId("data-quality");
   await expect(widget).toBeVisible();
   await expect(
-    widget.getByTestId("data-quality-item").filter({ hasText: "Set a birthdate" })
+    widget
+      .getByTestId("data-quality-item")
+      .filter({ hasText: "Set a birthdate" })
   ).toBeVisible();
   // …and the Coaching-observations rollup defers: the gap is NOT a second row a
   // screen further down (which is what the mobile stack used to show).

@@ -535,8 +535,10 @@ export function getProteinGoalLevel(profileId: number): ProteinGoalLevel {
 // Whether this profile has EXPLICITLY picked a goal (as opposed to riding the default).
 // The onboarding seeding uses it so it never overwrites a pick the person already made.
 export function hasProteinGoalLevel(profileId: number): boolean {
-  return parseProteinGoalLevel(getProfileSetting(profileId, TRAINING_GOAL_KEY))
-    !== null;
+  return (
+    parseProteinGoalLevel(getProfileSetting(profileId, TRAINING_GOAL_KEY)) !==
+    null
+  );
 }
 
 // Store the profile's protein goal level. Takes an already-validated level (the action

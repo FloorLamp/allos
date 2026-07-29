@@ -318,7 +318,9 @@ export async function saveDietaryPreferences(formData: FormData) {
 // the default.
 export async function saveProteinGoal(formData: FormData) {
   const { profile } = await requireWriteAccess();
-  const level = parseProteinGoalLevel(String(formData.get("protein_goal") ?? ""));
+  const level = parseProteinGoalLevel(
+    String(formData.get("protein_goal") ?? "")
+  );
   if (!level) return { ok: false as const, error: "Choose a protein goal." };
   setProteinGoalLevel(profile.id, level);
   revalidatePath("/settings/nutrition");

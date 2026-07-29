@@ -97,8 +97,7 @@ describe("activity streak wiring (#1398)", () => {
     });
     const unregistered = discovered.filter(
       (rel) =>
-        !(rel in VARIANT_CALLERS) &&
-        !USER_FACING_STREAK_PRODUCERS.includes(rel)
+        !(rel in VARIANT_CALLERS) && !USER_FACING_STREAK_PRODUCERS.includes(rel)
     );
     expect(
       unregistered,

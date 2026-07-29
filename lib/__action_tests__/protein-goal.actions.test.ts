@@ -18,7 +18,10 @@ import {
   setOnboardingState,
   setProteinGoalLevel,
 } from "@/lib/settings";
-import { initialOnboardingState, onboardingWithProfilePath } from "@/lib/onboarding";
+import {
+  initialOnboardingState,
+  onboardingWithProfilePath,
+} from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { getProteinAdequacy } from "@/lib/queries";
 import { proteinGoalBand } from "@/lib/protein";
