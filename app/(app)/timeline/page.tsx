@@ -783,11 +783,13 @@ export default async function TimelinePage(props: {
            log a workout when the fix is to drop a category pill. */
         isTimelineUnfiltered(category, range) ? (
           <EmptyState
+            testId="timeline-empty"
             message="No timeline events yet. Your day-by-day history fills in from what you log and import."
             actions={TIMELINE_EMPTY_ACTIONS}
           />
         ) : (
           <EmptyState
+            testId="timeline-empty-filtered"
             message={
               category
                 ? `No ${timelineCategoryLabel(category).toLowerCase()} events yet.`

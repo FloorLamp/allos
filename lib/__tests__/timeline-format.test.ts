@@ -5,6 +5,7 @@ import {
   dateFromCreatedAt,
   flagTone,
   groupTimelineDays,
+  isTimelineUnfiltered,
   journalActivityHref,
   medicalRecordHref,
   normalizeTimelineRange,
@@ -16,6 +17,7 @@ import {
   timelineCategoryFromParam,
   timelineCategoryLabel,
   timelineDateFromParam,
+  TIMELINE_EMPTY_ACTIONS,
   visitLinkedRefs,
   type TimelineEvent,
 } from "../timeline-format";
@@ -249,5 +251,37 @@ describe("timeline event helpers", () => {
     expect(timeFromCreatedAt(stamp, "America/New_York")).toBe("22:30");
     expect(dateFromCreatedAt(null, "UTC")).toBeNull();
     expect(timeFromCreatedAt("", "UTC")).toBeNull();
+  });
+});
+
+// The Timeline's two empty states (#1410): a brand-new account, which earns next
+// actions, and a filter that matched nothing, which does not.
+describe("isTimelineUnfiltered (#1410)", () => {
+  it("is true only with NO category pill and NO date window", () => {
+    expect(isTimelineUnfiltered(undefined, {})).toBe(true);
+  });
+
+  it("is false whenever a filter is narrowing the feed", () => {
+    expect(isTimelineUnfiltered("activity", {})).toBe(false);
+    expect(isTimelineUnfiltered(undefined, { from: "2026-01-01" })).toBe(false);
+    expect(isTimelineUnfiltered(undefined, { to: "2026-01-01" })).toBe(false);
+    expect(
+      isTimelineUnfiltered(undefined, { from: "2026-01-01", to: "2026-01-01" })
+    ).toBe(false);
+    expect(isTimelineUnfiltered("body", { from: "2026-01-01" })).toBe(false);
+  });
+});
+
+describe("TIMELINE_EMPTY_ACTIONS (#1410)", () => {
+  it("names several distinct ingest doors, not one arbitrary CTA", () => {
+    expect(TIMELINE_EMPTY_ACTIONS.length).toBeGreaterThan(1);
+    const hrefs = TIMELINE_EMPTY_ACTIONS.map((a) => a.href);
+    expect(new Set(hrefs).size).toBe(hrefs.length);
+    for (const action of TIMELINE_EMPTY_ACTIONS) {
+      expect(action.href.startsWith("/")).toBe(true);
+      expect(action.label.length).toBeGreaterThan(0);
+      // The label is the whole point: it must name an ACTION, never a bare place.
+      expect(action.label).toMatch(/^(Log|Add|Import) /);
+    }
   });
 });

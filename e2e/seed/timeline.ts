@@ -14,6 +14,8 @@ import {
   TL_CHROME_SYMPTOM_DAY,
   TL_CHROME_QUIET_DAY,
   TL_CHROME_ACTIVITY,
+  E2E_LOGIN_TL_EMPTY,
+  TL_EMPTY_PROFILE,
 } from "../fixture-logins";
 import { seedMemberLogin, fixtureProfileId, grantProfile } from "./common";
 
@@ -89,5 +91,19 @@ export function seedTimelineChrome(): void {
   console.log(
     `e2e: seeded Timeline chrome fixture — profiles ${wellId} (${TL_CHROME_WELL_PROFILE}) ` +
       `+ ${sickId} (${TL_CHROME_SICK_PROFILE}); quiet day ${TL_CHROME_QUIET_DAY} (#1517)`
+  );
+}
+
+// ── Timeline base empty state (#1410) ───────────────────────────────────────
+// A login over ONE profile with NOTHING on it. There is deliberately no data to
+// write: `fixtureProfileId` creates the profile exactly the way production creates
+// one (standard metric SAVES only, which are chart membership — not timeline
+// events), so the profile arrives genuinely empty and stays that way under
+// --repeat-each because its spec only reads. Idempotent like every fixture here.
+export function seedTimelineEmpty(): void {
+  const emptyId = fixtureProfileId(TL_EMPTY_PROFILE);
+  seedMemberLogin(E2E_LOGIN_TL_EMPTY, emptyId, "write");
+  console.log(
+    `e2e: seeded Timeline empty-state fixture — profile ${emptyId} (${TL_EMPTY_PROFILE}), no events (#1410)`
   );
 }

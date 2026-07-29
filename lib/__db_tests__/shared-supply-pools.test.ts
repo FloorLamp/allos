@@ -17,6 +17,8 @@ import {
   getPoolChips,
   poolMembers,
   poolIdsForProfiles,
+  listVisiblePoolViews,
+  countVisiblePools,
   markDoseTaken,
   refillSupply,
 } from "@/lib/queries";
@@ -423,5 +425,79 @@ describe("row-ops side-state on unlink and delete", () => {
     expect(pool?.orphaned).toBe(false);
     expect(pool?.members.map((m) => m.profileId)).toEqual([alice.profileId]);
     expect(pool?.quantity_on_hand).toBe(20);
+  });
+});
+
+// The cabinet's reach (#1522). Removing the /supplies nav row put the surface behind
+// "N shared bottles" doors on Medications / Supplements / Household, so the COUNT on
+// those doors and the LIST on the page have to be the same question — a door that
+// promises a bottle the page won't show is worse than no door.
+describe("what the cabinet shows a caller (#1522)", () => {
+  it("lists a pool for a member who draws from it, and hides one they don't", () => {
+    const mine = createSharedSupply(
+      {
+        name: "Cabinet Mine",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    const theirs = createSharedSupply(
+      {
+        name: "Cabinet Theirs",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      30
+    );
+    const a = addItem(alice.profileId, "POOLA Cabinet", 1, null);
+    const b = addItem(bruno.profileId, "POOLB Cabinet", 1, null);
+    linkItemToPool(alice.profileId, a.itemId, mine);
+    linkItemToPool(bruno.profileId, b.itemId, theirs);
+
+    const aliceSees = listVisiblePoolViews([alice.profileId]).map((p) => p.id);
+    expect(aliceSees).toContain(mine);
+    expect(aliceSees).not.toContain(theirs);
+    // A caregiver granted BOTH profiles sees both bottles.
+    const bothSees = listVisiblePoolViews([
+      alice.profileId,
+      bruno.profileId,
+    ]).map((p) => p.id);
+    expect(bothSees).toContain(mine);
+    expect(bothSees).toContain(theirs);
+  });
+
+  it("shows an ORPHANED bottle to everyone — nobody is named, and someone must clear it", () => {
+    const orphan = createSharedSupply(
+      {
+        name: "Cabinet Orphan",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      5
+    );
+    expect(poolMembers(orphan)).toEqual([]);
+    expect(listVisiblePoolViews([alice.profileId]).map((p) => p.id)).toContain(
+      orphan
+    );
+    // …including a caller with no accessible profiles at all.
+    expect(listVisiblePoolViews([]).map((p) => p.id)).toContain(orphan);
+  });
+
+  it("counts exactly what it would list — the door can't outrun the page", () => {
+    for (const ids of [
+      [alice.profileId],
+      [bruno.profileId],
+      [alice.profileId, bruno.profileId],
+      [] as number[],
+    ]) {
+      expect(countVisiblePools(ids)).toBe(listVisiblePoolViews(ids).length);
+    }
   });
 });

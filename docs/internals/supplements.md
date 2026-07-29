@@ -471,6 +471,26 @@ ledger reconciles `supply_id` as an external ref (`onMissing: "null"`, global),
 so an item captured while pooled restores untracked instead of aborting on a
 dead FK (#375/#598 class).
 
+**Reached from its consumers, not the nav (#1522).** The cabinet is a registry of
+physical objects, the same shape as `/equipment` — and `/equipment` has never had a
+nav entry. Its old Medical-group row was worse than an ordinary one: it was
+`requiresMultiProfile`, so it materialized unannounced when a second profile was
+added, wearing the same `IconPill` as the "Medications" row above it. The row was
+removed; the ROUTE is unchanged. Its doors are `components/intake/SharedSuppliesLink`
+(the Medications header, the Nutrition → Supplements tab, and the Household header,
+labelled by the pure `sharedSuppliesLinkLabel`), the shared-bottle chip on a linked
+item, and the "See all shared bottles" exit in `SharedSupplyPicker`. `/supplies`
+highlights **Medications** and `/equipment` highlights **Training** through
+`NAV_PARENT_ROUTES` (`lib/nav.ts`), which `isRouteActive` consults before the plain
+prefix rule — a registry route lights its parent and nothing else.
+
+**One cabinet rule.** `isPoolVisibleTo` (pure, `lib/refill.ts`) decides what a caller
+sees: any pool an accessible profile draws from, plus member-less orphans (they name
+nobody, and somebody has to be able to clear them). The page lists
+`listVisiblePoolViews(scope.ids)` and every door counts `countVisiblePools(scope.ids)`
+through the SAME predicate, so a door can never promise a bottle the page won't show.
+The count skips the pooled-projection build the list needs.
+
 **Cross-grant visibility (stated choice).** The cabinet resolves access once at
 the boundary via `requireScope()` and lists the pools the caller's accessible
 profiles draw from, plus member-less orphans. A member granted only ONE linked

@@ -125,6 +125,12 @@ becomes a two-sided **UV dose** (enough for vitamin D/circadian light, with a
 burn-risk heads-up past your skin type's threshold) — degrading gracefully to a
 clear-sky estimate, then to plain minutes, offline.
 
+A brand-new account sees a Timeline empty state that names the next action —
+links to log an activity, add a body metric, or import a document, the three
+sources a timeline fills from. Once a category pill or a date window is applied,
+an empty feed reports only that ("No immunization events yet."): a filter that
+matched nothing is a different message from an account with nothing in it.
+
 A single-day view adds previous/next navigation and horizontal swipe navigation.
 Its intraday panel projects the day's timed data onto a midnight-to-midnight
 clock: minute-level heart rate, sleep blocks and stages, workout spans, and
@@ -477,7 +483,8 @@ devices, at **/equipment** (reached from the activity form's "Manage
 equipment"/"Add equipment" link — shown even before you own any gear, so it's a
 bootstrap door — a link in the Training page header, the command palette, a
 workout card's gear chip, or a protocol's gear reference — it's an
-occasionally-visited inventory, not a top-level nav item). The index groups gear
+occasionally-visited inventory, not a top-level nav item; visiting it highlights
+**Training** in the sidebar so the page still says where you are). The index groups gear
 by kind (strength / cardio / recovery / other) with an active/retired split and
 a per-item **usage** badge; each item's **detail page** shows its category, own
 weight, when it was added, and the usage payoff — sessions count, last used,
@@ -1425,9 +1432,18 @@ the persistence, reminder, interaction, and safety contracts.
 
 ## Medicine cabinet
 
-The household medicine cabinet (`/supplies`) tracks one physical bottle once. It
-appears for multi-profile households. A supplement or medication can link its
-refill tracking to a shared supply, moving its current count into that pool.
+The household medicine cabinet (`/supplies`) tracks one physical bottle once. A
+supplement or medication can link its refill tracking to a shared supply, moving
+its current count into that pool.
+
+Like the **Equipment** registry, the cabinet is a registry of physical objects and
+is reached from the surfaces that use it rather than from the sidebar: a
+**Medicine cabinet** link — showing the bottle count once you have any ("3 shared
+bottles") — sits in the **Medications** and **Nutrition → Supplements** headers and
+in the **Household** header, a linked item's refill section offers "See all shared
+bottles", and a linked item's shared-bottle chip opens it directly. It has no
+navigation row of its own; visiting it highlights **Medications** in the sidebar,
+the way `/equipment` highlights **Training**.
 
 Every linked person's confirmed dose decrements the same count using that
 person's own units per dose. An adult taking two tablets and a child taking one

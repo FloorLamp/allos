@@ -239,7 +239,14 @@ function NavLink({ leaf, nested }: { leaf: Leaf; nested: boolean }) {
   const active = isRouteActive(leaf.href, pathname);
   const Icon = leaf.icon;
   return (
-    <Link href={leaf.href} className={leafClass(active, nested)}>
+    // `aria-current` carries what the gradient carries: a screen-reader user is told
+    // which entry is the page they're on, and it gives the orphan-highlight fix
+    // (#1522) a stable, semantic assertion instead of a class-name match.
+    <Link
+      href={leaf.href}
+      aria-current={active ? "page" : undefined}
+      className={leafClass(active, nested)}
+    >
       <Icon className="h-5 w-5 shrink-0" stroke={1.75} />
       {leaf.label}
     </Link>
