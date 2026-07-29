@@ -43,8 +43,10 @@ export interface CompletedGoal {
 export interface MilestoneInput {
   // Cumulative count of workouts (activities) ever logged.
   totalWorkouts: number;
-  // Current streak length (active days) as of today — the same rest-tolerant
-  // "flexible" streak the dashboard headline shows.
+  // Current streak length (active days) as of today, from the shared
+  // activityStreak (#1398) — the SAME rest-tolerant number the Training/Journal
+  // week-summary tile and the weekly recap show, so a celebrated "30-day activity
+  // streak" can never disagree with the streak the page reads.
   streak: number;
   // Length of the current run of days with perfect supplement adherence (every due
   // dose taken), 0 when the profile tracks nothing or missed recently.

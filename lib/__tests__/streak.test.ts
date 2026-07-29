@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentStreak, flexibleStreak } from "../streak";
+import { activityStreak, currentStreak, flexibleStreak } from "../streak";
 
 describe("currentStreak", () => {
   it("is 0 with no active dates", () => {
@@ -99,5 +99,36 @@ describe("flexibleStreak", () => {
     expect(flexibleStreak("2024-03-10", dates)).toBeGreaterThanOrEqual(
       currentStreak("2024-03-10", dates)
     );
+  });
+});
+
+// #1398 — THE user-facing "streak". Two engines used to answer the one word the UI
+// shows: the Training week tile read the strict currentStreak while the milestone and
+// the weekly recap read the rest-tolerant flexibleStreak, so a profile could be
+// congratulated on a "30-day activity streak" while the page tile read 2. activityStreak
+// is now the single answer every "streak"-labelled surface reads.
+describe("activityStreak", () => {
+  it("is the rest-tolerant variant (never the strict one) on a rest-day fixture", () => {
+    // Trained today, rested yesterday, trained the three days before that.
+    const dates = ["2024-03-10", "2024-03-08", "2024-03-07", "2024-03-06"];
+    expect(activityStreak("2024-03-10", dates)).toBe(
+      flexibleStreak("2024-03-10", dates)
+    );
+    expect(activityStreak("2024-03-10", dates)).toBe(4);
+    // The bug in one assertion: the strict count would have shown 1 under the same
+    // "streak" label the milestone celebrates as 4.
+    expect(currentStreak("2024-03-10", dates)).toBe(1);
+  });
+
+  it("agrees with the strict streak when there are no rest days", () => {
+    const dates = ["2024-03-10", "2024-03-09", "2024-03-08"];
+    expect(activityStreak("2024-03-10", dates)).toBe(
+      currentStreak("2024-03-10", dates)
+    );
+  });
+
+  it("is 0 with no activity and stale history alike", () => {
+    expect(activityStreak("2024-03-10", [])).toBe(0);
+    expect(activityStreak("2024-03-10", ["2024-02-01"])).toBe(0);
   });
 });

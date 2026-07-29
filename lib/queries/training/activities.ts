@@ -14,7 +14,7 @@ import {
 } from "../../rank-by-frequency";
 import { getActiveRoutine } from "../../routines";
 import { resolveTodayRoutineDayIndex } from "../../workout-recommendation";
-import { currentStreak } from "../../streak";
+import { activityStreak } from "../../streak";
 import type { ActivityEditData } from "../../activity-form-model";
 import { pickImportedActivityMetrics } from "../../activity-import-details";
 import type { Activity, ActivityType, ExerciseSet } from "../../types";
@@ -189,7 +189,10 @@ export interface JournalWeekSummary {
   sessions: number; // activities logged in the profile's weekly window
   activeDays: number; // distinct days trained in the profile's weekly window
   volumeKg: number; // total weight × reps (both sides) in the profile's weekly window
-  streak: number; // consecutive active days ending today (or yesterday)
+  // THE user-facing activity streak (#1398): active days in the current run,
+  // rest-tolerant, from the shared activityStreak — the same number the milestone
+  // engine and the weekly recap celebrate.
+  streak: number;
 }
 
 export function getJournalWeekSummary(profileId: number): JournalWeekSummary {
@@ -225,7 +228,7 @@ export function getJournalWeekSummary(profileId: number): JournalWeekSummary {
     sessions,
     activeDays,
     volumeKg,
-    streak: currentStreak(today(profileId), getActivityDates(profileId)),
+    streak: activityStreak(today(profileId), getActivityDates(profileId)),
   };
 }
 

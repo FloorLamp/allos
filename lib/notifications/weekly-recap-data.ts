@@ -31,7 +31,7 @@ import { recentPRs, recentCardioPRs } from "../coaching";
 import { loadContextLabel } from "../lifts";
 import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
 import { isDueOn } from "../supplement-schedule";
-import { currentStreak, flexibleStreak } from "../streak";
+import { activityStreak, currentStreak } from "../streak";
 import {
   buildWeeklyRecap,
   resolveRecapWindow,
@@ -229,7 +229,7 @@ export function gatherRecapInput(
 
   // Streaks walk back arbitrarily far, so they need the FULL date history — not the
   // windowed `activities` above. getActivityDates is the cheap DISTINCT-dates read
-  // (currentStreak/flexibleStreak read it as a set, so dedup is irrelevant).
+  // (activityStreak/currentStreak read it as a set, so dedup is irrelevant).
   const activityDates = getActivityDates(profileId);
   const goalsCompleted = getGoals(profileId)
     .filter(
@@ -257,7 +257,7 @@ export function gatherRecapInput(
     prLabels,
     adherence: windowAdherence(profileId, win.start, win.end),
     weights,
-    streak: flexibleStreak(td, activityDates),
+    streak: activityStreak(td, activityDates),
     strictStreak: currentStreak(td, activityDates),
     goalsCompleted,
     // Sick days within the window (issue #837) — the recovery-context honesty line,

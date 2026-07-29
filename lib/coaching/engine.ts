@@ -583,7 +583,10 @@ export function restReasons(
   }
 
   // Overtraining — consecutive LOADING days, or (mutually exclusive) a heavy trailing
-  // window of them. currentStreak counts the consecutive-day run; both triggers key on
+  // window of them. This is NOT the user-facing "streak" (#1398: that's activityStreak,
+  // rest-tolerant, over activity dates) — a different question with its own label
+  // ("trained N days in a row"), so it keeps the strict count over hard-session dates.
+  // currentStreak counts the consecutive-day run; both triggers key on
   // loadDates (hard sessions) so a logged easy recovery day breaks the streak instead
   // of extending it (#754), making the nudge's "a rest or light day" advice actually
   // satisfiable. A streak of N days in a row already implies a full week, so we surface
