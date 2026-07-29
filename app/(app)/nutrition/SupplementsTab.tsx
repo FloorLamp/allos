@@ -81,10 +81,10 @@ import {
   timeBucket,
   TIME_BUCKETS,
   TIME_BUCKET_LABELS,
-  PRIORITY_ORDER,
-  PRIORITY_LABELS,
+  OBLIGATION_ORDER,
+  OBLIGATION_LABELS,
   CONDITION_LABELS,
-  priorityClass,
+  obligationClass,
   workoutDaySubtitleLabel,
   heldBySituation,
   type TimeBucket,
@@ -351,13 +351,13 @@ export default async function SupplementsTab() {
     .map(([k]) => k);
 
   // Group due items by time bucket; within a bucket use the SHARED dose-day
-  // comparator (priority → stack → name) so this section and the Upcoming /
+  // comparator (obligation → stack → name) so this section and the Upcoming /
   // needs-attention surfaces order a dose day identically (issue #297). The
   // buckets already partition by time-of-day, so the comparator's leading bucket
-  // key is a constant within each group and the residual order is priority → …
+  // key is a constant within each group and the residual order is obligation → …
   const doseEntry = (it: Item): DoseDayEntry => ({
     timeOfDay: it.dose.time_of_day,
-    priority: it.supplement.priority,
+    obligation: it.supplement.obligation,
     stack: it.supplement.stack,
     name: it.supplement.name,
   });
@@ -689,7 +689,8 @@ export default async function SupplementsTab() {
         <div className="mt-4 space-y-3">
           {[...suggestions]
             .sort(
-              (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+              (a, b) =>
+                OBLIGATION_ORDER[a.obligation] - OBLIGATION_ORDER[b.obligation]
             )
             .map((suggestion) => (
               <div
@@ -706,9 +707,9 @@ export default async function SupplementsTab() {
                     </span>
                   )}
                   <span
-                    className={`badge ${priorityClass(suggestion.priority)}`}
+                    className={`badge ${obligationClass(suggestion.obligation)}`}
                   >
-                    {PRIORITY_LABELS[suggestion.priority]}
+                    {OBLIGATION_LABELS[suggestion.obligation]}
                   </span>
                   {suggestion.condition !== "daily" && (
                     <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
@@ -995,7 +996,7 @@ export default async function SupplementsTab() {
 
         {/* Priority demotion suggestions (#1505): high/mandatory supplements that have
           gone sustainedly untaken, offered for the `low` tag. Calm and hideable —
-          accepting is the user's own priority write, never the system's. */}
+          accepting is the user's own obligation write, never the system's. */}
         {demotionFindings.length > 0 && (
           <div className="mb-4">
             <DemotionSuggestions findings={demotionFindings} />

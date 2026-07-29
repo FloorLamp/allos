@@ -49,6 +49,7 @@ import {
 } from "./supplement-format";
 import { preWorkoutSlotHour } from "./schedule";
 import type { NotificationMessage } from "./types";
+import { isPrn } from "../supplement-schedule";
 
 export type { ReminderWindow, IntakeSendSlot };
 
@@ -76,7 +77,7 @@ function preWorkoutTimed(profileId: number): boolean {
 // no active `anytime` pre_workout dose to time.
 export function getPreWorkoutSlotHour(profileId: number): number | null {
   const preSupps = getSupplements(profileId).filter(
-    (s) => s.active && !s.as_needed && s.condition === "pre_workout"
+    (s) => s.active && !isPrn(s) && s.condition === "pre_workout"
   );
   if (preSupps.length === 0) return null;
   const ids = new Set(preSupps.map((s) => s.id));

@@ -7,7 +7,7 @@ import type {
   FoodTiming,
   Supplement,
   SupplementCondition,
-  SupplementPriority,
+  IntakeObligation,
 } from "./types";
 
 export type TimeBucket =
@@ -129,7 +129,7 @@ export function heldBySituation(
 
 export function isDueOn(
   supp: Pick<Supplement, "condition" | "situation"> & {
-    as_needed?: number;
+    obligation?: IntakeObligation;
     pause_situation?: string | null;
   },
   ctx: {
@@ -148,7 +148,12 @@ export function isDueOn(
   // B → held). The active set is the SAME one the on-condition reads, so a pause
   // situation's active state flows in without a second lookup.
   if (heldBySituation(supp, ctx.activeSituations)) return false;
-  if (supp.as_needed) return false;
+  // A `may` item has NO DUENESS at all (#1505). This is the single short-circuit that
+  // used to be `as_needed`, widened to the obligation level that absorbed it: an item
+  // the user owes nothing on cannot be due, so it cannot be missed, cannot be counted
+  // in a fraction, and cannot be reminded. Its slot survives as an ACCESS HINT — read
+  // by `slotHintCoversNow` and the offer surfaces, never by this function.
+  if (supp.obligation === "may") return false;
   // "Is today a training day?" — predicted cadence when known, else logged reality.
   const trainingToday = ctx.predictedWorkoutDay ?? ctx.isWorkoutDay;
   switch (supp.condition) {
@@ -172,12 +177,12 @@ export function isDueOn(
 // active (issue #662 item 1). It reuses the SAME dueness computation the dose list
 // and Upcoming use — isDueOn's `situational` branch — so the situations-bar
 // activation acknowledgment can never disagree with the list it's acknowledging (a
-// formatter over the shared count, never a second count). Counts active, non-PRN
+// formatter over the shared count, never a second count). Counts active, non-`may`
 // situational items; a paused item (active 0) is excluded.
 export function countSituationalDue(
   supps: readonly (Pick<Supplement, "condition" | "situation"> & {
     active?: number | boolean;
-    as_needed?: number;
+    obligation?: IntakeObligation;
   })[],
   ctx: Parameters<typeof isDueOn>[1]
 ): number {
@@ -245,21 +250,23 @@ export function heldResumeAcknowledgment(
 }
 
 // Whether linking a pause situation to this item warrants a CONFIRM at link time
-// (issue #1296): a situational hold on a MEDICATION or a `mandatory`-priority item
-// will silence its reminders while the situation is active, so the form asks first
-// ("this will silence reminders for X while Y is active — sure?"). An ordinary
-// supplement paused during a fasting day needs no confirm. Pure predicate so the form
-// and any test agree on which links are consented.
+// (issue #1296): a situational hold on a MEDICATION or a `must` item will silence its
+// reminders while the situation is active, so the form asks first ("this will silence
+// reminders for X while Y is active — sure?"). An ordinary supplement paused during a
+// fasting day needs no confirm. Pure predicate so the form and any test agree on which
+// links are consented. (Kind still appears here because a pause is a CLINICAL-identity
+// question — silencing a medication is worth asking about whatever its obligation —
+// which is exactly the job #1505 left kind holding.)
 export function pauseLinkNeedsConfirm(
-  item: Pick<Supplement, "kind" | "priority">
+  item: Pick<Supplement, "kind" | "obligation">
 ): boolean {
-  return item.kind === "medication" || item.priority === "mandatory";
+  return item.kind === "medication" || item.obligation === "must";
 }
 
 // Whether an item's dose amounts count toward the DAILY Tolerable Upper Intake
 // Level (UL) / RDA sum (issue #635). The UL is a chronic *daily* threshold, so only
-// an item taken EVERY day contributes its full amount each day. A PRN (as_needed)
-// item is taken on demand — never a standing daily intake (mirroring isDueOn's PRN
+// an item taken EVERY day contributes its full amount each day. A `may` item (which
+// absorbed PRN, #1505) is taken on demand — never a standing daily intake (mirroring isDueOn's PRN
 // short-circuit) — and a pre_workout / post_workout / rest_day / situational item
 // applies only on some days; counting either as a full daily dose overstates the
 // daily total and produces a standing false "above upper limit" (care-tier) alarm.
@@ -267,9 +274,9 @@ export function pauseLinkNeedsConfirm(
 // for a care-tier gather where a false positive is worse than a missed occasional
 // exceedance.
 export function contributesToDailyLimit(
-  item: Pick<Supplement, "condition"> & { as_needed?: number }
+  item: Pick<Supplement, "condition"> & { obligation?: IntakeObligation }
 ): boolean {
-  if (item.as_needed) return false;
+  if (item.obligation === "may") return false;
   return item.condition === "daily";
 }
 
@@ -340,60 +347,102 @@ export const SUGGESTED_SITUATIONS = [
   "Poor sleep",
 ];
 
-export const PRIORITY_ORDER: Record<SupplementPriority, number> = {
-  mandatory: 0,
-  high: 1,
-  low: 2,
+// ---- Obligation semantics (issue #1505) -----------------------------------
+//
+// ONE table, three derived behaviors. Every surface that asks "do I contact about
+// this / does a miss exist / does it escalate" reads THESE, never the raw string:
+//
+//   obligation   send                    adherence                escalation
+//   ---------------------------------------------------------------------------
+//   must         remind                  counted                  yes
+//   should       remind                  counted                  never
+//   may          never                   no dueness, no misses    n/a
+//
+// The three predicates below are deliberately separate rather than one "tier" number:
+// they answer different questions and only two of the three boundaries coincide.
+// `should` reminds but never escalates, which is precisely the distinction the old
+// two-value model (`mandatory` vs `high`, both fully pushed) could not express.
+
+// Descending weight, for the within-day sort and any ordering that reads it.
+export const OBLIGATION_ORDER: Record<IntakeObligation, number> = {
+  must: 0,
+  should: 1,
+  may: 2,
 };
 
-// THE push predicate (issue #1156 → widened by #1505): whether this intake item is
-// allowed on a ROUTINE PUSH surface at all. A LOW-priority SUPPLEMENT is "tracked,
-// never pushed" — the user's own "this is optional" tag — so it keeps its schedule,
-// its dueness, its adherence history and its page presence, but is excluded from
-// every surface that pushes work AT the user:
+export const OBLIGATIONS = Object.keys(
+  OBLIGATION_ORDER
+) as IntakeObligation[];
+
+export const OBLIGATION_LABELS: Record<IntakeObligation, string> = {
+  must: "Must",
+  should: "Should",
+  may: "May",
+};
+
+// The one-line explanation of what each level actually does, shown beside the
+// selector so the choice is never a bare adjective. Kept here so the form, the med
+// confirm dialog and any doc-facing surface quote the SAME consequences.
+export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
+  must: "Reminders, and a follow-up nudge if a dose goes unconfirmed. A miss is an incident.",
+  should: "Reminders and adherence tracking. A miss is a shortfall, never escalated.",
+  may: "No reminders and no misses — kept on your list and one tap away when you want it.",
+};
+
+// THE push predicate. Whether this item may ride a SYSTEM-INITIATED surface at all:
+// dose reminders, refill nudges, the digest's Today section, Upcoming's due rows, the
+// dashboard hero. `may` means the user declared no expectation, so the system never
+// initiates about it — it stays fully reachable through USER-initiated access (the
+// Supplements page, quick log, the digest's "Log other…" tail, keyboards) exactly as
+// the surface taxonomy in docs/internals/findings.md requires.
 //
-//   • collectUpcoming's doseItems — and therefore the Upcoming rows, the #1504
-//     aggregate count, the dashboard Needs-attention hero, the calendar feed, and
-//     the Telegram digest's Today section (one model, no surface-local filtering);
-//   • the scheduled dose-reminder sends (Telegram / Web Push / Home Assistant),
-//     via notifiableWindowDoses;
-//   • the private-supply refill / low-supply nudge, on Upcoming and in the tick —
-//     a push is a push (the Supplements page still SHOWS supply state).
+// This is the ONE gate every push surface consults; a surface that grows its own
+// obligation check is the drift this predicate exists to prevent (#221).
 //
-// This is the ONE gate every one of those surfaces consults; a surface that grows
-// its own priority check is the drift this predicate exists to prevent (#221).
-//
-// The two hard boundaries (#449/#942):
-//   1. KIND, not priority, decides pushability for MEDICATIONS — a med marked low
-//      pushes exactly as before, so marking a critical med "low" can never silence
-//      it (safety posture).
-//   2. SAFETY signals never route through this predicate at all: missed-dose
-//      escalation reads the UNFILTERED dose gather (lib/notifications/escalate.ts),
-//      and the interaction (#144) / PGx (#710) / UL (#148) warnings fire identically
-//      when a low supplement is a member. This gates routine dueness pushes only.
-//
-// Priority itself stays the user's static, user-owned tag (#559): this adds a
-// CONSUMER of priority, it never invents priority and never changes dueness
-// (isDueOn is untouched, so the item stays due — it just isn't pushed).
+// Note what is NO LONGER here: `kind`. Before #1505 this predicate had a medication
+// carve-out because kind was doing pushability's job. Kind now decides CLINICAL
+// IDENTITY (which safety engine, which surface, passport inclusion) and obligation
+// decides push, so a medication is pushed because it is `must` — its default, and one
+// it can only leave through an explicit consequence-stating confirm — not because of
+// its kind. The safety tier is unchanged and stays obligation-BLIND: missed-dose
+// escalation reads the unfiltered gather, and the interaction (#144) / PGx (#710) /
+// UL (#148) warnings fire identically for a `may` member.
 export function isPushedIntake(
-  item: Pick<Supplement, "kind" | "priority">
+  item: Pick<Supplement, "obligation">
 ): boolean {
-  return !(item.kind === "supplement" && item.priority === "low");
+  return item.obligation !== "may";
 }
 
-export const PRIORITY_LABELS: Record<SupplementPriority, string> = {
-  mandatory: "Mandatory",
-  high: "High",
-  low: "Low",
-};
+// Whether a MISSED occurrence exists for this item at all — the adherence half of the
+// same boundary. A `may` item has no dueness (isDueOn short-circuits), so it has no
+// misses, contributes to no fraction, and appears in the administrations ledger only.
+// Separate from isPushedIntake on purpose: they coincide today, and they are answers
+// to different questions ("do we contact?" vs "can this fail?").
+export function accruesMisses(item: Pick<Supplement, "obligation">): boolean {
+  return item.obligation !== "may";
+}
 
-export const PRIORITIES = Object.keys(PRIORITY_ORDER) as SupplementPriority[];
+// Whether an unconfirmed dose of this item may ESCALATE (the missed-dose follow-up
+// nudge). `must` only: a `should` miss is a tracked shortfall, and chasing it with a
+// second message is the over-contact this model exists to stop. The per-item
+// `critical` opt-in still applies INSIDE must — this widens nothing, it narrows the
+// eligible set.
+export function escalatesOnMiss(item: Pick<Supplement, "obligation">): boolean {
+  return item.obligation === "must";
+}
 
-// Tailwind accent for the priority badge / row accent.
-export function priorityClass(priority: SupplementPriority): string {
-  if (priority === "mandatory")
+// PRN shape (#798/#851): the amount-only dose row, the redose interval/max notice and
+// the over-max finding all key off `may`, which absorbed `as_needed`. Named for what
+// callers mean so the collapse reads as one concept rather than a magic string.
+export function isPrn(item: Pick<Supplement, "obligation">): boolean {
+  return item.obligation === "may";
+}
+
+// Tailwind accent for the obligation badge / row accent.
+export function obligationClass(obligation: IntakeObligation): string {
+  if (obligation === "must")
     return "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300";
-  if (priority === "high")
+  if (obligation === "should")
     return "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300";
   return "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400";
 }

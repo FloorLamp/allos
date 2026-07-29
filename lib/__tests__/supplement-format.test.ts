@@ -11,13 +11,13 @@ import type {
   FoodTiming,
   Supplement,
   SupplementDose,
-  SupplementPriority,
+  IntakeObligation,
 } from "../types";
 
 function supp(
   id: number,
   name: string,
-  priority: SupplementPriority = "high",
+  priority: IntakeObligation = "high",
   kind: SupplementKind = "supplement",
   product: string | null = null
 ): Supplement {
@@ -98,7 +98,7 @@ function entry(opts: {
   amount?: string | null;
   taken?: boolean;
   skipped?: boolean;
-  priority?: SupplementPriority;
+  priority?: IntakeObligation;
   food?: FoodTiming;
   kind?: SupplementKind;
   product?: string | null;

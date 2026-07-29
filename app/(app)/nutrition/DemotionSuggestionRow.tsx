@@ -5,7 +5,7 @@ import type { Finding } from "@/lib/findings";
 import type { FormResult } from "@/lib/types";
 
 // ONE demotion-suggestion row (issue #1505 part 2): the finding's title/detail plus
-// the two decisions it offers — accept (which WRITES `priority = low`, the user's own
+// the two decisions it offers — accept (which WRITES `obligation = may`, the user's own
 // declared change) and dismiss (which only silences the card through the shared bus).
 //
 // A client component because the accept can legitimately REFUSE: the item may have
@@ -13,7 +13,7 @@ import type { FormResult } from "@/lib/types";
 // rendered, and the write core answers with a typed outcome for each. Rendering that
 // outcome instead of assuming success is the inline-action rule; a server-action form
 // with no feedback would silently swallow "that item is paused" and leave the user
-// believing the priority changed.
+// believing the obligation changed.
 export default function DemotionSuggestionRow({
   finding,
   acceptAction,
@@ -60,17 +60,17 @@ export default function DemotionSuggestionRow({
           disabled={pending}
           onClick={() => run(acceptAction)}
           data-testid="demotion-accept"
-          title={`Mark ${finding.title} low priority`}
+          title={`Move ${finding.title} to May`}
           className="btn btn-sm"
         >
-          Mark low priority
+          Move to May
         </button>
         <button
           type="button"
           disabled={pending}
           onClick={() => run(dismissAction)}
           data-testid="demotion-dismiss"
-          title="Keep the current priority and hide this suggestion"
+          title="Keep the current obligation and hide this suggestion"
           className="btn-ghost btn-sm"
         >
           Keep as is

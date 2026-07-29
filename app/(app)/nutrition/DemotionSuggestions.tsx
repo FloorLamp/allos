@@ -12,7 +12,7 @@ import DemotionSuggestionRow from "./DemotionSuggestionRow";
 //
 // Deliberately NOT rendered through the shared FindingsList: every other coaching
 // card is dismiss-only, and this one carries a second, CONSEQUENTIAL affordance (the
-// accept that writes priority). It reuses FindingsList's card shape and the same
+// accept that writes obligation). It reuses FindingsList's card shape and the same
 // suppression bus, but its own row so the accept button can render its typed outcome
 // instead of the silent dismiss-only form.
 //
@@ -34,7 +34,7 @@ export default function DemotionSuggestions({
         Priority check
       </h2>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-        Items you&rsquo;ve stopped taking that still carry a high priority.
+        Items you&rsquo;ve stopped taking that you&rsquo;re still on the hook for.
         Marking one low keeps its schedule and its tracking — it just stops
         pushing.
       </p>

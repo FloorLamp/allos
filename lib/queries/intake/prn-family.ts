@@ -29,6 +29,7 @@ import {
   familyDisplayLabel,
   type MedicationFamily,
 } from "../../medication-family";
+import type { IntakeObligation } from "../../types";
 
 // The per-family safety state every cross-item counter reads. One object is shared
 // by all members of a family (the map has one entry per member item id).
@@ -58,7 +59,7 @@ interface FamilyMemberRow {
   rxcui: string | null;
   rxcui_ingredients: string | null;
   max_daily_count: number | null;
-  as_needed: number;
+  obligation: IntakeObligation;
 }
 
 // The profile's ACTIVE medication items partitioned into ingredient families —
@@ -68,7 +69,7 @@ export function getActiveMedicationFamilies(
 ): MedicationFamily<FamilyMemberRow & { rxcuiIngredients: string[] | null }>[] {
   const rows = db
     .prepare(
-      `SELECT id, name, rxcui, rxcui_ingredients, max_daily_count, as_needed
+      `SELECT id, name, rxcui, rxcui_ingredients, max_daily_count, obligation
          FROM intake_items
         WHERE profile_id = ? AND active = 1 AND kind = 'medication'
         ORDER BY id`

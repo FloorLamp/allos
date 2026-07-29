@@ -13,7 +13,7 @@ import {
 } from "../food-drug-interactions";
 import {
   FOOD_TIMING_LABELS,
-  PRIORITY_ORDER,
+  OBLIGATION_ORDER,
   isPushedIntake,
   type TimeBucket,
 } from "../supplement-schedule";
@@ -142,7 +142,7 @@ export interface WindowDose {
 
 function byPriority(a: WindowDose, b: WindowDose): number {
   return (
-    PRIORITY_ORDER[a.supp.priority] - PRIORITY_ORDER[b.supp.priority] ||
+    OBLIGATION_ORDER[a.supp.obligation] - OBLIGATION_ORDER[b.supp.obligation] ||
     a.supp.name.localeCompare(b.supp.name)
   );
 }
@@ -182,7 +182,7 @@ function doseLine(
     ? "✅ "
     : e.skipped
       ? "⏭ "
-      : e.supp.priority === "mandatory"
+      : e.supp.obligation === "must"
         ? "🔴 "
         : "• ";
   const tail: string[] = [];

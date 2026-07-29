@@ -43,7 +43,7 @@ import {
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   CONDITIONS,
-  PRIORITIES,
+  OBLIGATIONS,
   FOOD_TIMINGS,
   parseDosage,
   spreadDoseTimes,
@@ -55,10 +55,10 @@ import type {
   PairRelation,
   SupplementCondition,
   SupplementKind,
-  SupplementPriority,
+  IntakeObligation,
 } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
-import { demoteIntakePriority } from "@/lib/intake-priority-write";
+import { demoteIntakeObligation } from "@/lib/intake-obligation-write";
 import {
   DEMOTION_PREFIX,
   DEMOTION_OUTCOME_TEXT,
@@ -91,12 +91,23 @@ function fields(formData: FormData) {
   )
     ? (conditionRaw as SupplementCondition)
     : "daily";
-  const priorityRaw = String(formData.get("priority") ?? "high");
-  const priority: SupplementPriority = PRIORITIES.includes(
-    priorityRaw as SupplementPriority
+  // The item's KIND is read before its obligation because the med guardrail depends
+  // on it (see below): kind is clinical identity, and a medication's default is the
+  // one obligation that carries a safety net.
+  const kindEarly: SupplementKind =
+    formData.get("kind") === "medication" ? "medication" : "supplement";
+  const obligationRaw = String(
+    formData.get("obligation") ?? (kindEarly === "medication" ? "must" : "should")
+  );
+  // A `may` item is PRN-shaped by construction (#1505 collapsed obligation into it), so
+  // the old separate as-needed checkbox is gone: choosing May IS choosing as-needed.
+  const obligation: IntakeObligation = OBLIGATIONS.includes(
+    obligationRaw as IntakeObligation
   )
-    ? (priorityRaw as SupplementPriority)
-    : "high";
+    ? (obligationRaw as IntakeObligation)
+    : kindEarly === "medication"
+      ? "must"
+      : "should";
   const situation = condition === "situational" ? str("situation") : null;
   // The INVERSE situational link (issue #1296) — "pause this item WHILE X is active".
   // Independent of `condition`: a plain `daily` medication can be held during
@@ -127,11 +138,11 @@ function fields(formData: FormData) {
   const perDoseRaw = Number(formData.get("qty_per_dose"));
   const qtyPerDose =
     Number.isFinite(perDoseRaw) && perDoseRaw > 0 ? perDoseRaw : 1;
-  // Medication identity. kind = 'medication' reveals the
-  // prescriber/pharmacy/Rx + as-needed fields; the medication-only columns are
-  // cleared for a plain supplement so a kind flip can't leave stale data.
-  const kind: SupplementKind =
-    formData.get("kind") === "medication" ? "medication" : "supplement";
+  // Medication identity (CLINICAL, #1505): kind = 'medication' reveals the
+  // prescriber/pharmacy/Rx fields; the medication-only columns are cleared for a
+  // plain supplement so a kind flip can't leave stale data. Kind no longer decides
+  // pushability — obligation does.
+  const kind: SupplementKind = kindEarly;
   const isMed = kind === "medication";
   const prescriber = isMed ? str("prescriber") : null;
   const pharmacy = isMed ? str("pharmacy") : null;
@@ -150,11 +161,11 @@ function fields(formData: FormData) {
         : prescriber || rxNumber
           ? 1
           : 0;
-  const asNeeded =
-    isMed &&
-    (formData.get("as_needed") === "1" || formData.get("as_needed") === "on")
-      ? 1
-      : 0;
+  // PRN shape follows the obligation, not a second flag (#1505): `may` IS as-needed.
+  // Unlike the old checkbox this is not medication-only — a `may` supplement
+  // (magnesium, a preworkout) has exactly the same amount-only, take-when-you-want
+  // shape, and pretending otherwise is what made "low priority" incoherent.
+  const isPrn = obligation === "may";
   // PRN redose notice (issue #798). Only a PRN medication carries these; a non-PRN
   // item clears them so a kind/PRN flip can't leave a stale notice armed. The
   // interval/max are the user-CONFIRMED label numbers (pre-filled from
@@ -164,14 +175,14 @@ function fields(formData: FormData) {
   // fire, so it isn't stored as "on").
   const intervalRaw = Number(formData.get("min_interval_hours"));
   const minIntervalHours =
-    asNeeded && Number.isFinite(intervalRaw) && intervalRaw > 0
+    isPrn && Number.isFinite(intervalRaw) && intervalRaw > 0
       ? intervalRaw
       : null;
   const maxRaw = Number(formData.get("max_daily_count"));
   const maxDailyCount =
-    asNeeded && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
+    isPrn && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
   const redoseNotice =
-    asNeeded &&
+    isPrn &&
     minIntervalHours != null &&
     maxDailyCount != null &&
     (formData.get("redose_notice") === "1" ||
@@ -194,7 +205,7 @@ function fields(formData: FormData) {
     product: str("product"),
     stack: str("stack"),
     condition,
-    priority,
+    obligation,
     situation,
     pauseSituation,
     critical: critical ? 1 : 0,
@@ -207,7 +218,7 @@ function fields(formData: FormData) {
     pharmacy,
     rxNumber,
     rx,
-    asNeeded,
+    isPrn,
     minIntervalHours,
     maxDailyCount,
     redoseNotice,
@@ -348,17 +359,17 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
   if (
     f.kind === "medication" &&
     hasStartedOn &&
-    ((!f.asNeeded && !startedOnRaw) ||
+    ((!f.isPrn && !startedOnRaw) ||
       (!!startedOnRaw &&
         (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
   ) {
     return formError(
-      f.asNeeded
+      f.isPrn
         ? "Enter a valid start date that isn't in the future."
         : "Enter a start date that isn't in the future."
     );
   }
-  const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
+  const doses = collapsePrnDoses(parseDoses(formData), f.isPrn);
   const pairs = parsePairs(formData);
   // Prescriber (#1051 semantics decision (a)): provider_id is the prescribing
   // INDIVIDUAL. The picker resolves-or-creates against the registry as an INDIVIDUAL
@@ -402,21 +413,21 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
     const info = db
       .prepare(
         `INSERT INTO intake_items
-           (name, notes, condition, priority, brand, product, situation, situation_id,
+           (name, notes, condition, obligation, brand, product, situation, situation_id,
             pause_situation_id, stack,
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
-            kind, prescriber, pharmacy, rx_number, rx, as_needed,
+            kind, prescriber, pharmacy, rx_number, rx,
             min_interval_hours, max_daily_count, redose_notice,
             rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id,
             created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?)`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?)`
       )
       .run(
         name,
         f.notes,
         f.condition,
-        f.priority,
+        f.obligation,
         f.brand,
         f.product,
         f.situation,
@@ -433,7 +444,6 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.pharmacy,
         f.rxNumber,
         f.rx,
-        f.asNeeded,
         f.minIntervalHours,
         f.maxDailyCount,
         f.redoseNotice,
@@ -454,8 +464,8 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
       ensureMedicationCourse(
         profile.id,
         suppId,
-        hasStartedOn ? startedOnRaw || null : f.asNeeded ? null : todayStr,
-        !!f.asNeeded && (!hasStartedOn || !startedOnRaw)
+        hasStartedOn ? startedOnRaw || null : f.isPrn ? null : todayStr,
+        f.isPrn && (!hasStartedOn || !startedOnRaw)
       );
     }
   });
@@ -478,12 +488,12 @@ export async function updateSupplement(
   if (
     f.kind === "medication" &&
     hasStartedOn &&
-    ((!f.asNeeded && !startedOnRaw) ||
+    ((!f.isPrn && !startedOnRaw) ||
       (!!startedOnRaw &&
         (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
   ) {
     return formError(
-      f.asNeeded
+      f.isPrn
         ? "Enter a valid start date that isn't in the future."
         : "Enter a start date that isn't in the future."
     );
@@ -505,7 +515,7 @@ export async function updateSupplement(
   ) {
     return formError("Enter an end date that isn't in the future.");
   }
-  const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
+  const doses = collapsePrnDoses(parseDoses(formData), f.isPrn);
   const pairs = parsePairs(formData);
   // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
   // concurrently-decremented counter, so we compare-and-set against this instead of
@@ -595,12 +605,12 @@ export async function updateSupplement(
       : null;
     db.prepare(
       `UPDATE intake_items
-         SET name = ?, notes = ?, condition = ?, priority = ?, brand = ?,
+         SET name = ?, notes = ?, condition = ?, obligation = ?, brand = ?,
              product = ?, situation = ?, situation_id = ?, pause_situation_id = ?,
              stack = ?,
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
-             kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?, as_needed = ?,
+             kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?,
              min_interval_hours = ?, max_daily_count = ?, redose_notice = ?,
              rxcui = ?, rxcui_ingredients = ?, provider_id = ?,
              indication_condition_id = ?
@@ -609,7 +619,7 @@ export async function updateSupplement(
       name,
       f.notes,
       f.condition,
-      f.priority,
+      f.obligation,
       f.brand,
       f.product,
       f.situation,
@@ -626,7 +636,6 @@ export async function updateSupplement(
       f.pharmacy,
       f.rxNumber,
       f.rx,
-      f.asNeeded,
       f.minIntervalHours,
       f.maxDailyCount,
       f.redoseNotice,
@@ -722,7 +731,7 @@ export async function updateSupplement(
         profile.id,
         id,
         hasStartedOn ? startedOnRaw || null : null,
-        !!f.asNeeded && hasStartedOn && !startedOnRaw
+        !!f.isPrn && hasStartedOn && !startedOnRaw
       );
       if (hasStartedOn && hasCourseId) {
         db.prepare(
@@ -1117,7 +1126,7 @@ export async function acceptSuggestion(
         time_of_day: string | null;
         food_timing: FoodTiming;
         condition: string;
-        priority: string;
+        obligation: string;
         brand: string | null;
         product: string | null;
         situation: string | null;
@@ -1145,7 +1154,7 @@ export async function acceptSuggestion(
     const info = db
       .prepare(
         `INSERT INTO intake_items
-           (name, notes, condition, priority, brand, product, situation, situation_id, stack, source, profile_id,
+           (name, notes, condition, obligation, brand, product, situation, situation_id, stack, source, profile_id,
             created_at)
          VALUES (?,?,?,?,?,?,?,?,?,'manual',?,?)`
       )
@@ -1153,7 +1162,7 @@ export async function acceptSuggestion(
         s.name,
         s.rationale,
         s.condition,
-        s.priority,
+        s.obligation,
         s.brand,
         s.product,
         s.situation,
@@ -1259,7 +1268,7 @@ export async function acceptDemotionSuggestion(
   const itemId = demotionItemIdFromKey(dedupeKey);
   if (itemId == null) return formError("Couldn't update that item.");
 
-  const outcome = demoteIntakePriority(profile.id, itemId);
+  const outcome = demoteIntakeObligation(profile.id, itemId);
   if (outcome !== "demoted") return formError(DEMOTION_OUTCOME_TEXT[outcome]);
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/nutrition");

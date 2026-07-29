@@ -43,7 +43,7 @@ describe("intake form split boundary (issue #846)", () => {
       "supplement-brands",
       "supplement-catalog",
       "PRIORITIES",
-      "PRIORITY_LABELS",
+      "OBLIGATION_LABELS",
       "availableConditions",
       'name="priority"',
       'name="stack"',

@@ -1,10 +1,10 @@
-// The auth-blind write core behind accepting a priority DEMOTION SUGGESTION
+// The auth-blind write core behind accepting an obligation DEMOTION SUGGESTION
 // (issue #1505 part 2). Takes `profileId` first and never imports lib/auth — the
 // Server Action performs authorization, validation and revalidation.
 //
-// This is the ONLY code path #1505 adds that touches `priority`, and it runs only
+// This is the ONLY code path #1505 adds that lowers an `obligation`, and it runs only
 // from a user's explicit tap: the detector suggests, the person decides (#559 —
-// priority is declared, never inferred). It is also the only reason the write is
+// obligation is declared, never inferred). It is also the only reason the write is
 // modelled as a compare-and-swap rather than a plain UPDATE: "demote this" is a
 // LIFECYCLE transition off a specific starting state, so a second tap (a double
 // submit, a stale card in another tab, a second caregiver's device) must report
@@ -13,7 +13,7 @@
 import { db, writeTx } from "./db";
 import type { DemotionOutcome } from "./supplement-demotion";
 
-// Set an intake item's priority to `low`, reporting what actually happened. The
+// Set an intake item's obligation to `may`, reporting what actually happened. The
 // read + write run inside one IMMEDIATE transaction so the check can't race a
 // concurrent edit from the web replica or the notify sidecar.
 //
@@ -24,31 +24,31 @@ import type { DemotionOutcome } from "./supplement-demotion";
 //   inactive   — the item is paused/stopped. A paused item's priority is left alone:
 //                the user may be mid-decision about the item itself, and a pause is
 //                not a lapse (the detector excludes paused items for the same reason).
-//   already-low — nothing to do; the suggestion has already been accepted.
-export function demoteIntakePriority(
+//   already-may — nothing to do; the suggestion has already been accepted.
+export function demoteIntakeObligation(
   profileId: number,
   itemId: number
 ): DemotionOutcome {
   return writeTx((): DemotionOutcome => {
     const row = db
       .prepare(
-        `SELECT priority, active FROM intake_items
+        `SELECT obligation, active FROM intake_items
           WHERE id = ? AND profile_id = ?`
       )
       .get(itemId, profileId) as
-      { priority: string; active: number } | undefined;
+      { obligation: string; active: number } | undefined;
     if (!row) return "not-found";
     if (!row.active) return "inactive";
-    if (row.priority === "low") return "already-low";
-    // Compare-and-swap on the starting priority: the UPDATE only lands while the row
+    if (row.obligation === "may") return "already-may";
+    // Compare-and-swap on the starting obligation: the UPDATE only lands while the row
     // still holds the value the check read, so two concurrent accepts produce exactly
-    // one "demoted" and one honest "already-low".
+    // one "demoted" and one honest "already-may".
     const res = db
       .prepare(
-        `UPDATE intake_items SET priority = 'low'
-          WHERE id = ? AND profile_id = ? AND priority = ? AND active = 1`
+        `UPDATE intake_items SET obligation = 'may'
+          WHERE id = ? AND profile_id = ? AND obligation = ? AND active = 1`
       )
-      .run(itemId, profileId, row.priority);
-    return res.changes === 1 ? "demoted" : "already-low";
+      .run(itemId, profileId, row.obligation);
+    return res.changes === 1 ? "demoted" : "already-may";
   });
 }

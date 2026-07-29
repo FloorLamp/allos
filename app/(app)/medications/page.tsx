@@ -26,6 +26,7 @@ import {
   medStripMember,
   type MedStripMember,
 } from "@/lib/medication-multi-view";
+import { isPrn } from "@/lib/supplement-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -113,7 +114,7 @@ export default async function MedicationsPage(props: {
 
   const medCount = actingData.current.length + actingData.past.length;
   const prnCount = actingData.current.filter(
-    (item) => item.med.as_needed === 1
+    (item) => isPrn(item.med)
   ).length;
   const subtitle = [
     `${actingData.current.length} current`,

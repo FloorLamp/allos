@@ -47,7 +47,7 @@ import {
   type ReminderWindow,
   type WindowDose,
 } from "./supplement-format";
-import { PRIORITY_ORDER } from "../supplement-schedule";
+import { OBLIGATION_ORDER } from "../supplement-schedule";
 import { dispatch } from "./index";
 import { workoutFinishCallback } from "./callback-data";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -99,7 +99,7 @@ export function renderPostWorkoutFinishMessage(
     .filter((e) => !e.taken && !e.skipped)
     .sort(
       (a, b) =>
-        PRIORITY_ORDER[a.supp.priority] - PRIORITY_ORDER[b.supp.priority] ||
+        OBLIGATION_ORDER[a.supp.obligation] - OBLIGATION_ORDER[b.supp.obligation] ||
         a.supp.name.localeCompare(b.supp.name)
     );
   if (pending.length === 0) return null;
@@ -111,7 +111,7 @@ export function renderPostWorkoutFinishMessage(
           ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
           : e.dose.amount;
       const amt = dose ? ` — ${dose}` : "";
-      const mark = e.supp.priority === "mandatory" ? "🔴 " : "• ";
+      const mark = e.supp.obligation === "must" ? "🔴 " : "• ";
       return `${mark}${e.supp.name}${amt}`;
     })
     .join("\n");

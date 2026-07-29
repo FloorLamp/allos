@@ -45,11 +45,15 @@ import {
 import { resolveIntakePrefill, type PrefillField } from "@/lib/intake-prefill";
 import {
   CONDITION_LABELS,
+  OBLIGATIONS,
+  OBLIGATION_HINTS,
+  OBLIGATION_LABELS,
   pauseLinkNeedsConfirm,
 } from "@/lib/supplement-schedule";
 import { useConfirm } from "@/components/ConfirmDialog";
 import type {
   FormResult,
+  IntakeObligation,
   Supplement,
   SupplementDose,
   SupplementPair,
@@ -169,9 +173,19 @@ export default function MedicationForm({
   // a prescription" disclosure. Defaults from the stored flag, or OTC for a new med;
   // the combobox pick and any recorded prescriber flip it on.
   const [rxFlag, setRxFlag] = useState(s?.rx === 1);
-  const [asNeeded, setAsNeeded] = useState(s?.as_needed === 1);
+  // Obligation (#1505) replaces both the old priority band and the as-needed
+  // checkbox. A medication DEFAULTS to `must` — the tier that reminds AND escalates —
+  // because that is the posture a prescription is prescribed under; a new med the
+  // user never touches is protected rather than quietly unmonitored.
+  const [obligation, setObligation] = useState<IntakeObligation>(
+    s?.obligation ?? "must"
+  );
+  // "As needed" is no longer its own flag: `may` IS the as-needed shape (amount-only
+  // dose, redose interval/max, no scheduled reminders). Derived so every downstream
+  // branch that used to read the checkbox keeps reading one value.
+  const asNeeded = obligation === "may";
   const [startedOn, setStartedOn] = useState(
-    course?.started_on ?? (s?.as_needed === 1 ? "" : (todayStr ?? ""))
+    course?.started_on ?? (s?.obligation === "may" ? "" : (todayStr ?? ""))
   );
   const [startedOnTouched, setStartedOnTouched] = useState(false);
   // End date (#1140 Part D): the current course's stopped_on. Editing an existing med only
@@ -340,7 +354,8 @@ export default function MedicationForm({
     // Brand suggestions narrow to this med's brands when known, always led by "Generic"
     // (#851 item 3).
     setBrandOptions(medicationBrandOptions(pf.brandSuggestions));
-    if (pf.asNeeded !== undefined) setAsNeeded(pf.asNeeded);
+    if (pf.asNeeded !== undefined)
+      setObligation(pf.asNeeded ? "may" : "must");
     if (pf.minIntervalHours !== undefined)
       setMinIntervalHours(String(pf.minIntervalHours));
     if (pf.maxDailyCount !== undefined)
@@ -400,12 +415,31 @@ export default function MedicationForm({
     if (
       pause &&
       pause !== (s?.pause_situation ?? "") &&
-      pauseLinkNeedsConfirm({ kind: "medication", priority: "high" })
+      pauseLinkNeedsConfirm({ kind: "medication", obligation })
     ) {
       const ok = await confirm({
         title: "Pause reminders?",
         message: `This will silence reminders for ${label} while ${pause} is active. Link the pause?`,
         confirmLabel: "Link pause",
+      });
+      if (!ok) return;
+    }
+    // MED GUARDRAIL (#1505 Part 0). Kind stopped deciding pushability, so the one
+    // thing standing between a prescription and silence is this confirm. It is
+    // deliberately CONSEQUENCE-STATING rather than "are you sure?": the user is
+    // giving up a safety net, and the dialog names exactly which parts of it.
+    // Asked only on the TRANSITION down (a med already below must isn't re-asked on
+    // every unrelated edit) — confirm-to-leave-must, never confirm-to-keep, because
+    // the contact-consent rule only requires consent for INCREASING risk of silence.
+    const wasMust = (s?.obligation ?? "must") === "must";
+    if (obligation !== "must" && wasMust) {
+      const ok = await confirm({
+        title: `Reduce reminders for ${label}?`,
+        message:
+          obligation === "may"
+            ? `${label} will get no reminders, no missed-dose escalation, and no missed-dose safety net. It stays on your list and one tap away when you want it. Continue?`
+            : `${label} will still be reminded and still counted, but a missed dose will no longer escalate — no follow-up nudge, no caregiver alert. Continue?`,
+        confirmLabel: "Reduce reminders",
       });
       if (!ok) return;
     }
@@ -432,7 +466,7 @@ export default function MedicationForm({
       setBrand("");
       setBrandOptions(MED_BRAND_OPTIONS);
       setRxFlag(false);
-      setAsNeeded(false);
+      setObligation("must");
       setStartedOn(todayStr ?? "");
       setStartedOnTouched(false);
       setMinIntervalHours("");
@@ -699,24 +733,43 @@ export default function MedicationForm({
           a prescription — a small disclosure flips an OTC med to Rx for the edge case,
           so an OTC med isn't asked for a prescriber it doesn't have. */}
       <input type="hidden" name="rx" value={rxFlag ? "1" : "0"} />
+      {/* Obligation (#1505). One field where a Priority select and an "As needed"
+          checkbox used to sit — they were two spellings of the same question, and
+          keeping both is what let a "low priority" medication look reminded while a
+          PRN one looked un-prioritized. `may` IS as-needed, so choosing it reveals the
+          redose block below exactly as the old checkbox did. The hint states the
+          CURRENT choice's consequences from the shared copy; the med-specific
+          consequence confirm lives at submit (see handle()). */}
       <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
-        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-          <input
-            type="checkbox"
-            name="as_needed"
-            value="1"
-            checked={asNeeded}
-            onChange={(e) => {
-              setAsNeeded(e.target.checked);
-              markTouched("asNeeded");
-            }}
-            className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
-          />
-          As needed
+        <label
+          className="label"
+          htmlFor={`med-obligation-${fid}`}
+        >
+          Obligation
           {suggested.has("asNeeded") && <PrefillBadge />}
         </label>
-        <p className="mt-1 pl-6 text-xs text-slate-500 dark:text-slate-400">
-          Log doses when they are taken instead of using scheduled reminders.
+        <select
+          id={`med-obligation-${fid}`}
+          name="obligation"
+          data-testid="med-obligation"
+          value={obligation}
+          onChange={(e) => {
+            setObligation(e.target.value as IntakeObligation);
+            markTouched("asNeeded");
+          }}
+          className="input"
+        >
+          {OBLIGATIONS.map((o) => (
+            <option key={o} value={o}>
+              {OBLIGATION_LABELS[o]}
+            </option>
+          ))}
+        </select>
+        <p
+          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="med-obligation-hint"
+        >
+          {OBLIGATION_HINTS[obligation]}
         </p>
       </div>
 

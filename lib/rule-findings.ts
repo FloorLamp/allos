@@ -78,6 +78,7 @@ import {
 } from "./supplement-demotion";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
+import { isPrn } from "./supplement-schedule";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import {
   fitnessRetestDue,
@@ -1174,7 +1175,7 @@ export function buildAdherencePatternFindings(
   for (const d of doses) {
     const supp = suppById.get(d.item_id);
     // Only active, scheduled (non-PRN) items produce due days to miss.
-    if (!supp || !supp.active || supp.as_needed) continue;
+    if (!supp || !supp.active || isPrn(supp)) continue;
     const status = takenByDose.get(d.id);
     // Clamp the window to the dose's lifetime (#430): a day before the dose
     // existed with its current schedule is not a "miss" it defeated the
@@ -1246,8 +1247,8 @@ export function buildDemotionSuggestionFindings(
     itemId: item.id,
     name: item.name,
     kind: item.kind,
-    priority: item.priority,
-    asNeeded: Boolean(item.as_needed),
+    obligation: item.obligation,
+    asNeeded: Boolean(isPrn(item)),
     active: Boolean(item.active),
     strip,
     existedWholeWindow,

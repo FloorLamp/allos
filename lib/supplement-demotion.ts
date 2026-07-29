@@ -30,7 +30,8 @@
 //     finding — simply stops being emitted. A stale suggestion cannot linger.
 
 import type { AdherenceDot } from "./supplement-adherence";
-import type { SupplementKind, SupplementPriority } from "./types";
+import { isPushedIntake, OBLIGATION_LABELS } from "./supplement-schedule";
+import type { SupplementKind, IntakeObligation } from "./types";
 
 // ---- Window + thresholds --------------------------------------------------
 
@@ -97,10 +98,9 @@ export function demotionItemIdFromKey(key: string): number | null {
 export interface DemotionInput {
   itemId: number;
   name: string;
+  // Clinical identity — read ONLY to refuse medications outright (see below).
   kind: SupplementKind;
-  priority: SupplementPriority;
-  // PRN: never scheduled-due, so never a candidate.
-  asNeeded: boolean;
+  obligation: IntakeObligation;
   // Paused/stopped items are excluded.
   active: boolean;
   strip: AdherenceDot[];
@@ -145,12 +145,19 @@ function isTaken(dot: AdherenceDot): boolean {
 export function detectDemotionCandidate(
   input: DemotionInput
 ): DemotionCandidate | null {
-  // Kind decides, not priority (the Part 1 rule, restated): a medication is never
-  // a demotion subject regardless of how poorly it is taken.
+  // MEDICATIONS ARE NEVER SUGGESTED (#1505 Part 0 guardrail). Kind is clinical
+  // identity, and a medication's obligation moves only through the explicit
+  // consequence-stating confirm — never through a suggestion the user could accept
+  // without reading it. This is the ONE place kind still gates behavior in this
+  // engine, and it gates it OFF.
   if (input.kind !== "supplement") return null;
-  // Only the pushed priorities have anything to lose; `low` is already the target.
-  if (input.priority !== "high" && input.priority !== "mandatory") return null;
-  if (input.asNeeded || !input.active) return null;
+  // Only a pushed obligation has anything to lose. `may` is the single ENDPOINT of
+  // this engine, so a may item is never a candidate — which is also what makes accept
+  // idempotent and what makes a recovered item's suggestion disappear.
+  if (!isPushedIntake(input)) return null;
+  // A `may` item is PRN-shaped by construction, so the old separate PRN guard is
+  // subsumed by the line above: nothing schedule-less can reach here.
+  if (!input.active) return null;
   if (!input.existedWholeWindow) return null;
 
   const occurrences = input.strip.filter(isOccurrence);
@@ -167,13 +174,13 @@ export function detectDemotionCandidate(
     name: input.name,
     key: demotionSignalKey(input.itemId, anchor),
     legacyKey: demotionLegacyKey(input.itemId),
-    title: `${input.name}: mark it low priority?`,
+    title: `${input.name}: move it to May?`,
     detail:
       `You've taken ${input.name} on ${takenDays} of its last ` +
-      `${occurrences.length} scheduled days (${pct}%) — it's still tagged ` +
-      `${input.priority}. Marking it low keeps the schedule and the tracking, ` +
-      `and stops it competing for your attention on Upcoming and in reminders. ` +
-      `Nothing changes unless you choose it.`,
+      `${occurrences.length} scheduled days (${pct}%) — it's still a ` +
+      `${OBLIGATION_LABELS[input.obligation].toLowerCase()}. Moving it to May keeps ` +
+      `it on your list and one tap away in its usual slot; it stops reminding you ` +
+      `and stops counting misses. Nothing changes unless you choose it.`,
     occurrences: occurrences.length,
     takenDays,
     takenRate,
@@ -198,13 +205,13 @@ export function detectDemotionCandidates(
 // renders the outcome instead of confirming success unconditionally (the AGENTS.md
 // inline-action rule). "demoted" is the only success.
 export type DemotionOutcome =
-  "demoted" | "already-low" | "inactive" | "not-found";
+  "demoted" | "already-may" | "inactive" | "not-found";
 
 // One-line copy per outcome, shared by every surface that runs the accept action so
 // two callers can't describe the same result differently.
 export const DEMOTION_OUTCOME_TEXT: Record<DemotionOutcome, string> = {
-  demoted: "Marked low priority — still tracked, no longer pushed.",
-  "already-low": "Already low priority — nothing to change.",
-  inactive: "That item is paused, so its priority was left alone.",
+  demoted: "Moved to May — still on your list, no longer reminded.",
+  "already-may": "Already May — nothing to change.",
+  inactive: "That item is paused, so its obligation was left alone.",
   "not-found": "That item is no longer available.",
 };

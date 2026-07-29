@@ -202,7 +202,7 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
       // the SAME ordering /medicine's due-today section uses (#297).
       sortHint: doseSortKey({
         timeOfDay: dose.time_of_day,
-        priority: supp.priority,
+        obligation: supp.obligation,
         stack: supp.stack,
         name: supp.name,
       }),

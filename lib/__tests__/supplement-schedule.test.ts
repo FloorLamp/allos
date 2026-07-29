@@ -7,7 +7,7 @@ import {
   isDueOn,
   isPostWorkoutReady,
   parseDosage,
-  priorityClass,
+  obligationClass,
   spreadDoseTimes,
   timeBucket,
   TIME_BUCKET_LABELS,
@@ -238,11 +238,11 @@ describe("isPostWorkoutReady", () => {
   });
 });
 
-describe("priorityClass", () => {
+describe("obligationClass", () => {
   it("returns a distinct accent per priority", () => {
-    expect(priorityClass("mandatory")).toContain("rose");
-    expect(priorityClass("high")).toContain("brand");
-    expect(priorityClass("low")).toContain("slate");
+    expect(obligationClass("mandatory")).toContain("rose");
+    expect(obligationClass("high")).toContain("brand");
+    expect(obligationClass("low")).toContain("slate");
   });
 });
 

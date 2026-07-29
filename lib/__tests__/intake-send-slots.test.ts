@@ -26,13 +26,13 @@ import type {
   SupplementCondition,
   SupplementDose,
   SupplementKind,
-  SupplementPriority,
+  IntakeObligation,
 } from "../types";
 
 function supp(
   id: number,
   name: string,
-  priority: SupplementPriority = "high",
+  priority: IntakeObligation = "high",
   kind: SupplementKind = "supplement",
   condition: SupplementCondition = "daily"
 ): Supplement {

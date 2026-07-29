@@ -4,8 +4,8 @@
 // way (the AGENTS.md one-question-one-computation rule, ordering edition).
 //
 // The order is: time bucket (Morning → Midday → Evening → Before sleep →
-// Anytime) → priority (mandatory → high → low) → stack (clusters stack members;
-// unstacked last) → name. It reuses timeBucket + PRIORITY_ORDER from the
+// Anytime) → obligation (must → should → may) → stack (clusters stack members;
+// unstacked last) → name. It reuses timeBucket + OBLIGATION_ORDER from the
 // schedule engine rather than re-deriving either.
 //
 // Two entry points share a single source of truth: doseSortKey() renders a
@@ -13,18 +13,18 @@
 // key doubles as UpcomingItem.sortHint, so the Upcoming banding/attention layers
 // reproduce this exact order with a plain string compare (see compareSortHint).
 
-import type { SupplementPriority } from "./types";
+import type { IntakeObligation } from "./types";
 import {
   timeBucket,
   TIME_BUCKETS,
-  PRIORITY_ORDER,
+  OBLIGATION_ORDER,
 } from "./supplement-schedule";
 
 // The minimal shape the ordering needs — satisfied by /medicine's { supplement,
 // dose } Item and by the Upcoming dose adapter alike.
 export interface DoseDayEntry {
   timeOfDay: string | null;
-  priority: SupplementPriority;
+  obligation: IntakeObligation;
   stack: string | null;
   name: string;
 }
@@ -39,15 +39,15 @@ function bucketRank(timeOfDay: string | null): number {
 // order) and the numeric prefixes never bleed into the text fields.
 const SEP = "\u001f";
 
-// A lexically-sortable key encoding bucket → priority → stack → name. Bucket and
-// priority ranks are single digits (0–4, 0–2), so a fixed-width numeric prefix
+// A lexically-sortable key encoding bucket → obligation → stack → name. Bucket and
+// obligation ranks are single digits (0–4, 0–2), so a fixed-width numeric prefix
 // keeps field boundaries aligned; an unstacked item sorts after stacked ones
 // (matching /medicine's `stack ?? "~"`). Used directly as UpcomingItem.sortHint.
 export function doseSortKey(entry: DoseDayEntry): string {
   const bucket = bucketRank(entry.timeOfDay);
-  const priority = PRIORITY_ORDER[entry.priority];
+  const obligation = OBLIGATION_ORDER[entry.obligation];
   const stack = entry.stack ?? "~";
-  return `${bucket}${priority}${SEP}${stack}${SEP}${entry.name}`;
+  return `${bucket}${obligation}${SEP}${stack}${SEP}${entry.name}`;
 }
 
 // Plain code-unit string compare (NOT localeCompare, which treats the 0x1F

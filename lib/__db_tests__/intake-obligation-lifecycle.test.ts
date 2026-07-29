@@ -30,7 +30,7 @@ import { getActiveSituations } from "@/lib/settings";
 import { supplementAdherenceToday } from "@/lib/household";
 import { isDueOn } from "@/lib/supplement-schedule";
 import { buildDemotionSuggestionFindings } from "@/lib/rule-findings";
-import { demoteIntakePriority } from "@/lib/intake-priority-write";
+import { demoteIntakeObligation } from "@/lib/intake-obligation-write";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import {
   DEMOTION_PREFIX,
@@ -274,7 +274,7 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
       `dose:${doseId}`
     );
 
-    expect(demoteIntakePriority(p, itemId)).toBe("demoted");
+    expect(demoteIntakeObligation(p, itemId)).toBe("demoted");
     expect(getSupplements(p).find((s) => s.id === itemId)!.priority).toBe(
       "low"
     );
@@ -286,17 +286,17 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
     expect(buildDemotionSuggestionFindings(p, day)).toEqual([]);
 
     // A second tap (a stale card, a double submit) refuses rather than lying.
-    expect(demoteIntakePriority(p, itemId)).toBe("already-low");
-    expect(demoteIntakePriority(p, itemId + 99999)).toBe("not-found");
+    expect(demoteIntakeObligation(p, itemId)).toBe("already-may");
+    expect(demoteIntakeObligation(p, itemId + 99999)).toBe("not-found");
   });
 
   it("refuses a paused item, and never crosses profiles", () => {
     const p = createProfile("Demotion Paused (test)");
     const other = createProfile("Demotion Other (test)");
     const { itemId } = seedItem(p, "Ashwagandha (test)", { active: 0 });
-    expect(demoteIntakePriority(p, itemId)).toBe("inactive");
+    expect(demoteIntakeObligation(p, itemId)).toBe("inactive");
     // Another profile can't reach it even with the right id.
-    expect(demoteIntakePriority(other, itemId)).toBe("not-found");
+    expect(demoteIntakeObligation(other, itemId)).toBe("not-found");
   });
 });
 

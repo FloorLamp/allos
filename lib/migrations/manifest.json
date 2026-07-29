@@ -120,5 +120,6 @@
   "119-practice-sync-provenance.ts": "6f8c12867bfa92c0ef2e2a7788488df3ff8e2e95538afd239a57da1c17d624ba",
   "120-lab-result-lifecycle.ts": "5acc4d6add1d8d14f3fbb2acbab476406f7a89b5036787733d5a53d2e223d91a",
   "121-goal-equipment-context.ts": "c45955dddad2ff2bf5fc11101b8d05344039759e935fb9f1613e955b64b7249b",
-  "122-records-safety-passport.ts": "9e0ba72173e8535d8b9e6c613910b027ded99387ea83b3f720cd19024e027e5a"
+  "122-records-safety-passport.ts": "9e0ba72173e8535d8b9e6c613910b027ded99387ea83b3f720cd19024e027e5a",
+  "123-intake-obligation.ts": "a419da174dee128ef17da674d21acdb8c6ac5977b2f37a2074fe2f6f5231ae13"
 }

@@ -7,8 +7,8 @@ import type { PgxVariantInput } from "@/lib/pgx";
 import {
   CONDITION_LABELS,
   FOOD_TIMING_HINTS,
-  PRIORITY_LABELS,
-  priorityClass,
+  OBLIGATION_LABELS,
+  obligationClass,
 } from "@/lib/supplement-schedule";
 import { medicationMetaLine } from "@/lib/medication-history";
 import type { AdherenceDot } from "@/lib/supplement-adherence";
@@ -35,6 +35,7 @@ import {
   toggleActive,
   deleteSupplement,
 } from "./supplement-actions";
+import { isPrn } from "@/lib/supplement-schedule";
 
 // One scheduled dose of a supplement, as it appears in a time bucket. A
 // supplement with multiple doses renders one of these per dose. Editing opens
@@ -114,12 +115,12 @@ export default function EditableSupplementRow({
             >
               {s.name}
             </span>
-            {s.priority !== "low" && (
+            {s.obligation !== "should" && (
               <span
-                data-testid={`supplement-priority-${s.priority}`}
-                className={`badge ${priorityClass(s.priority)}`}
+                data-testid={`intake-obligation-${s.obligation}`}
+                className={`badge ${obligationClass(s.obligation)}`}
               >
-                {PRIORITY_LABELS[s.priority]}
+                {OBLIGATION_LABELS[s.obligation]}
               </span>
             )}
             {multi && (
@@ -173,7 +174,7 @@ export default function EditableSupplementRow({
                 Rx
               </span>
             )}
-            {isMed && s.as_needed === 1 && (
+            {isMed && isPrn(s) && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 PRN
               </span>

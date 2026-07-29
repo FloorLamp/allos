@@ -35,6 +35,7 @@ import {
   type RoughNightVerdict,
   type PeriodVerdict,
 } from "../derived-situations";
+import type { IntakeObligation } from "../types";
 
 // Whether a declared-situation NAME set contains a given built-in (name-keyed, #560).
 function declared(active: readonly string[], name: string): boolean {
@@ -101,7 +102,7 @@ export function resolveDerivedSituations(
 function keyedItemCount(
   supps: readonly {
     active?: number | boolean;
-    as_needed?: number;
+    obligation?: IntakeObligation;
     condition?: string;
     situation?: string | null;
   }[],
@@ -110,7 +111,7 @@ function keyedItemCount(
   return supps.filter(
     (s) =>
       (s.active ?? true) &&
-      !s.as_needed &&
+      !s.obligation &&
       s.condition === "situational" &&
       s.situation != null &&
       sameSituation(s.situation, situation)

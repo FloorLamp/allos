@@ -45,6 +45,7 @@ import {
 import type { MedicationCourse } from "./types";
 import { medicationDoseDetail } from "./medication-list";
 import type { MedicalRecord } from "./types";
+import { isPrn } from "./supplement-schedule";
 
 // Server-side gathering for the profile passport: it runs the
 // individual profile-scoped latest-value queries and hands the raw results to the
@@ -150,7 +151,7 @@ export function getProfileSummary(
       // Emergency Card / passport and the printable list can't drift on dose text.
       const detail = medicationDoseDetail(
         medDoseAmounts.get(s.id) ?? [],
-        s.as_needed === 1,
+        isPrn(s),
         s.product
       );
       return {
