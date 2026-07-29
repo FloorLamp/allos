@@ -16,14 +16,18 @@ import { test, expect } from "./fixtures";
 // resting HR do not.
 test.describe("Compare axis policy", () => {
   test("same-unit series share one axis (#400)", async ({ page }) => {
-    await page.goto("/trends?cmpA=metric:weight&cmpB=metric:volume");
+    await page.goto(
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:volume"
+    );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
     await expect(chart).toHaveAttribute("data-axis-mode", "shared");
   });
 
   test("different-unit series keep the dual axis (#400)", async ({ page }) => {
-    await page.goto("/trends?cmpA=metric:weight&cmpB=metric:resting_hr");
+    await page.goto(
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:resting_hr"
+    );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
     await expect(chart).toHaveAttribute("data-axis-mode", "dual");
@@ -32,7 +36,9 @@ test.describe("Compare axis policy", () => {
   test("normalize collapses to a single shared axis (#400)", async ({
     page,
   }) => {
-    await page.goto("/trends?cmpA=metric:weight&cmpB=metric:resting_hr&cmpn=1");
+    await page.goto(
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:resting_hr&cmpn=1"
+    );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
     await expect(chart).toHaveAttribute("data-axis-mode", "shared");
@@ -41,7 +47,9 @@ test.describe("Compare axis policy", () => {
   // Issue #402: the date axis is time-scaled (type=number scale=time), not an
   // index-spaced category axis, so an irregular series' gaps render proportionally.
   test("date axis is time-scaled (#402)", async ({ page }) => {
-    await page.goto("/trends?cmpA=metric:weight&cmpB=metric:volume");
+    await page.goto(
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:volume"
+    );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
     await expect(chart).toHaveAttribute("data-axis-scale", "time");
@@ -57,7 +65,9 @@ test.describe("Chart legend (#1445)", () => {
   test("a two-series compare chart renders a legend naming both series", async ({
     page,
   }) => {
-    await page.goto("/trends?cmpA=metric:weight&cmpB=metric:resting_hr");
+    await page.goto(
+      "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:resting_hr"
+    );
     const chart = page.getByTestId("compare-chart");
     await expect(chart).toBeVisible();
 

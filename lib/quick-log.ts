@@ -33,6 +33,7 @@
 
 import type { AppRoute } from "./hrefs";
 import { MEDICATIONS_HREF } from "./hrefs";
+import { DEFAULT_TRENDS_TAB, parseTab } from "./trends-tabs";
 
 // Icon keys resolved to real Tabler icons in components/QuickLogSheet.tsx (the
 // registry stays pure/serializable, like PALETTE_ACTIONS).
@@ -131,11 +132,9 @@ function under(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`);
 }
 
-// The route → primary-action rule. `tab` is the page's `?tab=` value for the app's
-// still-tabbed surfaces, passed in by the caller rather than read here so this
-// stays a pure function of its inputs. No entry consults it today — Trends was the
-// last one that did, and #1644 merged its tabs into one page — but the parameter
-// stays because the convention (and its callers) do.
+// The route → primary-action rule. `tab` is the page's `?tab=` value (the app's
+// tabbed surfaces are URL-driven), passed in by the caller rather than read here
+// so this stays a pure function of its inputs.
 //
 // Deliberately SHORT: an entry earns its place only when the page has one
 // obvious primary log. Everything else falls back to "Log activity" — the bar's
@@ -149,11 +148,16 @@ export function primaryQuickLog(
   // while food logging is what people reach the phone for.
   if (under(pathname, "/nutrition")) return quickLogItem("log-food");
   if (under(pathname, MEDICATIONS_HREF)) return quickLogItem("log-dose");
-  // Body metrics live in the Trends Body section — and since #1644 that census is
-  // on the hub unconditionally, so being on /trends AT ALL is what makes "log
-  // measurements" the obvious action (it used to require `?tab=body`). #1486
-  // folded the former Vitals tab into that census, so the one form covers both.
-  if (under(pathname, "/trends")) return quickLogItem("log-measurements");
+  // Body metrics live in the Trends body census, which #1644 moved onto the DEFAULT
+  // (Overview) tab — so the rule is still a tab rule, it just names a different
+  // tab: `?tab=body` is gone, and the census now rides the view a paramless /trends
+  // shows. Resolved through parseTab so a retired `?tab=body`/`?tab=vitals` link
+  // (which lands on that same default) gets the same answer, and so a Fitness or
+  // Nutrition tab still falls through to "log activity". (#1486 folded the former
+  // Vitals tab into this census, so the one form covers both.)
+  if (under(pathname, "/trends") && parseTab(tab ?? undefined) === DEFAULT_TRENDS_TAB) {
+    return quickLogItem("log-measurements");
+  }
   return quickLogItem(LOG_ACTIVITY_ID);
 }
 

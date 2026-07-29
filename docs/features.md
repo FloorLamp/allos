@@ -511,38 +511,41 @@ default), so gating only kicks in once you've listed some gear.
 
 ## Trends
 
-Charts and analysis live on **one scrollable page**, navigated by a sticky strip
-of jump chips rather than tabs. Top to bottom:
+Charts and analysis live in four tabs:
 
-- the **"what's trending" digest** — the movers over the selected window;
-- **Starred** — your own cross-domain grid of saved, drag-orderable tiles. It is
-  the one curation surface, and the one place where nothing renders unless you
-  put it there;
-- **Body** combines vitals, acute temperature, sleep and outdoor-time signals,
-  body composition, and the shared **Log measurements** form. A **Data check**
-  card catches probable weight-entry errors before they skew charts.
+- **Overview** is the landing surface, and answers "how am I doing" in one
+  scroll: the **"what's trending" digest**, then your **starred grid** — your own
+  cross-domain set of saved, drag-orderable tiles, the one curated area where
+  nothing appears unless you put it there — then the **body census**: vitals,
+  acute temperature, sleep and outdoor-time signals, body composition, and the
+  shared **Log measurements** form. A **Data check** card catches probable
+  weight-entry errors before they skew charts.
 - **Fitness** combines the workout-density heatmap, strength/cardio/sport
   progress, heart-rate-zone volume, the Zone 2 target, and polarization. Zones
   use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
   max HR; the manual max-HR override is under **Settings → Training**.
 - **Nutrition** charts macros, fiber, hydration, and related intake trends.
-- **Insights** closes the page, combining comparison tools with daily analysis
-  and weekly/monthly recap narratives.
+- **Insights** combines comparison tools with daily analysis and weekly/monthly
+  recap narratives.
 
-Each census section streams in on its own, so the digest and your starred grid
-paint without waiting on the domains below them. Every internal link into Trends
-targets a section anchor (`/trends#body`); the old `?tab=` parameter is gone.
+The body census **streams in below** the digest and starred grid, so the landing
+surface paints as fast as it did when Body was its own tab. Links that used to
+target that tab now target its anchor (`/trends#body`); `?tab=body` is gone, and
+lands on the Overview surface that carries the census. The three remaining tabs
+are permanent — the deliberate asymmetry is the design: the landing surface
+answers "how am I doing", the tabs answer "how is my training or nutrition
+specifically".
 
 Biomarker tables, flags, trajectories, reference ranges, food-first context,
 fitness percentiles, and pediatric interpretation live under
 **Medical → Results → Biomarkers**, not in Trends. Functional-fitness readings
 are entered through the Training **Fitness check**.
 
-The default window is the last 90 days. Every section uses the same range model,
+The default window is the last 90 days. Every tab uses the same range model,
 saved views, and event overlays, and every starred tile opens the corresponding
 full chart rather than maintaining a second interpretation.
 
-### Starred and Body
+### The Overview surface: starred grid and body census
 
 The starred grid answers two questions: **what you saved** and **what changed**.
 Tiles
@@ -550,19 +553,19 @@ lead with the latest reading and its age, distinguish current value from trend,
 and can be pinned and reordered. The mobile layout uses compact cards; the
 overflow menu owns secondary controls instead of crowding the chart.
 
-Body is organized into Vitals, acute temperature, sun/outdoor time, composition,
+The census is organized into Vitals, acute temperature, sun/outdoor time, composition,
 and wellbeing. **Today** can switch dense sensor series to a 1-day intraday
 view, while longer ranges show the appropriate aggregate. Mood and other
 self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
-The star is the **one arrangement gesture** across both sections. Starring a body
-metric — on its own page, which every Body card opens — is the same save as
-starring a grid tile, and starred cards lead the Body census in the order the
-starred grid holds them, so pinned cards are re-sequenced by dragging them (or
-using their overflow arrows) in the grid. There is no second reorder surface in
-the census.
+The star is the **one arrangement gesture** across both halves of the surface —
+which is why they are one surface. Starring a body metric — on its own page, which
+every card opens — is the same save as starring a grid tile, and starred cards
+lead the census in the order the grid holds them, so pinned cards are re-sequenced
+by dragging them (or using their overflow arrows) in the grid one scroll above.
+There is no second reorder surface in the census.
 
 Everything unstarred follows a **ranked default** built from stable subject
 facts — life stage, live goals, monitored conditions, and whether a series has
@@ -764,7 +767,7 @@ legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 as **servings, one tap each** (undo decrements), grouped by whether the guidance
 is to eat _more_, _balance_, or _less_. A **weekly rollup** — ONE pure
 computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
-the **Trends → Nutrition** section, and food-habit target progress, so the surfaces
+the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from
 your flagged labs (#577) as "food before pills," each offering a one-tap **Track
 as weekly habit**. A **Weekly habits** card makes "fatty fish 2×/week" a

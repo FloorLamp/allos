@@ -942,7 +942,7 @@ function collectEvents(
         title: "AI insight",
         subtitle: i.model,
         detail: i.summary,
-        href: "/trends#insights",
+        href: "/trends?tab=insights",
         sortTime: timeFromCreatedAt(i.created_at, tz),
       },
       options

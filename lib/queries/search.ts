@@ -712,7 +712,7 @@ const PAGES: {
   },
   {
     title: "AI Insights",
-    href: "/trends#insights",
+    href: "/trends?tab=insights",
     keywords: "insights analysis coaching",
     restricted: true,
   },

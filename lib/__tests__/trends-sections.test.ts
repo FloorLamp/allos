@@ -1,97 +1,47 @@
 import { describe, expect, it } from "vitest";
 import {
-  RESTRICTED_TRENDS_SECTIONS,
-  TRENDS_SECTIONS,
-  isSectionRestricted,
+  TRENDS_LANDING_SECTIONS,
   trendsSectionHref,
-  trendsSectionStrip,
 } from "@/lib/trends-sections";
+import { TRENDS_TABS, parseTab } from "@/lib/trends-tabs";
 
-// The section vocabulary that replaced the Trends tab strip (#1644). Successor to
-// lib/__tests__/trends-tabs.test.ts: there is no `?tab=` parser to test any more
-// (the param died with the strip, no shim — #1635), so what is pinned here is the
-// strip's composition, its ONE age gate, and the anchor every retired `?tab=` link
-// was rewritten to.
+// The Trends landing surface's two anchored parts (#1644): the starred grid and
+// the body census that merged onto it. Small on purpose — this registry answers
+// "where does a deep link land", while lib/trends-tabs.ts answers "which tabs
+// exist"; the tests below pin that the two vocabularies stay separate.
 
-describe("trendsSectionStrip", () => {
-  it("is five sections in reading order — the head, then the three censuses, then insights", () => {
-    const strip = trendsSectionStrip(false);
-    expect(strip).toHaveLength(5);
-    expect(strip.map((s) => s.id)).toEqual([
-      "starred",
-      "body",
-      "fitness",
-      "nutrition",
-      "insights",
-    ]);
-    // "Overview" was the TAB whose two halves are now the page head (digest +
-    // starred grid); no chip carries that name any more.
-    expect(strip.map((s) => s.label)).not.toContain("Overview");
+describe("the landing surface's parts", () => {
+  it("is the starred grid then the body census, in reading order", () => {
+    expect([...TRENDS_LANDING_SECTIONS]).toEqual(["starred", "body"]);
   });
 
-  it("keeps Insights for a restricted profile, dropping only Fitness", () => {
-    const strip = trendsSectionStrip(true);
-    expect(strip.map((s) => s.id)).toEqual([
-      "starred",
-      "body",
-      "nutrition",
-      "insights",
-    ]);
-    // Insights survives because compare — its age-NEUTRAL half — lives there; the
-    // gated AI half is hidden inside the section, not by the strip.
-    expect(strip.map((s) => s.id)).toContain("insights");
-    // Body is NEVER age-gated: it carries the growth charts a minor needs.
-    expect(strip.map((s) => s.id)).toContain("body");
-    expect(strip.map((s) => s.id)).not.toContain("fitness");
-  });
-
-  it("labels every entry from the live section set, for both roles", () => {
-    for (const restricted of [false, true]) {
-      for (const entry of trendsSectionStrip(restricted)) {
-        expect(TRENDS_SECTIONS).toContain(entry.id);
-        expect(entry.label).toBeTruthy();
-      }
-    }
-  });
-});
-
-describe("isSectionRestricted", () => {
-  it("only restricts fitness — insights stays section-gated", () => {
-    expect(isSectionRestricted("fitness", true)).toBe(true);
-    expect(isSectionRestricted("insights", true)).toBe(false);
-    expect(isSectionRestricted("body", true)).toBe(false);
-    expect(isSectionRestricted("starred", true)).toBe(false);
-    expect(isSectionRestricted("fitness", false)).toBe(false);
-  });
-
-  it("agrees with the strip for every section", () => {
-    for (const restricted of [false, true]) {
-      const visible = new Set(trendsSectionStrip(restricted).map((s) => s.id));
-      for (const id of TRENDS_SECTIONS) {
-        expect(visible.has(id)).toBe(!isSectionRestricted(id, restricted));
-      }
-    }
-  });
-
-  it("declares its restricted set from the live section ids", () => {
-    for (const id of RESTRICTED_TRENDS_SECTIONS) {
-      expect(TRENDS_SECTIONS).toContain(id);
+  it("names no tab — the strip is a different vocabulary", () => {
+    for (const id of TRENDS_LANDING_SECTIONS) {
+      expect(TRENDS_TABS).not.toContain(id);
     }
   });
 });
 
 describe("trendsSectionHref", () => {
-  it("is a pure anchor into the one hub page — no ?tab= survives (#1635)", () => {
-    for (const id of TRENDS_SECTIONS) {
+  it("is a pure anchor on the default view — no ?tab= survives (#1635)", () => {
+    for (const id of TRENDS_LANDING_SECTIONS) {
       const href = trendsSectionHref(id);
       expect(href).toBe(`/trends#${id}`);
       expect(href).not.toContain("tab=");
     }
   });
 
-  it("names the anchor the page renders for each section", () => {
+  it("names the anchors the landing surface renders", () => {
     expect(trendsSectionHref("body")).toBe("/trends#body");
     expect(trendsSectionHref("starred")).toBe("/trends#starred");
-    expect(trendsSectionHref("insights")).toBe("/trends#insights");
+  });
+
+  // The half of the retirement a link sweep can't see: a body deep link now says
+  // "the default view, at this anchor", and the retired `?tab=body` that used to
+  // carry it resolves to that same default view without a shim.
+  it("lands on the same view a retired ?tab=body resolves to", () => {
+    expect(trendsSectionHref("body").startsWith("/trends#")).toBe(true);
+    expect(parseTab("body")).toBe("overview");
+    expect(parseTab("vitals")).toBe("overview");
   });
 });

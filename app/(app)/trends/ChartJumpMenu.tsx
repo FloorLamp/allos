@@ -4,22 +4,11 @@ import { useEffect, useId, useRef, useState } from "react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import type { ChartChip } from "./ChartJumpChips";
 
-// Compact chart navigator for a census's own chart run — Trends → Body's
-// full-chart layout and the Fitness census's four subsections. The former sticky
-// chip row looked like a third tab level and spent horizontal/vertical space on
-// every chart name. This keeps the same present-only anchor vocabulary behind one
-// inline dropdown beside the layout toggle.
-//
-// `testId` names WHICH menu (#1644): the merged page renders both censuses at
-// once, so the two dropdowns have to be distinguishable — by their own names, not
-// by a caller remembering to scope every query.
-export default function ChartJumpMenu({
-  items,
-  testId = "chart-jump-menu",
-}: {
-  items: ChartChip[];
-  testId?: string;
-}) {
+// Compact chart navigator for Trends → Body's full-chart layout. The former
+// sticky chip row looked like a third tab level and spent horizontal/vertical
+// space on every chart name. This keeps the same present-only anchor vocabulary
+// behind one inline dropdown beside the layout toggle.
+export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
   const [active, setActive] = useState(items[0]?.id ?? "");
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -81,14 +70,14 @@ export default function ChartJumpMenu({
   return (
     <nav
       aria-label="Jump to chart"
-      data-testid={testId}
+      data-testid="chart-jump-menu"
       className="relative z-50 flex items-center"
     >
       <div className="relative inline-flex items-center">
         <button
           ref={triggerRef}
           type="button"
-          data-testid={`${testId}-trigger`}
+          data-testid="chart-jump-menu-trigger"
           aria-label={`Jump to chart: ${activeLabel}`}
           aria-haspopup="menu"
           aria-expanded={open}
@@ -124,7 +113,7 @@ export default function ChartJumpMenu({
             <div
               id={menuId}
               role="menu"
-              data-testid={`${testId}-options`}
+              data-testid="chart-jump-menu-options"
               onKeyDown={(event) => {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault();

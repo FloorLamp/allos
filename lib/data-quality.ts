@@ -191,10 +191,11 @@ function pediatricHeightGap(i: DataQualityInputs): DataQualityGap | null {
     label: "Add a height",
     whyLine:
       "Unlocks pediatric blood-pressure percentiles (they're height-indexed).",
-    // The child-profile growth quick-add in the Trends Body section, focused on the
+    // The child-profile growth quick-add in the Trends body census, focused on the
     // height field (#1146). `focus=` opens the combined measurements form on
     // whichever surface the viewport calls for; the `#body` anchor is where the
-    // reader lands behind it (#1644 retired the `?tab=` that used to carry them).
+    // reader lands behind it. #1644 retired the `?tab=body` that used to carry
+    // both — the census is the default view's third part now.
     ctaHref: "/trends?focus=height#body",
     leverage: 1,
   };

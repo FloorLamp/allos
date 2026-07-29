@@ -11,7 +11,7 @@ import { followLink } from "./helpers";
 test("Trends → Fitness renders the workout heatmap with active days (#186)", async ({
   page,
 }) => {
-  await page.goto("/trends");
+  await page.goto("/trends?tab=fitness");
   const main = page.getByRole("main");
 
   const section = main.getByTestId("workout-heatmap-section");
@@ -29,7 +29,7 @@ test("Trends → Fitness renders the workout heatmap with active days (#186)", a
 test("a heatmap day deep-links to its Timeline view (#186)", async ({
   page,
 }) => {
-  await page.goto("/trends");
+  await page.goto("/trends?tab=fitness");
   const main = page.getByRole("main");
   const section = main.getByTestId("workout-heatmap-section");
   await expect(section).toBeVisible();

@@ -1,19 +1,13 @@
 import { ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE } from "./timeline-format";
 
 // Saved views for the Trends hub. A named snapshot of the hub's URL state — the date
-// range and compare pair — so a user can flip between e.g. "Lipids review" and "Cut
-// progress" without rebuilding the view each time.
+// range, active tab, and compare pair — so a user can flip between e.g. "Lipids
+// review" and "Cut progress" without rebuilding the view each time.
 //
 // Stored per-profile as a JSON array in profile_settings (key "trend_views") — NO
 // owned table. Everything here is pure list math (validate / normalize / add / rename
 // / delete) plus the mapping to the URL params the hub already reads
-// (?from/to/cmpA/cmpB/cmpn/view); unit-tested. The settings layer only (de)serializes it.
-//
-// #1644 retired `tab`. The tab strip merged into ONE scrollable page, so there is no
-// tab for a view to select and no `?tab=` param to emit (#1635: retired params die
-// without a shim). A legacy stored view keeps whatever it captured — normalizeViewParams
-// drops the unrecognized key exactly as it already dropped #1456's `pins` — and applying
-// it restores the window and comparison onto the page that now holds every former tab.
+// (?from/to/tab/cmpA/cmpB/cmpn); unit-tested. The settings layer only (de)serializes it.
 //
 // #1456: a view used to also snapshot the profile's `trend_pins`. Those keys are now
 // SAVES in `saved_items` — membership that drives the Results status card and the
@@ -27,8 +21,9 @@ import { ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE } from "./timeline-format";
 // or as little as the user had set (an unset field just isn't restored).
 //
 // #1493 C: `view` joined the bag. "Save current" that drops part of the current
-// state is a bug by its own name — the Body census's tiles/all layout (#1067 Phase 2)
-// is URL state the user chose, so a view saved on tiles must reopen on tiles. It is ADDITIVE: a stored view from before this field simply has no
+// state is a bug by its own name — the Body tab's tiles/all layout (#1067 Phase 2)
+// is URL state the user chose, so a view saved on Body/tiles must reopen on
+// Body/tiles. It is ADDITIVE: a stored view from before this field simply has no
 // `view` (normalizeViewParams leaves it unset), and an unset field is not restored,
 // so every pre-#1493 view keeps resolving exactly as it did. The 1D selection
 // (#1466) needs no field of its own — it IS a from/to window (from = to = the
@@ -36,13 +31,14 @@ import { ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE } from "./timeline-format";
 export interface TrendViewParams {
   from?: string;
   to?: string;
+  tab?: string;
   cmpA?: string;
   cmpB?: string;
   cmpn?: boolean;
   view?: TrendBodyView;
 }
 
-// The Body census's layout modes, as the URL spells them. Kept as a closed set here
+// The Body tab's layout modes, as the URL spells them. Kept as a closed set here
 // (rather than a free string) so a corrupt or stale stored value is DROPPED at
 // parse time instead of being re-emitted into a `?view=` the page would ignore.
 export type TrendBodyView = "tiles" | "all";
@@ -74,8 +70,7 @@ const cleanStr = (v: unknown, max = MAX_PARAM_LEN): string | undefined => {
 };
 
 // Coerce an arbitrary object into a well-formed params bag, dropping anything
-// unrecognized or malformed (a legacy `pins` array or `tab` name included — see the
-// header).
+// unrecognized or malformed (a legacy `pins` array included — see the header).
 export function normalizeViewParams(raw: unknown): TrendViewParams {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<
     string,
@@ -84,10 +79,12 @@ export function normalizeViewParams(raw: unknown): TrendViewParams {
   const out: TrendViewParams = {};
   const from = cleanStr(r.from);
   const to = cleanStr(r.to);
+  const tab = cleanStr(r.tab);
   const cmpA = cleanStr(r.cmpA, 120);
   const cmpB = cleanStr(r.cmpB, 120);
   if (from) out.from = from;
   if (to) out.to = to;
+  if (tab) out.tab = tab;
   if (cmpA) out.cmpA = cmpA;
   if (cmpB) out.cmpB = cmpB;
   if (r.cmpn === true || r.cmpn === "1") out.cmpn = true;
@@ -207,12 +204,13 @@ export function serializeViews(list: readonly TrendView[]): string {
 }
 
 // Build the hub's query string for a view's params, reusing the EXISTING param
-// vocabulary (?from/to/cmpA/cmpB/cmpn/view) so applying a view round-trips through
-// the same URL the DateRangeControl / CompareControls already write. A stored `tab`
-// is not emitted — it names nothing since #1644. Pins are restored separately (a
-// per-profile write), not carried in the URL. Returns "" when no params are set.
+// vocabulary (?from/to/tab/cmpA/cmpB/cmpn) so applying a view round-trips through
+// the same URL the DateRangeControl / CompareControls already write. "overview" is
+// the default tab, so it's dropped. Pins are restored separately (a per-profile
+// write), not carried in the URL. Returns "" when no params are set.
 export function viewToQuery(params: TrendViewParams): string {
   const sp = new URLSearchParams();
+  if (params.tab && params.tab !== "overview") sp.set("tab", params.tab);
   if (params.from) sp.set("from", params.from);
   if (params.to) sp.set("to", params.to);
   // A view with no bounds is an ALL-TIME view — that is what "no from/to" meant
@@ -227,8 +225,9 @@ export function viewToQuery(params: TrendViewParams): string {
   if (params.cmpA) sp.set("cmpA", params.cmpA);
   if (params.cmpB) sp.set("cmpB", params.cmpB);
   if (params.cmpn) sp.set("cmpn", "1");
-  // #1493 C. Emitted verbatim (an old view that never captured one simply omits
-  // it, landing on the responsive default exactly as it did before).
+  // #1493 C. Emitted verbatim; the hub ignores it off the Body tab (and an old
+  // view that never captured one simply omits it, landing on the responsive
+  // default exactly as it did before).
   if (params.view) sp.set("view", params.view);
   return sp.toString();
 }

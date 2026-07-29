@@ -26,9 +26,10 @@ import {
 
 // The vitals ENTRY surface (#1076/#1179): vitals left the biomarker surface, so a
 // self-recordable vital screening (blood pressure) deep-links to the measurements
-// quick-add in the Trends Body section, focused on the analyte. A stable ROUTE +
-// prefill (NOT a Trends-section component internal). #1644 retired the `?tab=`; the
-// `focus=` param still opens the form and the anchor lands the reader behind it.
+// quick-add in the Trends body census, focused on the analyte. A stable ROUTE +
+// prefill (NOT a Trends-section component internal). #1644 retired the `?tab=body`
+// that used to carry it — the census rides the default view now, so the `focus=`
+// param opens the form and the anchor lands the reader behind it.
 const VITALS_ENTRY_HREF: AppRoute = "/trends?focus=blood-pressure#body";
 
 // The concrete deep link for a screening, from its explicit `satisfiedBy` concept

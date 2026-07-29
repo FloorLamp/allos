@@ -113,7 +113,7 @@ import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
 
-// The Trends hub's **Body** section — the ONE physiology surface (issue #1486).
+// The Trends hub's **Body** census — the ONE physiology surface (issue #1486).
 //
 // Trends carried a Vitals tab and a Body tab that answered the same question about
 // the same person from the same rows: "what is my body doing". A blood pressure was
@@ -139,10 +139,11 @@ import BodyHygieneFindings from "./BodyHygieneFindings";
 // `tiles` they are sparkline tiles like every other metric, in `all` they are full
 // charts. One view-mode semantic, not two.
 //
-// #1644 retired the tab strip: this is the **Body section** of the one scrollable
-// Trends page, reachable at `/trends#body` and streamed into its own Suspense
-// boundary so the page head never waits on the ~30 reads below. Nothing about the
-// census itself changed — same membership gates, same ★-first-then-ranked order.
+// #1644 retired the Body TAB: this census is the third part of the Trends landing
+// surface (digest → starred grid → here), reachable at `/trends#body` and streamed
+// into its own Suspense boundary so the head never waits on the ~30 reads below.
+// Nothing about the census itself changed — same skeleton, same membership gates,
+// same ★-first-then-ranked order. Fitness, Nutrition and Insights stay tabs.
 
 type Point = { date: string; value: number };
 
@@ -200,8 +201,8 @@ export default async function BodySection({
   const todayStr = today(profile.id);
   const tz = getTimezone(profile.id);
   const wu = units.weightUnit;
-  // The 1D pill's window (from == to == today). Only this tab offers that pill,
-  // because only this tab has intraday content to swap in.
+  // The 1D pill's window (from == to == today). Only the landing surface offers
+  // that pill, because only this census has intraday content to swap in.
   const intraday = isIntradayRange(range, todayStr);
 
   // ── Reads ───────────────────────────────────────────────────────────────────
@@ -1501,10 +1502,11 @@ export default async function BodySection({
 
             {/* How the arrangement works, said once (#1643) — under the census
                 rather than above it, so it explains what the reader just scanned
-                without pushing the tab's content down. The ★ is the ONLY thing that
-                reorders this tab, and the sequence of what you pin is the Overview
-                grid's saved order, so the hint names BOTH halves and where each
-                gesture lives instead of adding a second reorder affordance here. */}
+                without pushing the census down. The ★ is the ONLY thing that
+                reorders this census, and the sequence of what you pin is the
+                starred grid's saved order — one scroll up the same page since
+                #1644 — so the hint names BOTH halves and where each gesture lives
+                instead of adding a second reorder affordance here. */}
             <p
               className="mt-3 text-xs text-slate-500 dark:text-slate-400"
               data-testid="body-pin-hint"

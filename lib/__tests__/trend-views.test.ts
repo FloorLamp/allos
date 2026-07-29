@@ -13,6 +13,7 @@ import {
   MAX_VIEWS,
   type TrendView,
 } from "../trend-views";
+import { parseTab } from "../trends-tabs";
 
 const view = (name: string, params = {}): TrendView => ({ name, params });
 
@@ -22,6 +23,7 @@ describe("normalizeViewParams", () => {
       normalizeViewParams({
         from: " 2026-01-01 ",
         to: "2026-02-01",
+        tab: "compare",
         cmpA: "metric:weight",
         cmpB: "bio:LDL",
         cmpn: "1",
@@ -30,6 +32,7 @@ describe("normalizeViewParams", () => {
     ).toEqual({
       from: "2026-01-01",
       to: "2026-02-01",
+      tab: "compare",
       cmpA: "metric:weight",
       cmpB: "bio:LDL",
       cmpn: true,
@@ -58,7 +61,7 @@ describe("normalizeViews", () => {
     const list = [
       view("Cut"),
       { name: "" }, // invalid
-      view("cut", { view: "tiles" }), // dup of "Cut"
+      view("cut", { tab: "body" }), // dup of "Cut"
       view("Lipids"),
     ];
     const out = normalizeViews(list);
@@ -80,18 +83,18 @@ describe("normalizeViews", () => {
 
 describe("addView", () => {
   it("appends a new view", () => {
-    const out = addView([view("A")], view("B", { view: "tiles" }));
+    const out = addView([view("A")], view("B", { tab: "body" }));
     expect(out.map((v) => v.name)).toEqual(["A", "B"]);
   });
 
   it("overwrites a same-name view in place (case-insensitive)", () => {
     const out = addView(
       [view("Cut", { tab: "overview" }), view("Lipids")],
-      view("cut", { view: "tiles" })
+      view("cut", { tab: "body" })
     );
     // Overwrite replaces the entry in place, adopting the new spelling + params.
     expect(out.map((v) => v.name)).toEqual(["cut", "Lipids"]);
-    expect(out[0]).toEqual({ name: "cut", params: { view: "tiles" } });
+    expect(out[0]).toEqual({ name: "cut", params: { tab: "body" } });
   });
 
   it("drops the OLDEST when appending overflows the cap", () => {
@@ -150,7 +153,7 @@ describe("findView", () => {
 
 describe("parseViews / serializeViews", () => {
   it("round-trips a normalized list", () => {
-    const list = [view("Cut", { view: "tiles" })];
+    const list = [view("Cut", { tab: "body" })];
     expect(parseViews(serializeViews(list))).toEqual(list);
   });
   it("returns [] for null/empty/garbage", () => {
@@ -162,9 +165,10 @@ describe("parseViews / serializeViews", () => {
 });
 
 describe("viewToQuery", () => {
-  it("builds the hub's query string", () => {
+  it("builds the hub's query string, dropping the default overview tab", () => {
     expect(
       viewToQuery({
+        tab: "overview",
         from: "2026-01-01",
         to: "2026-02-01",
         cmpA: "metric:weight",
@@ -180,7 +184,7 @@ describe("viewToQuery", () => {
   // resolves to the 90D default. So applying one emits the explicit sentinel;
   // without it, every all-time saved view would silently become a 90D view.
   it("emits the explicit all-time sentinel for a view with no window", () => {
-    expect(viewToQuery({ cmpn: true })).toBe("range=all&cmpn=1");
+    expect(viewToQuery({ tab: "compare" })).toBe("tab=compare&range=all");
     expect(viewToQuery({})).toBe("range=all");
   });
 
@@ -197,45 +201,12 @@ describe("viewToQuery", () => {
   // `pins` field is dropped by normalizeViewParams and can't reach the URL.
   it("drops a legacy pins field instead of restoring or emitting it", () => {
     const params = normalizeViewParams({
-      view: "tiles",
+      tab: "body",
       pins: ["metric:weight"],
     });
-    expect(params).toEqual({ view: "tiles" });
+    expect(params).toEqual({ tab: "body" });
     // (`range=all` rides along because this view names no window — see above.)
-    expect(viewToQuery(params)).toBe("range=all&view=tiles");
-  });
-
-  // #1644: the tab strip merged into one scrollable page, so a stored `tab` names
-  // nothing. It is dropped at parse time (like #1456's `pins`) and never emitted —
-  // #1635's no-shim policy applied to the stored blob, not just to links. Applying a
-  // legacy view still restores the window and the comparison, onto the page that now
-  // holds every former tab.
-  it("drops a legacy tab name instead of restoring or emitting it (#1644)", () => {
-    const params = normalizeViewParams({
-      tab: "compare",
-      cmpA: "metric:weight",
-      cmpB: "bio:LDL Cholesterol",
-      cmpn: true,
-    });
-    expect(params).toEqual({
-      cmpA: "metric:weight",
-      cmpB: "bio:LDL Cholesterol",
-      cmpn: true,
-    });
-    const qs = viewToQuery(params);
-    expect(qs).not.toContain("tab=");
-    expect(qs).toBe(
-      "range=all&cmpA=metric%3Aweight&cmpB=bio%3ALDL+Cholesterol&cmpn=1"
-    );
-  });
-
-  it("drops every retired tab vocabulary the same way (#1486/#1489/#1644)", () => {
-    for (const tab of ["overview", "body", "vitals", "compare", "biomarkers"]) {
-      expect(normalizeViewParams({ tab, from: "2026-01-01" })).toEqual({
-        from: "2026-01-01",
-      });
-      expect(viewToQuery(normalizeViewParams({ tab }))).toBe("range=all");
-    }
+    expect(viewToQuery(params)).toBe("tab=body&range=all");
   });
 });
 
@@ -244,22 +215,26 @@ describe("viewToQuery", () => {
 // "Save current" that drops part of the current state is a bug by its own name.
 // Two things were missing from the captured bag, and one that only LOOKED missing:
 //
-//   • the Body census's tiles/all layout (#1067 Phase 2) — genuinely absent, now `view`;
+//   • the Body tab's tiles/all layout (#1067 Phase 2) — genuinely absent, now `view`;
 //   • the "1D" selection (#1466) — NOT a missing field: 1D is a from/to window
 //     (from = to = the chosen day), so it already round-trips through the bounds;
-//   • and the captured TAB, which #1644 retired outright — see the viewToQuery specs
-//     above for how a legacy stored tab name is dropped.
+//   • and every PRE-#1486/#1489 stored view has to keep resolving through the tab
+//     aliases (vitals → body, compare → insights), which is lib/trends-tabs' job —
+//     pinned end-to-end here because the two halves only meet at the URL.
 describe("saved-view state completeness (#1493 C)", () => {
   it("captures the Body layout and re-emits it", () => {
-    const params = normalizeViewParams({ view: "tiles" });
-    expect(params).toEqual({ view: "tiles" });
-    expect(viewToQuery(params)).toBe("range=all&view=tiles");
-    expect(viewToQuery({ view: "all" })).toBe("range=all&view=all");
+    const params = normalizeViewParams({ tab: "body", view: "tiles" });
+    expect(params).toEqual({ tab: "body", view: "tiles" });
+    expect(viewToQuery(params)).toBe("tab=body&range=all&view=tiles");
+    expect(viewToQuery({ tab: "body", view: "all" })).toBe(
+      "tab=body&range=all&view=all"
+    );
   });
 
   it("round-trips a Body / tiles / 1D view through storage unchanged", () => {
     // The 1D pill is a one-day window, so this is the WHOLE of that state.
     const saved = view("Yesterday's vitals", {
+      tab: "body",
       view: "tiles",
       from: "2026-01-14",
       to: "2026-01-14",
@@ -267,31 +242,61 @@ describe("saved-view state completeness (#1493 C)", () => {
     const reopened = parseViews(serializeViews([saved]))[0];
     expect(reopened).toEqual(saved);
     expect(viewToQuery(reopened.params)).toBe(
-      "from=2026-01-14&to=2026-01-14&view=tiles"
+      "tab=body&from=2026-01-14&to=2026-01-14&view=tiles"
     );
   });
 
   it("drops an unrecognized or malformed layout value rather than emitting it", () => {
-    expect(normalizeViewParams({ from: "2026-01-01", view: "grid" })).toEqual({
-      from: "2026-01-01",
+    expect(normalizeViewParams({ tab: "body", view: "grid" })).toEqual({
+      tab: "body",
     });
-    expect(normalizeViewParams({ from: "2026-01-01", view: 7 })).toEqual({
-      from: "2026-01-01",
+    expect(normalizeViewParams({ tab: "body", view: 7 })).toEqual({
+      tab: "body",
     });
-    expect(normalizeViewParams({ from: "2026-01-01", view: "" })).toEqual({
-      from: "2026-01-01",
+    expect(normalizeViewParams({ tab: "body", view: "" })).toEqual({
+      tab: "body",
     });
   });
 
   // Defensive parse, the whole point: a view stored before `view` existed has no
   // such field and must resolve EXACTLY as it did.
-  it("leaves a pre-#1493 stored view resolving on its surviving fields", () => {
+  it("leaves a pre-#1493 stored view untouched", () => {
     const legacy =
       '[{"name":"Lipids","params":{"tab":"insights","cmpn":true}}]';
     const parsed = parseViews(legacy);
-    // The retired tab name is dropped at parse time (#1644); everything the view
-    // still names survives.
-    expect(parsed).toEqual([{ name: "Lipids", params: { cmpn: true } }]);
-    expect(viewToQuery(parsed[0].params)).toBe("range=all&cmpn=1");
+    expect(parsed).toEqual([
+      { name: "Lipids", params: { tab: "insights", cmpn: true } },
+    ]);
+    expect(viewToQuery(parsed[0].params)).toBe("tab=insights&range=all&cmpn=1");
+  });
+});
+
+describe("old-vocabulary saved views resolve through the hub's parser (#1493 C)", () => {
+  // A view stored before #1486/#1489/#1644 names a tab that no longer exists. The
+  // view emits the name it stored — storage is never rewritten — and the hub's
+  // parser decides where it lands: through an ALIAS where another tab absorbed it
+  // (compare → insights), and through the ordinary default fallback where the
+  // absorbing surface IS the default view (vitals/body → overview, #1644). Either
+  // way the window and compare params ride along untouched.
+  it("lands a stored vitals/body view on the default view and a compare view on Insights", () => {
+    const vitals = normalizeViewParams({ tab: "vitals", from: "2026-01-01" });
+    expect(viewToQuery(vitals)).toBe("tab=vitals&from=2026-01-01");
+    expect(parseTab("vitals")).toBe("overview");
+    // …and the same for a view saved on the Body tab itself, whose census is what
+    // the default view now renders.
+    const body = normalizeViewParams({ tab: "body", view: "tiles" });
+    expect(viewToQuery(body)).toBe("tab=body&range=all&view=tiles");
+    expect(parseTab("body")).toBe("overview");
+
+    const compare = normalizeViewParams({
+      tab: "compare",
+      cmpA: "metric:weight",
+      cmpB: "bio:LDL Cholesterol",
+      cmpn: true,
+    });
+    expect(viewToQuery(compare)).toBe(
+      "tab=compare&range=all&cmpA=metric%3Aweight&cmpB=bio%3ALDL+Cholesterol&cmpn=1"
+    );
+    expect(parseTab("compare")).toBe("insights");
   });
 });

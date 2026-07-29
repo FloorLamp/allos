@@ -35,11 +35,10 @@ test("the Biomarkers browser lists labs but not a re-homed instrument score (#10
 test("the Trends Body section's vitals block renders the physiologic vitals (#1076/#1486)", async ({
   page,
 }) => {
-  // Reachable by its jump chip — the Vitals tab retired into Body (#1486), and
-  // #1644 retired the strip itself, so Body is a section of the one hub page whose
-  // FIRST chart block is the vitals.
-  await page.goto("/trends");
-  await followLink(page, page.getByTestId("chart-jump-body"), /#body$/);
+  // Reachable at its anchor — the Vitals tab retired into Body (#1486) and Body
+  // itself into the Overview landing surface (#1644), so the census is a section of
+  // the default view and its FIRST chart block is the vitals.
+  await page.goto("/trends#body");
   const body = page.getByTestId("trends-body");
   await expect(body).toBeVisible();
   // The seeded blood-pressure readings render their chart card.

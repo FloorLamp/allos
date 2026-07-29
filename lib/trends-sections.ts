@@ -1,83 +1,37 @@
-// The Trends hub's SECTION vocabulary (issue #1644) — successor to the retired
-// `lib/trends-tabs.ts`.
+// The Trends LANDING SURFACE's two parts (issue #1644).
 //
-// #1644 merged the tab strip (Overview | Body | Fitness | Nutrition | Insights)
-// into ONE scrollable page: the trending digest and the cross-domain starred grid
-// head it, and each domain census follows as a titled SECTION. What used to be a
-// tab is now an `#anchor`, and what used to be the tab strip is the page's
-// jump-chip row.
+// #1644 merged the Body tab into Overview: `/trends` (the default view, still
+// labelled Overview) is now the trending digest, then the cross-domain **starred
+// grid**, then the **body census** streamed below them. This module names those
+// two anchored parts — nothing else.
 //
-// The `?tab=` param died WITH the strip, with NO compatibility shim (#1635 policy):
-// there is nothing left for it to select, and a mapping table that resolves a tab
-// name to "the whole page" is a vocabulary pretending to be a choice. Every
-// internal deep link moved to a section anchor in the same change.
+// It is deliberately NOT a tab registry, and deliberately not a general "sections"
+// vocabulary. `lib/trends-tabs.ts` owns which TABS exist (Overview · Fitness ·
+// Nutrition · Insights, permanent by owner ruling); this owns where the two halves
+// of the landing surface live so a deep link can name one of them. Two registries
+// because they answer two different questions, and keeping them apart is what
+// stops "add a section" from quietly becoming "retire another tab".
 //
-// GATE SHAPE (carried over from #1489). Fitness is wholly age-gated content, so a
-// training-restricted profile gets neither the chip nor the section. Insights is
-// MIXED — the AI half is age-gated but its compare half is age-neutral — so its
-// gate stays DOWN in the section, which hides only the gated half. Hence
-// RESTRICTED_TRENDS_SECTIONS lists fitness alone.
-//
-// WHY INSIGHTS IS A SECTION AND NOT ITS OWN SURFACE (#1644, decided here rather
-// than by default): its content is derived views over the SAME window the rest of
-// the page reads — the digest ranks the movers, the censuses draw them, Insights
-// narrates them and overlays two of them against each other. Splitting it back out
-// would re-mint the navigation weight this issue removed, and its compare section
-// is the one surface that must sit next to the census it compares. It closes the
-// page instead.
+// The curation contract stays with the GRID (#1487/#1456): the starred grid renders
+// nothing unconditionally, while the census below it renders everything for the
+// domain, exactly as the Body tab did.
 
 import type { AppRoute } from "./hrefs";
 
-// Every section of the merged page, in render (and chip) order. The ids double as
-// the in-page `#anchor` — the same id → anchor convention the Fitness sections
-// (#1492) and the Body chart stack (#1067) already use one level down.
-export const TRENDS_SECTIONS = [
-  "starred",
-  "body",
-  "fitness",
-  "nutrition",
-  "insights",
-] as const;
+// The anchored parts, in reading order. The ids ARE the DOM `id`s the page renders
+// and the `#fragment`s links use — the same id→anchor convention the Body chart
+// stack (#1067) and the Fitness sections (#1492) already use one level down.
+export const TRENDS_LANDING_SECTIONS = ["starred", "body"] as const;
 
-export type TrendsSection = (typeof TRENDS_SECTIONS)[number];
+export type TrendsLandingSection = (typeof TRENDS_LANDING_SECTIONS)[number];
 
-// The sections an age-restricted profile never sees (see the header).
-export const RESTRICTED_TRENDS_SECTIONS: readonly TrendsSection[] = ["fitness"];
-
-const SECTION_LABELS: Record<TrendsSection, string> = {
-  starred: "Starred",
-  body: "Body",
-  fitness: "Fitness",
-  nutrition: "Nutrition",
-  insights: "Insights",
-};
-
-export interface TrendsSectionEntry {
-  id: TrendsSection;
-  label: string;
-}
-
-// The page's jump-chip strip, in reading order. A training-restricted profile
-// loses only the wholly age-gated Fitness section.
-export function trendsSectionStrip(restricted: boolean): TrendsSectionEntry[] {
-  return TRENDS_SECTIONS.filter(
-    (id) => !restricted || !RESTRICTED_TRENDS_SECTIONS.includes(id)
-  ).map((id) => ({ id, label: SECTION_LABELS[id] }));
-}
-
-// Whether a section is unavailable to this profile, so the page can skip both the
-// chip and the render (the section's own content gate is still authoritative).
-export function isSectionRestricted(
-  id: TrendsSection,
-  restricted: boolean
-): boolean {
-  return restricted && RESTRICTED_TRENDS_SECTIONS.includes(id);
-}
-
-// A deep link INTO a section of the hub — the successor to every `/trends?tab=…`
-// literal (#1644). A rule-carrying helper in the #285 sense: the anchor id is the
-// section id, and one edit here re-points every dashboard tile, finding CTA,
-// palette action, and integration link at once.
-export function trendsSectionHref(id: TrendsSection): AppRoute {
+// A deep link INTO one part of the landing surface — the successor to every
+// `/trends?tab=body` literal (#1644). A rule-carrying helper in the #285 sense: the
+// anchor id is the section id, and one edit here re-points every dashboard tile,
+// finding CTA, palette action and integration link at once.
+//
+// There is no `?tab=` in it and no shim behind it: the census these links used to
+// name is on the default view now, so the ANCHOR is the whole address.
+export function trendsSectionHref(id: TrendsLandingSection): AppRoute {
   return `/trends#${id}` as AppRoute;
 }

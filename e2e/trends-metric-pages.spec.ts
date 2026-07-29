@@ -93,9 +93,9 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     });
     await page.setViewportSize(PHONE);
     await page.goto("/trends");
-    // The chip strip collapses into the #1485 F context bar at phone width.
+    // The tab strip collapses into the #1485 F context bar at phone width.
     await expandTrendsContext(page);
-    await expect(page.getByTestId("chart-jump-body")).toBeVisible();
+    await expect(page.getByTestId("trends-section-body")).toBeVisible();
 
     // The sparkline-tile grid is the default view on mobile.
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();

@@ -107,12 +107,14 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
   });
 });
 
-test.describe("the hub head leads with charts (B)", () => {
+test.describe("Overview leads with charts (B)", () => {
   test("a chart tile sits inside the opening viewport", async ({ page }) => {
     await page.goto("/trends");
-    // The always-visible chip strip names the sections and the fixed range trigger
+    // The always-visible active tab names the surface and the fixed range trigger
     // names the chart window above the payload.
-    await expect(page.getByTestId("chart-jump-starred")).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "Overview", exact: true })
+    ).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("trends-context-label")).toHaveText("90D");
 
     // Presence + "reachable without scrolling", not a pixel offset: toBeInViewport
@@ -172,25 +174,19 @@ test.describe("one focused mobile range row (C + D)", () => {
     ).toHaveCount(0);
     await expect(page.getByText("Views", { exact: true })).toHaveCount(0);
 
-    // The pill run starts flush with the row and spans AT LEAST its full width —
-    // the row is a scroller (`w-max min-w-full`), so "fills" is a floor, not an
-    // equality. Since #1644 the hub offers the 1D pill on every load (the Body
-    // census it swaps is always on the page), which pushes the run past 390px into
-    // exactly the overflow the #1485 D fade exists to announce — asserted next
-    // door in trends-w9.mobile.spec.ts.
     const fill = await page.getByTestId("trends-chip-row").evaluate((row) => {
       const inner = row.firstElementChild?.getBoundingClientRect();
       const outer = row.getBoundingClientRect();
       return inner
         ? {
             left: Math.abs(inner.left - outer.left),
-            spans: inner.right - outer.right,
+            right: Math.abs(inner.right - outer.right),
           }
         : null;
     });
     expect(fill).not.toBeNull();
     expect(fill!.left).toBeLessThanOrEqual(1);
-    expect(fill!.spans).toBeGreaterThanOrEqual(-1);
+    expect(fill!.right).toBeLessThanOrEqual(1);
   });
 
   test("the range-summary chip renders only for a custom window", async ({

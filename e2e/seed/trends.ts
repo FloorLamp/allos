@@ -227,28 +227,16 @@ export function seedCompareFold(): void {
 
   // The legacy saved view: no from/to (an all-time view, which viewToQuery re-emits
   // as ?range=all) so the readings above are always inside its window.
-  //
-  // Written as a RAW profile_settings blob on purpose: it carries the retired
-  // `tab: "compare"` key, and since #1644 that key cannot survive setTrendViews
-  // (normalizeViewParams drops it, as #1635's no-shim policy requires). Storing the
-  // pre-#1644 shape verbatim is what makes the spec's claim real — applying a view
-  // saved when Compare was a tab still restores its comparison on the merged page.
-  db.prepare(
-    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'trend_views', ?)
-       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
-  ).run(
-    cmpId,
-    JSON.stringify([
-      {
-        name: TRENDS_COMPARE_VIEW,
-        params: {
-          tab: "compare",
-          cmpA: "metric:weight",
-          cmpB: "metric:resting_hr",
-        },
+  setTrendViews(cmpId, [
+    {
+      name: TRENDS_COMPARE_VIEW,
+      params: {
+        tab: "compare",
+        cmpA: "metric:weight",
+        cmpB: "metric:resting_hr",
       },
-    ])
-  );
+    },
+  ]);
 
   // Write grant: applying a saved view goes through applyTrendView, a
   // requireWriteAccess Server Action (it redirects and stores nothing).

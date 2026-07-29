@@ -109,7 +109,7 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     browser,
   }) => {
     const page = await signIn(browser);
-    await page.goto("/trends");
+    await page.goto("/trends?tab=fitness");
     await expandTrendsContext(page);
 
     const strength = page.getByTestId("fitness-strength");

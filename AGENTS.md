@@ -11,14 +11,17 @@ It covers training, body metrics, nutrition, supplements and medications, a
 medical passport, Timeline, Trends, Upcoming, notifications, imports, and
 optional Claude-powered analysis.
 
-Trends is ONE scrollable page (#1644), not a tab strip: a trending digest, the
-cross-domain **Starred** grid, then the **Body**, **Fitness**, and **Nutrition**
-censuses and a closing **Insights** section, navigated by sticky jump chips.
-Sections are registered in `lib/trends-sections.ts`; each census streams under
-its own `Suspense` boundary so the head never waits on it. Deep links use the
-section anchor (`trendsSectionHref`, e.g. `/trends#body`) — `?tab=` is retired
-with no shim. Labs, imaging, and genomics live under Medical → Results, not a
-Trends section.
+The live Trends tabs are **Overview, Fitness, Nutrition, and Insights** — four
+since #1644 merged the Body tab into Overview, and permanent by owner ruling
+(there is no all-tabs endpoint; a fifth merge needs a new decision). The Overview
+landing surface is a trending digest, then the cross-domain **starred grid** (the
+only curated area — nothing renders there unconditionally), then the **body
+census**, which streams under its own `Suspense` boundary so the head never waits
+on it. `lib/trends-tabs.ts` owns the tab set; `lib/trends-sections.ts` owns the
+landing surface's two anchors. A body deep link is `trendsSectionHref("body")` →
+`/trends#body`; `?tab=body` is retired with no shim (it falls through to the
+default view, which renders that census). Labs, imaging, and genomics live under
+Medical → Results, not a Trends tab.
 
 ### Logins and profiles are different
 

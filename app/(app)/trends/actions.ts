@@ -24,12 +24,12 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Generate (or regenerate) the AI daily insight for a date and store it for the
 // active profile. Moved here from the former standalone /insights page when AI
-// Insights was folded into the Trends "Insights" section (sidebar consolidation,
-// then #1644's tab merge). The section hides its AI half entirely for age-restricted
-// profiles, so the generate form is only ever rendered for eligible profiles.
+// Insights was folded into the Trends "Insights" tab (sidebar consolidation).
+// The Trends page hides this tab entirely for age-restricted profiles, so the
+// generate form is only ever rendered for eligible profiles.
 export async function generateForDate(formData: FormData) {
   const { login, profile } = await requireWriteAccess();
-  // Re-check the age gate on the write path: the Insights AI half (and its generate
+  // Re-check the age gate on the write path: the Insights tab (and its generate
   // form) is spliced out of the UI for age-restricted profiles, but a direct
   // POST would otherwise still run the AI work. Bounce to the dashboard exactly
   // as the Trends/Training pages do for direct navigation (see lib/age-gate.ts).
@@ -48,7 +48,7 @@ export async function generateForDate(formData: FormData) {
 }
 
 // Generate (or regenerate) the AI weekly/monthly recap narrative and store it for
-// the active profile (issue #20). Like the daily insight, the Insights AI half is
+// the active profile (issue #20). Like the daily insight, the Insights tab is
 // age-gated, so this re-checks the gate on the write path and bounces a direct
 // POST for a restricted profile. The narrative narrates over the same rule-based
 // recap the dashboard widget shows; without an API key it stores the offline
@@ -106,16 +106,15 @@ export async function dismissBodyHygiene(
 }
 
 // `saveTrendsCardOrder` / `resetTrendsCardOrder` lived here until #1643. They wrote
-// #1490's per-tab arrangement blob and never gained a UI caller, so the Body
-// census's arrangement now runs on the ONE store the ★ already writes (`saved_items`): the
+// #1490's per-tab arrangement blob and never gained a UI caller, so the Body tab's
+// arrangement now runs on the ONE store the ★ already writes (`saved_items`): the
 // star toggle is app/(app)/saved-actions.ts `toggleSavedItem`, the sequence is its
 // `reorderSaved`, and lib/trends-card-rank.ts `bodyCardOrder` composes pinned-first
 // over the ranked remainder. There is no second arrangement action to keep in step.
 
 // Read the hub's current URL state off the submitted form into a params bag. The
-// client injects the live ?from/to/cmpA/cmpB/cmpn/view values as hidden inputs, so
-// a saved view captures exactly what the user is looking at. `tab` left the bag with
-// the tab strip (#1644).
+// client injects the live ?from/to/tab/cmpA/cmpB/cmpn values as hidden inputs, so
+// a saved view captures exactly what the user is looking at.
 //
 // #1456: a view no longer snapshots (or restores) a pin list. Pins were Trends-only
 // ORDERING state; under the unified save store the same keys are SAVES — membership
@@ -132,6 +131,7 @@ function paramsFromForm(formData: FormData): TrendViewParams {
   return {
     from: s("from"),
     to: s("to"),
+    tab: s("tab"),
     cmpA: s("cmpA"),
     cmpB: s("cmpB"),
     cmpn: String(formData.get("cmpn") ?? "") === "1",
@@ -167,7 +167,7 @@ export async function deleteTrendView(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-// Apply a saved view: redirect to the hub with the view's range/compare params —
+// Apply a saved view: redirect to the hub with the view's range/tab/compare params —
 // reusing the SAME URL vocabulary the DateRangeControl / CompareControls already read.
 // It restores URL state ONLY (see paramsFromForm on why the retired pins snapshot is
 // not re-applied). Unknown name is a no-op back to /trends.

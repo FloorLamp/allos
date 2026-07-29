@@ -289,13 +289,12 @@ choose the assertion that changes when the answer changes.
 
 ## Streamed sections: assert INSIDE the section (#1644)
 
-The Trends hub renders one scrollable page whose Body / Fitness / Nutrition /
-Insights censuses stream in below a fast head, each behind its own `<Suspense>`.
-That changes what a locator can see for the first few hundred milliseconds after a
-navigation:
+The Trends Overview surface streams its body census in below a fast head (digest +
+starred grid), behind a `<Suspense>` boundary. That changes what a locator can see
+for the first few hundred milliseconds after a navigation:
 
-- A streamed census first arrives in a `<div hidden id="S:n">` staging node at the
-  end of `<body>`; React then moves it into its section. React BATCHES those
+- The streamed census first arrives in a `<div hidden id="S:n">` staging node at
+  the end of `<body>`; React then moves it into its section. React BATCHES those
   reveals (about a frame, longer on a loaded machine), so the window is real.
 - During it, a bare `page.getByTestId("body-metric-tiles")` can resolve to the
   STAGED copy (hidden — an assertion that waits forever on visibility) or, mid-move,

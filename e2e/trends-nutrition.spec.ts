@@ -12,10 +12,11 @@ import { followLink } from "./helpers";
 test("Trends → Nutrition shows the macros+fiber chart, the adherence trend, and the intake grid (#1166)", async ({
   page,
 }) => {
-  await page.goto("/trends");
-  // #1644: Nutrition is a SECTION of the one hub page, reached by its jump chip.
-  await expect(page.getByTestId("chart-jump-nutrition")).toBeVisible();
-  await expect(page.getByTestId("trends-section-nutrition")).toBeVisible();
+  await page.goto("/trends?tab=nutrition");
+  await expect(page.getByRole("tab", { name: "Nutrition" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
 
   // Part 1 — macros + fiber over time. The seeded tracked series renders the stacked
   // chart (not the empty-state hint); the four series legend names fiber.
@@ -43,7 +44,7 @@ test("Trends → Nutrition shows the macros+fiber chart, the adherence trend, an
 test("an intake-grid day links into the Timeline's day view (#1166)", async ({
   page,
 }) => {
-  await page.goto("/trends");
+  await page.goto("/trends?tab=nutrition");
   const matrix = page.getByTestId("intake-matrix");
   await expect(matrix).toBeVisible();
 
@@ -57,14 +58,15 @@ test("an intake-grid day links into the Timeline's day view (#1166)", async ({
   await expect(page).toHaveURL(/\/timeline\?from=/);
 });
 
-test("the macros chart is GONE from Trends → Body (#1166)", async ({
+test("the macros chart is GONE from the body census (#1166)", async ({
   page,
 }) => {
-  await page.goto("/trends");
-  const bodySection = page.getByTestId("trends-section-body");
-  await expect(bodySection).toBeVisible();
-  // Body is body-metrics/vitals now; macros moved to Nutrition. Neither the classic
-  // Macros chart heading nor a macros anchor/jump-chip remains here.
+  // #1644: the Body tab merged into the Overview landing surface, so the census is
+  // reached at its anchor on the default view.
+  await page.goto("/trends#body");
+  await expect(page.getByTestId("trends-section-body")).toBeVisible();
+  // The census is body-metrics/vitals; macros moved to Nutrition. Neither the
+  // classic Macros chart heading nor a macros anchor/jump-chip remains here.
   await expect(page.getByText("Macros (protein / carbs / fat)")).toHaveCount(0);
   await expect(page.locator("#macros")).toHaveCount(0);
 });

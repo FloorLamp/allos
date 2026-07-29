@@ -399,11 +399,15 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     });
     await page.setViewportSize(DESKTOP);
 
-    // Deep-link straight to the desktop HR chart — the anchor resolves to the card.
+    // Deep-link straight to the desktop HR chart — the anchor resolves to the card,
+    // inside the census that streams onto the landing surface (#1644).
     await page.goto("/trends?view=all#hr");
-    // The always-visible chip strip names the sections without expanding the range
+    await censusRevealed(page, "body", "trends-body");
+    // The always-visible tab strip names the surface without expanding the range
     // controls and moving the page under the anchor.
-    await expect(page.getByTestId("chart-jump-body")).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "Overview", exact: true })
+    ).toBeVisible();
     await expect(page.locator("#hr")).toBeInViewport();
 
     // And the sleep anchor lands on the sleep tile.

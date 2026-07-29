@@ -7,11 +7,14 @@ import { test, expect } from "./fixtures";
 // submitting — generating would write a narratives row into the shared seeded e2e
 // DB, and this spec deliberately leaves no state behind.
 
-test("the Insights section renders the weekly/monthly recap generator (#20)", async ({
+test("Insights tab renders the weekly/monthly recap generator (#20)", async ({
   page,
 }) => {
-  await page.goto("/trends#insights");
-  await expect(page.getByTestId("trends-section-insights")).toBeVisible();
+  await page.goto("/trends?tab=insights");
+  await expect(page.getByRole("tab", { name: "Insights" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
 
   const form = page.getByTestId("recap-narrative-form");
   await expect(form).toBeVisible();
@@ -25,7 +28,7 @@ test("the Insights section renders the weekly/monthly recap generator (#20)", as
   // The daily-insight generator still renders alongside the recap controls.
   await expect(page.getByText("Date to analyze")).toBeVisible();
 
-  // The removed AI lab-trend interpretation card is absent from Insights.
+  // The removed AI lab-trend interpretation card is absent on the Insights tab.
   await expect(page.getByTestId("lab-trend-interpretation")).toHaveCount(0);
 });
 
@@ -39,8 +42,8 @@ test("the AI lab-trend interpretation card is gone everywhere (#1164/#20)", asyn
   await expect(page.getByTestId("lab-trend-interpretation")).toHaveCount(0);
   await expect(page.getByText("Lab-trend interpretation")).toHaveCount(0);
 
-  // And a stale ?tab=biomarkers deep link (an ignored param since #1644) shows no
-  // lab-trend card either.
-  await page.goto("/trends");
+  // And a stale ?tab=biomarkers deep link (now a fallback to the Trends default
+  // tab) shows no lab-trend card either.
+  await page.goto("/trends?tab=biomarkers");
   await expect(page.getByTestId("lab-trend-interpretation")).toHaveCount(0);
 });

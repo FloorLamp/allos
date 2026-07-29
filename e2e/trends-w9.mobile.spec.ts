@@ -19,26 +19,15 @@ import { expandTrendsContext } from "./trends-chrome";
 // is deliberately absent from the mobile range row.
 
 test.describe("annotation + protocol-window toggles under the new chrome (#1493 A)", () => {
-  test("the toggles follow the markers the page actually registered", async ({
+  test("the toggles are absent on a tab whose charts carry no markers", async ({
     page,
   }) => {
     // A toggle for a kind with no markers is dead weight — the rule the per-chart
     // bar already held, kept now that the row is hoisted to a page-level slot.
-    //
-    // #1644 changed WHICH surface that question is asked about: it used to be
-    // per-tab (a nutrition tab with no annotated charts showed no row), and the
-    // hub is one page now, so the row reflects the whole page's marker set. The
-    // rule itself is unchanged and still observable — the seeded profile has
-    // annotated Body charts, so the row renders and names exactly the kinds
-    // present; a profile with no markers anywhere still gets nothing.
     await page.goto("/trends");
     await expandTrendsContext(page);
     await expect(page.getByTestId("trends-context-controls")).toBeVisible();
-    const toggles = page.getByTestId("trend-annotation-controls");
-    await expect(toggles).toBeVisible();
-    // Registered by a chart host on the page, never a fixed menu of every kind.
-    const pills = await toggles.getByRole("button").count();
-    expect(pills).toBeGreaterThan(0);
+    await expect(page.getByTestId("trend-annotation-controls")).toHaveCount(0);
   });
 });
 
@@ -46,6 +35,8 @@ test.describe("the range-pill row says that it scrolls (#1485 D)", () => {
   test("carries the shared fade affordance on whichever edge has more", async ({
     page,
   }) => {
+    // #1644: the body census rides the default view, so the window is all this URL
+    // needs to name.
     await page.goto("/trends?range=all");
     await expandTrendsContext(page);
     const row = page.getByTestId("trends-chip-row");
@@ -119,7 +110,7 @@ test.describe("the compare block at 390px (#1493 B)", () => {
     page,
   }) => {
     await page.goto(
-      "/trends?cmpA=metric%3Aweight&cmpB=metric%3Aresting_hr&range=all"
+      "/trends?tab=insights&cmpA=metric%3Aweight&cmpB=metric%3Aresting_hr&range=all"
     );
     const a = page.locator("#cmp-a");
     const b = page.locator("#cmp-b");

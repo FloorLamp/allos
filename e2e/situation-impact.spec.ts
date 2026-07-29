@@ -17,7 +17,7 @@ test.describe("Situation impact cards (#1297)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    await page.goto("/trends");
+    await page.goto("/trends?tab=insights");
 
     const impacts = page.getByTestId("situation-impacts");
     await expect(impacts).toBeVisible();

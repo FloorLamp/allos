@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { censusRevealed, expandTrendsContext } from "./trends-chrome";
+import { expandTrendsContext } from "./trends-chrome";
 import { expectNoClippedContent, followLink } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -38,11 +38,15 @@ const rangePill = (page: Page, label: string) =>
   page.getByRole("link", { name: label, exact: true });
 
 async function openFitness(page: Page): Promise<void> {
-  await page.goto("/trends#fitness");
-  // The chip strip AND the range pills collapse into the #1485 F context bar at
+  await page.goto("/trends?tab=fitness");
+  // The tab strip AND the range pills collapse into the #1485 F context bar at
   // phone width; every assertion below reads one or the other, so open it once.
   await expandTrendsContext(page);
-  await censusRevealed(page, "fitness", "trends-fitness");
+  await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await expect(page.getByTestId("trends-fitness")).toBeVisible();
 }
 
 async function signIn(browser: Parameters<typeof loginAs>[0]): Promise<Page> {
@@ -65,17 +69,16 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     await expect(page.getByTestId("fitness-strength")).toBeVisible();
     await expect(page.getByTestId("fitness-sport")).toBeVisible();
 
-    // The nested Strength|Cardio|Sport strip is GONE, and since #1644 there is no
-    // tab level above it either — the navigation is plain in-page anchors all the
-    // way down, so no tab by those names (or any name) exists.
+    // The nested Strength|Cardio|Sport strip is GONE. The section navigation is
+    // plain in-page anchors, never a third tab level — so no tab by those names
+    // exists, and the only selected tab is the hub's own.
     for (const name of ["Strength", "Cardio", "Sport"]) {
       await expect(page.getByRole("tab", { name, exact: true })).toHaveCount(0);
     }
-    // Four consecutive headed subsections do not need a navigation layer of their
-    // own on phones: the page's chips are the only strip, and the long-page
-    // shortcut inside the census is a desktop-only dropdown.
+    // Four consecutive headed sections do not need a third navigation layer on
+    // phones. The long-page shortcut is a desktop-only dropdown.
     await expect(page.getByTestId("chart-jump-chips")).toHaveCount(0);
-    await expect(page.getByTestId("fitness-jump-menu")).not.toBeVisible();
+    await expect(page.getByTestId("chart-jump-menu")).not.toBeVisible();
 
     // The old un-windowed content is gone with its apology: the tab used to say
     // "Strength, cardio, and sport progress (full history)" beside a "Full
@@ -194,28 +197,32 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     await page.close();
   });
 
-  test("an old ?ftab= deep link still reaches the zone content", async ({
+  test("an old ?tab=fitness&ftab=cardio deep link still lands on Fitness", async ({
     browser,
   }) => {
     const page = await signIn(browser);
 
-    // The retired nested vocabulary (#1492), now on a page whose OUTER strip is
-    // retired too (#1644): the param names nothing and is ignored — no redirect,
-    // no 404 — and the zone content it wanted is simply a subsection of the census
-    // on the page it lands on.
-    await page.goto("/trends?ftab=cardio");
+    // The retired nested vocabulary (#1492): the param names the tab and is then
+    // ignored — no redirect, no 404, and the zone content it wanted is simply a
+    // section of the page it lands on.
+    await page.goto("/trends?tab=fitness&ftab=cardio");
     await expandTrendsContext(page);
+    await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
     await expect(page.getByTestId("fitness-zones")).toBeVisible();
     await expect(page.getByTestId("training-zones")).toBeVisible();
-    // The URL is left exactly as the old link wrote it (ignored, not rewritten).
+    // The URL is left exactly as the old link wrote it (a mapping, not a redirect).
     await expect(page).toHaveURL(/ftab=cardio/);
 
-    // And its `#zones` anchor — the one the coaching engine links — resolves.
-    await page.goto("/trends#zones");
-    await expect(page.locator("#zones")).toBeInViewport();
-
+    // A nested value with NO outer tab still names Fitness.
     await page.goto("/trends?ftab=sport");
     await expandTrendsContext(page);
+    await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
     await expect(page.getByTestId("fitness-sport")).toBeVisible();
 
     await page.close();
