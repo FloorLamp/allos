@@ -1,6 +1,46 @@
 {
   "days": [
     {
+      "date": "2026-07-28",
+      "entries": [
+        {
+          "pr": 1617,
+          "title": "Fitbit archive imports: right categories, honest accounting",
+          "body": "Exercises imported from a Fitbit (Google Takeout) archive now land as what they actually were: stationary bike, jump rope, rowing machine, Tabata, TRX, rollerblading and dozens more get the correct activity category and grouping, and meditation sessions become wellness practices instead of workouts. Your existing history is corrected automatically — rows you hand-edited are left untouched. The importer also reports honestly in Data → Review: every attempt appears with what it inserted, updated, or skipped, you can drill into exactly which records a run wrote, and an import that fails partway now says precisely what landed before it stopped — and is always safe to re-run.",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 1609,
+          "title": "Protocols round out: one-tap logging, read-only endings, day-by-day heatmaps",
+          "body": "Logging an intervention now takes one tap from the protocol itself — activity, food-group, and wellness-practice interventions each hand off to their own logging form, from the detail page or the dashboard widget. Ended protocols become read-only for new experiment data (you can still fix a mis-logged session or run it again), so a finished experiment's numbers stay what they were. And every protocol card gains a per-day heatmap of its window — see at a glance which days you actually did the thing, with a compact rendering for long windows and phones.",
+          "kind": "feature",
+          "issues": [1584, 1588, 1592]
+        },
+        {
+          "pr": 1607,
+          "title": "Protocol lifecycle grows up: modal editing, resume, run again",
+          "body": "Edit, End, Delete, Resume, and Run again now live together in the protocol page's ⋯ menu. A protocol ended in the last 7 days can resume in place as if nothing happened; an older one starts a fresh run while keeping the historical record intact. Creating and editing both open in the same roomy modal instead of the narrow list rail, and destructive confirmations use the app's own dialogs — no more native browser popups.",
+          "kind": "feature",
+          "issues": [1587, 1589]
+        },
+        {
+          "pr": 1608,
+          "title": "The docs caught up with the app",
+          "body": "The README is now a real product and self-hosting guide, and the feature reference describes the app as it actually is today — retired navigation, old settings layouts, and already-shipped work are no longer described as current or future behavior. If you set up Allos from the docs, they now tell the truth end to end.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 1594,
+          "title": "Starting a protocol got much lighter",
+          "body": "The New protocol form no longer sits fully expanded on the Longevity page — it opens in place when you ask for it, with protocol templates built into the same form (template deep links still work). Picking what to measure is a searchable selector with sensible ranking, familiar aliases, and selected chips, instead of a wall of hundreds of checkboxes. Measures that exist as both a body metric and a lab value are now one logical choice, with same-day readings preferring your scale's number.",
+          "kind": "feature",
+          "issues": [1500, 1586]
+        }
+      ]
+    },
+    {
       "date": "2026-07-27",
       "entries": [
         {
@@ -9,6 +49,13 @@
           "body": "The Biomarkers list — the longest page in the app — now groups your readings by clinical panel: each panel shows as one line with its analyte count and how many are currently flagged (\"Lipids · 6 · 1 flagged\"), and taps open to the readings. Flagged panels identify themselves at a glance, searching or filtering opens the matching groups automatically, and the roughly ten separate trajectory-watch cards folded into a single expandable card (each item can still be dismissed individually). Entry forms sit behind \"+ Add\". The page dropped from about thirteen thousand pixels to under three thousand.",
           "kind": "feature",
           "issues": [1499]
+        },
+        {
+          "pr": 1593,
+          "title": "Wellness practices become first-class",
+          "body": "Sauna, meditation, red light, breathwork — practices now have their own home on the Wellness surface: define a practice, set a weekly cadence target, log sessions with time and duration, and correct history when you got it wrong. Practices show up properly in protocols, Upcoming, and the dashboard, and route to their own logging flow instead of the training editor. Renaming a practice keeps its whole history and targets attached, regardless of capitalization or spacing.",
+          "kind": "feature",
+          "issues": [1583, 1585, 1590, 1591]
         }
       ]
     },
