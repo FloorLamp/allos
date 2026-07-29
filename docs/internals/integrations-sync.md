@@ -146,7 +146,11 @@ SELECT-before-compare and routes the insert/update/unchanged split through the
 shared `classifyUpsert`/`tallyUpsert`, and each run appends one
 `integration_sync_events` row under the acting profile (the cache has no
 manually-entered rows, so the "never overwrite a manual row" invariant is
-satisfied by there being none). The two-sided **UV-dose model** is ONE pure
+satisfied by there being none). Since #1614 the `public` kind is admitted to
+`RECURRING_SOURCE_KINDS`, so Weather renders as a Connected source in Data →
+Review — latest state plus expandable history, no Sync-now button, a link back
+to its own settings — instead of surfacing only under Needs attention when
+failing. The two-sided **UV-dose model** is ONE pure
 computation (`lib/uv-dose.ts` `computeUvDose`, #221) that the read layer
 (`lib/queries/weather.ts` `getUvDoseForDay`) feeds after applying the
 **degradation ladder** live → clear-sky (`uv_index_clear_sky`, else the
@@ -164,4 +168,16 @@ Idempotency makes this safe: a mid-batch failure leaves the committed chunks in
 place and the next rolling-window push re-covers the rest; the edit-lock and
 tombstone pre-image are re-read per chunk, and every chunk's split still folds
 into ONE `recordSyncEvent` per push (the #14 accounting is per-push, not
-per-chunk).
+per-chunk). Since #1614 that failure event is honest about what landed:
+provenance sinks are chunk-transactional, `HealthConnectWriteError` carries the
+committed split, and the route records ONE `ok=0` event with the real counts
+plus drillable per-row provenance (mirroring the Fitbit Takeout shape from
+#1617) instead of null counts over durable rows.
+
+**Truncated pull runs (#1614).** A Strava/Oura/Withings run cut short by a page
+cap or 429 stays `ok=1` (its rows landed and the cursor deliberately does not
+advance), but its event carries `details.truncated` plus a standard Review
+line — written through the one `truncatedSyncDetails()` shape in
+`lib/integrations/sync-details.ts` — and the Connected-sources card badges it
+"partial" instead of a clean green success. The marker survives the details
+char-budget bounding by construction.

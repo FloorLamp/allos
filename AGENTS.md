@@ -337,7 +337,10 @@ See `docs/internals/e2e-hygiene.md`.
   filesystem artifacts.
 - Every table written by document import must stay represented in imported-row
   cleanup, document reassignment, and extracted-count accounting.
-- Identity families use one canonical pure function everywhere. Labels must
+- Identity families use one canonical pure function everywhere (movement facts
+  key on `exerciseHistoryKey`; load-sensitive strength facts on
+  `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,
+  which SQL reaches through the `biomarker_family()` user function). Labels must
   include the attribute that actually distinguishes otherwise identical choices.
 - Findings have an explicit reach policy: care findings may reach Upcoming,
   attention surfaces, and notifications; coaching findings stay in calm,

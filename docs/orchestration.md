@@ -172,28 +172,24 @@ learned by losing work to it:
    issues actually closed (close manually with a comment if not), update the
    task list, and **update the release notes** (below).
 
-## Release notes (standing owner directive, 2026-07-24)
+## Release notes (standing owner directive, 2026-07-24; revised 2026-07-29)
 
-Every merge updates release notes in TWO places, both curated by the
-orchestrator in plain product language (what the user/operator sees, never
-internal jargon):
+Every merge updates ONE release-notes surface, curated by the orchestrator in
+plain product language (what the user/operator sees, never internal jargon):
 
-- **The external notes page** — a Claude artifact ("Allos release notes",
-  republish the same file path to keep the URL) digesting each merge-day:
-  feature entries newest-first, an **Operator notes** callout for anything a
-  self-hoster must know (migrations auto-applying, behavior changes like the
-  #1209 reveal-once token), and e2e/CI-internal merges folded into a quiet
-  collapsible.
 - **The in-app What's-new page (#1421)** — `lib/release-notes.json`, checked in
   and rendered at `/whats-new` (ships WITH the image so a `docker compose pull`
   shows its own notes offline). This file is ORCHESTRATOR BOOKKEEPING, like the
   migration slot map: feature PRs never touch it (so it can't become a merge
   magnet); the orchestrator commits curated entries at merge time (or batched at
   wind-down for a fast train). Purely-internal merges (spec fixes, CI plumbing)
-  are OMITTED from the in-app file — it's user-facing.
+  are OMITTED — it's user-facing. Operator-facing notes (migrations
+  auto-applying, behavior changes a self-hoster must know) belong in the entry
+  body.
 
-Keep the two in lockstep — same entries, same wording — so they never drift
-(one-question-one-computation applied to prose).
+The external Claude-artifact notes page was RETIRED by the owner on 2026-07-29
+("don't update the artifact with release notes") — do not republish it; the
+in-app file is the only surface.
 
 ## Dispatch prompt template
 
@@ -246,8 +242,8 @@ Every agent prompt must contain, verbatim where marked:
 
 Add per-dispatch: the issue list with one-line titles, domain context pointers
 (which lib/ modules, which conventions bear — quote the relevant AGENTS.md
-convention names), any files currently fenced off (e.g. "the owner is editing
-AGENTS.md/docs/ — do not touch; note needed README lines in the PR body
+convention names), any files currently fenced off (e.g. "PR #NNNN is in flight
+on these components — do not touch; note what you needed in the PR body
 instead"), and e2e expectations (extend existing specs, stable testids, beware
 fixture blast radius, dedicated fixture profile if in doubt).
 
@@ -675,8 +671,11 @@ touching shared source does.
 
 ## Deliberately out of scope for agents
 
-- AGENTS.md / README / docs while the owner has edits in flight (fence it in
-  every prompt; collect needed doc lines in PR bodies instead).
+- `docs/**` is NOT fenced (owner, 2026-07-29): agents keep matching docs current
+  in the same change, per AGENTS.md hygiene. AGENTS.md and README stay
+  merge-magnets — a single self-contained clause when a change makes one
+  factually wrong, never a restructure; fence them explicitly only when the
+  owner says edits are in flight.
 - Strategic/architectural issues the owner hasn't green-lit.
 - Anything requiring an owner judgment (IA/nav decisions, tone choices) —
   surface, don't decide.

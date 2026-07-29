@@ -1,6 +1,39 @@
 {
   "days": [
     {
+      "date": "2026-07-29",
+      "entries": [
+        {
+          "pr": 1630,
+          "title": "Syncs stop overstating themselves",
+          "body": "Three honesty fixes for Data → Review. A Strava, Oura, or Withings sync cut short by the provider (a page cap or rate limit) now shows a caution icon and a \"partial\" chip with a plain explanation — the next sync picks up where it left off — instead of reading as a clean green run. A phone push that fails partway now reports exactly which records landed before the stop, with the same drill-in as a successful sync. And Weather & UV finally has a home in Review's Connected sources, so its sync history is reachable from its settings page. Separately, two devices that agree on a reading — say both recorded 55 bpm resting heart rate — no longer appear in Review as a conflict to resolve: identical numbers are normal multi-source coverage, and only genuine disagreements ask for your decision. Recovery baselines now count each day once, however many devices covered it.",
+          "kind": "fix",
+          "issues": [1614, 1615]
+        },
+        {
+          "pr": 1628,
+          "title": "Your strength history knows which machine you were on",
+          "body": "Two chest-press machines — home and hotel — used to share one progression: the app would seed the hotel machine with the home machine's 80 kg and blend both into one PR track and one plateau signal. Sets have always recorded which registered equipment they were performed on; now the history, suggestions, comparisons, and plateau detection respect it. A freshly registered machine starts clean instead of borrowing another machine's numbers, plateau alerts name the machine they're about, and dismissing one machine's alert leaves the other's live. You can also register new equipment right inside the workout form — logging on an unfamiliar gym's machine no longer means abandoning your in-progress session. One heads-up: previously dismissed plateau notices may reappear once as their tracking keys migrate; dismiss them again and they stay dismissed.",
+          "kind": "feature",
+          "issues": [1611, 1399]
+        },
+        {
+          "pr": 1627,
+          "title": "A1c reminders keep their quarterly clock",
+          "body": "Labs often report Hemoglobin A1c alongside its estimated-average-glucose re-expression from one draw. When the eAG line happened to be the newest reading, the retest reminder silently fell back to a generic annual interval instead of the quarterly cadence A1c calls for — exactly wrong for the people tracking it most closely. Every member of a biomarker family now shares the family's retest clock and its reminder reads consistently (\"Retest Hemoglobin A1c\"), and a freeform lab spelling the catalog doesn't list can no longer show up twice for the same draw or be counted as two different current readings.",
+          "kind": "fix",
+          "issues": [1394, 1395, 1401]
+        },
+        {
+          "pr": 1625,
+          "title": "The strength editor works like a phone app on phones",
+          "body": "Logging sets at the gym got a real phone layout. Each set is now two clean rows — \"Set 3\" with its RPE, warm-up, and remove controls on one line, full-width weight × reps steppers underneath — instead of three disconnected bands. The exercise header gives the lift name the whole row, so \"Barbell Bench Press\" no longer truncates, and the how-to, reorder, and remove buttons moved to their own toolbar with proper finger-sized targets. Desktop keeps its familiar compact table.",
+          "kind": "fix",
+          "issues": [1612, 1613]
+        }
+      ]
+    },
+    {
       "date": "2026-07-28",
       "entries": [
         {
