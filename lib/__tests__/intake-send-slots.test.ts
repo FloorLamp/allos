@@ -152,9 +152,9 @@ describe("preWorkoutSlotHour", () => {
   });
 });
 
-// ---- #1156 priority floor (pure pieces) ------------------------------------
+// ---- The shared push predicate (pure pieces, #1156 → #1505) ----------------
 
-describe("isPushedIntake (#1156)", () => {
+describe("isPushedIntake (#1156/#1505)", () => {
   it("excludes ONLY low-priority supplements", () => {
     expect(isPushedIntake({ kind: "supplement", priority: "low" })).toBe(false);
     expect(isPushedIntake({ kind: "supplement", priority: "high" })).toBe(true);
