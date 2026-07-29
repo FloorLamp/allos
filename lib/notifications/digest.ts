@@ -113,6 +113,13 @@ export interface DigestInput {
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
   // counts deliberate skips (#232), surfaced alongside taken.
   adherence: { taken: number; skipped: number; due: number } | null;
+  // The state-change HEADLINE for the pushed tier (#1505 part 3) —
+  // "Missed: Magnesium (3 days) · Resumed: Vitamin D (2 days)" — preformatted by the
+  // ONE shared `intakeDeltaLine` the weekly recap and the household card also render.
+  // Null on a quiet window, which is the signal to say nothing: a fraction always has
+  // a value, but a delta only exists when something actually changed. Optional so
+  // older callers/fixtures are unchanged.
+  intakeDeltaLine?: string | null;
   // Weight logged yesterday, canonical kg. Rendered in kg by policy: the
   // notification has no login-unit context (multiple logins, each with its own
   // weight preference, can watch one profile), so all notification builders emit
@@ -236,6 +243,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   const yLines: string[] = [];
   for (const a of input.activities) {
     yLines.push(`🏋️ ${a.title}${activityStat(a)}`);
+  }
+  // The delta headline LEADS the intake report (#1505 part 3): "which of the things
+  // that push me changed state" is the news; the fraction below is the supporting
+  // detail. Rendered from the preformatted shared line, never recomputed here.
+  if (input.intakeDeltaLine) {
+    yLines.push(`🔁 ${input.intakeDeltaLine}`);
   }
   if (input.adherence) {
     // Skips are excluded from the "of N due" figure (they weren't intended

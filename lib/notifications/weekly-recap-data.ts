@@ -31,6 +31,7 @@ import { recentPRs, recentCardioPRs } from "../coaching";
 import { loadContextLabel } from "../lifts";
 import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
 import { isDueOn } from "../supplement-schedule";
+import { getIntakeDeltaLine } from "../intake-history";
 import { activityStreak, currentStreak } from "../streak";
 import {
   buildWeeklyRecap,
@@ -256,6 +257,10 @@ export function gatherRecapInput(
     prevEstimatedKcal,
     prLabels,
     adherence: windowAdherence(profileId, win.start, win.end),
+    // The pushed tier's state changes (#1505 part 3), from the ONE shared classifier
+    // the morning digest and the household card also read — so the recap can never
+    // report a different "what changed" than they do.
+    intakeDeltaLine: getIntakeDeltaLine(profileId, td),
     weights,
     streak: activityStreak(td, activityDates),
     strictStreak: currentStreak(td, activityDates),

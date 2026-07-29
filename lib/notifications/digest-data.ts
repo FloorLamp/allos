@@ -29,7 +29,6 @@ import {
 import {
   countSituationalDue,
   heldItemsBy,
-  isPushedIntake,
   isDueOn,
 } from "../supplement-schedule";
 import {
@@ -42,6 +41,7 @@ import {
   getTimezone,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
+import { getIntakeDeltaLine } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
@@ -351,6 +351,11 @@ export function gatherDigestInput(
     todayGroups,
     activities,
     adherence,
+    // Delta headline (#1505 part 3): WHICH pushed obligations changed state, from the
+    // ONE shared classifier every digest channel formats. Null on a quiet window —
+    // the digest doesn't invent news. The x/y fraction above stays as secondary
+    // detail; the two answer different questions and are both honest.
+    intakeDeltaLine: getIntakeDeltaLine(profileId, td),
     weightKg: weightRow?.weight_kg ?? null,
     newFlaggedBiomarkers,
     newDocumentLabels,

@@ -30,6 +30,13 @@ import {
   supplementAdherenceStrip,
   type AdherenceDot,
 } from "./supplement-adherence";
+import { isPushedIntake } from "./supplement-schedule";
+import {
+  classifyIntakeDeltas,
+  intakeDeltaLine,
+  INTAKE_DELTA_DAYS,
+  type IntakeDeltas,
+} from "./intake-deltas";
 import type { Supplement } from "./types";
 
 // One item plus its window: the aggregated per-day strip (oldest-first, trailing
@@ -111,4 +118,39 @@ export function getIntakeHistory(
 // boundary doesn't recompute the arithmetic.
 export function intakeHistoryWindowStart(today: string, days: number): string {
   return shiftDateStr(today, -(days - 1));
+}
+
+// THE server-side entry point for the digest deltas (#1505 part 3): the pushed
+// tier's state changes over the delta window, ready for `intakeDeltaLine`.
+//
+// Every digest channel calls THIS — the Telegram morning digest, the weekly recap
+// (and therefore the dashboard recap widget), and the household card — so none of
+// them can compute its own variant of "what changed" (#221). The tier is chosen by
+// the SAME `isPushedIntake` predicate part 1 gates the push surfaces with, which is
+// what makes the digest's news exactly the set of obligations it is allowed to push
+// about: a low-priority supplement is tracked, so it still counts in the adherence
+// fraction beside this line, but its misses are not news.
+export function getIntakeDeltas(
+  profileId: number,
+  today: string
+): IntakeDeltas {
+  return classifyIntakeDeltas(
+    getIntakeHistory(profileId, today, INTAKE_DELTA_DAYS)
+      .filter(({ item }) => isPushedIntake(item))
+      .map(({ item, strip }) => ({
+        itemId: item.id,
+        name: item.name,
+        strip,
+      }))
+  );
+}
+
+// The one-line headline for a profile, or null on a quiet window. The thin
+// convenience over getIntakeDeltas + intakeDeltaLine that the three digest surfaces
+// actually call.
+export function getIntakeDeltaLine(
+  profileId: number,
+  today: string
+): string | null {
+  return intakeDeltaLine(getIntakeDeltas(profileId, today));
 }
