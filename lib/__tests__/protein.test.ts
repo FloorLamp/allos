@@ -5,6 +5,11 @@ import {
   proteinTarget,
   assessProteinAdequacy,
   resolveProteinGoalLevel,
+  parseProteinGoalLevel,
+  proteinGoalBand,
+  PROTEIN_GOAL_LEVELS,
+  PROTEIN_GOAL_OPTION_LABELS,
+  DEFAULT_PROTEIN_GOAL_LEVEL,
   proteinIntakeSummary,
   proteinTargetSummary,
   proteinAdequacyDetail,
@@ -158,6 +163,57 @@ describe("resolveProteinGoalLevel", () => {
     expect(resolveProteinGoalLevel(null)).toBe("active");
     expect(resolveProteinGoalLevel("")).toBe("active");
     expect(resolveProteinGoalLevel("something-else")).toBe("active");
+  });
+});
+
+// #1503 — the goal became settable, so the vocabulary needs a WRITE side: the read
+// resolver deliberately swallows anything unknown into the default, which is exactly
+// what an action must not do with a submitted value.
+describe("parseProteinGoalLevel (the write-side validator)", () => {
+  it("accepts the same vocabulary and synonyms the resolver maps", () => {
+    expect(parseProteinGoalLevel("cut")).toBe("cut");
+    expect(parseProteinGoalLevel("muscle_gain")).toBe("hypertrophy");
+    expect(parseProteinGoalLevel("general")).toBe("rda");
+    expect(parseProteinGoalLevel(" Active ")).toBe("active");
+  });
+
+  it("REFUSES what the resolver would silently default", () => {
+    expect(parseProteinGoalLevel("something-else")).toBeNull();
+    expect(parseProteinGoalLevel("")).toBeNull();
+    expect(parseProteinGoalLevel(null)).toBeNull();
+    // The pair is consistent: resolve = parse, with the documented fallback.
+    for (const raw of ["cut", "bodybuilding", "junk", "", null]) {
+      expect(resolveProteinGoalLevel(raw)).toBe(
+        parseProteinGoalLevel(raw) ?? DEFAULT_PROTEIN_GOAL_LEVEL
+      );
+    }
+  });
+});
+
+describe("the goal picker vocabulary (#1503)", () => {
+  it("offers every level exactly once, in ascending band order, each labelled", () => {
+    expect([...PROTEIN_GOAL_LEVELS].sort()).toEqual(
+      ["active", "cut", "hypertrophy", "rda"].sort()
+    );
+    const lows = PROTEIN_GOAL_LEVELS.map((l) => proteinGoalBand(l).low);
+    expect([...lows]).toEqual([...lows].sort((a, b) => a - b));
+    for (const l of PROTEIN_GOAL_LEVELS) {
+      expect(PROTEIN_GOAL_OPTION_LABELS[l]).toBeTruthy();
+      // Every option round-trips through the validator the action uses.
+      expect(parseProteinGoalLevel(l)).toBe(l);
+    }
+  });
+
+  it("the picker's band is the SAME table the target math scales", () => {
+    const band = proteinGoalBand("cut");
+    const target = proteinTarget({ goal: "cut", bodyweightKg: 80 });
+    expect(target!.gPerKgLow).toBe(band.low);
+    expect(target!.gPerKgHigh).toBe(band.high);
+    expect(target!.goalLabel).toBe(band.label);
+  });
+
+  it("the default level is one the picker can actually show", () => {
+    expect(PROTEIN_GOAL_LEVELS).toContain(DEFAULT_PROTEIN_GOAL_LEVEL);
   });
 });
 

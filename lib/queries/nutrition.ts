@@ -48,7 +48,6 @@ import {
   proteinTarget,
   assessProteinAdequacy,
   estimatedProteinGrams,
-  resolveProteinGoalLevel,
   type ProteinAdequacy,
   type ProteinToday,
 } from "../protein";
@@ -65,6 +64,7 @@ import {
   getUserSex,
   getUserAge,
   getExcludedFoodGroups,
+  getProteinGoalLevel,
 } from "../settings/profile-attrs";
 import { demoteExcludedGroups } from "../dietary-preferences";
 import {
@@ -617,11 +617,9 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
   const bodyweightKg = bodyweightAsOf(weightsAsc, t);
   const leanMassKg = getLatestMetricValue(profileId, "lean_mass_kg");
 
-  // Goal level — the profile's training goal when set (#719 onboarding hook), else the
-  // "active" default; the pure resolver maps whatever string lands.
-  const goal = resolveProteinGoalLevel(
-    getProfileSetting(profileId, "training_goal")
-  );
+  // Goal level — the profile's training goal (Settings → Nutrition, #1503), or the
+  // documented default when they have not picked one. ONE reader for every surface.
+  const goal = getProteinGoalLevel(profileId);
 
   const intake = proteinIntake({ dailyTracked, dailyLogged, dailyEstimated });
   const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
@@ -638,9 +636,7 @@ function proteinTargetOnDate(profileId: number, date: string) {
     .sort((a, b) => (a.date < b.date ? -1 : 1));
   const bodyweightKg = bodyweightAsOf(weightsAsc, date);
   const leanMassKg = getLatestMetricValue(profileId, "lean_mass_kg");
-  const goal = resolveProteinGoalLevel(
-    getProfileSetting(profileId, "training_goal")
-  );
+  const goal = getProteinGoalLevel(profileId);
   return proteinTarget({ goal, bodyweightKg, leanMassKg });
 }
 

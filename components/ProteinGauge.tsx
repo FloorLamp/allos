@@ -62,6 +62,10 @@ export default function ProteinGauge({
         {/* Goal band — the shaded target zone. */}
         <div
           data-testid="protein-gauge-band"
+          // The band's absolute grams, so a test can assert the goal setting (#1503)
+          // actually moved the target rather than only its rendered width.
+          data-grams-low={Math.round(target.gramsLow)}
+          data-grams-high={Math.round(target.gramsHigh)}
           className="absolute inset-y-0 bg-emerald-200/60 dark:bg-emerald-800/40"
           style={{ left: `${bandLeft}%`, width: `${bandWidth}%` }}
         />

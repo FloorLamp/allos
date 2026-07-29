@@ -40,6 +40,8 @@ import {
 import {
   getOnboardingState,
   getNotifySchedule,
+  hasProteinGoalLevel,
+  setProteinGoalLevel,
   getTimezone,
   getUserBirthdate,
   getUserSex,
@@ -56,6 +58,7 @@ import {
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
+import { DEFAULT_PROTEIN_GOAL_LEVEL } from "@/lib/protein";
 import type { Sex } from "@/lib/types";
 
 function onboardingError(message: string, step: OnboardingStep): never {
@@ -164,6 +167,14 @@ export async function saveOnboardingFocuses(formData: FormData) {
   writeTx(() => {
     setOnboardingState(profile.id, next);
     setDashboardLayout(profile.id, onboardingDashboardLayout(next.focuses));
+    // Fitness focus seeds the protein goal EXPLICITLY (#1503). The band engine reads
+    // `training_goal` and falls back to "active" when it is unset — writing the same
+    // value here makes the default a stored, editable pick (Settings → Nutrition)
+    // rather than an invisible fallback the person never agreed to. Never overwrites
+    // a goal already chosen (re-running the focus step is not a reset).
+    if (next.focuses.includes("fitness") && !hasProteinGoalLevel(profile.id)) {
+      setProteinGoalLevel(profile.id, DEFAULT_PROTEIN_GOAL_LEVEL);
+    }
   });
   revalidatePath("/");
   revalidatePath("/onboarding");

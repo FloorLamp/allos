@@ -121,17 +121,48 @@ const GOAL_BANDS: Record<
   cut: { low: 2.0, high: 2.4, label: "cut / muscle preservation" },
 };
 
-// The default goal level when the profile hasn't set a training goal. Goal onboarding
-// (#719) isn't built yet; "active" is the sensible middle for someone tracking training.
+// The goal levels a person can pick, in band order (lowest g/kg first) — the option
+// order the Settings select renders (issue #1503).
+export const PROTEIN_GOAL_LEVELS: readonly ProteinGoalLevel[] = [
+  "rda",
+  "active",
+  "hypertrophy",
+  "cut",
+];
+
+// Short picker labels. The longer `goalLabel` on a ProteinTarget stays the phrasing the
+// gauge/adequacy copy uses; these name the CHOICE ("what am I training for right now").
+export const PROTEIN_GOAL_OPTION_LABELS: Record<ProteinGoalLevel, string> = {
+  rda: "RDA baseline",
+  active: "Active",
+  hypertrophy: "Muscle gain",
+  cut: "Cut",
+};
+
+// The default goal level when the profile hasn't picked one. "active" is the sensible
+// middle for someone tracking training; the fitness onboarding path writes it EXPLICITLY
+// (#1503) so a stored value, not a fallback, is what a surface reads.
 export const DEFAULT_PROTEIN_GOAL_LEVEL: ProteinGoalLevel = "active";
 
-// Map an (optional) stored goal string to a level, defaulting to active. Forward-compat
-// hook for #719 goal onboarding: the gather reads whatever setting lands and passes it
-// here, so wiring a real goal later is a one-line change with no engine edit.
-export function resolveProteinGoalLevel(
+// The g/kg band behind a goal level, for surfaces that explain the choice (the Settings
+// picker names the band it selects). Same table the target math scales — never a second
+// copy of the numbers.
+export function proteinGoalBand(level: ProteinGoalLevel): {
+  low: number;
+  high: number;
+  label: string;
+} {
+  return GOAL_BANDS[level];
+}
+
+// Parse a stored/submitted goal string to a level, or null when it is not in the
+// accepted vocabulary. This is the WRITE-side validator (#1503): an action rejects
+// what this refuses rather than silently storing a string that reads back as "active".
+// Synonyms are accepted so a value written by an importer or an older build still maps.
+export function parseProteinGoalLevel(
   goal: string | null | undefined
-): ProteinGoalLevel {
-  switch ((goal ?? "").toLowerCase()) {
+): ProteinGoalLevel | null {
+  switch ((goal ?? "").trim().toLowerCase()) {
     case "rda":
     case "general":
     case "sedentary":
@@ -149,8 +180,16 @@ export function resolveProteinGoalLevel(
     case "preservation":
       return "cut";
     default:
-      return DEFAULT_PROTEIN_GOAL_LEVEL;
+      return null;
   }
+}
+
+// Map an (optional) stored goal string to a level, defaulting to active — the READ side.
+// Unset and unrecognized both fall back, so no surface can be left without a band.
+export function resolveProteinGoalLevel(
+  goal: string | null | undefined
+): ProteinGoalLevel {
+  return parseProteinGoalLevel(goal) ?? DEFAULT_PROTEIN_GOAL_LEVEL;
 }
 
 export interface ProteinTarget {

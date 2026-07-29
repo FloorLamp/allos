@@ -17,6 +17,27 @@ import { workerDbPath } from "./worker-env";
 const DB_PATH = workerDbPath();
 const WAIT = 15_000;
 
+// The spec-owned protein goal (#1503). The picker MUTATES profile_settings, so the
+// key is cleared after the test that sets it — the profile is back to the default
+// "active" band for every repeat and for neighboring specs.
+function clearProteinGoal() {
+  const handle = new Database(DB_PATH);
+  try {
+    const pid = (
+      handle
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(NUTRITION_PROFILE) as { id: number }
+    ).id;
+    handle
+      .prepare(
+        "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'training_goal'"
+      )
+      .run(pid);
+  } finally {
+    handle.close();
+  }
+}
+
 function clearPreferences() {
   const handle = new Database(DB_PATH);
   try {
@@ -85,6 +106,57 @@ test.describe("Nutrition trio", () => {
     } finally {
       await page.close();
     }
+  });
+
+  // #1503 — the protein goal became settable: the band the gauge draws follows the
+  // Settings pick instead of everyone silently sitting on the "active" band.
+  test.describe("protein goal", () => {
+    test.beforeEach(clearProteinGoal);
+    test.afterEach(clearProteinGoal);
+
+    test("changing the Settings goal moves the Nutrition tab's target band", async ({
+      browser,
+    }) => {
+      const page = await loginAs(browser, {
+        username: E2E_LOGIN_NUTRITION,
+        password: E2E_MEMBER_PASSWORD,
+      });
+      try {
+        // Baseline: the unset profile reads the documented default band.
+        await page.goto("/nutrition?tab=food");
+        const band = page.getByTestId("protein-gauge-band");
+        await expect(band).toBeVisible({ timeout: WAIT });
+        const before = Number(await band.getAttribute("data-grams-low"));
+        expect(before).toBeGreaterThan(0);
+
+        // Pick a cut phase (autosaves on change, like the card beside it). Gate on
+        // the committed save before navigating away.
+        await page.goto("/settings/nutrition");
+        const goalSelect = page.getByTestId("protein-goal");
+        await expect(goalSelect).toBeVisible({ timeout: WAIT });
+        await expect(goalSelect).toHaveValue("active");
+        await goalSelect.selectOption("cut");
+        await expect(page.getByLabel("Saved")).toBeVisible({ timeout: WAIT });
+        // The card explains the band it just selected.
+        await expect(page.getByTestId("protein-goal-band")).toContainText(
+          /g\/kg/
+        );
+        await page.reload();
+        await expect(goalSelect).toHaveValue("cut", { timeout: WAIT });
+
+        // The gauge's target band moved up — the engine was always one setting away.
+        // A fresh server-rendered navigation, so one read is deterministic; the
+        // assertion is an INEQUALITY (a cut band is higher than the active one) rather
+        // than a literal gram figure that would encode the fixture's bodyweight.
+        await page.goto("/nutrition?tab=food");
+        const bandAfter = page.getByTestId("protein-gauge-band");
+        await expect(bandAfter).toBeVisible({ timeout: WAIT });
+        const after = Number(await bandAfter.getAttribute("data-grams-low"));
+        expect(after).toBeGreaterThan(before);
+      } finally {
+        await page.close();
+      }
+    });
   });
 
   // #976 — the fiber adequacy card + the honest unknown-grams note.
