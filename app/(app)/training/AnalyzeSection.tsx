@@ -284,7 +284,9 @@ export default async function AnalyzeSection({
                     key={c.lane}
                     href={hrefFor({ item: currentItem, lane: c.lane })}
                     data-testid={`analyze-load-context-${c.lane}`}
-                    aria-current={c.lane === view.activeLane ? "true" : undefined}
+                    aria-current={
+                      c.lane === view.activeLane ? "true" : undefined
+                    }
                     className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
                       c.lane === view.activeLane
                         ? "border-brand-500 bg-brand-500 text-white"
@@ -299,8 +301,8 @@ export default async function AnalyzeSection({
                 ))}
               </div>
               <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                Loads aren&rsquo;t comparable across machines, so each is its own
-                progression.
+                Loads aren&rsquo;t comparable across machines, so each is its
+                own progression.
               </p>
             </div>
           )}

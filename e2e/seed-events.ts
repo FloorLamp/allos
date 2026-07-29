@@ -21,6 +21,7 @@ import {
   seedActivityFormPaths,
   seedEndurancePlans,
   seedTrainingRollup,
+  seedLoadContexts,
 } from "./seed/training";
 import { seedIntegrationSyncEvents } from "./seed/integrations";
 import { seedMergeFixtures } from "./seed/merge";
@@ -158,4 +159,5 @@ seedCompareFold();
 seedFitnessLens();
 seedRankedCardOrder();
 seedTrainingRollup();
+seedLoadContexts();
 seedTimelineChrome();
