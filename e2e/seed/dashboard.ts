@@ -84,6 +84,7 @@ import {
   DUP_REVIEW_PROFILE,
 } from "../fixture-logins";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
+import { collectAttentionModel, dismissFinding } from "../../lib/queries";
 import {
   PROFILE_ID,
   ins,
@@ -955,6 +956,20 @@ export function seedHouseholdFolds(): void {
   const tailKidId = resolveKid(FOLD_TAIL_KID_PROFILE, "Ear infection", 10);
   const tailLoginId = seedMemberLogin(E2E_LOGIN_FOLDTAIL, tailParentId);
   grantProfile(tailLoginId, tailKidId);
+  // A household that has already dealt with its standing preventive nudges, so the
+  // strip has NO chips (its chips are filtered to members with a NON-ZERO attention
+  // count). That is the ORPHAN state the promo's second home has to survive: with no
+  // chips, a strip gated on chips alone would not render, and the link the 8–14-day
+  // tail is supposed to carry would have nowhere to go. Every fixture profile carries
+  // the season's immunization findings by default, so this has to be seeded rather
+  // than assumed — dismissed through the SAME suppression bus the product uses, and
+  // read back from collectAttentionModel rather than hardcoding suppression keys
+  // that shift with the season.
+  for (const pid of [tailParentId, tailKidId]) {
+    for (const item of collectAttentionModel(pid, today(pid))) {
+      dismissFinding(pid, item.key);
+    }
+  }
 
   const wellParentId = fixtureProfileId(FOLD_WELL_PARENT_PROFILE);
   db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(

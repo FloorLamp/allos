@@ -52,7 +52,12 @@ export default function HouseholdStrip({
       aria-label="Household"
       className="mb-6"
     >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      {/* The label ROW, not just the label: the promo shares it, right-aligned, and
+          wraps beneath on a narrow phone rather than squeezing either side. */}
+      <div
+        data-testid="household-strip-header"
+        className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+      >
         <div className="flex items-center gap-1.5 section-label">
           <IconUsers className="h-4 w-4" stroke={1.75} aria-hidden="true" />
           Household

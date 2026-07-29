@@ -170,25 +170,57 @@ test("8–14 days: the promo lands in the household strip's label row (#1549 b)"
 
     // THE ORPHAN CASE #1549's sketch assumed away, and the reason the strip can now
     // raise itself on the promo alone: the strip's chips are filtered to members with
-    // a NON-ZERO attention count, and a recovered-10-days-ago household has none — so
-    // the anchor the design called unconditional does not exist unless the promo can
-    // render the section by itself. This fixture is deliberately quiet.
-    await expect(strip.locator("[data-testid^='household-chip-']")).toHaveCount(
-      0
-    );
+    // a NON-ZERO attention count, so a household that has dealt with everything has NO
+    // chips — and the "anchor that always exists" does not. Were the section still
+    // gated on chips, the link the 8–14-day tail is supposed to carry would simply
+    // have vanished. This fixture's household is deliberately all-clear.
+    // (`household-chip-count-*` shares the `household-chip-` prefix, so the count
+    // badges are excluded explicitly — a prefix match alone counts each chip twice.)
+    await expect(
+      strip.locator(
+        "[data-testid^='household-chip-']:not([data-testid^='household-chip-count-'])"
+      )
+    ).toHaveCount(0);
 
-    // In the label row, beside "Household" — not stranded above or below it.
-    const label = strip.getByText("Household", { exact: true });
-    const labelBox = await label.boundingBox();
-    const promoBox = await strip
+    // It belongs to the strip's LABEL ROW, not to some trailing corner of the
+    // section — asserted structurally, because at 390px the row wraps the long link
+    // beneath "Household" rather than squeezing either side, and demanding a shared
+    // pixel row on a phone would be asserting a layout nobody asked for.
+    await expect(
+      strip
+        .getByTestId("household-strip-header")
+        .getByTestId("household-history-promo")
+    ).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
+
+  // Where the row DOES fit, the design's "right-aligned in the label row" is literal:
+  // same row as "Household", pushed to the far side.
+  const wide = await loginAs(
+    browser,
+    { username: E2E_LOGIN_FOLDTAIL, password: E2E_MEMBER_PASSWORD },
+    { viewport: { width: 1280, height: 900 }, hasTouch: false }
+  );
+  try {
+    await wide.goto("/");
+    const header = wide
+      .getByTestId("household-strip")
+      .getByTestId("household-strip-header");
+    await expect(header).toBeVisible();
+    const labelBox = await header
+      .getByText("Household", { exact: true })
+      .boundingBox();
+    const promoBox = await header
       .getByTestId("household-history-promo")
       .boundingBox();
     if (!labelBox || !promoBox) throw new Error("no bounding boxes");
-    // Same row: the vertical spans overlap.
+    // Same row: the vertical spans overlap. Right-aligned: it starts past the label.
     expect(promoBox.y).toBeLessThan(labelBox.y + labelBox.height);
     expect(promoBox.y + promoBox.height).toBeGreaterThan(labelBox.y);
+    expect(promoBox.x).toBeGreaterThan(labelBox.x + labelBox.width);
   } finally {
-    await page.context().close();
+    await wide.context().close();
   }
 });
 
