@@ -144,6 +144,8 @@ test.describe("★-pinned Body card order (#1643)", () => {
       // the honest way to assert "Body follows the saved order" without pointer
       // physics standing in for the claim.
       await page.goto("/trends");
+      // The census streams (#1644): wait for its reveal before the card queries.
+      await censusRevealed(page, "body", "trends-body");
       await expect(page.getByTestId("saved-tiles")).toBeVisible();
       expect((await overviewTileKeys(page))[0]).toBe("metric:steps");
       await page

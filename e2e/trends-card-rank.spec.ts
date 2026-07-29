@@ -89,20 +89,20 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
         "growth-charts-card",
         "body-chart-height",
         "body-chart-weight",
-        "vitals-systolic",
       ])
     ).toEqual([
       "growth-charts-card",
-      // …and height leads weight for a growing child, with the clinical cards
-      // trailing both — one stack, one order, no run to lift.
+      // …and height leads weight for a growing child — one stack, one order, no
+      // run to lift.
       "body-chart-height",
       "body-chart-weight",
-      "vitals-systolic",
     ]);
 
     // The separate percentile tiles occupy the same ranked `growth` slot rather
     // than being appended independently by the tile renderer.
     await page.goto("/trends?view=tiles");
+    // The census streams (#1644): wait for its reveal before the card queries.
+    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("body-tile-growth-height")).toBeVisible();
     expect(
       await domOrder(page, ["body-tile-growth-height", "body-tile-height"])
@@ -130,6 +130,8 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
 
     // The tile grid reads the SAME order, so the two view modes can't disagree.
     await page.goto("/trends?view=tiles");
+    // The census streams (#1644): wait for its reveal before the card queries.
+    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
     expect(
       await domOrder(page, [
@@ -189,6 +191,10 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     expect(await domOrder(page, ["bmi", "steps"])).toEqual(["steps", "bmi"]);
 
     await page.goto("/trends?view=tiles");
+
+    // The census streams (#1644): wait for its reveal before the card queries.
+
+    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
     expect(
       await domOrder(page, [

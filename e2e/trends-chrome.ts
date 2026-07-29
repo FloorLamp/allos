@@ -25,25 +25,30 @@ export async function expandTrendsContext(page: Page): Promise<void> {
 
 // Wait for a streamed census section to be REVEALED (#1644).
 //
-// The Trends hub streams its Body / Fitness / Nutrition / Insights censuses below
-// a fast head, so a census arrives in a `<div hidden id="S:n">` staging node and
-// React moves it into its section a beat later (React batches boundary reveals —
-// roughly a frame, longer on a loaded machine). Two consequences for a spec:
+// The Trends landing surface streams its body census below a fast head, so the
+// census arrives in a `<div hidden id="S:n">` staging node and React moves it into
+// its section a beat later — React BATCHES boundary reveals (~a frame, longer on a
+// loaded machine). Two consequences for a spec, and this helper closes both:
 //
-//   • A bare `getByTestId("body-metric-tiles")` right after `goto` can match the
-//     STAGED copy (hidden), or — during the move — both copies, which is a strict-
-//     mode violation rather than an honest wait.
-//   • Anything scoped to the section (`trends-section-body`) is immune: the section
-//     element lives in the shell, and the staged copy is not inside it.
+//   • Before the move, a bare `getByTestId("body-metric-tiles")` matches the STAGED
+//     copy, which is hidden — an assertion that waits out its timeout on visibility.
+//   • DURING the move both copies exist for an instant, which is a strict-mode
+//     violation that reads like a duplicated-testid bug rather than the timing it is.
 //
-// So: navigate, call this once, then assert freely. It resolves exactly when the
-// census content is really in its section.
+// So the wait has two halves. Scoping to `trends-section-<id>` proves the REAL copy
+// is in place (the section element lives in the page shell, never in the staged
+// copy); the page-wide count proves the STAGED copy is gone, which is the half a
+// scoped assertion cannot see. `marker` must therefore be a testid that is unique
+// page-wide once revealed (`trends-body`, `body-metric-tiles`).
+//
+// Navigate, call this once, then assert freely.
 export async function censusRevealed(
   page: Page,
-  section: "body" | "fitness" | "nutrition" | "insights",
+  section: "body",
   marker: string
 ): Promise<void> {
   await expect(
     page.getByTestId(`trends-section-${section}`).getByTestId(marker)
   ).toBeVisible();
+  await expect(page.getByTestId(marker)).toHaveCount(1);
 }
