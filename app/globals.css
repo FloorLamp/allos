@@ -321,6 +321,17 @@ body::before {
   .table-cards tr.table-section-row {
     @apply max-sm:mb-2 max-sm:block max-sm:border-0 max-sm:bg-transparent max-sm:p-0;
   }
+  /* A reading NESTED inside an open section group (issue #1581 section C) sits under
+     a container the group header already drew, so it does not also need the full card
+     padding — the #1539 double-framing pattern, one level in. Padding only: the frame
+     itself (the rounded border, the fill, the bottom margin) came off every stacked
+     row in #1616, leaving the divider that separates one reading from the next, which
+     this keeps. Same mechanism as the section-header rule above — an element+class
+     selector outranks `.table-cards tr`, which a utility class on the row could not —
+     and a table that renders its rows UNGROUPED simply never sets the class. */
+  .table-cards tr.table-nested-row {
+    @apply max-sm:py-1.5;
+  }
   .table-cards td {
     @apply max-sm:block max-sm:px-0 max-sm:py-0;
   }

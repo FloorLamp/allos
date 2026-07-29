@@ -12,7 +12,6 @@ import {
   filterDerivedForTable,
   prepareTableRecords,
   prepareMultiViewTableRecords,
-  paginateRecords,
 } from "@/lib/derived-table";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
@@ -29,6 +28,7 @@ import {
   NON_BIOMARKER_CATEGORIES,
 } from "@/lib/medical-categories";
 import { parsePanelId } from "@/lib/biomarker-panels";
+import { reachablePanelIds } from "@/lib/biomarker-panel-reach";
 
 // The query params the Biomarkers section consumes — the former /biomarkers index
 // page's searchParams, unchanged (#1042 phase 5 moved the content, not the
@@ -41,7 +41,6 @@ export interface BiomarkersSearchParams {
   sort?: string;
   dir?: string;
   current?: string;
-  p?: string;
   // Prefill the add form's name from the command palette's "Add result" hit
   // action (#662). Reached as /results?new=1&name=<canonical>#biomarkers.
   name?: string;
@@ -82,18 +81,23 @@ function parseFilters(searchParams: BiomarkersSearchParams) {
         ? ("nonoptimal" as const)
         : undefined;
   const q = searchParams.q?.trim() || undefined;
-  // Default sort is PANEL (#1499 section A). It used to be `name`, which was right
-  // for a flat alphabetical reference list — but the browser is a panel INDEX now,
-  // and only a panel-ordered read makes the two agree: the groups always render in
-  // clinical order, so under a name sort one bounded page (#114) held an alphabetical
-  // slice scattered across a dozen panels and each header counted the sliver of its
-  // panel that happened to land on that page. Ordering by panel keeps a panel's
-  // readings contiguous, so a page holds whole groups and a header's count is the
-  // group. `?sort=name` / `?sort=date` still work and reorder WITHIN each group.
+  // Default sort is NAME ascending, which orders readings of one analyte date
+  // DESCENDING (medicalOrderBy's `name, date DESC, id DESC`) — newest first under
+  // each heading. #1499 briefly defaulted to `panel` instead, for a reason that was
+  // entirely a paging artifact: one bounded page (#114) held an alphabetical slice
+  // scattered across a dozen panels, so each header counted the sliver of its panel
+  // that landed there. #1581 dropped the page, so the groups are whole either way
+  // and the ordering the reader can actually perceive — the order of names INSIDE an
+  // expanded group — is what the default should serve.
+  //
+  // `panel` is deliberately NOT an offered sort column any more: grouping already
+  // emits the panels in curated clinical order, so "sort by panel" reorders groups
+  // that are no longer paged apart and does nothing visible. An old `?sort=panel`
+  // bookmark falls back to `name` through parseSortColumn rather than failing.
   const sort = parseSortColumn(
     searchParams.sort,
-    ["name", "panel", "date"] as const,
-    "panel"
+    ["name", "date"] as const,
+    "name"
   );
   const dir = parseSortDir(searchParams.dir);
   const current = searchParams.current === "1";
@@ -163,10 +167,6 @@ function SingleBiomarkersView({
     dir,
     current,
   });
-  // Ship only ONE page to the client BiomarkersTable so the RSC payload stays
-  // bounded as lab history grows (#114) — the full deduped list is built above in
-  // one pass, then sliced here by the `?p=` page (clamped to a real page).
-  const pageData = paginateRecords(records, Number(searchParams.p));
   const canonicalOptions = getCanonicalAutocomplete(profileId);
   const now = today(profileId);
 
@@ -191,15 +191,19 @@ function SingleBiomarkersView({
           gated; renders nothing for child profiles. The derived table row remains. */}
           <BioAgeHero />
 
+          {/* The facet offers the taxonomy intersected with what this browser's
+          category scope can actually surface (#1581 section D) — a STATIC
+          derivation, so its contents stay stable while filters change. */}
           <MedicalFilters
             category={active}
             panel={panel}
+            panels={reachablePanelIds()}
             range={range}
             q={q}
             current={current}
           />
 
-          {pageData.total === 0 ? (
+          {records.length === 0 ? (
             <EmptyState
               message={
                 active || panel || range || q || current
@@ -209,7 +213,7 @@ function SingleBiomarkersView({
             />
           ) : (
             <BiomarkersTable
-              records={pageData.rows}
+              records={records}
               now={now}
               filters={{
                 category: active,
@@ -219,12 +223,6 @@ function SingleBiomarkersView({
                 sort,
                 dir,
                 current,
-              }}
-              pagination={{
-                total: pageData.total,
-                page: pageData.page,
-                pageCount: pageData.pageCount,
-                pageSize: pageData.pageSize,
               }}
             />
           )}
@@ -305,14 +303,13 @@ function MultiBiomarkersView({
   );
   // Merge the partitions: is_latest recomputed per (profile, family), `current`
   // applied over that per-member latest, then ordered with the subject dimension for
-  // stable pagination. Slice one page, then stamp subject identity onto the page.
+  // a deterministic merge. Subject identity is stamped onto the merged rows.
   const records = prepareMultiViewTableRecords(storedTagged, derivedTagged, {
     sort,
     dir,
     current,
   });
-  const pageData = paginateRecords(records, Number(searchParams.p));
-  const pageRows = stampSubjects(scope, pageData.rows);
+  const rows = stampSubjects(scope, records);
   // The add form + canonical autocomplete + relative-age clock are acting-scoped.
   const canonicalOptions = getCanonicalAutocomplete(scope.actingProfileId);
   const now = today(scope.actingProfileId);
@@ -338,15 +335,19 @@ function MultiBiomarkersView({
           <TrajectoryFindings />
           <BioAgeHero />
 
+          {/* The facet offers the taxonomy intersected with what this browser's
+          category scope can actually surface (#1581 section D) — a STATIC
+          derivation, so its contents stay stable while filters change. */}
           <MedicalFilters
             category={active}
             panel={panel}
+            panels={reachablePanelIds()}
             range={range}
             q={q}
             current={current}
           />
 
-          {pageData.total === 0 ? (
+          {records.length === 0 ? (
             <EmptyState
               message={
                 active || panel || range || q || current
@@ -356,7 +357,7 @@ function MultiBiomarkersView({
             />
           ) : (
             <BiomarkersTable
-              records={pageRows}
+              records={rows}
               now={now}
               multiView={{ actingProfileId: scope.actingProfileId }}
               filters={{
@@ -367,12 +368,6 @@ function MultiBiomarkersView({
                 sort,
                 dir,
                 current,
-              }}
-              pagination={{
-                total: pageData.total,
-                page: pageData.page,
-                pageCount: pageData.pageCount,
-                pageSize: pageData.pageSize,
               }}
             />
           )}

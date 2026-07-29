@@ -176,9 +176,8 @@ export function prepareTableRecords(
 // filter / the family dedup are recomputed PER (profile, family), NEVER across
 // members — a family collapse must never merge two people's readings into one
 // series (the per-profile-context trap the issue calls out). Single view never
-// touches these functions: its path (getMedicalRecords → prepareTableRecords →
-// paginateRecords) is unchanged and byte-identical; the multi-view path is
-// structurally additive.
+// touches these functions: its path (getMedicalRecords → prepareTableRecords) is
+// unchanged and byte-identical; the multi-view path is structurally additive.
 
 export type WithProfile<T> = T & { profileId: number };
 
@@ -250,7 +249,7 @@ function mvComparator(
 // derived analyte's newest reading flags current within its OWN member, never
 // against another's), applies the `current` filter over that per-member latest, then
 // orders with the subject dimension woven into the sort key (mvComparator) for a
-// readable, stably-paginated merge. Pure — no DB, no auth. Rows keep their
+// readable, deterministically ordered merge. Pure — no DB, no auth. Rows keep their
 // `profileId` tag so stampSubjects can attach subject identity for the chip.
 export function prepareMultiViewTableRecords(
   stored: WithProfile<MedicalRecord>[],
@@ -270,48 +269,4 @@ export function prepareMultiViewTableRecords(
     ? withLatest.filter((r) => r.is_latest === 1)
     : withLatest;
   return filtered.sort(mvComparator(opts.sort, opts.dir ?? "asc"));
-}
-
-// How many biomarker rows the table ships (and renders) per page. The full
-// content-deduped list is built server-side (prepareTableRecords over the single
-// getMedicalRecords dedup pass), but only ONE page is serialized into the client
-// BiomarkersTable — so the RSC payload is bounded regardless of lab history
-// instead of shipping every deduped row (#114: 2,594 rows ≈ 2.97 MB unbounded).
-export const BIOMARKER_PAGE_SIZE = 50;
-
-export interface TablePage<T = MedicalRecord> {
-  // The rows to render for the current page. Generic so the multi-view path can
-  // paginate profile-tagged rows (WithProfile<MedicalRecord>) without losing the tag.
-  rows: T[];
-  // Total rows across all pages (for the "N of M" footer and pager math).
-  total: number;
-  // The resolved 1-based page (clamped into [1, pageCount]).
-  page: number;
-  pageCount: number;
-  pageSize: number;
-}
-
-// Slice the already-built, already-sorted combined table list to one page.
-// `page` is 1-based and may be any user-supplied value (from `?p=`); it's clamped
-// into [1, pageCount] so an out-of-range or garbage value lands on a real page.
-// Pure — no DB; this only bounds what the client component receives, not the DB
-// read (the window-CTE dedup still runs once in getMedicalRecords). An empty list
-// reads as page 1 of 1.
-export function paginateRecords<T = MedicalRecord>(
-  records: T[],
-  page: number,
-  pageSize: number = BIOMARKER_PAGE_SIZE
-): TablePage<T> {
-  const total = records.length;
-  const count = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
-  const clamped = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
-  const current = Math.min(clamped, count);
-  const start = (current - 1) * pageSize;
-  return {
-    rows: records.slice(start, start + pageSize),
-    total,
-    page: current,
-    pageCount: count,
-    pageSize,
-  };
 }

@@ -22,12 +22,16 @@ import type { PanelId } from "@/lib/biomarker-panels";
 export default function MedicalFilters({
   category,
   panel,
+  panels,
   range,
   q,
   current,
 }: {
   category?: string;
   panel?: PanelId;
+  // The panel options to offer, resolved server-side (#1581 section D) — the
+  // taxonomy minus the panels this surface's category scope can never surface.
+  panels: readonly PanelId[];
   range?: string;
   q?: string;
   current?: boolean;
@@ -60,7 +64,7 @@ export default function MedicalFilters({
         categories={BIOMARKER_CATEGORIES}
       />
 
-      <PanelFilterSelect value={panel} />
+      <PanelFilterSelect value={panel} panels={panels} />
 
       <RangeFilterSelect value={range} />
 

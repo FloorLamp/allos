@@ -2,12 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { currentPathHref } from "@/lib/hrefs";
-import {
-  OTHER_PANEL,
-  orderedPanelIds,
-  PANEL_LABELS,
-  type PanelId,
-} from "@/lib/biomarker-panels";
+import { OTHER_PANEL, PANEL_LABELS, type PanelId } from "@/lib/biomarker-panels";
 
 // Clinical PANEL dropdown for the biomarkers browser (#1502). Before the panel
 // taxonomy existed, `?panel=` held the document's free-text section heading —
@@ -16,13 +11,23 @@ import {
 // taxonomy instead ("Lipids", "Complete blood count", "Thyroid"), writing a stable
 // SLUG into the param so a reword never breaks a bookmark.
 //
-// The full curated set is offered rather than only the panels present in the
-// current view — the same decision CategoryFilterSelect made, and it keeps the
-// control's contents stable while filters change. The reserved "Other" slug is
-// offered LAST and separated, because it is a real, useful view (the readings the
-// taxonomy can't place, i.e. analytes no canonical entry covers) but not a
-// clinical panel.
-export default function PanelFilterSelect({ value }: { value?: PanelId }) {
+// The offered set is the caller's `panels`, not the panels present in the current
+// view — the same decision CategoryFilterSelect made, and it keeps the control's
+// contents stable while filters change. What the caller passes is a STATIC
+// derivation over the controlled vocabulary (lib/biomarker-panel-reach): the
+// taxonomy minus the panels whose analytes all carry a category the surface does not
+// list, so the facet can no longer offer an option that returns nothing for anyone
+// (#1581 section D). Resolving that here would drag the canonical dataset into the
+// client bundle, so the server hands it down. The reserved "Other" slug is offered
+// LAST and separated, because it is a real, useful view (the readings the taxonomy
+// can't place, i.e. analytes no canonical entry covers) but not a clinical panel.
+export default function PanelFilterSelect({
+  value,
+  panels,
+}: {
+  value?: PanelId;
+  panels: readonly PanelId[];
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -31,14 +36,12 @@ export default function PanelFilterSelect({ value }: { value?: PanelId }) {
     const sp = new URLSearchParams(searchParams.toString());
     if (next) sp.set("panel", next);
     else sp.delete("panel");
-    // Any filter change returns to page 1 — page 3 of the old result set is
-    // meaningless (and usually empty) under a new filter.
-    sp.delete("p");
     const s = sp.toString();
     router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
   }
 
-  const clinical = orderedPanelIds().filter((id) => id !== OTHER_PANEL);
+  const clinical = panels.filter((id) => id !== OTHER_PANEL);
+  const hasOther = panels.includes(OTHER_PANEL);
 
   return (
     <label className="flex max-w-full items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -60,7 +63,9 @@ export default function PanelFilterSelect({ value }: { value?: PanelId }) {
             {PANEL_LABELS[id].label}
           </option>
         ))}
-        <option value={OTHER_PANEL}>{PANEL_LABELS[OTHER_PANEL].label}</option>
+        {hasOther && (
+          <option value={OTHER_PANEL}>{PANEL_LABELS[OTHER_PANEL].label}</option>
+        )}
       </select>
     </label>
   );
