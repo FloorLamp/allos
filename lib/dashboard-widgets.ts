@@ -107,7 +107,9 @@ export function findingDashboardHome(dedupeKey: string): string | null {
 
 // The rollup's rendered set: every active coaching finding whose family has no
 // dedicated dashboard home, plus those whose home widget is currently hidden. The
-// caller passes its widget-visibility predicate (the same `has` the page resolves).
+// caller passes a VISIBILITY predicate — "is this widget actually on the person's
+// dashboard right now?", i.e. the resolved item's `visible` flag, not mere catalog
+// eligibility (the page resolves hidden widgets too, so Customize can preview them).
 // Callers MUST derive the widget's count and its cap/overflow from this result, not
 // from the unfiltered input — the count has to equal what is on screen.
 export function rollupCoachingFindings<T extends { dedupeKey: string }>(

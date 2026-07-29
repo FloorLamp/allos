@@ -306,6 +306,12 @@ export default async function Dashboard() {
   );
   const eligible = new Set(list.map((w) => w.def.id));
   const has = (id: string) => eligible.has(id);
+  // Eligibility is not visibility: `list` deliberately carries the widgets the profile
+  // has toggled OFF too, so Customize can preview one without a round-trip. Anything
+  // that asks "is this card actually on the person's dashboard right now?" — e.g. the
+  // #1533 finding-home split — must read the saved `visible` flag, not `has`.
+  const shown = new Set(list.filter((w) => w.visible).map((w) => w.def.id));
+  const showsWidget = (id: string) => shown.has(id);
 
   // Illness hero (issue #858): every accessible OPEN illness episode as a per-patient
   // cockpit, over the SAME #801 assembly the timeline/detail/share surfaces use (one
@@ -575,7 +581,7 @@ export default async function Dashboard() {
         )
       : [];
   const coachingObservations = has("coaching-observations")
-    ? rollupCoachingFindings(activeCoaching, has)
+    ? rollupCoachingFindings(activeCoaching, showsWidget)
     : [];
   const dataQualityFindings = has("data-quality")
     ? findingsForDashboardHome(activeCoaching, "data-quality")

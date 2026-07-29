@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink } from "./helpers";
+import { followLink, settledClick } from "./helpers";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_DQ_ADULT,
@@ -245,6 +245,7 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
   test("the Coaching observations rollup reveals findings beyond its cap of 2", async ({
     browser,
   }) => {
+    test.slow();
     resetDataQualityDismissals(DQ_GAPPY_PROFILE);
     const page = await loginAs(browser, {
       username: E2E_LOGIN_DQ_GAPPY,
@@ -252,9 +253,21 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
     });
     try {
       await page.goto("/");
-      const rollup = page
-        .getByRole("main")
-        .getByTestId("coaching-observations");
+      const main = page.getByRole("main");
+      // This fixture's only coaching findings are its four structural gaps, and since
+      // #1533 those live in their dedicated Data quality widget rather than doubling
+      // into the rollup. Hiding that widget hands them back to the rollup (the
+      // catch-all), which gives this #1219 disclosure test a deterministic, spec-owned
+      // set of four rows instead of an exact count of shared seed findings.
+      await main.getByRole("button", { name: "Edit dashboard" }).click();
+      await main.getByRole("button", { name: "Hide Data quality" }).click();
+      await settledClick(
+        page,
+        main.getByRole("button", { name: "Save", exact: true })
+      );
+      await expect(main.getByTestId("data-quality")).toHaveCount(0);
+
+      const rollup = main.getByTestId("coaching-observations");
       await expect(rollup).toBeVisible();
       await expect(
         rollup.getByTestId("coaching-observations-item")
@@ -266,6 +279,15 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
           .getByTestId("coaching-observations-more-item")
           .filter({ hasText: "Set a biological sex" })
       ).toBeVisible();
+
+      // Restore the default layout for neighboring specs on this fixture profile.
+      await main.getByRole("button", { name: "Edit dashboard" }).click();
+      await main.getByRole("button", { name: "Show Data quality" }).click();
+      await settledClick(
+        page,
+        main.getByRole("button", { name: "Save", exact: true })
+      );
+      await expect(main.getByTestId("data-quality")).toBeVisible();
     } finally {
       await page.context().close();
     }
