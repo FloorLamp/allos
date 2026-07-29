@@ -5,7 +5,7 @@ import {
   PILLAR_TONE_LABEL,
   type BiomarkerReading,
   type PillarTone,
-} from "@/lib/healthspan-pillars";
+} from "@/lib/longevity-pillars";
 import { formatPercentile, type FitnessPercentile } from "@/lib/fitness-norms";
 import { bioAgeDelta, bioAgeDeltaPhrase } from "@/lib/bio-age";
 import { strengthLevelLabel } from "@/lib/strength-standards";

@@ -8,7 +8,7 @@ import {
   PILLAR_TONE_LABEL,
   type Pillar,
   type PillarTone,
-} from "@/lib/healthspan-pillars";
+} from "@/lib/longevity-pillars";
 import WidgetHeader from "./WidgetHeader";
 
 // Dashboard healthspan-pillars widget (issue #161): a row of evidence-backed

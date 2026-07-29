@@ -42,7 +42,7 @@ export * from "./queries/integrations";
 export * from "./queries/protocols";
 export * from "./queries/situation-impact";
 export * from "./queries/equipment";
-export * from "./queries/healthspan";
+export * from "./queries/longevity";
 export * from "./queries/sun";
 export * from "./queries/providers";
 export * from "./queries/affiliations";

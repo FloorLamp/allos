@@ -1,4 +1,4 @@
-import type { Pillar } from "@/lib/healthspan-pillars";
+import type { Pillar } from "@/lib/longevity-pillars";
 import {
   PILLAR_TONE_CLASS,
   PillarToneBadge,

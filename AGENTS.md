@@ -116,6 +116,11 @@ Server Components normally read through the query layer and pass data to client
 components. SQL remains inline through `db.prepare(...)`; there is no
 repository or ORM layer.
 
+Modules are named after the surface they serve. The Longevity page (`/longevity`)
+reads through `lib/queries/longevity.ts` over the pure `lib/longevity-pillars.ts`;
+"healthspan" remains the domain term for that model and stays in the persisted
+dashboard widget id `healthspan-pillars`.
+
 ### Database and migrations
 
 `createDb()` runs `runMigrations(db)` and then `bootTasks(db)`. Migrations in
