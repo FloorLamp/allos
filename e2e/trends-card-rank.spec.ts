@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
+import { censusRevealed } from "./trends-chrome";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_RANK_PEDS,
@@ -61,7 +62,9 @@ async function openBodyStack(page: Page): Promise<void> {
   // `view=all` is the classic chart stack — the layout whose sequence this issue
   // decides (the tile grid reads the same order, asserted below).
   await page.goto("/trends?view=all");
-  await expect(page.getByTestId("trends-body")).toBeVisible();
+  // The census streams in (#1644): wait for its section to hold it before the
+  // unscoped card queries below.
+  await censusRevealed(page, "body", "trends-body");
 }
 
 test.describe("Trends → Body ranked default card order (#1490)", () => {

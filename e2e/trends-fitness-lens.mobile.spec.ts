@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { expandTrendsContext } from "./trends-chrome";
+import { censusRevealed, expandTrendsContext } from "./trends-chrome";
 import { expectNoClippedContent, followLink } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -42,8 +42,7 @@ async function openFitness(page: Page): Promise<void> {
   // The chip strip AND the range pills collapse into the #1485 F context bar at
   // phone width; every assertion below reads one or the other, so open it once.
   await expandTrendsContext(page);
-  await expect(page.getByTestId("trends-section-fitness")).toBeVisible();
-  await expect(page.getByTestId("trends-fitness")).toBeVisible();
+  await censusRevealed(page, "fitness", "trends-fitness");
 }
 
 async function signIn(browser: Parameters<typeof loginAs>[0]): Promise<Page> {

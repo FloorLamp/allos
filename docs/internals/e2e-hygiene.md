@@ -287,6 +287,36 @@ assertions still shipped a defect because the OUTPUT shape was pinned as a
 constant. Same remedy in both: test the seam against a realistic fixture, and
 choose the assertion that changes when the answer changes.
 
+## Streamed sections: assert INSIDE the section (#1644)
+
+The Trends hub renders one scrollable page whose Body / Fitness / Nutrition /
+Insights censuses stream in below a fast head, each behind its own `<Suspense>`.
+That changes what a locator can see for the first few hundred milliseconds after a
+navigation:
+
+- A streamed census first arrives in a `<div hidden id="S:n">` staging node at the
+  end of `<body>`; React then moves it into its section. React BATCHES those
+  reveals (about a frame, longer on a loaded machine), so the window is real.
+- During it, a bare `page.getByTestId("body-metric-tiles")` can resolve to the
+  STAGED copy (hidden — an assertion that waits forever on visibility) or, mid-move,
+  to BOTH copies — a strict-mode violation, which reads like a duplicated testid
+  bug rather than the timing it is.
+
+The rule, and it is cheap: **scope census assertions to their section.** The
+`<section id="body" data-testid="trends-section-body">` element is part of the
+page shell, never of the staged copy, so anything scoped to it is immune AND waits
+for the reveal by construction:
+
+```ts
+// e2e/trends-chrome.ts — navigate, call once, then assert freely.
+await censusRevealed(page, "body", "trends-body");
+await expect(page.getByTestId("body-metric-tiles")).toBeVisible(); // now unambiguous
+```
+
+`censusRevealed` is that one line, named. Do NOT reach for `waitForTimeout` or a
+`networkidle` here: the reveal is a DOM state with a deterministic signal, which is
+exactly the case the settled helpers exist for.
+
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 
 ONE home for settled interactions. The file header carries the authoritative

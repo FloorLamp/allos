@@ -3,7 +3,7 @@ import { type Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import { loginAs } from "./nav";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
-import { expandTrendsContext } from "./trends-chrome";
+import { censusRevealed, expandTrendsContext } from "./trends-chrome";
 import { frozenNow } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
@@ -36,8 +36,9 @@ async function openBodyTab(
 ): Promise<void> {
   const q = opts.view ? `/trends?view=${opts.view}` : "/trends";
   await page.goto(q);
-  // #1644: Body is a section of the one hub page, not a tab.
-  await expect(page.getByTestId("trends-section-body")).toBeVisible();
+  // #1644: Body is a streamed section of the one hub page, not a tab — wait for
+  // its content to be revealed INTO that section before asserting on it.
+  await censusRevealed(page, "body", "trends-body");
 }
 
 test.describe("Trends → Body responsive views (#1067)", () => {
