@@ -4,10 +4,10 @@ import { getLatestBodyMetricDailyPoints } from "./metrics";
 import {
   getActivityDates,
   getCardioByActivity,
-  getFrequencyTargetProgress,
   getRecentDatedExercises,
   getStrengthByExercise,
 } from "./training";
+import { getFrequencyTargetProgress } from "./frequency-targets";
 import { getDayLoadInputs, getIntensitySignal } from "./zones";
 import { getWorkoutPresence } from "./presence";
 import { loadingDates } from "../training-zones";

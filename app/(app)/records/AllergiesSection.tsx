@@ -6,10 +6,10 @@ import {
   getAllergyMedCrossLinks,
 } from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
-import AllergyForm from "@/app/(app)/allergies/AllergyForm";
+import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
 import ListRailLayout from "@/components/ListRailLayout";
-import AllergyList from "@/app/(app)/allergies/AllergyList";
-import { addAllergy } from "@/app/(app)/allergies/actions";
+import AllergyList from "@/app/(app)/records/problems/allergies/AllergyList";
+import { addAllergy } from "@/app/(app)/records/problems/allergies/actions";
 
 // Allergies (former /allergies index, #1042 phase 6): documented allergies (CCD
 // Allergies section + manual) merged with lab-derived allergen-specific IgE

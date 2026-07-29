@@ -5,9 +5,9 @@ import {
 } from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
-import ProcedureForm from "@/app/(app)/procedures/ProcedureForm";
-import ProcedureList from "@/app/(app)/procedures/ProcedureList";
-import { addProcedure } from "@/app/(app)/procedures/actions";
+import ProcedureForm from "@/app/(app)/records/history/procedures/ProcedureForm";
+import ProcedureList from "@/app/(app)/records/history/procedures/ProcedureList";
+import { addProcedure } from "@/app/(app)/records/history/procedures/actions";
 
 // Procedures / surgical history (former /procedures index, #1042 phase 6): the
 // profile's procedure history, newest first, now the #procedures section of

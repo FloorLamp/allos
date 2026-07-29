@@ -1,3 +1,4 @@
+import { weekWindowStart } from "../profile-week";
 import { CARDIO_ACTIVITIES, SPORTS } from "../../activities-catalog";
 import {
   buildCompanionMap,
@@ -19,12 +20,7 @@ import type { ActivityEditData } from "../../activity-form-model";
 import { pickImportedActivityMetrics } from "../../activity-import-details";
 import type { Activity, ActivityType, ExerciseSet } from "../../types";
 import { getLatestBodyMetricDated } from "../metrics";
-import {
-  cache,
-  effortNameCounts,
-  recentWindowStart,
-  weekWindowStart,
-} from "./common";
+import { cache, effortNameCounts, recentWindowStart } from "./common";
 
 export interface ActivitySuggestions {
   lifts: string[];

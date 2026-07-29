@@ -10,7 +10,7 @@ import {
 import { matchFoodInteractions } from "@/lib/food-drug-interactions";
 import { isValidFoodGroup } from "@/lib/food-groups";
 import type { SafetyMedication } from "@/lib/supplement-safety";
-import type { FrequencyTargetProgress } from "@/lib/queries/training/goals";
+import type { FrequencyTargetProgress } from "@/lib/queries/frequency-targets";
 
 // Pure-tier tests for the food-habit finding identity + behind decision (#580).
 

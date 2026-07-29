@@ -11,8 +11,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { saveActivity, logBodyweight } from "@/app/(app)/journal/actions";
-import { createGoal } from "@/app/(app)/goals/actions";
+import {
+  saveActivity,
+  logBodyweight,
+} from "@/app/(app)/training/activity-actions";
+import { createGoal } from "@/app/(app)/training/goal-actions";
 import { LB_PER_KG } from "@/lib/units";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 

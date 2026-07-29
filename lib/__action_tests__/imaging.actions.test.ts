@@ -12,7 +12,7 @@ import {
   addImagingStudy,
   updateImagingStudy,
   deleteImagingStudy,
-} from "@/app/(app)/imaging/actions";
+} from "@/app/(app)/results/imaging/actions";
 import { getImagingStudies } from "@/lib/queries";
 import { seedActor, createProfile, actAs, fd } from "./harness";
 

@@ -2,7 +2,7 @@
 //
 // The page (/longevity) is the EXPANDED formatter over the SAME pillar model the
 // dashboard HealthspanPillarsWidget compact-renders (the digest-data/weekly-recap
-// one-model-two-formatters precedent, #221): buildPillars (lib/healthspan-pillars)
+// one-model-two-formatters precedent, #221): buildPillars (lib/longevity-pillars)
 // stays the ONE computation, the widget shows each pillar as a stat card, and
 // this module groups those SAME Pillar objects into the page's anchored sections.
 // A test (lib/__tests__/longevity-sections.test.ts) pins that the two surfaces
@@ -20,7 +20,7 @@
 //     absorbed /protocols hub) is the only non-pillar section and always renders
 //     (it is also the creation surface for a first experiment).
 
-import { PILLAR_ANCHOR, type Pillar } from "./healthspan-pillars";
+import { PILLAR_ANCHOR, type Pillar } from "./longevity-pillars";
 
 // The interventions section's anchor — the permanent /protocols redirect target
 // (next.config.js: /protocols → /longevity#protocols).

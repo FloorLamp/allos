@@ -70,7 +70,7 @@ function parseStringList(raw: FormDataEntryValue | null): string[] {
 // below (never a raw client string), so the interpolated table name is one of these
 // three constants.
 const EDIT_LOCK_REVALIDATE: Record<string, string[]> = {
-  activities: ["/data", "/training", "/journal", "/trends", "/"],
+  activities: ["/data", "/training", "/trends", "/"],
   body_metrics: ["/data", "/trends", "/"],
   medical_records: ["/data", "/results", "/biomarkers/view", "/"],
 };

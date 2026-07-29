@@ -841,7 +841,7 @@ export function unsaveBiomarkerFamily(
 
 // Toggle a biomarker's save, returning the resulting state — the write core behind
 // the ★ gesture (auth-blind, profileId-first; the Server Action in
-// app/(app)/saved/actions.ts is the auth boundary). Check-then-act as ONE atomic
+// app/(app)/saved-actions.ts is the auth boundary). Check-then-act as ONE atomic
 // transaction so two concurrent toggles can't both read the same state and race (two
 // inserts, or an insert lost to a delete). Unsave clears the whole #482 family.
 export function toggleBiomarkerSaved(

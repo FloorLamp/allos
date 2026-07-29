@@ -9,7 +9,7 @@ import { useResumeSyncUpdates } from "@/components/EditLockNotice";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
 import type { FieldConflict } from "@/lib/import-review/conflicts";
-import { mergeActivities } from "./actions";
+import { mergeActivities } from "./activity-actions";
 
 // A same-day sibling this card can absorb: id + label, plus the pre-computed
 // conflicts between THIS card (keeper) and the sibling (issue #100). Conflicts are

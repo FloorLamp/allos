@@ -117,7 +117,7 @@ import RecentlyResolvedReopen, {
   type RecentlyResolvedItem,
 } from "@/components/dashboard/RecentlyResolvedReopen";
 import { reopenEligibleEpisodeForProfile } from "@/lib/illness-episode-store";
-import IllnessCockpitBody from "./symptoms/IllnessCockpitBody";
+import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import {
   currentEpisodeForProfile,
   openEpisodeForProfile,
@@ -156,7 +156,7 @@ import VitalsLatestWidget, {
 import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
-import SymptomLogBar from "./symptoms/SymptomLogBar";
+import SymptomLogBar from "../../components/illness/SymptomLogBar";
 import { SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";

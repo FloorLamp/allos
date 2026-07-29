@@ -10,12 +10,12 @@ import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import { today } from "@/lib/db";
 import { cumulativeDose } from "@/lib/radiation-dose";
-import ImagingStudyForm from "@/app/(app)/imaging/ImagingStudyForm";
+import ImagingStudyForm from "@/app/(app)/results/imaging/ImagingStudyForm";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import ListRailLayout from "@/components/ListRailLayout";
-import ImagingStudyList from "@/app/(app)/imaging/ImagingStudyList";
-import RadiationDoseCard from "@/app/(app)/imaging/RadiationDoseCard";
-import { addImagingStudy } from "@/app/(app)/imaging/actions";
+import ImagingStudyList from "@/app/(app)/results/imaging/ImagingStudyList";
+import RadiationDoseCard from "@/app/(app)/results/imaging/RadiationDoseCard";
+import { addImagingStudy } from "@/app/(app)/results/imaging/actions";
 
 // The former /imaging index page body (#1042 phase 5), now the #imaging section
 // of /results. Imaging studies: the profile's structured radiology studies —

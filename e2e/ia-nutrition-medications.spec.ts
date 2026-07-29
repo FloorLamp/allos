@@ -7,27 +7,17 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // IA split (#746): supplements folded into the Nutrition → Supplements tab,
-// medications became a standalone Medical-group page, and /medicine permanently
-// redirects to the Supplements tab. This spec proves all four surfaces:
-//   1. /medicine redirects to /nutrition?tab=supplements
-//   2. Nutrition is a URL-driven Food | Supplements umbrella
-//   3. /medications renders the medication cards + add form
-//   4. an INFANT profile (Food-logging gated off) can still reach the Supplements
+// medications became a standalone Medical-group page. (The old /medicine route was
+// removed outright in #1635 and 404s.) This spec proves all three surfaces:
+//   1. Nutrition is a URL-driven Food | Supplements umbrella
+//   2. /medications renders the medication cards + add form
+//   3. an INFANT profile (Food-logging gated off) can still reach the Supplements
 //      tab — infant supplements are real (vitamin D drops) — while the Food tab
 //      shows the calm note.
 
 function dbPath(): string {
   return workerDbPath();
 }
-
-test("/medicine permanently redirects to the Supplements tab (#746)", async ({
-  page,
-}) => {
-  await page.goto("/medicine");
-  await expect(page).toHaveURL(/\/nutrition\?tab=supplements/);
-  // The supplement workspace rendered, not a 404 / error page.
-  await expect(page.getByTestId("supplement-workspace")).toBeVisible();
-});
 
 test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   page,

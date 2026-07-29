@@ -66,7 +66,7 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "immunization_overrides.created_at — audit stamp on an upsert keyed by (profile_id, vaccine). Never day-reduced.",
   },
-  "app/(app)/journal/actions.ts": {
+  "app/(app)/training/activity-actions.ts": {
     count: 1,
     why: "journal updated_at — a 'last modified' audit stamp.",
   },

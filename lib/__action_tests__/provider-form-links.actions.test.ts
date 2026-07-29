@@ -11,13 +11,13 @@ import { db } from "@/lib/db";
 import {
   addOpticalPrescription,
   updateOpticalPrescription,
-} from "@/app/(app)/vision/actions";
-import { addDentalProcedure } from "@/app/(app)/dental/actions";
-import { addSkinLesion } from "@/app/(app)/skin/actions";
+} from "@/app/(app)/records/specialty/vision/actions";
+import { addDentalProcedure } from "@/app/(app)/records/specialty/dental/actions";
+import { addSkinLesion } from "@/app/(app)/records/specialty/skin/actions";
 import {
   addImagingStudy,
   updateImagingStudy,
-} from "@/app/(app)/imaging/actions";
+} from "@/app/(app)/results/imaging/actions";
 import {
   getOpticalPrescriptions,
   getDentalProcedures,

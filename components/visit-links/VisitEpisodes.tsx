@@ -4,7 +4,7 @@ import {
   linkEpisodeVisitAction,
   declineEpisodeVisitAction,
   unlinkEpisodeVisitAction,
-} from "@/app/(app)/visit-links/actions";
+} from "@/app/(app)/visit-link-actions";
 import { episodeHref } from "@/lib/hrefs";
 import type { EncounterEpisodeSuggestion } from "@/lib/visit-link-suggest";
 

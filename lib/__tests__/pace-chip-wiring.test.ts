@@ -31,8 +31,8 @@ const CHIP_DATA_BUILDERS = [
 const KNOWN_RENDER_SITES = [
   "components/dashboard/GoalsHabitsWidget.tsx",
   "app/(app)/training/OverviewSection.tsx",
-  "app/(app)/journal/JournalView.tsx", // renders weekSummary.targets (paced by HistorySection)
-  "app/(app)/goals/FrequencyTargets.tsx", // forwards items (paced by GoalsSection)
+  "app/(app)/training/JournalView.tsx", // renders weekSummary.targets (paced by HistorySection)
+  "app/(app)/training/FrequencyTargets.tsx", // forwards items (paced by GoalsSection)
 ];
 
 // The component's own module renders <WeeklyTargetChip> internally (the row maps

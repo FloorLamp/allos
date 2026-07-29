@@ -1,7 +1,7 @@
 "use client";
 
 import CareGoalForm from "./CareGoalForm";
-import { updateCareGoal, deleteCareGoal } from "./actions";
+import { updateCareGoal, deleteCareGoal } from "./care-goal-actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";

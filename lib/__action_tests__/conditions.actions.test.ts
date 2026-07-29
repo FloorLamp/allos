@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { confirmConditionSuggestion } from "@/app/(app)/conditions/actions";
+import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);

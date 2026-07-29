@@ -20,7 +20,7 @@ import {
   trackCoverageGap,
   untrackCoverageGap,
   enrichCoverageGapAction,
-} from "@/app/(app)/coverage/actions";
+} from "@/app/(app)/data/coverage-actions";
 
 const KIND_LABEL: Record<CoverageGapKind, string> = {
   biomarker: "Biomarker",

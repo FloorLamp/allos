@@ -1,8 +1,8 @@
 import { getCareGoalsForProfiles } from "@/lib/queries";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
-import CareGoalForm from "@/app/(app)/care-goals/CareGoalForm";
-import CareGoalList from "@/app/(app)/care-goals/CareGoalList";
-import { addCareGoal } from "@/app/(app)/care-goals/actions";
+import CareGoalForm from "@/app/(app)/records/care/overview/CareGoalForm";
+import CareGoalList from "@/app/(app)/records/care/overview/CareGoalList";
+import { addCareGoal } from "@/app/(app)/records/care/overview/care-goal-actions";
 
 // Health goals (former /care-goals index, #1042 phase 6): clinical goals/targets
 // recorded in the profile's health records (Goals section, LOINC 61146-7, or a

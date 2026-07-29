@@ -73,11 +73,3 @@ test("track an uncatalogued biomarker and get a de-identified catalog request (#
     page.getByTestId("coverage-candidate").filter({ hasText: GAP })
   ).toBeVisible();
 });
-
-test("/coverage 308-redirects to Data → Coverage (#1086)", async ({ page }) => {
-  // The old /coverage index route (once → /records#coverage) now repoints to the
-  // Data tab. Request-level assertion — the config redirect fires before auth.
-  const res = await page.request.get("/coverage", { maxRedirects: 0 });
-  expect(res.status()).toBe(308);
-  expect(res.headers()["location"]).toBe("/data?section=coverage");
-});

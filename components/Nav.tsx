@@ -101,7 +101,7 @@ const RECORDS: Group = {
     { href: "/results", label: "Results", icon: IconChartLine },
     // Supplements left this group for the Nutrition → Supplements tab (#746);
     // Medications kept a Medical-group home of their own. The old combined
-    // "/medicine" surface now redirects to the Supplements tab.
+    // "/medicine" surface was removed outright (#1635) and 404s.
     { href: "/medications", label: "Medications", icon: IconPill },
     // The household medicine cabinet (/supplies, #1374) is NOT a nav leaf (#1522).
     // It is a physical-object REGISTRY — bottles that intake items link to — and the

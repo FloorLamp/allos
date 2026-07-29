@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import ActivityVideoStrip, {
   type ActivityVideoView,
 } from "@/components/activity/ActivityVideoStrip";
-import { listActivityVideosAction } from "@/app/(app)/journal/video-actions";
+import { listActivityVideosAction } from "@/app/(app)/training/video-actions";
 
 // The activity editor's "Form check" block (#1457) — the ADD entry point for
 // training clips, and the reason the Journal card's strip could stop rendering an

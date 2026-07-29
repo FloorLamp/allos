@@ -158,4 +158,5 @@ import type { UpcomingItem } from "../../upcoming";
 import { fmtDistance } from "../../units";
 import { trainingSignalKey } from "../../workout-nudge";
 import { getCarePlanItems } from "../clinical";
-import { getFrequencyTargetProgress, getGoals } from "../training";
+import { getFrequencyTargetProgress } from "../frequency-targets";
+import { getGoals } from "../training";

@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { today } from "@/lib/db";
-import { saveActivity } from "@/app/(app)/journal/actions";
+import { saveActivity } from "@/app/(app)/training/activity-actions";
 import {
   pendingPostWorkoutDispatchKeys,
   flushPostWorkoutDispatches,

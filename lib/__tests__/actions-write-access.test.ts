@@ -74,7 +74,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#878): narrates a finding's OWN reason payload via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
   },
   {
-    file: "app/(app)/journal/actions.ts",
+    file: "app/(app)/training/activity-actions.ts",
     fn: "loadJournalPage",
     why: "read-only: fetches an older window of the active profile's Journal feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
   },
@@ -364,82 +364,82 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // requireWriteAccess() for a single-view form. The paired add* action keeps its plain
   // requireWriteAccess() (a new row always lands on the acting profile). ---
   {
-    file: "app/(app)/conditions/actions.ts",
+    file: "app/(app)/records/problems/conditions/actions.ts",
     fn: "updateCondition",
     why: "multi-view (#1328): edits the ITEM's condition via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/conditions/actions.ts",
+    file: "app/(app)/records/problems/conditions/actions.ts",
     fn: "deleteCondition",
     why: "multi-view (#1328): deletes the ITEM's condition via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/allergies/actions.ts",
+    file: "app/(app)/records/problems/allergies/actions.ts",
     fn: "updateAllergy",
     why: "multi-view (#1328): edits the ITEM's allergy via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/allergies/actions.ts",
+    file: "app/(app)/records/problems/allergies/actions.ts",
     fn: "deleteAllergy",
     why: "multi-view (#1328): deletes the ITEM's allergy via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/procedures/actions.ts",
+    file: "app/(app)/records/history/procedures/actions.ts",
     fn: "updateProcedure",
     why: "multi-view (#1328): edits the ITEM's procedure via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/procedures/actions.ts",
+    file: "app/(app)/records/history/procedures/actions.ts",
     fn: "deleteProcedure",
     why: "multi-view (#1328): deletes the ITEM's procedure via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/family-history/actions.ts",
+    file: "app/(app)/records/care/overview/family-history-actions.ts",
     fn: "updateFamilyHistory",
     why: "multi-view (#1328): edits the ITEM's family-history entry via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/family-history/actions.ts",
+    file: "app/(app)/records/care/overview/family-history-actions.ts",
     fn: "deleteFamilyHistory",
     why: "multi-view (#1328): deletes the ITEM's family-history entry via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/care-plan/actions.ts",
+    file: "app/(app)/records/care/overview/care-plan-actions.ts",
     fn: "updateCarePlanItem",
     why: "multi-view (#1328): edits the ITEM's care-plan item via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/care-plan/actions.ts",
+    file: "app/(app)/records/care/overview/care-plan-actions.ts",
     fn: "deleteCarePlanItem",
     why: "multi-view (#1328): deletes the ITEM's care-plan item via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/care-goals/actions.ts",
+    file: "app/(app)/records/care/overview/care-goal-actions.ts",
     fn: "updateCareGoal",
     why: "multi-view (#1328): edits the ITEM's health goal via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/care-goals/actions.ts",
+    file: "app/(app)/records/care/overview/care-goal-actions.ts",
     fn: "deleteCareGoal",
     why: "multi-view (#1328): deletes the ITEM's health goal via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/genomics/actions.ts",
+    file: "app/(app)/results/genomics/actions.ts",
     fn: "updateGenomicVariant",
     why: "multi-view (#1328): edits the ITEM's genomic variant via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/genomics/actions.ts",
+    file: "app/(app)/results/genomics/actions.ts",
     fn: "deleteGenomicVariant",
     why: "multi-view (#1328): deletes the ITEM's genomic variant via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/imaging/actions.ts",
+    file: "app/(app)/results/imaging/actions.ts",
     fn: "updateImagingStudy",
     why: "multi-view (#1328): edits the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/imaging/actions.ts",
+    file: "app/(app)/results/imaging/actions.ts",
     fn: "deleteImagingStudy",
     why: "multi-view (#1328): deletes the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
@@ -464,17 +464,17 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // read-only-granted / ungranted member is bounced). No profile_id (a CREATE, or a
   // single-view form) falls back to requireWriteAccess() on the acting profile. ---
   {
-    file: "app/(app)/journal/actions.ts",
+    file: "app/(app)/training/activity-actions.ts",
     fn: "saveActivity",
     why: "multi-view (#1330): creates on the acting profile, or edits the ITEM's activity on its subject profile, via gateItemProfile() → requireProfileWriteAccess(itemProfileId); login is read only for the viewer's unit prefs",
   },
   {
-    file: "app/(app)/journal/actions.ts",
+    file: "app/(app)/training/activity-actions.ts",
     fn: "deleteActivity",
     why: "multi-view (#1330): deletes the ITEM's activity on its subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/journal/actions.ts",
+    file: "app/(app)/training/activity-actions.ts",
     fn: "mergeActivities",
     why: "multi-view (#1330): folds a same-profile same-day pair on the ITEM's subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId); cross-profile pairs are refused by the AND profile_id re-check",
   },

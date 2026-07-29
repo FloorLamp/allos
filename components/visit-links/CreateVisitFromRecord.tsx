@@ -1,7 +1,7 @@
 import {
   createVisitFromRecordAction,
   declineCreateVisitAction,
-} from "@/app/(app)/visit-links/actions";
+} from "@/app/(app)/visit-link-actions";
 import type { CreateVisitOffer } from "@/lib/queries";
 
 // "Create a visit from this record?" (#1099). Some records imply a visit happened (an

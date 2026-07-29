@@ -1,4 +1,7 @@
-// Healthspan pillars (issue #161). PURE — no DB, no network. Assembles a small set
+// Longevity pillars — the "healthspan pillars" of issue #161, renamed after the
+// surface they serve in #1638 (route /longevity, nav label "Longevity"); the domain
+// concept is still healthspan, and the persisted dashboard widget id stays
+// `healthspan-pillars`. PURE — no DB, no network. Assembles a small set
 // of evidence-backed longevity PILLARS, each CONSUMING an already-merged pure
 // computation rather than re-deriving it (the "one question, one computation"
 // rule): VO2 Max percentile (#158 lib/fitness-norms), sleep regularity (#160

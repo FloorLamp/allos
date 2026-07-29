@@ -13,7 +13,7 @@ import {
   updateDentalProcedure,
   deleteDentalProcedure,
   trackDentalFollowUp,
-} from "@/app/(app)/dental/actions";
+} from "@/app/(app)/records/specialty/dental/actions";
 import { db } from "@/lib/db";
 import {
   getDentalProcedures,

@@ -37,8 +37,8 @@ import {
   setStatus,
   setArchived,
   deleteGoal,
-} from "@/app/(app)/goals/actions";
-import GoalForm from "@/app/(app)/goals/GoalForm";
+} from "@/app/(app)/training/goal-actions";
+import GoalForm from "@/app/(app)/training/GoalForm";
 
 // A progress value, formatted for the goal's metric.
 function goalValueText(g: Goal, value: number, wu: WeightUnit): string {

@@ -17,7 +17,7 @@ function read(rel: string): string {
 
 describe("episode-page logging reuses the shared SymptomLogBar (#856 item 11)", () => {
   const panel = read("components/illness/EpisodeLogPanel.tsx");
-  const card = read("app/(app)/symptoms/SymptomLogCard.tsx");
+  const card = read("components/illness/SymptomLogCard.tsx");
 
   it("EpisodeLogPanel imports the SAME SymptomLogBar the dashboard card imports", () => {
     const importRe = /import\s+SymptomLogBar\s+from\s+["']([^"']+)["']/;
