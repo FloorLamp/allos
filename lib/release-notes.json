@@ -4,6 +4,20 @@
       "date": "2026-07-29",
       "entries": [
         {
+          "pr": 1657,
+          "title": "Invites without passwords, and honest answers at the door",
+          "body": "Inviting someone to your instance got simpler and safer. With an email invite, you no longer invent an interim password for them — the account is unusable until they set their own through the invite link. New logins can be granted profile access at creation (defaulting sensibly when a same-named profile exists), so nobody lands in an account that can see nothing. And if a login does end up without access — say its last grant was revoked — signing in now says so plainly instead of silently bouncing back to the form, stale sessions are cleaned up rather than lingering as \"active\", and the attempt is recorded for the admin. Profiles with identical names are now told apart everywhere you pick one. Also: asking your records a plural question (\"any allergies?\") now finds singular-named entries.",
+          "kind": "feature",
+          "issues": [1434, 1597]
+        },
+        {
+          "pr": 1656,
+          "title": "Every icon button explains itself",
+          "body": "All 96 icon-only buttons in the app — including every Delete and Remove — now show a tooltip on hover and carry a proper screen-reader name. A build-time guard keeps it that way: a new icon button can't ship without one. On touch screens, where there is no hover, every destructive icon action already asks for confirmation before acting — that safety net is now enforced too.",
+          "kind": "fix",
+          "issues": [1535]
+        },
+        {
           "pr": 1649,
           "title": "Your protein goal is finally yours to set",
           "body": "The protein band on the Nutrition gauge has always adapted to a training goal — but there was nowhere to set one, so everyone silently sat on the \"Active\" band. Settings → Nutrition now has the picker (RDA baseline / Active / Muscle gain / Cut), saving as you change it, with the band shown in real g/kg terms. It's an informational range, not a prescription. Two consistency fixes rode along: each dashboard insight now appears in exactly one card (data-quality gaps no longer show in both the Data quality widget and the Coaching observations rollup — and hiding the widget hands its items back to the rollup instead of losing them), and \"activity streak\" now means one thing everywhere — the rest-tolerant streak; the strict consecutive-days number, where it appears, is labeled as exactly that.",
