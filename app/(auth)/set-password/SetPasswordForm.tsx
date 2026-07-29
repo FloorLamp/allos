@@ -23,9 +23,14 @@ function SubmitButton({ label }: { label: string }) {
 export default function SetPasswordForm({
   token,
   label,
+  username = null,
 }: {
   token: string;
   label: string;
+  // The login this token belongs to (issue #1434). Carried into the sign-in link so
+  // the username field arrives filled — the invitee already proved possession of a
+  // token minted for exactly this login.
+  username?: string | null;
 }) {
   const [state, formAction] = useActionState<SetPasswordState, FormData>(
     completeSetPassword,
@@ -45,7 +50,10 @@ export default function SetPasswordForm({
           Your password is set. You can sign in now.
         </p>
         <a
-          href="/login"
+          href={
+            username ? `/login?u=${encodeURIComponent(username)}` : "/login"
+          }
+          data-testid="set-password-signin"
           className="w-full rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
         >
           Sign in

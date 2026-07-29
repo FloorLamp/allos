@@ -32,6 +32,19 @@ export function safeNextPath(
   return isSafeNextPath(next) ? (next as AppRoute) : fallback;
 }
 
+// Validate a `?u=` sign-in prefill (issue #1434). After completing an invite the
+// person just proved possession of a token minted FOR that username, so the sign-in
+// form can fill it in rather than making them recall a name the admin chose. Only
+// the stored username shape is accepted (the same 3–32 letters/digits/dot/dash/
+// underscore the family action enforces), so an arbitrary querystring can never be
+// reflected into the page; anything else yields "" and the field starts empty.
+// Prefilling is not an oracle: the value is echoed back unverified, so it says
+// nothing about whether such a login exists.
+export function safePrefillUsername(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return /^[a-zA-Z0-9._-]{3,32}$/.test(value) ? value : "";
+}
+
 // Normalize a request User-Agent header for storage against a session, so the
 // active-sessions view can show "which device" without letting a hostile client
 // bloat the row. Trims, collapses whitespace, and caps the length; a missing or

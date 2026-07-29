@@ -98,6 +98,17 @@ function accessibleProfiles(loginId: number, role: Role): SessionProfile[] {
   return PROFILES_FOR_LOGIN_STMT.all(loginId) as SessionProfile[];
 }
 
+// Whether a login can reach ANY profile — the precondition for a usable session
+// (issue #1434). A member created with zero grants authenticates fine and then
+// resolves to no session at all (see resolveSessionToken below), which used to
+// present as a silent bounce back to an empty sign-in form. The sign-in actions
+// call this BEFORE minting a session so the outcome can be honest and no unusable
+// session row is created. Admins are implicit-all, so they only fail this when the
+// instance has no profiles at all.
+export function loginHasProfileAccess(loginId: number, role: Role): boolean {
+  return accessibleProfiles(loginId, role).length > 0;
+}
+
 const GRANT_ACCESS_STMT = db.prepare(
   "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
 );
@@ -185,6 +196,9 @@ const SESSION_LOOKUP_STMT = db.prepare(
 const SESSION_FIX_PROFILE_STMT = db.prepare(
   "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
 );
+const SESSION_DELETE_STMT = db.prepare(
+  "DELETE FROM sessions WHERE token_hash = ?"
+);
 const SESSION_TOUCH_STMT = db.prepare(
   `UPDATE sessions
       SET last_used_at = datetime('now'),
@@ -213,7 +227,17 @@ export function resolveSessionToken(token: string): CurrentSession | null {
   if (!row) return null;
 
   const profiles = accessibleProfiles(row.loginId, row.role);
-  if (profiles.length === 0) return null; // login with no usable profile
+  if (profiles.length === 0) {
+    // A login with no usable profile has no session (issue #1434). Tear the row
+    // down rather than leaving a cookie that resolves to null on every request —
+    // otherwise a member whose last grant was revoked keeps a zombie row that the
+    // Family screen still counts as an "active session" while every request
+    // bounces to /login. The sign-in actions refuse to mint one in the first
+    // place; this is the same decision applied to a session that OUTLIVED its
+    // grants. Deleting by token hash only ever touches this caller's own session.
+    SESSION_DELETE_STMT.run(tokenHash);
+    return null;
+  }
 
   let profile = profiles.find((p) => p.id === row.activeProfileId);
   if (!profile) {

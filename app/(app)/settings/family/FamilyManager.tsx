@@ -9,11 +9,14 @@ import { NOTICE_TONE } from "@/components/Notice";
 import { membersLosingAllAccess } from "@/lib/family-deletion";
 import { grantCountSummary, type Access } from "@/lib/grants";
 import {
+  defaultAccessSelection,
   deletionErasesText,
   grantFormEntries,
   initialGrantSelection,
+  isDuplicateProfileName,
   loadedGrantSignature,
   memberGrantList,
+  profileChoiceLabels,
   setGrantLevel,
   toggleGrant,
 } from "@/lib/family-ui";
@@ -96,6 +99,8 @@ export default function FamilyManager({
       />
       <LoginsCard
         logins={logins}
+        profiles={profiles}
+        grants={grants}
         sessionCounts={sessionCounts}
         canInvite={canInvite}
       />
@@ -128,12 +133,25 @@ function ProfilesCard({
   summaries: Record<number, ProfileDataSummary>;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
   const [newName, setNewName] = useState("");
   const members = memberGrantList(logins, grants);
 
-  function add() {
+  async function add() {
+    // Profile names aren't unique-constrained, so an accidental double-submit used
+    // to create two identical profiles silently (issue #1434). Soft confirm — a
+    // deliberate second "Jordan" is still allowed, it just can't happen by mistake.
+    if (isDuplicateProfileName(newName, profiles)) {
+      const ok = await confirm({
+        title: `You already have a profile named “${newName.trim()}”`,
+        message:
+          "Two profiles with the same name are told apart only by a “(2)” label. Create another one anyway?",
+        confirmLabel: "Create another",
+      });
+      if (!ok) return;
+    }
     const fd = new FormData();
     fd.set("name", newName);
     start(async () => {
@@ -173,9 +191,12 @@ function ProfilesCard({
       </div>
 
       <div className="border-t border-black/10 pt-4 dark:border-white/10">
-        <label className="label">Add a profile</label>
+        <label className="label" htmlFor="family-new-profile-name">
+          Add a profile
+        </label>
         <div className="flex items-end gap-2">
           <input
+            id="family-new-profile-name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Name"
@@ -371,10 +392,14 @@ function ProfileRow({
 
 function LoginsCard({
   logins,
+  profiles,
+  grants,
   sessionCounts,
   canInvite,
 }: {
   logins: Login[];
+  profiles: Profile[];
+  grants: Record<number, number[]>;
   sessionCounts: Record<number, number>;
   canInvite: boolean;
 }) {
@@ -386,15 +411,44 @@ function LoginsCard({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [invite, setInvite] = useState(false);
+  // Initial profile access for the member being created (issue #1434). Kept as an
+  // explicit "the admin touched this" flag so the same-named-profile default can
+  // keep tracking the username as it's typed, but never fights a deliberate choice.
+  const [accessTouched, setAccessTouched] = useState(false);
+  const [accessIds, setAccessIds] = useState<number[]>([]);
   const adminCount = logins.filter((a) => a.role === "admin").length;
+  const choices = profileChoiceLabels(profiles);
+  const defaulted = defaultAccessSelection(username, profiles);
+  const selectedAccess = accessTouched ? accessIds : defaulted;
+  // Passwordless when the invite carries the credential (issue #1434 part C): the
+  // checkbox's own copy says "instead of setting a password", so the field is
+  // disabled and the create no longer demands one.
+  const invitePath = canInvite && invite && !!email.trim();
+
+  function toggleAccess(id: number) {
+    setAccessIds(
+      selectedAccess.includes(id)
+        ? selectedAccess.filter((x) => x !== id)
+        : [...selectedAccess, id]
+    );
+    setAccessTouched(true);
+  }
 
   function create() {
     const fd = new FormData();
     fd.set("username", username);
-    fd.set("password", password);
+    if (!invitePath) fd.set("password", password);
     fd.set("role", role);
     fd.set("email", email);
     if (invite) fd.set("invite", "1");
+    // Same field shape as the grants matrix; the action re-validates every id and
+    // ignores the selection entirely for an admin (implicit all-profile access).
+    if (role === "member") {
+      for (const id of selectedAccess) {
+        fd.append("profileId", String(id));
+        fd.set(`access_${id}`, "write");
+      }
+    }
     start(async () => {
       const r = await createLogin(fd);
       setResult(r);
@@ -404,6 +458,8 @@ function LoginsCard({
         setEmail("");
         setRole("member");
         setInvite(false);
+        setAccessIds([]);
+        setAccessTouched(false);
         router.refresh();
       }
     });
@@ -428,6 +484,7 @@ function LoginsCard({
             login={a}
             isLastAdmin={a.role === "admin" && adminCount <= 1}
             sessionCount={sessionCounts[a.id] ?? 0}
+            grantCount={(grants[a.id] ?? []).length}
             canInvite={canInvite}
             onDone={() => router.refresh()}
           />
@@ -435,27 +492,35 @@ function LoginsCard({
       </div>
 
       <div className="space-y-3 border-t border-black/10 pt-4 dark:border-white/10">
-        <label className="label">Add a login</label>
+        <label className="label" htmlFor="family-new-login-username">
+          Add a login
+        </label>
         <div className="grid gap-2 sm:grid-cols-3">
           <input
+            id="family-new-login-username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Username"
             autoComplete="off"
+            aria-label="Username"
             className="input"
           />
           <input
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
+            placeholder={invitePath ? "Set by invite" : "Password"}
             type="password"
             autoComplete="new-password"
-            className="input"
+            disabled={invitePath}
+            aria-label="Password"
+            data-testid="create-password"
+            className="input disabled:opacity-40"
           />
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as "admin" | "member")}
             data-testid="create-role"
+            aria-label="Role"
             className="input"
           >
             <option value="member">Member</option>
@@ -467,6 +532,7 @@ function LoginsCard({
             placeholder="Email (optional)"
             type="email"
             autoComplete="off"
+            aria-label="Email"
             className="input sm:col-span-3"
           />
         </div>
@@ -483,11 +549,56 @@ function LoginsCard({
             Email an invite instead of setting a password out-of-band
           </label>
         )}
+        {/* Initial profile access (issue #1434): a member created with no grants
+            authenticates and then lands nowhere, so access is part of creating one.
+            Labels are disambiguated (#534) — two same-named profiles must never
+            render as identical rows in the place where picking the wrong one
+            matters most. Admins reach every profile, so the picker hides for them. */}
+        {role === "member" && (
+          <div data-testid="create-access" className="space-y-1">
+            <p className="label mb-0">Profile access</p>
+            {profiles.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Add a profile first — a member with no profile access can&apos;t
+                use the app.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {choices.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAccess.includes(c.id)}
+                        onChange={() => toggleAccess(c.id)}
+                        data-testid={`create-access-${c.id}`}
+                        className="h-4 w-4 accent-brand-600"
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+                {selectedAccess.length === 0 && (
+                  <p
+                    data-testid="create-access-warning"
+                    className="text-xs text-amber-700 dark:text-amber-400"
+                  >
+                    With no profile selected this login can sign in but has
+                    nowhere to land — you can grant access later under Access.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={create}
-            disabled={pending || !username.trim() || !password}
+            disabled={pending || !username.trim() || (!invitePath && !password)}
             className="btn"
           >
             Create login
@@ -503,12 +614,17 @@ function LoginRow({
   login,
   isLastAdmin,
   sessionCount,
+  grantCount,
   canInvite,
   onDone,
 }: {
   login: Login;
   isLastAdmin: boolean;
   sessionCount: number;
+  // How many profiles this login is granted. Zero on a MEMBER is the dead-end
+  // (issue #1434): the login authenticates and then has nowhere to land, so the
+  // row says so instead of leaving the admin with no signal at all.
+  grantCount: number;
   canInvite: boolean;
   onDone: () => void;
 }) {
@@ -626,6 +742,15 @@ function LoginRow({
           >
             {login.role}
           </span>
+          {login.role === "member" && grantCount === 0 && (
+            <span
+              data-testid="login-no-access"
+              title="This login has no profile access — it can sign in but has nowhere to land. Grant it a profile under Access."
+              className="badge bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+            >
+              no access
+            </span>
+          )}
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {sessionCount === 0
               ? "no active sessions"
@@ -926,9 +1051,9 @@ function OwnProfileRow({
         className="input h-8 w-44 py-0 text-sm disabled:opacity-40"
       >
         <option value="none">None</option>
-        {profiles.map((p) => (
-          <option key={p.id} value={String(p.id)}>
-            {p.name}
+        {profileChoiceLabels(profiles).map((c) => (
+          <option key={c.id} value={String(c.id)}>
+            {c.label}
           </option>
         ))}
       </select>
@@ -987,31 +1112,34 @@ function GrantsRow({
   return (
     <div data-testid={`grant-row-${login.username}`}>
       <div className="space-y-2">
-        {profiles.map((p) => {
-          const isGranted = selected.has(p.id);
-          const level = selected.get(p.id) ?? "write";
+        {/* Disambiguated labels (#534 via #1434): two same-named profiles are
+            otherwise identical checkbox rows in the one place where granting the
+            wrong person's record is the costliest mistake on this screen. */}
+        {profileChoiceLabels(profiles).map(({ id: pid, label }) => {
+          const isGranted = selected.has(pid);
+          const level = selected.get(pid) ?? "write";
           return (
             <div
-              key={p.id}
+              key={pid}
               className="flex flex-wrap items-center gap-3"
-              data-testid={`grant-cell-${login.username}-${p.id}`}
+              data-testid={`grant-cell-${login.username}-${pid}`}
             >
               <label className="flex min-w-[8rem] items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input
                   type="checkbox"
-                  data-testid={`grant-toggle-${login.username}-${p.id}`}
+                  data-testid={`grant-toggle-${login.username}-${pid}`}
                   checked={isGranted}
-                  onChange={() => toggle(p.id)}
+                  onChange={() => toggle(pid)}
                   className="h-4 w-4 accent-brand-600 focus:ring-brand-500"
                 />
-                {p.name}
+                {label}
               </label>
               <select
-                aria-label={`Access level for ${p.name}`}
-                data-testid={`grant-access-${login.username}-${p.id}`}
+                aria-label={`Access level for ${label}`}
+                data-testid={`grant-access-${login.username}-${pid}`}
                 value={level}
                 disabled={!isGranted}
-                onChange={(e) => setLevel(p.id, e.target.value as Access)}
+                onChange={(e) => setLevel(pid, e.target.value as Access)}
                 className="input h-8 w-32 py-0 text-sm disabled:opacity-40"
               >
                 <option value="write">Read &amp; write</option>

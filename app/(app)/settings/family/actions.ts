@@ -1,5 +1,6 @@
 "use server";
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
@@ -430,6 +431,18 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
 
 // ---- Logins ----
 
+// A password hash of a value NOBODY knows — the stored credential for a login
+// created through the invite path (issue #1434 part C). `logins.password_hash` is
+// NOT NULL, and a nullable-credential auth path would be a much larger,
+// security-sensitive change, so "passwordless" is expressed as an unguessable
+// random secret that is generated, hashed, and immediately discarded. The login is
+// therefore unusable until the invitee sets a real password through their token —
+// strictly safer than the interim password an admin invents, knows, and leaves
+// valid alongside the invite link.
+async function unusablePasswordHash(): Promise<string> {
+  return hashPassword(crypto.randomBytes(32).toString("hex"));
+}
+
 export async function createLogin(formData: FormData): Promise<FamilyResult> {
   const admin = await requireAdmin();
   const username = String(formData.get("username") ?? "").trim();
@@ -451,18 +464,70 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
     };
   if (email && !isValidEmail(email))
     return { ok: false, error: "Enter a valid email address." };
-  const strength = checkPasswordStrength(password, { username });
-  if (!strength.ok) return { ok: false, error: strength.error };
 
-  const passwordHash = await hashPassword(password);
+  // The invite carries its own trust (issue #1434): when the admin chose to email a
+  // set-password link, the login is created PASSWORDLESS and no password is asked
+  // for or accepted. Anything else still needs a real password up front. An invite
+  // the instance can't actually send is refused BEFORE the insert, so no login is
+  // ever left with a credential nobody can claim.
+  const invitePath = wantsInvite && !!email && canSendAuthEmail();
+  if (wantsInvite && !invitePath) {
+    return {
+      ok: false,
+      error: !email
+        ? "Add an email address to send an invite, or set a password instead."
+        : "Couldn't send the invite — configure SMTP and the public app URL on Settings → Server first.",
+    };
+  }
+  if (!invitePath) {
+    const strength = checkPasswordStrength(password, { username });
+    if (!strength.ok) return { ok: false, error: strength.error };
+  }
+
+  // The profiles this login should be able to open from day one (issue #1434 part
+  // B) — access is part of CREATING a member, not a separate discipline the admin
+  // has to remember afterwards. Admins are implicit-all and never carry
+  // login_profiles rows, so their submitted selection is ignored. Same field shape
+  // as setGrants (repeated `profileId` + `access_<id>`), normalized through the same
+  // pure helpers against the REAL profile ids, so a forged id can't be granted.
+  const validIds = (
+    db.prepare("SELECT id FROM profiles").all() as { id: number }[]
+  ).map((r) => r.id);
+  const initialGrants: GrantInput[] =
+    role === "admin"
+      ? []
+      : normalizeGrantInputs(
+          formData
+            .getAll("profileId")
+            .map((v) => Number(v))
+            .filter((n) => Number.isFinite(n))
+            .map((profileId) => ({
+              profileId,
+              access: normalizeAccess(formData.get(`access_${profileId}`)),
+            })),
+          validIds
+        );
+
+  const passwordHash = invitePath
+    ? await unusablePasswordHash()
+    : await hashPassword(password);
   let newId: number;
   try {
-    const info = db
-      .prepare(
-        "INSERT INTO logins (username, password_hash, role, email) VALUES (?, ?, ?, ?)"
-      )
-      .run(username, passwordHash, role, email || null);
-    newId = Number(info.lastInsertRowid);
+    // One transaction: the login and its initial grants land together, so a member
+    // is never briefly visible with the zero-grant dead end this fixes.
+    newId = writeTx((): number => {
+      const info = db
+        .prepare(
+          "INSERT INTO logins (username, password_hash, role, email) VALUES (?, ?, ?, ?)"
+        )
+        .run(username, passwordHash, role, email || null);
+      const id = Number(info.lastInsertRowid);
+      const ins = db.prepare(
+        "INSERT OR IGNORE INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, ?)"
+      );
+      for (const g of initialGrants) ins.run(id, g.profileId, g.access);
+      return id;
+    });
     recordAudit({
       loginId: admin.login.id,
       profileId: admin.profile.id,
@@ -470,6 +535,19 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
       target: String(newId),
       detail: `${username} (${role})`,
     });
+    if (initialGrants.length > 0) {
+      recordAudit({
+        loginId: admin.login.id,
+        profileId: admin.profile.id,
+        action: AUDIT_ACTIONS.grantUpdate,
+        target: String(newId),
+        detail: formatGrantDiff({
+          add: initialGrants,
+          update: [],
+          remove: [],
+        }),
+      });
+    }
   } catch (err) {
     // Surface the case-insensitive unique constraints as friendly messages instead
     // of a 500 (username and the unique-if-set email index).
@@ -488,38 +566,35 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
     throw err;
   }
 
-  // Optionally email a set-password invite. A failure here never rolls back the
-  // login — it's created; we just report the invite couldn't go out and the admin
-  // can resend from the login's row.
+  // Email the set-password invite. A failure here never rolls back the login — it's
+  // created; we just report the invite couldn't go out. The login is passwordless,
+  // so say so plainly: the admin's rescue is "Send invite" (or a manual reset) from
+  // the login's row, not a password only they know.
   let inviteNote = "";
-  if (wantsInvite) {
-    if (!email) {
-      inviteNote = " Add an email to send an invite.";
-    } else if (!canSendAuthEmail()) {
+  if (invitePath) {
+    try {
+      await sendInviteEmail(newId, username, email);
+      recordAudit({
+        loginId: admin.login.id,
+        profileId: admin.profile.id,
+        action: AUDIT_ACTIONS.loginInviteSent,
+        target: String(newId),
+      });
+      inviteNote = ` Sent an invite to ${email} — no password is set until they use it.`;
+    } catch {
       inviteNote =
-        " Couldn't send the invite — configure SMTP and the public app URL on Settings → Server first.";
-    } else {
-      try {
-        await sendInviteEmail(newId, username, email);
-        recordAudit({
-          loginId: admin.login.id,
-          profileId: admin.profile.id,
-          action: AUDIT_ACTIONS.loginInviteSent,
-          target: String(newId),
-        });
-        inviteNote = ` Sent an invite to ${email}.`;
-      } catch {
-        inviteNote =
-          " Couldn't send the invite email. Try again from the login’s row.";
-      }
+        " Couldn’t send the invite email — the login has no password yet. Resend from its row.";
     }
   }
 
   revalidatePath("/settings/family");
+  revalidatePath("/", "layout"); // an initial grant changes the member's switcher
   const base =
     role === "admin"
       ? `Created admin “${username}”.`
-      : `Created “${username}”. Grant it a profile below.`;
+      : initialGrants.length > 0
+        ? `Created “${username}” with access to ${initialGrants.length} ${initialGrants.length === 1 ? "profile" : "profiles"}.`
+        : `Created “${username}”. Grant it a profile below — it can’t sign in usefully until you do.`;
   return { ok: true, message: base + inviteNote };
 }
 
