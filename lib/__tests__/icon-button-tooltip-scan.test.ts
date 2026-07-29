@@ -28,6 +28,17 @@ import { fileURLToPath } from "node:url";
 // `title="Dismiss <finding>"` is announced twice. `components/FindingRow.tsx`
 // is the model — specific aria-label, short title.
 //
+// Both attributes are written LITERALLY on the element, even where they carry
+// the same string. A `{...iconLabel("Delete")}` spread helper would read more
+// tersely and blind this guard completely, which is the wrong trade: the point
+// of the convention is that a new button cannot ship without one.
+//
+// One caution the sweep learned the hard way: an aria-label that interpolates a
+// user-supplied name ("Delete {e.name}") is better a11y but makes Playwright's
+// default substring name matching ambiguous when several row controls share the
+// interpolated word. Where a row's controls are all named off the same object,
+// keep the labels short.
+//
 // ── what "icon-only" means here ─────────────────────────────────────────────
 //
 // The scan below is a small brace-aware JSX reader, not a regex: it parses the
