@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
+import { censusRevealed } from "./trends-chrome";
 
 // The unified "How are you today?" daily check-in card (issue #992): the one-tap
 // mood log composed with the illness front door in ONE shell. Covered states:
@@ -151,6 +152,9 @@ test.describe("Daily wellbeing check (#992)", () => {
     // The logged series surfaces on Trends → Body (never flag-checked — the card
     // copy says so in plain words).
     await page.goto("/trends");
+    // The mood chart is a card in the body census, which streams onto the landing
+    // surface (#1644) — wait for the reveal before querying it.
+    await censusRevealed(page, "body", "trends-body");
     const trend = page.getByTestId("mood-trend");
     await expect(trend).toBeVisible();
     await expect(trend).toContainText("never range-checked");
