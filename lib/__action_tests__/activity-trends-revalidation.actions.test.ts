@@ -13,7 +13,7 @@ import {
   logBodyweight,
   mergeActivities,
   deleteActivity,
-} from "@/app/(app)/journal/actions";
+} from "@/app/(app)/training/activity-actions";
 import { mergeActivityPair } from "@/app/(app)/data/review-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 

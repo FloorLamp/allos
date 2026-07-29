@@ -14,8 +14,11 @@ import { db } from "@/lib/db";
 import {
   updateCondition,
   deleteCondition,
-} from "@/app/(app)/conditions/actions";
-import { updateCareGoal, deleteCareGoal } from "@/app/(app)/care-goals/actions";
+} from "@/app/(app)/records/problems/conditions/actions";
+import {
+  updateCareGoal,
+  deleteCareGoal,
+} from "@/app/(app)/records/care/overview/care-goal-actions";
 import { updateRecord, deleteRecord } from "@/app/(app)/medical/actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 

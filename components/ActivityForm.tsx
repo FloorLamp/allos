@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { deleteActivity, logBodyweight } from "@/app/(app)/journal/actions";
+import {
+  deleteActivity,
+  logBodyweight,
+} from "@/app/(app)/training/activity-actions";
 import type { ActivityType, Equipment } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import { isBodyweight, baseLiftName } from "@/lib/lifts";

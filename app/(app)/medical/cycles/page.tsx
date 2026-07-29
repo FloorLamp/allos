@@ -4,7 +4,7 @@ import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
-import SymptomLogBar from "@/app/(app)/symptoms/SymptomLogBar";
+import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import { SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,

@@ -13,8 +13,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { deleteActivity } from "@/app/(app)/journal/actions";
-import { undoDelete } from "@/app/(app)/undo/actions";
+import { deleteActivity } from "@/app/(app)/training/activity-actions";
+import { undoDelete } from "@/app/(app)/undo-actions";
 import { getPairDecisions, recordPairDecision } from "@/lib/queries";
 import {
   ACTIVITY_DOMAIN,

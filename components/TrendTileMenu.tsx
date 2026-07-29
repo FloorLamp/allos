@@ -3,7 +3,7 @@
 import { useState } from "react";
 import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import { useTileReorder } from "@/components/SavedTilesGrid";
-import { toggleSavedItem } from "@/app/(app)/saved/actions";
+import { toggleSavedItem } from "@/app/(app)/saved-actions";
 
 // The corner ⋯ menu on a Trends Overview tile (#1485 B) — the tile's own controls,
 // off the tile's vertical budget.

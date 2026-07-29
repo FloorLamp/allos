@@ -15,7 +15,7 @@ import {
   trackSkinFollowUp,
   uploadLesionPhoto,
   deleteLesionPhoto,
-} from "@/app/(app)/skin/actions";
+} from "@/app/(app)/records/specialty/skin/actions";
 import { db } from "@/lib/db";
 import { getSkinLesions, getSkinLesionFollowUps } from "@/lib/queries";
 import { seedActor, createProfile, fd } from "./harness";

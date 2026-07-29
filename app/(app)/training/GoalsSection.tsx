@@ -9,7 +9,7 @@ import { getEquipment } from "@/lib/equipment";
 import { getUnitPrefs, getWeekMode } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { frequencyScopeLabel } from "@/lib/goals";
-import FrequencyTargets from "@/app/(app)/goals/FrequencyTargets";
+import FrequencyTargets from "@/app/(app)/training/FrequencyTargets";
 import GoalsManager from "./GoalsManager";
 import GoalPacingFindings from "./GoalPacingFindings";
 

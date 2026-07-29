@@ -18,7 +18,7 @@ import {
   renameCustomSymptom,
   deleteCustomSymptom,
   activateIllnessForSymptoms,
-} from "@/app/(app)/symptoms/actions";
+} from "@/app/(app)/symptom-actions";
 import { toggleSituationIllnessType } from "@/app/(app)/nutrition/supplement-actions";
 import {
   getSymptomsOnDate,

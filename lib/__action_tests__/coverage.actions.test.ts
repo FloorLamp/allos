@@ -12,7 +12,7 @@ import {
   trackCoverageGap,
   untrackCoverageGap,
   enrichCoverageGapAction,
-} from "@/app/(app)/coverage/actions";
+} from "@/app/(app)/data/coverage-actions";
 
 // An uncatalogued canonical name — deliberately gibberish so no curated seed / #482
 // family covers it. (A real name like "LDL Cholesterol" is covered by the seed.)

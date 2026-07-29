@@ -1,6 +1,6 @@
 // SERVER-ACTION TIER — the unified save gesture (issue #1456).
 //
-// Drives the real Server Actions (app/(app)/saved/actions.ts) against the throwaway
+// Drives the real Server Actions (app/(app)/saved-actions.ts) against the throwaway
 // temp DB: the ★ toggle that writes `saved_items`, its #482 family semantics on the
 // write path, the kind dispatch, the key-parse rejection, the reorder, and the auth
 // gate (a READ-ONLY actor cannot save). The pure tier can't see any of that, and the
@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { toggleSavedItem, reorderSaved } from "@/app/(app)/saved/actions";
+import { toggleSavedItem, reorderSaved } from "@/app/(app)/saved-actions";
 import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 

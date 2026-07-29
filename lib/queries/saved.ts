@@ -6,7 +6,7 @@ import { orderSavedRefs, type SavedKind, type SavedRef } from "../saved-items";
 // `starred_biomarkers` table and `trend_pins` settings KV.
 //
 // Everything here is profileId-first and auth-blind (the lib write-core convention):
-// the Server Actions in app/(app)/saved/actions.ts are the auth boundary.
+// the Server Actions in app/(app)/saved-actions.ts are the auth boundary.
 //
 // BIOMARKER SAVES ARE FAMILY-KEYED (#482) AND LIVE IN lib/queries/medical.ts —
 // isBiomarkerSaved / saveBiomarker / unsaveBiomarkerFamily / getSavedBiomarkers /

@@ -8,7 +8,7 @@ import { useToast } from "@/components/Toast";
 import { fmtDistance } from "@/lib/units";
 import type { DistanceUnit } from "@/lib/settings";
 import type { Activity, ActivityType } from "@/lib/types";
-import { saveActivity, deleteActivity } from "../journal/actions";
+import { saveActivity, deleteActivity } from "./activity-actions";
 
 // The restricted-profile activity log (issue #489). A minor profile is blocked
 // from the adult fitness apparatus (strength e1RM/standards, fitness-age, coaching,

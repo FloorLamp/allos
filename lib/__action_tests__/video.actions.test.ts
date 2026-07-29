@@ -19,7 +19,7 @@ import {
 import {
   uploadActivityVideoAction,
   deleteActivityVideoAction,
-} from "@/app/(app)/journal/video-actions";
+} from "@/app/(app)/training/video-actions";
 import { GET as serveSymptomVideo } from "@/app/api/symptom-video/[id]/route";
 import { GET as serveActivityVideo } from "@/app/api/activity-video/[id]/route";
 import { db, today } from "@/lib/db";

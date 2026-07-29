@@ -329,6 +329,13 @@ See `docs/internals/e2e-hygiene.md`.
   `createLogger()`.
 - Internal route fields and props use `AppRoute`. Add an href helper only when
   it owns routing policy; otherwise use the typed literal.
+- A directory under `app/(app)/` implies a served route. Components and Server
+  Actions for a surface live under the route that renders them (or in
+  `components/` when several surfaces share them) — never under the name of a
+  route that no longer exists.
+- `revalidatePath` takes a plain string, so `typedRoutes` cannot check it. Every
+  target must be a real route; `lib/__tests__/nav-routes.test.ts` sweeps them,
+  including array fan-outs.
 - Removing or merging a route does not earn a compatibility redirect. The legacy
   redirect table was deleted in #1635 and `next.config.js` ships none; a retired
   URL 404s, and adding a redirect back is a per-case product decision, not the

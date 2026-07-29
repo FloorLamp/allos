@@ -5,7 +5,7 @@ import { getFindingSuppressions } from "@/lib/queries";
 import { activeFindings } from "@/lib/findings";
 import { buildGoalPacingFindings } from "@/lib/rule-findings";
 import FindingsList from "@/components/FindingsList";
-import { dismissGoalPacing } from "@/app/(app)/goals/actions";
+import { dismissGoalPacing } from "@/app/(app)/training/goal-actions";
 
 // Goal-pacing findings (issue #45, domain 6) for the Training → Goals tab: a weight
 // goal that's off pace for its target date (trending away, or landing well past the
