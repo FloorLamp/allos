@@ -910,12 +910,15 @@ export function seedPanelIndex(): void {
     shiftDateStr(anchor, -760),
   ];
 
-  // [canonical name, canonical unit, value, flag]. Values are ordinary adult
-  // numbers; only LDL is out of range, so exactly one group self-identifies as
-  // flagged and the rest are the unflagged contrast.
+  // [canonical name, canonical unit, value, flag]. Values are ordinary adult numbers
+  // and internally consistent (LDL + HDL + VLDL ≈ total). Only the LIPIDS panel is out
+  // of range — a coherent dyslipidemia picture that also drags the DERIVED Non-HDL
+  // (total − HDL = 190, over its 130 reference ceiling) out of range with it, which is
+  // the point: a derived index counts toward a header's flag tally exactly like a
+  // stored analyte. Every other panel is the unflagged contrast.
   const analytes: [string, string, number, string | null][] = [
     // Lipids
-    ["Total Cholesterol", "mg/dL", 194, null],
+    ["Total Cholesterol", "mg/dL", 244, "high"],
     ["LDL Cholesterol", "mg/dL", 168, "high"],
     ["HDL Cholesterol", "mg/dL", 54, null],
     ["Triglycerides", "mg/dL", 108, null],

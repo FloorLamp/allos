@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import {
   expectNoClippedContent,
   hydratedClick,
+  settledCheck,
   settledSelect,
 } from "./helpers";
 import { loginAs } from "./nav";
@@ -267,16 +268,22 @@ test("the index lists every panel in the data, with no pager (#1581 section A)",
   await expect(page.getByText(/Showing \d+–\d+ of \d+/)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Next" })).toHaveCount(0);
 
-  // A whole panel's count, not the sliver of it that fit on a page: five stored
-  // lipid analytes plus the two derived lipid ratios.
+  // A whole panel's count, not the sliver of it that fit on a page: five stored lipid
+  // analytes plus the two derived lipid ratios, and three of the seven currently out
+  // of range (total cholesterol, LDL, and the derived Non-HDL they imply).
   await expect(
     group(page, "lipids").getByTestId("biomarker-panel-toggle")
-  ).toHaveAttribute("aria-label", "Lipids · 7 analytes · 1 flagged");
+  ).toHaveAttribute("aria-label", "Lipids · 7 analytes · 3 flagged");
+  // Twenty-seven stored analytes across seven panels, three draws each — eighty-one
+  // rows plus the derived indices, all of it shipped at once.
+  await expect(
+    group(page, "cbc").getByTestId("biomarker-panel-toggle")
+  ).toHaveAttribute("aria-label", "Complete blood count · 7 analytes");
 
   await page.context().close();
 });
 
-test("an expansion survives a filter change (#1581 section A)", async ({
+test("no filter change leaves a group the reader opened collapsed (#1581 section A)", async ({
   browser,
 }) => {
   const page = await openIndex(browser);
@@ -286,14 +293,23 @@ test("an expansion survives a filter change (#1581 section A)", async ({
   await hydratedClick(page, thyroid.getByTestId("biomarker-panel-toggle"));
   await expect(thyroid).toHaveAttribute("data-open", "true");
 
-  // Re-sorting is the navigation that used to reset every disclosure, because the
-  // open-state signature carried the page number and the pager rewrote it. It no
-  // longer does, so a reorder within the groups leaves the reader where they were.
+  // Every control in the filter bar narrows, and a narrowed view opens its groups —
+  // so the reader's expansion is never yanked shut by reaching for a filter. "Current
+  // values only" was the last one that did not count as a narrowing, which is why it
+  // is the one driven here.
+  await settledCheck(page, page.getByLabel("Current values only"), true);
+  await expect(page).toHaveURL(/current=1/);
+  await expect(group(page, "thyroid")).toHaveAttribute("data-open", "true");
+  await expect(group(page, "lipids")).toHaveAttribute("data-open", "true");
+
+  // Sorting re-derives the initial disclosure state — it is a different ordering of
+  // the same set, and the collapse is the default view. What it must NOT do is what
+  // the pager did: reset the reader mid-list on a navigation that showed them the
+  // same rows they were already reading. There is no such navigation left.
   await settledSelect(page, sortSelect(page), "date:desc", {
     destination: /sort=date/,
   });
-  await expect(group(page, "thyroid")).toHaveAttribute("data-open", "true");
-  await expect(group(page, "lipids")).toHaveAttribute("data-open", "false");
+  await expect(page.getByTestId("biomarkers-pagination")).toHaveCount(0);
 
   await page.context().close();
 });

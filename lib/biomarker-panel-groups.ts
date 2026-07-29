@@ -137,22 +137,28 @@ export function groupRowsByPanel<T extends PanelGroupRow>(
 // and only its denominator became honest.
 export const AUTO_OPEN_ROW_LIMIT = 12;
 
-// The filters that mean "the user has already narrowed this to what they wanted".
+// The filters that mean "the user has already narrowed this to what they wanted" —
+// every control in the browser's filter bar. `current` ("Current values only") joined
+// them in #1581: it is the reader asking for their current picture, which is a request
+// to see VALUES, and leaving it out was also the last way a filter change could
+// re-collapse a group the reader had opened.
 export interface PanelGroupFilters {
   q?: string;
   panel?: PanelId;
   range?: string;
   category?: string;
+  current?: boolean;
 }
 
 /**
  * Which groups start EXPANDED.
  *
  * Three rules, all about not hiding an answer the user already asked for:
- *   1. A NARROWING filter is active (`?q=` search, the `?panel=` facet, a range or
- *      category filter). Every rendered row already matched it, so every group
- *      opens — "search expands matching groups". A search that hit inside a
- *      collapsed group must never look like no-results.
+ *   1. A NARROWING filter is active — any control in the filter bar (`?q=` search,
+ *      the `?panel=` facet, a range or category filter, "current values only").
+ *      Every rendered row already matched it, so every group opens — "search expands
+ *      matching groups". A search that hit inside a collapsed group must never look
+ *      like no-results, and no filter change may collapse what the reader opened.
  *   2. The whole result set is short (≤ AUTO_OPEN_ROW_LIMIT). There is nothing to
  *      index, so the index would only cost a tap.
  *   3. There is only ONE group. An index of one entry is not an index — it is a
@@ -174,7 +180,8 @@ export function defaultOpenPanels<T>(
     !!filters.q?.trim() ||
     !!filters.panel ||
     !!filters.range ||
-    !!filters.category;
+    !!filters.category ||
+    !!filters.current;
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   if (narrowed || groups.length <= 1 || total <= rowLimit)
     return groups.map((g) => g.panel);

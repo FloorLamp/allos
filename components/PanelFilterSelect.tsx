@@ -2,7 +2,11 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { currentPathHref } from "@/lib/hrefs";
-import { OTHER_PANEL, PANEL_LABELS, type PanelId } from "@/lib/biomarker-panels";
+import {
+  OTHER_PANEL,
+  PANEL_LABELS,
+  type PanelId,
+} from "@/lib/biomarker-panels";
 
 // Clinical PANEL dropdown for the biomarkers browser (#1502). Before the panel
 // taxonomy existed, `?panel=` held the document's free-text section heading —

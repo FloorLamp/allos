@@ -765,6 +765,39 @@ known minor, its instruments being adult-validated), and Skin/Mental health
 always rendered — the latter because their in-page forms are the only creation
 path, and Mental health's crisis line travels with its pane).
 
+### Biomarkers browser
+
+The Biomarkers tab (`/results/biomarkers`) is a collapsed **panel index**, not a
+scroll: every reading is grouped under its normalized clinical panel ("Lipids ·
+7 analytes · 3 flagged"), and a group opens on tap to reveal its readings. A
+panel whose current readings include an out-of-range one says so on its header,
+so a flagged group self-identifies while collapsed.
+
+The index is the **whole** filtered set — there is no pager. A row cap would be
+the wrong unit here (one panel with a few years of draws can be dozens of rows,
+so a page could split a panel and print partial counts on each half); the panel
+taxonomy is a closed set, so the collapsed index has a hard ceiling by
+construction. Groups arrive collapsed unless the result set is short, there is
+only one group, or a filter is active — any narrowing means you already asked
+for the rows, so every matching group opens and a search can never read as
+"no results" because its hit was folded.
+
+Readings sort by **name** (A–Z, newest reading first within an analyte) or by
+date; panel is not a sort, because the groups are already emitted in clinical
+order. Filters are free-text search, category, clinical **panel**, an
+all/non-optimal/out-of-range lens, and "current values only". The panel facet
+offers a stable list — the taxonomy minus the panels whose analytes live in
+categories this browser deliberately doesn't list (mental-health screening
+scores, which are re-homed to Medical → Health record → Specialty, and blood
+type, which lives in the passport), so it never offers a filter that returns
+nothing for anyone.
+
+On a phone the two cards above the index are capped so the first panel header
+stays reachable: the starred-biomarkers card shows its first three tiles behind
+a "Show all N starred" toggle, and the biological-age card folds its nine-input
+"built from" list (never its estimate caveat). Both render whole on a larger
+screen.
+
 ### Imaging studies
 
 The Imaging tab (`/results/imaging`), under Medical → Results — your radiology
@@ -1004,8 +1037,8 @@ labs and age/sex are on file; PhenoAge requires a full nine-analyte draw and an
 adult profile). PhenoAge is also surfaced as a **biological-age card** pinned
 above the Biomarkers table: your estimated biological age, how it compares to
 your calendar age (younger is better), your pace of aging across draws, and the
-nine inputs it's built from — with a checklist prompt when the panel is
-incomplete. It's framed as a population-level estimate (Levine 2018,
+nine inputs it's built from (folded behind a toggle on a phone) — with a
+checklist prompt when the panel is incomplete. It's framed as a population-level estimate (Levine 2018,
 NHANES-validated adults ~20–84) and is hidden for child profiles.
 
 ## Allergies
