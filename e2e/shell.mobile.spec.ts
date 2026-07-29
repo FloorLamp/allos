@@ -254,7 +254,8 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     await page.goto("/medications");
     await expect(primary).toHaveAttribute("data-quick-log-id", "log-dose");
 
-    // The Body TAB is the rule, not the /trends route.
+    // Since #1644 the /trends ROUTE is the rule: the hub is one page and the Body
+    // census (with its measurements form) is always on it.
     await page.goto("/trends");
     await expect(primary).toHaveAttribute(
       "data-quick-log-id",

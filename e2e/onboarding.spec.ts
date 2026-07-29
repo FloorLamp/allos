@@ -235,7 +235,11 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
         /Explore ways to add data/,
         "/data?section=import",
       ],
-      ["Monitor body metrics and labs", /Record a starting metric/, "/trends"],
+      [
+        "Monitor body metrics and labs",
+        /Record a starting metric/,
+        "/trends#body",
+      ],
     ] as const) {
       await chooseOutcome(label, actionName, href);
       if (label === "Track fitness and training") {

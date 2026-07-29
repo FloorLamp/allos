@@ -13,10 +13,7 @@ test("Trends → Body renders the sleep chart with the SRI (#160/#1066)", async 
   page,
 }) => {
   await page.goto("/trends");
-  await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  await expect(page.getByTestId("trends-section-body")).toBeVisible();
 
   const main = page.getByRole("main");
   const tile = main.getByTestId("sleep-summary-tile");

@@ -30,9 +30,17 @@ describe("primaryQuickLog", () => {
   });
 
   it("promotes measurements on Trends' BODY tab only — the tab is the rule, not the route", () => {
+    // #1644: the hub is one page carrying the Body census, so the route alone
+    // decides — a leftover `?tab=` from an old bookmark changes nothing.
+    expect(primaryQuickLog("/trends").id).toBe("log-measurements");
     expect(primaryQuickLog("/trends", "body").id).toBe("log-measurements");
-    expect(primaryQuickLog("/trends", "fitness").id).toBe(LOG_ACTIVITY_ID);
-    expect(primaryQuickLog("/trends").id).toBe(LOG_ACTIVITY_ID);
+    expect(primaryQuickLog("/trends", "fitness").id).toBe("log-measurements");
+    // A metric detail page is under the hub and logs the same measurements.
+    expect(primaryQuickLog("/trends/metric/weight").id).toBe(
+      "log-measurements"
+    );
+    // …but a route that merely starts with the same letters is not the hub.
+    expect(primaryQuickLog("/trendsetter").id).toBe(LOG_ACTIVITY_ID);
   });
 
   it("never claims a route by bare string prefix", () => {
@@ -47,9 +55,7 @@ describe("showsActivityShortcuts", () => {
     expect(showsActivityShortcuts(primaryQuickLog("/"))).toBe(true);
     expect(showsActivityShortcuts(primaryQuickLog("/nutrition"))).toBe(false);
     expect(showsActivityShortcuts(primaryQuickLog("/medications"))).toBe(false);
-    expect(showsActivityShortcuts(primaryQuickLog("/trends", "body"))).toBe(
-      false
-    );
+    expect(showsActivityShortcuts(primaryQuickLog("/trends"))).toBe(false);
   });
 });
 
