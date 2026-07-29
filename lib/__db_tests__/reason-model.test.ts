@@ -152,7 +152,10 @@ describe("shared reason model (issue #656)", () => {
   it("a situational dose is due WITH a 'due because <situation> is active' reason (item 5)", () => {
     const pid = createProfile("Reason Model C");
     const td = today(pid);
-    // An active situation + a situational supplement gated on it.
+    // An active situation + a situational supplement gated on it. Priority `high`
+    // deliberately: since #1505 a LOW supplement is tracked but never PUSHED, so it
+    // is absent from collectUpcoming by design — this test is about the situational
+    // REASON, not the push tier, so it uses a pushed item.
     db.prepare(
       "INSERT INTO situations (profile_id, name, active) VALUES (?, 'Illness', 1)"
     ).run(pid);
@@ -160,7 +163,7 @@ describe("shared reason model (issue #656)", () => {
       db
         .prepare(
           `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, situation)
-           VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'low', 'Illness')`
+           VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'high', 'Illness')`
         )
         .run(pid).lastInsertRowid
     );

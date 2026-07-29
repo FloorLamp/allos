@@ -156,20 +156,14 @@ describe("preWorkoutSlotHour", () => {
 
 describe("isPushedIntake (#1156)", () => {
   it("excludes ONLY low-priority supplements", () => {
-    expect(isPushedIntake({ kind: "supplement", priority: "low" })).toBe(
-      false
-    );
-    expect(isPushedIntake({ kind: "supplement", priority: "high" })).toBe(
+    expect(isPushedIntake({ kind: "supplement", priority: "low" })).toBe(false);
+    expect(isPushedIntake({ kind: "supplement", priority: "high" })).toBe(true);
+    expect(isPushedIntake({ kind: "supplement", priority: "mandatory" })).toBe(
       true
     );
-    expect(
-      isPushedIntake({ kind: "supplement", priority: "mandatory" })
-    ).toBe(true);
   });
   it("NEVER gates a medication (the safety carve-out)", () => {
-    expect(isPushedIntake({ kind: "medication", priority: "low" })).toBe(
-      true
-    );
+    expect(isPushedIntake({ kind: "medication", priority: "low" })).toBe(true);
   });
 });
 

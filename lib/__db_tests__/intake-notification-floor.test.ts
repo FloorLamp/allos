@@ -1,9 +1,11 @@
-// DB INTEGRATION TIER — the #1156 notification priority floor end-to-end:
-// a LOW-priority SUPPLEMENT is tracked (Upcoming/dose reads unchanged) but never
-// notified (window reminder, merged send, digest count), an all-low send goes
-// silent BY DESIGN, a mixed send keeps its mandatory/high doses, and the SAFETY
-// carve-out holds — a low-priority MEDICATION's scheduled reminder and a
-// critical med's missed-dose escalation are never priority-gated.
+// DB INTEGRATION TIER — the shared push predicate end-to-end, notification half:
+// a LOW-priority SUPPLEMENT is never notified (window reminder, merged send, digest
+// count), an all-low send goes silent BY DESIGN, a mixed send keeps its
+// mandatory/high doses, and the SAFETY carve-out holds — a low-priority MEDICATION's
+// scheduled reminder and a critical med's missed-dose escalation are never
+// priority-gated. #1505 widened the same predicate past the notification tier
+// (Upcoming, hero, refills); that reach is covered in
+// supplement-priority-lifecycle.test.ts.
 // All fixture values synthetic — no real PHI.
 
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -72,8 +74,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("#1156 — low-priority supplements: tracked, not nagged", () => {
-  it("a window whose only due dose is a low supplement sends NO reminder — but the dose stays in-app", () => {
+describe("#1156/#1505 — low-priority supplements: tracked, never pushed", () => {
+  it("a window whose only due dose is a low supplement sends NO reminder — and the dose is off Upcoming too", () => {
     const p = createProfile("Floor AllLow (test)");
     const { doseId } = seedItem(p, "Ashwagandha (test)", { priority: "low" });
 
@@ -81,9 +83,12 @@ describe("#1156 — low-priority supplements: tracked, not nagged", () => {
     expect(buildSupplementReminder(p, "Morning")).toBeNull();
     expect(buildIntakeReminderForSlots(p, ["Morning"])).toBeNull();
 
-    // …but fully visible in-app: the Upcoming dose item still surfaces.
+    // …and since #1505 no Upcoming row either: the ONE predicate now gates the whole
+    // push tier, not just the reminder. (The dose is still tracked — its page
+    // presence and adherence accounting are asserted in
+    // supplement-priority-lifecycle.test.ts.)
     const upcoming = collectUpcoming(p, today(p));
-    expect(upcoming.some((i) => i.key === `dose:${doseId}`)).toBe(true);
+    expect(upcoming.some((i) => i.key === `dose:${doseId}`)).toBe(false);
   });
 
   it("a mixed window still fires — WITHOUT the low doses (body or buttons)", () => {

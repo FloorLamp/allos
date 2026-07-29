@@ -70,6 +70,12 @@ import {
   type DataQualityGap,
 } from "./data-quality";
 import { situationHistoryResolver } from "./trend-annotations";
+import { getIntakeHistory } from "./intake-history";
+import {
+  detectDemotionCandidates,
+  DEMOTION_WINDOW_DAYS,
+  type DemotionInput,
+} from "./supplement-demotion";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { decidePeriodontalObservation } from "./oral-health-observation";
@@ -398,6 +404,7 @@ export function collectCoachingFindings(
     ...buildBodyHygieneFindings(profileId, today, wu, prefs),
     ...buildGoalPacingFindings(profileId, today),
     ...buildAdherencePatternFindings(profileId, today),
+    ...buildDemotionSuggestionFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
     ...buildSubstanceUseFindings(profileId),
@@ -1209,6 +1216,58 @@ export function buildAdherencePatternFindings(
   }
 
   return detectAdherencePatterns(inputs).map(adherencePatternToFinding);
+}
+
+// ---- Domain: priority demotion suggestions (coaching tier, issue #1505) ----
+
+// A calm, dismissible SUGGESTION that a high/mandatory SUPPLEMENT the profile has
+// effectively stopped taking be re-tagged `low` — "tracked, never pushed" — with the
+// user's tap as the only priority write (#559 intact; see lib/supplement-demotion for
+// the full contract and the medication/PRN/paused/cold-start exclusions).
+//
+// COACHING tier (#449) by hard product contract: it joins collectCoachingFindings,
+// rides the shared suppression bus under DEMOTION_PREFIX, renders on the Supplements
+// page and the calm dashboard rollup — and NEVER becomes a notification. Nagging
+// someone about a supplement they have chosen not to take is precisely the failure
+// mode this whole issue exists to remove, so it must not arrive as a push.
+//
+// Reads through the ONE shared item-level history gather (getIntakeHistory), the same
+// evidence the digest deltas read, so the suggestion and the digest can never
+// disagree about a day. No owned SQL.
+export function buildDemotionSuggestionFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const inputs: DemotionInput[] = getIntakeHistory(
+    profileId,
+    today,
+    DEMOTION_WINDOW_DAYS
+  ).map(({ item, strip, existedWholeWindow }) => ({
+    itemId: item.id,
+    name: item.name,
+    kind: item.kind,
+    priority: item.priority,
+    asNeeded: Boolean(item.as_needed),
+    active: Boolean(item.active),
+    strip,
+    existedWholeWindow,
+    // Episode anchor = the current year (#436): a lapse that recurs a year after
+    // being dismissed re-surfaces instead of being silenced forever.
+    periodAnchor: today.slice(0, 4),
+  }));
+
+  return detectDemotionCandidates(inputs).map((c) => ({
+    domain: "demote-priority",
+    dedupeKey: c.key,
+    supersedes: c.legacyKey,
+    title: c.title,
+    detail: c.detail,
+    // Calm FYI — an observation about the user's own log, never an alarm.
+    tone: "info" as const,
+    evidence: `${c.takenDays} of ${c.occurrences} scheduled days over the last ${DEMOTION_WINDOW_DAYS} days`,
+    actionHref: nutritionTabHref("supplements"),
+    actionLabel: "Open supplements",
+  }));
 }
 
 // ---- Domain: sun exposure (coaching tier only, issue #571) ----------------

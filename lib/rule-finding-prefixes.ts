@@ -27,6 +27,7 @@ import { MUSCLE_VOLUME_PREFIX } from "./muscle-volume-bands";
 import { BODY_HYGIENE_PREFIX } from "./weight-anomaly";
 import { GOAL_PACE_PREFIX } from "./goal-pacing";
 import { ADHERENCE_PREFIX } from "./adherence-patterns";
+import { DEMOTION_PREFIX } from "./supplement-demotion";
 import { FOOD_SUGGEST_PREFIX, FOOD_REDUCE_PREFIX } from "./food-suggest";
 import { FOOD_HABIT_PREFIX } from "./food-habit";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
@@ -100,6 +101,20 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: ADHERENCE_PREFIX,
     tier: "coaching",
     builder: "buildAdherencePatternFindings",
+    reasons: [],
+  },
+  {
+    // Adherence-based priority DEMOTION suggestions (#1505 part 2): a high/mandatory
+    // SUPPLEMENT the user has effectively stopped taking is SUGGESTED for the `low`
+    // tag — never auto-demoted (#559: priority is declared, not inferred). COACHING
+    // tier by hard product contract: calm, hideable, and NEVER a notification —
+    // nagging about a supplement someone has chosen not to take is the exact failure
+    // this issue removes. Medications are excluded at the detector (kind decides, the
+    // same boundary isPushedIntake draws), so poor med adherence stays a missed-dose
+    // escalation question and never a priority one.
+    prefix: DEMOTION_PREFIX,
+    tier: "coaching",
+    builder: "buildDemotionSuggestionFindings",
     reasons: [],
   },
   {

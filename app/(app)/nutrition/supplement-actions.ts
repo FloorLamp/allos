@@ -58,6 +58,12 @@ import type {
   SupplementPriority,
 } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
+import { demoteIntakePriority } from "@/lib/intake-priority-write";
+import {
+  DEMOTION_PREFIX,
+  DEMOTION_OUTCOME_TEXT,
+  demotionItemIdFromKey,
+} from "@/lib/supplement-demotion";
 import { dismissFinding } from "@/lib/queries";
 import { SURGERY_BRIDGE_PREFIX } from "@/lib/surgery-bridge";
 import { poorSleepOverrideKey } from "@/lib/derived-situations";
@@ -1225,6 +1231,53 @@ export async function dismissAdherencePattern(
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith(ADHERENCE_PREFIX))
     return formError("Couldn't dismiss that observation.");
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/nutrition");
+  return formOk();
+}
+
+// Accept a priority DEMOTION SUGGESTION (issue #1505 part 2): re-tag a high/mandatory
+// supplement the user has effectively stopped taking as `low` — tracked, never pushed.
+//
+// THIS TAP IS THE PRIORITY WRITE. The detector only ever suggests; nothing in the
+// system demotes on its own (#559 — priority is the user's declaration). The write
+// core is auth-blind and returns a typed outcome, which is surfaced verbatim rather
+// than confirmed unconditionally: accepting a stale card for a paused or already-low
+// item legitimately refuses, and the caller must say so (the inline-action rule).
+//
+// The suggestion's finding is also dismissed on success, so the accepted card leaves
+// the page immediately rather than lingering until the next detection window closes.
+export async function acceptDemotionSuggestion(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  // Namespace guard, exactly like every other finding action: this action can only
+  // ever act on a demotion-suggestion key. The item id is DERIVED from that one key
+  // rather than posted alongside it, so an accept can never target an item its own
+  // suggestion wasn't about.
+  const itemId = demotionItemIdFromKey(dedupeKey);
+  if (itemId == null) return formError("Couldn't update that item.");
+
+  const outcome = demoteIntakePriority(profile.id, itemId);
+  if (outcome !== "demoted") return formError(DEMOTION_OUTCOME_TEXT[outcome]);
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/nutrition");
+  revalidatePath("/upcoming");
+  revalidatePath("/");
+  return formOk();
+}
+
+// Dismiss a priority DEMOTION SUGGESTION without acting on it — the calm half of the
+// coaching-tier contract. Hides it through the shared findings-bus suppression store,
+// guarded to the demotion namespace; profile-scoped via dismissFinding.
+export async function dismissDemotionSuggestion(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(DEMOTION_PREFIX))
+    return formError("Couldn't dismiss that suggestion.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/nutrition");
   return formOk();
