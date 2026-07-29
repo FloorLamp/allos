@@ -245,8 +245,11 @@ test.describe("the bar rides the shell chrome (F + #1416)", () => {
     await scrollTo(page, deep - 200);
     await expect(bar).toHaveAttribute("data-hidden", "false");
 
+    // The strip itself is on screen; the LAST chip may be scrolled off its own
+    // horizontal scroller (five chips overflow 390px), which is what the scroller
+    // is for — the click brings it in.
+    await expect(page.getByTestId("trends-section-chips")).toBeInViewport();
     const chip = page.getByTestId("chart-jump-insights");
-    await expect(chip).toBeInViewport();
     await chip.click();
     await expect(page).toHaveURL(/#insights$/);
     await expect(page.getByTestId("trends-section-insights")).toBeInViewport();

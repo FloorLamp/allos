@@ -63,7 +63,10 @@ export default async function FitnessSection({ range }: { range: DateRange }) {
           layer on phones. Keep the optional long-page shortcut as the same compact
           desktop chart menu used by Body. */}
       <div className="hidden justify-end md:flex">
-        <ChartJumpMenu items={FITNESS_SECTIONS.map((s) => ({ ...s }))} />
+        <ChartJumpMenu
+          items={FITNESS_SECTIONS.map((s) => ({ ...s }))}
+          testId="fitness-jump-menu"
+        />
       </div>
 
       <FitnessPRs window={window} />

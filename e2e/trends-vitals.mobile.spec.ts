@@ -57,41 +57,34 @@ async function todayFromStrip(page: Page): Promise<string> {
   return match![1];
 }
 
-test.describe("the 1D pill is scoped to the Body tab (B)", () => {
-  test("Body offers it and the other tabs do not", async ({ page }) => {
+test.describe("the 1D pill and the intraday swap it exists for (B)", () => {
+  test("the hub offers 1D, and it swaps exactly one section", async ({
+    page,
+  }) => {
     const pill = page.getByRole("link", { name: "1D", exact: true });
 
     // The pill moved to Body with the vitals it exists for (#1486). Since #1485 F
     // the whole chip row is behind the phone context bar, so each check opens it.
+    // #1644 made the hub one page: the pill is offered once, at the page's shared
+    // range control, because the census it swaps is always on the page. What used
+    // to be "no OTHER tab advertises it" is now the stronger, still-observable
+    // claim below — exactly one section changes shape when it is lit.
     await page.goto("/trends");
     await expandTrendsContext(page);
     await expect(pill).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "30D", exact: true })
+    ).toBeVisible();
+    // Exactly one 1D pill on the page — one shared range control, not one per
+    // section.
+    await expect(pill).toHaveCount(1);
 
-    // And the RETIRED ?tab=vitals still lands on that same tab, pill and all —
-    // a vocabulary mapping, not a redirect (#1486).
-    await page.goto("/trends");
-    await expandTrendsContext(page);
-    await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    await expect(pill).toBeVisible();
-
-    // On a daily-grain series a one-day window is a single dot — worse than
-    // useless — so no other tab may advertise it. The shared pills stay shared.
-    for (const tab of ["/trends", "/trends", "/trends"]) {
-      await page.goto(tab);
-      await expandTrendsContext(page);
-      // Exact, like the 1D locators above: the movers digest renders LINK chips
-      // labelled "… over 30d" (lib/trends-digest), and Playwright's default
-      // accessible-name matching is a case-insensitive SUBSTRING, so a bare
-      // { name: "30D" } can resolve to two elements on the run dates where a
-      // mover's series spans exactly the window.
-      await expect(
-        page.getByRole("link", { name: "30D", exact: true })
-      ).toBeVisible();
-      await expect(pill).toHaveCount(0);
-    }
+    // Lighting it swaps the BODY census to its clock-axis view and leaves the
+    // daily-grain sections alone.
+    await followLink(page, pill, /from=\d{4}-\d{2}-\d{2}/);
+    await expect(page.getByTestId("body-intraday-view")).toBeVisible();
+    await expect(page.getByTestId("body-tiles-view")).toHaveCount(0);
+    await expect(page.getByTestId("trends-section-nutrition")).toBeVisible();
   });
 
   test("lighting 1D neither opens the Custom panel nor prints a summary chip", async ({

@@ -277,11 +277,28 @@ test.describe("Trends → Body responsive views (#1067)", () => {
 
     // Toggle first, menu second, with matched vertical centers and only the
     // compact 8px control-to-content gap.
-    const viewBox = await page.getByTestId("body-view-toggle").boundingBox();
-    const menuBox = await jumpMenu.boundingBox();
-    const logBox = await logButton.boundingBox();
-    const controlsBox = await controls.boundingBox();
-    const chartsBox = await page.getByTestId("body-charts-all").boundingBox();
+    //
+    // Read in ONE evaluate (#1644): the census now shares a page with the starred
+    // grid above it, whose sparklines settle a little after mount, so five
+    // sequential boundingBox() calls could straddle a layout shift and compare
+    // rects from different frames. One atomic read makes the geometry claim mean
+    // what it says.
+    const [viewBox, menuBox, logBox, controlsBox, chartsBox] =
+      await page.evaluate(() => {
+        const rect = (testId: string) => {
+          const el = document.querySelector(`[data-testid="${testId}"]`);
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        };
+        return [
+          rect("body-view-toggle"),
+          rect("chart-jump-menu"),
+          rect("log-measurements-toggle"),
+          rect("body-view-controls"),
+          rect("body-charts-all"),
+        ];
+      });
     expect(viewBox).not.toBeNull();
     expect(menuBox).not.toBeNull();
     expect(logBox).not.toBeNull();

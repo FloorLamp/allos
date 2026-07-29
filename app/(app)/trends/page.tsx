@@ -30,6 +30,7 @@ import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
 import ChartJumpChips from "./ChartJumpChips";
+import SectionHashScroll from "./SectionHashScroll";
 import TrendsSectionShell, {
   TrendsSectionSkeleton,
 } from "./TrendsSectionShell";
@@ -239,6 +240,10 @@ export default async function TrendsPage(props: {
             />
           }
         />
+
+        {/* A `#section` deep link has to survive the sections streaming in below
+            the head — see the component for why the native fragment scroll can't. */}
+        <SectionHashScroll />
 
         <div className="space-y-10" data-testid="trends-page">
           {/* ── The head: what moved, then what you curated ────────────────── */}

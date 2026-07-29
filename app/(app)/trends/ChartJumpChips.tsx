@@ -9,11 +9,12 @@ import { useEffect, useState } from "react";
 // One horizontal row of chips; tapping one scrolls to that target via a plain `#id`
 // in-page anchor (works without JS, and works before the target has streamed in).
 // The row is its OWN `overflow-x-auto` container so a long chip list never clips or
-// page-widens (#1063), and it sticks below the mobile header (top-14) / at the top
-// on desktop while you scroll — which is what keeps one long scrollable page
-// navigable on a phone. An IntersectionObserver highlights the target currently in
-// view. The caller passes ONLY present targets (the same visible list that renders
-// the content), so a chip can never point at something absent.
+// page-widens (#1063). STICKINESS is the host's: the strip rides TrendsContextBar,
+// which is sticky under the app chrome on a phone and rides its hide/reveal — which
+// is what keeps one long scrollable page navigable there. An IntersectionObserver
+// highlights the target currently in view. The caller passes ONLY present targets
+// (the same visible list that renders the content), so a chip can never point at
+// something absent.
 //
 // STREAMING (#1644). The page's census sections arrive through Suspense AFTER
 // hydration, so the elements a chip points at may not exist when this mounts. The
@@ -82,7 +83,11 @@ export default function ChartJumpChips({
     <nav
       aria-label={ariaLabel}
       data-testid={testId}
-      className="sticky top-14 z-20 -mx-1 flex gap-2 overflow-x-auto bg-white/90 px-1 py-2 backdrop-blur md:top-0 dark:bg-ink-950/90"
+      // Full-bleed inside the context bar on a phone (the bar already cancels the
+      // shell gutter and provides the stickiness the long page needs — see
+      // components/TrendsContextBar); an ordinary flush row from `sm` up. Its OWN
+      // horizontal scroller, so a long chip list never clips or page-widens (#1063).
+      className="flex gap-2 overflow-x-auto px-4 py-2 sm:px-0"
     >
       {chips.map((c) => (
         <a

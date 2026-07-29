@@ -172,19 +172,25 @@ test.describe("one focused mobile range row (C + D)", () => {
     ).toHaveCount(0);
     await expect(page.getByText("Views", { exact: true })).toHaveCount(0);
 
+    // The pill run starts flush with the row and spans AT LEAST its full width —
+    // the row is a scroller (`w-max min-w-full`), so "fills" is a floor, not an
+    // equality. Since #1644 the hub offers the 1D pill on every load (the Body
+    // census it swaps is always on the page), which pushes the run past 390px into
+    // exactly the overflow the #1485 D fade exists to announce — asserted next
+    // door in trends-w9.mobile.spec.ts.
     const fill = await page.getByTestId("trends-chip-row").evaluate((row) => {
       const inner = row.firstElementChild?.getBoundingClientRect();
       const outer = row.getBoundingClientRect();
       return inner
         ? {
             left: Math.abs(inner.left - outer.left),
-            right: Math.abs(inner.right - outer.right),
+            spans: inner.right - outer.right,
           }
         : null;
     });
     expect(fill).not.toBeNull();
     expect(fill!.left).toBeLessThanOrEqual(1);
-    expect(fill!.right).toBeLessThanOrEqual(1);
+    expect(fill!.spans).toBeGreaterThanOrEqual(-1);
   });
 
   test("the range-summary chip renders only for a custom window", async ({

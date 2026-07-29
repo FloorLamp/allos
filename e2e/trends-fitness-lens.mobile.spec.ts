@@ -76,7 +76,7 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     // own on phones: the page's chips are the only strip, and the long-page
     // shortcut inside the census is a desktop-only dropdown.
     await expect(page.getByTestId("chart-jump-chips")).toHaveCount(0);
-    await expect(page.getByTestId("chart-jump-menu")).not.toBeVisible();
+    await expect(page.getByTestId("fitness-jump-menu")).not.toBeVisible();
 
     // The old un-windowed content is gone with its apology: the tab used to say
     // "Strength, cardio, and sport progress (full history)" beside a "Full
