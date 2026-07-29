@@ -90,7 +90,11 @@ import { ALL_ROWS } from "@/lib/trends";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
-import { resolveWidgetList } from "@/lib/dashboard-widgets";
+import {
+  findingsForDashboardHome,
+  resolveWidgetList,
+  rollupCoachingFindings,
+} from "@/lib/dashboard-widgets";
 import { rankNowCards, NOW_CARD_IDS } from "@/lib/now-strip";
 import { getNotifySchedule } from "@/lib/settings/notifications";
 import { getIllnessHeroUi } from "@/lib/settings";
@@ -132,7 +136,6 @@ import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
 import CoachingWidget from "@/components/dashboard/CoachingWidget";
 import CoachingObservations from "@/components/dashboard/CoachingObservations";
 import DataQualityWidget from "@/components/dashboard/DataQualityWidget";
-import { DATA_QUALITY_PREFIX } from "@/lib/data-quality";
 import WeeklyRecapWidget from "@/components/dashboard/WeeklyRecapWidget";
 import RecentLabsWidget, {
   type RecentLabRow,
@@ -548,10 +551,16 @@ export default async function Dashboard() {
   // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE
   // collectCoachingFindings computation (data-quality joins it, #1045), filtered
   // through the SAME findings-bus store — so a dismiss on either widget (or a tab)
-  // drops the finding out for free. The rollup renders every active coaching finding;
-  // the data-quality widget renders just the `data-quality:` slice (leverage-ranked,
-  // top-3). Data-quality gaps are appended LAST in collectCoachingFindings, so the
-  // rollup's lead stays the observational patterns. No push, no hero slot for either.
+  // drops the finding out for free.
+  //
+  // They render DISJOINT slices of it (#1533). The data-quality widget is that
+  // family's dedicated dashboard home (FINDING_DASHBOARD_HOME); the rollup is the
+  // catch-all for families that have no dashboard home of their own — which is
+  // exactly its #449 charter, "reach for findings that render only on their own
+  // tabs". So the two cards can never show the same gap twice, and the rollup's
+  // count/overflow are computed over what it actually renders. Hiding the Data
+  // quality widget drops its family straight back into the rollup, so a hidden card
+  // never silently costs a finding its dashboard reach.
   const activeCoaching =
     has("coaching-observations") || has("data-quality")
       ? activeFindings(
@@ -566,10 +575,10 @@ export default async function Dashboard() {
         )
       : [];
   const coachingObservations = has("coaching-observations")
-    ? activeCoaching
+    ? rollupCoachingFindings(activeCoaching, has)
     : [];
   const dataQualityFindings = has("data-quality")
-    ? activeCoaching.filter((f) => f.dedupeKey.startsWith(DATA_QUALITY_PREFIX))
+    ? findingsForDashboardHome(activeCoaching, "data-quality")
     : [];
 
   // weekly-recap — the last seven days, rule-based (no AI). Same gather as the

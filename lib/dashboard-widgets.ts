@@ -19,6 +19,8 @@
 //     resolved item's `empty` flag so the page renders the CTA instead of a
 //     blank card.
 
+import { DATA_QUALITY_PREFIX } from "./data-quality";
+
 export type WidgetSpan = "full" | "two-thirds" | "third" | "half";
 
 export interface WidgetDef {
@@ -70,6 +72,60 @@ export interface WidgetGate {
 export interface DashboardLayout {
   order: string[];
   hidden: string[];
+}
+
+// ── Finding families with a dedicated dashboard home (#1533) ───────────────────
+// The Coaching-observations rollup's charter (#449) is dashboard REACH for findings
+// that otherwise render only on their own tabs. A finding family that has earned its
+// OWN dashboard widget already has that reach, so by the rollup's own charter it does
+// not belong in the rollup — but collectCoachingFindings produces one set, so without
+// this the same gap rendered in both cards and inflated the rollup's "N patterns"
+// count with rows it was double-showing.
+//
+// This registry encodes the charter as data: dedupeKey PREFIX → the widget id that is
+// that family's dedicated dashboard home. The split below is then self-maintaining —
+// when the next finding family earns its own widget, adding one line here stops the
+// duplication, and hiding that widget puts the family straight back into the rollup
+// (the catch-all), so a hidden card never silently drops dashboard reach.
+//
+// NOT a suppression mechanism: both cards still read the ONE collectCoachingFindings
+// computation and share the findings bus, so a dismiss anywhere still silences
+// everywhere (including the origin tab), and the Coaching TAB still shows everything.
+export const FINDING_DASHBOARD_HOME: Record<string, string> = {
+  // Structural data-quality gaps (#1045) → the Data quality widget.
+  [DATA_QUALITY_PREFIX]: "data-quality",
+};
+
+// The widget id that is this finding's dedicated dashboard home, or null when the
+// family has none (the common case — those are exactly the rollup's constituency).
+export function findingDashboardHome(dedupeKey: string): string | null {
+  for (const [prefix, widgetId] of Object.entries(FINDING_DASHBOARD_HOME)) {
+    if (dedupeKey.startsWith(prefix)) return widgetId;
+  }
+  return null;
+}
+
+// The rollup's rendered set: every active coaching finding whose family has no
+// dedicated dashboard home, plus those whose home widget is currently hidden. The
+// caller passes its widget-visibility predicate (the same `has` the page resolves).
+// Callers MUST derive the widget's count and its cap/overflow from this result, not
+// from the unfiltered input — the count has to equal what is on screen.
+export function rollupCoachingFindings<T extends { dedupeKey: string }>(
+  findings: readonly T[],
+  isWidgetVisible: (widgetId: string) => boolean
+): T[] {
+  return findings.filter((f) => {
+    const home = findingDashboardHome(f.dedupeKey);
+    return home === null || !isWidgetVisible(home);
+  });
+}
+
+// The slice a dedicated home widget renders: the findings whose family is homed to it.
+export function findingsForDashboardHome<T extends { dedupeKey: string }>(
+  findings: readonly T[],
+  widgetId: string
+): T[] {
+  return findings.filter((f) => findingDashboardHome(f.dedupeKey) === widgetId);
 }
 
 // ── Dashboard list caps (#1219) ────────────────────────────────────────────────
