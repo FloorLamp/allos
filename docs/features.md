@@ -57,6 +57,16 @@ too), and an empty banner collapses to a quiet one-line "all clear". Below it, a
 login that reaches more than one profile gets a **household strip** of their
 other people with a per-profile attention count, one tap to switch and view.
 
+Just after an illness, the dashboard keeps the household's leftovers to **one
+band at a time**. Each member whose episode is still inside its seven-day reopen
+window gets a calm **"Recently resolved — reopen?"** line, and dismissing one
+**stays dismissed** across reloads for that reader: the hide is a per-login
+viewing preference, so another caregiver with access to the same person still
+sees the line, and it never changes the episode or its reopen window. The link
+to the household's illness history rides along inside whichever band is already
+on screen — the reopen band's last row while those lines are showing, otherwise
+the household strip's label row — instead of standing alone between them.
+
 ### Customizable overview
 
 The customizable grid keeps only distinct overview questions: **recent labs**,
@@ -668,7 +678,9 @@ classification, and a course whose prescriber matches a linked visit reads
 "prescribed at the Day-2 visit"); "Illness + visits" also interleaves the
 unlinked routine visits. It's promoted with a calm dashboard link whenever
 anyone in the house is **currently or recently sick** (and receding when the
-house is well); each illness-episode page carries an **"Around the household"**
+house is well) — the link rides inside the recently-resolved band or the
+household strip rather than occupying a band of its own; each illness-episode
+page carries an **"Around the household"**
 card of other members' overlapping or closely adjacent illnesses (a dated fact —
 "overlapped by 4 days", never a cause) and a **Care** line linking the resulting
 doctor/urgent-care visit — a visit dated within the episode's range is suggested

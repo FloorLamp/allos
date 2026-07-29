@@ -7,6 +7,7 @@ import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import { useToast } from "@/components/Toast";
 import { useRouter } from "next/navigation";
 import { reopenEpisodeAction } from "@/app/(app)/medical/episodes/actions";
+import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 // Dashboard "Recently resolved — reopen?" affordance (issue #1140 Part A). A CALM,
@@ -18,6 +19,22 @@ import type { AppRoute } from "@/lib/hrefs";
 // and never the non-hideable "Needs attention" hero (#449). One tap reopens the illness
 // (restarting no meds — the med-restore checklist lives on the episode page, Part B); the
 // row deep-links to the episode for the fuller reopen.
+//
+// THE DISMISSAL PERSISTS (issue #1548). It used to be client `useState` only, so a
+// dismissed line came back on every reload for the rest of its 7-day window — the one
+// X in the app that resurrected. The truth now lives server-side (a per-login id set;
+// see lib/recently-resolved.ts), and `items` arrives ALREADY FILTERED; the local set
+// below is only the optimistic hide between the click and the revalidation. What is
+// persisted is the READER's hide, never the episode: reopen eligibility is untouched,
+// and another login with access to the same profile still sees the line.
+//
+// IT ALSO CARRIES THE HOUSEHOLD-HISTORY PROMO (issue #1549) as a trailing footer row
+// when the page says this band is the promo's contextual home — the reopen window is a
+// strict subset of the promo's, so those two bands always co-occurred and stacked. The
+// page decides the placement from the SERVER-side filtered list; when the viewer
+// dismisses the last line here, the band keeps rendering the footer alone until the
+// revalidation moves the link to the household strip, so the link never blinks out and
+// never renders twice.
 export interface RecentlyResolvedItem {
   profileId: number;
   episodeId: number;
@@ -30,17 +47,33 @@ export interface RecentlyResolvedItem {
 
 export default function RecentlyResolvedReopen({
   items,
+  showHouseholdPromo = false,
+  dismissAction,
 }: {
+  // Already filtered server-side against this login's stored dismissals (#1548).
   items: RecentlyResolvedItem[];
+  // True when THIS band is the household-history promo's contextual home (#1549) —
+  // decided by the page, never by this component.
+  showHouseholdPromo?: boolean;
+  dismissAction: (episodeId: number) => Promise<void>;
 }) {
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const [pending, start] = useTransition();
   const [busyId, setBusyId] = useState<number | null>(null);
+  // How many dismissal writes have SETTLED, in the monotone-counter shape
+  // AttentionHeroCard uses: the optimistic hide happens immediately, so neither a
+  // reader nor a browser test can otherwise tell "stored" from "not sent yet", and a
+  // plain pending flag starts idle and so matches the pre-click state. Advances
+  // whether the write succeeded or failed — it reports that the attempt settled.
+  const [savedCount, setSavedCount] = useState(0);
   const toast = useToast();
   const router = useRouter();
 
   const visible = items.filter((i) => !dismissed.has(i.episodeId));
-  if (visible.length === 0) return null;
+  // The footer can outlive the lines for one revalidation (see the header note), so
+  // an empty band with a promo still renders; an empty band without one renders
+  // nothing at all.
+  if (visible.length === 0 && !showHouseholdPromo) return null;
 
   function reopen(item: RecentlyResolvedItem) {
     setBusyId(item.episodeId);
@@ -61,12 +94,18 @@ export default function RecentlyResolvedReopen({
 
   function dismiss(episodeId: number) {
     setDismissed((prev) => new Set(prev).add(episodeId));
+    // Persist it (#1548). Fire-and-forget for the viewer — the row is already gone
+    // from their screen and a failed write costs only the persistence, never the
+    // line. The action revalidates "/", which is also what relocates the promo
+    // footer once this was the last visible line.
+    void dismissAction(episodeId).finally(() => setSavedCount((n) => n + 1));
   }
 
   return (
     <section
       data-testid="recently-resolved-reopen"
       aria-label="Recently resolved illnesses"
+      data-saved-count={savedCount}
       className="mb-6 flex flex-col gap-2"
     >
       {visible.map((item) => (
@@ -114,6 +153,14 @@ export default function RecentlyResolvedReopen({
           </button>
         </div>
       ))}
+      {/* The household-history promo's contextual home when reopen lines are on
+          screen (#1549) — a trailing row of THIS band rather than a third sibling
+          band beneath it. */}
+      {showHouseholdPromo && (
+        <div data-testid="recently-resolved-promo-row" className="px-1">
+          <HouseholdHistoryPromoLink />
+        </div>
+      )}
     </section>
   );
 }

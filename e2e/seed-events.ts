@@ -44,6 +44,7 @@ import {
   seedDailyLoop,
   seedNavGating,
   seedWhatsNew,
+  seedHouseholdFolds,
 } from "./seed/dashboard";
 import {
   seedRestEpisode,
@@ -152,6 +153,7 @@ seedSunOutdoor();
 seedGrantMatrix();
 seedSharedSupplyPools();
 seedWhatsNew();
+seedHouseholdFolds();
 seedIntradayPanel();
 seedVitalsToday();
 seedTelegramDoseRound();

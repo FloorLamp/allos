@@ -190,3 +190,46 @@ export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
 // one profile cannot exercise both contracts.
 export const E2E_LOGIN_NOWSAFETY = "e2e_nowsafety";
 export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
+
+// ── Just-recovered dashboard band folds (issues #1548 / #1549) ────────────────
+// Three spec-owned caregiver fixtures for e2e/dashboard-household-folds.spec.ts, one
+// per state of the household-history promo's placement. Every one is a MULTI-profile
+// login (the promo is multi-profile only) whose parent profile is well and whose
+// children carry a CLOSED illness episode at a chosen distance from the frozen run
+// clock — the distance is the whole fixture, because the reopen window (7 days) is a
+// strict subset of the promo window (14).
+//
+// The parent is created first so it holds the LOWEST id and therefore becomes each
+// login's acting profile (createSession picks accessibleProfiles[0]), which is what
+// makes the children's lines CROSS-PROFILE rows.
+//
+//   • FOLDREOPEN — two children resolved 3 and 5 days ago. Both inside the reopen
+//     window, so the band shows two lines and the promo folds into it as a footer.
+//     This is also the DISMISSAL fixture (#1548): the spec dismisses one line, reloads,
+//     and then dismisses the second to watch the promo relocate. Its login_settings
+//     dismissal key is therefore MUTATED by the spec — which is exactly why it is its
+//     own login, and why the spec clears that key before each run so --repeat-each
+//     iterations start from the same state.
+export const E2E_LOGIN_FOLDREOPEN = "e2e_foldreopen";
+export const FOLD_REOPEN_PARENT_PROFILE = "Fold Reopen Parent (e2e)";
+export const FOLD_REOPEN_KID_A_PROFILE = "Fold Reopen Kid A (e2e)";
+export const FOLD_REOPEN_KID_B_PROFILE = "Fold Reopen Kid B (e2e)";
+export const FOLD_REOPEN_KID_A_SITUATION = "Croup";
+export const FOLD_REOPEN_KID_B_SITUATION = "Strep throat";
+
+//   • FOLDTAIL — one child resolved 10 days ago: past the 7-day reopen window, still
+//     inside the 14-day promo window. The 8–14-day TAIL, where #1009's "surfaces near
+//     the illness hero" rationale is void because the hero is long gone. No reopen band
+//     exists, so the promo lands in the household strip's label row instead. The
+//     household is deliberately QUIET (no attention items anywhere), so the strip has
+//     NO chips — the orphan case #1549's sketch assumed away.
+export const E2E_LOGIN_FOLDTAIL = "e2e_foldtail";
+export const FOLD_TAIL_PARENT_PROFILE = "Fold Tail Parent (e2e)";
+export const FOLD_TAIL_KID_PROFILE = "Fold Tail Kid (e2e)";
+
+//   • FOLDWELL — one child resolved 20 days ago: outside BOTH windows. The house has
+//     clearly recovered, so no reopen band and no promo anywhere. The negative control
+//     that keeps the two folds above from degenerating into "always render it".
+export const E2E_LOGIN_FOLDWELL = "e2e_foldwell";
+export const FOLD_WELL_PARENT_PROFILE = "Fold Well Parent (e2e)";
+export const FOLD_WELL_KID_PROFILE = "Fold Well Kid (e2e)";

@@ -81,6 +81,7 @@ import {
   getSituations,
   getActiveSituations,
   getAttentionHeroCollapsed,
+  getRecentlyResolvedDismissed,
 } from "@/lib/settings";
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
 import { hasConnectedDataSource } from "@/lib/integrations/connections";
@@ -162,18 +163,15 @@ import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
 import {
+  dismissRecentlyResolved,
   saveAttentionHeroCollapsed,
   saveDashboardLayout,
   saveIllnessHeroState,
 } from "./actions";
-import {
-  episodeHref,
-  encounterHref,
-  EPISODES_HREF,
-  type AppRoute,
-} from "@/lib/hrefs";
+import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySick } from "@/lib/household-history";
+import { visibleRecentlyResolved } from "@/lib/recently-resolved";
 
 export const dynamic = "force-dynamic";
 
@@ -404,8 +402,14 @@ export default async function Dashboard() {
   // episodeReopenEligibility rule the detail page uses). Cross-profile aware like the hero
   // (#858) — each row reopens that member's episode via its profileId. Calm/dismissible,
   // never the attention hero (#449). Names disambiguated across the accessible set (#531).
+  //
+  // Filtered SERVER-SIDE against the viewer's stored dismissals (#1548): the X used to
+  // be client state only, so a hidden line came back on the next reload. The client
+  // component still hides optimistically, but this list is now the truth — and it is
+  // also what decides where the household-history promo goes (#1549), which is why the
+  // filter has to happen here rather than in the browser.
   const reopenNames = disambiguateProfileNames(accessible);
-  const recentlyResolved: RecentlyResolvedItem[] = accessible
+  const recentlyResolvedAll: RecentlyResolvedItem[] = accessible
     .map((p) => ({ p, ep: reopenEligibleEpisodeForProfile(p.id) }))
     .filter(
       (
@@ -424,6 +428,10 @@ export default async function Dashboard() {
       profile: p,
       episodeHref: episodeHref(ep.id),
     }));
+  const recentlyResolved = visibleRecentlyResolved(
+    recentlyResolvedAll,
+    getRecentlyResolvedDismissed(login.id)
+  );
 
   // Contextual promotion of the merged household history (issue #1009 Ask 2): a CALM
   // link that surfaces near the illness hero when any accessible member is currently or
@@ -432,9 +440,22 @@ export default async function Dashboard() {
   // hero reads — never a second "who's sick" derivation — via isHouseholdRecentlySick.
   // It is a link, NOT a notification and NOT a finding (no dedupeKey, no bus): it appears
   // because it's useful and disappears on its own.
+  //
+  // The PREDICATE is unchanged by #1549; only its PLACEMENT is now contextual. The
+  // reopen window (7 days) is a strict subset of this one (14), so a standalone block
+  // stacked a third household-shaped band under the reopen lines in every just-
+  // recovered state, and floated context-free in the 8–14-day tail once the illness
+  // hero that justified "surfaces near the hero" was gone. So the link renders as a row
+  // of whichever household band is already on screen — ONE render, never two:
+  //   • reopen lines visible → the reopen band's footer;
+  //   • otherwise (the tail, or every line dismissed) → the household strip's label row.
   const promoteHouseholdHistory =
     accessible.length > 1 &&
     isHouseholdRecentlySick(accessible.map((p) => p.id));
+  const promoInReopenBand =
+    promoteHouseholdHistory && recentlyResolved.length > 0;
+  const promoInHouseholdStrip =
+    promoteHouseholdHistory && recentlyResolved.length === 0;
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
   // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
@@ -1105,17 +1126,11 @@ export default async function Dashboard() {
         dateLabel={formatLongDate(on, formatPrefs)}
       />
       {recentlyResolved.length > 0 && (
-        <RecentlyResolvedReopen items={recentlyResolved} />
-      )}
-      {promoteHouseholdHistory && (
-        <div className="mb-6" data-testid="household-history-promo">
-          <Link
-            href={EPISODES_HREF}
-            className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-          >
-            See the household&rsquo;s illness episodes &amp; visits →
-          </Link>
-        </div>
+        <RecentlyResolvedReopen
+          items={recentlyResolved}
+          showHouseholdPromo={promoInReopenBand}
+          dismissAction={dismissRecentlyResolved}
+        />
       )}
       {/* Skipped when the Now strip promoted it — one render, never two (#1413). */}
       {showRecapCard && finishedRecap && !nowPromoted.has("session-recap") && (
@@ -1133,7 +1148,10 @@ export default async function Dashboard() {
           completion={onboardingChecklistCompletion}
         />
       )}
-      <HouseholdStrip entries={householdEntries} />
+      <HouseholdStrip
+        entries={householdEntries}
+        showHouseholdPromo={promoInHouseholdStrip}
+      />
       <DashboardGrid
         key={profile.id}
         widgets={gridWidgets}
