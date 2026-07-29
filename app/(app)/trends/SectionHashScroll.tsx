@@ -15,15 +15,18 @@ import { useEffect } from "react";
 // moment the reader takes over.
 //
 //   • Only ever runs when the URL names a fragment, and only on mount.
-//   • A MutationObserver re-aligns as the census arrives (scroll-margin is honoured
-//     by scrollIntoView, so the sticky tab strip is cleared just as it is for an
+//   • A frame loop re-aligns while the page assembles (scroll-margin is honoured by
+//     scrollIntoView, so the sticky tab strip is cleared just as it is for an
 //     in-page anchor click).
 //   • ANY user scroll gesture cancels it permanently, and it gives up on its own
 //     after the settle window — this must never fight a reader who has moved on.
 //
 // An in-page anchor click needs none of this: by then the census exists and the
 // browser does the work.
-const SETTLE_MS = 4000;
+const SETTLE_MS = 2000;
+// A gesture that means the reader has taken over. `pointerdown` covers a scrollbar
+// drag, which produces no wheel or touch event.
+const GESTURES = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
 
 export default function SectionHashScroll() {
   useEffect(() => {
@@ -37,26 +40,32 @@ export default function SectionHashScroll() {
     }
     if (!id) return;
 
-    let cancelled = false;
-    const align = () => {
-      if (cancelled) return;
-      document.getElementById(id)?.scrollIntoView({ block: "start" });
-    };
-    const observer = new MutationObserver(align);
+    let stopped = false;
+    let frame = 0;
+    let timer = 0;
     const stop = () => {
-      cancelled = true;
-      observer.disconnect();
+      if (stopped) return;
+      stopped = true;
+      cancelAnimationFrame(frame);
       window.clearTimeout(timer);
       for (const event of GESTURES) window.removeEventListener(event, stop);
     };
-    const timer = window.setTimeout(stop, SETTLE_MS);
-    const GESTURES = ["wheel", "touchmove", "keydown"] as const;
+    // Re-align EVERY FRAME for the settle window rather than only on DOM changes.
+    // Two things move the target after it first appears, and neither is a mutation
+    // this component can see: React reveals the streamed boundary in a batch of its
+    // own, and the browser's scroll restoration can land after that. A frame loop
+    // simply keeps the anchor honest until the page stops moving under it.
+    const align = () => {
+      if (stopped) return;
+      document.getElementById(id)?.scrollIntoView({ block: "start" });
+      frame = requestAnimationFrame(align);
+    };
+
+    timer = window.setTimeout(stop, SETTLE_MS);
     for (const event of GESTURES) {
       window.addEventListener(event, stop, { passive: true });
     }
-
     align();
-    observer.observe(document.body, { childList: true, subtree: true });
     return stop;
   }, []);
 

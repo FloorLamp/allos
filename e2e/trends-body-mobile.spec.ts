@@ -165,6 +165,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     await page.goto(
       `/trends?from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
     );
+    await censusRevealed(page, "body", "trends-body");
 
     await expect(page.getByTestId("body-tile-hr")).toContainText("88 bpm");
     const sleep = page.getByTestId("body-tile-sleep");
@@ -208,6 +209,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     await page.goto(
       `/trends?view=tiles&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
     );
+    await censusRevealed(page, "body", "trends-body");
 
     const empty = page.getByTestId("body-tile-weight");
     const populated = page.getByTestId("body-tile-sleep");
@@ -415,8 +417,13 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     ).toBeVisible();
     await expect(page.locator("#hr")).toBeInViewport();
 
-    // And the sleep anchor lands on the sleep tile.
+    // And the sleep anchor lands on the sleep tile — asserted from a FRESH load,
+    // which is what this test is about. A goto that changes only the fragment is
+    // not a load: the document stays, so the streamed census is not re-assembled
+    // and the on-load alignment this pins would never run. Leave the hub first.
+    await page.goto("/timeline");
     await page.goto("/trends?view=all#sleep");
+    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("sleep-summary-tile")).toBeInViewport();
 
     await page.context().close();

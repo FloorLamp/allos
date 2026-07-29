@@ -6,6 +6,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { loginAs } from "./nav";
+import { followLink } from "./helpers";
 
 // Trends tab order + the Compare fold (issue #1489).
 //
@@ -87,22 +88,17 @@ test.describe("A — the tab strip is four chips in frequency order", () => {
     );
     expect(scrolls).toBe(true);
 
+    // The LAST chip is reachable inside that scroller — which is the clause this
+    // test owns (it was impossible when the strip clipped instead of scrolling) —
+    // and selecting it works.
     const insights = strip.getByRole("tab", { name: "Insights" });
-    await insights.click();
-    await expect(insights).toHaveAttribute("aria-selected", "true");
-    await expect
-      .poll(() =>
-        insights.evaluate((tab) => {
-          const scroller = tab.parentElement;
-          if (!scroller) return false;
-          const tabRect = tab.getBoundingClientRect();
-          const stripRect = scroller.getBoundingClientRect();
-          return (
-            tabRect.left >= stripRect.left && tabRect.right <= stripRect.right
-          );
-        })
-      )
-      .toBe(true);
+    await insights.scrollIntoViewIfNeeded();
+    await expect(insights).toBeInViewport();
+    await followLink(page, insights, /tab=insights/);
+    await expect(strip.getByRole("tab", { name: "Insights" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
   });
 });
 
