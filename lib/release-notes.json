@@ -4,6 +4,13 @@
       "date": "2026-07-29",
       "entries": [
         {
+          "pr": 1669,
+          "kind": "feature",
+          "title": "All your scans, one source — and a strict mode that means it",
+          "body": "Readings extracted from medical documents used to be one source per report, so \"my DEXA scans\" could never be picked as a single series. The source picker now offers Documents — every report together — and the comparison chart draws them as one sparse line alongside the per-report series. Pair it with the new \"Only this source\" checkbox and the chart shows exactly that source: days it did not cover stay honestly empty instead of borrowing another source's number, totals count only its rows, and latest-value tiles show an empty state rather than a stand-in. Unchecking restores the familiar fallback behavior exactly.",
+          "issues": [1640, 1642]
+        },
+        {
           "pr": 1665,
           "title": "Routes settle into their real homes",
           "body": "A housekeeping sweep with a few visible edges: the Healthspan page is now consistently called Longevity everywhere it appears, and a long tail of retired internal redirects is gone now that every link in the app points straight at the real page. If you bookmarked one of the very old addresses, update the bookmark to the page you land on from the navigation. Under the hood, dead route scaffolding was removed and shared reads moved next to the pages that use them, which keeps future changes safer.",
