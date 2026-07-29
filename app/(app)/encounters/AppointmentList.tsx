@@ -392,6 +392,7 @@ export default function AppointmentList({
                   type="button"
                   onClick={() => setEditingId(a.id)}
                   aria-label="Edit"
+                  title="Edit appointment"
                   className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                 >
                   <IconPencil className="h-4 w-4" stroke={1.75} />
@@ -400,6 +401,7 @@ export default function AppointmentList({
                   type="button"
                   onClick={() => onDelete(a)}
                   aria-label="Delete"
+                  title="Delete appointment"
                   className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                 >
                   <IconTrash className="h-4 w-4" stroke={1.75} />

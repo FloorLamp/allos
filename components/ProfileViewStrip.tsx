@@ -91,6 +91,7 @@ export default function ProfileViewStrip({
                     type="submit"
                     data-testid={`view-chip-remove-${p.id}`}
                     aria-label={`Remove ${p.name} from view`}
+                    title="Remove from view"
                     className="flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-ink-750 dark:hover:text-slate-200"
                   >
                     <IconX className="h-3 w-3" stroke={2} />

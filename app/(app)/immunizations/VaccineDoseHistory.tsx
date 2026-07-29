@@ -143,6 +143,7 @@ export default function VaccineDoseHistory({
                       type="button"
                       onClick={() => setEditingId(im.id)}
                       aria-label="Edit"
+                      title="Edit dose"
                       className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                     >
                       <IconPencil className="h-4 w-4" stroke={1.75} />
@@ -151,6 +152,7 @@ export default function VaccineDoseHistory({
                       type="button"
                       onClick={() => onDelete(im)}
                       aria-label="Delete"
+                      title="Delete dose"
                       className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                     >
                       <IconTrash className="h-4 w-4" stroke={1.75} />

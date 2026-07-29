@@ -233,6 +233,7 @@ export default function FitnessTestTimer({
           onClick={() => setExpanded(false)}
           data-testid={`${base}-collapse`}
           aria-label="Collapse timer"
+          title="Collapse timer"
           className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
         >
           <IconX className="h-6 w-6" />
@@ -271,6 +272,7 @@ export default function FitnessTestTimer({
               onClick={pause}
               data-testid={`${base}-pause`}
               aria-label="Pause"
+              title="Pause timer"
               className="flex h-12 w-12 items-center justify-center rounded-full border border-black/10 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
             >
               <IconPlayerPauseFilled className="h-6 w-6" />
@@ -282,6 +284,7 @@ export default function FitnessTestTimer({
               onClick={reset}
               data-testid={`${base}-reset`}
               aria-label="Reset"
+              title="Reset timer"
               className="flex h-12 w-12 items-center justify-center rounded-full border border-black/10 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
             >
               <IconRotateClockwise className="h-6 w-6" />

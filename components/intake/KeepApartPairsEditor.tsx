@@ -78,6 +78,7 @@ export default function KeepApartPairsEditor({
                 }
                 className="tap-target flex h-10 w-10 items-center justify-center justify-self-end rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                 aria-label="Remove interaction"
+                title="Remove interaction"
               >
                 <IconX className="h-4 w-4" />
               </button>

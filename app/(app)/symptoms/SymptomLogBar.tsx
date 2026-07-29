@@ -640,6 +640,7 @@ export default function SymptomLogBar({
                         <button
                           type="button"
                           aria-label={`Remove ${s.label} suggestion`}
+                          title="Remove suggestion"
                           onClick={() => dropStaged(idx)}
                           className="rounded p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                         >
@@ -742,6 +743,7 @@ export default function SymptomLogBar({
               type="submit"
               data-testid="symptom-custom-add"
               aria-label="Add symptom"
+              title="Add symptom"
               className="btn-ghost h-8 w-8 p-0"
             >
               <IconPlus className="h-3.5 w-3.5" />
@@ -923,6 +925,7 @@ export default function SymptomLogBar({
                       type="button"
                       data-testid={`symptom-${key}-note-toggle`}
                       aria-label={`${note ? "Edit" : "Add"} note for ${r.label}`}
+                      title={note ? "Edit note" : "Add note"}
                       aria-pressed={editingNote}
                       onClick={() => {
                         if (editingNote) setNoteEditing(null);
@@ -943,6 +946,7 @@ export default function SymptomLogBar({
                       type="button"
                       data-testid={`symptom-${key}-clear`}
                       aria-label={`Clear ${r.label}`}
+                      title="Clear severity"
                       disabled={sev <= 0}
                       onClick={() => clear(key)}
                       className="rounded p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 dark:hover:text-slate-200"

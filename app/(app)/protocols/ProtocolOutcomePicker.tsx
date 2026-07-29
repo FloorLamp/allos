@@ -70,6 +70,7 @@ export default function ProtocolOutcomePicker({
                 type="button"
                 className="rounded-full p-1 hover:bg-brand-100 dark:hover:bg-brand-500/20"
                 aria-label={`Remove ${option.label}`}
+                title="Remove outcome metric"
                 onClick={() => remove(option.key)}
               >
                 <IconX className="h-3.5 w-3.5" stroke={2} aria-hidden />

@@ -129,6 +129,7 @@ export default function OverflowMenu({
         type="button"
         onClick={() => onOpenChange(!open)}
         aria-label={label}
+        title={label}
         aria-haspopup="menu"
         data-testid="overflow-menu-trigger"
         // ≥40px hit box (#644): a 16px glyph centered in a 40px box so the sole

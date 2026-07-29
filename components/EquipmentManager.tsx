@@ -234,6 +234,7 @@ export default function EquipmentManager({
           disabled={pending}
           className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           title="Edit"
+          aria-label={`Edit ${e.name}`}
         >
           <IconPencil className="h-4 w-4" />
         </button>
@@ -244,6 +245,7 @@ export default function EquipmentManager({
           data-testid="equipment-retire-toggle"
           className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           title={e.retired ? "Restore" : "Retire"}
+          aria-label={e.retired ? `Restore ${e.name}` : `Retire ${e.name}`}
         >
           {e.retired ? (
             <IconArchiveOff className="h-4 w-4" />
@@ -257,6 +259,7 @@ export default function EquipmentManager({
           disabled={pending}
           className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-950 dark:hover:text-rose-400"
           title="Delete"
+          aria-label={`Delete ${e.name}`}
         >
           <IconTrash className="h-4 w-4" />
         </button>

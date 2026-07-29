@@ -202,6 +202,7 @@ export default function PhotoGallery({
               className="rounded-full p-2 text-white/80 hover:bg-ink-750 hover:text-white"
               onClick={() => setLightbox(null)}
               aria-label="Close"
+              title="Close"
               data-testid="photo-lightbox-close"
             >
               <IconX size={22} aria-hidden />
@@ -214,6 +215,7 @@ export default function PhotoGallery({
                 className="absolute left-0 z-10 rounded-full p-2 text-white/80 hover:bg-ink-750 hover:text-white"
                 onClick={() => setLightbox(neighbors.prev)}
                 aria-label="Previous photo"
+                title="Previous photo"
                 data-testid="photo-lightbox-prev"
               >
                 <IconChevronLeft size={26} aria-hidden />
@@ -232,6 +234,7 @@ export default function PhotoGallery({
                 className="absolute right-0 z-10 rounded-full p-2 text-white/80 hover:bg-ink-750 hover:text-white"
                 onClick={() => setLightbox(neighbors.next)}
                 aria-label="Next photo"
+                title="Next photo"
                 data-testid="photo-lightbox-next"
               >
                 <IconChevronRight size={26} aria-hidden />

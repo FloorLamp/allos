@@ -194,6 +194,7 @@ function ToastCard({
       <button
         onClick={onDismiss}
         aria-label="Dismiss"
+        title="Dismiss"
         className="text-slate-300 hover:text-slate-500 dark:text-slate-600 dark:hover:text-slate-400"
       >
         <IconX className="h-4 w-4" />

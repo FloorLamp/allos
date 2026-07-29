@@ -105,6 +105,7 @@ export default function RecentlyResolvedReopen({
           <button
             type="button"
             aria-label={`Dismiss recently resolved ${item.situation}`}
+            title="Dismiss"
             data-testid="recently-resolved-dismiss"
             className="shrink-0 rounded p-1 text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
             onClick={() => dismiss(item.episodeId)}

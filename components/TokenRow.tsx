@@ -71,6 +71,7 @@ export function TokenRow({
             onClick={() => setShown((s) => !s)}
             className="inline-flex shrink-0 items-center rounded-md border border-black/10 p-1.5 text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
             aria-label={shown ? "Hide" : "Reveal"}
+            title={shown ? "Hide" : "Reveal"}
           >
             {shown ? (
               <IconEyeOff className="h-4 w-4" />
