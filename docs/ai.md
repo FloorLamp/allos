@@ -76,7 +76,11 @@ reprocess it, or see the extraction error. The detail view browses everything
 the import produced in one tabbed strip — one tab per type (labs, vitals,
 prescriptions, visits, conditions, allergies, immunizations, procedures, family
 history, care plan/goals, medications, body metrics), each row linking to where
-it now lives.
+it now lives. A lab reading also captures what the report PRINTS about the draw
+itself (#1404): its **result status** (a "CORRECTED REPORT" / "Preliminary"
+banner), whether it was drawn **fasting**, and the **specimen**. The model is told
+never to infer any of the three — an unstated attribute stays null rather than
+becoming a "final", non-fasting claim the document never made.
 
 ### Provider tiers (Heavy / Light) and local inference
 
