@@ -11,6 +11,7 @@ import {
   findActivityDuplicates,
   bodyMetricToken,
   sharedMeasures,
+  conflictingMeasures,
   findBodyMetricConflicts,
   undecidedPairs,
   suppressingSignatures,
@@ -590,6 +591,69 @@ describe("body-metric conflict detection", () => {
       bm({ id: 2, source: "health-connect", resting_hr: 55 }),
     ];
     expect(findBodyMetricConflicts(rows)).toHaveLength(0);
+  });
+
+  // #1615: body_metrics keeps one row per (profile_id, date, source) on purpose (#14),
+  // so two SOURCES agreeing on a day is normal multi-source storage — there is nothing
+  // for the user to decide, and the destructive merge would throw away provenance.
+  describe("exact-equal cross-source overlap is equivalence, not conflict", () => {
+    it("omits a cross-source pair whose shared measure is exactly equal", () => {
+      const rows = [
+        bm({ id: 1, source: "health-connect", resting_hr: 55 }),
+        bm({ id: 2, source: "oura", resting_hr: 55 }),
+      ];
+      expect(findBodyMetricConflicts(rows)).toHaveLength(0);
+      expect(conflictingMeasures(rows[0], rows[1])).toEqual([]);
+      // The overlap itself is still reported — only the CONFLICT is empty.
+      expect(sharedMeasures(rows[0], rows[1])).toEqual(["resting HR"]);
+    });
+
+    it("keeps a cross-source pair whose shared measure differs", () => {
+      const rows = [
+        bm({ id: 1, source: "health-connect", resting_hr: 55 }),
+        bm({ id: 2, source: "oura", resting_hr: 56 }),
+      ];
+      const pairs = findBodyMetricConflicts(rows);
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0].measures).toEqual(["resting HR"]);
+    });
+
+    it("names only the disagreeing measure when another shared measure is equal", () => {
+      const rows = [
+        bm({ id: 1, source: "health-connect", resting_hr: 55, weight_kg: 70 }),
+        bm({ id: 2, source: "withings", resting_hr: 55, weight_kg: 70.4 }),
+      ];
+      const pairs = findBodyMetricConflicts(rows);
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0].measures).toEqual(["weight"]);
+      expect(pairs[0].reason).toBe("Same-day weight from two rows");
+    });
+
+    it("still reviews two equal MANUAL rows — duplicate records, not multi-source", () => {
+      const rows = [
+        bm({ id: 1, source: null, resting_hr: 55 }),
+        bm({ id: 2, source: null, resting_hr: 55 }),
+      ];
+      const pairs = findBodyMetricConflicts(rows);
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0].measures).toEqual(["resting HR"]);
+    });
+
+    it("still reviews two equal rows from ONE source — upstream double-feed", () => {
+      const rows = [
+        bm({ id: 1, source: "health-connect", weight_kg: 70 }),
+        bm({ id: 2, source: "health-connect", weight_kg: 70 }),
+      ];
+      expect(findBodyMetricConflicts(rows)).toHaveLength(1);
+    });
+
+    it("uses exact equality — no tolerance", () => {
+      const rows = [
+        bm({ id: 1, source: "health-connect", weight_kg: 70 }),
+        bm({ id: 2, source: "withings", weight_kg: 70.01 }),
+      ];
+      expect(findBodyMetricConflicts(rows)).toHaveLength(1);
+    });
   });
 });
 

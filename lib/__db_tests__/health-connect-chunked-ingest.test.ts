@@ -25,13 +25,16 @@ import { POST } from "@/app/api/integrations/health-connect/ingest/route";
 import { generateHealthConnectToken } from "@/lib/integrations/connections";
 import { setTimezone } from "@/lib/settings";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
-import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
+import {
+  HealthConnectWriteError,
+  ingestHealthConnectPayload,
+} from "@/lib/integrations/health-connect-ingest";
 import {
   upsertMetricSamples,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import { writeTx } from "@/lib/db";
-import { getIntegrationSyncEvents } from "@/lib/queries";
+import { getIntegrationSyncEvents, getSyncRowProvenance } from "@/lib/queries";
 import { parseSyncEventDetails } from "@/lib/integrations/sync-details";
 
 const TZ = "UTC";
@@ -347,5 +350,139 @@ describe("HC wrong-granularity hint surfaces in Review (#1065)", () => {
     expect(
       details!.warnings.some((w) => /Steps/.test(w) && /daily/.test(w))
     ).toBe(true);
+  });
+});
+
+// ── Committed-chunk accounting on a mid-batch failure (issue #1614) ────────────
+//
+// The chunking design KEEPS earlier chunks: they are separate IMMEDIATE
+// transactions and each one commits on its own. The failure event therefore has to
+// say what landed — recording null counts and no provenance let durable rows exist
+// that the event could not describe. This mirrors the Fitbit Takeout fix (#1617):
+// per-chunk provenance sinks stay transactional with their chunk, and the ONE
+// ok:false event carries the committed split.
+
+describe("HC mid-batch failure reports the committed split (#1614)", () => {
+  it("throws HealthConnectWriteError carrying only the committed chunks", () => {
+    const profileId = newProfile("HC-PARTIAL-A");
+    // chunkSize 2: chunk 1 = two valid samples (commits), chunk 2 = one valid row +
+    // a NOT NULL violation (rolls back whole). A genuine DB failure, no mocks.
+    const sample = (hour: number, value: number): NormMetricSample => ({
+      metric: "steps",
+      date: "2026-06-10",
+      start_time: `2026-06-10T0${hour}:00:00Z`,
+      end_time: `2026-06-10T0${hour}:10:00Z`,
+      value,
+    });
+    const parsed = {
+      bodyMetrics: [],
+      samples: [
+        sample(1, 100),
+        sample(2, 200),
+        sample(3, 300),
+        { ...sample(4, 400), metric: null as unknown as string },
+      ],
+      hrMinutes: [],
+      activities: [],
+      vitals: [],
+      skipped: 0,
+      details: { warnings: [], origins: [] },
+    };
+
+    let caught: unknown;
+    try {
+      ingestHealthConnectPayload(profileId, parsed, "health-connect", 2);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(HealthConnectWriteError);
+    const partial = (caught as HealthConnectWriteError).committed;
+    // Only chunk 1's two rows committed — and that is exactly what the error claims.
+    expect(rowCount("metric_samples", profileId)).toBe(2);
+    expect(partial.split.inserted).toBe(2);
+    expect(partial.split.updated).toBe(0);
+    // Provenance is transactional with its chunk: the rolled-back chunk's sink is
+    // discarded, so no nonexistent target id leaks into the failure event.
+    expect(partial.provenance).toHaveLength(2);
+    for (const entry of partial.provenance) {
+      expect(entry.target_table).toBe("metric_samples");
+      const row = db
+        .prepare(
+          "SELECT id FROM metric_samples WHERE id = ? AND profile_id = ?"
+        )
+        .get(entry.target_id, profileId);
+      expect(row).toBeTruthy();
+    }
+  });
+
+  it("the push route records ONE ok:false event with the committed counts + provenance", async () => {
+    const profileId = newProfile("HC-PARTIAL-B");
+    const token = generateHealthConnectToken(profileId, "never");
+    // A genuine mid-batch DB failure driven from real payload JSON: a trigger that
+    // aborts one heart-rate minute. Ordering inside the ingest is body metrics →
+    // samples → hr minutes, so the first two chunks commit before this fires.
+    db.exec(
+      `CREATE TRIGGER hc_partial_poison BEFORE INSERT ON hr_minutes
+         WHEN NEW.profile_id = ${profileId} AND NEW.bpm = 199
+         BEGIN SELECT RAISE(ABORT, 'poison'); END;`
+    );
+    try {
+      const res = await POST(
+        new Request("http://x/api/integrations/health-connect/ingest", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            weight: [{ time: "2026-06-11T07:00:00Z", kilograms: 70.5 }],
+            steps: [
+              {
+                start_time: "2026-06-11T00:00:00Z",
+                end_time: "2026-06-12T00:00:00Z",
+                count: 8000,
+              },
+            ],
+            heart_rate: [{ time: "2026-06-11T09:00:00Z", bpm: 199 }],
+          }),
+        })
+      );
+      // The caller still gets the generic 500 (#478) — internals never leak.
+      expect(res.status).toBe(500);
+      expect((await res.json()) as { error: string }).toEqual({
+        ok: false,
+        error: "internal error",
+      });
+    } finally {
+      db.exec("DROP TRIGGER hc_partial_poison");
+    }
+
+    // The body-metric + steps chunks committed…
+    expect(rowCount("body_metrics", profileId)).toBe(1);
+    expect(rowCount("metric_samples", profileId)).toBe(1);
+    expect(rowCount("hr_minutes", profileId)).toBe(0);
+
+    const events = getIntegrationSyncEvents(profileId, "health-connect");
+    expect(events.length).toBe(1);
+    const ev = events[0];
+    expect(ev.ok).toBe(0);
+    // …and the failure event SAYS so, instead of the old null counts.
+    expect(ev.inserted).toBe(2);
+    expect(ev.updated).toBe(0);
+    expect(ev.unchanged).toBe(0);
+    expect(ev.received).toBe(2);
+    expect(ev.written).toBe(2);
+    expect(String(ev.error)).toContain("stopped after writing 2 records");
+    const details = parseSyncEventDetails(ev.details ?? null);
+    expect(details!.warnings[0]).toContain("Completed chunks were kept");
+
+    // The committed rows are drillable from the failure event (#1333) — and only
+    // those rows.
+    const links = getSyncRowProvenance(profileId, ev.id);
+    expect(links).toHaveLength(2);
+    expect(links.every((l) => !l.deleted)).toBe(true);
+    expect(new Set(links.map((l) => l.targetTable))).toEqual(
+      new Set(["body_metrics", "metric_samples"])
+    );
   });
 });

@@ -244,9 +244,7 @@ export async function POST(req: Request) {
       windowStart: win.start,
       windowEnd: win.end,
       received: tally?.received ?? null,
-      written: tally
-        ? tally.inserted + tally.updated + tally.unchanged
-        : null,
+      written: tally ? tally.inserted + tally.updated + tally.unchanged : null,
       inserted: tally?.inserted ?? null,
       updated: tally?.updated ?? null,
       unchanged: tally?.unchanged ?? null,

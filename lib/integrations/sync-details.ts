@@ -76,9 +76,7 @@ export function parseSyncEventDetails(
 // Did this sync event stop early with more data upstream (#1614)? Reads the durable
 // `details` marker, so a truncated pull is distinguishable from a clean success on
 // every surface that renders an event. Pure → unit-testable.
-export function isTruncatedSyncEvent(ev: {
-  details?: string | null;
-}): boolean {
+export function isTruncatedSyncEvent(ev: { details?: string | null }): boolean {
   return parseSyncEventDetails(ev.details ?? null)?.truncated === true;
 }
 
