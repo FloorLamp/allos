@@ -153,6 +153,35 @@ test.describe("Data → Review import inbox", () => {
     await expect(oura.getByRole("button", { name: "Sync now" })).toHaveCount(0);
   });
 
+  test("a truncated pull sync renders as partial, not a clean success (#1614)", async ({
+    page,
+  }) => {
+    await page.goto("/data?section=review");
+    const review = page.getByTestId("review-inbox");
+    const stravaCard = review.getByTestId("source-strava");
+    await expect(stravaCard).toBeVisible();
+
+    // The seeded truncated run sits in Strava's recent history (its newest event is
+    // still the token failure), so open the card's native <details>. It carries no
+    // onToggle, so a click works pre-hydration.
+    await stravaCard.getByText(/Recent syncs/).click();
+
+    // The run reports what it DID land — and is explicitly marked partial, so a page
+    // cap / rate limit can no longer read as a fully green sync.
+    const partial = stravaCard.getByTestId(/^sync-partial-/);
+    await expect(partial).toBeVisible();
+    await expect(partial).toHaveText(/partial/);
+    await expect(
+      stravaCard.getByText(/page cap or rate limit stopped this run early/)
+    ).toBeVisible();
+    // The reason names the recovery, so the run doesn't look like data loss.
+    await expect(
+      stravaCard.getByText(/next sync picks up where it left off/)
+    ).toBeVisible();
+    // The same card's complete runs are NOT marked partial — exactly one marker.
+    await expect(partial).toHaveCount(1);
+  });
+
   test("a dead-token source shows a 'Needs reconnect' card, distinct from 'Not connected' (issue #326)", async ({
     page,
   }) => {
