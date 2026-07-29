@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { expandTrendsContext } from "./trends-chrome";
+import { censusRevealed, expandTrendsContext } from "./trends-chrome";
 import { followLink, settledClick, hydratedClick } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -44,6 +44,7 @@ test.describe("chart tap-through (#1488)", () => {
     // view=all is the classic full-chart stack — the surface that was a dead end.
     await page.goto("/trends?view=all");
     await expandTrendsContext(page);
+    await censusRevealed(page, "body", "trends-body");
 
     const chartCard = page.getByTestId("body-chart-weight");
     await expect(chartCard).toBeVisible();
@@ -117,6 +118,7 @@ test.describe("chart tap-through (#1488)", () => {
     });
     await page.setViewportSize(DESKTOP);
     await page.goto("/trends?view=tiles");
+    await censusRevealed(page, "body", "trends-body");
 
     const card = page.getByTestId("body-tile-weight");
     await expect(card).toBeVisible();
@@ -227,6 +229,7 @@ test.describe("chart tap-through (#1488)", () => {
     });
     await page.setViewportSize(PHONE);
     await page.goto("/trends?view=all");
+    await censusRevealed(page, "body", "trends-body");
 
     // Every chart card's PLOT commits to the same square below `sm`, whatever its
     // state — that is what stops a stack reflowing because one series is empty.
@@ -255,6 +258,9 @@ test.describe("chart tap-through (#1488)", () => {
     });
     await page.setViewportSize(DESKTOP);
     await page.goto("/trends?view=all");
+    // The Body census streams (#1644): its `#steps` anchor is staged in a hidden
+    // node until React reveals it, and a geometry read there measures nothing.
+    await censusRevealed(page, "body", "trends-body");
 
     // The default full-size plot is h-64 (256px) from `sm` up — the pre-#1488
     // height — and is WIDER than it is tall, i.e. not the square.
