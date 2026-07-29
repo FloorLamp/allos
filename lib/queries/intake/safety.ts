@@ -14,6 +14,7 @@
 
 import type { SafetyContext, SafetyMedication } from "../../supplement-safety";
 import { getAllergies, getConditions } from "../clinical";
+import { isAllergyActionable } from "../../allergy-reactions";
 import { getSupplements } from "./schedule";
 import { getActiveSituations } from "../../settings";
 import { parseRxcuiIngredients } from "../../rxnorm";
@@ -45,8 +46,12 @@ export interface IntakeSafetyContext extends SafetyContext {
 export function getIntakeSafetyContext(profileId: number): IntakeSafetyContext {
   // Non-resolved allergens only — a resolved allergy should not screen forever (the
   // food engine and the prompt's live-allergen list already use this set).
+  // …and never a REFUTED or ENTERED-IN-ERROR one (#1405): a challenge test that
+  // ruled a penicillin "allergy" out must stop gating the drug, which is the whole
+  // clinical point of recording the verification status. Same ONE decision the
+  // passport / emergency-card view asks (isAllergyActionable).
   const liveAllergies = getAllergies(profileId).filter(
-    (a) => a.status !== "resolved"
+    (a) => a.status !== "resolved" && isAllergyActionable(a)
   );
   const allergens = liveAllergies.map((a) => a.substance);
   const allergyRecords: SafetyAllergyRecord[] = liveAllergies.map((a) => ({

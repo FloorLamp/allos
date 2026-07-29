@@ -115,3 +115,33 @@ const STATUS_TONES: Record<string, string> = {
 export function statusTone(status: string): string {
   return STATUS_TONES[status.trim().toLowerCase()] ?? STATUS_TONE_SLATE;
 }
+
+// ---- Immunization administration details (#1406) ----------------------------
+
+// Human labels for the CHECK-pinned route vocabulary.
+const ROUTE_LABELS: Record<string, string> = {
+  intramuscular: "IM",
+  subcutaneous: "SC",
+  intradermal: "ID",
+  oral: "PO",
+  intranasal: "IN",
+  other: "Other route",
+};
+
+// The one-line "lot / route / site" summary of HOW a dose was given (#1406) — the
+// facts school / travel / camp / employer forms ask for. ONE computation, so the
+// history table, the per-vaccine dose list, and the export can never phrase the same
+// dose differently. Absent parts are simply omitted; an entirely unstated dose
+// returns "" (the caller renders its own em dash), because unstated is a real
+// answer and must not be printed as a guess.
+export function immunizationAdministrationLine(dose: {
+  lot_number: string | null;
+  route: string | null;
+  site: string | null;
+}): string {
+  const parts: string[] = [];
+  if (dose.lot_number?.trim()) parts.push(`Lot ${dose.lot_number.trim()}`);
+  if (dose.route) parts.push(ROUTE_LABELS[dose.route] ?? dose.route);
+  if (dose.site?.trim()) parts.push(dose.site.trim());
+  return parts.join(" · ");
+}

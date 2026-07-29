@@ -362,12 +362,51 @@ export interface CanonicalBiomarker {
 // engine expands it to its component series. `source` mirrors the medical
 // provenance convention: NULL for manual entries, 'document:<id>' for rows
 // projected from an uploaded immunization record.
+// Route of administration (migration 122, #1406). CHECK-pinned on the column —
+// unlike a body SITE, the route vocabulary really is small and closed in practice,
+// and 'other' is the deliberate escape hatch so an unusual route never forces a
+// rebuild migration. Runtime array is the single source for the union AND the
+// immunizations.route CHECK (enum-parity test). NULL means unstated, which is not
+// the same claim as any of these.
+export const IMMUNIZATION_ROUTES = [
+  "intramuscular",
+  "subcutaneous",
+  "intradermal",
+  "oral",
+  "intranasal",
+  "other",
+] as const;
+export type ImmunizationRoute = (typeof IMMUNIZATION_ROUTES)[number];
+
+// Structured declination reason on an `immunization_overrides` row of kind
+// 'declined' (#1406) — the three categories school forms actually distinguish,
+// alongside (not replacing) the existing free-text `reason`. Runtime array is the
+// single source for the union AND the immunization_overrides.exemption_type CHECK.
+// NULL for an 'immune' override, where the concept does not apply, and for a
+// declination whose category was never stated.
+export const IMMUNIZATION_EXEMPTION_TYPES = [
+  "medical",
+  "religious",
+  "philosophical",
+] as const;
+export type ImmunizationExemptionType =
+  (typeof IMMUNIZATION_EXEMPTION_TYPES)[number];
+
 export interface Immunization {
   id: number;
   date: string;
   vaccine: string;
   dose_label: string | null;
   notes: string | null;
+  // Administration attributes every school / travel / camp / employer form asks for
+  // (#1406). All nullable: a legacy or hand-entered dose simply doesn't state them.
+  // `lot_number` and `site` are free text (a lot is a manufacturer string and a site
+  // is named far too diversely to freeze); `route` is CHECK-pinned. `reaction` is the
+  // adverse reaction to THIS dose, which previously had nowhere to live.
+  lot_number: string | null;
+  route: ImmunizationRoute | null;
+  site: string | null;
+  reaction: string | null;
   source: string | null;
   // Idempotent dedup key for synced rows (integration / SMART Health Card);
   // NULL for manual and document-extracted rows.
@@ -388,6 +427,54 @@ export interface Immunization {
 export const ALLERGY_STATUSES = ["active", "inactive", "resolved"] as const;
 export type AllergyStatus = (typeof ALLERGY_STATUSES)[number];
 
+// FHIR AllergyIntolerance.criticality (#1405): the potential for a FUTURE exposure
+// to be life-threatening — a different question from how bad the recorded reaction
+// was (`severity`). Runtime array is the single source for the union AND the
+// allergies.criticality CHECK (enum-parity test). NULL = unstated.
+export const ALLERGY_CRITICALITIES = [
+  "low",
+  "high",
+  "unable-to-assess",
+] as const;
+export type AllergyCriticality = (typeof ALLERGY_CRITICALITIES)[number];
+
+// FHIR AllergyIntolerance.verificationStatus (#1405). This is not decoration: a
+// 'refuted' allergy must NOT gate a drug (it is excluded from the drug-allergy
+// safety matcher), and an 'entered-in-error' row is excluded from the passport /
+// emergency-card view entirely. 'suspected' is the word this app uses for FHIR R5's
+// 'presumed'. Runtime array is the single source for the union AND the
+// allergies.verification_status CHECK. NULL = unstated, which is NOT 'confirmed'.
+export const ALLERGY_VERIFICATION_STATUSES = [
+  "unconfirmed",
+  "suspected",
+  "confirmed",
+  "refuted",
+  "entered-in-error",
+] as const;
+export type AllergyVerificationStatus =
+  (typeof ALLERGY_VERIFICATION_STATUSES)[number];
+
+// One graded manifestation of an allergy (table: allergy_reactions, migration 122).
+// A CHILD row: no profile_id, scoped through `allergy_id` → allergies, cleared by
+// ON DELETE CASCADE. `position` 0 is the manifestation cached onto the parent row's
+// legacy `reaction`/`severity` pair — see lib/allergy-reactions.
+export interface AllergyReaction {
+  id: number;
+  allergy_id: number;
+  manifestation: string;
+  severity: string | null;
+  position: number;
+}
+
+// The composed, display-ready manifestation (no ids): what `Allergy.reactions`
+// carries and what every read surface renders. Declared here — lib/types is the
+// source of truth for shared record shapes — and re-exported by
+// lib/allergy-reactions, which owns the composition that produces it.
+export interface AllergyManifestation {
+  manifestation: string;
+  severity: string | null;
+}
+
 // A recorded allergy / intolerance (table: allergies). `substance` is the
 // offending agent (drug/food/environmental) — a name, ideally with a code when
 // the source carried one. reaction/manifestation and severity are free text as
@@ -400,9 +487,20 @@ export interface Allergy {
   substance: string;
   substance_code: string | null;
   substance_code_system: string | null;
+  // The FIRST manifestation, kept as a denormalized cache of allergy_reactions row 0
+  // by the one write core (lib/allergy-reactions-write). Reads that want the full
+  // graded list compose through lib/allergy-reactions.composeAllergyReactions.
   reaction: string | null;
   severity: string | null; // mild/moderate/severe when coded, else free text
   status: AllergyStatus;
+  // Safety attributes (#1405). Nullable — unstated is a real third answer.
+  criticality: AllergyCriticality | null;
+  verification_status: AllergyVerificationStatus | null;
+  // The full graded manifestation list, attached by getAllergies through the ONE
+  // composition in lib/allergy-reactions (child rows when present, else the cached
+  // scalar above as a single implicit manifestation). Optional because a raw
+  // `SELECT * FROM allergies` row has not been composed yet.
+  reactions?: readonly AllergyManifestation[];
   notes: string | null;
   source: string | null;
   document_id: number | null;

@@ -9,6 +9,14 @@ import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import { medicationHref } from "@/lib/hrefs";
 import { drugAllergyMatchLabel, type DrugAllergyHit } from "@/lib/drug-allergy";
+import {
+  allergyCriticalityLabel,
+  allergyReactionSummary,
+  allergyVerificationLabel,
+  composeAllergyReactions,
+  isAllergyActionable,
+  isHighCriticality,
+} from "@/lib/allergy-reactions";
 import type { Allergy } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
@@ -56,14 +64,41 @@ function buildColumns(
       ),
     },
     {
-      header: "Reaction",
+      // Every graded manifestation (#1405), not just the cached first one, through
+      // the ONE pure summary the passport and the FHIR export also use.
+      header: "Reactions",
       cellClassName: "text-slate-600 dark:text-slate-300",
-      cell: (a) => a.reaction ?? "—",
+      cell: (a) =>
+        allergyReactionSummary(
+          composeAllergyReactions(
+            a,
+            (a.reactions ?? []).map((r, i) => ({ ...r, position: i }))
+          )
+        ) || "—",
     },
     {
-      header: "Severity",
+      // Criticality (life-threatening potential on a FUTURE exposure) and
+      // verification status (#1405). A refuted row is called out explicitly,
+      // because it looks like every other allergy but no longer gates anything.
+      header: "Criticality / verification",
       cellClassName: "text-slate-600 dark:text-slate-300",
-      cell: (a) => a.severity ?? "—",
+      cell: (a) => (
+        <span data-testid={`allergy-safety-${a.id}`}>
+          {isHighCriticality(a) ? (
+            <span className="rounded bg-rose-100 px-1.5 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+              {allergyCriticalityLabel(a.criticality)}
+            </span>
+          ) : (
+            (allergyCriticalityLabel(a.criticality) ?? "—")
+          )}
+          {a.verification_status ? (
+            <span className="ml-2 text-xs">
+              {allergyVerificationLabel(a.verification_status)}
+              {!isAllergyActionable(a) ? " · not screening" : ""}
+            </span>
+          ) : null}
+        </span>
+      ),
     },
     {
       header: "Status",

@@ -8,7 +8,18 @@ import ProviderCombobox from "@/components/ProviderCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { PICKER_NAMES, vaccineDisplayName } from "@/lib/immunization-catalog";
-import type { FormResult, Immunization } from "@/lib/types";
+import { IMMUNIZATION_ROUTES, type FormResult, type Immunization } from "@/lib/types";
+
+// Human labels for the CHECK-pinned route vocabulary (#1406). "Not stated" is the
+// default and a real answer — never a guessed 'intramuscular'.
+const ROUTE_LABELS: Record<(typeof IMMUNIZATION_ROUTES)[number], string> = {
+  intramuscular: "Intramuscular (IM)",
+  subcutaneous: "Subcutaneous (SC)",
+  intradermal: "Intradermal (ID)",
+  oral: "Oral (PO)",
+  intranasal: "Intranasal (IN)",
+  other: "Other",
+};
 
 // Shared add/edit form. Add mode: no `immunization`. Edit mode: pass the row +
 // an `onDone` callback (renders a hidden id and a Cancel button). The vaccine
@@ -118,6 +129,80 @@ export default function ImmunizationForm({
           defaultValue={immunization?.dose_label ?? ""}
           placeholder="e.g. Booster, Dose 1, 2025 seasonal"
         />
+      </div>
+      {/* Administration details (#1406): lot / route / site are exactly what school,
+          travel, camp and employer forms ask for, and had nowhere to live; `reaction`
+          records an adverse reaction to THIS dose (notes is the dose's general note).
+          All optional — a blank field stores NULL, not a guess. */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label
+            className="label"
+            htmlFor={`imm-lot-${immunization?.id ?? "new"}`}
+          >
+            Lot number
+          </label>
+          <input
+            id={`imm-lot-${immunization?.id ?? "new"}`}
+            name="lot_number"
+            className="input"
+            defaultValue={immunization?.lot_number ?? ""}
+            placeholder="e.g. AB1234"
+          />
+        </div>
+        <div>
+          <label
+            className="label"
+            htmlFor={`imm-route-${immunization?.id ?? "new"}`}
+          >
+            Route
+          </label>
+          <select
+            id={`imm-route-${immunization?.id ?? "new"}`}
+            name="route"
+            className="input"
+            defaultValue={immunization?.route ?? ""}
+          >
+            <option value="">Not stated</option>
+            {IMMUNIZATION_ROUTES.map((r) => (
+              <option key={r} value={r}>
+                {ROUTE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label
+            className="label"
+            htmlFor={`imm-site-${immunization?.id ?? "new"}`}
+          >
+            Site
+          </label>
+          <input
+            id={`imm-site-${immunization?.id ?? "new"}`}
+            name="site"
+            className="input"
+            defaultValue={immunization?.site ?? ""}
+            placeholder="e.g. Left deltoid"
+          />
+        </div>
+        <div>
+          <label
+            className="label"
+            htmlFor={`imm-reaction-${immunization?.id ?? "new"}`}
+          >
+            Reaction
+          </label>
+          <input
+            id={`imm-reaction-${immunization?.id ?? "new"}`}
+            name="reaction"
+            className="input"
+            defaultValue={immunization?.reaction ?? ""}
+            placeholder="e.g. Sore arm for two days"
+          />
+        </div>
       </div>
       <div>
         <label

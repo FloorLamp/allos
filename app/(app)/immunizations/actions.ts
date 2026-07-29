@@ -14,7 +14,37 @@ import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
 } from "@/lib/providers-db";
-import { formError, formOk, type FormResult } from "@/lib/types";
+import {
+  formError,
+  formOk,
+  IMMUNIZATION_EXEMPTION_TYPES,
+  IMMUNIZATION_ROUTES,
+  type FormResult,
+  type ImmunizationExemptionType,
+  type ImmunizationRoute,
+} from "@/lib/types";
+
+// Administration attributes (#1406). All optional and all NULL when blank: an
+// unstated lot / route / site is a real answer, never a guessed default (the
+// migration-120 precedent). `route` is CHECK-pinned in the schema, so an unknown
+// value must land as NULL here rather than reaching the CHECK and 500-ing (#385).
+function routeOf(raw: unknown): ImmunizationRoute | null {
+  const v = String(raw ?? "").trim();
+  return (IMMUNIZATION_ROUTES as readonly string[]).includes(v)
+    ? (v as ImmunizationRoute)
+    : null;
+}
+
+function exemptionOf(raw: unknown): ImmunizationExemptionType | null {
+  const v = String(raw ?? "").trim();
+  return (IMMUNIZATION_EXEMPTION_TYPES as readonly string[]).includes(v)
+    ? (v as ImmunizationExemptionType)
+    : null;
+}
+
+function trimmedOrNull(raw: unknown): string | null {
+  return String(raw ?? "").trim() || null;
+}
 
 // Immunization writes. Mirrors app/(app)/trends/body-actions.ts: session-scoped,
 // every mutation is `WHERE id = ? AND profile_id = ?`, and the user-entered
@@ -48,13 +78,19 @@ export async function addImmunization(formData: FormData): Promise<FormResult> {
     String(formData.get("provider") ?? "")
   );
   db.prepare(
-    `INSERT INTO immunizations (date, vaccine, dose_label, notes, source, provider_id, profile_id)
-     VALUES (?,?,?,?,?,?,?)`
+    `INSERT INTO immunizations
+       (date, vaccine, dose_label, notes, lot_number, route, site, reaction,
+        source, provider_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
   ).run(
     date,
     codeFor(vaccineRaw),
     doseLabel,
     notes,
+    trimmedOrNull(formData.get("lot_number")),
+    routeOf(formData.get("route")),
+    trimmedOrNull(formData.get("site")),
+    trimmedOrNull(formData.get("reaction")),
     null,
     providerId,
     profile.id
@@ -94,9 +130,23 @@ export async function updateImmunization(
     )
     .get(id, profileId) as { vaccine: string } | undefined;
   db.prepare(
-    `UPDATE immunizations SET date = ?, vaccine = ?, dose_label = ?, notes = ?, provider_id = ?
-     WHERE id = ? AND profile_id = ?`
-  ).run(date, codeFor(vaccineRaw), doseLabel, notes, providerId, id, profileId);
+    `UPDATE immunizations
+        SET date = ?, vaccine = ?, dose_label = ?, notes = ?,
+            lot_number = ?, route = ?, site = ?, reaction = ?, provider_id = ?
+      WHERE id = ? AND profile_id = ?`
+  ).run(
+    date,
+    codeFor(vaccineRaw),
+    doseLabel,
+    notes,
+    trimmedOrNull(formData.get("lot_number")),
+    routeOf(formData.get("route")),
+    trimmedOrNull(formData.get("site")),
+    trimmedOrNull(formData.get("reaction")),
+    providerId,
+    id,
+    profileId
+  );
   // Clear the dismissals of any component code the re-code left un-backed. The
   // sweep reads the post-update remaining doses, so an unchanged code (or one still
   // credited by a sibling dose) is a no-op.
@@ -147,15 +197,22 @@ export async function setImmunizationOverride(
     return formError("Choose a valid override.");
   const reason = String(formData.get("reason") ?? "").trim() || null;
   const note = String(formData.get("note") ?? "").trim() || null;
+  // Structured exemption category (#1406). Only meaningful on a DECLINATION — an
+  // "immune" override is not an exemption — so it is forced to NULL for kind
+  // 'immune' rather than carried over from a previous declined state.
+  const exemptionType =
+    kind === "declined" ? exemptionOf(formData.get("exemption_type")) : null;
   db.prepare(
-    `INSERT INTO immunization_overrides (profile_id, vaccine, kind, reason, note)
-     VALUES (?,?,?,?,?)
+    `INSERT INTO immunization_overrides
+       (profile_id, vaccine, kind, reason, exemption_type, note)
+     VALUES (?,?,?,?,?,?)
      ON CONFLICT(profile_id, vaccine) DO UPDATE SET
        kind = excluded.kind,
        reason = excluded.reason,
+       exemption_type = excluded.exemption_type,
        note = excluded.note,
        created_at = datetime('now')`
-  ).run(profile.id, vaccine, kind, reason, note);
+  ).run(profile.id, vaccine, kind, reason, exemptionType, note);
   revalidateImmunizations();
   revalidatePath(`/immunizations/${vaccine}`);
   return formOk();

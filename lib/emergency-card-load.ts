@@ -51,6 +51,9 @@ export function getEmergencyCard(
       substance: a.substance,
       reaction: a.reaction,
       severity: a.severity,
+      // Criticality rides through from the SAME passport view (#1405), so the card
+      // leads with the anaphylaxis-risk rows and can't disagree with the passport.
+      criticality: a.criticality ?? null,
     })),
     medications: summary.medications.map((m) => ({
       name: m.name,

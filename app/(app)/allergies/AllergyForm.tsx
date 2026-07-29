@@ -5,7 +5,39 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import type { Allergy, FormResult } from "@/lib/types";
+import {
+  ALLERGY_CRITICALITIES,
+  ALLERGY_VERIFICATION_STATUSES,
+  type Allergy,
+  type FormResult,
+} from "@/lib/types";
+import { composeAllergyReactions } from "@/lib/allergy-reactions";
+
+// Labels for the two CHECK-pinned safety vocabularies (#1405). "Not stated" is the
+// default option in both — an unstated criticality is not "low", and an unstated
+// verification is not "confirmed".
+const CRITICALITY_OPTIONS: Record<
+  (typeof ALLERGY_CRITICALITIES)[number],
+  string
+> = {
+  low: "Low — unlikely to be life-threatening",
+  high: "High — could be life-threatening",
+  "unable-to-assess": "Unable to assess",
+};
+
+const VERIFICATION_OPTIONS: Record<
+  (typeof ALLERGY_VERIFICATION_STATUSES)[number],
+  string
+> = {
+  unconfirmed: "Unconfirmed",
+  suspected: "Suspected",
+  confirmed: "Confirmed",
+  refuted: "Refuted — ruled out",
+  "entered-in-error": "Entered in error",
+};
+
+// A blank manifestation row.
+const EMPTY_ROW = { manifestation: "", severity: "" };
 
 // Shared add/edit allergy form. Add mode: no `allergy`. Edit mode: pass the row +
 // an `onDone` callback (renders a hidden id and a Cancel button).
@@ -27,6 +59,19 @@ export default function AllergyForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!allergy;
   const [error, setError] = useState<string | null>(null);
+  // Repeatable manifestation rows (#1405): a peanut allergy that causes BOTH hives
+  // AND anaphylaxis is two graded rows, not one string. Seeded through the SAME pure
+  // composition every read surface uses, so an imported row whose reactions live
+  // only in the parent's cached scalar edits as one row here.
+  const [reactions, setReactions] = useState(() => {
+    // `allergy.reactions` is already the composed list (getAllergies attaches it);
+    // fall back to the parent's cached scalar for any caller that passes a raw row.
+    const seeded = composeAllergyReactions(
+      allergy ?? { reaction: null, severity: null },
+      (allergy?.reactions ?? []).map((r, i) => ({ ...r, position: i }))
+    ).map((r) => ({ manifestation: r.manifestation, severity: r.severity ?? "" }));
+    return seeded.length > 0 ? seeded : [{ ...EMPTY_ROW }];
+  });
 
   async function handle(formData: FormData) {
     setError(null);
@@ -46,7 +91,10 @@ export default function AllergyForm({
       return;
     }
     toast(editing ? "Allergy updated" : "Allergy saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      setReactions([{ ...EMPTY_ROW }]);
+    }
     onDone?.();
     router.refresh();
   }
@@ -76,32 +124,107 @@ export default function AllergyForm({
           required
         />
       </div>
+      <fieldset className="space-y-2" data-testid={`allergy-reactions-${uid}`}>
+        <legend className="label">Reactions</legend>
+        {reactions.map((r, i) => (
+          <div className="grid grid-cols-2 gap-3" key={i}>
+            <input
+              name="reaction_manifestation"
+              className="input"
+              aria-label={`Reaction ${i + 1}`}
+              data-testid={`allergy-reaction-${uid}-${i}`}
+              value={r.manifestation}
+              onChange={(e) =>
+                setReactions((rows) =>
+                  rows.map((row, j) =>
+                    j === i ? { ...row, manifestation: e.target.value } : row
+                  )
+                )
+              }
+              placeholder="e.g. Hives, Anaphylaxis"
+            />
+            <div className="flex gap-2">
+              <input
+                name="reaction_severity"
+                className="input"
+                aria-label={`Severity ${i + 1}`}
+                data-testid={`allergy-severity-${uid}-${i}`}
+                value={r.severity}
+                onChange={(e) =>
+                  setReactions((rows) =>
+                    rows.map((row, j) =>
+                      j === i ? { ...row, severity: e.target.value } : row
+                    )
+                  )
+                }
+                placeholder="e.g. Moderate"
+              />
+              {reactions.length > 1 && (
+                <button
+                  type="button"
+                  className="btn-ghost px-2 text-xs"
+                  aria-label={`Remove reaction ${i + 1}`}
+                  onClick={() =>
+                    setReactions((rows) => rows.filter((_, j) => j !== i))
+                  }
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="btn-ghost text-xs"
+          data-testid={`allergy-add-reaction-${uid}`}
+          onClick={() => setReactions((rows) => [...rows, { ...EMPTY_ROW }])}
+        >
+          Add reaction
+        </button>
+      </fieldset>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor={`allergy-reaction-${uid}`}>
-            Reaction
+          <label className="label" htmlFor={`allergy-criticality-${uid}`}>
+            Criticality
           </label>
-          <input
-            id={`allergy-reaction-${uid}`}
-            name="reaction"
+          <select
+            id={`allergy-criticality-${uid}`}
+            name="criticality"
             className="input"
-            defaultValue={allergy?.reaction ?? ""}
-            placeholder="e.g. Hives, Anaphylaxis"
-          />
+            defaultValue={allergy?.criticality ?? ""}
+          >
+            <option value="">Not stated</option>
+            {ALLERGY_CRITICALITIES.map((c) => (
+              <option key={c} value={c}>
+                {CRITICALITY_OPTIONS[c]}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
-          <label className="label" htmlFor={`allergy-severity-${uid}`}>
-            Severity
+          <label className="label" htmlFor={`allergy-verification-${uid}`}>
+            Verification
           </label>
-          <input
-            id={`allergy-severity-${uid}`}
-            name="severity"
+          <select
+            id={`allergy-verification-${uid}`}
+            name="verification_status"
             className="input"
-            defaultValue={allergy?.severity ?? ""}
-            placeholder="e.g. Moderate"
-          />
+            defaultValue={allergy?.verification_status ?? ""}
+          >
+            <option value="">Not stated</option>
+            {ALLERGY_VERIFICATION_STATUSES.map((v) => (
+              <option key={v} value={v}>
+                {VERIFICATION_OPTIONS[v]}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        A refuted allergy stays on record but stops gating your medications and
+        drops off the emergency card.
+      </p>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor={`allergy-status-${uid}`}>

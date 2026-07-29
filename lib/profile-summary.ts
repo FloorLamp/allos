@@ -1,6 +1,12 @@
 import { isNonOptimal, isOutOfRange } from "./reference-range";
 import { currentGrowthBadge, type GrowthBadge } from "./growth-series";
-import type { AllergyStatus, ConditionStatus, MedicalFlag, Sex } from "./types";
+import type {
+  AllergyCriticality,
+  AllergyStatus,
+  ConditionStatus,
+  MedicalFlag,
+  Sex,
+} from "./types";
 import {
   filterCategoryFor,
   resolveDoseLabels,
@@ -95,6 +101,9 @@ export interface SummaryAllergy {
   reaction: string | null;
   severity: string | null;
   status: AllergyStatus | null;
+  // Life-threatening potential on a future exposure (#1405), or null when unstated.
+  // Optional so existing passport fixtures stay valid.
+  criticality?: AllergyCriticality | null;
   // Provenance: a clinically-documented allergy, a lab-derived IgE sensitization,
   // or both. Drives the "from labs" label on the passport.
   origin: "documented" | "labs" | "both";
