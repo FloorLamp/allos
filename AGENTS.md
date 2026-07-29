@@ -312,6 +312,9 @@ See `docs/internals/e2e-hygiene.md`.
 - Settings autosave on blur/change through the existing save-status helpers.
   Record forms use explicit submission.
 - Free-text notes render through `<NotesText>`.
+- An icon-only button carries both `aria-label` (specific accessible name) and
+  `title` (short hover tooltip); `lib/__tests__/icon-button-tooltip-scan.test.ts`
+  enforces it.
 - Pages that cap width use `<PageContainer>` and its named widths.
 - Responsive variants share one content component; do not maintain separate
   desktop/mobile copies of the same feature.
