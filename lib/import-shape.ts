@@ -1,5 +1,7 @@
 import type {
+  AllergyCriticality,
   AllergyStatus,
+  AllergyVerificationStatus,
   AppointmentKind,
   AppointmentStatus,
   ConditionStatus,
@@ -22,7 +24,13 @@ import {
 } from "./import-report";
 import canonicalSeed from "./canonical-biomarkers.json";
 import { normalizeCanonicalKey } from "./canonical-name";
-import { toAllergyStatus, toConditionStatus } from "./clinical-parse";
+import {
+  toAllergyCriticality,
+  toAllergyStatus,
+  toAllergyVerificationStatus,
+  toConditionStatus,
+  toImmunizationRoute,
+} from "./clinical-parse";
 import {
   normalizeResultType,
   normalizeSignificance,
@@ -153,6 +161,12 @@ export interface PersistImmunization {
   vaccine: string; // catalog/combo/slug code
   dose_label: string | null;
   notes: string | null;
+  // Administration attributes (#1406). Optional so existing PersistInput literals
+  // (the DB-tier fixtures) need no change; persist reads them with `?? null`.
+  lot_number?: string | null;
+  route?: string | null;
+  site?: string | null;
+  reaction?: string | null;
   external_id: string | null;
   // The administering provider (CCD <performer>), resolved + linked.
   provider: ImportedProvider | null;
@@ -169,6 +183,10 @@ export interface PersistAllergy {
   reaction: string | null;
   severity: string | null;
   status: AllergyStatus;
+  // Safety attributes (#1405), already normalized to the CHECK sets (or null for
+  // unstated). Optional so existing PersistInput literals need no change.
+  criticality?: AllergyCriticality | null;
+  verification_status?: AllergyVerificationStatus | null;
   onset_date: string | null;
   external_id: string | null;
 }
@@ -617,6 +635,10 @@ export function extractionToPersistInput(
     vaccine: im.vaccine,
     dose_label: im.dose_label,
     notes: im.notes,
+    lot_number: im.lot_number ?? null,
+    route: toImmunizationRoute(im.route),
+    site: im.site ?? null,
+    reaction: im.reaction ?? null,
     external_id: null,
     provider: null,
   }));
@@ -627,6 +649,8 @@ export function extractionToPersistInput(
     reaction: a.reaction,
     severity: a.severity,
     status: toAllergyStatus(a.status),
+    criticality: toAllergyCriticality(a.criticality),
+    verification_status: toAllergyVerificationStatus(a.verification_status),
     onset_date: a.onset_date,
     external_id: null,
   }));

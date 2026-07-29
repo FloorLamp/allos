@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { today } from "@/lib/db";
-import { EmptyState } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { biomarkerViewHref } from "@/lib/hrefs";
 import { getResolvedCrisisResources } from "@/lib/settings";
@@ -10,7 +9,13 @@ import {
   getInstrumentStates,
 } from "@/lib/instrument-records";
 import type { Instrument } from "@/lib/mental-health";
+import { instrumentDef } from "@/lib/mental-health";
 import InstrumentsView from "@/app/(app)/medical/instruments/InstrumentsView";
+import InstrumentHistoryList from "@/app/(app)/medical/instruments/InstrumentHistoryList";
+import {
+  updateInstrumentAction,
+  deleteInstrumentAction,
+} from "@/app/(app)/medical/instruments/actions";
 
 // The mental-health instrument surface (issue #716), former /medical/instruments,
 // now the #mental-health section of /records (#1042 final tail). Tracks validated
@@ -80,37 +85,26 @@ export default function MentalHealthSection({
         <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           History
         </h2>
-        {readings.length === 0 ? (
-          <EmptyState message="No instrument scores yet. Answer a questionnaire above, or enter a score from a clinician." />
-        ) : (
-          <ul className="space-y-2">
-            {readings.map((r) => (
-              <li
-                key={r.id}
-                data-testid={`instrument-reading-${r.id}`}
-                className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 text-sm dark:border-white/5"
-              >
-                <span>
-                  <Link
-                    href={biomarkerViewHref(r.instrument)}
-                    className="font-medium text-brand-600 hover:underline dark:text-brand-400"
-                  >
-                    {r.instrument}
-                  </Link>{" "}
-                  <span className="text-slate-500 dark:text-slate-400">
-                    {r.date}
-                  </span>
-                </span>
-                <span>
-                  <span className="font-semibold">{r.total}</span> ·{" "}
-                  <span data-testid={`instrument-reading-band-${r.id}`}>
-                    {r.band.label}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* Per-row correct/remove (#1396): a screening score used to be create-only,
+            so a fat-fingered outside total permanently distorted the trend and could
+            permanently trip the non-dismissible crisis line above. Correcting the row
+            releases that line by construction — the banner and this list read the ONE
+            computation over the same stored rows. */}
+        <InstrumentHistoryList
+          testidPrefix="instrument"
+          emptyMessage="No instrument scores yet. Answer a questionnaire above, or enter a score from a clinician."
+          updateAction={updateInstrumentAction}
+          deleteAction={deleteInstrumentAction}
+          rows={readings.map((r) => ({
+            id: r.id,
+            instrument: r.instrument,
+            date: r.date,
+            total: r.total,
+            bandLabel: r.band.label,
+            maxTotal: instrumentDef(r.instrument).maxTotal,
+            href: biomarkerViewHref(r.instrument),
+          }))}
+        />
       </section>
     </div>
   );

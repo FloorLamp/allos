@@ -1,4 +1,4 @@
-import type { Sex } from "./types";
+import type { AllergyCriticality, Sex } from "./types";
 import type { EmergencyEpisodeSection } from "./illness-episode-format";
 
 // Pure assembly + (de)serialization for the offline Emergency Card (issue #42).
@@ -16,6 +16,10 @@ export interface EmergencyCardAllergy {
   substance: string;
   reaction: string | null;
   severity: string | null;
+  // FHIR criticality (#1405): the potential for a FUTURE exposure to be
+  // life-threatening. Optional so an older stored offline copy still parses; absent
+  // and null both mean "unstated", which is NOT "low".
+  criticality?: AllergyCriticality | null;
 }
 
 export interface EmergencyCardMedication {
@@ -86,6 +90,17 @@ const clean = (v: string | null | undefined): string | null => {
 // life-threatening ones at the top. Severity is free text (the allergies form is
 // an open input), so match on the words that actually appear; unknown severities
 // sort last but stay visible. Lower rank sorts earlier.
+// Criticality outranks the free-text severity when ordering the card (#1405): an
+// explicitly HIGH-criticality allergy is the one a first responder must see first,
+// even if the recorded reaction text reads mild — that is precisely the distinction
+// criticality exists to make. Unstated and 'unable-to-assess' fall through to the
+// severity ordering rather than being demoted, because neither is a claim of safety.
+export function allergyCriticalityRank(
+  criticality: AllergyCriticality | null | undefined
+): number {
+  return criticality === "high" ? 0 : 1;
+}
+
 export function allergySeverityRank(severity: string | null): number {
   const s = (severity ?? "").toLowerCase();
   if (!s) return 3;
@@ -104,9 +119,14 @@ export function buildEmergencyCard(input: EmergencyCardInput): EmergencyCard {
       substance: (a.substance ?? "").trim(),
       reaction: clean(a.reaction),
       severity: clean(a.severity),
+      criticality: a.criticality ?? null,
     }))
     .filter((a) => a.substance !== "")
     .sort((a, b) => {
+      const c =
+        allergyCriticalityRank(a.criticality) -
+        allergyCriticalityRank(b.criticality);
+      if (c !== 0) return c;
       const r =
         allergySeverityRank(a.severity) - allergySeverityRank(b.severity);
       if (r !== 0) return r;

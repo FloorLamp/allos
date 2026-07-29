@@ -286,6 +286,10 @@ export function normalizeImmunizations(raw: any): ExtractedImmunization[] {
       date: strOrNull(it?.date),
       dose_label: strOrNull(it?.dose_label),
       notes: strOrNull(it?.notes),
+      lot_number: strOrNull(it?.lot_number),
+      route: strOrNull(it?.route),
+      site: strOrNull(it?.site),
+      reaction: strOrNull(it?.reaction),
     });
   }
   return out;
@@ -383,6 +387,8 @@ export function normalizeClinicalDomains(raw: any): {
       reaction: strOrNull(a?.reaction),
       severity: strOrNull(a?.severity),
       status: strOrNull(a?.status),
+      criticality: strOrNull(a?.criticality),
+      verification_status: strOrNull(a?.verification_status),
       onset_date: isoDateOrNull(a?.onset_date),
     });
   }

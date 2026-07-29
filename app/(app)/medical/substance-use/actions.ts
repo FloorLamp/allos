@@ -15,6 +15,10 @@ import {
 } from "@/lib/substance-use";
 import {
   recordInstrumentScore,
+  updateInstrumentScore,
+  deleteInstrumentScore,
+  getInstrumentScoreInstrument,
+  instrumentMaxTotal,
   type InstrumentAnswer,
 } from "@/lib/instrument-records";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
@@ -248,4 +252,53 @@ export async function clearSubstanceTargetAction(
   });
   revalidateSubstanceUse();
   return formOk();
+}
+
+// ---- Correcting a recorded screening score (#1396) --------------------------
+// The substance-use siblings of the mental-health correction actions: same shared
+// auth-blind core, same typed outcomes, plus this surface's own life-stage gate
+// (a Server Action is independently POST-callable, so the check is re-run here).
+// The target row's OWN instrument decides the valid range — never a posted one.
+
+export async function updateSubstanceInstrumentAction(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that score.");
+  const instrument = getInstrumentScoreInstrument(profile.id, id);
+  if (!instrument) return formError("Couldn't find that score.");
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  if (!isRealIsoDate(dateRaw)) return formError("Enter a valid date.");
+  const maxTotal = instrumentMaxTotal(instrument);
+  const total = Number(formData.get("total"));
+  if (!Number.isInteger(total) || total < 0 || total > maxTotal)
+    return formError(`Enter a total between 0 and ${maxTotal}.`);
+
+  const outcome = updateInstrumentScore(profile.id, id, {
+    date: dateRaw,
+    total,
+  });
+  if (outcome.kind === "not-found")
+    return formError("Couldn't find that score.");
+  if (outcome.kind === "answers-derived")
+    return formError(
+      "This score was answered item by item, so its total comes from those answers. Delete it and answer again to correct it."
+    );
+  revalidateSubstanceUse();
+  return formOk();
+}
+
+export async function deleteSubstanceInstrumentAction(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
+  const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id))) return { undoId: null };
+  const id = Number(formData.get("id"));
+  if (!id) return { undoId: null };
+  const outcome = deleteInstrumentScore(profile.id, id);
+  if (outcome.kind === "not-found") return { undoId: null };
+  revalidateSubstanceUse();
+  return { undoId: outcome.undoId };
 }

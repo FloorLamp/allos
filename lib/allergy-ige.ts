@@ -1,4 +1,5 @@
-import type { AllergyStatus, MedicalFlag } from "./types";
+import type { AllergyCriticality, AllergyStatus, MedicalFlag } from "./types";
+import type { AllergyManifestation } from "./allergy-reactions";
 import { isNonOptimal } from "./reference-range";
 
 // Allergen-specific IgE → Allergies view. Allergen-specific
@@ -155,6 +156,12 @@ export interface StoredAllergyInput {
   onsetDate: string | null;
   source: string | null;
   documentId: number | null;
+  // Safety attributes (#1405). Optional so existing callers/fixtures that predate
+  // them stay valid; both default to "unstated", which is exactly what a legacy
+  // row means. `reactions` is the full graded manifestation list composed by
+  // lib/allergy-reactions (the cached scalar above is manifestation 0).
+  criticality?: AllergyCriticality | null;
+  reactions?: readonly AllergyManifestation[];
 }
 
 export interface IgESensitizationInput {
@@ -178,6 +185,12 @@ export interface AllergyViewItem {
   reaction: string | null;
   severity: string | null;
   status: AllergyStatus | null;
+  // Life-threatening potential on a future exposure (#1405), or null when unstated.
+  // The emergency card and the passport lead with the high-criticality rows.
+  criticality: AllergyCriticality | null;
+  // Every graded manifestation, not just the cached first one (#1405). A lab-derived
+  // sensitization has none.
+  reactions: readonly AllergyManifestation[];
   onsetDate: string | null;
   documented: boolean;
   allergyId: number | null;
@@ -207,6 +220,8 @@ export function buildAllergiesView(
       reaction: a.reaction,
       severity: a.severity,
       status: a.status,
+      criticality: a.criticality ?? null,
+      reactions: a.reactions ?? [],
       onsetDate: a.onsetDate,
       documented: true,
       allergyId: a.id,
@@ -236,6 +251,8 @@ export function buildAllergiesView(
       reaction: null,
       severity: null,
       status: null,
+      criticality: null,
+      reactions: [],
       onsetDate: s.date,
       documented: false,
       allergyId: null,

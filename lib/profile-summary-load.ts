@@ -224,6 +224,7 @@ export function getProfileSummary(
     reaction: a.reaction,
     severity: a.severity,
     status: a.status,
+    criticality: a.criticality,
     origin: a.origin,
     evidence: a.evidence
       ? `${a.evidence.marker}${

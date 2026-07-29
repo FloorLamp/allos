@@ -10,7 +10,11 @@ import {
   markerNameTokens,
   TITER_DISTINCTIVE_TOKENS,
 } from "../../titer-match";
-import type { Immunization, MedicalRecord } from "../../types";
+import type {
+  Immunization,
+  ImmunizationExemptionType,
+  MedicalRecord,
+} from "../../types";
 
 export function getImmunizations(profileId: number): Immunization[] {
   return db
@@ -24,7 +28,9 @@ export function getImmunizations(profileId: number): Immunization[] {
            FROM immunizations WHERE profile_id = ?
          ) WHERE rn = 1
        )
-       SELECT id, date, vaccine, dose_label, notes, source, external_id, created_at,
+       SELECT id, date, vaccine, dose_label, notes,
+              lot_number, route, site, reaction,
+              source, external_id, created_at,
               provider_id,
               (SELECT p.name FROM providers p WHERE p.id = immunizations.provider_id)
                 AS provider_name
@@ -39,6 +45,10 @@ export interface ImmunizationOverrideRow {
   vaccine: string;
   kind: OverrideKind;
   reason: string | null;
+  // Structured declination category (#1406), alongside the free-text `reason` —
+  // 'medical' / 'religious' / 'philosophical', or NULL when unstated (always NULL
+  // for kind 'immune', where the concept does not apply).
+  exemption_type: ImmunizationExemptionType | null;
   note: string | null;
   created_at: string;
 }
@@ -48,7 +58,7 @@ export function getImmunizationOverrides(
 ): ImmunizationOverrideRow[] {
   return db
     .prepare(
-      `SELECT vaccine, kind, reason, note, created_at
+      `SELECT vaccine, kind, reason, exemption_type, note, created_at
          FROM immunization_overrides WHERE profile_id = ?`
     )
     .all(profileId) as ImmunizationOverrideRow[];
@@ -60,7 +70,7 @@ export function getImmunizationOverride(
 ): ImmunizationOverrideRow | null {
   return (db
     .prepare(
-      `SELECT vaccine, kind, reason, note, created_at
+      `SELECT vaccine, kind, reason, exemption_type, note, created_at
          FROM immunization_overrides WHERE profile_id = ? AND vaccine = ?`
     )
     .get(profileId, vaccine) ?? null) as ImmunizationOverrideRow | null;

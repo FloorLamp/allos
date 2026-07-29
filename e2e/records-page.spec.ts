@@ -151,9 +151,11 @@ test("list surfaces share ONE filter affordance — outline pills, no dropdown (
   await expect(
     vaxFilter.getByRole("link", { name: "Needs attention" })
   ).toBeVisible();
-  await expect(
-    page.getByTestId("records-immunizations").locator("select")
-  ).toHaveCount(0);
+  // Scoped to the FILTER, exactly like the Skin case below: a form field is not a
+  // filter affordance, and the add/edit dose form legitimately carries its own
+  // <select> (the #1406 route picker). The invariant this test owns is "no filter
+  // dropdown", not "no <select> anywhere on the pane".
+  await expect(vaxFilter.locator("select")).toHaveCount(0);
 
   // Skin: a client-state list, so buttons rather than links — same pills either way.
   // (Only the FILTER is pinned here: the per-row edit forms below legitimately keep

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db, writeTx } from "./db";
+import { isAllergyActionable } from "./allergy-reactions";
 import {
   biomarkerFamilyKey,
   getActivities,
@@ -160,8 +161,11 @@ function buildContext(
   // deterministic belt below still screens against ALL recorded allergens, resolved
   // included (see getSuggestSafetyContext, #691), so a mis-marked/corrected-then-
   // reverted allergy can't sneak an ingestible past the guard.
+  // …and not a REFUTED / entered-in-error one either (#1405) — an allergy that was
+  // ruled out is not a live caution to describe. The deterministic belt below still
+  // screens against ALL recorded allergens.
   const allergies = getAllergies(profileId).filter(
-    (a) => a.status !== "resolved"
+    (a) => a.status !== "resolved" && isAllergyActionable(a)
   );
   const conditions = getConditions(profileId, { status: "active" });
   const meds = supplements.filter((s) => s.kind === "medication");

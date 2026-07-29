@@ -20,7 +20,11 @@ import { describe, it, expect } from "vitest";
 import { migrate } from "@/lib/db";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import {
+  ALLERGY_CRITICALITIES,
   ALLERGY_STATUSES,
+  ALLERGY_VERIFICATION_STATUSES,
+  IMMUNIZATION_EXEMPTION_TYPES,
+  IMMUNIZATION_ROUTES,
   APPOINTMENT_STATUSES,
   CONDITION_STATUSES,
   EQUIPMENT_CATEGORIES,
@@ -66,6 +70,25 @@ const REGISTRY: {
   { table: "goals", column: "status", expected: GOAL_STATUSES },
   { table: "appointments", column: "status", expected: APPOINTMENT_STATUSES },
   { table: "allergies", column: "status", expected: ALLERGY_STATUSES },
+  // Passport-completeness vocabularies (migration 122, #1405/#1406). All four are
+  // NULLABLE columns — the CHECK reads `<col> IS NULL OR <col> IN (...)` — so the
+  // extractor's `<column> IN (...)` match lands on the IN list either way.
+  {
+    table: "allergies",
+    column: "criticality",
+    expected: ALLERGY_CRITICALITIES,
+  },
+  {
+    table: "allergies",
+    column: "verification_status",
+    expected: ALLERGY_VERIFICATION_STATUSES,
+  },
+  { table: "immunizations", column: "route", expected: IMMUNIZATION_ROUTES },
+  {
+    table: "immunization_overrides",
+    column: "exemption_type",
+    expected: IMMUNIZATION_EXEMPTION_TYPES,
+  },
   { table: "conditions", column: "status", expected: CONDITION_STATUSES },
   {
     table: "intake_item_suggestions",
