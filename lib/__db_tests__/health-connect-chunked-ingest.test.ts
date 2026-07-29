@@ -32,7 +32,7 @@ import {
 } from "@/lib/integrations/normalize";
 import { writeTx } from "@/lib/db";
 import { getIntegrationSyncEvents } from "@/lib/queries";
-import { parseHealthConnectSyncDetails } from "@/lib/integrations/sync-details";
+import { parseSyncEventDetails } from "@/lib/integrations/sync-details";
 
 const TZ = "UTC";
 
@@ -342,7 +342,7 @@ describe("HC wrong-granularity hint surfaces in Review (#1065)", () => {
     expect(res.status).toBe(200);
 
     const events = getIntegrationSyncEvents(profileId, "health-connect");
-    const details = parseHealthConnectSyncDetails(events[0].details ?? null);
+    const details = parseSyncEventDetails(events[0].details ?? null);
     expect(details).toBeTruthy();
     expect(
       details!.warnings.some((w) => /Steps/.test(w) && /daily/.test(w))

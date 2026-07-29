@@ -10,8 +10,9 @@ import { integrationDetailHref } from "@/lib/hrefs";
 import type { ConnectedSource } from "@/lib/queries/integrations";
 import { formatSplitLabel, formatWindow } from "@/lib/integrations/sync-log";
 import {
+  isTruncatedSyncEvent,
   originChoiceLabel,
-  parseHealthConnectSyncDetails,
+  parseSyncEventDetails,
 } from "@/lib/integrations/sync-details";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
@@ -37,14 +38,20 @@ function writtenCount(ev: IntegrationSyncEvent): number {
 
 function StateLine({ ev }: { ev: IntegrationSyncEvent }) {
   const { primary, muted } = formatSplitLabel(ev);
-  const Icon = ev.ok ? IconCircleCheck : IconAlertTriangle;
+  // A truncated run SUCCEEDED as far as it got, but a page cap / rate limit left data
+  // upstream (#1614) — so it must not read as a clean green success. It gets the
+  // caution icon and an explicit "partial" chip; the reason renders in <SyncDetails>.
+  const truncated = ev.ok !== 0 && isTruncatedSyncEvent(ev);
+  const Icon = ev.ok && !truncated ? IconCircleCheck : IconAlertTriangle;
+  const iconTone = !ev.ok
+    ? "text-rose-500"
+    : truncated
+      ? "text-amber-500"
+      : "text-emerald-500";
   const skipped = ev.skipped ?? 0;
   return (
     <span className="inline-flex items-center gap-1.5 text-sm">
-      <Icon
-        className={`h-4 w-4 shrink-0 ${ev.ok ? "text-emerald-500" : "text-rose-500"}`}
-        stroke={1.75}
-      />
+      <Icon className={`h-4 w-4 shrink-0 ${iconTone}`} stroke={1.75} />
       <span
         className={
           ev.ok
@@ -56,6 +63,14 @@ function StateLine({ ev }: { ev: IntegrationSyncEvent }) {
       >
         {ev.ok ? primary : "Sync failed"}
       </span>
+      {truncated && (
+        <span
+          className="font-medium text-amber-600 dark:text-amber-400"
+          data-testid={`sync-partial-${ev.id}`}
+        >
+          · partial
+        </span>
+      )}
       {/* ev.ok is a NUMBER (0/1) — a bare `ev.ok &&` would render a literal "0"
           on failure lines, so coerce it. */}
       {ev.ok !== 0 && skipped > 0 && (
@@ -68,7 +83,7 @@ function StateLine({ ev }: { ev: IntegrationSyncEvent }) {
 }
 
 function SyncDetails({ ev }: { ev: IntegrationSyncEvent }) {
-  const details = parseHealthConnectSyncDetails(ev.details ?? null);
+  const details = parseSyncEventDetails(ev.details ?? null);
   if (!details) return null;
   return (
     <div
@@ -176,13 +191,25 @@ function SourceCard({
               </Link>
             )
           )
-        ) : (
+        ) : source.kind === "push" ? (
           // Push-only providers (Health Connect) can't be pulled on demand — the
           // phone exporter drives them on its own schedule.
           <span className="text-xs text-slate-500 dark:text-slate-400">
             Push-only — your phone&apos;s exporter sends data on a schedule;
             there&apos;s nothing to sync by hand.
           </span>
+        ) : (
+          // A keyless background source (Weather & UV): it runs on the hourly tick
+          // and its own setup page owns the enable/sync controls, so this card is
+          // purely its sync history plus a way back to that page (#1614).
+          reconnectHref && (
+            <Link
+              href={reconnectHref}
+              className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+            >
+              Open {source.name} settings →
+            </Link>
+          )
         )}
         {isAdmin && latest?.raw_ref && (
           <div className="w-full">

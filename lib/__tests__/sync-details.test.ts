@@ -3,13 +3,13 @@ import {
   boundSyncDetailsJson,
   MAX_SYNC_DETAILS_CHARS,
   originChoiceLabel,
-  parseHealthConnectSyncDetails,
-  serializeHealthConnectSyncDetails,
+  parseSyncEventDetails,
+  serializeSyncEventDetails,
 } from "@/lib/integrations/sync-details";
 
 describe("Health Connect sync details", () => {
   it("parses safe diagnostics and formats known origin package names", () => {
-    const parsed = parseHealthConnectSyncDetails(
+    const parsed = parseSyncEventDetails(
       JSON.stringify({
         warnings: ["heart_rate records were all skipped"],
         origins: [
@@ -29,8 +29,8 @@ describe("Health Connect sync details", () => {
   });
 
   it("ignores malformed or empty stored details", () => {
-    expect(parseHealthConnectSyncDetails("not json")).toBeNull();
-    expect(parseHealthConnectSyncDetails("{}")).toBeNull();
+    expect(parseSyncEventDetails("not json")).toBeNull();
+    expect(parseSyncEventDetails("{}")).toBeNull();
   });
 
   it("bounds structured arrays while preserving valid JSON", () => {
@@ -43,10 +43,10 @@ describe("Health Connect sync details", () => {
         ignored: [`com.example.ignored.${index}.${"y".repeat(300)}`],
       })),
     };
-    const raw = serializeHealthConnectSyncDetails(details)!;
+    const raw = serializeSyncEventDetails(details)!;
     expect(raw.length).toBeLessThanOrEqual(MAX_SYNC_DETAILS_CHARS);
     expect(() => JSON.parse(raw)).not.toThrow();
-    expect(parseHealthConnectSyncDetails(raw)?.origins.length).toBeGreaterThan(
+    expect(parseSyncEventDetails(raw)?.origins.length).toBeGreaterThan(
       0
     );
   });
