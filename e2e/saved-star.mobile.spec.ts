@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { settledClick, settledSelect } from "./helpers";
 
 // The unified save gesture (#1456) end-to-end: ONE star, membership everywhere.
 //
@@ -243,7 +243,10 @@ test("the picker stars a biomarker straight from Trends", async ({ page }) => {
   const picker = page.getByTestId("save-trend-picker");
   await expect(picker).toBeVisible();
 
-  await picker.getByRole("combobox").selectOption(`bio:${ANALYTE_2}`);
+  // settledSelect, not a raw selectOption: since #1644 the hub is one long streamed
+  // page, so hydration lands later and a value set before React attaches would be
+  // reverted under the Star click.
+  await settledSelect(page, picker.getByRole("combobox"), `bio:${ANALYTE_2}`);
   await settledClick(page, picker.getByRole("button", { name: "Star" }));
 
   const tile = page
@@ -253,7 +256,11 @@ test("the picker stars a biomarker straight from Trends", async ({ page }) => {
 
   const menu = await tileMenu(page, tile);
   await settledClick(page, menu.getByTestId("star-toggle"));
+  // The unstar's revalidation re-renders the WHOLE hub — head plus four streamed
+  // censuses (#1644) — before the tile can leave the grid, so this settles later
+  // than the default 5s allows on a loaded machine. A named ceiling, not a sleep:
+  // the assertion still fails if the tile never goes.
   await expect(
     page.getByTestId("trend-mini-card").filter({ hasText: ANALYTE_2 })
-  ).toHaveCount(0);
+  ).toHaveCount(0, { timeout: 20_000 });
 });
