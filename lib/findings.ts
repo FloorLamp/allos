@@ -35,6 +35,7 @@ import {
   bandForDays,
 } from "./upcoming";
 import type { CoachingTone, Recommendation, PR, CardioPR } from "./coaching";
+import { equipmentLoadLane, loadContextLabel } from "./lifts";
 import type { AppRoute } from "./hrefs";
 import type { Reason } from "./reasons";
 import type { TrendItem } from "./trends-digest";
@@ -217,16 +218,24 @@ export function trendItemToFinding(item: TrendItem): Finding {
 // unit here (the envelope stays display-formatted, like TrendItem.text). dedupeKey
 // is domain-prefixed by exercise + record kind, and dueDate carries the PR's date.
 export function prToFinding(pr: PR, weightUnit: WeightUnit): Finding {
+  // The record NAMES the implement it was set on (#1610) — a hotel machine's PR is
+  // not the home machine's — and its dedupe key carries the same lane, so two
+  // simultaneous load contexts can't overwrite each other's celebration. The lane
+  // suffix is the shared `equipmentLoadLane`, so a profile whose sets carry no
+  // implement link keeps one key per (movement, kind) exactly as before.
+  const subject = loadContextLabel(pr.exercise, pr.equipment);
   const clause =
     pr.kind === "weight"
-      ? `${pr.exercise} top set at ${fmtWeight(pr.weightKg, weightUnit)}`
+      ? `${subject} top set at ${fmtWeight(pr.weightKg, weightUnit)}`
       : pr.bodyweight
-        ? `${pr.exercise} at bodyweight × ${pr.reps}`
-        : `${pr.exercise} at ${fmtWeight(pr.weightKg, weightUnit)} × ${pr.reps}`;
+        ? `${subject} at bodyweight × ${pr.reps}`
+        : `${subject} at ${fmtWeight(pr.weightKg, weightUnit)} × ${pr.reps}`;
   return {
     domain: "pr",
-    dedupeKey: `pr:strength:${pr.exercise}:${pr.kind}`,
-    title: pr.exercise,
+    dedupeKey: `pr:strength:${pr.exercise}@${equipmentLoadLane(
+      pr.equipmentId
+    )}:${pr.kind}`,
+    title: subject,
     detail: clause,
     tone: "positive",
     dueDate: pr.date,

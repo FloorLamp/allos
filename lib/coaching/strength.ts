@@ -16,6 +16,13 @@ import { within, byDateDesc } from "./common";
 // layer and trivially testable.
 export interface ExerciseSummary {
   exercise: string;
+  // The registry implement these stats belong to, when the caller aggregated by
+  // load context (#1610) — null (or absent) for a movement-wide summary and for the
+  // unassigned lane. The id is the IDENTITY (a record's dedupe key), the name is the
+  // LABEL; resolved together upstream so they cannot disagree. Optional so plain
+  // {exercise, …} summaries keep working.
+  equipmentId?: number | null;
+  equipment?: string | null;
   sessions: number; // distinct dates trained
   bodyweight: boolean; // body is (part of) the load — progress by reps
   e1rmKg: number;
@@ -592,6 +599,13 @@ export function lastSessionPR(s: ExerciseSummary): {
 
 export interface PR {
   exercise: string;
+  // The registry implement the record was set on, or null (#1610). Every surface
+  // that lists PRs renders `loadContextLabel(pr.exercise, pr.equipment)`, so two
+  // machines' records read as the two distinct records they are instead of two
+  // identical-looking rows; the id joins the record's dedupe key so two
+  // simultaneous contexts can't overwrite each other.
+  equipmentId: number | null;
+  equipment: string | null;
   kind: "1rm" | "weight";
   date: string;
   e1rmKg: number;
@@ -616,6 +630,8 @@ export function recentPRs(
     if (within(s.bestDate, today, withinDays)) {
       prs.push({
         exercise: s.exercise,
+        equipmentId: s.equipmentId ?? null,
+        equipment: s.equipment ?? null,
         kind: "1rm",
         date: s.bestDate,
         e1rmKg: s.e1rmKg,
@@ -632,6 +648,8 @@ export function recentPRs(
     ) {
       prs.push({
         exercise: s.exercise,
+        equipmentId: s.equipmentId ?? null,
+        equipment: s.equipment ?? null,
         kind: "weight",
         date: s.topWeightDate,
         e1rmKg: s.e1rmKg,

@@ -15,6 +15,7 @@ import { getUnitPrefs } from "@/lib/settings";
 import { resolveWeightKg, submittedWeightUnit } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS, isGoalStatus } from "@/lib/goals";
+import { getEquipmentById } from "@/lib/equipment";
 import {
   getLatestBodyMetric,
   dismissFinding,
@@ -50,6 +51,7 @@ interface GoalCols {
   target_date: string | null;
   exercise: string | null;
   metric: GoalMetric | null;
+  equipment_id: number | null;
   target_weight_kg: number | null;
   target_reps: number | null;
   target_sets: number | null;
@@ -74,6 +76,7 @@ interface StoredWeights {
 function goalColsFromForm(
   formData: FormData,
   loginId: number,
+  profileId: number,
   stored?: StoredWeights
 ): GoalCols | null {
   const kind = String(formData.get("kind") ?? "freeform");
@@ -125,6 +128,19 @@ function goalColsFromForm(
     if (metric === "sets" && (targetReps == null || targetReps <= 0))
       return null;
 
+    // Optional load context (#1610). Validated against THIS profile's registry, so a
+    // hand-posted id can't scope a goal to another profile's machine; an unknown or
+    // blank value falls back to NULL — the movement-wide default every pre-#1610 goal
+    // already has. Retired rows stay selectable: they still label history, and a goal
+    // may legitimately track a machine you've stopped using.
+    const equipmentRaw = num("equipment_id");
+    const equipmentId =
+      equipmentRaw != null &&
+      Number.isInteger(equipmentRaw) &&
+      getEquipmentById(profileId, equipmentRaw) != null
+        ? equipmentRaw
+        : null;
+
     return {
       title: String(formData.get("title") ?? "").trim() || exercise,
       description: str("description"),
@@ -132,6 +148,7 @@ function goalColsFromForm(
       target_date: str("target_date"),
       exercise,
       metric,
+      equipment_id: equipmentId,
       target_weight_kg: targetWeightKg,
       target_reps: targetReps,
       target_sets: targetSets,
@@ -166,6 +183,7 @@ function goalColsFromForm(
       target_date: str("target_date"),
       exercise: null,
       metric: null,
+      equipment_id: null,
       target_weight_kg: null,
       target_reps: null,
       target_sets: null,
@@ -187,6 +205,7 @@ function goalColsFromForm(
     target_date: str("target_date"),
     exercise: null,
     metric: null,
+    equipment_id: null,
     target_weight_kg: null,
     target_reps: null,
     target_sets: null,
@@ -199,7 +218,7 @@ function goalColsFromForm(
 }
 
 const GOAL_COLS =
-  "title, description, category, target_date, exercise, metric, " +
+  "title, description, category, target_date, exercise, metric, equipment_id, " +
   "target_weight_kg, target_reps, target_sets, target_duration_sec, " +
   "target_value, current_value, unit, body_metric";
 
@@ -211,6 +230,7 @@ function goalValues(c: GoalCols) {
     c.target_date,
     c.exercise,
     c.metric,
+    c.equipment_id,
     c.target_weight_kg,
     c.target_reps,
     c.target_sets,
@@ -224,7 +244,7 @@ function goalValues(c: GoalCols) {
 
 export async function createGoal(formData: FormData): Promise<FormResult> {
   const { login, profile } = await requireWriteAccess();
-  const c = goalColsFromForm(formData, login.id);
+  const c = goalColsFromForm(formData, login.id, profile.id);
   if (!c) return formError("Check the goal's required fields and try again.");
   // Body goals capture the metric's current value as the baseline, so progress
   // can run baseline → target (handling reduction goals).
@@ -236,7 +256,7 @@ export async function createGoal(formData: FormData): Promise<FormResult> {
   // dateFromCreatedAt), compared against `today()`-derived bounds.
   db.prepare(
     `INSERT INTO goals (${GOAL_COLS}, baseline_value, profile_id, status, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?, 'active', ?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?, ?, 'active', ?)`
   ).run(...goalValues(c), baseline, profile.id, sqlNow());
   revalidatePath("/training");
   revalidatePath("/");
@@ -254,13 +274,14 @@ export async function updateGoal(formData: FormData): Promise<FormResult> {
       "SELECT target_weight_kg, target_value, target_date FROM goals WHERE id = ? AND profile_id = ?"
     )
     .get(id, profile.id) as StoredWeights | undefined;
-  const c = goalColsFromForm(formData, login.id, stored);
+  const c = goalColsFromForm(formData, login.id, profile.id, stored);
   if (!c) return formError("Check the goal's required fields and try again.");
   // baseline_value is intentionally left untouched on edit — the starting point
   // for progress shouldn't move when the target is tweaked.
   db.prepare(
     `UPDATE goals SET
        title = ?, description = ?, category = ?, target_date = ?, exercise = ?, metric = ?,
+       equipment_id = ?,
        target_weight_kg = ?, target_reps = ?, target_sets = ?, target_duration_sec = ?,
        target_value = ?, current_value = ?, unit = ?, body_metric = ?
      WHERE id = ? AND profile_id = ?`

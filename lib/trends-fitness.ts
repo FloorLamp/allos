@@ -22,6 +22,7 @@
 
 import type { CardioPR, PR } from "./coaching";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
+import { loadContextLabel } from "./lifts";
 import type { DateRange } from "./timeline-format";
 
 // ---------------------------------------------------------------------------
@@ -214,6 +215,14 @@ export function weekStartsThrough(
 
 export interface StrengthMover {
   exercise: string;
+  // The registry implement this lane was performed on, or null for the unassigned
+  // lane / a movement-wide series (#1610).
+  equipment: string | null;
+  // What the list RENDERS — `loadContextLabel(exercise, equipment)`. Composed here
+  // so the ranking tiebreak and the rendered row order agree, and so two machines
+  // can never produce two identical-looking "Chest Press" rows (#1610 forbids
+  // duplicate unlabeled rows).
+  label: string;
   first: number;
   last: number;
   deltaKg: number;
@@ -226,10 +235,20 @@ export interface StrengthMover {
 // `exerciseHistoryKey` (#331/#432/#482) — a lift and its variants are ONE mover,
 // never two half-series that each look flat.
 //
+// With `{ byLoadContext: true }` (#1610) that collapse still holds on the NAME axis
+// and splits on the LOAD axis: a home chest press and a hotel one are two movers,
+// each labeled by its implement, because averaging two stacks with different lever
+// geometry fabricates a move neither lift made. Series carrying no implement label
+// render exactly as before.
+//
 // A lift needs at least two windowed sessions to have moved at all; one session is
 // a data point, not a trend.
 export function strengthMovers(
-  series: { exercise: string; points: { date: string; value: number }[] }[],
+  series: {
+    exercise: string;
+    equipment?: string | null;
+    points: { date: string; value: number }[];
+  }[],
   limit = 5
 ): StrengthMover[] {
   const movers: StrengthMover[] = [];
@@ -237,8 +256,11 @@ export function strengthMovers(
     if (s.points.length < 2) continue;
     const first = s.points[0].value;
     const last = s.points[s.points.length - 1].value;
+    const equipment = s.equipment ?? null;
     movers.push({
       exercise: s.exercise,
+      equipment,
+      label: loadContextLabel(s.exercise, equipment),
       first,
       last,
       deltaKg: last - first,
@@ -249,7 +271,7 @@ export function strengthMovers(
     (a, b) =>
       Math.abs(b.deltaKg) - Math.abs(a.deltaKg) ||
       b.points - a.points ||
-      (a.exercise < b.exercise ? -1 : 1)
+      (a.label < b.label ? -1 : 1)
   );
   return movers.slice(0, limit);
 }

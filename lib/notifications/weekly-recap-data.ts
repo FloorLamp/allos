@@ -28,6 +28,7 @@ import {
   getMoodLogs,
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
+import { loadContextLabel } from "../lifts";
 import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
 import { isDueOn } from "../supplement-schedule";
 import { currentStreak, flexibleStreak } from "../streak";
@@ -189,8 +190,10 @@ export function gatherRecapInput(
   // a PR set after a completed window's end (the in-progress week) never leaks
   // back in either (`within` excludes dates past its anchor).
   const withinDays = daysBetweenDateStr(win.start, win.end) ?? days - 1;
+  // byLoadContext (#1610): two machines' records are two records, and the label
+  // below names the implement so the recap doesn't repeat one bare lift name twice.
   const strengthPRs = recentPRs(
-    getStrengthByExercise(profileId),
+    getStrengthByExercise(profileId, true),
     win.end,
     withinDays
   );
@@ -202,9 +205,12 @@ export function gatherRecapInput(
   const prLabels: string[] = [];
   const seen = new Set<string>();
   for (const p of strengthPRs) {
-    if (!seen.has(p.exercise)) {
-      seen.add(p.exercise);
-      prLabels.push(p.exercise);
+    // Named by load context (#1610): two machines' records are two labels, and one
+    // implement's two record kinds still collapse to a single mention.
+    const label = loadContextLabel(p.exercise, p.equipment);
+    if (!seen.has(label)) {
+      seen.add(label);
+      prLabels.push(label);
     }
   }
   for (const p of cardioPRs) {

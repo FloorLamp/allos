@@ -17,6 +17,7 @@ import { dispWeight, fmtWeight } from "@/lib/units";
 import { today } from "@/lib/db";
 import { formatRelativeDate } from "@/lib/format-date";
 import { recentPRs } from "@/lib/coaching";
+import { loadContextLabel } from "@/lib/lifts";
 import LineChartCard from "@/components/LineChartCard";
 import StrengthExplorer from "@/components/StrengthExplorer";
 import PrCard from "@/components/PrCard";
@@ -41,6 +42,10 @@ export default async function StrengthSection() {
     value: dispWeight(v.volume, wu, 0),
   }));
   const exercises = getStrengthByExercise(profile.id);
+  // PRs read the LOAD-CONTEXT grouping (#1610) so a record is never assembled from
+  // two machines; the card labels each row with its implement. The movement-wide
+  // `exercises` above still drives the per-exercise list and detail panel.
+  const prStats = getStrengthByExercise(profile.id, true);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const recentByExercise = getRecentByExercise(
     profile.id,
@@ -52,7 +57,7 @@ export default async function StrengthSection() {
   const goalProgress = Object.fromEntries(
     getGoalProgressMap(profile.id, goals)
   );
-  const prs = recentPRs(exercises, today(profile.id), 30);
+  const prs = recentPRs(prStats, today(profile.id), 30);
 
   return (
     <section>
@@ -64,7 +69,7 @@ export default async function StrengthSection() {
           <PrCard
             title="🏆 Recent PRs"
             items={prs.map((p) => ({
-              name: p.exercise,
+              name: loadContextLabel(p.exercise, p.equipment),
               value:
                 p.kind === "1rm"
                   ? p.bodyweight

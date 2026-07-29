@@ -13,6 +13,7 @@ import {
   type CardioPR,
   type PR,
 } from "@/lib/coaching";
+import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
 import { formatRelativeDate } from "@/lib/format-date";
 import { fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
@@ -75,7 +76,11 @@ export default async function FitnessPRs({
     getDisplayFormatPrefs(login.id)
   );
   const { items, total } = selectWindowPRs(
-    recentPRs(getStrengthByExercise(profile.id), window.to, days),
+    // byLoadContext (#1610): the stats stay LIFETIME stats, but per IMPLEMENT — a
+    // record set on the hotel machine is its own record, and the home machine's
+    // heavier stack neither hides it nor claims it. Rows are labeled below, so the
+    // split can't render as two identical-looking "Chest Press" lines.
+    recentPRs(getStrengthByExercise(profile.id, true), window.to, days),
     recentCardioPRs(cardio, window.to, days),
     WINDOW_PR_LIMIT
   );
@@ -85,7 +90,7 @@ export default async function FitnessPRs({
   const row = (item: WindowPR) =>
     item.source === "strength"
       ? {
-          name: item.pr.exercise,
+          name: loadContextLabel(item.pr.exercise, item.pr.equipment),
           value: strengthValue(item.pr, wu),
           meta: formatRelativeDate(item.date, todayStr),
         }

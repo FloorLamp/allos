@@ -28,6 +28,11 @@ export interface GoalSetRow {
   reps_right: number | null;
   duration_sec: number | null;
   duration_sec_right: number | null;
+  // The set's LOAD CONTEXT — `exercise_sets.equipment_id`, the registry implement it
+  // was performed on, or null for the unassigned lane (#1610). Optional so callers
+  // and tests that don't scope by implement keep working as an all-unassigned
+  // history; read only when the goal declares an equipment context.
+  equipment_id?: number | null;
   // Activity date (YYYY-MM-DD). Optional so callers/tests that don't window can
   // omit it; when `today` is passed to computeGoalProgress, only sets whose date
   // falls in the trailing window count toward `current`.
@@ -127,12 +132,41 @@ function bestValueForGoal(goal: Goal, sets: GoalSetRow[]): number {
 // form; `lifetimeBest` is the all-time PR. When `today` is omitted, windowing is
 // skipped and `current` equals `lifetimeBest` (backward-compatible with callers
 // and tests that don't pass a date).
+/**
+ * The sets a goal's progress may be measured from, once goals can name a LOAD
+ * CONTEXT (#1610, migration 120).
+ *
+ * The goal-side rule is deliberately NOT the set-side rule. `equipmentLoadLane`
+ * treats a NULL set-level equipment_id as an explicit unassigned LANE, because an
+ * observation performed on no registered implement is a distinct, non-comparable
+ * fact. A GOAL's NULL is not an observation — it is an UNDECLARED SCOPE. "Bench 100
+ * kg" with no machine named means the lift however it is performed, which is exactly
+ * what every goal stored before this column meant, so a null-context goal folds every
+ * lane and keeps byte-for-byte its previous progress.
+ *
+ * When the goal DOES name an implement, only that implement's sets count — matched on
+ * the id, so a hotel machine's 50 kg can never advance a goal set on the home stack,
+ * and a set left in the unassigned lane never counts toward a machine-scoped goal.
+ * The declaration also survives a rename; a deleted implement detaches the goal back
+ * to movement-wide (deleteEquipment) rather than leaving it measuring nothing.
+ */
+export function goalContextSets<T extends { equipment_id?: number | null }>(
+  goal: Goal,
+  sets: T[]
+): T[] {
+  if (goal.equipment_id == null) return sets;
+  return sets.filter((s) => (s.equipment_id ?? null) === goal.equipment_id);
+}
+
 export function computeGoalProgress(
   goal: Goal,
-  sets: GoalSetRow[],
+  allSets: GoalSetRow[],
   today?: string
 ): GoalProgress {
   const target = targetForGoal(goal);
+  // Narrow to the goal's declared load context FIRST, so both the lifetime best and
+  // the recent-form window are measured on the implement the goal names (#1610).
+  const sets = goalContextSets(goal, allSets);
   const lifetimeBest = bestValueForGoal(goal, sets);
   let current = lifetimeBest;
   if (today) {

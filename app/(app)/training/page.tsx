@@ -49,6 +49,7 @@ export default async function TrainingPage(props: {
             exercise={one(searchParams?.exercise)}
             metric={one(searchParams?.metric)}
             range={one(searchParams?.range)}
+            lane={one(searchParams?.lane)}
           />
         );
       case "fitness":

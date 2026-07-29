@@ -3,7 +3,9 @@ import {
   getGoalProgressMap,
   getFrequencyTargetProgress,
   getActivitySuggestions,
+  getLoggedEquipmentByExercise,
 } from "@/lib/queries";
+import { getEquipment } from "@/lib/equipment";
 import { getUnitPrefs, getWeekMode } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { frequencyScopeLabel } from "@/lib/goals";
@@ -24,6 +26,14 @@ export default async function GoalsSection() {
   const targets = getFrequencyTargetProgress(profile.id);
   const weekMode = getWeekMode(profile.id);
   const lifts = getActivitySuggestions(profile.id).lifts;
+  // Load-context inputs for the goal form (#1610). Retired gear is included: it still
+  // labels history, and a goal may legitimately track a machine you've stopped using.
+  // Both collapse to nothing for a profile with no registry equipment, so the picker
+  // simply doesn't render.
+  const equipment = getEquipment(profile.id, { includeRetired: true }).map(
+    (e) => ({ id: e.id, name: e.name })
+  );
+  const equipmentByExercise = getLoggedEquipmentByExercise(profile.id);
 
   return (
     <section
@@ -40,6 +50,8 @@ export default async function GoalsSection() {
         goals={goals}
         goalProgress={goalProgress}
         lifts={lifts}
+        equipment={equipment}
+        equipmentByExercise={equipmentByExercise}
         weightUnit={wu}
       />
 

@@ -117,5 +117,6 @@
   "116-food-event-meal-slot.ts": "0478ff08f753c28cd87734a4c128958866712567ced6e3f52b468f31346b55dc",
   "117-fitbit-activity-components.ts": "9cedaadedc3769c1e216609df9d72cb5ebeb6d00bd9dd82eda506318c91e0b40",
   "118-imported-practice-logs.ts": "4a189867671bf4911cf3ff3edf9756c5f362e3febdef4b901164cae90d3c0e28",
-  "119-practice-sync-provenance.ts": "6f8c12867bfa92c0ef2e2a7788488df3ff8e2e95538afd239a57da1c17d624ba"
+  "119-practice-sync-provenance.ts": "6f8c12867bfa92c0ef2e2a7788488df3ff8e2e95538afd239a57da1c17d624ba",
+  "120-goal-equipment-context.ts": "da84838ec7dbb2507e79e9a749da8acd6b2d5765969f2810e36a9c28c9bce3be"
 }

@@ -25,6 +25,8 @@ const TODAY = "2026-07-25";
 function pr(over: Partial<PR> = {}): PR {
   return {
     exercise: "Back Squat",
+    equipmentId: null,
+    equipment: null,
     kind: "1rm",
     date: TODAY,
     e1rmKg: 150,
