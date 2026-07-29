@@ -7,7 +7,9 @@ import {
   daysOfSupplyForItem,
   daysOfSupplyLeft,
   isLowSupply,
+  isPoolVisibleTo,
   parseQuantityOnHand,
+  sharedSuppliesLinkLabel,
   refillBasisLabel,
   resolveOnHandWrite,
   resolveRefillWrite,
@@ -346,5 +348,39 @@ describe("runOutDateStr (#852 item 3 — projected run-out date)", () => {
 
   it("is null when days-left can't be estimated", () => {
     expect(runOutDateStr("2024-07-16", null)).toBeNull();
+  });
+});
+
+// The medicine cabinet's ONE visibility rule (#1522), shared by the /supplies page's
+// list and the "N shared bottles" doors that replaced its nav row.
+describe("isPoolVisibleTo (#1522 — one cabinet rule)", () => {
+  const accessible = new Set([1, 2]);
+
+  it("shows a pool any accessible profile draws from", () => {
+    expect(isPoolVisibleTo([1], accessible)).toBe(true);
+    expect(isPoolVisibleTo([2, 7], accessible)).toBe(true);
+  });
+
+  it("hides a pool only OTHER households draw from", () => {
+    expect(isPoolVisibleTo([7], accessible)).toBe(false);
+    expect(isPoolVisibleTo([7, 8], accessible)).toBe(false);
+  });
+
+  it("shows an ORPHANED pool to everyone — it names nobody, and somebody must be able to clear it", () => {
+    expect(isPoolVisibleTo([], accessible)).toBe(true);
+    expect(isPoolVisibleTo([], new Set<number>())).toBe(true);
+  });
+});
+
+describe("sharedSuppliesLinkLabel (#1522 — the cabinet door's label)", () => {
+  it("counts the bottles when there are any, agreeing in number", () => {
+    expect(sharedSuppliesLinkLabel(1)).toBe("1 shared bottle");
+    expect(sharedSuppliesLinkLabel(3)).toBe("3 shared bottles");
+  });
+
+  it("falls back to the surface's NAME rather than reading '0 shared bottles'", () => {
+    expect(sharedSuppliesLinkLabel(0)).toBe("Medicine cabinet");
+    // Defensive: a negative can only be a bug upstream, and it must not render.
+    expect(sharedSuppliesLinkLabel(-1)).toBe("Medicine cabinet");
   });
 });

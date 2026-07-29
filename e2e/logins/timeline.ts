@@ -36,3 +36,14 @@ export const TL_CHROME_SYMPTOM_DAY = "2026-01-15";
 export const TL_CHROME_QUIET_DAY = "2026-01-18";
 // The title every busy-day activity carries, so the spec can count its own rows.
 export const TL_CHROME_ACTIVITY = "TL Chrome Session";
+
+// ── Timeline base empty state (issue #1410) ──────────────────────────────────
+// A login granted ONE profile that holds NOTHING — no activities, no metrics, no
+// documents. The thing under test is a brand-new account's first impression of the
+// Timeline, and that state is unreachable on any profile carrying fixture rows: the
+// shared seed's profiles all have history, and a spec cannot delete its way to
+// "empty" on a profile it doesn't own. So the fixture IS the emptiness — nothing is
+// seeded beyond the login and the grant, and the spec only READS, which keeps it
+// repeat-safe and keeps the profile genuinely empty for the next repeat.
+export const E2E_LOGIN_TL_EMPTY = "e2e_tl_empty";
+export const TL_EMPTY_PROFILE = "Timeline Empty (e2e)";

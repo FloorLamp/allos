@@ -1,5 +1,5 @@
 import { requireScope, stampSubjects } from "@/lib/scope";
-import { listPoolViews } from "@/lib/queries";
+import { listVisiblePoolViews } from "@/lib/queries";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import SharedSupplyCard, {
@@ -25,11 +25,11 @@ export const dynamic = "force-dynamic";
 export default async function SuppliesPage() {
   const scope = await requireScope();
   const accessible = new Set(scope.ids);
-  const pools = listPoolViews().filter(
-    (p) =>
-      p.members.length === 0 ||
-      p.members.some((m) => accessible.has(m.profileId))
-  );
+  // The visibility rule itself lives in lib/refill.ts (isPoolVisibleTo) and is applied
+  // here through listVisiblePoolViews — the SAME computation the "N shared bottles"
+  // doors on Medications / Supplements / Household count with (#1522), so a door can
+  // never promise a bottle this page won't list.
+  const pools = listVisiblePoolViews(scope.ids);
 
   const cards: SharedSupplyCardData[] = pools.map((pool) => {
     const visible = pool.members.filter((m) => accessible.has(m.profileId));

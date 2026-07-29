@@ -75,10 +75,12 @@ import SymptomEntryCard from "./SymptomEntryCard";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import {
   groupTimelineDays,
+  isTimelineUnfiltered,
   normalizeTimelineRange,
   timelineCategoryFromParam,
   timelineDateFromParam,
   timelineEntryAnchorId,
+  TIMELINE_EMPTY_ACTIONS,
 } from "@/lib/timeline-format";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import IntradayPanel from "@/components/IntradayPanel";
@@ -775,13 +777,26 @@ export default async function TimelinePage(props: {
       )}
 
       {!hasAnyEvents ? (
-        <EmptyState
-          message={
-            category
-              ? `No ${timelineCategoryLabel(category).toLowerCase()} events yet.`
-              : "No timeline events yet."
-          }
-        />
+        /* A brand-new account is not the same message as a filter that matched
+           nothing (#1410): only the UNFILTERED empty state names the ingest doors
+           the timeline fills from — a filtered one would be telling the reader to
+           log a workout when the fix is to drop a category pill. */
+        isTimelineUnfiltered(category, range) ? (
+          <EmptyState
+            testId="timeline-empty"
+            message="No timeline events yet. Your day-by-day history fills in from what you log and import."
+            actions={TIMELINE_EMPTY_ACTIONS}
+          />
+        ) : (
+          <EmptyState
+            testId="timeline-empty-filtered"
+            message={
+              category
+                ? `No ${timelineCategoryLabel(category).toLowerCase()} events yet.`
+                : "No timeline events yet."
+            }
+          />
+        )
       ) : multiFeed && viewMode === "by-person" ? (
         <div className="space-y-8" data-testid="timeline-by-person">
           {memberSections.map((section) => {

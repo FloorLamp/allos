@@ -163,6 +163,53 @@ test.describe("shared supply pools", () => {
     }
   });
 
+  // The cabinet lost its nav row in #1522 (physical registries are reached from
+  // their consumers, the /equipment pattern). These are the doors that replaced it —
+  // if they regress, the surface becomes unreachable except by typing the URL.
+  test("the cabinet is reached from its consumers' headers, counted (#1522)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_SUPPLY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      // Medications: the door sits in the page header beside "Add medication".
+      await page.goto("/medications");
+      const medDoor = page.getByTestId("shared-supplies-link");
+      // A count, not a bare label — this login's two profiles draw from the three
+      // bottles this spec owns. Asserted as a PATTERN, never an exact number: other
+      // specs' bottles are orphan-visible to everyone and exact-counting shared seed
+      // rows is what the fixture-hygiene rule forbids.
+      await expect(medDoor).toHaveText(/\d+ shared bottles →/);
+      // The accessible name keeps the destination's NAME even when the visible label
+      // is a count, so the link never reads as an anonymous number to AT.
+      await expect(medDoor).toHaveAttribute("aria-label", /Medicine cabinet/);
+      await followLink(page, medDoor, new RegExp(`${CABINET}$`));
+      await expect(page.getByTestId("supplies-page")).toBeVisible();
+
+      // Nutrition → Supplements: the same door, in the tab body (the header's action
+      // slot is desktop-only and shared with the Food tab).
+      await page.goto("/nutrition?tab=supplements");
+      await followLink(
+        page,
+        page.getByTestId("shared-supplies-link"),
+        new RegExp(`${CABINET}$`)
+      );
+
+      // Household: the cabinet is a household-scoped surface, so its door lives
+      // beside History in that header.
+      await page.goto("/household");
+      await followLink(
+        page,
+        page.getByTestId("shared-supplies-link"),
+        new RegExp(`${CABINET}$`)
+      );
+    } finally {
+      await page.context().close();
+    }
+  });
+
   test("the cabinet edits a bottle and is reachable from a medication chip", async ({
     browser,
   }) => {

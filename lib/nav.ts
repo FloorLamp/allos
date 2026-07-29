@@ -4,12 +4,45 @@
 // DOM — lets it be unit-tested directly (the pure suite is DB/JSX-free) while
 // the component only wires it to usePathname() and local collapse state.
 
+// PHYSICAL-REGISTRY surfaces (issue #1522): pages reached from their CONSUMERS
+// rather than from a nav row of their own — the equipment registry (created from
+// the activity form's picker, linked from the Training header) and the household
+// medicine cabinet (created from an item's refill section, linked from the
+// Medications / Supplements headers and Household). Neither is a nav leaf, so
+// under the plain prefix rule below they would highlight NOTHING and the sidebar
+// would stop saying where you are (the orphan-highlight wart the all-pages census
+// found on /equipment, #1451). Each therefore declares the nav entry that OWNS it,
+// and lights that one up instead.
+//
+// This is a HIGHLIGHT map, not a route map: the child routes stay real, reachable
+// URLs. Longest-prefix wins, so a future `/x` + `/x/y` pair can't be ambiguous.
+export const NAV_PARENT_ROUTES: Readonly<Record<string, string>> = {
+  "/equipment": "/training",
+  "/supplies": "/medications",
+};
+
+// The nav entry a parent-less registry route highlights, or null for every
+// ordinary route. Exported for the unit tests; `isRouteActive` is the only
+// production caller.
+export function navParentFor(pathname: string): string | null {
+  let best: string | null = null;
+  for (const [child, parent] of Object.entries(NAV_PARENT_ROUTES)) {
+    if (pathname === child || pathname.startsWith(child + "/")) {
+      if (!best || child.length > best.length) best = parent;
+    }
+  }
+  return best;
+}
+
 // True when `href` should be treated as the active route for the current
 // `pathname`. The dashboard ("/") matches exactly so it isn't lit up on every
 // page; every other entry matches by prefix so nested routes (e.g.
-// /biomarkers/123) still highlight their parent nav item. Mirrors the historic
-// inline rule so highlighting behavior is unchanged.
+// /biomarkers/123) still highlight their parent nav item. A registry route in
+// NAV_PARENT_ROUTES delegates entirely to its declared parent — exactly one entry
+// lights up, and it is never the child's own (the child has no nav row).
 export function isRouteActive(href: string, pathname: string): boolean {
+  const parent = navParentFor(pathname);
+  if (parent !== null) return href === parent;
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 

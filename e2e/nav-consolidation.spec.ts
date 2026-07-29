@@ -26,6 +26,11 @@ import {
 // The #1042 frequency order. Household appears for the admin session (it reaches
 // 2+ profiles); Longevity took over Protocols' slot in phase 4 (the Protocols
 // hub folded into /longevity#protocols).
+//
+// UNCHANGED by #1522 on purpose: the medicine-cabinet row this repo just deleted was
+// a child of the Medical GROUP, not a top-level entry, so it never appeared in this
+// list. The list that DID change is the Medical group's children, asserted below —
+// "Medicine cabinet" moved from present to gone there.
 const TOP_LEVEL_ORDER = [
   "Dashboard",
   "Training",
@@ -126,6 +131,62 @@ test("Cycle entry shows for a female premenopausal profile; the folded Medical g
   } finally {
     await page.context().close();
   }
+});
+
+// ── Physical registries are reached from their consumers (#1522) ─────────────
+// The shared ADMIN session is the fixture that matters here: it reaches 2+ profiles,
+// which is the exact condition the old `requiresMultiProfile` "Medicine cabinet" row
+// appeared under. Asserting its absence on a single-profile login would pass
+// vacuously. Read-only — these cases only navigate and inspect the sidebar.
+
+test("the medicine cabinet has no nav row, even for a multi-profile session (#1522)", async ({
+  page,
+}) => {
+  await gotoExpandedMedical(page);
+  const nav = page.locator("aside nav");
+  // The group is expanded (Illness episodes proves it), so a surviving row WOULD be
+  // visible — the absence below is a real observation, not a collapsed group.
+  await expect(
+    nav.getByRole("link", { name: "Illness episodes" })
+  ).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Medications" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Medicine cabinet" })).toHaveCount(
+    0
+  );
+});
+
+test("a registry route reached from its consumers highlights its PARENT entry (#1522)", async ({
+  page,
+}) => {
+  const nav = page.locator("aside nav");
+
+  // The cabinet: no row of its own, so it lights Medications — and the Medical group
+  // force-expands around it, which is what puts the lit entry on screen at all.
+  await page.goto("/supplies");
+  await expect(page.getByTestId("supplies-page")).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Medications" })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+  // Exactly ONE entry claims the page — the child never lights itself, and the plain
+  // prefix rule drags nothing else along.
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+
+  // The equipment registry, whose pattern this follows, had the same orphan wart.
+  await page.goto("/equipment");
+  await expect(nav.getByRole("link", { name: "Training" })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+
+  // Sanity: an ordinary route still highlights itself, so the map didn't swallow
+  // the normal rule.
+  await page.goto("/timeline");
+  await expect(nav.getByRole("link", { name: "Timeline" })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
 });
 
 test("Cycle entry hides for a male profile with no cycle rows, but the page never hard-blocks (#1042)", async ({

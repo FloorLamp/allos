@@ -103,15 +103,17 @@ const RECORDS: Group = {
     // Medications kept a Medical-group home of their own. The old combined
     // "/medicine" surface now redirects to the Supplements tab.
     { href: "/medications", label: "Medications", icon: IconPill },
-    // The household medicine cabinet (#1374): shared supply pools, one bottle per row.
-    // Multi-profile only — a single-profile instance has nobody to share a bottle with,
-    // so the leaf is a cosmetic hide over the page's own scope resolution.
-    {
-      href: "/supplies",
-      label: "Medicine cabinet",
-      icon: IconPill,
-      requiresMultiProfile: true,
-    },
+    // The household medicine cabinet (/supplies, #1374) is NOT a nav leaf (#1522).
+    // It is a physical-object REGISTRY — bottles that intake items link to — and the
+    // app already navigates to its twin, the /equipment registry, from the consumers
+    // that create and use it rather than from the sidebar. Its old row was worse than
+    // an ordinary one: `requiresMultiProfile` made it materialize unannounced the
+    // moment a second profile was added, wearing the SAME IconPill as the Medications
+    // row directly above it — the one signal that could have told them apart.
+    // Its doors now: the Medications and Nutrition → Supplements headers (with a
+    // count), the shared-bottle chip and the refill section of a linked item, and the
+    // Household header (the cabinet is household-scoped). The ROUTE is unchanged, and
+    // /supplies highlights Medications through NAV_PARENT_ROUTES (lib/nav.ts).
     { href: "/medical/episodes", label: "Illness episodes", icon: IconVirus },
     // Cycle shows when cycle tracking is relevant for the active profile —
     // logged cycles always win; else female + premenopausal (explicit status or
@@ -237,7 +239,14 @@ function NavLink({ leaf, nested }: { leaf: Leaf; nested: boolean }) {
   const active = isRouteActive(leaf.href, pathname);
   const Icon = leaf.icon;
   return (
-    <Link href={leaf.href} className={leafClass(active, nested)}>
+    // `aria-current` carries what the gradient carries: a screen-reader user is told
+    // which entry is the page they're on, and it gives the orphan-highlight fix
+    // (#1522) a stable, semantic assertion instead of a class-name match.
+    <Link
+      href={leaf.href}
+      aria-current={active ? "page" : undefined}
+      className={leafClass(active, nested)}
+    >
       <Icon className="h-5 w-5 shrink-0" stroke={1.75} />
       {leaf.label}
     </Link>

@@ -16,6 +16,7 @@
 import { db, writeTx } from "../../db";
 import {
   daysOfSupplyForPool,
+  isPoolVisibleTo,
   resolvePoolUnlinkRestore,
   resolveOnHandWrite,
   DEFAULT_LOW_SUPPLY_DAYS,
@@ -140,6 +141,36 @@ export function getPoolView(supplyId: number): PoolView | null {
 
 export function listPoolViews(): PoolView[] {
   return listSharedSupplies().map(buildPoolView);
+}
+
+// The cabinet as ONE caller sees it: every pool that passes the shared
+// `isPoolVisibleTo` rule for the already-authorized accessible ids. The
+// cross-profile reader convention — ids first, no lib/auth import. The /supplies
+// page renders exactly this list.
+export function listVisiblePoolViews(
+  profileIds: readonly number[]
+): PoolView[] {
+  const accessible = new Set(profileIds);
+  return listPoolViews().filter((p) =>
+    isPoolVisibleTo(
+      p.members.map((m) => m.profileId),
+      accessible
+    )
+  );
+}
+
+// How many bottles that caller would find there — the number the cabinet doors on
+// Medications / Supplements / Household show. Same rule as listVisiblePoolViews,
+// but it never builds a PoolView: a door needs the COUNT, not each pool's pooled
+// days-left, and that projection costs a getRefillRates pass per member profile.
+export function countVisiblePools(profileIds: readonly number[]): number {
+  const accessible = new Set(profileIds);
+  let count = 0;
+  for (const supply of listSharedSupplies()) {
+    const memberProfileIds = poolMembers(supply.id).map((m) => m.profileId);
+    if (isPoolVisibleTo(memberProfileIds, accessible)) count++;
+  }
+  return count;
 }
 
 function buildPoolView(supply: SharedSupply): PoolView {
