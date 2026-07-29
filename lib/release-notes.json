@@ -4,6 +4,27 @@
       "date": "2026-07-29",
       "entries": [
         {
+          "pr": 1649,
+          "title": "Your protein goal is finally yours to set",
+          "body": "The protein band on the Nutrition gauge has always adapted to a training goal — but there was nowhere to set one, so everyone silently sat on the \"Active\" band. Settings → Nutrition now has the picker (RDA baseline / Active / Muscle gain / Cut), saving as you change it, with the band shown in real g/kg terms. It's an informational range, not a prescription. Two consistency fixes rode along: each dashboard insight now appears in exactly one card (data-quality gaps no longer show in both the Data quality widget and the Coaching observations rollup — and hiding the widget hands its items back to the rollup instead of losing them), and \"activity streak\" now means one thing everywhere — the rest-tolerant streak; the strict consecutive-days number, where it appears, is labeled as exactly that.",
+          "kind": "fix",
+          "issues": [1503, 1533, 1398]
+        },
+        {
+          "pr": 1648,
+          "title": "Screening scores can be corrected, and the passport learns what forms ask",
+          "body": "A mistyped PHQ-9 or AUDIT-C score is no longer permanent: screening results now offer Correct and Remove, with removal undoable — and correcting a score below threshold releases the crisis banner it tripped. Allergies gain the fields that make them real safety data: criticality (could a future exposure be life-threatening?), verification status (suspected / confirmed / refuted), and multiple graded reactions per allergen — a refuted allergy stops gating your medication checks, and high-criticality allergies lead the emergency card. Immunizations gain lot number, route, and site — what school, travel, and employment forms actually ask — plus structured exemption types for declinations. Everything unstated stays unstated; existing records keep meaning exactly what they meant.",
+          "kind": "feature",
+          "issues": [1396, 1405, 1406]
+        },
+        {
+          "pr": 1646,
+          "title": "The Biomarkers index shows itself whole — and fits a phone",
+          "body": "The Biomarkers browser dropped its pager: the collapsed panel index is its own natural bound, so panels never straddle a page break, counts are always whole, and opening a group survives every filter change. Sorting defaults to name (newest reading first under each), the panel filter only offers panels that can actually return results for the surfaces the browser shows, and on phones the starred card and the biological-age hero fold behind honest toggles — reclaiming about 740 vertical pixels so the index is far closer to the first screen.",
+          "kind": "feature",
+          "issues": [1581, 1578]
+        },
+        {
           "pr": 1641,
           "title": "Machine-aware progress reaches comparisons, Trends, PRs, and goals",
           "body": "The equipment-aware strength tracking from earlier today now runs end to end. The Trends strength-progression chart shows one labeled series per machine (\"Machine Chest Press (Hotel chest press)\") instead of blending them; personal records are per-machine everywhere they appear — Trends, Training, the weekly recap, and coaching; the Analyze comparison offers a labeled machine picker so you compare like against like; and a weight goal can now name the machine it's set on. Goals you already have keep their movement-wide meaning — nothing re-scopes — and a goal that names no machine still counts every context. Deleting equipment widens its goals back to movement-wide rather than orphaning them.",
