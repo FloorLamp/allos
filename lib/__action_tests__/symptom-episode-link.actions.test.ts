@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { logSymptom, setSymptomEpisode } from "@/app/(app)/symptoms/actions";
+import { logSymptom, setSymptomEpisode } from "@/app/(app)/symptom-actions";
 import { getEpisodeSymptomLogs } from "@/lib/queries";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
 import { createLogin, createProfile, actAs, fd } from "./harness";

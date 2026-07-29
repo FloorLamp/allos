@@ -5,9 +5,9 @@ import {
 } from "@/lib/queries";
 import { getLesionPhotos } from "@/lib/skin-photo-write";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
-import SkinLesionForm from "@/app/(app)/skin/SkinLesionForm";
-import SkinLesionList from "@/app/(app)/skin/SkinLesionList";
-import { addSkinLesion } from "@/app/(app)/skin/actions";
+import SkinLesionForm from "@/app/(app)/records/specialty/skin/SkinLesionForm";
+import SkinLesionList from "@/app/(app)/records/specialty/skin/SkinLesionList";
+import { addSkinLesion } from "@/app/(app)/records/specialty/skin/actions";
 
 // Skin (former /skin index, #1042 final tail): the profile's tracked moles / spots —
 // a body-map location, size, and ABCDE observations, with serial dated PHOTOS per
@@ -17,7 +17,7 @@ import { addSkinLesion } from "@/app/(app)/skin/actions";
 // the app tracks and compares; any judgment about a lesion is your dermatologist's.
 // The skin lesion form here is the ONLY creation path for this domain, so the section
 // renders unconditionally (its former nav leaf was ungated). Server Actions + client
-// components stayed in app/(app)/skin/; the page body moved here.
+// components stayed in app/(app)/records/specialty/skin/; the page body moved here.
 export default function SkinSection({ profileId }: { profileId: number }) {
   const records = getSkinLesions(profileId);
   const followUps = getSkinLesionFollowUps(profileId);

@@ -15,7 +15,7 @@ import {
   logMedicationAdministration,
   deleteAdministration,
 } from "@/app/(app)/medications/actions";
-import { undoDelete } from "@/app/(app)/undo/actions";
+import { undoDelete } from "@/app/(app)/undo-actions";
 import { seedActor, fd, type TestProfile } from "./harness";
 
 vi.mocked(revalidatePath);

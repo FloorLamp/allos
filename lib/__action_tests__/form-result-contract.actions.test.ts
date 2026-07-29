@@ -10,9 +10,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { addAllergy, updateAllergy } from "@/app/(app)/allergies/actions";
-import { addCondition } from "@/app/(app)/conditions/actions";
-import { createGoal } from "@/app/(app)/goals/actions";
+import {
+  addAllergy,
+  updateAllergy,
+} from "@/app/(app)/records/problems/allergies/actions";
+import { addCondition } from "@/app/(app)/records/problems/conditions/actions";
+import { createGoal } from "@/app/(app)/training/goal-actions";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);

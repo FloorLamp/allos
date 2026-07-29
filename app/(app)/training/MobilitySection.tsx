@@ -7,7 +7,7 @@ import {
 import { MOBILITY_MOVES } from "@/lib/mobility-moves";
 import { isFindingSuppressed } from "@/lib/findings";
 import { formatRelativeDate } from "@/lib/format-date";
-import { createFrequencyTarget } from "../goals/frequency-actions";
+import { createFrequencyTarget } from "./frequency-actions";
 import { dismissCoachingObservation } from "../actions";
 import SubmitButton from "@/components/SubmitButton";
 import MobilityLogBar from "./MobilityLogBar";

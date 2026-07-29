@@ -7,12 +7,12 @@ import CheckInSection from "@/components/dashboard/CheckInSection";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
-import { activateIllnessForSymptoms } from "@/app/(app)/symptoms/actions";
+import { activateIllnessForSymptoms } from "@/app/(app)/symptom-actions";
 import {
   toggleSituation,
   dismissDerivedPoorSleep,
 } from "@/app/(app)/nutrition/supplement-actions";
-import { logMood } from "@/app/(app)/mood/actions";
+import { logMood } from "@/app/(app)/mood-actions";
 import {
   MOOD_FACTORS,
   ANXIETY_CALM_LOW_LABEL,

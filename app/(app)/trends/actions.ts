@@ -108,7 +108,7 @@ export async function dismissBodyHygiene(
 // `saveTrendsCardOrder` / `resetTrendsCardOrder` lived here until #1643. They wrote
 // #1490's per-tab arrangement blob and never gained a UI caller, so the Body tab's
 // arrangement now runs on the ONE store the ★ already writes (`saved_items`): the
-// star toggle is app/(app)/saved/actions.ts `toggleSavedItem`, the sequence is its
+// star toggle is app/(app)/saved-actions.ts `toggleSavedItem`, the sequence is its
 // `reorderSaved`, and lib/trends-card-rank.ts `bodyCardOrder` composes pinned-first
 // over the ranked remainder. There is no second arrangement action to keep in step.
 

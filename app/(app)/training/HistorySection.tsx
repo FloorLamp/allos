@@ -24,7 +24,7 @@ import {
   buildMultiViewJournalGroups,
 } from "@/lib/journal-feed";
 import type { DayGroup } from "@/lib/journal-card";
-import JournalView from "../journal/JournalView";
+import JournalView from "./JournalView";
 
 export default async function HistorySection() {
   const { login, profile } = await requireSession();

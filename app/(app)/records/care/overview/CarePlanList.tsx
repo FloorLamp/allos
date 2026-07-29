@@ -1,7 +1,7 @@
 "use client";
 
 import CarePlanForm from "./CarePlanForm";
-import { updateCarePlanItem, deleteCarePlanItem } from "./actions";
+import { updateCarePlanItem, deleteCarePlanItem } from "./care-plan-actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";

@@ -1,4 +1,4 @@
-import { toggleSavedItem } from "@/app/(app)/saved/actions";
+import { toggleSavedItem } from "@/app/(app)/saved-actions";
 
 // THE save toggle (issue #1456) — one gesture, one intent, every savable kind. It
 // submits a Trends SERIES KEY ("bio:LDL Cholesterol" | "metric:weight"), which the

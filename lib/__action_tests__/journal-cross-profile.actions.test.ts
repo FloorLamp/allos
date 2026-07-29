@@ -17,7 +17,7 @@ import {
   saveActivity,
   deleteActivity,
   mergeActivities,
-} from "@/app/(app)/journal/actions";
+} from "@/app/(app)/training/activity-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import type { TestLogin, TestProfile } from "./harness";
 

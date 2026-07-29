@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
-import { logMood } from "@/app/(app)/mood/actions";
+import { logMood } from "@/app/(app)/mood-actions";
 import { getMoodLogs, getMoodOnDate } from "@/lib/queries";
 import { getMoodCheckinIgnored, bumpMoodCheckinIgnored } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";

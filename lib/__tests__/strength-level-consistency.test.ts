@@ -5,7 +5,7 @@ import {
   strengthLevelLabel,
 } from "@/lib/strength-standards";
 import { benchmarkState } from "@/lib/analyze-view";
-import { buildPillars } from "@/lib/healthspan-pillars";
+import { buildPillars } from "@/lib/longevity-pillars";
 import type { Sex } from "@/lib/types";
 
 // "One question, one computation" guard (#152, per AGENTS.md / issues #221/#222/

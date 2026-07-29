@@ -9,8 +9,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { mergeActivities } from "@/app/(app)/journal/actions";
-import { undoDelete } from "@/app/(app)/undo/actions";
+import { mergeActivities } from "@/app/(app)/training/activity-actions";
+import { undoDelete } from "@/app/(app)/undo-actions";
 import { getPairDecisions } from "@/lib/queries";
 import { ACTIVITY_DOMAIN } from "@/lib/import-review/detect";
 import { createLogin, createProfile, actAs, fd } from "./harness";

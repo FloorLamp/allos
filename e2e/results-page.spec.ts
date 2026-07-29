@@ -4,8 +4,8 @@ import { followLink } from "./helpers";
 // The Results surface (#1079): the Biomarkers / Imaging / Genomics result stores as
 // route-per-tab (`/results/<tab>`), superseding the #1042 stacked-section page. A
 // The shared tab-first strip navigates between them; bare `/results` redirects to
-// `/results/biomarkers`; the removed index routes 308-redirect to the tab routes
-// (query preserved); the per-biomarker DETAIL route (/biomarkers/view) survives.
+// `/results/biomarkers`; the removed index routes now 404 (#1635 dropped the
+// compatibility table); the per-biomarker DETAIL route (/biomarkers/view) survives.
 //
 // Fixture hygiene (#868): read-only against the shared seeded admin profile
 // (profile 1 owns labs, imaging studies, and genomic variants via scripts/seed.ts).
@@ -118,32 +118,6 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
       .getByText("CYP2C19")
       .first() // first-ok: asserts the seeded CYP2C19 variant renders in the scoped list — order-agnostic
   ).toBeVisible();
-});
-
-test("the removed index routes 308-redirect to their tab routes (#1079)", async ({
-  page,
-}) => {
-  // Request-level assertion — each removed index route answers a 308 whose Location
-  // IS the tab route (Next's config-level redirect fires before auth; page.request
-  // shares the session cookies anyway).
-  const redirects = [
-    { from: "/biomarkers", to: "/results/biomarkers" },
-    { from: "/imaging", to: "/results/imaging" },
-    { from: "/genomics", to: "/results/genomics" },
-  ];
-  for (const r of redirects) {
-    const res = await page.request.get(r.from, { maxRedirects: 0 });
-    expect(res.status(), r.from).toBe(308);
-    expect(res.headers()["location"], r.from).toBe(r.to);
-  }
-
-  // Query strings ride through the redirect — old biomarker deep links keep their
-  // ?q= filter on the way to the Biomarkers tab.
-  const withQuery = await page.request.get("/biomarkers?q=non-hdl", {
-    maxRedirects: 0,
-  });
-  expect(withQuery.status()).toBe(308);
-  expect(withQuery.headers()["location"]).toBe("/results/biomarkers?q=non-hdl");
 });
 
 test("the per-biomarker detail route survives at /biomarkers/view (#1079)", async ({

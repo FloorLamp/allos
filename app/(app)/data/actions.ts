@@ -617,7 +617,9 @@ export async function commitBiomarkers(
   if (outcome.immCount) revalidatePath("/records");
   if (outcome.bodyMetricCount || sampleCount) {
     revalidatePath("/trends");
-    revalidatePath("/body");
+    // Height / head-circumference samples land on the growth charts, which are a
+    // route of their own (the old standalone /body page is long gone).
+    revalidatePath("/trends/growth");
   }
   if (outcome.medCount) revalidatePath("/medications");
   if (adopted.changed) revalidatePath("/settings");

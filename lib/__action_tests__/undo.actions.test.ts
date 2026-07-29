@@ -6,7 +6,7 @@
 // undoDeletes against the throwaway temp DB with the auth boundary mocked (setup.ts).
 
 import { describe, it, expect, vi } from "vitest";
-import { undoDeletes } from "@/app/(app)/undo/actions";
+import { undoDeletes } from "@/app/(app)/undo-actions";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { db } from "@/lib/db";
 import { createLogin, createProfile, actAs } from "./harness";

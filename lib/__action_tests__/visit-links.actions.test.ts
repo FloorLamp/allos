@@ -15,7 +15,7 @@ import {
   linkEpisodeVisitAction,
   declineEpisodeVisitAction,
   unlinkEpisodeVisitAction,
-} from "@/app/(app)/visit-links/actions";
+} from "@/app/(app)/visit-link-actions";
 import { encountersForEpisode } from "@/lib/queries";
 import { deleteEncounter } from "@/app/(app)/encounters/actions";
 import { seedActor, fd } from "./harness";

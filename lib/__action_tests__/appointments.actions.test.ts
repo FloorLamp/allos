@@ -15,7 +15,7 @@ import {
   completeCarePlanItemFromAppointment,
 } from "@/app/(app)/encounters/appointment-actions";
 import { deleteEncounter } from "@/app/(app)/encounters/actions";
-import { addCarePlanItem } from "@/app/(app)/care-plan/actions";
+import { addCarePlanItem } from "@/app/(app)/records/care/overview/care-plan-actions";
 import {
   getAppointments,
   getEncounters,

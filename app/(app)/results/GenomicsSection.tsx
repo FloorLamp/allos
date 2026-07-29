@@ -3,9 +3,9 @@ import {
   getPgxMedCrossLinks,
 } from "@/lib/queries";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
-import GenomicVariantForm from "@/app/(app)/genomics/GenomicVariantForm";
-import GenomicVariantList from "@/app/(app)/genomics/GenomicVariantList";
-import { addGenomicVariant } from "@/app/(app)/genomics/actions";
+import GenomicVariantForm from "@/app/(app)/results/genomics/GenomicVariantForm";
+import GenomicVariantList from "@/app/(app)/results/genomics/GenomicVariantList";
+import { addGenomicVariant } from "@/app/(app)/results/genomics/actions";
 import ListRailLayout from "@/components/ListRailLayout";
 import AddEntryPanel from "@/components/AddEntryPanel";
 

@@ -1,7 +1,10 @@
 "use client";
 
 import FamilyHistoryForm from "./FamilyHistoryForm";
-import { updateFamilyHistory, deleteFamilyHistory } from "./actions";
+import {
+  updateFamilyHistory,
+  deleteFamilyHistory,
+} from "./family-history-actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import NotesText from "@/components/NotesText";

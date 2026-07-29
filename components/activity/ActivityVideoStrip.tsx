@@ -7,7 +7,7 @@ import {
   uploadActivityVideoAction,
   deleteActivityVideoAction,
   updateActivityVideoCaptionAction,
-} from "@/app/(app)/journal/video-actions";
+} from "@/app/(app)/training/video-actions";
 
 // Per-activity form-check video strip (#1224 phase 1). Attach a lift/movement clip
 // to an activity for later form review; each clip streams from the session-scoped

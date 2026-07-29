@@ -14,7 +14,7 @@ import { shiftDateStr } from "@/lib/date";
 import {
   trackImagingFollowUp,
   deleteImagingStudy,
-} from "@/app/(app)/imaging/actions";
+} from "@/app/(app)/results/imaging/actions";
 import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 

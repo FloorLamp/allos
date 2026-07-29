@@ -1,6 +1,6 @@
 // The impure (DB-touching) half of an activity merge, shared by the Data → Review
 // duplicate resolver (app/(app)/data/review-actions.ts) and the Journal's manual
-// pair-merge (app/(app)/journal/actions.ts). The pure fold math lives in
+// pair-merge (app/(app)/training/activity-actions.ts). The pure fold math lives in
 // lib/import-review/detect.ts (foldActivityFields); this writes the folded result
 // onto the keeper. Server-only (uses the sync `db`).
 //

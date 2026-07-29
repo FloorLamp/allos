@@ -15,8 +15,8 @@ import { workerDbPath } from "./worker-env";
 // core rule: a pane renders ONE section, except a curated set of LIGHT sections may
 // share a stacked pane; heavy sections (the Immunizations chart, the Visits list,
 // the Providers directory) are NEVER stacked. Bare `/records` → `/records/history/
-// visits`. Removed index routes 308-redirect to the owning pane; DETAIL routes
-// survive.
+// visits`. The removed index routes now 404 (#1635 dropped the compatibility
+// table); DETAIL routes survive.
 //
 // Fixture hygiene (#868): read-only against the shared seeded admin profile
 // (profile 1 owns conditions/allergies/immunizations/providers/optical/dental via
@@ -298,45 +298,6 @@ test("a no-data profile hides the Vision/Dental sub-tabs AND its route re-gates 
   } finally {
     await page.context().close();
   }
-});
-
-test("the removed index routes 308-redirect to their owning panes (#1079)", async ({
-  page,
-}) => {
-  // Request-level assertion — no per-route Chromium navigation. Each old route points
-  // at the pane that now owns its section.
-  const redirects = [
-    { from: "/conditions", to: "/records/problems/conditions" },
-    { from: "/allergies", to: "/records/problems/allergies" },
-    { from: "/procedures", to: "/records/history/procedures" },
-    { from: "/immunizations", to: "/records/history/immunizations" },
-    { from: "/family-history", to: "/records/care/overview" },
-    { from: "/encounters", to: "/records/history/visits" },
-    { from: "/providers", to: "/records/care/providers" },
-    { from: "/care-plan", to: "/records/care/overview" },
-    { from: "/care-goals", to: "/records/care/overview" },
-    { from: "/medical/background", to: "/records/care/overview" },
-    { from: "/vision", to: "/records/specialty/vision" },
-    { from: "/dental", to: "/records/specialty/dental" },
-    { from: "/skin", to: "/records/specialty/skin" },
-    { from: "/medical/instruments", to: "/records/specialty/mental-health" },
-    // Coverage gaps relocated to Data → Coverage (#1086).
-    { from: "/coverage", to: "/data?section=coverage" },
-  ];
-  for (const r of redirects) {
-    const res = await page.request.get(r.from, { maxRedirects: 0 });
-    expect(res.status(), r.from).toBe(308);
-    expect(res.headers()["location"], r.from).toBe(r.to);
-  }
-
-  // Query strings ride through — the Visits Book-CTA deep link keeps its prefill.
-  const withQuery = await page.request.get("/encounters?new=1&title=Physical", {
-    maxRedirects: 0,
-  });
-  expect(withQuery.status()).toBe(308);
-  expect(withQuery.headers()["location"]).toBe(
-    "/records/history/visits?new=1&title=Physical"
-  );
 });
 
 test("detail routes survive and their back-links point at the owning panes (#1079)", async ({

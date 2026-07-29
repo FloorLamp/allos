@@ -13,7 +13,7 @@ import {
   addGenomicVariant,
   updateGenomicVariant,
   deleteGenomicVariant,
-} from "@/app/(app)/genomics/actions";
+} from "@/app/(app)/results/genomics/actions";
 import { getGenomicVariants } from "@/lib/queries";
 import { seedActor, createProfile, actAs, fd } from "./harness";
 

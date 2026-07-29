@@ -1,8 +1,8 @@
 import { getFamilyHistory } from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
-import FamilyHistoryForm from "@/app/(app)/family-history/FamilyHistoryForm";
-import FamilyHistoryList from "@/app/(app)/family-history/FamilyHistoryList";
-import { addFamilyHistory } from "@/app/(app)/family-history/actions";
+import FamilyHistoryForm from "@/app/(app)/records/care/overview/FamilyHistoryForm";
+import FamilyHistoryList from "@/app/(app)/records/care/overview/FamilyHistoryList";
+import { addFamilyHistory } from "@/app/(app)/records/care/overview/family-history-actions";
 
 // Family history (former /family-history index, #1042 phase 6): conditions
 // affecting the profile's relatives — high-value clinical context for hereditary

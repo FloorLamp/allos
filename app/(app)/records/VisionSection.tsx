@@ -7,10 +7,10 @@ import {
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import { today } from "@/lib/db";
-import OpticalPrescriptionForm from "@/app/(app)/vision/OpticalPrescriptionForm";
-import OpticalPrescriptionList from "@/app/(app)/vision/OpticalPrescriptionList";
-import OpticalProgression from "@/app/(app)/vision/OpticalProgression";
-import { addOpticalPrescription } from "@/app/(app)/vision/actions";
+import OpticalPrescriptionForm from "@/app/(app)/records/specialty/vision/OpticalPrescriptionForm";
+import OpticalPrescriptionList from "@/app/(app)/records/specialty/vision/OpticalPrescriptionList";
+import OpticalProgression from "@/app/(app)/records/specialty/vision/OpticalProgression";
+import { addOpticalPrescription } from "@/app/(app)/records/specialty/vision/actions";
 
 // Vision / eye care (former /vision index, #1042 final tail): the profile's
 // structured optical (eyeglass/contact) prescriptions — per-eye
@@ -20,7 +20,7 @@ import { addOpticalPrescription } from "@/app/(app)/vision/actions";
 // Rx slip / eye-exam report via AI extraction (Data → Import), or added manually.
 // The recurring eye-exam reminder lives on the existing vision_exam preventive
 // rule, not duplicated here (#697). Server Actions + client components stayed in
-// their route-independent module (app/(app)/vision/); the page body moved here.
+// their route-independent module (app/(app)/records/specialty/vision/); the page body moved here.
 export default function VisionSection({
   profileId,
   loginId,

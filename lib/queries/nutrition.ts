@@ -8,7 +8,8 @@ import { db, today } from "../db";
 import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
 import { getIntakeSafetyContext } from "./intake";
-import { weekWindowStart, recentWindowStart } from "./training/common";
+import { weekWindowStart } from "./profile-week";
+import { recentWindowStart } from "./training/common";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
 import {
   getMetricDailyTotals,

@@ -4,7 +4,7 @@ import {
   linkRecordVisitAction,
   declineRecordVisitAction,
   unlinkRecordVisitAction,
-} from "@/app/(app)/visit-links/actions";
+} from "@/app/(app)/visit-link-actions";
 import type { VisitLinkedRow } from "@/lib/queries";
 import type {
   EncounterFromVisit,

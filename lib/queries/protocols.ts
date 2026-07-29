@@ -12,7 +12,7 @@ import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
 import {
   getFrequencyTargetProgress,
   type FrequencyTargetProgress,
-} from "./training";
+} from "./frequency-targets";
 import {
   getBiomarkerSeriesWithDerived,
   getUsedCanonicalNamesWithDerived,

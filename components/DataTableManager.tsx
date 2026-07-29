@@ -9,7 +9,7 @@ import {
   deleteDatasetRows,
   deleteAllDatasetRows,
 } from "@/app/(app)/data/manage-actions";
-import { undoDeletes } from "@/app/(app)/undo/actions";
+import { undoDeletes } from "@/app/(app)/undo-actions";
 import { currentPathHref } from "@/lib/hrefs";
 
 // How long the bulk-delete "Undo" toast stays up (ms) — the holding rows live

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import SymptomLogBar from "@/app/(app)/symptoms/SymptomLogBar";
+import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import type { Symptom } from "@/lib/symptoms";
 import type { TemperatureUnit } from "@/lib/settings";
 import DateField from "@/components/DateField";

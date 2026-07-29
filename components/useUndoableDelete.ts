@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import { undoDelete, undoDeletes } from "@/app/(app)/undo/actions";
+import { undoDelete, undoDeletes } from "@/app/(app)/undo-actions";
 
 // How long the Undo toast stays up (ms). The holding row itself lives ~24h, but the
 // toast is the only affordance, so it lingers well past the default success toast.

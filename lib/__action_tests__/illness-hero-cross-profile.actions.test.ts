@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { logSymptom, logTemperature } from "@/app/(app)/symptoms/actions";
+import { logSymptom, logTemperature } from "@/app/(app)/symptom-actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import {
   endEpisodeAction,

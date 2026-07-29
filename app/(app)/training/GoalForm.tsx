@@ -16,7 +16,7 @@ import ActivityCombobox from "@/components/ActivityCombobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import { createGoal, updateGoal } from "./actions";
+import { createGoal, updateGoal } from "./goal-actions";
 
 const METRICS: { value: GoalMetric; label: string }[] = [
   { value: "weight", label: "Weight" },

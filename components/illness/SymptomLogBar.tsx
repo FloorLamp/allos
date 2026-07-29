@@ -35,7 +35,7 @@ import {
   logTemperature,
   activateIllnessForSymptoms,
   suggestSymptomsFromText,
-} from "./actions";
+} from "../../app/(app)/symptom-actions";
 import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
