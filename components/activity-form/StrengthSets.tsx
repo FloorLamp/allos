@@ -1431,6 +1431,7 @@ export default function StrengthSets({
                     data-testid={`set-remove-${si + 1}`}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                     aria-label="Remove set"
+                    title="Remove set"
                   >
                     <IconX className="h-4 w-4" />
                   </button>

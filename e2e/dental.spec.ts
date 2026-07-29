@@ -104,7 +104,17 @@ test.describe("Dental records — add → view → filter → track recheck → 
     // Delete it and confirm it's gone. The confirm click MUST be scoped to the dialog
     // (every row carries a per-row aria-label="Delete" button).
     const survivor = list.getByRole("row").filter({ hasText: NAME });
-    await survivor.getByRole("button", { name: "Delete" }).click();
+    // #1535: the row's Edit and Delete are two bare glyphs sitting side by side,
+    // one of them destructive. Each carries a hover tooltip (`title`) naming what
+    // it acts on, on top of its accessible name, so a sighted user can tell them
+    // apart before clicking. Asserted on the shared RecordTable surface because
+    // every records page inherits this row.
+    const deleteRow = survivor.getByRole("button", { name: "Delete" });
+    await expect(deleteRow).toHaveAttribute("title", "Delete record");
+    await expect(
+      survivor.getByRole("button", { name: "Edit" })
+    ).toHaveAttribute("title", "Edit record");
+    await deleteRow.click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })

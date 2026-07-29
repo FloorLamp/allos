@@ -196,6 +196,7 @@ export default function RestTimer({
             type="button"
             onClick={() => (running ? setRunning(false) : start())}
             aria-label={running ? "Pause rest timer" : "Start rest timer"}
+            title={running ? "Pause rest timer" : "Start rest timer"}
             data-testid="rest-toggle"
             className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-600 text-white hover:bg-brand-500 active:scale-95"
           >
@@ -209,6 +210,7 @@ export default function RestTimer({
             type="button"
             onClick={reset}
             aria-label="Reset rest timer"
+            title="Reset rest timer"
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-white text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300"
           >
             <IconRotateClockwise className="h-5 w-5" />

@@ -70,6 +70,7 @@ export default function LevelBadge({
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Close"
+                  title="Close"
                   className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
                 >
                   <IconX className="h-5 w-5" />

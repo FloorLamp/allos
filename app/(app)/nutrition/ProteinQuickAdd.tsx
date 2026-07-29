@@ -93,6 +93,7 @@ export default function ProteinQuickAdd({
         type="button"
         data-testid="protein-quickadd-undo"
         aria-label="Remove protein grams"
+        title="Remove protein grams"
         disabled={!canSubmit || total <= 0}
         onClick={() => apply(-1)}
         className="tap-target flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
@@ -121,6 +122,7 @@ export default function ProteinQuickAdd({
         type="button"
         data-testid="protein-quickadd-add"
         aria-label="Add protein grams"
+        title="Add protein grams"
         disabled={!canSubmit}
         onClick={() => apply(1)}
         className="tap-target flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700 disabled:opacity-30"

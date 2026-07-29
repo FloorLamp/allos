@@ -494,6 +494,7 @@ function MultiviewHint() {
           type="submit"
           data-testid="multiview-hint-dismiss"
           aria-label="Dismiss hint"
+          title="Dismiss hint"
           className="flex h-6 w-6 items-center justify-center rounded-full text-brand-500 transition hover:bg-brand-100 dark:hover:bg-brand-500/20"
         >
           <IconX className="h-4 w-4" stroke={2} />

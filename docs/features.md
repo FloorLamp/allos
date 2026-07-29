@@ -1648,6 +1648,10 @@ Vertical scrolling wins over an ambiguous drag, and short or slow gestures
 settle without acting. Reduced-motion mode removes finger-following animation
 while preserving the resulting action.
 
+A button showing only an icon names its action in a hover tooltip. A phone has
+no hover, so every destructive icon action—delete, remove, retire—asks for
+confirmation before it acts.
+
 ### Dense data on small screens
 
 Wide biomarker and training tables become one card per row, preserving fields

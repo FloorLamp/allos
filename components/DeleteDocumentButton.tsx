@@ -38,6 +38,7 @@ export default function DeleteDocumentButton({
       disabled={pending}
       className="text-slate-300 hover:text-rose-500 disabled:opacity-50 dark:text-slate-600"
       aria-label="Delete document"
+      title="Delete document"
     >
       <IconX className="h-4 w-4" />
     </button>

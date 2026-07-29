@@ -190,6 +190,7 @@ export default function PracticeSessionHistory({
                       <button
                         type="button"
                         aria-label="Edit session"
+                        title="Edit session"
                         data-testid="practice-session-edit"
                         onClick={() => setEditingId(session.id)}
                         className="btn-ghost p-2"
@@ -199,6 +200,7 @@ export default function PracticeSessionHistory({
                       <button
                         type="button"
                         aria-label="Delete session"
+                        title="Delete session"
                         data-testid="practice-session-delete"
                         disabled={pendingId === session.id}
                         onClick={() => remove(session)}

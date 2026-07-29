@@ -393,6 +393,7 @@ export default function FoodLogBar({
               type="button"
               data-testid={`undo-${g.slug}`}
               aria-label={`Remove a ${g.name} serving from ${activeSlot}`}
+              title="Remove a serving"
               disabled={mealCount <= 0}
               onClick={() => bump(g.slug, -1)}
               className="tap-target flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
@@ -414,6 +415,7 @@ export default function FoodLogBar({
               type="button"
               data-testid={`log-${g.slug}`}
               aria-label={`Add a ${g.name} serving to ${activeSlot}`}
+              title="Add a serving"
               onClick={() => bump(g.slug, 1)}
               className="tap-target flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700"
             >
