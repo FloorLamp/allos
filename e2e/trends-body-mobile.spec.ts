@@ -89,29 +89,6 @@ test.describe("Trends → Body responsive views (#1067)", () => {
         )
       )
       .not.toBe(tileHeaderBackground);
-    await expandTrendsContext(page);
-    await followLink(
-      page,
-      page.getByRole("link", { name: "1D", exact: true }),
-      /from=\d{4}-\d{2}-\d{2}.*to=\d{4}-\d{2}-\d{2}/
-    );
-    const oneDayUrl = new URL(page.url());
-    expect(oneDayUrl.searchParams.get("from")).toBe(
-      oneDayUrl.searchParams.get("to")
-    );
-    await expect(weightTile).toContainText("No data in this range");
-    await expect(page.getByTestId("body-tile-bmi")).toContainText(
-      "No data in this range"
-    );
-    const emptyWeightBox = await weightTile.boundingBox();
-    const populatedStepsBox = await page
-      .getByTestId("body-tile-steps")
-      .boundingBox();
-    expect(emptyWeightBox).not.toBeNull();
-    expect(populatedStepsBox).not.toBeNull();
-    expect(
-      Math.abs(emptyWeightBox!.height - populatedStepsBox!.height)
-    ).toBeLessThan(2);
 
     // With the redundant controls gone, the tiles follow the Today card directly
     // without reintroducing horizontal clipping.
@@ -124,6 +101,22 @@ test.describe("Trends → Body responsive views (#1067)", () => {
         9
       );
     }
+
+    // 1D is the one exception to the ordinary-range tiles-only rule: it is a
+    // dedicated intraday lens, so it replaces daily tiles instead of rendering
+    // misleading single-day empty cards.
+    await expandTrendsContext(page);
+    await followLink(
+      page,
+      page.getByRole("link", { name: "1D", exact: true }),
+      /from=\d{4}-\d{2}-\d{2}.*to=\d{4}-\d{2}-\d{2}/
+    );
+    const oneDayUrl = new URL(page.url());
+    expect(oneDayUrl.searchParams.get("from")).toBe(
+      oneDayUrl.searchParams.get("to")
+    );
+    await expect(page.getByTestId("body-intraday-view")).toBeVisible();
+    await expect(page.getByTestId("body-metric-tiles")).toHaveCount(0);
     await expectNoClippedContent(page);
   });
 
