@@ -267,7 +267,7 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
     const { itemId, doseId } = seedAbandoned(p, "Ashwagandha (test)");
     const day = today(p);
     // Before: pushed. The suggestion has NOT changed anything on its own.
-    expect(getSupplements(p).find((s) => s.id === itemId)!.priority).toBe(
+    expect(getSupplements(p).find((s) => s.id === itemId)!.obligation).toBe(
       "high"
     );
     expect(collectUpcoming(p, day).map((i) => i.key)).toContain(
@@ -275,7 +275,7 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
     );
 
     expect(demoteIntakeObligation(p, itemId)).toBe("demoted");
-    expect(getSupplements(p).find((s) => s.id === itemId)!.priority).toBe(
+    expect(getSupplements(p).find((s) => s.id === itemId)!.obligation).toBe(
       "low"
     );
     // After: it has left the push tier — the two parts joined up.

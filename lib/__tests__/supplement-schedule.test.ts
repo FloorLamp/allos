@@ -177,18 +177,18 @@ describe("isDueOn", () => {
     // Even a daily-condition med is never "due" for a reminder when as_needed=1,
     // so it generates no missed-dose escalation and can't drag adherence down.
     expect(
-      isDueOn({ condition: "daily", situation: null, as_needed: 1 }, ctx())
+      isDueOn({ condition: "daily", situation: null, obligation: "may" }, ctx())
     ).toBe(false);
     // as_needed=0 behaves exactly as before.
     expect(
-      isDueOn({ condition: "daily", situation: null, as_needed: 0 }, ctx())
+      isDueOn({ condition: "daily", situation: null, obligation: "should" }, ctx())
     ).toBe(true);
   });
 });
 
 describe("contributesToDailyLimit (#635)", () => {
   it("counts an unconditional daily item", () => {
-    expect(contributesToDailyLimit({ condition: "daily", as_needed: 0 })).toBe(
+    expect(contributesToDailyLimit({ condition: "daily", obligation: "should" })).toBe(
       true
     );
     // as_needed omitted defaults to not-PRN.
@@ -196,7 +196,7 @@ describe("contributesToDailyLimit (#635)", () => {
   });
 
   it("excludes a PRN (as_needed) item even when daily", () => {
-    expect(contributesToDailyLimit({ condition: "daily", as_needed: 1 })).toBe(
+    expect(contributesToDailyLimit({ condition: "daily", obligation: "may" })).toBe(
       false
     );
   });
@@ -208,7 +208,7 @@ describe("contributesToDailyLimit (#635)", () => {
       "rest_day",
       "situational",
     ] as const) {
-      expect(contributesToDailyLimit({ condition, as_needed: 0 })).toBe(false);
+      expect(contributesToDailyLimit({ condition, obligation: "should" })).toBe(false);
     }
   });
 });
@@ -240,9 +240,9 @@ describe("isPostWorkoutReady", () => {
 
 describe("obligationClass", () => {
   it("returns a distinct accent per priority", () => {
-    expect(obligationClass("mandatory")).toContain("rose");
-    expect(obligationClass("high")).toContain("brand");
-    expect(obligationClass("low")).toContain("slate");
+    expect(obligationClass("must")).toContain("rose");
+    expect(obligationClass("should")).toContain("brand");
+    expect(obligationClass("may")).toContain("slate");
   });
 });
 

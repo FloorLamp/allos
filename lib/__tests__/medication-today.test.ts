@@ -15,7 +15,7 @@ function med(
   return {
     id,
     name,
-    priority: "low",
+    obligation: "may",
     stack: null,
     doses: [{ id: id * 10, timeOfDay, label: name, resolved }],
   };
@@ -40,7 +40,7 @@ describe("buildTodayPanelModel (#852 item 1)", () => {
         name: m.name,
         hint: doseSortKey({
           timeOfDay: m.doses[0].timeOfDay,
-          priority: m.priority,
+          obligation: m.obligation,
           stack: m.stack,
           name: m.name,
         }),
@@ -92,7 +92,7 @@ describe("buildTodayPanelModel (#852 item 1)", () => {
         {
           id: 1,
           name: "Two Doses",
-          priority: "low",
+          obligation: "may",
           stack: null,
           doses: [
             { id: 11, timeOfDay: "evening", label: "pm", resolved: false },

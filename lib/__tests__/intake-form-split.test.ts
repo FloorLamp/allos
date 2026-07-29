@@ -35,17 +35,22 @@ describe("intake form split boundary (issue #846)", () => {
   });
 
   it("MedicationForm renders no supplement kind concepts", () => {
-    // Supplement catalog/brands, the priority sort, the stack grouping, the workout
-    // condition scheduler — none belong on a medication.
+    // Supplement catalog/brands, the stack grouping, the workout condition
+    // scheduler — none belong on a medication.
+    //
+    // NOT forbidden since #1505: the obligation selector. It used to be listed here
+    // (as the supplement-only "priority" band) because a medication's pushability was
+    // decided by its KIND. Obligation is now the one field both kinds carry — a med
+    // is reminded because it is `must`, not because it is a med — so the selector is
+    // shared by construction, and the guard would be pinning the very coupling this
+    // issue removed. The med-specific half (the consequence-stating confirm) is
+    // asserted in the browser tier instead.
     const forbidden = [
       "SUPPLEMENT_BRANDS",
       "SUPPLEMENT_CATALOG",
       "supplement-brands",
       "supplement-catalog",
-      "PRIORITIES",
-      "OBLIGATION_LABELS",
       "availableConditions",
-      'name="priority"',
       'name="stack"',
       "e.g. Thorne",
       "e.g. Vitamin D3",
@@ -70,7 +75,6 @@ describe("intake form split boundary (issue #846)", () => {
       "resolveIntakePrefill",
       'name="prescriber"',
       'name="rx_number"',
-      'name="as_needed"',
       "e.g. Ibuprofen",
     ];
     const hits = forbidden.filter((f) => supp.includes(f));

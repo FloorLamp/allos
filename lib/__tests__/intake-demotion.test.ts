@@ -43,8 +43,7 @@ function input(over: Partial<DemotionInput> = {}): DemotionInput {
     itemId: 7,
     name: "Ashwagandha (test)",
     kind: "supplement",
-    priority: "high",
-    asNeeded: false,
+    obligation: "should",
     active: true,
     // 2 of 20 taken = 10%, comfortably under the threshold, comfortably over the
     // minimum occurrence count.
@@ -71,12 +70,12 @@ describe("detectDemotionCandidate (#1505 part 2)", () => {
 
   it("a MANDATORY supplement is a candidate too — both pushed priorities can fall", () => {
     expect(
-      detectDemotionCandidate(input({ priority: "mandatory" }))
+      detectDemotionCandidate(input({ obligation: "must" }))
     ).not.toBeNull();
   });
 
   it("a LOW supplement is never a candidate — it is already where the suggestion leads", () => {
-    expect(detectDemotionCandidate(input({ priority: "low" }))).toBeNull();
+    expect(detectDemotionCandidate(input({ obligation: "may" }))).toBeNull();
   });
 
   it("a MEDICATION is never a candidate, however badly it is taken (kind decides)", () => {
@@ -87,8 +86,10 @@ describe("detectDemotionCandidate (#1505 part 2)", () => {
     ).toBeNull();
   });
 
-  it("a PRN item is never a candidate — a PRN item is never scheduled-due", () => {
-    expect(detectDemotionCandidate(input({ asNeeded: true }))).toBeNull();
+  it("a `may` item is never a candidate — may IS the single endpoint of this engine", () => {
+    // Also covers the old PRN exclusion: `may` absorbed as_needed, so a PRN-shaped
+    // item cannot reach the detector at all.
+    expect(detectDemotionCandidate(input({ obligation: "may" }))).toBeNull();
   });
 
   it("a PAUSED item is never a candidate — a deliberate pause is not a lapse", () => {

@@ -17,7 +17,7 @@ import type {
 function supp(
   id: number,
   name: string,
-  priority: IntakeObligation = "high",
+  obligation: IntakeObligation = "should",
   kind: SupplementKind = "supplement",
   product: string | null = null
 ): Supplement {
@@ -28,7 +28,7 @@ function supp(
     active: 1,
     created_at: "2026-07-05",
     condition: "daily",
-    priority,
+    obligation,
     brand: null,
     product,
     situation: null,
@@ -48,7 +48,6 @@ function supp(
     pharmacy: null,
     rx_number: null,
     rx: 0,
-    as_needed: 0,
     min_interval_hours: null,
     max_daily_count: null,
     redose_notice: 0,
@@ -98,7 +97,7 @@ function entry(opts: {
   amount?: string | null;
   taken?: boolean;
   skipped?: boolean;
-  priority?: IntakeObligation;
+  obligation?: IntakeObligation;
   food?: FoodTiming;
   kind?: SupplementKind;
   product?: string | null;
@@ -114,7 +113,7 @@ function entry(opts: {
     supp: supp(
       opts.suppId,
       opts.name,
-      opts.priority ?? "high",
+      opts.obligation ?? "should",
       opts.kind ?? "supplement",
       opts.product ?? null
     ),
@@ -148,7 +147,7 @@ describe("renderWindowMessage", () => {
         suppId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
-        priority: "mandatory",
+        obligation: "must",
       }),
       entry({ doseId: 11, suppId: 2, name: "Magnesium", amount: "400 mg" }),
     ]);
@@ -281,7 +280,7 @@ describe("renderWindowMessage", () => {
         suppId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
-        priority: "mandatory",
+        obligation: "must",
         food: "with_fat",
         adherence: { streak: 12, pct: 93 },
       }),
@@ -316,9 +315,9 @@ describe("renderWindowMessage", () => {
 
   it("sorts pending by priority then name, keeping buttons aligned with the lines", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, suppId: 1, name: "Zinc", priority: "low" }),
-      entry({ doseId: 11, suppId: 2, name: "Creatine", priority: "mandatory" }),
-      entry({ doseId: 12, suppId: 3, name: "Iron", priority: "high" }),
+      entry({ doseId: 10, suppId: 1, name: "Zinc", obligation: "may" }),
+      entry({ doseId: 11, suppId: 2, name: "Creatine", obligation: "must" }),
+      entry({ doseId: 12, suppId: 3, name: "Iron", obligation: "should" }),
     ]);
     expect(msg.body).toBe("🔴 Creatine\n• Iron\n• Zinc");
     // Buttons follow the sorted lines; each dose contributes ✅ then ⏭. #232

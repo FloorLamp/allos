@@ -19,7 +19,7 @@ const supps: Supp[] = [
   { active: 1, condition: "situational", situation: "Travel" },
   { active: 1, condition: "daily", situation: null }, // not situational
   { active: 0, condition: "situational", situation: "Illness" }, // paused
-  { active: 1, condition: "situational", situation: "Illness", as_needed: 1 }, // PRN
+  { active: 1, condition: "situational", situation: "Illness", obligation: "may" }, // PRN
 ];
 
 describe("countSituationalDue — the shared situational dueness count (#662)", () => {

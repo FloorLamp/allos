@@ -646,7 +646,7 @@ function AvailableSection({ items }: { items: ProfiledOfferedItem[] }) {
             key={`${item.profileId}:${item.key}`}
             href={item.href ?? "/medications"}
             data-testid="available-row"
-            className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/5 dark:hover:bg-white/5"
+            className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-ink-750"
           >
             <IconPill
               className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"

@@ -61,6 +61,16 @@ import type { Migration } from "../runner";
 // FK stays resolved. Every nullable link is nulled pre-copy so the re-enabled FK check
 // meets a clean graph.
 //
+// TRIGGER SAFETY. Two triggers on `intake_item_logs` (migration 079) read
+// `intake_items` in their bodies to snapshot a dose's product. SQLite validates every
+// trigger body against the schema when a table is RENAMED, so the rename step fails
+// with "no such table: main.intake_items" during the window between the DROP and the
+// RENAME — the table the trigger names does not exist yet. They are therefore dropped
+// before the rebuild and recreated verbatim after it. Recreating them here duplicates
+// migration 079's text on purpose: 079 is frozen (shipped migrations are immutable),
+// so its definitions cannot be factored out, and a rebuild that silently lost a
+// snapshot trigger would stop recording what was actually taken.
+//
 // REPLAY SAFETY (the non-version-gated migrate() test wrapper replays up()
 // unconditionally): the rebuild short-circuits when the live table already carries the
 // `obligation` column. Production runs it exactly once behind the user_version gate.
@@ -117,6 +127,34 @@ const CREATE = `
     supply_id INTEGER REFERENCES shared_supplies(id)
   );`;
 
+// The migration-079 snapshot triggers, verbatim. Dropped around the rebuild (see the
+// header) and recreated after the rename.
+const TRIGGERS = [
+  `CREATE TRIGGER IF NOT EXISTS intake_log_snapshot_product_insert
+    AFTER INSERT ON intake_item_logs
+    FOR EACH ROW
+    WHEN NEW.product IS NULL
+    BEGIN
+      UPDATE intake_item_logs
+         SET product = (SELECT i.product FROM intake_items i WHERE i.id = NEW.item_id)
+       WHERE id = NEW.id;
+    END;`,
+  `CREATE TRIGGER IF NOT EXISTS intake_log_snapshot_product_taken
+    AFTER UPDATE OF status ON intake_item_logs
+    FOR EACH ROW
+    WHEN NEW.status = 'taken' AND OLD.status <> 'taken'
+    BEGIN
+      UPDATE intake_item_logs
+         SET product = (SELECT i.product FROM intake_items i WHERE i.id = NEW.item_id)
+       WHERE id = NEW.id;
+    END;`,
+];
+
+const TRIGGER_NAMES = [
+  "intake_log_snapshot_product_insert",
+  "intake_log_snapshot_product_taken",
+];
+
 const INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_intake_items_document ON intake_items(profile_id, document_id);",
   "CREATE INDEX IF NOT EXISTS idx_intake_items_encounter ON intake_items(profile_id, encounter_id);",
@@ -159,6 +197,11 @@ function rebuildIntakeItems(db: Database.Database): void {
     );
   }
 
+  // Drop the log-snapshot triggers first — their bodies name `intake_items`, and the
+  // RENAME below re-validates every trigger body against a schema in which that table
+  // does not exist yet. Recreated verbatim after the rename.
+  for (const name of TRIGGER_NAMES) db.exec(`DROP TRIGGER IF EXISTS ${name};`);
+
   const scratch = "intake_items__new123";
   db.exec(
     CREATE.replace("CREATE TABLE intake_items (", `CREATE TABLE ${scratch} (`)
@@ -195,6 +238,7 @@ function rebuildIntakeItems(db: Database.Database): void {
   db.exec(`DROP TABLE intake_items;`);
   db.exec(`ALTER TABLE ${scratch} RENAME TO intake_items;`);
   for (const idx of INDEXES) db.exec(idx);
+  for (const trg of TRIGGERS) db.exec(trg);
 }
 
 // The AI suggestion queue proposes an obligation for an item that does not exist yet,
