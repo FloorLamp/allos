@@ -601,6 +601,13 @@ contiguity `id === position`). **Owner PRs preempt reservations**: an owner
 branch that lands with a migration takes the slot it shipped with, and every
 reserved in-flight slot shifts up one — message each affected agent the new
 number immediately rather than letting them discover the collision in CI.
+**A later slot is unhonorable until the earlier slot MERGES (2026-07-29, the
+120/121 wave):** `assertContiguousIds` forbids gaps, so an agent holding slot
+N+1 cannot even run its own migration tests while N is unmerged — it must BUILD
+on N and renumber to N+1 only after N lands (or take N itself if the earlier
+reservation dissolves, as when a branch ships without its reserved slot). Say
+this dependency explicitly in any brief that reserves a non-next slot, and
+message the agent the moment the earlier slot's fate is known.
 
 **Migration-train renumber recipe (the orchestrator, merging N migration PRs in
 sequence — done 3× on the #1059/#1061/#1062 train):** when several in-flight
