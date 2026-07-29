@@ -25,6 +25,7 @@ export default function FindingsList({
   subtitle,
   icon,
   testid,
+  collapsible = false,
 }: {
   findings: Finding[];
   // Overflow beyond the surface's cap, revealed by a "Show N more" disclosure.
@@ -38,6 +39,9 @@ export default function FindingsList({
   // dismiss button `${testid}-dismiss` (overflow rows: `${testid}-more-item` /
   // `${testid}-more-dismiss`).
   testid: string;
+  // Dense supporting findings can start as a one-row disclosure so they remain
+  // visible without pushing the page's primary content below the fold.
+  collapsible?: boolean;
 }) {
   if (findings.length === 0) return null;
 
@@ -53,15 +57,8 @@ export default function FindingsList({
     />
   );
 
-  return (
-    <div className="card" data-testid={testid}>
-      <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
-        {icon}
-        {heading}
-      </h2>
-      <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-        {subtitle}
-      </p>
+  const rows = (
+    <>
       <ul className="space-y-3">
         {findings.map((f) => row(f, `${testid}-item`, `${testid}-dismiss`))}
       </ul>
@@ -80,6 +77,56 @@ export default function FindingsList({
           </ul>
         </details>
       )}
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <details className="card group" data-testid={testid}>
+        <summary
+          className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden"
+          data-testid={`${testid}-toggle`}
+        >
+          <span className="flex min-w-0 items-start gap-2">
+            <span className="mt-0.5">{icon}</span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-slate-800 dark:text-slate-100">
+                {heading}
+              </span>
+              <span className="mt-0.5 block text-sm text-slate-500 dark:text-slate-400">
+                {subtitle}
+              </span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+              {findings.length + moreFindings.length}
+            </span>
+            <span
+              className="text-sm text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400"
+              aria-hidden
+            >
+              ▾
+            </span>
+          </span>
+        </summary>
+        <div className="mt-4 border-t border-black/10 pt-4 dark:border-white/10">
+          {rows}
+        </div>
+      </details>
+    );
+  }
+
+  return (
+    <div className="card" data-testid={testid}>
+      <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
+        {icon}
+        {heading}
+      </h2>
+      <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+        {subtitle}
+      </p>
+      {rows}
     </div>
   );
 }

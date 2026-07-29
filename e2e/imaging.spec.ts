@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -34,6 +35,19 @@ function recentDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
+async function submitWithToast(
+  page: Page,
+  button: Locator,
+  message: string
+): Promise<void> {
+  // A cold Server Action response can outlive the toast it triggers. Observe the
+  // transient feedback concurrently while settledClick still owns durability.
+  await Promise.all([
+    expect(page.getByText(message)).toBeVisible({ timeout: 15_000 }),
+    settledClick(page, button),
+  ]);
+}
+
 test.describe("Imaging studies — add → view → filter → edit → delete (#702)", () => {
   test.beforeAll(cleanup);
   test.afterAll(cleanup);
@@ -53,8 +67,11 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Laterality").selectOption("left");
     await form.getByLabel("Contrast given").check();
     await form.getByLabel("Impression").fill("No acute abnormality.");
-    await form.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByText("Study saved")).toBeVisible();
+    await submitWithToast(
+      page,
+      form.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
 
     // It appears in the list with its factual identity + contrast badge.
     const list = page.getByTestId("imaging-study-list");
@@ -81,8 +98,11 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       .click();
     const editForm = list.getByTestId("imaging-study-form");
     await editForm.getByLabel("Impression").fill("Interval improvement.");
-    await editForm.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText("Study updated")).toBeVisible();
+    await submitWithToast(
+      page,
+      editForm.getByRole("button", { name: "Save", exact: true }),
+      "Study updated"
+    );
     // The toast fires right after the save action returns; the ROW text only updates
     // once handle()'s router.refresh() re-fetches the list RSC (ImagingStudyForm.handle
     // — toast → onDone → router.refresh). That refresh can outrun the default 5s on a
@@ -122,8 +142,11 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Body region").fill(DOSE_REGION);
     await form.getByLabel("Study date").fill(recentDate());
     await form.getByLabel("Effective dose (mSv)").fill("10");
-    await form.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByText("Study saved")).toBeVisible();
+    await submitWithToast(
+      page,
+      form.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
 
     // The list row shows the recorded-dose badge.
     const list = page.getByTestId("imaging-study-list");

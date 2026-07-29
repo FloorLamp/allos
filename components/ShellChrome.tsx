@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useShellChrome } from "./useShellChrome";
 import ShellTabStrip from "./ShellTabStrip";
+import type { TabFirstPageConfig } from "./tab-first-pages";
 
 // The app shell's sticky top chrome (issue #1416, sections B + C).
 //
@@ -31,9 +32,11 @@ import ShellTabStrip from "./ShellTabStrip";
 export default function ShellChrome({
   children,
   banner,
+  disabledTabFirstPageIds,
 }: {
   children: React.ReactNode;
   banner?: React.ReactNode;
+  disabledTabFirstPageIds?: readonly TabFirstPageConfig["pageId"][];
 }) {
   const { hidden, ready } = useShellChrome();
   const ref = useRef<HTMLDivElement>(null);
@@ -85,7 +88,7 @@ export default function ShellChrome({
           </div>
         </div>
       )}
-      <ShellTabStrip />
+      <ShellTabStrip disabledPageIds={disabledTabFirstPageIds} />
     </div>
   );
 }

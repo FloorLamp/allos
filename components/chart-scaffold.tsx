@@ -196,6 +196,8 @@ export function chartTooltipProps(c: ChartColors, motion: ChartMotion) {
       background: c.tooltipBg,
       border: `1px solid ${c.tooltipBorder}`,
       color: c.tooltipText,
+      maxWidth: 280,
+      whiteSpace: "normal",
     },
     labelStyle: { color: c.tooltipText },
     itemStyle: { color: c.tooltipText },

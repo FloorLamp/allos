@@ -3,22 +3,21 @@ import { type Page } from "@playwright/test";
 import { hydratedClick, followLink } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 
-// The Trends phone chrome (issue #1485 F): the range pills and the tab strip
-// collapse into ONE line — "Overview · 90D ▾" — that expands on tap, rides the
-// #1416 navbar's hide/reveal, and replaces the heading band below `sm`.
+// The Trends phone chrome: primary tabs stay visible in one scrolling row while
+// the active chart range is a fixed trigger at the right. Tapping that trigger
+// expands only the range controls beneath the stable tabs. The whole row rides
+// the #1416 navbar's hide/reveal and replaces the heading band below `sm`.
 //
 // Why only a browser can see this: every clause is layout and scroll behaviour at a
 // specific viewport. `npm run build` and the unit tier both pass on a page whose
 // context bar never appears, never expands, or covers the first chart.
 //
 // What is pinned, and why each is a real regression class:
-//   • The LABEL is always visible. The whole trade F makes is "hide the control,
-//     keep the context" — a chart drawn over a 90-day window that a reader takes for
-//     all time is a wrong answer, not a cosmetic one. So the label is asserted at the
-//     top AND mid-scroll, and its text is asserted to name the window.
-//   • Expanding restores the full controls, and a range change through them
-//     re-windows the page and RE-LABELS the bar. A collapsed control that can't be
-//     opened is a removed feature.
+//   • Tabs and the range LABEL are always visible. A chart drawn over a 90-day
+//     window that a reader takes for all time is a wrong answer, and primary
+//     navigation must not be hidden behind a filter disclosure.
+//   • Expanding restores the range controls without moving/hiding the tabs, and
+//     a range change through them re-windows the page and re-labels the trigger.
 //   • The bar rides the shell chrome. A sticky strip that did NOT hide with the
 //     navbar would permanently spend the band F just reclaimed.
 //   • The heading is gone below `sm` but still in the accessibility tree.
@@ -47,22 +46,18 @@ async function scrollTo(page: Page, y: number): Promise<number> {
   return page.evaluate(() => window.scrollY);
 }
 
-test.describe("the collapsed context bar (F)", () => {
-  test("names the tab and the window before any chart, with the controls put away", async ({
+test.describe("the tab-and-range context bar", () => {
+  test("shows primary tabs and the window before any chart, with range controls put away", async ({
     page,
   }) => {
     await page.goto("/trends");
 
-    // The label is the ONE thing that survives the collapse.
-    await expect(page.getByTestId("trends-context-label")).toHaveText(
-      "Overview · 90D"
-    );
+    await expect(page.getByTestId("trends-context-label")).toHaveText("90D");
     await expect(page.getByTestId(BAR)).toHaveAttribute(
       "data-expanded",
       "false"
     );
-    // …and the controls it hides are genuinely put away, not merely off-screen:
-    // `hidden` keeps a collapsed disclosure out of the accessibility tree too.
+    // Only the range controls are put away; the section tabs stay discoverable.
     await expect(page.getByTestId("trends-context-controls")).toBeHidden();
     // `exact` is load-bearing on every pill locator: Playwright matches an
     // accessible name by case-insensitive SUBSTRING, and the movers digest on this
@@ -72,7 +67,26 @@ test.describe("the collapsed context bar (F)", () => {
     ).toBeHidden();
     await expect(
       page.getByRole("tab", { name: "Body", exact: true })
-    ).toHaveCount(0);
+    ).toBeVisible();
+
+    // The navigation row is full bleed like the other mobile tab-first pages:
+    // no second 16px page gutter outside the tabs or range trigger. The expanded
+    // range controls retain their own readable gutter below.
+    const [tabsBox, toggleBox, barBox, shellBox, viewportWidth] =
+      await Promise.all([
+        page.getByTestId("trends-tabs").boundingBox(),
+        page.getByTestId("trends-context-toggle").boundingBox(),
+        page.getByTestId(BAR).boundingBox(),
+        page.getByTestId("shell-chrome").boundingBox(),
+        page.evaluate(() => window.innerWidth),
+      ]);
+    expect(tabsBox).not.toBeNull();
+    expect(toggleBox).not.toBeNull();
+    expect(barBox).not.toBeNull();
+    expect(shellBox).not.toBeNull();
+    expect(tabsBox!.x).toBeCloseTo(0, 0);
+    expect(toggleBox!.x + toggleBox!.width).toBeCloseTo(viewportWidth, 0);
+    expect(barBox!.y).toBeCloseTo(shellBox!.y + shellBox!.height, 0);
 
     // The label sits ABOVE the first chart — the invariant, stated positionally.
     const label = await page.getByTestId("trends-context-label").boundingBox();
@@ -82,25 +96,25 @@ test.describe("the collapsed context bar (F)", () => {
     expect(label!.y).toBeLessThan(tileBox!.y);
   });
 
-  test("the window in the label follows the window in force", async ({
-    page,
-  }) => {
+  test("the range trigger follows the window in force", async ({ page }) => {
     // A deep link naming a custom window: the label has no pill to borrow a name
     // from and says the dates instead, so the chart below it can't read as "all
     // time" (or as the 90D default).
     await page.goto("/trends?from=2026-01-01&to=2026-02-01");
     await expect(page.getByTestId("trends-context-label")).toHaveText(
-      "Overview · 2026-01-01 → 2026-02-01"
+      "2026-01-01 → 2026-02-01"
     );
 
-    // …and the tab half follows the tab.
+    // The selected tab is communicated by the always-visible tab itself, not
+    // duplicated in the range trigger.
     await page.goto("/trends?tab=body");
-    await expect(page.getByTestId("trends-context-label")).toHaveText(
-      "Body · 90D"
-    );
+    await expect(page.getByTestId("trends-context-label")).toHaveText("90D");
+    await expect(
+      page.getByRole("tab", { name: "Body", exact: true })
+    ).toHaveAttribute("aria-selected", "true");
   });
 
-  test("tapping it expands to the full pill row and tab strip, and closes again", async ({
+  test("tapping the range expands its controls without hiding the tabs", async ({
     page,
   }) => {
     await page.goto("/trends");
@@ -111,26 +125,45 @@ test.describe("the collapsed context bar (F)", () => {
 
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByTestId("trends-context-controls")).toBeVisible();
-    // Both halves come back: the range pills…
+    // The range pills come back…
     await expect(
       page.getByRole("link", { name: "90D", exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: "All time", exact: true })
     ).toBeVisible();
-    // …and the tab strip, which stays HERE rather than moving to a bottom sheet
-    // (explicitly rejected: primary nav stays discoverable and the bottom edge
-    // belongs to the workout dock).
+    // …while the tab strip stays visible in the row above.
     await expect(
       page.getByRole("tab", { name: "Body", exact: true })
     ).toBeVisible();
     // The #1455 Custom… collapse still nests inside it.
     await expect(page.getByTestId("custom-range-toggle")).toBeVisible();
-    // The label never leaves — expanded or not, the window is named.
+    // The range label never leaves — expanded or not, the window is named.
     await expect(page.getByTestId("trends-context-label")).toBeVisible();
+
+    // Close from scroll depth, where removing the expanded in-flow panel changes
+    // page geometry. That layout shift must not be mistaken for a scroll-down
+    // gesture that hides the whole shell/context row.
+    const bar = await barReady(page);
+    const deep = await scrollTo(page, 360);
+    expect(deep).toBeGreaterThan(200);
+    // The listener is rAF-coalesced. Observe the completed downward transition
+    // before issuing the upward gesture, otherwise both programmatic scrolls can
+    // land in one frame and the listener sees only a net scroll down.
+    await expect(bar).toHaveAttribute("data-hidden", "true");
+    await scrollTo(page, deep - 120);
+    await expect(bar).toHaveAttribute("data-hidden", "false");
 
     await hydratedClick(page, toggle);
     await expect(page.getByTestId("trends-context-controls")).toBeHidden();
+    await expect(
+      page.getByRole("tab", { name: "Body", exact: true })
+    ).toBeVisible();
+    await expect(bar).toHaveAttribute("data-hidden", "false");
+    await expect(page.getByTestId("shell-chrome")).toHaveAttribute(
+      "data-hidden",
+      "false"
+    );
   });
 
   test("a range change through the expanded bar re-windows the page and re-labels it", async ({
@@ -145,10 +178,14 @@ test.describe("the collapsed context bar (F)", () => {
       /range=all/
     );
 
-    // The label — collapsed again after the navigation — now names the new window.
-    await expect(page.getByTestId("trends-context-label")).toHaveText(
-      "Overview · All time"
+    // The trigger names the new window without collapsing the controls the user
+    // is actively navigating.
+    await expect(page.getByTestId("trends-context-label")).toHaveText("All");
+    await expect(page.getByTestId("trends-context-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "true"
     );
+    await expect(page.getByTestId("trends-context-controls")).toBeVisible();
     // And the charts came with it (the tiles re-render under the new range).
     await expect(page.getByTestId("saved-tiles")).toBeVisible();
   });

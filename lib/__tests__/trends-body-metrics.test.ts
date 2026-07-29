@@ -2,11 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   BODY_METRIC_META,
   BODY_METRIC_SLUGS,
+  bodyMetricSlugForSavedId,
   isBodyMetricSlug,
+  savedMetricIdForBodySlug,
   resolveBodyMetricUnit,
-  last30DaySlice,
   buildBodyMetricTile,
   orderBodyMetricTiles,
+  stableEmptyLast,
   bodyMetricPeriodStats,
   collapseCoincidentPeriods,
   seriesCoverageNote,
@@ -46,47 +48,88 @@ describe("BODY_METRIC_META registry", () => {
     expect(BODY_METRIC_META.steps.windowed).toBe(false);
     expect(BODY_METRIC_META.hr.windowed).toBe(false);
   });
-});
 
-describe("last30DaySlice", () => {
-  const today = "2026-07-22";
-  it("keeps only the trailing 30 days (today − 29 … today, inclusive)", () => {
-    const points = [
-      { date: "2026-05-01", value: 1 }, // > 30d ago → dropped
-      { date: "2026-06-23", value: 2 }, // exactly 29 days before today → kept
-      { date: "2026-06-22", value: 9 }, // 30 days before → dropped
-      { date: "2026-07-22", value: 3 }, // today → kept
-    ];
-    const sliced = last30DaySlice(points, today);
-    expect(sliced.map((p) => p.value)).toEqual([2, 3]);
+  it("owns full chart names and concise/composite context names", () => {
+    expect(BODY_METRIC_META.steps.title).toBe("Daily Steps");
+    expect(BODY_METRIC_META.steps.label).toBe("Steps");
+    expect(BODY_METRIC_META["resting-hr"].title).toBe("Resting Heart Rate");
+    expect(BODY_METRIC_META["resting-hr"].label).toBe("RHR");
+    expect(BODY_METRIC_META["skin-temp"].title).toBe(
+      "Skin Temperature Variation"
+    );
+    expect(BODY_METRIC_META["skin-temp"].label).toBe("Skin Temp");
+    expect(BODY_METRIC_META.systolic.summaryTitle).toBe("Blood Pressure");
+    expect(BODY_METRIC_META.diastolic.summaryTitle).toBe("Blood Pressure");
+    expect(BODY_METRIC_META.hr.summaryTitle).toBe("Heart Rate");
+  });
+
+  it("capitalizes every word in user-facing labels", () => {
+    for (const meta of Object.values(BODY_METRIC_META)) {
+      for (const value of [meta.label, meta.title, meta.summaryTitle]) {
+        if (!value) continue;
+        for (const word of value.split(/\s+/)) {
+          const firstLetter = word.match(/[A-Za-z]/)?.[0];
+          if (firstLetter) {
+            expect(firstLetter, `${meta.slug}: ${value}`).toBe(
+              firstLetter.toUpperCase()
+            );
+          }
+        }
+      }
+    }
+  });
+
+  it("maps detail slugs to stable saved ids and back", () => {
+    expect(savedMetricIdForBodySlug("weight")).toBe("weight");
+    expect(savedMetricIdForBodySlug("body-fat")).toBe("bodyfat");
+    expect(savedMetricIdForBodySlug("resting-hr")).toBe("resting_hr");
+    expect(savedMetricIdForBodySlug("steps")).toBe("steps");
+
+    expect(bodyMetricSlugForSavedId("weight")).toBe("weight");
+    expect(bodyMetricSlugForSavedId("bodyfat")).toBe("body-fat");
+    expect(bodyMetricSlugForSavedId("resting_hr")).toBe("resting-hr");
+    expect(bodyMetricSlugForSavedId("steps")).toBe("steps");
+    expect(bodyMetricSlugForSavedId("not-a-metric")).toBeNull();
   });
 });
 
 describe("buildBodyMetricTile", () => {
-  const today = "2026-07-22";
-  it("shapes a tile from the full series' 30-day tail, presence over the full series", () => {
+  it("shapes a tile from the selected range, with presence over the full series", () => {
     const full = [
-      { date: "2026-01-01", value: 80 }, // old — outside the 30d tail
+      { date: "2026-01-01", value: 80 },
       { date: "2026-07-10", value: 78 },
       { date: "2026-07-20", value: 77 },
     ];
-    const tile = buildBodyMetricTile(
-      BODY_METRIC_META.weight,
-      full,
-      "kg",
-      today
-    );
+    const tile = buildBodyMetricTile(BODY_METRIC_META.weight, full, "kg", {
+      from: "2026-07-01",
+      to: "2026-07-31",
+    });
     expect(tile.slug).toBe("weight");
+    expect(tile.title).toBe("Weight");
     expect(tile.href).toBe("/trends/metric/weight");
     expect(tile.unit).toBe(" kg");
     expect(tile.present).toBe(true);
     expect(tile.latestDate).toBe("2026-07-20");
-    // Only the trailing-30d points make the sparkline.
+    // Only points inside the selected range make the sparkline.
     expect(tile.points.map((p) => p.value)).toEqual([78, 77]);
   });
 
-  it("is absent (present=false) for an empty series", () => {
-    const tile = buildBodyMetricTile(BODY_METRIC_META.steps, [], "kg", today);
+  it("keeps a known metric present when the selected range is empty", () => {
+    const tile = buildBodyMetricTile(
+      BODY_METRIC_META.steps,
+      [{ date: "2026-01-01", value: 1000 }],
+      "kg",
+      { from: "2026-07-01", to: "2026-07-31" }
+    );
+    expect(tile.title).toBe("Daily Steps");
+    expect(tile.label).toBe("Steps");
+    expect(tile.present).toBe(true);
+    expect(tile.latestDate).toBe("2026-01-01");
+    expect(tile.points).toEqual([]);
+  });
+
+  it("is absent (present=false) for an empty full series", () => {
+    const tile = buildBodyMetricTile(BODY_METRIC_META.steps, [], "kg", {});
     expect(tile.present).toBe(false);
     expect(tile.latestDate).toBeNull();
     expect(tile.points).toEqual([]);
@@ -121,6 +164,65 @@ describe("orderBodyMetricTiles", () => {
       ["weight"]
     );
     expect(ordered.map((t) => t.slug)).toEqual(["weight", "sun"]);
+  });
+
+  it("sinks selected-range empty tiles while preserving rank within each group", () => {
+    const ordered = orderBodyMetricTiles(
+      [
+        {
+          slug: "weight",
+          id: "weight",
+          label: "Weight",
+          present: true,
+          empty: true,
+        },
+        {
+          slug: "steps",
+          id: "steps",
+          label: "Steps",
+          present: true,
+          empty: false,
+        },
+        {
+          slug: "sleep",
+          id: "sleep",
+          label: "Sleep",
+          present: true,
+          empty: false,
+        },
+        {
+          slug: "bmi",
+          id: "bmi",
+          label: "BMI",
+          present: true,
+          empty: true,
+        },
+      ],
+      ["weight", "steps", "bmi", "sleep"]
+    );
+    expect(ordered.map((tile) => tile.slug)).toEqual([
+      "steps",
+      "sleep",
+      "weight",
+      "bmi",
+    ]);
+  });
+});
+
+describe("stableEmptyLast", () => {
+  it("is a stable partition", () => {
+    const items = [
+      { id: "empty-a", empty: true },
+      { id: "filled-a", empty: false },
+      { id: "empty-b", empty: true },
+      { id: "filled-b", empty: false },
+    ];
+    expect(stableEmptyLast(items, (item) => item.empty)).toEqual([
+      items[1],
+      items[3],
+      items[0],
+      items[2],
+    ]);
   });
 });
 

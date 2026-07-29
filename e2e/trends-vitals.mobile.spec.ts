@@ -8,7 +8,10 @@ import {
   E2E_MEMBER_PASSWORD,
   VITALS_DAY_BP_LATER,
   VITALS_DAY_BP_LATER_TIME,
+  VITALS_DAY_BODY_FAT,
   VITALS_DAY_RESTING_HR,
+  VITALS_DAY_STEPS,
+  VITALS_DAY_WEIGHT_KG,
 } from "./fixture-logins";
 
 // The Today strip, the 1D (intraday) window and the full-bleed mobile HR chart
@@ -126,12 +129,12 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
     test.slow(); // local `next dev` compiles the Trends route on first hit
     const member = await vitalsDayPage(browser);
     try {
-      // view=all pins the classic chart stack on the phone too (#1067 Phase 2 made
-      // tiles the mobile default), which is where the vitals charts live.
+      // `view=all` is intentionally ignored on phones: an ordinary range stays on
+      // tiles, while 1D replaces that grid with the dedicated intraday lens.
       await member.goto("/trends?tab=body&view=all");
       await expandTrendsContext(member);
       // The windowed daily view is what 1D replaces.
-      await expect(member.getByTestId("vitals-systolic")).toBeVisible();
+      await expect(member.getByTestId("body-tile-systolic")).toBeVisible();
 
       await followLink(
         member,
@@ -143,7 +146,7 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
       await expect(member.getByTestId("vitals-intraday-hr")).toBeVisible();
       await expect(member.getByTestId("vitals-intraday-bp")).toBeVisible();
       await expect(member.getByTestId("vitals-intraday-spo2")).toBeVisible();
-      await expect(member.getByTestId("vitals-systolic")).toHaveCount(0);
+      await expect(member.getByTestId("body-metric-tiles")).toHaveCount(0);
 
       // C — full-bleed: the plot box spans the whole viewport (not the gutter-inset
       // content column), and doing so widens nothing (no horizontal page scroll).
@@ -194,14 +197,52 @@ test.describe("the Today strip (A)", () => {
       // The LATER of the fixture's two timed BP pairs wins "latest today", with
       // its clock time — the whole point of the strip over a chart's last point.
       const bp = strip.getByTestId("vitals-today-bp");
+      await expect(bp.locator("dt")).toHaveText("Blood Pressure");
       await expect(bp).toContainText(VITALS_DAY_BP_LATER);
       await expect(bp).toContainText(VITALS_DAY_BP_LATER_TIME);
 
       // A day-granular aggregate has a value but no clock time, and is deliberately
       // in the strip rather than charted at 1D.
       const restingHr = strip.getByTestId("vitals-today-resting-hr");
+      await expect(restingHr.locator("dt")).toHaveText("Resting Heart Rate");
       await expect(restingHr).toContainText(VITALS_DAY_RESTING_HR);
       await expect(restingHr).toContainText("today");
+      const weight = strip.getByTestId("vitals-today-weight");
+      const bodyFat = strip.getByTestId("vitals-today-body-fat");
+      await expect(weight.locator("dt")).toHaveText("Weight");
+      await expect(bodyFat.locator("dt")).toHaveText("Body Fat");
+      await expect(weight).toContainText(
+        new RegExp(`${VITALS_DAY_WEIGHT_KG}\\s*kg`)
+      );
+      await expect(bodyFat).toContainText(
+        new RegExp(`${VITALS_DAY_BODY_FAT}\\s*%`)
+      );
+      const steps = strip.getByTestId("vitals-today-steps");
+      await expect(steps.locator("dt")).toHaveText("Daily Steps");
+      await expect(steps).toContainText(
+        new RegExp(`${VITALS_DAY_STEPS.toLocaleString("en-US")}\\s*steps`)
+      );
+      // Oxygen and respiratory rate have seeded readings and remain available in
+      // their charts, but the concise Body snapshot intentionally excludes them.
+      await expect(strip.getByTestId("vitals-today-spo2")).toHaveCount(0);
+      await expect(
+        strip.getByTestId("vitals-today-respiratory-rate")
+      ).toHaveCount(0);
+      await expect(strip.getByTestId("vitals-today-timeline-link")).toHaveText(
+        "View timeline"
+      );
+
+      // The day's answers read as one balanced row, not a loose horizontally
+      // scrolling string of values inside an oversized card.
+      const stripBox = await strip.boundingBox();
+      const weightBox = await weight.boundingBox();
+      const bodyFatBox = await bodyFat.boundingBox();
+      expect(stripBox).not.toBeNull();
+      expect(weightBox).not.toBeNull();
+      expect(bodyFatBox).not.toBeNull();
+      expect(Math.abs(weightBox!.y - bodyFatBox!.y)).toBeLessThan(4);
+      expect(weightBox!.width).toBeGreaterThan(stripBox!.width * 0.4);
+      expect(bodyFatBox!.width).toBeGreaterThan(stripBox!.width * 0.4);
 
       const day = await todayFromStrip(member);
       await followLink(

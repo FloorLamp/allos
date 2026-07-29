@@ -44,10 +44,11 @@ test.describe("Skin temperature variation trend", () => {
       // #1486 made tiles and charts two renderings of ONE metric set, and tiles are
       // the DEFAULT on mobile — so a metric registered only as a chart would be
       // invisible on a phone. Assert the tile too, or the responsive pair can drift.
+      await member.setViewportSize({ width: 390, height: 844 });
       await member.goto("/trends?tab=body&view=tiles");
-      await expect(
-        member.getByTestId("body-metric-tiles").getByText("Skin temp")
-      ).toBeVisible();
+      const tile = member.getByTestId("body-tile-skin-temp");
+      await expect(tile).toBeVisible();
+      await expect(tile.getByText("Skin Temp", { exact: true })).toBeVisible();
     } finally {
       await member.context().close();
     }

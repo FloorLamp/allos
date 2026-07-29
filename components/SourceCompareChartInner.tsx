@@ -49,10 +49,12 @@ export default function SourceCompareChartInner({
   series,
   unit = "",
   heightClass = "h-64",
+  showLegend = true,
 }: {
   series: CompareSeries[];
   unit?: string;
   heightClass?: string;
+  showLegend?: boolean;
 }) {
   const formatPrefs = useFormatPrefs();
   const c = useChartColors();
@@ -93,9 +95,11 @@ export default function SourceCompareChartInner({
   }
   return (
     <div className={`${heightClass} flex w-full flex-col`}>
-      <ChartLegend
-        items={series.map((s) => ({ label: s.label, color: s.color }))}
-      />
+      {showLegend && (
+        <ChartLegend
+          items={series.map((s) => ({ label: s.label, color: s.color }))}
+        />
+      )}
       <ResponsiveContainer
         width="100%"
         height="100%"

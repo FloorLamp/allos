@@ -47,10 +47,10 @@ export async function addMeasurements(formData: FormData) {
 
   let wrote = false;
 
-  // 1. Body composition (body_metrics). The core requires a weight — that is the
-  //    row's anchor — so a body-fat/resting-HR-only submission is not persisted
-  //    here; the client form surfaces that as an inline error before submitting.
-  if (filled("weight")) {
+  // 1. Body composition (body_metrics). Each nullable measurement can be recorded
+  //    independently; this matters on a metric detail page whose form contains
+  //    exactly one field rather than the whole body-composition trio.
+  if (filled("weight") || filled("body_fat_pct") || filled("resting_hr")) {
     wrote =
       insertBodyMetric(profile.id, {
         date,

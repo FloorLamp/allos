@@ -12,6 +12,7 @@
 // read/write.
 
 import { assignHashedColors } from "./trend-colors";
+import { BODY_METRIC_META } from "./trends-body-metrics";
 
 export const METRIC_SOURCE_PRIORITY_KEY = "metric_source_priority";
 
@@ -145,37 +146,61 @@ export interface ComparableMetric {
 }
 
 export const COMPARABLE_METRICS: readonly ComparableMetric[] = [
-  { key: "weight", kind: "body", title: "Weight", unit: " kg", decimals: 1 },
-  { key: "body_fat", kind: "body", title: "Body fat", unit: "%", decimals: 1 },
+  {
+    key: "weight",
+    kind: "body",
+    title: BODY_METRIC_META.weight.title,
+    unit: " kg",
+    decimals: BODY_METRIC_META.weight.decimals,
+  },
+  {
+    key: "body_fat",
+    kind: "body",
+    title: BODY_METRIC_META["body-fat"].title,
+    unit: BODY_METRIC_META["body-fat"].unit,
+    decimals: BODY_METRIC_META["body-fat"].decimals,
+  },
   {
     key: "resting_hr",
     kind: "body",
-    title: "Resting heart rate",
-    unit: " bpm",
-    decimals: 0,
+    title: BODY_METRIC_META["resting-hr"].title,
+    unit: BODY_METRIC_META["resting-hr"].unit,
+    decimals: BODY_METRIC_META["resting-hr"].decimals,
   },
-  { key: "steps", kind: "sample", title: "Steps", unit: "", decimals: 0 },
+  {
+    key: "steps",
+    kind: "sample",
+    title: BODY_METRIC_META.steps.title,
+    unit: BODY_METRIC_META.steps.unit,
+    decimals: BODY_METRIC_META.steps.decimals,
+  },
   {
     key: "sleep_min",
     kind: "sample",
-    title: "Sleep per night",
+    title: "Sleep Per Night",
     unit: " h",
     decimals: 1,
   },
   {
     key: "active_kcal",
     kind: "sample",
-    title: "Active calories",
-    unit: " kcal",
-    decimals: 0,
+    title: BODY_METRIC_META["active-calories"].title,
+    unit: BODY_METRIC_META["active-calories"].unit,
+    decimals: BODY_METRIC_META["active-calories"].decimals,
   },
-  { key: "hrv_ms", kind: "sample", title: "HRV", unit: " ms", decimals: 0 },
+  {
+    key: "hrv_ms",
+    kind: "sample",
+    title: BODY_METRIC_META.hrv.title,
+    unit: BODY_METRIC_META.hrv.unit,
+    decimals: BODY_METRIC_META.hrv.decimals,
+  },
   {
     key: "heart_rate",
     kind: "hr-minutes",
-    title: "Heart rate (daily avg)",
-    unit: " bpm",
-    decimals: 0,
+    title: BODY_METRIC_META.hr.title,
+    unit: BODY_METRIC_META.hr.unit,
+    decimals: BODY_METRIC_META.hr.decimals,
   },
 ] as const;
 

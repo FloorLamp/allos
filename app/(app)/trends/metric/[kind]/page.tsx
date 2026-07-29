@@ -3,35 +3,32 @@ import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
+  getDisplayFormatPrefs,
   getUnitPrefs,
   getUserAge,
   getUserBirthdate,
   type WeightUnit,
 } from "@/lib/settings";
-import { round as roundTo } from "@/lib/units";
-import { ageInMonthsFromBirthdate, lastNDates } from "@/lib/date";
+import {
+  formatLongDate,
+  formatMonthDay,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
+import { groupChartValue } from "@/lib/chart-format";
+import { ageInMonthsFromBirthdate } from "@/lib/date";
 import {
   showHeadCircEntry,
   showBodyFat,
   showGrowthQuickAdd,
 } from "@/lib/growth-metrics";
-import {
-  getBiomarkerSeries,
-  getBodyMetricDailySeries,
-  getDaylightOutdoorMinutesSeries,
-  getMetricDailyTotals,
-  getHrDailySummary,
-  getMoodLogs,
-  getGoals,
-} from "@/lib/queries";
-import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
-import { bmiSeriesDatePaired } from "@/lib/growth-series";
+import { getGoals } from "@/lib/queries";
 import { dispWeight, round } from "@/lib/units";
-import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
+import { filterSeriesByRange } from "@/lib/trends";
 import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
 } from "@/lib/trends-series";
+import { fullBodyMetricSeries } from "@/lib/body-metric-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { isGoalLive } from "@/lib/goals";
 import {
@@ -51,10 +48,13 @@ import {
   resolveBodyMetricUnit,
   bodyChartScale,
   bodyMetricPeriodStats,
+  savedMetricIdForBodySlug,
   seriesCoverageNote,
   type BodyMetricSlug,
   type PeriodStat,
 } from "@/lib/trends-body-metrics";
+import { metricSeriesKey } from "@/lib/saved-items";
+import { isItemSaved } from "@/lib/queries/saved";
 import type { AppRoute } from "@/lib/hrefs";
 import {
   METRIC_READING_STORE,
@@ -63,22 +63,55 @@ import {
 } from "@/lib/metric-readings";
 import type { BodyMetricKind, Goal } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
+import StarButton from "@/components/StarButton";
 import PageContainer from "@/components/PageContainer";
 import DateRangeControl from "@/components/DateRangeControl";
+import {
+  TrendAnnotationControls,
+  TrendAnnotationProvider,
+} from "@/components/TrendAnnotationToggles";
 import BodyTrendCharts, {
   type BodyChartSpec,
 } from "@/components/BodyTrendCharts";
 import MetricReadingsTable, {
   type MetricReadingRow,
 } from "@/components/MetricReadingsTable";
-import MeasurementsQuickAdd from "../../MeasurementsQuickAdd";
+import SourceComparison from "../../SourceComparison";
+import MetricMeasurementPanel from "./MetricMeasurementPanel";
+import {
+  isMeasurementEntryAllowed,
+  type MeasurementEntryMetric,
+} from "@/lib/measurement-entry";
 
 export const dynamic = "force-dynamic";
 
-// The widest span the sun/outdoor series is gathered over — its query answers a list
-// of DATES (there is no row store to read back), so the page picks the horizon and
-// the range control windows within it. A year matches the Body tab's own cap.
-const SUN_SERIES_DAYS = 366;
+// The detailed-page home for the source controls that used to live below the
+// entire desktop Body chart stack. Only metrics backed by the source-priority
+// system map here; single-source metrics render no comparison at all.
+const SOURCE_COMPARISON_KEY: Partial<Record<BodyMetricSlug, string>> = {
+  weight: "weight",
+  "body-fat": "body_fat",
+  "resting-hr": "resting_hr",
+  steps: "steps",
+  "active-calories": "active_kcal",
+  hrv: "hrv_ms",
+  hr: "heart_rate",
+};
+
+const MEASUREMENT_ENTRY_METRIC: Partial<
+  Record<BodyMetricSlug, MeasurementEntryMetric>
+> = {
+  systolic: "blood-pressure",
+  diastolic: "blood-pressure",
+  spo2: "spo2",
+  hrv: "hrv",
+  temperature: "temperature",
+  weight: "weight",
+  "body-fat": "body-fat",
+  "resting-hr": "resting-hr",
+  height: "height",
+  "head-circ": "head-circ",
+};
 
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a
 // Trends → Body sparkline tile, mirroring the biomarker series view (/biomarkers/view)
@@ -90,146 +123,6 @@ const SUN_SERIES_DAYS = 366;
 // (the biomarker-view precedent — a separate surface re-deriving via the shared query
 // layer), then windowed here; the metadata (label/unit/color/goal/quick-add) comes
 // from the ONE registry (BODY_METRIC_META) so this page and the tile can't disagree.
-
-// One canonical-name vitals series ({date,value}), rounded to the metric's decimals
-// — the shape the chart + tile take. Shared by the five vitals slugs (#1486).
-function biomarkerPoints(
-  canonical: string,
-  profileId: number,
-  decimals: number
-): { date: string; value: number }[] {
-  return getBiomarkerSeries(profileId, canonical)
-    .filter((r) => r.value_num != null)
-    .map((r) => ({
-      date: r.date,
-      value: roundTo(r.value_num as number, decimals),
-    }));
-}
-
-// The metric's FULL display-unit series (oldest→newest), read unbounded so an older
-// window isn't silently truncated (#399). Weight follows the login's weight unit.
-function fullSeriesFor(
-  slug: BodyMetricSlug,
-  profileId: number,
-  weightUnit: WeightUnit,
-  todayStr: string
-): { date: string; value: number }[] {
-  switch (slug) {
-    // ── vitals (#1486) ────────────────────────────────────────────────────────
-    // Read through the SAME canonical-name series query the merged Body tab's
-    // vitals section draws, so a tile, its detail page, and the tab's full chart
-    // are three formatters over one read.
-    case "systolic":
-      return biomarkerPoints("Blood Pressure Systolic", profileId, 0);
-    case "diastolic":
-      return biomarkerPoints("Blood Pressure Diastolic", profileId, 0);
-    case "spo2":
-      return biomarkerPoints("Oxygen Saturation", profileId, 0);
-    case "respiratory-rate":
-      return biomarkerPoints("Respiratory Rate", profileId, 0);
-    case "temperature":
-      return biomarkerPoints("Body Temperature", profileId, 1);
-    case "hrv":
-      return getMetricDailyTotals(profileId, HRV_METRIC, ALL_ROWS).map((r) => ({
-        date: r.date,
-        value: Math.round(r.value),
-      }));
-    // Keeps 1 decimal, unlike its whole-unit neighbours: the readable range of a
-    // signed baseline deviation is roughly ±2 °C, so whole units would flatten the
-    // series to a constant 0. getMetricDailyTotals AVERAGES it per day, never sums.
-    case "skin-temp":
-      return getMetricDailyTotals(
-        profileId,
-        SKIN_TEMP_DELTA_METRIC,
-        ALL_ROWS
-      ).map((r) => ({
-        date: r.date,
-        value: roundTo(r.value, BODY_METRIC_META["skin-temp"].decimals),
-      }));
-    case "weight":
-      return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(
-        (p) => ({ date: p.date, value: dispWeight(p.value, weightUnit) })
-      );
-    case "body-fat":
-      return getBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).map(
-        (p) => ({ date: p.date, value: round(p.value, 1) })
-      );
-    case "resting-hr":
-      return getBodyMetricDailySeries(profileId, "resting_hr", ALL_ROWS).map(
-        (p) => ({ date: p.date, value: Math.round(p.value) })
-      );
-    case "height":
-      return getMetricDailyTotals(profileId, "height_cm", ALL_ROWS).map(
-        (r) => ({ date: r.date, value: round(r.value, 1) })
-      );
-    case "head-circ":
-      return getMetricDailyTotals(
-        profileId,
-        "head_circumference_cm",
-        ALL_ROWS
-      ).map((r) => ({ date: r.date, value: round(r.value, 1) }));
-    case "sun":
-      // Sun/outdoor minutes is the one DATE-DRIVEN series here: the query answers a
-      // list of days rather than reading rows back, so the page asks for the widest
-      // span it charts (a year) and the range control windows it like every other
-      // metric. Same getDaylightOutdoorMinutes computation the Body tab's card and
-      // the DaylightChip read — a formatter, not a second engine (#221).
-      return getDaylightOutdoorMinutesSeries(
-        profileId,
-        lastNDates(todayStr, SUN_SERIES_DAYS)
-      );
-    case "steps":
-      return getMetricDailyTotals(profileId, "steps", ALL_ROWS).map((r) => ({
-        date: r.date,
-        value: Math.round(r.value),
-      }));
-    case "hr":
-      // getHrDailySummary caps at limitDays; a wide cap covers the full history.
-      return getHrDailySummary(profileId, 3650).map((r) => ({
-        date: r.date,
-        value: Math.round(r.avg),
-      }));
-    case "bmi":
-      // BMI pairs each weigh-in with the height in effect on/before that date — the
-      // SAME date-paired derivation the growth card + Body tab use (#407).
-      return bmiSeriesDatePaired(
-        getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map((w) => ({
-          date: w.date,
-          value: w.value,
-        })),
-        getMetricDailyTotals(profileId, "height_cm", ALL_ROWS).map((r) => ({
-          date: r.date,
-          value: r.value,
-        }))
-      ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
-    case "lean-mass":
-      return getMetricDailyTotals(profileId, "lean_mass_kg", ALL_ROWS).map(
-        (r) => ({ date: r.date, value: round(r.value, 1) })
-      );
-    case "bone-mass":
-      return getMetricDailyTotals(profileId, "bone_mass_kg", ALL_ROWS).map(
-        (r) => ({ date: r.date, value: round(r.value, 2) })
-      );
-    case "bmr":
-      return getMetricDailyTotals(profileId, "bmr_kcal", ALL_ROWS).map((r) => ({
-        date: r.date,
-        value: Math.round(r.value),
-      }));
-    case "hydration":
-      return getMetricDailyTotals(profileId, "hydration_l", ALL_ROWS).map(
-        (r) => ({ date: r.date, value: round(r.value, 2) })
-      );
-    case "calories":
-      return getMetricDailyTotals(profileId, "nutrition_kcal", ALL_ROWS).map(
-        (r) => ({ date: r.date, value: Math.round(r.value) })
-      );
-    case "mood":
-      return getMoodLogs(profileId).map((m) => ({
-        date: m.date,
-        value: m.valence,
-      }));
-  }
-}
 
 // Why a DERIVED metric shows no readings table: there is no row to edit. Said out
 // loud on the page, because an empty table would read as "your data is missing"
@@ -338,8 +231,19 @@ export default async function BodyMetricDetailPage(props: {
   const { login, profile } = await requireSession();
   const meta = BODY_METRIC_META[kind];
   const weightUnit = getUnitPrefs(login.id).weightUnit;
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const unit = resolveBodyMetricUnit(meta, weightUnit);
   const todayStr = today(profile.id);
+  const savedMetricId = savedMetricIdForBodySlug(kind);
+  const starred = isItemSaved(profile.id, "trend-metric", savedMetricId);
+  const starAction = (
+    <StarButton
+      itemKey={metricSeriesKey(savedMetricId)}
+      saved={starred}
+      label={meta.title}
+      iconOnlyBelowSm
+    />
+  );
 
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
@@ -354,10 +258,35 @@ export default async function BodyMetricDetailPage(props: {
       : searchParams.range
   );
 
-  const fullSeries = fullSeriesFor(kind, profile.id, weightUnit, todayStr);
+  const fullSeries = fullBodyMetricSeries(
+    kind,
+    profile.id,
+    weightUnit,
+    todayStr
+  );
   const windowed = filterSeriesByRange(fullSeries, range);
   const stats = bodyMetricPeriodStats(fullSeries, todayStr, meta.decimals);
   const readings = readingRowsFor(kind, profile.id, meta.decimals, weightUnit);
+  const sourceComparisonKey = SOURCE_COMPARISON_KEY[kind];
+  const birthdate = getUserBirthdate(profile.id);
+  const ageMonths = birthdate
+    ? ageInMonthsFromBirthdate(birthdate, todayStr)
+    : null;
+  const age = getUserAge(profile.id);
+  const entryGates = {
+    showBodyFat: showBodyFat(age),
+    showGrowth: showGrowthQuickAdd(age),
+    showHeadCirc: showHeadCircEntry(ageMonths),
+  };
+  const measurementEntryMetric = MEASUREMENT_ENTRY_METRIC[kind];
+  const measurementEntry =
+    measurementEntryMetric &&
+    isMeasurementEntryAllowed(measurementEntryMetric, entryGates)
+      ? {
+          metric: measurementEntryMetric,
+          label: meta.summaryTitle ?? meta.title,
+        }
+      : undefined;
 
   // Goal overlay + event annotations, both windowed to the shared range — the same
   // machinery the Body tab draws (buildTrendAnnotations / buildProtocolTrendWindows).
@@ -381,7 +310,6 @@ export default async function BodyMetricDetailPage(props: {
     // The page's <h1> already says it — a card heading here is pure echo (#1541).
     hideTitle: true,
     data: windowed,
-    label: meta.label,
     unit,
     color: meta.color,
     referenceValue: overlay.referenceValue,
@@ -394,6 +322,12 @@ export default async function BodyMetricDetailPage(props: {
 
   const latest =
     fullSeries.length > 0 ? fullSeries[fullSeries.length - 1] : null;
+  const latestDisplay =
+    latest == null
+      ? null
+      : meta.countMetric
+        ? groupChartValue(latest.value, meta.decimals)
+        : String(round(latest.value, meta.decimals));
 
   const base = `/trends/metric/${kind}`;
   const rangeHref = (r: DateRange): AppRoute => {
@@ -407,96 +341,143 @@ export default async function BodyMetricDetailPage(props: {
     return (qs ? `${base}?${qs}` : base) as AppRoute;
   };
 
-  // The metric's single quick-add (only for a manually-enterable metric).
-  const birthdate = getUserBirthdate(profile.id);
-  const ageMonths = birthdate
-    ? ageInMonthsFromBirthdate(birthdate, todayStr)
-    : null;
-  const age = getUserAge(profile.id);
-  const quickAdd =
-    meta.quickAdd === "measurements" ? (
-      // The ONE combined form (#1486) — the same component the Body tab's desktop
-      // expander and the quick-entry overlay mount. Its life-stage gates come from
-      // the same lib/growth-metrics predicates everywhere.
-      <MeasurementsQuickAdd
-        weightUnit={weightUnit}
-        defaultDate={todayStr}
-        temperatureUnit={getUnitPrefs(login.id).temperatureUnit}
-        showBodyFat={showBodyFat(age)}
-        showGrowth={showGrowthQuickAdd(age)}
-        showHeadCirc={showHeadCircEntry(ageMonths)}
-      />
-    ) : null;
+  const latestSummary =
+    latest != null && latestDisplay != null ? (
+      <div>
+        <div
+          className="text-3xl font-bold leading-none tabular-nums text-slate-900 md:text-4xl dark:text-slate-100"
+          data-testid="metric-latest-value"
+        >
+          {latestDisplay}
+          {unit}
+        </div>
+        <div className="mt-1 text-xs font-normal text-slate-500 dark:text-slate-400">
+          Latest ·{" "}
+          <span className="sm:hidden">
+            {formatMonthDay(latest.date, formatPrefs)}
+          </span>
+          <span className="hidden sm:inline">
+            {formatLongDate(latest.date, formatPrefs)}
+          </span>
+        </div>
+      </div>
+    ) : (
+      "No readings yet"
+    );
 
   return (
-    <PageContainer width="reading" className="space-y-6">
-      <BackLink />
-      <PageHeader
-        title={meta.title}
-        subtitle={
-          latest != null
-            ? `Latest ${round(latest.value, meta.decimals)}${unit} · as of ${latest.date}`
-            : "No readings yet"
-        }
-      />
-
-      {/* Shared range control (7D/30D/90D/All-time). */}
-      <DateRangeControl
-        basePath={base}
-        range={range}
-        todayStr={todayStr}
-        buildHref={rangeHref}
-        idPrefix="metric"
-        // Summary chip only for a CUSTOM window — with a preset pill lit it just
-        // repeats that pill's label (#1455 D).
-        rightSlot={
-          isCustomRange(range, todayStr) ? (
-            <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
-              {rangeSummaryLabel(range, todayStr)}
-            </span>
-          ) : undefined
-        }
-      />
-
-      {/* Trailing-window period stats (7 / 30 / 90 days) — always relative to today,
-          independent of the range control above. Windows that cover the SAME
-          readings collapse into one card (#1541), which is the common case on any
-          series younger than a week. */}
-      <PeriodStatsCard stats={stats} unit={unit} />
-
-      {/* The big chart — reuses the Body tab's chart card (annotation toggle + goal
-          target line + projection note). */}
-      <div data-testid="metric-detail-chart">
-        {windowed.length === 0 ? (
-          <div className="card">
-            <EmptyState message="No readings in this range." />
-          </div>
+    <TrendAnnotationProvider>
+      <PageContainer
+        width="full"
+        className="mx-auto max-w-6xl space-y-4 md:space-y-6"
+        data-testid="metric-detail-page"
+      >
+        {meta.quickAdd === "measurements" && measurementEntry ? (
+          <MetricMeasurementPanel
+            metric={measurementEntry.metric}
+            label={measurementEntry.label}
+            title={meta.title}
+            subtitle={latestSummary}
+            leading={<BackLink />}
+            headerAction={starAction}
+            weightUnit={weightUnit}
+            defaultDate={todayStr}
+            temperatureUnit={getUnitPrefs(login.id).temperatureUnit}
+            showBodyFat={entryGates.showBodyFat}
+            showGrowth={entryGates.showGrowth}
+            showHeadCirc={entryGates.showHeadCirc}
+          />
         ) : (
-          <BodyTrendCharts
-            charts={[chartSpec]}
-            annotations={annotations}
-            windows={protocolWindows}
+          <div className="flex min-w-0 items-start gap-2 sm:block">
+            <BackLink />
+            <PageHeader
+              className="!mb-0 min-w-0 flex-1 sm:mt-3"
+              title={meta.title}
+              subtitle={latestSummary}
+              action={starAction}
+              actionAlign="start"
+            />
+          </div>
+        )}
+
+        {/* The SAME shared range + event-control composition as the Trends hub.
+            BodyTrendCharts registers the annotation kinds it actually draws; the
+            provider hoists their controls into DateRangeControl's companion slot
+            instead of rendering a second row above the chart. */}
+        <DateRangeControl
+          basePath={base}
+          range={range}
+          todayStr={todayStr}
+          buildHref={rangeHref}
+          idPrefix="metric"
+          // Summary chip only for a CUSTOM window — with a preset pill lit it just
+          // repeats that pill's label (#1455 D).
+          rightSlot={
+            isCustomRange(range, todayStr) ? (
+              <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+                {rangeSummaryLabel(range, todayStr)}
+              </span>
+            ) : undefined
+          }
+          companionSlot={<TrendAnnotationControls />}
+        />
+
+        <div className="grid items-start gap-4 md:gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)]">
+          {/* The chart owns the primary desktop column. BodyTrendCharts normally
+            lays overview cards out two-up; this detail page explicitly keeps its
+            one chart full-width so there is never an empty sibling column. */}
+          <div data-testid="metric-detail-chart">
+            {windowed.length === 0 ? (
+              <div className="card">
+                <EmptyState message="No readings in this range." />
+              </div>
+            ) : (
+              <BodyTrendCharts
+                charts={[chartSpec]}
+                annotations={annotations}
+                windows={protocolWindows}
+                singleColumn
+              />
+            )}
+          </div>
+
+          {/* Secondary context follows the chart on a phone and becomes its compact
+            companion at wide desktop sizes. These windows remain relative to
+            today and independent of the selected chart range. */}
+          <PeriodStatsCard
+            stats={stats}
+            unit={unit}
+            decimals={meta.decimals}
+            formatPrefs={formatPrefs}
+            desktopSidebar
+          />
+        </div>
+
+        {sourceComparisonKey && (
+          <SourceComparison
+            profileId={profile.id}
+            weightUnit={weightUnit}
+            metricKey={sourceComparisonKey}
+            range={range}
           />
         )}
-      </div>
 
-      {quickAdd}
-
-      {/* The readings themselves, one tap from the chart they shape (#1488 /
+        {/* The readings themselves, one tap from the chart they shape (#1488 /
           #1397): each row's ⋯ menu edits or deletes it, and the chart above
           redraws. */}
-      <MetricReadingsTable
-        kind={kind}
-        rows={readings}
-        unit={unit}
-        readOnlyReason={
-          METRIC_READING_STORE[kind]
-            ? null
-            : (DERIVED_READING_REASON[kind] ?? null)
-        }
-        truncated={readings.length >= METRIC_READINGS_LIMIT}
-      />
-    </PageContainer>
+        <MetricReadingsTable
+          kind={kind}
+          rows={readings}
+          unit={unit}
+          readOnlyReason={
+            METRIC_READING_STORE[kind]
+              ? null
+              : (DERIVED_READING_REASON[kind] ?? null)
+          }
+          truncated={readings.length >= METRIC_READINGS_LIMIT}
+        />
+      </PageContainer>
+    </TrendAnnotationProvider>
   );
 }
 
@@ -504,9 +485,11 @@ function BackLink() {
   return (
     <Link
       href="/trends?tab=body"
-      className="inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
+      aria-label="Back to Body"
+      className="mt-0.5 inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-1 text-sm text-brand-700 hover:bg-brand-50 hover:no-underline sm:px-2 dark:text-brand-400 dark:hover:bg-brand-950/40"
     >
-      <IconArrowLeft className="h-4 w-4" /> Back to Body
+      <IconArrowLeft className="h-4 w-4" aria-hidden />
+      <span className="hidden sm:inline">Back to Body</span>
     </Link>
   );
 }
@@ -525,81 +508,130 @@ const PERIOD_COLS: Record<number, string> = {
 function PeriodStatsCard({
   stats,
   unit,
+  decimals,
+  formatPrefs,
+  desktopSidebar = false,
 }: {
   stats: PeriodStat[];
   unit: string;
+  decimals: number;
+  formatPrefs: DisplayFormatPrefs;
+  desktopSidebar?: boolean;
 }) {
-  const fmt = (v: number | null) => (v == null ? "—" : `${v}${unit}`);
-  // MM-DD, the same form the chart's x-axis tick and coverage caption use.
-  const md = (d: string) => d.slice(5);
+  const value = (v: number | null) =>
+    v == null ? "—" : groupChartValue(v, decimals);
+  const withUnit = (v: number | null) =>
+    v == null ? "—" : `${value(v)}${unit}`;
+  const windowLabel = (s: PeriodStat) =>
+    s.windows.length === 1
+      ? `${s.days} days`
+      : `${s.windows[0]}–${s.days} days`;
+  const coverage = (s: PeriodStat) =>
+    s.from && s.to
+      ? `${formatMonthDay(s.from, formatPrefs)}${
+          s.from === s.to ? "" : `–${formatMonthDay(s.to, formatPrefs)}`
+        }`
+      : null;
+
   return (
-    <div className="card" data-testid="metric-period-stats">
-      <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-        Period stats
-      </h2>
+    <section
+      className="card overflow-hidden !p-0"
+      data-testid="metric-period-stats"
+      aria-labelledby="metric-period-stats-heading"
+    >
+      <div className="border-b border-black/10 bg-slate-50/55 px-4 py-3.5 sm:px-5 dark:border-white/10 dark:bg-ink-900/35">
+        <h2
+          id="metric-period-stats-heading"
+          className="font-semibold text-slate-800 dark:text-slate-100"
+        >
+          Rolling summary
+        </h2>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          Rolling 7, 30, and 90-day windows. Change compares the first and
+          latest reading.
+        </p>
+      </div>
       <div
-        className={`grid grid-cols-1 gap-3 ${PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"}`}
+        className={`grid grid-cols-1 divide-y divide-black/10 dark:divide-white/10 ${
+          desktopSidebar
+            ? `sm:divide-x sm:divide-y-0 xl:grid-cols-1 xl:divide-x-0 xl:divide-y ${
+                PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"
+              }`
+            : `sm:divide-x sm:divide-y-0 ${
+                PERIOD_COLS[stats.length] ?? "sm:grid-cols-3"
+              }`
+        }`}
       >
         {stats.map((s) => (
-          <div
+          <article
             key={s.label}
             data-testid={`period-stat-${s.days}`}
-            className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+            className="min-w-0 px-4 py-4 sm:px-5"
           >
-            <div className="section-label">{s.label}</div>
-            {/* The reading COUNT, always — it was already computed and used only to
-                pick the No-data branch. Shown, it is what makes a trio of windows
-                explicable when they legitimately differ, and what explains a
-                collapsed card when they don't. */}
-            <div
-              data-testid={`period-readings-${s.days}`}
-              className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
-            >
-              {s.count === 0
-                ? "No readings"
-                : `${s.count} reading${s.count === 1 ? "" : "s"}${
-                    s.from && s.to
-                      ? ` · ${md(s.from)}${s.from === s.to ? "" : ` – ${md(s.to)}`}`
-                      : ""
-                  }`}
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <span className="inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/70 dark:text-brand-300">
+                {windowLabel(s)}
+              </span>
+              <span
+                data-testid={`period-readings-${s.days}`}
+                className="min-w-0 text-right text-xs leading-5 text-slate-500 dark:text-slate-400"
+              >
+                {s.count === 0
+                  ? "No readings"
+                  : `${s.count} reading${s.count === 1 ? "" : "s"}${
+                      coverage(s) ? ` · ${coverage(s)}` : ""
+                    }`}
+              </span>
             </div>
-            {s.count === 0 ? null : (
-              <dl className="mt-1.5 space-y-0.5 text-xs text-slate-600 dark:text-slate-300">
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500 dark:text-slate-400">Latest</dt>
-                  <dd className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                    {fmt(s.latest)}
-                  </dd>
+
+            {s.count === 0 ? (
+              <p className="mt-5 text-sm text-slate-500 dark:text-slate-400">
+                Add a reading to see an average, range, and change.
+              </p>
+            ) : (
+              <div
+                className={
+                  desktopSidebar
+                    ? "xl:mt-4 xl:flex xl:items-end xl:gap-4"
+                    : undefined
+                }
+              >
+                <div className="mt-4 xl:mt-0 xl:shrink-0">
+                  <div
+                    data-testid={`period-average-${s.days}`}
+                    className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-slate-900 xl:text-2xl dark:text-slate-100"
+                  >
+                    {withUnit(s.avg)}
+                  </div>
+                  <div className="mt-1 section-label">Average</div>
                 </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500 dark:text-slate-400">Avg</dt>
-                  <dd className="tabular-nums">{fmt(s.avg)}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500 dark:text-slate-400">Range</dt>
-                  <dd className="tabular-nums">
-                    {s.min}–{s.max}
-                  </dd>
-                </div>
-                {/* Not "Change" (#1541 fix 6): the figure is last-minus-FIRST-in-
-                    window, so it describes where the window edge landed. Naming the
-                    date it subtracts from makes the subtraction explicit — and stays
-                    true, which "vs 7d ago" would not be whenever the window's first
-                    reading isn't sitting on its edge (a weekly weigh-in, always). */}
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500 dark:text-slate-400">
-                    {s.from ? `vs ${md(s.from)}` : "Change"}
-                  </dt>
-                  <dd className="tabular-nums">
-                    {s.delta != null && s.delta > 0 ? "+" : ""}
-                    {fmt(s.delta)}
-                  </dd>
-                </div>
-              </dl>
+
+                <dl className="mt-4 grid min-w-0 flex-1 grid-cols-3 divide-x divide-black/10 rounded-lg bg-slate-50/80 py-2.5 xl:mt-0 dark:divide-white/10 dark:bg-ink-900/55">
+                  <div className="min-w-0 px-2.5">
+                    <dt className="section-label">Latest</dt>
+                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                      {value(s.latest)}
+                    </dd>
+                  </div>
+                  <div className="min-w-0 px-2.5">
+                    <dt className="section-label">Range</dt>
+                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                      {value(s.min)}–{value(s.max)}
+                    </dd>
+                  </div>
+                  <div className="min-w-0 px-2.5">
+                    <dt className="section-label">Change</dt>
+                    <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                      {s.delta != null && s.delta > 0 ? "+" : ""}
+                      {value(s.delta)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
             )}
-          </div>
+          </article>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

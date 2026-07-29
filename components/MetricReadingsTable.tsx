@@ -69,53 +69,77 @@ export default function MetricReadingsTable({
 }) {
   if (readOnlyReason) {
     return (
-      <div className="card" data-testid="metric-readings">
-        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-          Readings
-        </h2>
-        <EmptyState message={readOnlyReason} />
+      <div className="card overflow-hidden !p-0" data-testid="metric-readings">
+        <ReadingsHeader />
+        <div
+          className="px-2 pb-2 sm:px-5 sm:pb-5"
+          data-testid="metric-readings-body"
+        >
+          <EmptyState message={readOnlyReason} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="card" data-testid="metric-readings">
-      <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+    <div className="card overflow-hidden !p-0" data-testid="metric-readings">
+      <ReadingsHeader />
+      <div
+        className="px-2 pb-2 sm:px-5 sm:pb-5"
+        data-testid="metric-readings-body"
+      >
+        {rows.length === 0 ? (
+          <EmptyState message="No readings recorded yet." />
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <ResponsiveTable
+                className="metric-readings-list w-full"
+                data-testid="metric-readings-table"
+              >
+                <thead>
+                  <tr className="border-b border-black/5 dark:border-white/10">
+                    <th className="th">Date</th>
+                    <th className="th">Value</th>
+                    <th className="th">Source</th>
+                    <th className="th">Notes</th>
+                    <th className="th" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <ReadingRow
+                      key={row.id}
+                      kind={kind}
+                      row={row}
+                      unit={unit}
+                    />
+                  ))}
+                </tbody>
+              </ResponsiveTable>
+            </div>
+            {truncated && (
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Showing the most recent readings. The full set (and bulk delete)
+                lives on Data → Manage.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReadingsHeader() {
+  return (
+    <div
+      className="px-4 pt-2.5 pb-1 sm:px-5 sm:pt-4 sm:pb-3"
+      data-testid="metric-readings-header"
+    >
+      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Readings
       </h2>
-      {rows.length === 0 ? (
-        <EmptyState message="No readings recorded yet." />
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <ResponsiveTable
-              className="w-full"
-              data-testid="metric-readings-table"
-            >
-              <thead>
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th">Date</th>
-                  <th className="th">Value</th>
-                  <th className="th">Source</th>
-                  <th className="th">Notes</th>
-                  <th className="th" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <ReadingRow key={row.id} kind={kind} row={row} unit={unit} />
-                ))}
-              </tbody>
-            </ResponsiveTable>
-          </div>
-          {truncated && (
-            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-              Showing the most recent readings. The full set (and bulk delete)
-              lives on Data → Manage.
-            </p>
-          )}
-        </>
-      )}
     </div>
   );
 }
@@ -165,24 +189,54 @@ function ReadingRow({
       <Td slot="title" className="whitespace-nowrap">
         {row.date}
       </Td>
-      <Td slot="value" label="Value">
+      <Td slot="value">
         {editing ? (
-          <span className="flex items-center gap-1">
-            <input
-              className="input w-24 py-1 text-sm"
-              type="number"
-              step="any"
-              inputMode="decimal"
-              aria-label="Reading value"
-              value={value}
-              autoFocus
-              disabled={busy}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void save();
-                if (e.key === "Escape") setEditing(false);
-              }}
-            />
+          <input
+            className="input w-24 py-1 text-sm"
+            type="number"
+            step="any"
+            inputMode="decimal"
+            aria-label="Reading value"
+            value={value}
+            autoFocus
+            disabled={busy}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void save();
+              if (e.key === "Escape") setEditing(false);
+            }}
+          />
+        ) : (
+          <span className="tabular-nums">
+            {row.display}
+            {unit}
+            {row.flag && (
+              <span className="ml-2">
+                <Tag value={row.flag} />
+              </span>
+            )}
+          </span>
+        )}
+      </Td>
+      <Td
+        slot="meta"
+        label="Source"
+        empty={!row.source}
+        className="metric-reading-source"
+      >
+        {row.source ?? "—"}
+        {/* The #133 lock, made visible: this row was hand-corrected, so the next
+            re-push of its source's rolling window will leave it alone. */}
+        {row.edited && (
+          <span className="ml-1 text-xs text-slate-400">· edited</span>
+        )}
+      </Td>
+      <Td slot="meta" label="Notes" empty={!row.notes}>
+        {row.notes ? <NotesText notes={row.notes} /> : "—"}
+      </Td>
+      <Td slot="actions">
+        {editing ? (
+          <span className="flex items-center justify-end gap-1">
             <button
               type="button"
               className="btn-primary px-2 py-1 text-xs"
@@ -204,78 +258,59 @@ function ReadingRow({
             </button>
           </span>
         ) : (
-          <span className="tabular-nums">
-            {row.display}
-            {unit}
-            {row.flag && (
-              <span className="ml-2">
-                <Tag value={row.flag} />
-              </span>
-            )}
-          </span>
+          <div className="flex items-center justify-end">
+            <OverflowMenu
+              label="Reading actions"
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+            >
+              {({ close }) => (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      setEditing(true);
+                      close();
+                    }}
+                  >
+                    Edit
+                  </button>
+                  {/* Plain button (not a form action): confirm() opens a modal the
+                      user must answer, which deadlocks inside a form-action
+                      transition. */}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM_DANGER}
+                    onClick={async () => {
+                      // The menu and confirm are two modal layers. Close the menu
+                      // before presenting the decision so Cancel cannot reveal a
+                      // stale click-away backdrop over the readings table.
+                      close();
+                      const ok = await confirm({
+                        title: "Delete reading",
+                        message: `Delete the ${row.date} reading (${row.display}${unit})?`,
+                        confirmLabel: "Delete",
+                        danger: true,
+                      });
+                      if (!ok) return;
+                      const fd = new FormData();
+                      fd.set("kind", kind);
+                      fd.set("id", String(row.id));
+                      await undoable(deleteMetricReading, fd, {
+                        deletedMessage: "Reading deleted.",
+                      });
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </OverflowMenu>
+          </div>
         )}
-      </Td>
-      <Td slot="meta" label="Source" empty={!row.source}>
-        {row.source ?? "—"}
-        {/* The #133 lock, made visible: this row was hand-corrected, so the next
-            re-push of its source's rolling window will leave it alone. */}
-        {row.edited && (
-          <span className="ml-1 text-xs text-slate-400">· edited</span>
-        )}
-      </Td>
-      <Td slot="meta" label="Notes" empty={!row.notes}>
-        {row.notes ? <NotesText notes={row.notes} /> : "—"}
-      </Td>
-      <Td slot="actions">
-        <div className="flex items-center justify-end">
-          <OverflowMenu
-            label="Reading actions"
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-          >
-            {({ close }) => (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={MENU_ITEM}
-                  onClick={() => {
-                    setEditing(true);
-                    close();
-                  }}
-                >
-                  Edit
-                </button>
-                {/* Plain button (not a form action): confirm() opens a modal the
-                    user must answer, which deadlocks inside a form-action
-                    transition. */}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={MENU_ITEM_DANGER}
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: "Delete reading",
-                      message: `Delete the ${row.date} reading (${row.display}${unit})?`,
-                      confirmLabel: "Delete",
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    close();
-                    const fd = new FormData();
-                    fd.set("kind", kind);
-                    fd.set("id", String(row.id));
-                    await undoable(deleteMetricReading, fd, {
-                      deletedMessage: "Reading deleted.",
-                    });
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )}
-          </OverflowMenu>
-        </div>
       </Td>
     </tr>
   );

@@ -267,8 +267,8 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     const returnBanner = page.getByTestId("onboarding-return-banner");
     await expect(returnBanner).toBeVisible();
 
-    // #1486: the body quick-add is the combined "Log measurements" form behind
-    // the desktop "+ Log" expander.
+    // #1486: the body quick-add is the combined "Log measurements" form in the
+    // desktop "+ Log" modal.
     await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     await page.getByLabel("Weight (kg)").fill("72.4");
     await page.getByRole("button", { name: "Save measurements" }).click();

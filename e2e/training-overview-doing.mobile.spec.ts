@@ -34,6 +34,26 @@ test("Overview leads with today's session, then the week, then the findings roll
 }) => {
   await page.goto("/training?tab=overview");
 
+  // On phones the six-tab navigation IS the page identity: the visible
+  // Training title/subtitle leave the content flow and the one-row strip joins
+  // the auto-hiding app shell. Unlike the compact equal-column pages, six tabs
+  // scroll horizontally instead of becoming two tall rows.
+  await expect(page.getByTestId("training-page-title")).toBeHidden();
+  const shell = page.getByTestId("shell-chrome");
+  const shellTabs = shell.getByTestId("shell-tab-strip");
+  const tabs = shellTabs.getByTestId("training-tabs");
+  await expect(tabs).toBeVisible();
+  await expect(tabs).toHaveCSS("overflow-y", "hidden");
+  await expect(tabs.getByRole("tab")).toHaveCount(6);
+  await expect(tabs.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  const stripOverflow = await tabs.evaluate(
+    (el) => el.scrollWidth > el.clientWidth
+  );
+  expect(stripOverflow).toBe(true);
+
   const today = page.getByTestId("training-today");
   await expect(today).toBeVisible();
 
@@ -42,10 +62,84 @@ test("Overview leads with today's session, then the week, then the findings roll
   const todayTop = await topOf(page, "training-today");
   const weekTop = await topOf(page, "training-week");
   expect(todayTop).toBeLessThan(weekTop);
-  expect(todayTop).toBeLessThan(844);
+  expect(todayTop).toBeLessThan(260);
 
   // Muscle coverage follows the week (and the findings card, when one is firing).
   expect(weekTop).toBeLessThan(await topOf(page, "muscle-coverage"));
+});
+
+test("a later deep-linked Training tab is brought into the visible tab row", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=goals");
+  const tabs = page.getByTestId("training-tabs");
+  const goals = tabs.getByRole("tab", { name: "Goals" });
+  await expect(goals).toHaveAttribute("aria-selected", "true");
+
+  await expect
+    .poll(() =>
+      goals.evaluate((tab) => {
+        const strip = tab.parentElement;
+        if (!strip) return false;
+        const tabRect = tab.getBoundingClientRect();
+        const stripRect = strip.getBoundingClientRect();
+        return (
+          tabRect.left >= stripRect.left && tabRect.right <= stripRect.right
+        );
+      })
+    )
+    .toBe(true);
+});
+
+test("the Training tabs fill the strip at 640px instead of clustering left", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.goto("/training?tab=overview");
+
+  const tabs = page.getByTestId("shell-tab-strip").getByTestId("training-tabs");
+  const items = tabs.getByRole("tab");
+  await expect(items).toHaveCount(6);
+
+  const [stripBox, firstBox, lastBox] = await Promise.all([
+    tabs.boundingBox(),
+    items.first().boundingBox(), // first-ok: the six-tab strip's first edge is the assertion
+    items.last().boundingBox(),
+  ]);
+  expect(stripBox).not.toBeNull();
+  expect(firstBox).not.toBeNull();
+  expect(lastBox).not.toBeNull();
+  expect(Math.abs(firstBox!.x - stripBox!.x)).toBeLessThan(2);
+  expect(
+    Math.abs(lastBox!.x + lastBox!.width - (stripBox!.x + stripBox!.width))
+  ).toBeLessThan(2);
+  expect(
+    await tabs.evaluate((element) => element.scrollWidth <= element.clientWidth)
+  ).toBe(true);
+});
+
+test("the desktop Training tabs remain a compact left-aligned strip", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/training?tab=overview");
+
+  const tabs = page.getByTestId("training-page").getByTestId("training-tabs");
+  const items = tabs.getByRole("tab");
+  await expect(items).toHaveCount(6);
+
+  const [stripBox, firstBox, lastBox] = await Promise.all([
+    tabs.boundingBox(),
+    items.first().boundingBox(), // first-ok: the six-tab strip's first edge is the assertion
+    items.last().boundingBox(),
+  ]);
+  expect(stripBox).not.toBeNull();
+  expect(firstBox).not.toBeNull();
+  expect(lastBox).not.toBeNull();
+  expect(Math.abs(firstBox!.x - stripBox!.x)).toBeLessThan(2);
+  expect(lastBox!.x + lastBox!.width).toBeLessThan(
+    stripBox!.x + stripBox!.width - 100
+  );
 });
 
 test("no chart card renders on Overview — the volume/intensity block moved to Trends → Fitness", async ({

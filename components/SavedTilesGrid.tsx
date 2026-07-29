@@ -82,7 +82,12 @@ function SortableTile({ item }: { item: SavedTileItem }) {
       // `touch-manipulation`, not `touch-none`: the TouchSensor only swallows the
       // gesture once the press-and-hold has actually activated, so an ordinary
       // flick over the grid must still scroll the page.
-      className={`touch-manipulation ${isDragging ? "z-20 opacity-80" : ""}`}
+      // Cards in a two/three-column row share a bottom edge. Sparse cards keep
+      // their compact inline content, but the surface still fills the row so the
+      // Overview does not become a jagged masonry grid.
+      className={`h-full touch-manipulation [&>*]:h-full ${
+        isDragging ? "z-20 opacity-80" : ""
+      }`}
       data-testid="saved-tile"
       data-tile-key={item.key}
       data-dragging={isDragging ? "true" : "false"}

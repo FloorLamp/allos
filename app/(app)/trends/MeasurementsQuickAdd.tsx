@@ -11,9 +11,16 @@ import { validateBodyMetricInput } from "@/lib/body-metric-input";
 import { validateVitalsInput } from "@/lib/vitals-input";
 import { validateGrowthInput } from "@/lib/growth-input";
 import { deepLinkFieldId } from "@/lib/measurements-deeplink";
+import {
+  isMeasurementEntryAllowed,
+  type MeasurementEntryMetric,
+} from "@/lib/measurement-entry";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
+import { BODY_METRIC_META } from "@/lib/trends-body-metrics";
 import { addMeasurements } from "./measurement-actions";
+
+export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
 // The combined "Log measurements" form (issue #1486).
 //
@@ -25,7 +32,7 @@ import { addMeasurements } from "./measurement-actions";
 // ── ONE component, three mounting contexts ───────────────────────────────────
 // This is the whole form, authored once (the responsive shared-content rule). It is
 // mounted by:
-//   • the Body tab's desktop "+ Log" expander (BodySection → LogMeasurementsPanel),
+//   • the Body tab's desktop "+ Log" modal (BodySection → LogMeasurementsPanel),
 //   • the #1467/#1468 quick-entry overlay (the phone's ONLY on-page logging path),
 //   • the per-metric detail pages (/trends/metric/<slug>).
 // `onSaved` is the only behavioural difference between them — the overlay closes
@@ -70,9 +77,15 @@ export interface MeasurementsQuickAddProps {
   // Fired after a successful save so a MOUNTING CONTEXT can react — the quick-entry
   // overlay closes itself, leaving the user where they were.
   onSaved?: () => void;
-  // Rendered by the desktop expander so the form can carry its own collapse
-  // control without a second copy of the form's chrome.
+  // Optional action for a standalone card mount.
   headerSlot?: ReactNode;
+  // A metric detail page narrows this shared form to the observation currently
+  // being viewed. Omitted on the Body tab and quick-entry overlay, which keep the
+  // combined morning-measurements workflow.
+  metric?: { key: MeasurementEntryMetric; label: string };
+  // A surrounding modal already owns the dialog surface and title, so this form
+  // drops its standalone card chrome and duplicate heading in that mount.
+  presentation?: "card" | "modal";
 }
 
 export default function MeasurementsQuickAdd({
@@ -84,6 +97,8 @@ export default function MeasurementsQuickAdd({
   showHeadCirc = false,
   onSaved,
   headerSlot,
+  metric,
+  presentation = "card",
 }: MeasurementsQuickAddProps) {
   const router = useRouter();
   const toast = useToast();
@@ -110,6 +125,19 @@ export default function MeasurementsQuickAdd({
     document.getElementById(id)?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The detail page applies this before rendering its Log Manually trigger. Keep
+  // the form guarded too so a future mounting context cannot bypass the gates.
+  if (
+    metric &&
+    !isMeasurementEntryAllowed(metric.key, {
+      showBodyFat,
+      showGrowth,
+      showHeadCirc,
+    })
+  ) {
+    return null;
+  }
 
   async function handle(formData: FormData) {
     setError(null);
@@ -144,7 +172,8 @@ export default function MeasurementsQuickAdd({
       headCircUnit: s("head_circ_unit"),
     };
 
-    const hasBody = body.weight != null;
+    const hasBody =
+      body.weight != null || body.bodyFatPct != null || body.restingHr != null;
     const hasVitals =
       vitals.systolic != null ||
       vitals.diastolic != null ||
@@ -159,15 +188,11 @@ export default function MeasurementsQuickAdd({
       setError("Enter at least one measurement.");
       return;
     }
-    // body_metrics rows are anchored on a weight, so body fat / resting HR / a note
-    // can't be stored without one. Say so rather than dropping them silently.
-    if (
-      !hasBody &&
-      (body.bodyFatPct != null ||
-        body.restingHr != null ||
-        (body.notes != null && body.notes.trim() !== ""))
-    ) {
-      setError("Enter a weight to save body fat, resting HR, or a note.");
+    // The combined form retains its historical body-composition contract: a note
+    // belongs to a weigh-in. Metric-scoped body-fat/resting-HR forms deliberately
+    // have no weight field; those nullable observations persist independently.
+    if (!hasBody && body.notes != null && body.notes.trim() !== "") {
+      setError("Enter a weight to save a note.");
       return;
     }
 
@@ -175,11 +200,17 @@ export default function MeasurementsQuickAdd({
     // inline instead of as a false "saved".
     const firstError =
       (hasBody
-        ? validateBodyMetricInput({
-            weight: body.weight,
-            bodyFatPct: body.bodyFatPct,
-            restingHr: body.restingHr,
-          })
+        ? validateBodyMetricInput(
+            {
+              weight: body.weight,
+              bodyFatPct: body.bodyFatPct,
+              restingHr: body.restingHr,
+            },
+            {
+              requireWeight:
+                metric?.key !== "body-fat" && metric?.key !== "resting-hr",
+            }
+          )
         : null) ??
       (hasVitals ? validateVitalsInput(vitals) : null) ??
       (hasGrowth ? validateGrowthInput(growth) : null);
@@ -224,7 +255,7 @@ export default function MeasurementsQuickAdd({
       setError("Couldn't save these measurements. Try again.");
       return;
     }
-    toast("Measurements saved");
+    toast(metric ? `${metric.label} saved` : "Measurements saved");
     formRef.current?.reset();
     tempUnitDetection.reset();
     router.refresh();
@@ -234,7 +265,11 @@ export default function MeasurementsQuickAdd({
   // ── The fields, authored once and ORDERED by life stage below ───────────────
   const field = {
     weight: (
-      <Field key="weight" label={`Weight (${weightUnit})`} htmlFor="m-weight">
+      <Field
+        key="weight"
+        label={`${BODY_METRIC_META.weight.title} (${weightUnit})`}
+        htmlFor="m-weight"
+      >
         <input
           id="m-weight"
           type="number"
@@ -246,7 +281,11 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     bodyFat: (
-      <Field key="body-fat" label="Body fat (%)" htmlFor="m-body-fat">
+      <Field
+        key="body-fat"
+        label={`${BODY_METRIC_META["body-fat"].title} (${BODY_METRIC_META["body-fat"].unit})`}
+        htmlFor="m-body-fat"
+      >
         <input
           id="m-body-fat"
           type="number"
@@ -259,7 +298,11 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     height: (
-      <Field key="height" label="Height" htmlFor="m-height">
+      <Field
+        key="height"
+        label={BODY_METRIC_META.height.title}
+        htmlFor="m-height"
+      >
         <div className="flex gap-2">
           <input
             id="m-height"
@@ -271,7 +314,7 @@ export default function MeasurementsQuickAdd({
           />
           <select
             name="height_unit"
-            aria-label="Height unit"
+            aria-label={`${BODY_METRIC_META.height.title} unit`}
             defaultValue="cm"
             className="input w-auto"
           >
@@ -282,7 +325,11 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     headCirc: (
-      <Field key="head-circ" label="Head circumference" htmlFor="m-head-circ">
+      <Field
+        key="head-circ"
+        label={BODY_METRIC_META["head-circ"].title}
+        htmlFor="m-head-circ"
+      >
         <div className="flex gap-2">
           <input
             id="m-head-circ"
@@ -294,7 +341,7 @@ export default function MeasurementsQuickAdd({
           />
           <select
             name="head_circ_unit"
-            aria-label="Head circumference unit"
+            aria-label={`${BODY_METRIC_META["head-circ"].title} unit`}
             defaultValue="cm"
             className="input w-auto"
           >
@@ -307,7 +354,11 @@ export default function MeasurementsQuickAdd({
     // Systolic + diastolic are ADJACENT in both variants — a blood pressure is one
     // reading typed as two numbers, never separated by another measure.
     systolic: (
-      <Field key="systolic" label="Systolic (mmHg)" htmlFor="m-systolic">
+      <Field
+        key="systolic"
+        label={`${BODY_METRIC_META.systolic.title} (${BODY_METRIC_META.systolic.unit.trim()})`}
+        htmlFor="m-systolic"
+      >
         <input
           id="m-systolic"
           type="number"
@@ -319,7 +370,11 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     diastolic: (
-      <Field key="diastolic" label="Diastolic (mmHg)" htmlFor="m-diastolic">
+      <Field
+        key="diastolic"
+        label={`${BODY_METRIC_META.diastolic.title} (${BODY_METRIC_META.diastolic.unit.trim()})`}
+        htmlFor="m-diastolic"
+      >
         <input
           id="m-diastolic"
           type="number"
@@ -354,7 +409,11 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     spo2: (
-      <Field key="spo2" label="Oxygen sat. (%)" htmlFor="m-spo2">
+      <Field
+        key="spo2"
+        label={`${BODY_METRIC_META.spo2.title} (${BODY_METRIC_META.spo2.unit})`}
+        htmlFor="m-spo2"
+      >
         <input
           id="m-spo2"
           type="number"
@@ -367,7 +426,11 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     temperature: (
-      <Field key="temperature" label="Temperature" htmlFor="m-temperature">
+      <Field
+        key="temperature"
+        label={BODY_METRIC_META.temperature.title}
+        htmlFor="m-temperature"
+      >
         <div className="flex gap-2">
           <input
             id="m-temperature"
@@ -381,7 +444,7 @@ export default function MeasurementsQuickAdd({
           />
           <select
             name="temp_unit"
-            aria-label="Temperature unit"
+            aria-label={`${BODY_METRIC_META.temperature.title} unit`}
             value={tempUnitDetection.unit}
             onChange={(event) =>
               tempUnitDetection.chooseUnit(
@@ -431,7 +494,11 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     hrv: (
-      <Field key="hrv" label="HRV (ms)" htmlFor="m-hrv">
+      <Field
+        key="hrv"
+        label={`${BODY_METRIC_META.hrv.title} (${BODY_METRIC_META.hrv.unit.trim()})`}
+        htmlFor="m-hrv"
+      >
         <input
           id="m-hrv"
           type="number"
@@ -443,7 +510,11 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     restingHr: (
-      <Field key="resting-hr" label="Resting HR (bpm)" htmlFor="m-resting-hr">
+      <Field
+        key="resting-hr"
+        label={`${BODY_METRIC_META["resting-hr"].title} (${BODY_METRIC_META["resting-hr"].unit.trim()})`}
+        htmlFor="m-resting-hr"
+      >
         <input
           id="m-resting-hr"
           type="number"
@@ -460,60 +531,88 @@ export default function MeasurementsQuickAdd({
     ),
   };
 
-  const ordered: ReactNode[] = showGrowth
-    ? [
-        field.weight,
-        field.height,
-        ...(showHeadCirc ? [field.headCirc] : []),
-        field.temperature,
-        field.tempTime,
-        field.spo2,
-        field.systolic,
-        field.diastolic,
-        field.glucose,
-        field.sleep,
-        field.restingHr,
-        field.notes,
-      ]
-    : [
-        field.weight,
-        ...(showBodyFat ? [field.bodyFat] : []),
-        field.systolic,
-        field.diastolic,
-        field.glucose,
-        field.spo2,
-        field.temperature,
-        field.tempTime,
-        field.sleep,
-        ...(showHrv ? [field.hrv] : []),
-        field.restingHr,
-        field.notes,
-      ];
+  const scopedFields: Record<MeasurementEntryMetric, ReactNode[]> = {
+    weight: [field.weight],
+    "body-fat": [field.bodyFat],
+    "resting-hr": [field.restingHr],
+    "blood-pressure": [field.systolic, field.diastolic],
+    spo2: [field.spo2],
+    temperature: [field.temperature, field.tempTime],
+    hrv: [field.hrv],
+    height: [field.height],
+    "head-circ": [field.headCirc],
+  };
+  const ordered: ReactNode[] = metric
+    ? scopedFields[metric.key]
+    : showGrowth
+      ? [
+          field.weight,
+          field.height,
+          ...(showHeadCirc ? [field.headCirc] : []),
+          field.temperature,
+          field.tempTime,
+          field.spo2,
+          field.systolic,
+          field.diastolic,
+          field.glucose,
+          field.sleep,
+          field.restingHr,
+          field.notes,
+        ]
+      : [
+          field.weight,
+          ...(showBodyFat ? [field.bodyFat] : []),
+          field.systolic,
+          field.diastolic,
+          field.glucose,
+          field.spo2,
+          field.temperature,
+          field.tempTime,
+          field.sleep,
+          ...(showHrv ? [field.hrv] : []),
+          field.restingHr,
+          field.notes,
+        ];
 
   return (
     <form
       id="measurements-quick-add"
       ref={formRef}
       action={handle}
-      className="card space-y-3"
+      className={`${presentation === "card" ? "card" : ""} space-y-3 ${
+        metric ? "max-w-2xl" : ""
+      }`}
       data-testid="measurements-quick-add"
       data-life-stage={showGrowth ? "minor" : "adult"}
     >
       <input type="hidden" name="weight_unit" value={weightUnit} />
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-            Log measurements
-          </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Today&rsquo;s body and vitals readings — fill in only what you
-            measured. Shows up alongside synced readings.
-          </p>
+      {presentation === "card" ? (
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+              {metric ? `Log ${metric.label}` : "Log measurements"}
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {metric
+                ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
+                : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings."}
+            </p>
+          </div>
+          {headerSlot}
         </div>
-        {headerSlot}
-      </div>
+      ) : (
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {metric
+            ? `Add one manual ${metric.label.toLowerCase()} reading. It will appear alongside synced readings.`
+            : "Today’s body and vitals readings — fill in only what you measured. Shows up alongside synced readings."}
+        </p>
+      )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className={`grid gap-3 sm:grid-cols-2 ${
+          metric ? "" : "lg:grid-cols-4"
+        }`}
+      >
         <Field label="Date" htmlFor="m-date">
           <DateField
             id="m-date"
@@ -530,7 +629,9 @@ export default function MeasurementsQuickAdd({
           {error}
         </p>
       )}
-      <SubmitButton pendingLabel="Saving…">Save measurements</SubmitButton>
+      <SubmitButton pendingLabel="Saving…">
+        {metric ? `Save ${metric.label.toLowerCase()}` : "Save measurements"}
+      </SubmitButton>
     </form>
   );
 }

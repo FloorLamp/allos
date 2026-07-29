@@ -40,6 +40,10 @@ test.describe("Trends mini-tile sparkline (#1445)", () => {
       tile.locator(".recharts-cartesian-axis-tick-value")
     ).toHaveCount(0);
     await expect(tile.locator(".recharts-cartesian-grid")).toHaveCount(0);
+    // Dots are part of the shared line-tile grammar (not a Sleep-only exception).
+    await expect(
+      tile.locator(".recharts-line-dot").first() // first-ok: any rendered point proves the shared dot grammar
+    ).toBeVisible();
 
     // …and the numbers the Y axis used to imply are present as legible text.
     const range = tile.getByTestId("trend-mini-range");
@@ -54,8 +58,11 @@ test.describe("Trends mini-tile sparkline (#1445)", () => {
     // value along, and #1445's recessive-axis pass has to hold up at 390px too.
     await page.goto("/trends/metric/weight");
 
-    // The metric detail page renders exactly one chart, so no positional pick.
-    const chart = page.locator(".recharts-surface");
+    // Source comparison can add another chart below; scope to the primary detail
+    // card whose axes this test owns.
+    const chart = page
+      .getByTestId("metric-detail-chart")
+      .locator(".recharts-surface");
     await expect(chart).toBeVisible();
     await expect(
       chart.locator(".recharts-cartesian-axis-tick-value")

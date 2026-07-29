@@ -688,7 +688,7 @@ export default function BiomarkersTable({
     });
   return (
     <div className="card mb-6 overflow-hidden p-0">
-      {/* Card mode hides `thead`, so the header's sort links go with it — this
+      {/* Stacked-row mode hides `thead`, so the header's sort links go with it — this
           select is the same sorting, one control instead of a header strip
           (#1426). It writes the SAME `?sort=`/`?dir=` params SortableHeader does,
           so the server ordering below is untouched. */}
@@ -700,7 +700,7 @@ export default function BiomarkersTable({
         />
       </div>
       {/* The height cap is a desktop affordance (a tall table under a sticky
-          header); on a phone the cards flow with the page instead of trapping a
+          header); on a phone the rows flow with the page instead of trapping a
           second scroll region inside it. */}
       <div className="overflow-auto sm:max-h-[70vh]">
         <ResponsiveTable className="w-full" data-testid="biomarkers-table">

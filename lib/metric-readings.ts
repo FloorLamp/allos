@@ -88,6 +88,7 @@ export const METRIC_READING_STORE: Record<
   height: { table: "metric_samples", metric: "height_cm" },
   "head-circ": { table: "metric_samples", metric: "head_circumference_cm" },
   steps: { table: "metric_samples", metric: "steps" },
+  "active-calories": { table: "metric_samples", metric: "active_kcal" },
   "lean-mass": { table: "metric_samples", metric: "lean_mass_kg" },
   "bone-mass": { table: "metric_samples", metric: "bone_mass_kg" },
   bmr: { table: "metric_samples", metric: "bmr_kcal" },

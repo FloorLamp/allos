@@ -122,7 +122,7 @@ test.describe("preventive deep-links per class (#1083)", () => {
     // Landed on the vitals ENTRY surface (NOT the biomarkers form, #1076) — since
     // #1486 that is the merged Body tab's combined "Log measurements" form, which
     // the deep link expands with systolic focused so a BP reading is one keystroke
-    // away. (This project runs at desktop width, where the panel expands in place;
+    // away. (This project runs at desktop width, where the modal opens;
     // the phone opens the same form in the #1468 overlay — see
     // e2e/trends-body-merge.mobile.spec.ts.)
     await expect(page.getByTestId("measurements-quick-add")).toBeVisible();

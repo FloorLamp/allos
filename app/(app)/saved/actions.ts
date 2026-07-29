@@ -44,6 +44,7 @@ export async function toggleSavedItem(formData: FormData): Promise<FormResult> {
   revalidatePath("/trends");
   revalidatePath("/results");
   revalidatePath("/biomarkers/view", "page");
+  revalidatePath("/trends/metric/[kind]", "page");
   revalidatePath("/");
   return formOk();
 }

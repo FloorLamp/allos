@@ -14,8 +14,9 @@ import type { AppRoute } from "@/lib/hrefs";
 // THE TAP CONTRACT (owner-picked over tap-anywhere).
 //
 //   • The HEADER ROW navigates — the title plus the latest-value headline, one large
-//     target — and a small EXPAND ICON sits top-right for explicitness, with an
-//     accessible name (the #794-7a icon-button rule).
+//     edge-to-edge target. A small EXPAND ICON remains on phones for explicitness,
+//     with an accessible name (the #794-7a icon-button rule); desktop does not
+//     duplicate the navigation already provided by the full header.
 //   • The PLOT AREA IS NOT A LINK. On touch, tapping the plot is how you read a
 //     point; that gesture must stay tooltip inspection and must never become
 //     navigation. `children` is rendered as a plain sibling of the header link —
@@ -73,6 +74,7 @@ export default function ChartCard({
   testid,
   className = "",
   headerClassName = "",
+  headerBleedClassName = "-mx-4 -mt-4 sm:-mx-5 sm:-mt-5",
   surfaceClass = "card",
   plotHeightClass = "sm:h-64",
   footer,
@@ -100,20 +102,23 @@ export default function ChartCard({
   // Where the card taps through to. `null` is legal ONLY with a same-line
   // `detail-none: <why>` comment at the call site — see the guard scan.
   detailHref: AppRoute | null;
-  // Overrides the noun in the expand icon's accessible name, when the visible title
-  // reads badly in "Open X detail" (a title carrying a date, say).
+  // Overrides the noun in the phone expand icon's accessible name, when the
+  // visible title reads badly in "Open X detail" (a title carrying a date, say).
   detailTitle?: string;
-  // A right-aligned affordance beside the expand icon (a cross-link to another
-  // surface). Rendered OUTSIDE the header link so its own href still wins.
+  // A right-aligned affordance beside the phone expand icon (a cross-link to
+  // another surface). Rendered OUTSIDE the header link so its own href still wins.
   headerAction?: ReactNode;
   // Stable in-page anchor (the Body tab's jump chips).
   anchorId?: string;
   testid?: string;
   className?: string;
-  // Extra classes on the HEADER row alone — the full-bleed intraday card re-adds the
-  // gutter its surface drops, so the title/expand pair stays inset while the plot
-  // runs edge to edge.
+  // Extra classes on the note beneath the header. The full-bleed intraday card
+  // re-adds the gutter its surface drops while the plot runs edge to edge.
   headerClassName?: string;
+  // Cancels the surface's padding so the clickable header reaches its edges. The
+  // intraday card is already full-bleed on phones, so it replaces the mobile
+  // negative margins while retaining the normal desktop card cancellation.
+  headerBleedClassName?: string;
   // The card's own SURFACE class, for the one card that isn't a plain `.card` — the
   // Body tab's full-bleed intraday panel, which spends the phone's full viewport
   // width on the plot. Everything else keeps the default.
@@ -128,23 +133,25 @@ export default function ChartCard({
   const Heading = headingLevel;
   const heading = (
     <>
-      <Heading
-        className={
-          hideTitle
-            ? "sr-only"
-            : "truncate font-semibold text-slate-800 dark:text-slate-100"
-        }
-      >
-        {title}
-      </Heading>
-      {headline != null && (
-        <span
-          className="text-lg font-semibold leading-tight tabular-nums text-slate-900 dark:text-slate-100"
-          data-testid="chart-card-headline"
+      <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+        <Heading
+          className={
+            hideTitle
+              ? "sr-only"
+              : "truncate font-semibold text-slate-800 transition-colors group-hover:text-brand-800 group-hover:underline dark:text-slate-100 dark:group-hover:text-brand-300"
+          }
         >
-          {headline}
-        </span>
-      )}
+          {title}
+        </Heading>
+        {headline != null && (
+          <span
+            className="shrink-0 text-lg font-semibold leading-tight tabular-nums text-slate-900 dark:text-slate-100"
+            data-testid="chart-card-headline"
+          >
+            {headline}
+          </span>
+        )}
+      </span>
       {description != null && (
         <span className="text-xs text-slate-500 dark:text-slate-400">
           {description}
@@ -162,32 +169,42 @@ export default function ChartCard({
       }${className}`}
     >
       <div
-        className={`mb-2 flex items-start justify-between gap-2 sm:mb-3 ${headerClassName}`}
+        className={`mb-2 flex items-stretch justify-between gap-0 sm:mb-3 ${headerBleedClassName}`}
       >
         {detailHref ? (
           <Link
             href={detailHref}
             data-testid="chart-card-header-link"
-            className="group -m-1 flex min-w-0 flex-1 flex-col rounded-lg p-1 transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+            className={`group flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-tl-xl px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 sm:pt-4 dark:hover:bg-brand-950/40 ${
+              headerAction ? "" : "sm:rounded-tr-xl"
+            }`}
           >
             {heading}
           </Link>
         ) : (
-          <div className="flex min-w-0 flex-1 flex-col">{heading}</div>
+          <div className="flex min-w-0 flex-1 flex-col justify-center px-4 py-2.5 sm:px-5 sm:pt-4">
+            {heading}
+          </div>
         )}
-        <div className="flex shrink-0 items-center gap-1">
-          {headerAction}
-          {detailHref && (
-            <Link
-              href={detailHref}
-              data-testid="chart-card-expand"
-              aria-label={`Open ${detailTitle ?? title} detail`}
-              className="tap-target press inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-300"
-            >
-              <IconArrowsMaximize className="h-4 w-4" aria-hidden />
-            </Link>
-          )}
-        </div>
+        {(headerAction || detailHref) && (
+          <div
+            className={`flex shrink-0 items-center gap-1 py-1.5 pr-2 ${
+              headerAction ? "sm:pr-3" : "sm:hidden"
+            }`}
+          >
+            {headerAction}
+            {detailHref && (
+              <Link
+                href={detailHref}
+                data-testid="chart-card-expand"
+                aria-label={`Open ${detailTitle ?? title} detail`}
+                className="tap-target press inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 sm:hidden dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-300"
+              >
+                <IconArrowsMaximize className="h-4 w-4" aria-hidden />
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
       {note != null && (

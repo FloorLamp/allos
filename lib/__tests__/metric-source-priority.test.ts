@@ -17,6 +17,7 @@ import {
   withMetricSource,
 } from "@/lib/metric-source-priority";
 import { PROVIDER_PREFERENCE } from "@/lib/metric-providers";
+import { BODY_METRIC_META } from "@/lib/trends-body-metrics";
 
 describe("parseMetricSourcePriority", () => {
   it("round-trips a valid map", () => {
@@ -147,6 +148,39 @@ describe("comparable metric allowlist + source colors", () => {
   it("every comparable metric has a unique key", () => {
     const keys = COMPARABLE_METRICS.map((m) => m.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("capitalizes every word in comparable metric titles", () => {
+    for (const metric of COMPARABLE_METRICS) {
+      for (const word of metric.title.split(/\s+/)) {
+        const firstLetter = word.match(/[A-Za-z]/)?.[0];
+        if (firstLetter) {
+          expect(firstLetter, `${metric.key}: ${metric.title}`).toBe(
+            firstLetter.toUpperCase()
+          );
+        }
+      }
+    }
+  });
+
+  it("uses the Body registry for body and vital display metadata", () => {
+    const expected = {
+      weight: BODY_METRIC_META.weight,
+      body_fat: BODY_METRIC_META["body-fat"],
+      resting_hr: BODY_METRIC_META["resting-hr"],
+      steps: BODY_METRIC_META.steps,
+      active_kcal: BODY_METRIC_META["active-calories"],
+      hrv_ms: BODY_METRIC_META.hrv,
+      heart_rate: BODY_METRIC_META.hr,
+    };
+
+    for (const [key, meta] of Object.entries(expected)) {
+      const metric = COMPARABLE_METRICS.find(
+        (candidate) => candidate.key === key
+      );
+      expect(metric?.title, key).toBe(meta.title);
+      expect(metric?.decimals, key).toBe(meta.decimals);
+    }
   });
 
   it("color follows the source entity, with one fallback for unknowns", () => {

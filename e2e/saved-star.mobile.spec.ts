@@ -63,12 +63,97 @@ test("starring a biomarker gives it a Trends chart tile with no second gesture",
   const savedRow = page.getByTestId("saved-tiles");
   await expect(savedRow).toBeVisible();
   await expect(savedRow.getByText(ANALYTE, { exact: true })).toBeVisible();
+  const savedTile = savedRow
+    .getByTestId("trend-mini-card")
+    .filter({ hasText: ANALYTE });
+
+  // This fixture has one HDL reading in the default 90-day window. A one-point
+  // line has no slope, so the card uses the deliberate single-reading marker
+  // instead of an invisible sparkline plus duplicate Low/High values.
+  const singleReading = savedTile.getByTestId("trend-mini-single-reading");
+  await expect(singleReading).toBeVisible();
+  const singleMarker = singleReading.getByTestId("trend-mini-single-marker");
+  await expect(singleMarker).toBeVisible();
+  const singleMarkerBox = await singleMarker.boundingBox();
+  expect(singleMarkerBox).not.toBeNull();
+  expect(singleMarkerBox!.height).toBeGreaterThanOrEqual(80);
+  await expect(singleReading).toHaveAttribute("data-reading-scope", "inside");
+  await expect(singleReading).toContainText("Single reading ·");
+  const insideDate = singleReading.locator("time");
+  await expect(insideDate).toBeVisible();
+  await expect(insideDate).toHaveAttribute("datetime", /\d{4}-\d{2}-\d{2}/);
+  await expect(savedTile.getByTestId("trend-mini-range")).toHaveCount(0);
+  const singleReadingTileBox = await savedTile.boundingBox();
+  expect(singleReadingTileBox).not.toBeNull();
+  const rowPeerBoxes = await savedRow
+    .getByTestId("trend-mini-card")
+    .evaluateAll(
+      (cards, targetY) =>
+        cards
+          .map((card) => card.getBoundingClientRect())
+          .filter((box) => Math.abs(box.y - Number(targetY)) < 2)
+          .map((box) => ({ height: box.height })),
+      singleReadingTileBox!.y
+    );
+  expect(rowPeerBoxes).toHaveLength(2);
+  expect(
+    Math.abs(singleReadingTileBox!.height - rowPeerBoxes[0].height) +
+      Math.abs(singleReadingTileBox!.height - rowPeerBoxes[1].height)
+  ).toBeLessThan(2);
+
+  // The stale-value caption occupies the same footer line as a plotted card's
+  // Low/High values, even when the cards happen to sit in different grid rows.
+  const outsideCard = savedRow
+    .getByTestId("trend-mini-card")
+    .filter({ hasText: "E2E APOE Genotype" });
+  const plottedCard = savedRow
+    .getByTestId("trend-mini-card")
+    .filter({ hasText: "Weight" });
+  const [outsideBox, latestCaptionBox, plottedBox, rangeBox] =
+    await Promise.all([
+      outsideCard.boundingBox(),
+      outsideCard.getByText(/Latest recorded ·/).boundingBox(),
+      plottedCard.boundingBox(),
+      plottedCard.getByTestId("trend-mini-range").boundingBox(),
+    ]);
+  expect(outsideBox).not.toBeNull();
+  expect(latestCaptionBox).not.toBeNull();
+  expect(plottedBox).not.toBeNull();
+  expect(rangeBox).not.toBeNull();
+  const latestBottomGap =
+    outsideBox!.y +
+    outsideBox!.height -
+    (latestCaptionBox!.y + latestCaptionBox!.height);
+  const rangeBottomGap =
+    plottedBox!.y + plottedBox!.height - (rangeBox!.y + rangeBox!.height);
+  expect(Math.abs(latestBottomGap - rangeBottomGap)).toBeLessThan(2);
+  const [latestTypography, rangeTypography] = await Promise.all([
+    outsideCard.getByText(/Latest recorded ·/).evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        color: style.color,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        fontVariantNumeric: style.fontVariantNumeric,
+      };
+    }),
+    plottedCard.getByTestId("trend-mini-range").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        color: style.color,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        fontVariantNumeric: style.fontVariantNumeric,
+      };
+    }),
+  ]);
+  expect(latestTypography).toEqual(rangeTypography);
+  const outsideDate = outsideCard.locator("time");
+  await expect(outsideDate).toBeVisible();
+  await expect(outsideDate).toHaveAttribute("datetime", /\d{4}-\d{2}-\d{2}/);
 
   // …and the SAME star, now in the tile's ⋯ menu, un-stars it (one gesture both ways).
-  const menu = await tileMenu(
-    page,
-    savedRow.getByTestId("trend-mini-card").filter({ hasText: ANALYTE })
-  );
+  const menu = await tileMenu(page, savedTile);
   const tileStar = menu.getByTestId("star-toggle");
   await expect(tileStar).toHaveAttribute("aria-checked", "true");
   await settledClick(page, tileStar);
@@ -78,6 +163,42 @@ test("starring a biomarker gives it a Trends chart tile with no second gesture",
     page.getByTestId("trend-mini-card").filter({ hasText: ANALYTE })
   ).toHaveCount(0);
   await page.goto(DETAIL_URL);
+  await expect(page.getByTestId("star-toggle")).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
+});
+
+test("starring a metric detail page adds that chart to Overview", async ({
+  page,
+}) => {
+  // Steps is deliberately outside the legacy standard saved-metric set. This
+  // proves detail-page stars work for the whole BODY_METRIC_META registry, not
+  // only Weight / Body Fat / Resting Heart Rate.
+  await page.goto("/trends/metric/steps");
+  const star = page.getByTestId("star-toggle");
+  await expect(star).toHaveAttribute("aria-pressed", "false");
+
+  await settledClick(page, star);
+  await expect(star).toHaveAttribute("aria-pressed", "true");
+
+  await page.goto("/trends");
+  const tile = page
+    .getByTestId("saved-tiles")
+    .getByTestId("trend-mini-card")
+    .filter({ hasText: "Daily Steps" });
+  await expect(tile).toHaveCount(1);
+  await expect(tile.getByRole("link", { name: "Steps" })).toHaveAttribute(
+    "href",
+    "/trends/metric/steps"
+  );
+
+  // Create-and-clean: the same star in the saved tile removes the new row.
+  const menu = await tileMenu(page, tile);
+  await settledClick(page, menu.getByTestId("star-toggle"));
+  await expect(tile).toHaveCount(0);
+
+  await page.goto("/trends/metric/steps");
   await expect(page.getByTestId("star-toggle")).toHaveAttribute(
     "aria-pressed",
     "false"
