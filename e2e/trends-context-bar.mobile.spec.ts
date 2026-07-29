@@ -144,17 +144,22 @@ test.describe("the tab-and-range context bar", () => {
     // Close from scroll depth, where removing the expanded in-flow panel changes
     // page geometry. That layout shift must not be mistaken for a scroll-down
     // gesture that hides the whole shell/context row.
+    const bar = await barReady(page);
     const deep = await scrollTo(page, 360);
     expect(deep).toBeGreaterThan(200);
+    // The listener is rAF-coalesced. Observe the completed downward transition
+    // before issuing the upward gesture, otherwise both programmatic scrolls can
+    // land in one frame and the listener sees only a net scroll down.
+    await expect(bar).toHaveAttribute("data-hidden", "true");
     await scrollTo(page, deep - 120);
-    await expect(page.getByTestId(BAR)).toHaveAttribute("data-hidden", "false");
+    await expect(bar).toHaveAttribute("data-hidden", "false");
 
     await hydratedClick(page, toggle);
     await expect(page.getByTestId("trends-context-controls")).toBeHidden();
     await expect(
       page.getByRole("tab", { name: "Body", exact: true })
     ).toBeVisible();
-    await expect(page.getByTestId(BAR)).toHaveAttribute("data-hidden", "false");
+    await expect(bar).toHaveAttribute("data-hidden", "false");
     await expect(page.getByTestId("shell-chrome")).toHaveAttribute(
       "data-hidden",
       "false"
