@@ -125,8 +125,9 @@ disease the responsive-surfaces/one-computation rules exist to prevent.
 Entry points that don't already host the panel open the same panel in an
 overlay:
 
-- the lift picker in `components/activity-form/StrengthSets.tsx` (the strength
-  set editor after the #721 form decomposition) — ⓘ affordance per option,
+- the activity part header in `components/activity-form/ActivityPartsList.tsx`,
+  which owns the strength editor's "How to" trigger and overlay state since the
+  #1613 mobile header rework — one affordance per part,
 - `StrengthSection` history rows,
 - the next-workout recommendation card's exercise list,
 - Telegram nudges via deep link (`/training?exercise=…` — two-way principle:

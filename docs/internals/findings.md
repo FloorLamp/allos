@@ -104,6 +104,23 @@ tier + declared reason codes) and its own fixture DB test (the #448 rule), which
 asserts its tier via `tierForDedupeKey`. You cannot ship a finding without
 declaring how far it reaches.
 
+**Dedupe keys follow their series' identity, not display names.** Two
+consequences worth knowing when touching identity code:
+
+- Training plateau/stale keys are built from the shared identity builders
+  (`plateauSignalKey` on `movementLoadKey` — variant-collapsed movement + the
+  equipment load lane; `staleExerciseSignalKey` on `exerciseHistoryKey`), never
+  from a raw display name (#1399/#1610). The old raw-name keys were re-keyed the
+  #482 way: a dismissal stored before the change goes inert and its finding
+  resurfaces once.
+- The biomarker family key is no longer a finite SQL preimage: SQL calls the one
+  pure `biomarkerFamily()` through the `biomarker_family()` user function
+  (#1401), so a family's freeform `match` regex is load-bearing on the
+  dedup/is_latest partitions and must be held to the same exclusion discipline
+  as its `members` list. The retest cadence resolves through the analyte's
+  retest identity, so every family member inherits the family's curated
+  interval, tightest wins (#1394/#1395).
+
 ---
 
 ## Illness-care findings (care tier, #805)
