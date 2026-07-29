@@ -17,10 +17,21 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { shiftDateStr } from "@/lib/date";
 import { db, today } from "@/lib/db";
-import { exerciseHistoryKey } from "@/lib/lifts";
+import {
+  equipmentLoadLane,
+  exerciseHistoryKey,
+  loadContextLabel,
+} from "@/lib/lifts";
+import { recentPRs } from "@/lib/coaching";
+import { deleteEquipment } from "@/lib/equipment";
 import { buildTrainingObservationFindings } from "@/lib/rule-findings";
 import {
+  getExerciseComparison,
   getExerciseE1rmSeries,
+  getExerciseLoadContexts,
+  getGoalProgressMap,
+  getGoals,
+  getLoggedEquipmentByExercise,
   getRecentExerciseHistory,
   getStrengthByExercise,
 } from "@/lib/queries";
@@ -226,5 +237,206 @@ describe("plateau findings never combine two machines (#1610/#1399)", () => {
         new RegExp(`^training-obs:plateau:.+@(${homeId}|${hotelId}):`)
       );
     }
+  });
+});
+
+// ── The deferred half of #1610 (this change) ────────────────────────────────
+// #1628 stopped at the identity layer because the surfaces that would have to
+// RENDER a split were mid-rewrite, and #1610 forbids duplicate unlabeled rows. With
+// those surfaces landed, the comparison, the PR engine and goals join the family.
+
+describe("getExerciseLoadContexts (#1610)", () => {
+  it("lists one entry per implement, most recently used first", () => {
+    const contexts = getExerciseLoadContexts(profileId, EXERCISE);
+    expect(contexts).toHaveLength(2);
+    // The hotel machine carries the newest session (t-2), so it leads — #1610's
+    // "default the detail/Analyze view to the most recently used context".
+    expect(contexts[0].equipmentId).toBe(hotelId);
+    expect(contexts[0].label).toBe("Hotel chest press");
+    expect(contexts[1].equipmentId).toBe(homeId);
+    expect(contexts.every((c) => c.sessions === 7)).toBe(true);
+    // The lane string is the SHARED identity, not a second scheme.
+    expect(contexts.map((c) => c.lane)).toEqual([
+      equipmentLoadLane(hotelId),
+      equipmentLoadLane(homeId),
+    ]);
+  });
+
+  it("reports a single unassigned context for an equipment-free profile", () => {
+    const contexts = getExerciseLoadContexts(plainProfileId, "Curl");
+    // Variant spellings collapse on the NAME axis, so both curl sessions are one
+    // context — and with only one there is nothing for a chooser to offer.
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].equipmentId).toBeNull();
+    expect(contexts[0].lane).toBe(equipmentLoadLane(null));
+    expect(contexts[0].label).toBe("Unassigned");
+    expect(contexts[0].sessions).toBe(2);
+  });
+});
+
+describe("getExerciseComparison never compares two machines (#1610)", () => {
+  it("narrows every session metric to the requested lane", () => {
+    const home = getExerciseComparison(profileId, EXERCISE, "kg", {
+      equipmentLane: equipmentLoadLane(homeId),
+    });
+    const hotel = getExerciseComparison(profileId, EXERCISE, "kg", {
+      equipmentLane: equipmentLoadLane(hotelId),
+    });
+    expect(home).toHaveLength(7);
+    expect(hotel).toHaveLength(7);
+    // Each lane's chart/table values come only from its own stack: the reported bug
+    // is a chart that alternates 80 and 50 and calls it one progression.
+    expect(home.every((s) => (s.topWeightKg ?? 0) > 60)).toBe(true);
+    expect(hotel.every((s) => (s.topWeightKg ?? 0) < 60)).toBe(true);
+    expect(home.every((s) => s.equipmentId === homeId)).toBe(true);
+    expect(hotel.every((s) => s.equipmentId === hotelId)).toBe(true);
+    // Id and label resolved together, so a row can't name one machine and belong
+    // to another.
+    expect(new Set(home.map((s) => s.equipment))).toEqual(
+      new Set(["Home chest press"])
+    );
+  });
+
+  it("stays movement-wide when no lane is asked for (pre-#1610 shape)", () => {
+    const all = getExerciseComparison(profileId, EXERCISE, "kg");
+    expect(all).toHaveLength(14);
+  });
+
+  it("treats the unassigned lane as a lane, never a wildcard", () => {
+    const unassigned = getExerciseComparison(profileId, EXERCISE, "kg", {
+      equipmentLane: equipmentLoadLane(null),
+    });
+    // Every set of this movement names a machine, so the unassigned lane is empty —
+    // it must NOT fall back to "all sessions".
+    expect(unassigned).toEqual([]);
+  });
+});
+
+describe("PRs never combine two machines (#1610)", () => {
+  const WINDOW = 60;
+
+  it("reports one record per implement, each naming its own", () => {
+    const t = today(profileId);
+    const prs = recentPRs(getStrengthByExercise(profileId, true), t, WINDOW)
+      .filter(
+        (p) => exerciseHistoryKey(p.exercise) === exerciseHistoryKey(EXERCISE)
+      )
+      .sort((a, b) => (a.equipment ?? "").localeCompare(b.equipment ?? ""));
+    expect(prs).toHaveLength(2);
+    expect(prs.map((p) => p.equipment)).toEqual([
+      "Home chest press",
+      "Hotel chest press",
+    ]);
+    expect(prs.map((p) => p.equipmentId)).toEqual([homeId, hotelId]);
+    // The hotel machine's record is its OWN 50.5 kg — not the home machine's 80.5,
+    // which is what a movement-wide max reports for both.
+    expect(prs[0].weightKg).toBeGreaterThan(60);
+    expect(prs[1].weightKg).toBeLessThan(60);
+    // Labeled, so the two rows are not two identical-looking "Machine Chest Press".
+    expect(prs.map((p) => loadContextLabel(p.exercise, p.equipment))).toEqual([
+      `${EXERCISE} (Home chest press)`,
+      `${EXERCISE} (Hotel chest press)`,
+    ]);
+  });
+
+  it("collapses to one movement-wide record when not grouped by load context", () => {
+    const t = today(profileId);
+    const prs = recentPRs(getStrengthByExercise(profileId), t, WINDOW).filter(
+      (p) => exerciseHistoryKey(p.exercise) === exerciseHistoryKey(EXERCISE)
+    );
+    expect(prs).toHaveLength(1);
+    expect(prs[0].equipment).toBeNull();
+  });
+
+  it("leaves an equipment-free profile's records byte-for-byte unchanged", () => {
+    const t = today(plainProfileId);
+    const wide = recentPRs(getStrengthByExercise(plainProfileId), t, 60);
+    const laned = recentPRs(getStrengthByExercise(plainProfileId, true), t, 60);
+    expect(laned).toEqual(wide);
+  });
+});
+
+describe("getLoggedEquipmentByExercise (#1610)", () => {
+  it("keys logged implements by the canonical movement", () => {
+    const map = getLoggedEquipmentByExercise(profileId);
+    expect(map[exerciseHistoryKey(EXERCISE)]).toEqual(
+      [homeId, hotelId].sort((a, b) => a - b)
+    );
+  });
+
+  it("is empty for a profile whose sets name no implement", () => {
+    expect(getLoggedEquipmentByExercise(plainProfileId)).toEqual({});
+  });
+});
+
+describe("goal load context (#1610, migration 120)", () => {
+  function addGoal(equipment: number | null): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO goals
+             (profile_id, title, category, status, created_at, exercise, metric,
+              equipment_id, target_weight_kg)
+           VALUES (?, ?, 'strength', 'active', '2026-01-01', ?, 'weight', ?, 80)`
+        )
+        .run(profileId, "Chest press target", EXERCISE, equipment)
+        .lastInsertRowid
+    );
+  }
+
+  it("adds a nullable goals.equipment_id column", () => {
+    const cols = (
+      db.prepare("PRAGMA table_info(goals)").all() as {
+        name: string;
+        notnull: number;
+        dflt_value: string | null;
+      }[]
+    ).filter((c) => c.name === "equipment_id");
+    expect(cols).toHaveLength(1);
+    expect(cols[0].notnull).toBe(0);
+    expect(cols[0].dflt_value).toBeNull();
+  });
+
+  it("measures a machine-scoped goal on that machine only", () => {
+    const hotelGoal = addGoal(hotelId);
+    const homeGoal = addGoal(homeId);
+    const goals = getGoals(profileId).filter((g) =>
+      [hotelGoal, homeGoal].includes(g.id)
+    );
+    const progress = getGoalProgressMap(profileId, goals);
+
+    // The hotel machine tops out at 50.5 kg, so an 80 kg target is NOT met there —
+    // the bug is the home machine's 80.5 kg quietly completing it.
+    expect(progress.get(hotelGoal)!.lifetimeBest).toBeCloseTo(50.5, 5);
+    expect(progress.get(hotelGoal)!.done).toBe(false);
+    // The home machine did reach it.
+    expect(progress.get(homeGoal)!.lifetimeBest).toBeCloseTo(80.5, 5);
+    expect(progress.get(homeGoal)!.done).toBe(true);
+  });
+
+  it("keeps a goal that names no machine movement-wide", () => {
+    const wideGoal = addGoal(null);
+    const goals = getGoals(profileId).filter((g) => g.id === wideGoal);
+    const progress = getGoalProgressMap(profileId, goals);
+    // NULL is an UNDECLARED SCOPE, not an unassigned lane: the goal folds every
+    // implement, exactly as every goal stored before this column does.
+    expect(progress.get(wideGoal)!.lifetimeBest).toBeCloseTo(80.5, 5);
+    expect(progress.get(wideGoal)!.done).toBe(true);
+  });
+
+  it("detaches a goal back to movement-wide when its implement is deleted", () => {
+    const scoped = addGoal(hotelId);
+    const doomed = addEquipment(profileId, "Loaner chest press", "Machine");
+    db.prepare(`UPDATE goals SET equipment_id = ? WHERE id = ?`).run(
+      doomed,
+      scoped
+    );
+    deleteEquipment(profileId, doomed);
+    const goal = getGoals(profileId).find((g) => g.id === scoped)!;
+    expect(goal.equipment_id).toBeNull();
+    // …and it measures the whole movement again rather than nothing at all.
+    expect(
+      getGoalProgressMap(profileId, [goal]).get(scoped)!.lifetimeBest
+    ).toBeCloseTo(80.5, 5);
   });
 });

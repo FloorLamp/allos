@@ -264,8 +264,13 @@ describe("weekStartsThrough", () => {
 });
 
 describe("strengthMovers", () => {
-  const series = (exercise: string, values: number[]) => ({
+  const series = (
+    exercise: string,
+    values: number[],
+    equipment: string | null = null
+  ) => ({
     exercise,
+    equipment,
     points: values.map((value, i) => ({
       date: `2026-07-0${i + 1}`,
       value,
@@ -282,14 +287,55 @@ describe("strengthMovers", () => {
     ).toEqual([
       {
         exercise: "Deadlift",
+        equipment: null,
+        label: "Deadlift",
         first: 180,
         last: 160,
         deltaKg: -20,
         points: 2,
       },
-      { exercise: "Back Squat", first: 100, last: 105, deltaKg: 5, points: 2 },
-      { exercise: "Bench Press", first: 80, last: 82, deltaKg: 2, points: 2 },
+      {
+        exercise: "Back Squat",
+        equipment: null,
+        label: "Back Squat",
+        first: 100,
+        last: 105,
+        deltaKg: 5,
+        points: 2,
+      },
+      {
+        exercise: "Bench Press",
+        equipment: null,
+        label: "Bench Press",
+        first: 80,
+        last: 82,
+        deltaKg: 2,
+        points: 2,
+      },
     ]);
+  });
+
+  // #1610: a load-context-grouped series arrives as two rows sharing one exercise
+  // name. They must stay two movers, each LABELED by its implement — the whole
+  // reason the Trends flip waited for a surface that can name them.
+  it("keeps two implements of one movement as two labeled movers", () => {
+    const movers = strengthMovers([
+      series("Machine Chest Press", [80, 90], "Home chest press"),
+      series("Machine Chest Press", [50, 52], "Hotel chest press"),
+    ]);
+    expect(movers.map((m) => m.label)).toEqual([
+      "Machine Chest Press (Home chest press)",
+      "Machine Chest Press (Hotel chest press)",
+    ]);
+    expect(movers.map((m) => m.deltaKg)).toEqual([10, 2]);
+  });
+
+  // A series with no implement (every profile that owns no registry equipment)
+  // labels as the bare movement name — byte-for-byte the pre-#1610 rendering.
+  it("labels an implement-free series with the bare movement name", () => {
+    expect(strengthMovers([series("Back Squat", [100, 110])])[0].label).toBe(
+      "Back Squat"
+    );
   });
 
   it("ignores a lift with a single windowed session (a point is not a trend)", () => {
