@@ -39,7 +39,10 @@ import {
   deleteProfileSetting,
   setMetricSourcePriorityEntry,
 } from "@/lib/settings";
-import { METRIC_SOURCE_PRIORITY_KEY } from "@/lib/metric-source-priority";
+import {
+  DOCUMENTS_SOURCE_CLASS,
+  METRIC_SOURCE_PRIORITY_KEY,
+} from "@/lib/metric-source-priority";
 import { ALL_ROWS } from "@/lib/trends";
 
 // ---- migration 014: hr_minutes key rebuild -----------------------------------
@@ -688,5 +691,139 @@ describe("getBodyMetricSeriesBySource — full per-source window (#623)", () => 
       expect(source.data[0].date).toBe(dayStr(9));
       expect(source.data.at(-1)?.date).toBe(dayStr(4));
     }
+  });
+});
+
+// ---- the documents class + strict mode (issues #1640 / #1642) -----------------
+// The motivating scenario, end to end: periodic DEXA scans (each its own
+// 'document:<id>' provenance) against a daily-but-biased smart scale. A dedicated
+// profile, because these assertions are about which rows a read DROPS and the
+// shared fixture profile above is deliberately noisy.
+describe("documents source class + strict mode", () => {
+  const SCAN_A = "2024-06-02"; // first report
+  const SCAN_B = "2024-06-20"; // second report — a DIFFERENT document
+  const SCALE_ONLY = "2024-06-21"; // a day only the scale covered
+  let p: number;
+  let docA: number;
+  let docB: number;
+
+  beforeAll(() => {
+    p = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('scan vs scale')").run()
+        .lastInsertRowid
+    );
+    // Real document rows so the provenance strings name something that exists;
+    // the resolution itself keys on the 'document:<id>' string, not a join.
+    const insDoc = db.prepare(
+      `INSERT INTO medical_documents
+         (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+          extraction_status, extracted_count)
+       VALUES (?, ?, '', 'application/pdf', 1024, 'dexa', 'done', 1)`
+    );
+    docA = Number(insDoc.run(p, "scan-june.pdf").lastInsertRowid);
+    docB = Number(insDoc.run(p, "scan-late-june.pdf").lastInsertRowid);
+
+    const insBody = db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, body_fat_pct, source)
+       VALUES (?, ?, ?, ?)`
+    );
+    insBody.run(p, SCAN_A, 21.4, `document:${docA}`);
+    insBody.run(p, SCAN_B, 19.8, `document:${docB}`);
+    // The dense, biased scale — including on both scan days.
+    insBody.run(p, SCAN_A, 24.6, "withings");
+    insBody.run(p, SCAN_B, 24.1, "withings");
+    insBody.run(p, SCALE_ONLY, 24.0, "withings");
+  });
+
+  afterEach(() => {
+    deleteProfileSetting(p, METRIC_SOURCE_PRIORITY_KEY);
+  });
+
+  it("latest-value with the class is the newest SCAN, across documents", () => {
+    // Unset: the newest reading of any source — the scale's.
+    expect(getLatestBodyMetricDated(p, "body_fat")).toEqual({
+      value: 24.0,
+      date: SCALE_ONLY,
+    });
+
+    // Electing ONE document can only ever pin that one report...
+    setMetricSourcePriorityEntry(p, "body_fat", `document:${docA}`);
+    expect(getLatestBodyMetricDated(p, "body_fat")).toEqual({
+      value: 21.4,
+      date: SCAN_A,
+    });
+
+    // ...while the class means "the newest scan, whichever report it came from".
+    setMetricSourcePriorityEntry(p, "body_fat", DOCUMENTS_SOURCE_CLASS);
+    expect(getLatestBodyMetricDated(p, "body_fat")).toEqual({
+      value: 19.8,
+      date: SCAN_B,
+    });
+  });
+
+  it("per-day: a scan day is the scan's, a scan-less day still falls back", () => {
+    setMetricSourcePriorityEntry(p, "body_fat", DOCUMENTS_SOURCE_CLASS);
+    expect(getBodyMetricDailySeries(p, "body_fat")).toEqual([
+      { date: SCAN_A, value: 21.4 },
+      { date: SCAN_B, value: 19.8 },
+      { date: SCALE_ONLY, value: 24.0 }, // preference mode: the scale still answers
+    ]);
+  });
+
+  it("strict + the class is the scans-only sparse series (#1640 × #1642)", () => {
+    setMetricSourcePriorityEntry(p, "body_fat", DOCUMENTS_SOURCE_CLASS, true);
+    expect(getBodyMetricDailySeries(p, "body_fat")).toEqual([
+      { date: SCAN_A, value: 21.4 },
+      { date: SCAN_B, value: 19.8 },
+    ]);
+    // The scale's own days are gone — not re-labeled, not averaged in.
+    expect(
+      getBodyMetricDailySeries(p, "body_fat").some((r) => r.value > 24)
+    ).toBe(false);
+  });
+
+  it("a strict source with no readings yields null, never another source's number", () => {
+    setMetricSourcePriorityEntry(p, "body_fat", "oura", true);
+    expect(getLatestBodyMetricDated(p, "body_fat")).toBeNull();
+    // The same stale pick in PREFERENCE mode still falls back, as it always has.
+    setMetricSourcePriorityEntry(p, "body_fat", "oura");
+    expect(getLatestBodyMetricDated(p, "body_fat")).toEqual({
+      value: 24.0,
+      date: SCALE_ONLY,
+    });
+  });
+
+  it("a strict additive rollup counts ONLY that source, on covered and uncovered days", () => {
+    const BOTH = "2024-07-01"; // both sources reported
+    const HC_ONLY = "2024-07-02"; // only the non-elected source reported
+    upsertMetricSamples(p, [sample("steps", BOTH, 9000)], "health-connect");
+    upsertMetricSamples(p, [sample("steps", BOTH, 7500)], "oura");
+    upsertMetricSamples(p, [sample("steps", HC_ONLY, 8800)], "health-connect");
+
+    // Preference mode: the elected source wins its day, the other day falls back.
+    setMetricSourcePriorityEntry(p, "steps", "oura");
+    expect(getMetricDailyTotals(p, "steps")).toEqual([
+      { date: BOTH, value: 7500 },
+      { date: HC_ONLY, value: 8800 },
+    ]);
+
+    // Strict: the uncovered day is a gap, and the covered day is never summed
+    // with the source it excludes.
+    setMetricSourcePriorityEntry(p, "steps", "oura", true);
+    expect(getMetricDailyTotals(p, "steps")).toEqual([
+      { date: BOTH, value: 7500 },
+    ]);
+  });
+
+  it("a strict point (AVG) metric stays empty instead of reverting to all sources", () => {
+    const DAY = "2024-07-05";
+    upsertMetricSamples(p, [sample("hrv_ms", DAY, 44)], "health-connect");
+    setMetricSourcePriorityEntry(p, "hrv_ms", "oura", true);
+    expect(getMetricDailyTotals(p, "hrv_ms")).toEqual([]);
+    // Preference mode restores today's stale-pick fallback exactly.
+    setMetricSourcePriorityEntry(p, "hrv_ms", "oura");
+    expect(getMetricDailyTotals(p, "hrv_ms")).toEqual([
+      { date: DAY, value: 44 },
+    ]);
   });
 });

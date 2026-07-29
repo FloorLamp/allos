@@ -11,9 +11,13 @@ import {
 import { getMetricSourcePriority } from "@/lib/settings";
 import {
   COMPARABLE_METRICS,
+  DOCUMENTS_SOURCE_CLASS,
+  DOCUMENTS_SOURCE_LABEL,
   documentSourceId,
   documentSourceLabel,
+  hasDocumentSeries,
   sourceSeriesColorMap,
+  withDocumentsClassSeries,
   SOURCE_FALLBACK_COLOR,
   type ComparableMetric,
   type DocumentMeta,
@@ -41,6 +45,7 @@ function labelForSource(
   docs: Record<number, DocumentMeta>
 ): string {
   if (source === "manual") return "Manual";
+  if (source === DOCUMENTS_SOURCE_CLASS) return DOCUMENTS_SOURCE_LABEL;
   if (documentSourceId(source) != null)
     return documentSourceLabel(source, docs);
   return getIntegration(source as IntegrationId)?.name ?? source;
@@ -110,9 +115,15 @@ export default function SourceComparison({
   for (const d of getMedicalDocuments(profileId)) {
     docMeta[d.id] = { filename: d.filename, document_date: d.document_date };
   }
-  const colorByKey = sourceSeriesColorMap(raw.map((source) => source.source));
+  // The aggregated "Documents" class series (#1640) joins its members rather than
+  // replacing them: three DEXA reports stay three labeled series AND become one
+  // sparse ground-truth line the picker can elect. Its color comes from the same
+  // de-colliding document palette (sourceSeriesColorMap), so the family reads as a
+  // family while the aggregate stays distinguishable from every member.
+  const plotted = withDocumentsClassSeries(raw);
+  const colorByKey = sourceSeriesColorMap(plotted.map((entry) => entry.source));
   const unit = metric.key === "weight" ? ` ${weightUnit}` : metric.unit;
-  const series: CompareSeries[] = raw.map((s) => ({
+  const series: CompareSeries[] = plotted.map((s) => ({
     key: s.source,
     label: labelForSource(s.source, docMeta),
     color: colorByKey.get(s.source) ?? SOURCE_FALLBACK_COLOR,
@@ -121,10 +132,27 @@ export default function SourceComparison({
       value: displayValue(metric, d.value, weightUnit),
     })),
   }));
-  const configuredCurrent = priority[metric.key] ?? "";
-  const visibleCurrent = raw.some(
-    (source) => source.source === configuredCurrent
-  )
+  // Picker options are the plotted series PLUS the Documents class whenever any
+  // document reports the metric — with a single report the chart has no separate
+  // aggregate line to show (it would overdraw that report exactly), but electing
+  // the class is still the right forward-looking choice: the NEXT scan is a new
+  // document id, and the class already covers it.
+  const options = series.map((s) => ({ value: s.key, label: s.label }));
+  if (
+    hasDocumentSeries(raw) &&
+    !options.some((o) => o.value === DOCUMENTS_SOURCE_CLASS)
+  ) {
+    const firstDoc = options.findIndex(
+      (o) => documentSourceId(o.value) != null
+    );
+    options.splice(firstDoc, 0, {
+      value: DOCUMENTS_SOURCE_CLASS,
+      label: DOCUMENTS_SOURCE_LABEL,
+    });
+  }
+  const configured = priority[metric.key];
+  const configuredCurrent = configured?.source ?? "";
+  const visibleCurrent = options.some((o) => o.value === configuredCurrent)
     ? configuredCurrent
     : "";
 
@@ -150,7 +178,8 @@ export default function SourceComparison({
         <PrimarySourcePicker
           metric={metric.key}
           current={visibleCurrent}
-          options={series.map((s) => ({ value: s.key, label: s.label }))}
+          strict={visibleCurrent !== "" && configured?.strict === true}
+          options={options}
         />
       </div>
       <div

@@ -446,10 +446,13 @@ export function getMetricSourcePriority(
 // Set (or clear, with null/"") the primary source for one metric. The metric key
 // is validated by the CALLER (the server action allowlists COMPARABLE_METRICS);
 // the source id is shape-checked here so a forged post can't store a blob.
+// `strict` (#1642) elects "only this source" — no fallback on days it didn't
+// cover; it is meaningless without a source and is dropped along with one.
 export function setMetricSourcePriorityEntry(
   profileId: number,
   metric: string,
-  source: string | null
+  source: string | null,
+  strict = false
 ): void {
   if (source != null && source !== "" && !isValidSourceId(source)) {
     throw new Error(`Invalid source id: ${source}`);
@@ -457,7 +460,8 @@ export function setMetricSourcePriorityEntry(
   const next = withMetricSource(
     getMetricSourcePriority(profileId),
     metric,
-    source
+    source,
+    strict
   );
   if (Object.keys(next).length === 0) {
     deleteProfileSetting(profileId, METRIC_SOURCE_PRIORITY_KEY);
