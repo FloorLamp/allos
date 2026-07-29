@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isSafeNextPath,
   safeNextPath,
+  safePrefillUsername,
   truncateUserAgent,
 } from "../login-security";
 
@@ -57,5 +58,29 @@ describe("truncateUserAgent", () => {
     const long = "A".repeat(500);
     expect(truncateUserAgent(long, 200)).toHaveLength(200);
     expect(truncateUserAgent("short", 200)).toBe("short");
+  });
+});
+
+describe("safePrefillUsername (issue #1434)", () => {
+  it("accepts the stored username shape", () => {
+    for (const u of ["jordan", "a.b_c-d", "User123"]) {
+      expect(safePrefillUsername(u)).toBe(u);
+    }
+  });
+
+  it("rejects anything that could reflect arbitrary text into the form", () => {
+    for (const bad of [
+      "",
+      "ab",
+      "A".repeat(33),
+      "<script>x</script>",
+      "has space",
+      'quote"quote',
+      42,
+      null,
+      undefined,
+    ]) {
+      expect(safePrefillUsername(bad)).toBe("");
+    }
   });
 });
