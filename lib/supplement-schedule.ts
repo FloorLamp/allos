@@ -127,18 +127,24 @@ export function heldBySituation(
     : null;
 }
 
-export function isDueOn(
+// Whether this item's DAY CONDITION applies on the day `ctx` describes — the
+// workout/rest/situational half of dueness, with the pause hold applied, and
+// deliberately WITHOUT the obligation gate.
+//
+// It exists because #1505 split one question into two that share a day rule:
+//   • isDueOn      — "do I owe this today?"     (must/should; a miss can exist)
+//   • isOfferedOn  — "is this on offer today?"  (may; an access hint, never a miss)
+// A rest-day magnesium is not offered on a training day even though nothing is owed,
+// so both questions need the same condition evaluation — and it must be ONE
+// function, or the offer surfaces would slowly drift from the due surfaces.
+export function conditionAppliesOn(
   supp: Pick<Supplement, "condition" | "situation"> & {
-    obligation?: IntakeObligation;
     pause_situation?: string | null;
   },
   ctx: {
     isWorkoutDay: boolean;
     activeSituations: Set<string>;
-    // Today IS a predicted training day per the inferred cadence; null/undefined
-    // when no cadence could be inferred (fall back to the logged signal).
     predictedWorkoutDay?: boolean | null;
-    // The logged session's end time has passed (post_workout timing). Default true.
     postWorkoutReady?: boolean;
   }
 ): boolean {
@@ -146,14 +152,9 @@ export function isDueOn(
   // surfacing path before any condition is evaluated — including a `daily` med and a
   // situational-ON item whose on-situation is ALSO active (on-during A, paused-during
   // B → held). The active set is the SAME one the on-condition reads, so a pause
-  // situation's active state flows in without a second lookup.
+  // situation's active state flows in without a second lookup. A hold suppresses the
+  // OFFER too: a paused item should not be one tap from being logged either.
   if (heldBySituation(supp, ctx.activeSituations)) return false;
-  // A `may` item has NO DUENESS at all (#1505). This is the single short-circuit that
-  // used to be `as_needed`, widened to the obligation level that absorbed it: an item
-  // the user owes nothing on cannot be due, so it cannot be missed, cannot be counted
-  // in a fraction, and cannot be reminded. Its slot survives as an ACCESS HINT — read
-  // by `slotHintCoversNow` and the offer surfaces, never by this function.
-  if (supp.obligation === "may") return false;
   // "Is today a training day?" — predicted cadence when known, else logged reality.
   const trainingToday = ctx.predictedWorkoutDay ?? ctx.isWorkoutDay;
   switch (supp.condition) {
@@ -171,6 +172,74 @@ export function isDueOn(
     default:
       return true;
   }
+}
+
+export function isDueOn(
+  supp: Pick<Supplement, "condition" | "situation"> & {
+    obligation?: IntakeObligation;
+    pause_situation?: string | null;
+  },
+  ctx: Parameters<typeof conditionAppliesOn>[1]
+): boolean {
+  // A `may` item has NO DUENESS at all (#1505). This is the single short-circuit that
+  // used to be `as_needed`, widened to the obligation level that absorbed it: an item
+  // the user owes nothing on cannot be due, so it cannot be missed, cannot be counted
+  // in a fraction, and cannot be reminded. Its slot survives as an ACCESS HINT — read
+  // by isOfferedOn / slotHintCoversNow and the offer surfaces, never by this one.
+  if (supp.obligation === "may") return false;
+  return conditionAppliesOn(supp, ctx);
+}
+
+// ---- Slot hints (issue #1505) ---------------------------------------------
+//
+// On a `may` item, `time_of_day` stops meaning "due then" and starts meaning "offer
+// it here" — an ACCESS HINT. These two pure helpers are the whole of that reading, so
+// the digest tail, the ride-along More… row and quick log can never scope differently.
+
+// The bucket a may item's dose hints at, or null when it has no hint at all. A
+// hint-less item ("Anytime", or no stored time) is the aspirin case: always on offer,
+// never scoped out of a slot.
+export function slotHintBucket(timeOfDay: string | null): TimeBucket | null {
+  const bucket = timeBucket(timeOfDay);
+  return bucket === "Anytime" ? null : bucket;
+}
+
+// Whether an item hinted at `timeOfDay` should be OFFERED at the wall-clock time
+// `nowHhmm` (profile-local).
+//
+// Evaluated AT TAP TIME, never at message-build time — that distinction is the whole
+// reason this is a function of `nowHhmm` rather than a stored field. A Telegram digest
+// is born in the morning and its keyboard may be tapped at bedtime; scoping by when
+// the MESSAGE was built would offer breakfast items at 11pm. The tick's boundary
+// refresh (which relabels the collapsed tail) exists for the same reason.
+//
+// A hint-less item is offered in EVERY slot: no hint means no opinion, and refusing to
+// show it anywhere would make "may with no slot" unreachable — the exact opposite of
+// the guaranteed-access rule.
+export function slotHintCoversNow(
+  timeOfDay: string | null,
+  nowHhmm: string
+): boolean {
+  const hint = slotHintBucket(timeOfDay);
+  if (hint === null) return true;
+  return hint === currentTimeBucket(nowHhmm);
+}
+
+// Whether a `may` item is ON OFFER today — the access-hint twin of isDueOn, and the
+// gate for every user-initiated surface: Upcoming's collapsed "available" disclosure,
+// the digest's "Log other…" tail, the ride-along More… row, quick log.
+//
+// "Offered" is NOT "due": nothing here creates an obligation, a miss, or a send. It
+// only answers whether the item is worth putting one tap away right now.
+export function isOfferedOn(
+  supp: Pick<Supplement, "condition" | "situation"> & {
+    obligation?: IntakeObligation;
+    pause_situation?: string | null;
+  },
+  ctx: Parameters<typeof conditionAppliesOn>[1]
+): boolean {
+  if (supp.obligation !== "may") return false;
+  return conditionAppliesOn(supp, ctx);
 }
 
 // The count of situational intake items currently due BECAUSE their situation is

@@ -5,7 +5,14 @@ import {
   isItemHiddenBySuppression,
   type SuppressionRecord,
 } from "../../upcoming-suppress";
-import { isDueOn, isPushedIntake, timeBucket } from "../../supplement-schedule";
+import {
+  isDueOn,
+  isOfferedOn,
+  isPushedIntake,
+  slotHintBucket,
+  timeBucket,
+  TIME_BUCKET_LABELS,
+} from "../../supplement-schedule";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
@@ -26,7 +33,11 @@ import { getInstrumentStates } from "../../instrument-records";
 import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
 import { crisisFindingLine } from "../../crisis-resources";
 import { getResolvedCrisisResources } from "../../settings";
-import { refillSignalKey, poolRefillSignalKey } from "../../refill-nudge";
+import {
+  refillSignalKey,
+  poolRefillSignalKey,
+  offeredSignalKey,
+} from "../../refill-nudge";
 import {
   getPoolView,
   poolIdsForProfiles,
@@ -140,14 +151,17 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 // per-dose taken-log read). A PRN (as_needed) med is never scheduled-due, so
 // isDueOn already drops it. Only NOT-yet-taken doses are surfaced.
 //
-// Filtered by the ONE shared push predicate `isPushedIntake` (#1505): a LOW-priority
-// SUPPLEMENT is tracked but never pushed, so it is absent here — and therefore absent
-// from the Upcoming rows, the #1504 aggregate count, the dashboard Needs-attention
-// hero, the calendar feed, and the digest's Today section, all through this single
-// model rather than four surface-local filters (#221). It stays fully visible where
-// it lives: the Supplements page due-today list, the quick-log overlays, and every
-// adherence strip/fraction (which answer "what did I do", not "what needs me").
-// A low MEDICATION is unaffected — kind, not priority, decides pushability for meds.
+// This is the DUE list — must + should only. A `may` item never reaches it, because
+// isDueOn short-circuits on `may` (#1505): with no obligation there is no dueness, so
+// there is nothing here to be late for. That single short-circuit is what keeps the
+// Upcoming rows, the #1504 aggregate count, the dashboard hero, the calendar feed and
+// the digest's Today section agreeing, instead of five surface-local filters (#221).
+//
+// `may` items are NOT dropped from the page — they are COLLAPSED. `offeredItems`
+// below gathers them as "available" for Upcoming's disclosure, so demotion reads as a
+// visible MOVE into a quieter section rather than a disappearance. Obligation, not
+// kind, decides: a medication is here because it is `must`/`should`, not because it
+// is a medication.
 export function doseItems(profileId: number, today: string): UpcomingItem[] {
   const supplements = getSupplements(profileId);
   const doses = getSupplementDoses(profileId);
@@ -168,8 +182,6 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
     if (taken.has(dose.id)) continue;
     const supp = byId.get(dose.item_id);
     if (!supp || !supp.active || !isDueOn(supp, ctx)) continue;
-    // Tracked, never pushed (#1505) — the shared predicate, not a local check.
-    if (!isPushedIntake(supp)) continue;
     const detail = [
       supp.kind === "medication" ? "Medication" : null,
       supp.kind === "medication"
@@ -210,6 +222,53 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
     });
   }
   return items;
+}
+
+// `may` items ON OFFER today (issue #1505) — the collapsed-not-removed half of the
+// Upcoming model. These are NOT due, carry no date, and must never be banded with the
+// due rows or counted in the hero/aggregate headline: they are an availability list,
+// rendered behind a disclosure the way food suggestions are.
+//
+// Scoped by `isOfferedOn` (the item's day condition, obligation `may`) and labelled
+// with its slot HINT so the row reads "available · bedtime" rather than implying a
+// time it is owed at. A hint-less item reads plainly "available".
+//
+// Returned as UpcomingItem for one reason only: the suppression bus and the row
+// renderer already speak that shape. The `band` is deliberately absent and `dueDate`
+// null so nothing downstream can mistake one of these for work.
+export function offeredItems(profileId: number, today: string): UpcomingItem[] {
+  const supplements = getSupplements(profileId);
+  const doses = getSupplementDoses(profileId);
+  const activeSituations = getEffectiveActiveSituations(profileId, today);
+  const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
+  const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
+  const ctx = { isWorkoutDay, activeSituations, predictedWorkoutDay };
+
+  const dosesByItem = new Map<number, typeof doses>();
+  for (const d of doses) {
+    const list = dosesByItem.get(d.item_id);
+    if (list) list.push(d);
+    else dosesByItem.set(d.item_id, [d]);
+  }
+
+  const items: UpcomingItem[] = [];
+  for (const supp of supplements) {
+    if (!supp.active || !isOfferedOn(supp, ctx)) continue;
+    // ONE row per ITEM, not per dose: a may item's doses are amount shapes, not
+    // occurrences, so listing three of them would invent three things to do.
+    const hint = slotHintBucket(dosesByItem.get(supp.id)?.[0]?.time_of_day ?? null);
+    items.push({
+      key: offeredSignalKey(supp.id),
+      domain: "available",
+      title: supp.name,
+      detail:
+        supp.kind === "medication" ? "Medication · as needed" : "As needed",
+      href: intakeHref(supp.kind),
+      dueDate: null,
+      dueText: hint ? `Available · ${TIME_BUCKET_LABELS[hint]}` : "Available",
+    });
+  }
+  return items.sort((a, b) => a.title.localeCompare(b.title));
 }
 
 // Tracked meds/supplements running low on supply (reuses lib/refill's pure math;

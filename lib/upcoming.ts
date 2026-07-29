@@ -56,6 +56,11 @@ export function snoozeUntil(today: string, days: number): string | null {
 // their own "Flagged" / "For review" groupings rather than in the date bands.
 export type UpcomingDomain =
   | "dose"
+  // A `may` item ON OFFER today (#1505) — availability, not work. It carries no due
+  // date and no band, never counts toward the hero/aggregate headline, and renders
+  // ONLY inside Upcoming's collapsed "available" disclosure. It exists so demoting an
+  // item reads as a visible move into a quieter section rather than a disappearance.
+  | "available"
   | "prn-max"
   | "refill"
   | "dietary-limit"
@@ -110,6 +115,11 @@ export type UpcomingDomain =
 // Stable within-band ordering when two items share an effective due date.
 const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   dose: 0,
+  // Availability sorts LAST of everything (#1505): it is not work, and a `may` item
+  // must never appear above something the user actually owes. In practice the
+  // Upcoming page renders these in their own disclosure, so this rank only matters if
+  // some future surface bands them together — and then last is the right answer.
+  available: 99,
   // A PRN over-max is safety-adjacent — sort it just after scheduled doses, ahead of
   // the calm informational findings (#798).
   "prn-max": 0.5,

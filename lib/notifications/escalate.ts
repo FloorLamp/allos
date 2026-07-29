@@ -22,6 +22,7 @@ import {
   type NotifySchedule,
 } from "../settings";
 import { createLogger } from "../log";
+import { escalatesOnMiss } from "../supplement-schedule";
 
 const log = createLogger("notify");
 
@@ -50,10 +51,15 @@ export async function runEscalations(
   // Gather critical, unconfirmed candidates only from slots whose reminder was
   // actually delivered today — there's no missed dose to chase otherwise. The
   // PreWorkout pseudo-slot (#1154) is chased like a window, anchored on its
-  // workout-relative hour. This gather deliberately reads the UNFILTERED
-  // collectWindowDoses — the #1156 priority floor never gates the safety tier,
-  // so a low-priority CRITICAL item still escalates once its slot's reminder
-  // went out.
+  // workout-relative hour.
+  //
+  // The gather reads the UNFILTERED collectWindowDoses on purpose: the SEND floor is
+  // applied at send assembly, never here, so the safety tier can never be silenced by
+  // a display-layer filter. The obligation gate that DOES apply is
+  // `escalatesOnMiss` — `must` only (#1505). A `should` miss is a tracked shortfall,
+  // and chasing it with a second message is exactly the over-contact this model
+  // exists to remove; a `may` item has no miss to chase and never reaches here
+  // anyway, since isDueOn short-circuits it out of the window entirely.
   const candidates: EscalationCandidate[] = [];
   const sentWindows: EscalationWindow[] = [];
   const preWorkoutHour = getPreWorkoutSlotHour(profileId);
@@ -70,6 +76,10 @@ export async function runEscalations(
       continue;
     sentWindows.push(w);
     for (const e of collectWindowDoses(profileId, w, date)) {
+      // TWO gates, both required and neither redundant: `must` is the obligation
+      // tier that may escalate at all, and `critical` is the per-item opt-in INSIDE
+      // it. Dropping either would widen the loudest surface in the app.
+      if (!escalatesOnMiss(e.supp)) continue;
       if (!e.supp.critical) continue;
       candidates.push({
         doseId: e.dose.id,

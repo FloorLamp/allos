@@ -16,14 +16,22 @@ export interface Adherence {
   due: number;
 }
 
-// x/y supplement adherence for a single day: how many of today's due doses have
-// been logged. A dose counts as "due" when its (active) parent supplement is due
-// under today's context (workout/rest/situational — the same isDueOn used by the
-// supplements page and the notifier). Doses whose supplement is missing from
-// `activeSuppById` (inactive/deleted) are skipped.
+// x/y intake adherence for a single day: how many of today's due doses have been
+// logged. A dose counts as "due" when its (active) parent item is due under today's
+// context (workout/rest/situational — the same isDueOn used by the supplements page
+// and the notifier). Doses whose item is missing from `activeSuppById`
+// (inactive/deleted) are skipped.
+//
+// `may` items are absent from this fraction, and that is the point of #1505 rather
+// than an omission: a may item has no dueness, so it has no denominator to be part
+// of and cannot drag an honest number down. It comes for free — isDueOn short-
+// circuits on `may` — which is why the obligation must be in the Pick.
 export function supplementAdherenceToday(
   doses: { id: number; item_id: number }[],
-  activeSuppById: Map<number, Pick<Supplement, "condition" | "situation">>,
+  activeSuppById: Map<
+    number,
+    Pick<Supplement, "condition" | "situation" | "obligation">
+  >,
   ctx: { isWorkoutDay: boolean; activeSituations: Set<string> },
   takenDoseIds: Set<number>
 ): Adherence {

@@ -217,3 +217,14 @@ export function planPoolRefillNudges(
 ): RefillNudgePlan {
   return planRefillNudges(candidates, markedIds, suppressedIds);
 }
+
+// The suppression/identity key for an "available" (`may`) row on Upcoming (#1505).
+// Keyed on the ITEM id — a may item contributes ONE availability row, not one per
+// dose — and namespaced so dismissing it can never collide with that item's refill
+// signal. Dismissing an availability row is a legitimate "not this, thanks": it is an
+// offer, and an offer you can't decline is a nag.
+export const OFFERED_PREFIX = "available:";
+
+export function offeredSignalKey(itemId: number): string {
+  return `${OFFERED_PREFIX}${itemId}`;
+}
