@@ -14,7 +14,7 @@ import {
 import {
   FOOD_TIMING_LABELS,
   PRIORITY_ORDER,
-  doseReminderNotifies,
+  isPushedIntake,
   type TimeBucket,
 } from "../supplement-schedule";
 import { parseRxcuiIngredients } from "../rxnorm";
@@ -94,7 +94,7 @@ export function doseSendSlot(
 // body lines AND buttons — while medications are never gated (safety tier).
 // In-app surfaces don't route through this; dueness is untouched.
 export function notifiableWindowDoses(entries: WindowDose[]): WindowDose[] {
-  return entries.filter((e) => doseReminderNotifies(e.supp));
+  return entries.filter((e) => isPushedIntake(e.supp));
 }
 
 // The noun a reminder/summary uses for its items, chosen from the ACTUAL kinds in

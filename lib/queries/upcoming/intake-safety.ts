@@ -5,7 +5,7 @@ import {
   isItemHiddenBySuppression,
   type SuppressionRecord,
 } from "../../upcoming-suppress";
-import { isDueOn, timeBucket } from "../../supplement-schedule";
+import { isDueOn, isPushedIntake, timeBucket } from "../../supplement-schedule";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
@@ -27,7 +27,11 @@ import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
 import { crisisFindingLine } from "../../crisis-resources";
 import { getResolvedCrisisResources } from "../../settings";
 import { refillSignalKey, poolRefillSignalKey } from "../../refill-nudge";
-import { getPoolView, poolIdsForProfiles } from "../intake/supply-pool";
+import {
+  getPoolView,
+  poolIdsForProfiles,
+  poolPushes,
+} from "../intake/supply-pool";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";
@@ -135,6 +139,15 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 // supplement schedule's isDueOn with today's workout/situation context, and the
 // per-dose taken-log read). A PRN (as_needed) med is never scheduled-due, so
 // isDueOn already drops it. Only NOT-yet-taken doses are surfaced.
+//
+// Filtered by the ONE shared push predicate `isPushedIntake` (#1505): a LOW-priority
+// SUPPLEMENT is tracked but never pushed, so it is absent here — and therefore absent
+// from the Upcoming rows, the #1504 aggregate count, the dashboard Needs-attention
+// hero, the calendar feed, and the digest's Today section, all through this single
+// model rather than four surface-local filters (#221). It stays fully visible where
+// it lives: the Supplements page due-today list, the quick-log overlays, and every
+// adherence strip/fraction (which answer "what did I do", not "what needs me").
+// A low MEDICATION is unaffected — kind, not priority, decides pushability for meds.
 export function doseItems(profileId: number, today: string): UpcomingItem[] {
   const supplements = getSupplements(profileId);
   const doses = getSupplementDoses(profileId);
@@ -155,6 +168,8 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
     if (taken.has(dose.id)) continue;
     const supp = byId.get(dose.item_id);
     if (!supp || !supp.active || !isDueOn(supp, ctx)) continue;
+    // Tracked, never pushed (#1505) — the shared predicate, not a local check.
+    if (!isPushedIntake(supp)) continue;
     const detail = [
       supp.kind === "medication" ? "Medication" : null,
       supp.kind === "medication"
@@ -204,8 +219,12 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
 // days-left) drives the band, so an item with 0 days left lands in Today and a
 // week of runway lands in This week.
 export function refillItems(profileId: number, today: string): UpcomingItem[] {
+  // Tracked, never pushed (#1505): a refill nudge IS a push, so the same shared
+  // predicate the dose items use gates it here and in the notify tick's runRefills.
+  // The Supplements page still shows the item's supply state — this drops only the
+  // nudge, never the fact.
   const tracked = getSupplements(profileId).filter(
-    (s) => s.active && s.quantity_on_hand != null
+    (s) => s.active && s.quantity_on_hand != null && isPushedIntake(s)
   );
   if (tracked.length === 0) return [];
   const rates = getRefillRates(profileId);
@@ -249,6 +268,10 @@ export function poolRefillItems(
   for (const supplyId of poolIdsForProfiles([profileId])) {
     const pool = getPoolView(supplyId);
     if (!pool || !pool.low || pool.daysLeft == null) continue;
+    // Tracked, never pushed (#1505), pooled edition: a bottle whose every ACTIVE
+    // member is a low-priority supplement drops out of the nudge. Any pushable
+    // member keeps the whole pool's signal alive — see poolPushes.
+    if (!poolPushes(pool.members)) continue;
     items.push({
       key: poolRefillSignalKey(pool.id),
       domain: "refill",

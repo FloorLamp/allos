@@ -18,7 +18,7 @@ import {
   parseAllCallback,
   keyboardDoseFootprint,
 } from "../notifications/callback-data";
-import { doseReminderNotifies, type TimeBucket } from "../supplement-schedule";
+import { isPushedIntake, type TimeBucket } from "../supplement-schedule";
 import { escalationWindowPhrase } from "../notifications/escalation";
 import type { AdherenceSummary } from "../supplement-adherence";
 import type {
@@ -154,20 +154,20 @@ describe("preWorkoutSlotHour", () => {
 
 // ---- #1156 priority floor (pure pieces) ------------------------------------
 
-describe("doseReminderNotifies (#1156)", () => {
+describe("isPushedIntake (#1156)", () => {
   it("excludes ONLY low-priority supplements", () => {
-    expect(doseReminderNotifies({ kind: "supplement", priority: "low" })).toBe(
+    expect(isPushedIntake({ kind: "supplement", priority: "low" })).toBe(
       false
     );
-    expect(doseReminderNotifies({ kind: "supplement", priority: "high" })).toBe(
+    expect(isPushedIntake({ kind: "supplement", priority: "high" })).toBe(
       true
     );
     expect(
-      doseReminderNotifies({ kind: "supplement", priority: "mandatory" })
+      isPushedIntake({ kind: "supplement", priority: "mandatory" })
     ).toBe(true);
   });
   it("NEVER gates a medication (the safety carve-out)", () => {
-    expect(doseReminderNotifies({ kind: "medication", priority: "low" })).toBe(
+    expect(isPushedIntake({ kind: "medication", priority: "low" })).toBe(
       true
     );
   });

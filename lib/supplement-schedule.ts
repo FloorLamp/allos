@@ -346,19 +346,36 @@ export const PRIORITY_ORDER: Record<SupplementPriority, number> = {
   low: 2,
 };
 
-// The NOTIFICATION priority floor (issue #1156): whether a scheduled dose of this
-// item sends dose-reminder notifications at all. A LOW-priority SUPPLEMENT is
-// "tracked, not nagged" — it stays fully visible in-app (Supplements page,
-// Upcoming, adherence strip) but is excluded from every dose-reminder send
-// (Telegram / Web Push / Home Assistant), so a shelf of nice-to-haves can't flood
-// the reminder or its button keyboard. The one hard boundary (#449/#942): the
-// floor is a CALM-tier lever only — a MEDICATION's scheduled reminder is safety
-// tier and is DELIBERATELY never priority-gated, so marking a critical med "low"
-// can never silence its safety signal (missed-dose escalation is likewise never
-// gated; see lib/notifications/escalate.ts). Priority itself stays the user's
-// static, user-owned tag (#559) — this adds a notification CONSUMER, it never
-// invents priority or changes dueness (isDueOn is untouched).
-export function doseReminderNotifies(
+// THE push predicate (issue #1156 → widened by #1505): whether this intake item is
+// allowed on a ROUTINE PUSH surface at all. A LOW-priority SUPPLEMENT is "tracked,
+// never pushed" — the user's own "this is optional" tag — so it keeps its schedule,
+// its dueness, its adherence history and its page presence, but is excluded from
+// every surface that pushes work AT the user:
+//
+//   • collectUpcoming's doseItems — and therefore the Upcoming rows, the #1504
+//     aggregate count, the dashboard Needs-attention hero, the calendar feed, and
+//     the Telegram digest's Today section (one model, no surface-local filtering);
+//   • the scheduled dose-reminder sends (Telegram / Web Push / Home Assistant),
+//     via notifiableWindowDoses;
+//   • the private-supply refill / low-supply nudge, on Upcoming and in the tick —
+//     a push is a push (the Supplements page still SHOWS supply state).
+//
+// This is the ONE gate every one of those surfaces consults; a surface that grows
+// its own priority check is the drift this predicate exists to prevent (#221).
+//
+// The two hard boundaries (#449/#942):
+//   1. KIND, not priority, decides pushability for MEDICATIONS — a med marked low
+//      pushes exactly as before, so marking a critical med "low" can never silence
+//      it (safety posture).
+//   2. SAFETY signals never route through this predicate at all: missed-dose
+//      escalation reads the UNFILTERED dose gather (lib/notifications/escalate.ts),
+//      and the interaction (#144) / PGx (#710) / UL (#148) warnings fire identically
+//      when a low supplement is a member. This gates routine dueness pushes only.
+//
+// Priority itself stays the user's static, user-owned tag (#559): this adds a
+// CONSUMER of priority, it never invents priority and never changes dueness
+// (isDueOn is untouched, so the item stays due — it just isn't pushed).
+export function isPushedIntake(
   item: Pick<Supplement, "kind" | "priority">
 ): boolean {
   return !(item.kind === "supplement" && item.priority === "low");

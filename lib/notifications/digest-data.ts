@@ -29,7 +29,7 @@ import {
 import {
   countSituationalDue,
   heldItemsBy,
-  doseReminderNotifies,
+  isPushedIntake,
   isDueOn,
 } from "../supplement-schedule";
 import {
@@ -222,19 +222,14 @@ export function gatherDigestInput(
   }
   const todayGroups = groupUpcoming(upcoming, td);
   // The dose glance headline counts the DUE dose items collectUpcoming surfaced
-  // (bus-honored + #558) — the same items the Today section bands over. The
-  // #1156 priority floor applies to this PUSH surface: a low-priority SUPPLEMENT
-  // dose stays on the in-app surfaces (Upcoming, Supplements page) but is
-  // excluded from the digest's actionable dose count — tracked, not nagged.
-  const doseByIdForFloor = new Map(doses.map((d) => [d.id, d]));
+  // (bus-honored + #558) — the same items the Today section bands over. No local
+  // priority filter here any more (#1505): the "tracked, never pushed" exclusion now
+  // lives in collectUpcoming's doseItems, the ONE shared model this reads, so the
+  // digest count, the Upcoming rows, the aggregate and the hero can no longer
+  // disagree about which doses are pushable (#221 — one question, one computation).
   const todayDoseIds = upcoming
     .filter((i) => i.domain === "dose" && i.doseId != null)
-    .map((i) => i.doseId as number)
-    .filter((id) => {
-      const d = doseByIdForFloor.get(id);
-      const supp = d ? suppById.get(d.item_id) : undefined;
-      return supp ? doseReminderNotifies(supp) : true;
-    });
+    .map((i) => i.doseId as number);
   const doseCount = todayDoseIds.length;
 
   // Yesterday: activities, supplement adherence x/y, weight if logged.

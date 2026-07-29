@@ -24,6 +24,8 @@ import {
   type PoolConsumer,
 } from "../../refill";
 import { getRefillRates } from "./refill";
+import { isPushedIntake } from "../../supplement-schedule";
+import type { SupplementPriority } from "../../types";
 
 // A shared bottle as stored.
 export interface SharedSupply {
@@ -45,6 +47,10 @@ export interface PoolMember {
   profileId: number;
   name: string;
   kind: "supplement" | "medication";
+  // The member item's user-owned priority (#559) — carried so the pooled refill
+  // signal can consult the ONE shared push predicate (#1505): a bottle whose every
+  // active member is a LOW-priority supplement is tracked, never pushed.
+  priority: SupplementPriority;
   qtyPerDose: number;
   active: boolean;
 }
@@ -84,7 +90,7 @@ export function listSharedSupplies(): SharedSupply[] {
 export function poolMembers(supplyId: number): PoolMember[] {
   const rows = db
     .prepare(
-      `SELECT id, profile_id, name, kind, qty_per_dose, active
+      `SELECT id, profile_id, name, kind, priority, qty_per_dose, active
          FROM intake_items
         WHERE supply_id = ?
         ORDER BY profile_id, name, id`
@@ -94,6 +100,7 @@ export function poolMembers(supplyId: number): PoolMember[] {
     profile_id: number;
     name: string;
     kind: "supplement" | "medication";
+    priority: SupplementPriority;
     qty_per_dose: number;
     active: number;
   }[];
@@ -102,9 +109,22 @@ export function poolMembers(supplyId: number): PoolMember[] {
     profileId: r.profile_id,
     name: r.name,
     kind: r.kind,
+    priority: r.priority,
     qtyPerDose: r.qty_per_dose,
     active: r.active === 1,
   }));
+}
+
+// Whether a pooled bottle may ride a PUSH surface (#1505). The pool is ONE subject
+// shared across people, so it keeps pushing while ANY active member is pushable
+// under the shared `isPushedIntake` predicate — the household's warfarin bottle is
+// never silenced because someone else's link to it is a low-priority supplement.
+// Only a bottle whose entire active membership is "tracked, never pushed" drops out
+// of the nudge; the cabinet page still shows its supply state either way.
+export function poolPushes(members: readonly PoolMember[]): boolean {
+  const active = members.filter((m) => m.active);
+  if (active.length === 0) return false;
+  return active.some((m) => isPushedIntake(m));
 }
 
 // The pooled consumption inputs for one bottle. Rates are composed PER PROFILE — the
