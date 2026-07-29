@@ -60,12 +60,12 @@ function seedMed(
       .prepare(
         `INSERT INTO intake_items
            (profile_id, name, active, kind, condition, obligation, rx, quantity_on_hand, qty_per_dose, created_at)
-         VALUES (?, ?, 1, 'medication', 'daily', 'should', ?, 10, 1, ?)`
+         VALUES (?, ?, 1, 'medication', 'daily', ?, ?, 10, 1, ?)`
       )
       .run(
         profileId,
         name,
-        opts.asNeeded ?? 1,
+        (opts.asNeeded ?? 1) ? "may" : "must",
         opts.rx ?? 0,
         `${created} 12:00:00`
       ).lastInsertRowid

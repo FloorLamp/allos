@@ -245,7 +245,8 @@ describe("commitImportJob — save a ready paste import", () => {
     expect(med?.name).toBe("Lisinopril");
     expect(med?.document_id).toBeNull();
     expect(med?.source).toBe("extracted");
-    expect(med?.obligation).toBe("should"); // "daily" → scheduled, not PRN
+    // "daily" sig → scheduled, so the medication default `must` (#1505), not `may`.
+    expect(med?.obligation).toBe("must");
     const doseCount = (
       db
         .prepare(

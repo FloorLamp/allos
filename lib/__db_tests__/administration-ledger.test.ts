@@ -35,7 +35,7 @@ import {
 import type { Supplement } from "@/lib/types";
 
 // A minimal daily supplement for the pure strip computation (isDueOn reads only
-// condition / situation / as_needed).
+// condition / situation / obligation).
 const DAILY_SUPP = {
   condition: "daily",
   situation: null,
@@ -66,8 +66,12 @@ function seedScheduledHistory(mem: Database.Database): {
   const itemId = Number(
     mem
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
-         VALUES (1, 'Vitamin D', 1, 'supplement', 'daily', 'should')`
+        // schemaAt(40) builds the PRE-041 schema, which predates the #1505 collapse
+        // — the column there is still `priority`. This fixture deliberately models
+        // the old world, so it names the old column; the migration under test is what
+        // carries it forward.
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
+         VALUES (1, 'Vitamin D', 1, 'supplement', 'daily', 'high')`
       )
       .run().lastInsertRowid
   );

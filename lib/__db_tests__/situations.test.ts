@@ -89,9 +89,11 @@ describe("situations vocabulary (#560)", () => {
     const itemId = Number(
       db
         .prepare(
+          // Pre-029 schema (built from the frozen migrations up to 28), which
+          // predates the #1505 collapse — the column is still `priority` there.
           `INSERT INTO intake_items
-             (profile_id, name, condition, obligation, situation)
-         VALUES (?, 'Zinc', 'situational', 'should', 'Illness')`
+             (profile_id, name, condition, priority, situation)
+         VALUES (?, 'Zinc', 'situational', 'high', 'Illness')`
         )
         .run(p).lastInsertRowid
     );
@@ -160,9 +162,11 @@ describe("migration 029 backfill", () => {
     const itemId = Number(
       d
         .prepare(
+          // Pre-029 schema (built from the frozen migrations up to 28), which
+          // predates the #1505 collapse — the column is still `priority` there.
           `INSERT INTO intake_items
-             (profile_id, name, condition, obligation, situation)
-         VALUES (?, 'Zinc', 'situational', 'should', 'Illness')`
+             (profile_id, name, condition, priority, situation)
+         VALUES (?, 'Zinc', 'situational', 'high', 'Illness')`
         )
         .run(profileId).lastInsertRowid
     );

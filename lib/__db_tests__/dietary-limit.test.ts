@@ -37,9 +37,14 @@ function addSupp(
     db
       .prepare(
         `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
-         VALUES (?, ?, 1, 'medication', ?, 'should')`
+         VALUES (?, ?, 1, 'medication', ?, ?)`
       )
-      .run(profileId, name, opts.condition ?? "daily", opts.asNeeded ?? 0)
+      .run(
+        profileId,
+        name,
+        opts.condition ?? "daily",
+        opts.asNeeded ? "may" : "should"
+      )
       .lastInsertRowid
   );
   db.prepare(

@@ -486,6 +486,8 @@ describe("#1281 migration 101 recovers a blank-name unpaired prescription non-lo
       | undefined;
     expect(med).toBeDefined();
     expect(med!.name).toBe("Unnamed medication");
+    // Migration 101 projects the recovery placeholder as a PRN row, which the #1505
+    // collapse maps onto `may` — the same arm the migration's own CASE takes.
     expect(med!.obligation).toBe("may");
     expect(
       (

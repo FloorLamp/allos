@@ -92,7 +92,7 @@ describe("redose fields on addSupplement", () => {
       })
     );
     const row = redoseRow(lastItemId());
-    expect(row.obligation).toBe("should");
+    expect(row.obligation).toBe("must");
     expect(row.mih).toBeNull();
     expect(row.mdc).toBeNull();
     expect(row.rn).toBe(0);
@@ -127,7 +127,7 @@ describe("redose fields on updateSupplement", () => {
     );
     expect(r.ok).toBe(true);
     const row = redoseRow(id);
-    expect(row.obligation).toBe("should");
+    expect(row.obligation).toBe("must");
     expect(row.mih).toBeNull();
     expect(row.mdc).toBeNull();
     expect(row.rn).toBe(0);

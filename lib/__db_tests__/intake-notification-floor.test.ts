@@ -1,11 +1,9 @@
 // DB INTEGRATION TIER — the shared push predicate end-to-end, notification half:
-// a LOW-priority SUPPLEMENT is never notified (window reminder, merged send, digest
-// count), an all-low send goes silent BY DESIGN, a mixed send keeps its
-// mandatory/high doses, and the SAFETY carve-out holds — a low-priority MEDICATION's
-// scheduled reminder and a critical med's missed-dose escalation are never
-// priority-gated. #1505 widened the same predicate past the notification tier
-// (Upcoming, hero, refills); that reach is covered in
-// supplement-priority-lifecycle.test.ts.
+// a `may` item is never notified (window reminder, merged send, digest count), an
+// all-may slot goes silent BY DESIGN, a mixed slot keeps its must/should doses, and
+// escalation stays `must` + `critical` — never widened by a display filter. The
+// predicate's reach past the notification tier (Upcoming, hero, refills, the
+// availability disclosure) is covered in intake-obligation-lifecycle.test.ts.
 // All fixture values synthetic — no real PHI.
 
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -26,6 +24,8 @@ import {
   setTelegramBotConfig,
 } from "@/lib/settings";
 import { seedLoginTelegram } from "./fixtures";
+import type { IntakeObligation } from "@/lib/types";
+import { escalatesOnMiss } from "@/lib/supplement-schedule";
 
 function createProfile(name: string): number {
   return Number(
@@ -39,7 +39,7 @@ function seedItem(
   name: string,
   opts: {
     kind?: "supplement" | "medication";
-    priority?: "mandatory" | "high" | "low";
+    obligation?: IntakeObligation;
     critical?: 0 | 1;
     timeOfDay?: string;
   } = {}
@@ -49,13 +49,13 @@ function seedItem(
       .prepare(
         `INSERT INTO intake_items
            (profile_id, name, active, kind, condition, obligation, critical)
-         VALUES (?, ?, 1, ?, 'daily', 'should', ?)`
+         VALUES (?, ?, 1, ?, 'daily', ?, ?)`
       )
       .run(
         profileId,
         name,
         opts.kind ?? "supplement",
-        opts.priority ?? "high",
+        opts.obligation ?? "should",
         opts.critical ?? 0
       ).lastInsertRowid
   );
@@ -74,10 +74,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("#1156/#1505 — low-priority supplements: tracked, never pushed", () => {
-  it("a window whose only due dose is a low supplement sends NO reminder — and the dose is off Upcoming too", () => {
+describe("#1156/#1505 — `may` items: tracked, never pushed", () => {
+  it("a slot whose only due dose is a `may` item sends NO reminder — and it is off the due list too", () => {
     const p = createProfile("Floor AllLow (test)");
-    const { doseId } = seedItem(p, "Ashwagandha (test)", { priority: "low" });
+    const { doseId } = seedItem(p, "Ashwagandha (test)", { obligation: "may" });
 
     // No notification…
     expect(buildSupplementReminder(p, "Morning")).toBeNull();
@@ -91,10 +91,10 @@ describe("#1156/#1505 — low-priority supplements: tracked, never pushed", () =
     expect(upcoming.some((i) => i.key === `dose:${doseId}`)).toBe(false);
   });
 
-  it("a mixed window still fires — WITHOUT the low doses (body or buttons)", () => {
+  it("a mixed slot still fires — WITHOUT the `may` doses (body or buttons)", () => {
     const p = createProfile("Floor Mixed (test)");
-    seedItem(p, "Ashwagandha (test)", { priority: "low" });
-    seedItem(p, "Vitamin D (test)", { priority: "high" });
+    seedItem(p, "Ashwagandha (test)", { obligation: "may" });
+    seedItem(p, "Vitamin D (test)", { obligation: "should" });
 
     const msg = buildSupplementReminder(p, "Morning");
     expect(msg).not.toBeNull();
@@ -105,35 +105,44 @@ describe("#1156/#1505 — low-priority supplements: tracked, never pushed", () =
     ).toBe(true);
   });
 
-  it("a LOW-priority MEDICATION still notifies (the safety carve-out)", () => {
-    const p = createProfile("Floor LowMed (test)");
+  it("a `must` MEDICATION notifies; the kind carve-out is gone (obligation decides)", () => {
+    const p = createProfile("Floor Med (test)");
     seedItem(p, "Testoprim (test med)", {
       kind: "medication",
-      priority: "low",
+      obligation: "must",
+    });
+    // Before #1505 a medication was pushed BECAUSE it was a medication. Now it is
+    // pushed because it is `must` — its default, and one it can only leave through an
+    // explicit consequence-stating confirm.
+    seedItem(p, "Testoprim PRN (test med)", {
+      kind: "medication",
+      obligation: "may",
     });
     const msg = buildSupplementReminder(p, "Morning");
     expect(msg).not.toBeNull();
     expect(msg!.body).toContain("Testoprim (test med)");
+    expect(msg!.body).not.toContain("Testoprim PRN (test med)");
   });
 
-  it("the morning digest's dose count excludes low supplements but keeps everything else", () => {
+  it("the morning digest's dose count excludes `may` items but keeps everything else", () => {
     const p = createProfile("Floor Digest (test)");
-    seedItem(p, "Ashwagandha (test)", { priority: "low" });
-    seedItem(p, "Vitamin D (test)", { priority: "high" });
+    seedItem(p, "Ashwagandha (test)", { obligation: "may" });
+    seedItem(p, "Vitamin D (test)", { obligation: "should" });
     seedItem(p, "Testoprim (test med)", {
       kind: "medication",
-      priority: "low",
+      obligation: "must",
     });
     const input = gatherDigestInput(p, "Floor Digest (test)");
-    // high supplement + low medication notify; the low supplement is silent.
+    // The should supplement + the must medication count; the `may` supplement does
+    // not — it has no dueness to count.
     expect(input.doseCount).toBe(2);
   });
 
-  it("escalation is NEVER priority-gated: a critical low-priority med still escalates", async () => {
+  it("escalation needs BOTH `must` and `critical` — a critical must med escalates", async () => {
     const p = createProfile("Floor Escalate (test)");
     const { doseId } = seedItem(p, "Warfarin (test)", {
       kind: "medication",
-      priority: "low",
+      obligation: "must",
       critical: 1,
     });
     const date = today(p);
@@ -166,18 +175,33 @@ describe("#1156/#1505 — low-priority supplements: tracked, never pushed", () =
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBe(date);
   });
 
-  it("a critical LOW supplement stays in the (unfiltered) escalation gather even though the send excluded it", () => {
+  it("the escalation gather stays UNFILTERED by the send floor (the safety tier is never display-gated)", () => {
     const p = createProfile("Floor EscGather (test)");
-    seedItem(p, "Critical Low Supp (test)", {
-      priority: "low",
+    // A `should` critical item: it is DUE (so it reaches the gather) and it is sent,
+    // but escalatesOnMiss refuses it — `should` never escalates, which is the
+    // distinction the old two-value model could not express.
+    seedItem(p, "Critical Should Supp (test)", {
+      obligation: "should",
       critical: 1,
     });
-    // The safety-tier gather (collectWindowDoses) is deliberately unfiltered…
+    // The safety-tier gather (collectWindowDoses) is deliberately unfiltered by the
+    // SEND floor — the floor is applied at assembly, never here.
     const gathered = collectWindowDoses(p, "Morning", today(p));
     expect(
-      gathered.some((e) => e.supp.name === "Critical Low Supp (test)")
+      gathered.some((e) => e.supp.name === "Critical Should Supp (test)")
     ).toBe(true);
-    // …while the send assembly excludes it.
-    expect(buildSupplementReminder(p, "Morning")).toBeNull();
+    // …and the send DOES go out (a `should` is pushed) — but escalation refuses it,
+    // because escalation asks obligation, not the send floor.
+    expect(buildSupplementReminder(p, "Morning")).not.toBeNull();
+    expect(escalatesOnMiss({ obligation: "should" })).toBe(false);
+
+    // A `may` item, by contrast, is not even due, so it never reaches the gather.
+    const q = createProfile("Floor EscGather May (test)");
+    seedItem(q, "Critical May Supp (test)", {
+      obligation: "may",
+      critical: 1,
+    });
+    expect(collectWindowDoses(q, "Morning", today(q))).toEqual([]);
+    expect(buildSupplementReminder(q, "Morning")).toBeNull();
   });
 });

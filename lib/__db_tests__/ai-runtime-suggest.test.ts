@@ -41,7 +41,7 @@ interface DraftIn {
   name: string;
   rationale: string;
   condition?: string;
-  priority?: string;
+  obligation?: string;
   dosage?: string | null;
   time_of_day?: string | null;
 }
@@ -55,7 +55,7 @@ function suggestInput(drafts: DraftIn[]) {
       food_timing: null,
       condition: d.condition ?? "daily",
       situation: null,
-      priority: d.priority ?? "high",
+      obligation: d.obligation ?? "should",
       brand: null,
       product: null,
       rationale: d.rationale,
@@ -70,7 +70,7 @@ function suggestionRows(profileId: number) {
     )
     .all(profileId) as {
     name: string;
-    priority: string;
+    obligation: string;
     rationale: string;
     trigger: string;
     source_detail: string | null;
@@ -133,7 +133,7 @@ describe("supplement-suggest runtime (issue #675)", () => {
     expect(row.status).toBe("pending");
   });
 
-  it("downgrades a hallucinated 'mandatory' (no cited low lab) to 'high'", async () => {
+  it("downgrades a hallucinated 'must' (no cited low lab) to 'should'", async () => {
     const { profile } = seedActor();
     createAiClientMock.mockReturnValue(
       fakeClient(
@@ -143,7 +143,7 @@ describe("supplement-suggest runtime (issue #675)", () => {
             {
               name: "Magnesium",
               rationale: "General wellness — not tied to any lab value",
-              priority: "mandatory",
+              obligation: "must",
             },
           ])
         )
@@ -155,8 +155,8 @@ describe("supplement-suggest runtime (issue #675)", () => {
     expect(res.inserted).toBe(1);
     const rows = suggestionRows(profile.id);
     expect(rows[0].name).toBe("Magnesium");
-    // No out-of-range-low lab was cited, so the belt downgrades mandatory → high.
-    expect(rows[0].priority).toBe("high");
+    // No out-of-range-low lab was cited, so the belt downgrades must → should.
+    expect(rows[0].obligation).toBe("should");
   });
 
   it("returns the degraded note and inserts nothing at the daily insight cap", async () => {

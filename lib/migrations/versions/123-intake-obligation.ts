@@ -48,8 +48,12 @@ import type { Migration } from "../runner";
 // THE TWO VESTIGIAL COLUMNS. The rebuilt table keeps inert, unread `priority` and
 // `as_needed` columns. That is not hedging — see the comment on them in CREATE below:
 // `migrate()` replays every migration unconditionally and two shipped, immutable
-// migrations PREPARE statements naming them, which SQLite validates before looking at
-// a single row. A source-scan guard keeps them unreachable from application code.
+// migrations hold prepared statements naming them, which SQLite validates before
+// looking at a single row. A source-scan guard keeps them unreachable from
+// application code, and
+// a compatibility TRIGGER (below) translates a legacy insert's intent onto
+// `obligation`, so a replayed pre-123 migration writes what it meant rather than
+// landing on the column default.
 //
 // WHY A REBUILD. SQLite can rename a column in place (ALTER TABLE … RENAME COLUMN),
 // but it cannot attach a CHECK to it, cannot drop `as_needed`'s NOT NULL DEFAULT in
@@ -135,7 +139,7 @@ const CREATE = `
     -- They survive for exactly one reason: migrate() (lib/db.ts) applies EVERY
     -- migration unconditionally, and the DB-test harness relies on replaying it
     -- against an already-migrated database. Migrations 092 and 101 hold
-    -- db.prepare() calls that NAME these columns, and SQLite validates a statement
+    -- prepared statements that NAME these columns, and SQLite validates a statement
     -- at PREPARE time, before any row is examined, so dropping the columns makes
     -- those two shipped, immutable migrations throw on every replay regardless of
     -- whether they would have inserted anything.
@@ -175,6 +179,34 @@ const TRIGGER_NAMES = [
   "intake_log_snapshot_product_insert",
   "intake_log_snapshot_product_taken",
 ];
+
+// LEGACY-INSERT COMPATIBILITY. The vestigial columns exist so pre-123 migrations still
+// PREPARE; this trigger makes those inserts still MEAN what they meant. Without it a
+// replayed migration 101 (which projects a recovery placeholder as `as_needed = 1`)
+// would land a row on the `should` column default and silently turn a PRN placeholder
+// into a scheduled, reminded medication — a compatibility shim that half-works is worse
+// than none, because the half that fails is the behavior.
+//
+// It fires only when a row arrives carrying a legacy value AND the obligation column
+// took its default, so it is inert for every application insert (which never names the
+// dead columns — the source-scan guard enforces that) and idempotent besides.
+//
+// The arm order mirrors the backfill CASE exactly: PRN wins over the old priority tag.
+const LEGACY_COMPAT_TRIGGER = `
+  CREATE TRIGGER IF NOT EXISTS intake_items_legacy_obligation_compat
+  AFTER INSERT ON intake_items
+  FOR EACH ROW
+  WHEN NEW.obligation = 'should'
+   AND (NEW.as_needed = 1 OR NEW.priority IN ('mandatory', 'low'))
+  BEGIN
+    UPDATE intake_items
+       SET obligation = CASE
+             WHEN NEW.as_needed = 1 THEN 'may'
+             WHEN NEW.priority = 'mandatory' THEN 'must'
+             ELSE 'may'
+           END
+     WHERE id = NEW.id;
+  END;`;
 
 const INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_intake_items_document ON intake_items(profile_id, document_id);",
@@ -260,6 +292,7 @@ function rebuildIntakeItems(db: Database.Database): void {
   db.exec(`ALTER TABLE ${scratch} RENAME TO intake_items;`);
   for (const idx of INDEXES) db.exec(idx);
   for (const trg of TRIGGERS) db.exec(trg);
+  db.exec(LEGACY_COMPAT_TRIGGER);
 }
 
 // The AI suggestion queue proposes an obligation for an item that does not exist yet,

@@ -96,9 +96,13 @@ export function resolveDerivedSituations(
   return { poorSleep, period, derivedNames };
 }
 
-// The number of active, non-PRN situational items keyed to `situation` (name-keyed,
-// #560) — the count the state line acknowledges. When the derived context is on, these
-// are exactly the items that just went due (isDueOn's situational branch).
+// The number of active situational items keyed to `situation` (name-keyed, #560) that
+// can actually GO DUE — the count the state line acknowledges. When the derived
+// context is on, these are exactly the items isDueOn's situational branch surfaces.
+//
+// `may` items are excluded because they have no dueness at all (#1505): saying "1 item
+// active" about something that was never going to come due would be acknowledging
+// nothing. They remain reachable through the offer surfaces.
 function keyedItemCount(
   supps: readonly {
     active?: number | boolean;
@@ -111,7 +115,7 @@ function keyedItemCount(
   return supps.filter(
     (s) =>
       (s.active ?? true) &&
-      !s.obligation &&
+      s.obligation !== "may" &&
       s.condition === "situational" &&
       s.situation != null &&
       sameSituation(s.situation, situation)

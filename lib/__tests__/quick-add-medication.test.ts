@@ -31,7 +31,7 @@ describe("quickAddMedicationFields (#843)", () => {
     expect(m.condition).toBe("daily");
     expect(m.brand).toBe("Advil");
     expect(m.product).toBe("Children's oral suspension (160 mg / 5 mL)");
-    expect(m.obligation).toBe("1");
+    expect(m.obligation).toBe("may");
     expect(m.min_interval_hours).toBe("6");
     expect(m.max_daily_count).toBe("4");
     expect(JSON.parse(m.doses)).toEqual([
@@ -135,7 +135,7 @@ describe("quickAddMedicationFields (#843)", () => {
     });
     expect(fd.get("name")).toBe("Ibuprofen");
     expect(fd.get("kind")).toBe("medication");
-    expect(fd.get("obligation")).toBe("1");
+    expect(fd.get("obligation")).toBe("may");
     expect(JSON.parse(String(fd.get("doses")))).toEqual([
       { amount: "200 mg", food_timing: "any", time_of_day: "" },
     ]);

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // The rebuilt `intake_items` still carries inert `priority` and `as_needed` columns.
 // Not as a hedge — `migrate()` applies every migration unconditionally and the
 // DB-test harness replays it against an already-migrated database, while migrations
-// 092 and 101 (shipped, immutable) hold `db.prepare()` calls that NAME those columns.
+// 092 and 101 (shipped, immutable) hold prepared statements that NAME those columns.
 // SQLite validates a statement at PREPARE time, before any row is examined, so
 // dropping them makes those two migrations throw on every replay.
 //
@@ -39,9 +39,17 @@ const RETIRED = ["as_needed"];
 //     is the collapse itself. All frozen or self-describing.
 //   • this guard.
 //   • nothing else. Derived `asNeeded` locals are not scanned at all — see RETIRED.
+//   • the two DB specs that rebuild a HISTORICAL schema from the frozen migrations
+//     (administration-ledger at v40, situations at v28) and must therefore speak that
+//     schema's vocabulary — they are testing the migrations, not the model.
 function isExempt(rel: string): boolean {
   return (
     rel.startsWith("lib/migrations/") ||
+    rel === "lib/__db_tests__/administration-ledger.test.ts" ||
+    rel === "lib/__db_tests__/situations.test.ts" ||
+    // The single-entry guard's own allowlist quotes migrations 092/101 VERBATIM to
+    // identify them; changing that text would silently un-allowlist them.
+    rel === "lib/__tests__/import-single-entry.test.ts" ||
     rel.endsWith("lib/__tests__/obligation-collapse-guard.test.ts")
   );
 }

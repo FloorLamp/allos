@@ -878,11 +878,11 @@ function insertImportRows(
   // calendar DAY — `date(created_at)` seeds a medication course's started_on and
   // decides episode membership (getEpisodeMedReconciliation) — against
   // `today()`-derived windows, which SQL's real clock cannot follow across midnight.
+  // OBLIGATION (#1505) is BOUND, not literal: an extracted prescription's as-needed
+  // sig maps to `may` (the PRN shape the flag collapsed into) and a scheduled one to
+  // `must` — the medication default, so an imported prescription arrives with its
+  // safety net on rather than silently unmonitored.
   const insMed = db.prepare(
-    // OBLIGATION (#1505) is BOUND, not literal: an extracted prescription's
-    // as-needed sig maps to `may` (the PRN shape the flag collapsed into) and a
-    // scheduled one to `must` — the medication default, so an imported prescription
-    // arrives with its safety net on rather than silently unmonitored.
     `INSERT INTO intake_items
        (name, notes, active, condition, obligation, kind,
         prescriber, pharmacy, rx_number,
