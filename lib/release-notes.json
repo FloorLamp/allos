@@ -4,6 +4,19 @@
       "date": "2026-07-29",
       "entries": [
         {
+          "pr": 1665,
+          "title": "Routes settle into their real homes",
+          "body": "A housekeeping sweep with a few visible edges: the Healthspan page is now consistently called Longevity everywhere it appears, and a long tail of retired internal redirects is gone now that every link in the app points straight at the real page. If you bookmarked one of the very old addresses, update the bookmark to the page you land on from the navigation. Under the hood, dead route scaffolding was removed and shared reads moved next to the pages that use them, which keeps future changes safer.",
+          "issues": [1635, 1636, 1637, 1638]
+        },
+        {
+          "pr": 1666,
+          "kind": "feature",
+          "title": "Pin your Body cards with a star — and the default order finally makes sense",
+          "body": "The Trends Body tab now honors a ★ on any card: starred cards jump to the top and stay there, and you can drag your starred set into whatever sequence you like from Overview. Unstar a card and it returns to its ranked slot. The ranked default underneath was re-sequenced to lead with everyday metrics (weight, sleep, steps) instead of burying them, and life-stage cards (like cycle tracking) keep their place above everything when they apply.",
+          "issues": [1643, 1659]
+        },
+        {
           "pr": 1662,
           "title": "The 'just recovered' dashboard calms down — and dismissals finally stick",
           "body": "After an illness ends, the dashboard used to stack three separate household bands. They now fold into one coherent recovered state: the reopen line carries the household-history link inline, the household strip absorbs it during the 8–14-day tail, and a quiet household shows the link without conjuring an empty strip. Dismissing the \"Recently resolved — reopen?\" line now sticks across reloads — it was the only X in the app that came back — while other caregivers on their own logins still see it, and nothing about the reopen window itself changes. The Now strip also stacks its two cards full-width on phones instead of squeezing them side by side.",
