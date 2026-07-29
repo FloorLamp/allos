@@ -9,6 +9,8 @@ export function PageHeader({
   subtitle,
   action,
   compactBelowSm = false,
+  actionAlign = "end",
+  className = "",
 }: {
   title: string;
   subtitle?: React.ReactNode;
@@ -22,6 +24,8 @@ export function PageHeader({
   // most pages have nothing else naming them, and a heading-less page is a real
   // loss there. Desktop is byte-identical either way.
   compactBelowSm?: boolean;
+  actionAlign?: "start" | "end";
+  className?: string;
 }) {
   // Compact below `md` (issue #1416, section A/D): a phone gives the heading a
   // smaller share of a much shorter screen, so the title drops to text-xl and
@@ -30,9 +34,11 @@ export function PageHeader({
   // <h1> pages were converted rather than restyled in place.
   return (
     <div
-      className={`flex items-end justify-between gap-4 md:mb-6 ${
+      className={`flex ${
+        actionAlign === "start" ? "items-start" : "items-end"
+      } justify-between gap-4 md:mb-6 ${
         compactBelowSm ? "sm:mb-4" : "mb-4"
-      }`}
+      } ${className}`}
     >
       <div>
         <h1

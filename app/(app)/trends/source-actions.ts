@@ -24,6 +24,7 @@ export async function setMetricPrimarySource(formData: FormData) {
     metric,
     source === "" ? null : source
   );
-  revalidatePath("/trends");
+  revalidatePath("/trends", "layout");
+  revalidatePath("/sleep");
   revalidatePath("/");
 }

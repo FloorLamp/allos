@@ -36,7 +36,7 @@ test.describe("View-only access (issue #33)", () => {
 
     // READ works: the profile menu shows the "read-only" badge, and the profile's
     // data renders (the Trends → Body measurements form is reachable — since #1486
-    // it is one combined form behind the desktop "+ Log" expander).
+    // it is one combined form behind the desktop "+ Log" modal).
     await memberPage.goto("/trends?tab=body");
     await expect(memberPage.getByTestId("read-only-badge")).toBeVisible();
     await hydratedClick(
@@ -76,8 +76,12 @@ test.describe("View-only access (issue #33)", () => {
     // (see the write-member test below). We assert the redirect on pathname, not
     // the toast: the form optimistically toasts once the action call resolves, so
     // the toast is not a reliable "it wrote" signal on a redirect.
-    await readOnlyForm.getByLabel("Systolic (mmHg)").fill("118");
-    await readOnlyForm.getByLabel("Diastolic (mmHg)").fill("76");
+    await readOnlyForm
+      .getByLabel("Blood Pressure (Systolic) (mmHg)")
+      .fill("118");
+    await readOnlyForm
+      .getByLabel("Blood Pressure (Diastolic) (mmHg)")
+      .fill("76");
     await readOnlyForm
       .getByRole("button", { name: "Save measurements" })
       .click();
@@ -111,8 +115,8 @@ test.describe("View-only access (issue #33)", () => {
     );
     const form = memberPage.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
-    await form.getByLabel("Systolic (mmHg)").fill("120");
-    await form.getByLabel("Diastolic (mmHg)").fill("78");
+    await form.getByLabel("Blood Pressure (Systolic) (mmHg)").fill("120");
+    await form.getByLabel("Blood Pressure (Diastolic) (mmHg)").fill("78");
     await form.getByRole("button", { name: "Save measurements" }).click();
 
     // The write path completes: the success toast appears and we STAY on the

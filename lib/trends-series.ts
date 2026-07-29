@@ -46,14 +46,26 @@ import {
   outOfWindowAgeLabel,
   outOfWindowLatest,
 } from "./trends";
+import {
+  BODY_METRIC_META,
+  bodyMetricSlugForSavedId,
+  resolveBodyMetricUnit,
+  savedMetricIdForBodySlug,
+} from "./trends-body-metrics";
+import { fullBodyMetricSeries } from "./body-metric-series";
+import { activeRangeLabel } from "./trends-context";
 import { bioSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
 import type { DateRange } from "./timeline-format";
-import { biomarkerViewHref, type AppRoute } from "./hrefs";
+import { biomarkerViewHref, metricDetailHref, type AppRoute } from "./hrefs";
 
 export interface TrendSeries {
   key: string; // "metric:weight" | "bio:LDL Cholesterol" — also the pin key
   label: string;
+  // Registry-owned compact label for phone tiles. Full `label` remains the chart
+  // and detail title; biomarkers omit this because their canonical name is the
+  // only honest label.
+  shortLabel?: string;
   // Display-unit suffix used in captions/tiles ("%", " bpm", " kg", " mg/dL"), or
   // "" when the metric has none.
   unit: string;
@@ -81,6 +93,7 @@ export interface TrendSeries {
     date: string;
     text: string;
     age: string;
+    rangeLabel: string;
   } | null;
 }
 
@@ -99,6 +112,7 @@ export { deCollideColor, BIO_COLORS } from "./trend-colors";
 interface MetricDef {
   id: string; // "weight" — the metricPinKey suffix
   label: string;
+  shortLabel?: string;
   unit: string;
   color: string;
   href: AppRoute;
@@ -114,37 +128,41 @@ interface MetricDef {
 const METRIC_DEFS: MetricDef[] = [
   {
     id: "weight",
-    label: "Weight",
+    label: BODY_METRIC_META.weight.title,
+    shortLabel: BODY_METRIC_META.weight.label,
     unit: "",
-    color: "#16a34a",
-    href: "/trends?tab=body",
-    decimals: 1,
+    color: BODY_METRIC_META.weight.color,
+    href: metricDetailHref("weight"),
+    decimals: BODY_METRIC_META.weight.decimals,
     minPctChange: 0.02, // a 2% weight change is already meaningful
   },
   {
     id: "bodyfat",
-    label: "Body fat",
-    unit: "%",
-    color: "#a855f7",
-    href: "/trends?tab=body",
-    decimals: 1,
+    label: BODY_METRIC_META["body-fat"].title,
+    shortLabel: BODY_METRIC_META["body-fat"].label,
+    unit: BODY_METRIC_META["body-fat"].unit,
+    color: BODY_METRIC_META["body-fat"].color,
+    href: metricDetailHref("body-fat"),
+    decimals: BODY_METRIC_META["body-fat"].decimals,
     // default 0.05
   },
   {
     id: "resting_hr",
-    label: "Resting heart rate",
-    unit: " bpm",
-    color: "#fb923c",
-    href: "/trends?tab=body",
-    decimals: 0,
+    label: BODY_METRIC_META["resting-hr"].title,
+    shortLabel: BODY_METRIC_META["resting-hr"].label,
+    unit: BODY_METRIC_META["resting-hr"].unit,
+    color: BODY_METRIC_META["resting-hr"].color,
+    href: metricDetailHref("resting-hr"),
+    decimals: BODY_METRIC_META["resting-hr"].decimals,
     minPctChange: 0.05, // resting HR is fairly stable; 5% is a genuine shift
   },
   {
     id: "volume",
-    label: "Training volume",
+    label: "Training Volume",
+    shortLabel: "Training Volume",
     unit: "",
     color: "#0ea5e9",
-    href: "/training",
+    href: "/training?tab=analyze",
     decimals: 0,
     restricted: true,
     minPctChange: 0.15, // training volume swings hugely session-to-session
@@ -206,6 +224,7 @@ export function buildMetricSeries(
   ).map((d) => ({
     key: metricSeriesKey(d.id),
     label: d.label,
+    shortLabel: d.shortLabel,
     unit: d.id === "weight" || d.id === "volume" ? weightUnitSuffix : d.unit,
     color: d.color,
     href: d.href,
@@ -215,6 +234,37 @@ export function buildMetricSeries(
     range: null,
     minPctChange: d.minPctChange,
   }));
+}
+
+// Rebuild a saved Body metric that is not one of the original standard Overview
+// series. Metric-detail pages can star every registered Body slug; this is the
+// corresponding read path that makes that saved row a real Overview tile.
+export function buildSavedBodyMetricSeries(
+  profileId: number,
+  loginId: number,
+  savedId: string,
+  range: DateRange,
+  todayStr: string
+): TrendSeries | null {
+  const slug = bodyMetricSlugForSavedId(savedId);
+  if (!slug) return null;
+  const meta = BODY_METRIC_META[slug];
+  const weightUnit = getUnitPrefs(loginId).weightUnit;
+  return {
+    key: metricSeriesKey(savedMetricIdForBodySlug(slug)),
+    label: meta.title,
+    shortLabel: meta.label,
+    unit: resolveBodyMetricUnit(meta, weightUnit),
+    color: meta.color,
+    href: metricDetailHref(slug),
+    kind: "metric",
+    decimals: meta.decimals,
+    points: filterSeriesByRange(
+      fullBodyMetricSeries(slug, profileId, weightUnit, todayStr),
+      range
+    ),
+    range: null,
+  };
 }
 
 // One biomarker's FULL (un-windowed) plot: the numeric points in the unit the tile
@@ -392,6 +442,7 @@ export function buildSavedBiomarkerTile(
       date: reading.date,
       text: reading.text,
       age: outOfWindowAgeLabel(reading.date, todayStr),
+      rangeLabel: activeRangeLabel(range, todayStr),
     },
   };
 }

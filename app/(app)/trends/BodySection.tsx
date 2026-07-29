@@ -33,8 +33,9 @@ import {
   getBodyMetricsWithSource,
   getDaylightOutdoorMinutesSeries,
   getMetricDailyTotals,
-  getSleepRegularity,
-  getLastNightSummary,
+  getSleepDurationTrend,
+  getSleepRegularityInRange,
+  getSleepSummaryInRange,
   getHrDailySummary,
   getLatestHrDay,
   getHrMinutes,
@@ -44,11 +45,9 @@ import {
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
-import {
-  buildGrowthProfile,
-  bmiSeriesDatePaired,
-  displayWeightGrowth,
-} from "@/lib/growth-series";
+import { bmiSeriesDatePaired } from "@/lib/growth-series";
+import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
+import { ordinalPercentile } from "@/lib/growth-format";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import {
   applyCardOrder,
@@ -61,6 +60,7 @@ import {
   BODY_METRIC_META,
   bodyChartScale,
   buildBodyMetricTile,
+  stableEmptyLast,
   type BodyMetricSlug,
   type BodyMetricTile,
 } from "@/lib/trends-body-metrics";
@@ -79,23 +79,29 @@ import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { formatLongDate, formatClockMinutes } from "@/lib/format-date";
 import { isGoalLive } from "@/lib/goals";
 import { isIntradayRange, type DateRange } from "@/lib/timeline-format";
-import { metricDetailHref, timelineDayHref, type AppRoute } from "@/lib/hrefs";
+import {
+  GROWTH_TRENDS_HREF,
+  growthTrendsHref,
+  metricDetailHref,
+  timelineDayHref,
+  type AppRoute,
+} from "@/lib/hrefs";
 import type { BodyMetricKind, Goal, MedicalRecord } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import ChartCard, { CHART_PLOT_FILL } from "@/components/ChartCard";
+import TrendMiniCard from "@/components/TrendMiniCard";
 import NotesText from "@/components/NotesText";
 import ScrollFade from "@/components/ScrollFade";
 import BodyTrendCharts, {
   type BodyChartSpec,
   type BodyChartSection,
 } from "@/components/BodyTrendCharts";
-import GrowthChartsCard, {
-  type GrowthMetricView,
-} from "@/components/GrowthChartsCard";
+import GrowthChartsCard from "@/components/GrowthChartsCard";
 import LogMeasurementsPanel from "./LogMeasurementsPanel";
 import VitalsTodayStrip from "./VitalsTodayStrip";
-import ChartJumpChips, { type ChartChip } from "./ChartJumpChips";
+import type { ChartChip } from "./ChartJumpChips";
+import ChartJumpMenu from "./ChartJumpMenu";
 import BodyMetricTiles from "./BodyMetricTiles";
 import BodyViewToggle from "./BodyViewToggle";
 import {
@@ -106,7 +112,6 @@ import {
 import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
-import SourceComparison from "./SourceComparison";
 
 // The Trends hub's **Body** tab — the ONE physiology surface (issue #1486).
 //
@@ -116,8 +121,9 @@ import SourceComparison from "./SourceComparison";
 // with a goal overlay on only one of them). #1486 retires the Vitals tab into this
 // one, in the order a reader actually wants:
 //
-//   1. **Today** — the latest reading per vital with its clock time (the #1466
-//      strip), plus the 1D pill's intraday swap and the desktop "+ Log" expander.
+//   1. **Today** — today's body composition + latest vital readings (the evolved
+//      #1466 strip), plus the 1D pill's intraday swap and the desktop "+ Log"
+//      expander.
 //   2. **Vitals** — blood pressure, oxygen saturation, respiratory rate, resting
 //      heart rate (its ONE home now: Body's copy retired and its goal overlay +
 //      event annotations moved HERE, so the two copies' affordances are unioned
@@ -159,9 +165,6 @@ function dailyRows(series: Point[]): VitalReadingRow[] {
 // Fahrenheit fever threshold (100.4 °F / 38 °C) — the reference line on the acute
 // temperature view, matching the illness/fever surface (#859).
 const FEVER_F = 100.4;
-// The acute temperature view shows only the most recent readings (never a years
-// trajectory), regardless of the shared window.
-const TEMP_RECENT = 30;
 // The intraday charts are the tab's densest content and the only place a phone gets
 // a full-viewport plot, so they run taller than the standard windowed cards from `sm`
 // up. Below `sm` every chart card is the #1488 square, so these carry only the
@@ -209,9 +212,8 @@ export default async function BodySection({
   const weightSeries = getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS);
   const bodyMetrics = getBodyMetricsWithSource(profile.id, ALL_ROWS);
 
-  // Keep the UNWINDOWED display-unit series named (…All) so the overview tiles read
-  // their 30-day tail from the SAME arrays the windowed charts draw — one gather
-  // feeds both (#221). The chart applies the shared range on top.
+  // Keep the UNWINDOWED display-unit series named (…All) so the overview tiles and
+  // charts apply the shared range to the SAME arrays — one gather feeds both (#221).
   const weightAll = weightSeries.map((w) => ({
     date: w.date,
     value: dispWeight(w.value, wu),
@@ -251,6 +253,12 @@ export default async function BodySection({
       value: Math.round(d.value),
     })
   );
+  const stepsAll = getMetricDailyTotals(profile.id, "steps", ALL_ROWS).map(
+    (r) => ({
+      date: r.date,
+      value: Math.round(r.value),
+    })
+  );
   // Skin temperature variation keeps 1 decimal, unlike its whole-unit neighbours:
   // it is a signed deviation whose whole readable range is roughly ±2 °C, so
   // rounding to whole units would flatten the series to a constant 0.
@@ -276,12 +284,6 @@ export default async function BodySection({
   const respiratoryChart = filterSeriesByRange(respiratoryAll, range);
   const hrvChart = filterSeriesByRange(hrvAll, range);
   const skinTempChart = filterSeriesByRange(skinTempAll, range);
-
-  // Temperature: acute — the most recent readings only, newest kept, oldest first.
-  const temperatureRecent = temperatureAll
-    .slice()
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-TEMP_RECENT);
 
   // Age drives chart MEMBERSHIP: for a growth-tracked profile the tab charts height
   // (and head circ for the very young) and drops body fat entirely. That decision
@@ -383,38 +385,66 @@ export default async function BodySection({
   };
 
   // ── 1. Today ────────────────────────────────────────────────────────────────
-  // A formatter over the arrays above (buildTodayVitalsStrip picks the latest
-  // reading of each vital on today and resolves its clock time).
+  // A formatter over the arrays above. Body-composition rows already carry the
+  // source-prioritized daily rollup; raw vitals resolve their latest clock time.
+  // Oxygen saturation and respiratory rate stay in the Vitals charts/detail
+  // surface, but are deliberately omitted here so this concise snapshot leads
+  // with composition + core readings.
   const todayVitals = buildTodayVitalsStrip(
     [
       {
+        key: "weight",
+        label: BODY_METRIC_META.weight.title,
+        unit: wu,
+        rows: dailyRows(weightAll),
+        decimals: 1,
+      },
+      ...(bodyFatShown
+        ? [
+            {
+              key: "body-fat",
+              label: BODY_METRIC_META["body-fat"].title,
+              unit: "%",
+              rows: dailyRows(bodyFatAll),
+              decimals: 1,
+            },
+          ]
+        : []),
+      {
+        key: "steps",
+        label: BODY_METRIC_META.steps.title,
+        unit: "steps",
+        rows: dailyRows(stepsAll),
+        groupThousands: true,
+      },
+      {
         key: "bp",
-        label: "Blood pressure",
+        label:
+          BODY_METRIC_META.systolic.summaryTitle ??
+          BODY_METRIC_META.systolic.title,
         unit: "mmHg",
         rows: systolicRows,
         pairRows: diastolicRows,
       },
       {
         key: "resting-hr",
-        label: "Resting HR",
+        label: BODY_METRIC_META["resting-hr"].title,
         unit: "bpm",
         rows: dailyRows(restingHrAll),
       },
-      { key: "spo2", label: "Oxygen sat.", unit: "%", rows: spo2Rows },
-      {
-        key: "respiratory-rate",
-        label: "Respiratory rate",
-        unit: "/min",
-        rows: respiratoryRows,
-      },
       {
         key: "temperature",
-        label: "Temperature",
+        label: BODY_METRIC_META.temperature.title,
         unit: "°F",
         rows: temperatureRows,
         decimals: 1,
       },
-      { key: "hrv", label: "HRV", unit: "ms", rows: dailyRows(hrvAll) },
+      {
+        key: "hrv",
+        label: BODY_METRIC_META.hrv.title,
+        unit: "ms",
+        rows: dailyRows(hrvAll),
+      },
     ],
     todayStr,
     tz
@@ -460,89 +490,82 @@ export default async function BodySection({
   // Every card is present-gated on its own series, so a profile with only a weight
   // never sees an empty vitals frame.
   const vitalsCharts: BodyChartSpec[] = [];
-  if (systolicChart.length > 0) {
+  if (systolicAll.length > 0) {
     vitalsCharts.push({
       key: "systolic",
       testid: "vitals-systolic",
       detailHref: metricDetailHref("systolic"),
-      title: "Blood pressure (systolic)",
+      title: BODY_METRIC_META.systolic.title,
       data: systolicChart,
-      label: "Systolic",
       unit: " mmHg",
       color: chartSeries.rose,
     });
   }
-  if (diastolicChart.length > 0) {
+  if (diastolicAll.length > 0) {
     vitalsCharts.push({
       key: "diastolic",
       testid: "vitals-diastolic",
       detailHref: metricDetailHref("diastolic"),
-      title: "Blood pressure (diastolic)",
+      title: BODY_METRIC_META.diastolic.title,
       data: diastolicChart,
-      label: "Diastolic",
       unit: " mmHg",
       color: chartSeries.violet,
     });
   }
-  if (spo2Chart.length > 0) {
+  if (spo2All.length > 0) {
     vitalsCharts.push({
       key: "spo2",
       testid: "vitals-spo2",
       detailHref: metricDetailHref("spo2"),
-      title: "Oxygen saturation",
+      title: BODY_METRIC_META.spo2.title,
       data: spo2Chart,
-      label: "SpO₂",
       unit: "%",
       color: chartSeries.sky,
     });
   }
-  if (respiratoryChart.length > 0) {
+  if (respiratoryAll.length > 0) {
     vitalsCharts.push({
       key: "respiratory-rate",
       testid: "vitals-respiratory-rate",
       detailHref: metricDetailHref("respiratory-rate"),
-      title: "Respiratory rate",
+      title: BODY_METRIC_META["respiratory-rate"].title,
       data: respiratoryChart,
-      label: "Respiratory rate",
       unit: " /min",
       color: chartSeries.violet,
     });
   }
-  if (restingHrChart.length > 0) {
+  if (restingHrAll.length > 0) {
     // Resting HR appears EXACTLY ONCE (#1486): the Body tab's old copy retired and
     // its goal overlay + the shared event annotations came here with it.
     vitalsCharts.push({
       key: "resting_hr",
       testid: "vitals-resting-hr",
       detailHref: metricDetailHref("resting-hr"),
-      title: "Resting heart rate",
+      title: BODY_METRIC_META["resting-hr"].title,
       data: restingHrChart,
-      label: "Resting HR",
       unit: " bpm",
       color: chartSeries.amber,
       ...goalOverlay("resting_hr", restingHrChart, " bpm", 0),
     });
   }
-  if (hrvChart.length > 0) {
+  if (hrvAll.length > 0) {
     vitalsCharts.push({
       key: "hrv",
       testid: "vitals-hrv",
       detailHref: metricDetailHref("hrv"),
-      title: "Heart rate variability",
+      title: BODY_METRIC_META.hrv.title,
       data: hrvChart,
-      label: "HRV",
       unit: " ms",
       color: chartSeries.amber,
     });
   }
-  if (skinTempChart.length > 0) {
+  if (skinTempAll.length > 0) {
     vitalsCharts.push({
       key: "skin_temp",
       testid: "vitals-skin-temp",
       detailHref: metricDetailHref("skin-temp"),
       title: BODY_METRIC_META["skin-temp"].title,
       data: skinTempChart,
-      label: BODY_METRIC_META["skin-temp"].label,
       unit: BODY_METRIC_META["skin-temp"].unit,
       color: BODY_METRIC_META["skin-temp"].color,
       note: "Nightly deviation from your tracker's own baseline, not an absolute temperature — so only the change matters, and it is comparable to your other nights rather than to a reference range. A sustained rise often shows up alongside a drop in HRV.",
@@ -553,29 +576,26 @@ export default async function BodySection({
       key: "sun",
       testid: "vitals-sun-outdoor",
       detailHref: metricDetailHref("sun"),
-      title: "Sun / outdoor time",
+      title: BODY_METRIC_META.sun.title,
       data: sun,
-      label: "Outdoor daylight",
       unit: " min",
       color: chartSeries.amber,
       note: "Daylight minutes from your outdoor sessions, scoped to the solar day at your home location. The same figure the day view's sun chip shows.",
     });
   }
-  if (temperatureRecent.length > 0) {
-    // Body TEMPERATURE keeps its ACUTE grammar — a recent-readings view with a fever
-    // reference line and a link to the illness/fever surface — NEVER a years
-    // trajectory (a fever is a spike, not a slow trend).
+  if (temperatureAll.length > 0) {
+    // Temperature keeps its acute fever reference and illness link, but the plotted
+    // readings still obey the selected window like every other Body chart.
     vitalsCharts.push({
       key: "temperature",
       testid: "vitals-temperature",
       detailHref: metricDetailHref("temperature"),
-      title: "Body temperature",
-      data: temperatureRecent,
-      label: "Temperature",
+      title: BODY_METRIC_META.temperature.title,
+      data: filterSeriesByRange(temperatureAll, range),
       unit: " °F",
       color: chartSeries.rose,
       referenceValue: { value: FEVER_F, label: "Fever" },
-      note: `Recent readings (${temperatureRecent.length}). Temperature is an acute signal — a fever is tracked on the illness/fever chart, not a long-term trajectory.`,
+      note: "Temperature is an acute signal — a fever is tracked on the illness/fever chart, not interpreted as a slow long-term trajectory.",
       headerAction: (
         <Link
           href="/medical/episodes"
@@ -603,12 +623,13 @@ export default async function BodySection({
             full depth (its own range control, annotations, and readings table). */}
         {intradayHr.length > 0 && (
           <ChartCard
-            title="Heart rate today"
+            title={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Today`}
             headingLevel="h3"
             detailHref={metricDetailHref("hr")}
             detailTitle="heart rate"
             surfaceClass={FULL_BLEED_CARD}
             headerClassName="px-4 sm:px-0"
+            headerBleedClassName="mx-0 mt-0 sm:-mx-5 sm:-mt-5"
             testid="vitals-intraday-hr"
             description="Per-minute heart rate across the clock, from the same day series the timeline's day view draws. A break in the line is a gap in wear, not a flat heart rate."
             plotHeightClass={INTRADAY_PLOT_HEIGHT}
@@ -622,7 +643,7 @@ export default async function BodySection({
             >
               <LineChartCard
                 data={intradayHr}
-                label="Heart rate"
+                label={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Today`}
                 unit=" bpm"
                 color={chartSeries.rose}
                 showDots={false}
@@ -636,7 +657,7 @@ export default async function BodySection({
         {hasIntradayBp && (
           <div className="grid gap-6 sm:grid-cols-2">
             <ChartCard
-              title="Systolic today"
+              title={`${BODY_METRIC_META.systolic.title} Today`}
               headingLevel="h3"
               detailHref={metricDetailHref("systolic")}
               detailTitle="systolic blood pressure"
@@ -645,14 +666,14 @@ export default async function BodySection({
             >
               <LineChartCard
                 data={toIntradaySlotSeries(intradaySystolic)}
-                label="Systolic"
+                label={`${BODY_METRIC_META.systolic.title} Today`}
                 unit=" mmHg"
                 color={chartSeries.rose}
                 connectNulls={false}
               />
             </ChartCard>
             <ChartCard
-              title="Diastolic today"
+              title={`${BODY_METRIC_META.diastolic.title} Today`}
               headingLevel="h3"
               detailHref={metricDetailHref("diastolic")}
               detailTitle="diastolic blood pressure"
@@ -661,7 +682,7 @@ export default async function BodySection({
             >
               <LineChartCard
                 data={toIntradaySlotSeries(intradayDiastolic)}
-                label="Diastolic"
+                label={`${BODY_METRIC_META.diastolic.title} Today`}
                 unit=" mmHg"
                 color={chartSeries.violet}
                 connectNulls={false}
@@ -672,7 +693,7 @@ export default async function BodySection({
 
         {intradaySpo2.length > 0 && (
           <ChartCard
-            title="Oxygen saturation today"
+            title={`${BODY_METRIC_META.spo2.title} Today`}
             headingLevel="h3"
             detailHref={metricDetailHref("spo2")}
             detailTitle="oxygen saturation"
@@ -681,7 +702,7 @@ export default async function BodySection({
           >
             <LineChartCard
               data={toIntradaySlotSeries(intradaySpo2)}
-              label="SpO₂"
+              label={`${BODY_METRIC_META.spo2.title} Today`}
               unit="%"
               color={chartSeries.sky}
               connectNulls={false}
@@ -711,9 +732,8 @@ export default async function BodySection({
       key: "height",
       testid: "body-chart-height",
       detailHref: metricDetailHref("height"),
-      title: "Height",
+      title: BODY_METRIC_META.height.title,
       data: heightChart,
-      label: "Height",
       unit: " cm",
       color: chartSeries.violet,
     },
@@ -721,9 +741,8 @@ export default async function BodySection({
       key: "head_circumference",
       testid: "body-chart-head-circ",
       detailHref: metricDetailHref("head-circ"),
-      title: "Head circumference",
+      title: BODY_METRIC_META["head-circ"].title,
       data: headCircChart,
-      label: "Head circ.",
       unit: " cm",
       color: chartSeries.sky,
     },
@@ -731,9 +750,8 @@ export default async function BodySection({
       key: "weight",
       testid: "body-chart-weight",
       detailHref: metricDetailHref("weight"),
-      title: "Weight",
+      title: BODY_METRIC_META.weight.title,
       data: weightChart,
-      label: "Weight",
       unit: ` ${wu}`,
       color: chartSeries.brand,
       ...goalOverlay("weight", weightChart, ` ${wu}`, 1),
@@ -742,9 +760,8 @@ export default async function BodySection({
       key: "bodyfat",
       testid: "body-chart-bodyfat",
       detailHref: metricDetailHref("body-fat"),
-      title: "Body fat",
+      title: BODY_METRIC_META["body-fat"].title,
       data: bodyFatChart,
-      label: "Body fat",
       unit: "%",
       color: chartSeries.violet,
       ...goalOverlay("body_fat", bodyFatChart, "%", 1),
@@ -754,9 +771,8 @@ export default async function BodySection({
     resting_hr: {
       key: "resting_hr",
       detailHref: metricDetailHref("resting-hr"),
-      title: "Resting heart rate",
+      title: BODY_METRIC_META["resting-hr"].title,
       data: restingHrChart,
-      label: "Resting HR",
       unit: " bpm",
       color: chartSeries.amber,
     },
@@ -765,10 +781,13 @@ export default async function BodySection({
   // ORDER from the tab's one ranker — for a growth-tracked profile the life-stage
   // signal lifts height/head-circ above weight, which is the pediatric layout the
   // plan used to encode positionally.
-  const compositionCharts: BodyChartSpec[] = applyCardOrder(
-    plan.keys.filter((k) => k !== "resting_hr").map((k) => chartByKey[k]),
-    cardOrder,
-    (c) => c.key
+  const compositionCharts: BodyChartSpec[] = stableEmptyLast(
+    applyCardOrder(
+      plan.keys.filter((k) => k !== "resting_hr").map((k) => chartByKey[k]),
+      cardOrder,
+      (c) => c.key
+    ),
+    (chart) => chart.data.every((point) => point.value == null)
   );
 
   // Pediatric growth percentiles — returns null unless the profile has a known sex +
@@ -776,7 +795,7 @@ export default async function BodySection({
   // range. The card plots the child's WHOLE trajectory, so its inputs are unbounded
   // (ALL_ROWS) — the default 180-row cap silently started the percentile track ~6
   // months ago on a daily-synced child (#399). weightSeries already uses ALL_ROWS.
-  const growth = buildGrowthProfile({
+  const growthPresentation = buildGrowthTrendPresentation({
     sex: getUserSex(profile.id),
     birthdate: getUserBirthdate(profile.id),
     today: todayStr,
@@ -789,127 +808,137 @@ export default async function BodySection({
       "head_circumference_cm",
       ALL_ROWS
     ).map((r) => ({ date: r.date, value: r.value })),
+    weightUnit: wu,
+    range,
   });
-  const growthMeta: Record<
-    "height" | "weight" | "bmi" | "head_circumference",
-    { label: string; unit: string; valueRound: number }
-  > = {
-    height: { label: "Height", unit: " cm", valueRound: 1 },
-    // Weight's unit follows the login's weight preference — the plotted values are
-    // converted at the display boundary below (displayWeightGrowth).
-    weight: { label: "Weight", unit: ` ${wu}`, valueRound: 1 },
-    bmi: { label: "BMI", unit: "", valueRound: 1 },
-    head_circumference: { label: "Head circ.", unit: " cm", valueRound: 1 },
-  };
-  const growthViews: GrowthMetricView[] = growth
-    ? growth.metrics
-        .filter((m) => m.bands.length > 0 && m.points.length > 0)
-        .map((m) => {
-          // Percentiles stay computed in kg (correct); only the DISPLAYED plot +
-          // label change for an lb-preference user. For weight, convert the
-          // reference bands AND the trajectory points together so they stay
-          // coherent. Other metrics are unit-invariant here.
-          const plot =
-            m.metric === "weight"
-              ? displayWeightGrowth(m, wu)
-              : { bands: m.bands, points: m.points };
-          return {
-            metric: m.metric,
-            ...growthMeta[m.metric],
-            bands: plot.bands,
-            points: plot.points,
-            latestPercentile: m.latest?.percentile ?? null,
-            minMonths: m.minMonths,
-            maxMonths: m.maxMonths,
-          };
-        })
-    : [];
-  const growthSource = growth && growth.ageMonths < 24 ? "WHO" : "CDC";
-  const growthCard =
-    growth && growthViews.length > 0 ? (
-      <GrowthChartsCard
-        views={growthViews}
-        currentAgeMonths={growth.ageMonths}
-        source={growthSource}
-      />
-    ) : null;
+  const growthCard = growthPresentation ? (
+    <GrowthChartsCard
+      views={growthPresentation.views}
+      currentAgeMonths={growthPresentation.currentAgeMonths}
+      source={growthPresentation.source}
+      detailHref={GROWTH_TRENDS_HREF}
+      range={range}
+    />
+  ) : null;
 
   // ── 4. Synced-from-integrations daily metrics ───────────────────────────────
-  // NOT windowed by the shared range; they show the most recent ~6 months (the
-  // queries' default 180-row cap), captioned honestly below (issue #399).
-  const stepsChart = getMetricDailyTotals(profile.id, "steps").map((r) => ({
+  // Full series stay named `…All` for presence and tile construction. Every plot
+  // is windowed by the one shared range below — no private "recent N" exception.
+  const stepsChart = filterSeriesByRange(stepsAll, range);
+  const activeCaloriesAll = getMetricDailyTotals(
+    profile.id,
+    "active_kcal",
+    ALL_ROWS
+  ).map((r) => ({
     date: r.date,
     value: Math.round(r.value),
   }));
-  // Sleep moved to its own dedicated /sleep page (issue #1066): the detailed
-  // per-night / regularity / stage cards live there now. Trends → Body keeps a
-  // COMPACT summary tile — last night's main-session duration + the SRI — linking to
-  // /sleep. Both figures come from the SAME computations the Sleep page reads.
-  const lastNight = getLastNightSummary(profile.id);
+  const activeCaloriesChart = filterSeriesByRange(activeCaloriesAll, range);
+  // Sleep keeps its detailed regularity / stage analysis on /sleep, while Trends →
+  // Body charts the nightly main-session duration like its neighboring metrics.
+  // Convert minutes to hours at this display boundary; storage and the shared sleep
+  // query remain minute-based.
+  const sleepDurationAll = getSleepDurationTrend(profile.id, 3650).map(
+    (night) => ({
+      date: night.date,
+      value: round(night.value / 60, 1),
+    })
+  );
+  const sleepDurationChart = filterSeriesByRange(sleepDurationAll, range);
+  const lastNight = getSleepSummaryInRange(profile.id, range);
   const lastNightPresentation = lastNight
     ? sleepRecordPresentation(lastNight.wakeDay, todayStr, formatPrefs)
     : null;
-  const visibleLastNight =
-    lastNightPresentation?.freshness === "stale" ? null : lastNight;
-  const sleepReg = getSleepRegularity(profile.id);
-  const hasSleep = visibleLastNight != null || sleepReg != null;
-  const leanMassChart = getMetricDailyTotals(profile.id, "lean_mass_kg").map(
-    (r) => ({ date: r.date, value: round(r.value, 1) })
-  );
-  const boneMassChart = getMetricDailyTotals(profile.id, "bone_mass_kg").map(
-    (r) => ({ date: r.date, value: round(r.value, 2) })
-  );
-  const bmrChart = getMetricDailyTotals(profile.id, "bmr_kcal").map((r) => ({
-    date: r.date,
-    value: Math.round(r.value),
-  }));
-  const hydrationChart = getMetricDailyTotals(profile.id, "hydration_l").map(
-    (r) => ({ date: r.date, value: round(r.value, 2) })
-  );
-  const caloriesChart = getMetricDailyTotals(profile.id, "nutrition_kcal").map(
+  const visibleLastNight = lastNight;
+  const sleepReg = getSleepRegularityInRange(profile.id, range);
+  const hasSleep = sleepDurationAll.length > 0;
+  const sleepDateLabel =
+    visibleLastNight &&
+    (lastNightPresentation?.freshness === "stale" ||
+      (range.to != null && range.to < todayStr))
+      ? formatLongDate(visibleLastNight.wakeDay, formatPrefs)
+      : lastNightPresentation?.label;
+  const leanMassAll = getMetricDailyTotals(
+    profile.id,
+    "lean_mass_kg",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: round(r.value, 1) }));
+  const leanMassChart = filterSeriesByRange(leanMassAll, range);
+  const boneMassAll = getMetricDailyTotals(
+    profile.id,
+    "bone_mass_kg",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: round(r.value, 2) }));
+  const boneMassChart = filterSeriesByRange(boneMassAll, range);
+  const bmrAll = getMetricDailyTotals(profile.id, "bmr_kcal", ALL_ROWS).map(
     (r) => ({ date: r.date, value: Math.round(r.value) })
   );
+  const bmrChart = filterSeriesByRange(bmrAll, range);
+  const hydrationAll = getMetricDailyTotals(
+    profile.id,
+    "hydration_l",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: round(r.value, 2) }));
+  const hydrationChart = filterSeriesByRange(hydrationAll, range);
+  const caloriesAll = getMetricDailyTotals(
+    profile.id,
+    "nutrition_kcal",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: Math.round(r.value) }));
+  const caloriesChart = filterSeriesByRange(caloriesAll, range);
   // BMI over the weight series, pairing each weigh-in with the height in effect ON
   // OR BEFORE that date — the SAME date-paired derivation the growth card uses, so
   // the two BMI charts on a child's Body tab can't disagree (issue #407).
-  const bmiChart = bmiSeriesDatePaired(
+  const bmiAll = bmiSeriesDatePaired(
     weightSeries.map((w) => ({ date: w.date, value: w.value })),
     getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map((r) => ({
       date: r.date,
       value: r.value,
     }))
   ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
+  const bmiChart = filterSeriesByRange(bmiAll, range);
   // Mood trend (#992): the daily wellbeing check-ins as a chartable 1–5 series —
   // like a vital in shape, but DELIBERATELY never reference-range flagged and never
-  // retested (a subjective self-rating, not a lab). Most recent ~6 months.
-  const moodChart = getMoodLogs(profile.id, shiftDateStr(todayStr, -179)).map(
-    (m) => ({ date: m.date, value: m.valence })
-  );
+  // retested (a subjective self-rating, not a lab).
+  const moodAll = getMoodLogs(profile.id).map((m) => ({
+    date: m.date,
+    value: m.valence,
+  }));
+  const moodChart = filterSeriesByRange(moodAll, range);
 
-  const hrChart = getHrDailySummary(profile.id).map((r) => ({
+  const hrAll = getHrDailySummary(profile.id, 3650).map((r) => ({
     date: r.date,
     value: Math.round(r.avg),
   }));
+  const hrChart = filterSeriesByRange(hrAll, range);
   const latestHrDay = getLatestHrDay(profile.id);
-  const hrIntraday = latestHrDay
-    ? getHrMinutes(profile.id, latestHrDay).map((m) => ({
-        date: m.ts.slice(11), // HH:MM
-        value: round(m.bpm, 0),
-      }))
-    : [];
+  // The clock zoom belongs to the selected window just like every neighboring
+  // chart. Do not surface an old "latest day" while the user is inspecting a
+  // different range.
+  const latestHrDayInRange =
+    latestHrDay != null &&
+    filterSeriesByRange([{ date: latestHrDay, value: 0 }], range).length > 0;
+  const hrIntraday =
+    latestHrDay && latestHrDayInRange
+      ? getHrMinutes(profile.id, latestHrDay).map((m) => ({
+          date: m.ts.slice(11), // HH:MM
+          value: round(m.bpm, 0),
+        }))
+      : [];
   const hasSynced =
-    stepsChart.length > 0 ||
+    stepsAll.length > 0 ||
+    activeCaloriesAll.length > 0 ||
     hasSleep ||
-    hrChart.length > 0 ||
-    leanMassChart.length > 0 ||
-    boneMassChart.length > 0 ||
-    bmrChart.length > 0 ||
-    hydrationChart.length > 0 ||
-    caloriesChart.length > 0 ||
-    bmiChart.length > 0;
+    hrAll.length > 0 ||
+    leanMassAll.length > 0 ||
+    boneMassAll.length > 0 ||
+    bmrAll.length > 0 ||
+    hydrationAll.length > 0 ||
+    caloriesAll.length > 0 ||
+    bmiAll.length > 0;
 
   // #1067 Phase 1 (re-based on #1490): the synced daily charts render from ONE
-  // visible list that also feeds the sticky jump chips, so a chip can never point at
+  // visible list that also feeds the chart menu, so it can never point at
   // an absent chart. Membership is each entry's `present` gate; the SEQUENCE is the
   // tab's shared card order. The old per-entry `latestDate`/`order` pair is gone with
   // `orderBodyCharts` — a raw most-recently-synced sort resequenced this page every
@@ -921,13 +950,13 @@ export default async function BodySection({
   })[] = [
     {
       id: "steps",
-      label: "Steps",
-      present: stepsChart.length > 0,
+      label: BODY_METRIC_META.steps.title,
+      present: stepsAll.length > 0,
       node: (
         <ChartCard
           key="steps"
           anchorId="steps"
-          title="Steps per day"
+          title={BODY_METRIC_META.steps.title}
           detailHref={metricDetailHref("steps")}
           detailTitle="steps"
         >
@@ -935,9 +964,30 @@ export default async function BodySection({
               registry the detail page reads (#1541). */}
           <LineChartCard
             data={stepsChart}
-            label="Steps"
+            label={BODY_METRIC_META.steps.title}
             color={chartSeries.sky}
             {...bodyChartScale(BODY_METRIC_META.steps)}
+          />
+        </ChartCard>
+      ),
+    },
+    {
+      id: "active-calories",
+      label: BODY_METRIC_META["active-calories"].title,
+      present: activeCaloriesAll.length > 0,
+      node: (
+        <ChartCard
+          key="active-calories"
+          anchorId="active-calories"
+          title={BODY_METRIC_META["active-calories"].title}
+          detailHref={metricDetailHref("active-calories")}
+        >
+          <LineChartCard
+            data={activeCaloriesChart}
+            label={BODY_METRIC_META["active-calories"].title}
+            color={chartSeries.rose}
+            unit=" kcal"
+            {...bodyChartScale(BODY_METRIC_META["active-calories"])}
           />
         </ChartCard>
       ),
@@ -947,87 +997,81 @@ export default async function BodySection({
       label: "Sleep",
       present: hasSleep,
       node: (
-        <Link
+        <ChartCard
           key="sleep"
-          href="/sleep"
-          id="sleep"
-          className="card scroll-mt-28 group flex flex-col transition hover:border-brand-300 dark:hover:border-brand-700"
-          data-testid="sleep-summary-tile"
+          anchorId="sleep"
+          title="Sleep"
+          headline={
+            visibleLastNight
+              ? formatHm(visibleLastNight.durationMin)
+              : sleepDurationChart.length > 0
+                ? `${sleepDurationChart.at(-1)?.value} h`
+                : undefined
+          }
+          description="Nightly Sleep Duration"
+          detailHref="/sleep"
+          detailTitle="Sleep"
+          testid="sleep-summary-tile"
+          footer={
+            visibleLastNight || sleepReg != null ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                {visibleLastNight && sleepDateLabel && (
+                  <span>
+                    {sleepDateLabel}
+                    {visibleLastNight.bedMinutes != null &&
+                      visibleLastNight.wakeMinutes != null && (
+                        <>
+                          {" · "}
+                          {formatClockMinutes(
+                            formatPrefs.timeFormat,
+                            visibleLastNight.bedMinutes
+                          )}
+                          –
+                          {formatClockMinutes(
+                            formatPrefs.timeFormat,
+                            visibleLastNight.wakeMinutes
+                          )}
+                        </>
+                      )}
+                  </span>
+                )}
+                {sleepReg != null && (
+                  <span data-testid="sleep-regularity">
+                    Regularity ·{" "}
+                    <span data-testid="sri-value">
+                      {sriPresentation(sleepReg.sri).text}
+                    </span>
+                  </span>
+                )}
+              </div>
+            ) : undefined
+          }
         >
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              Sleep
-            </h2>
-            <span className="inline-flex items-center gap-1 text-xs text-brand-600 group-hover:underline dark:text-brand-400">
-              Open Sleep
-              <IconArrowRight className="h-4 w-4" stroke={1.75} aria-hidden />
-            </span>
-          </div>
-          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-            {visibleLastNight && lastNightPresentation && (
-              <div>
-                <div
-                  className="text-3xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
-                  data-testid="sleep-tile-duration"
-                >
-                  {formatHm(visibleLastNight.durationMin)}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {lastNightPresentation.label}
-                  {visibleLastNight.bedMinutes != null &&
-                    visibleLastNight.wakeMinutes != null && (
-                      <>
-                        {" · "}
-                        {formatClockMinutes(
-                          formatPrefs.timeFormat,
-                          visibleLastNight.bedMinutes
-                        )}
-                        –
-                        {formatClockMinutes(
-                          formatPrefs.timeFormat,
-                          visibleLastNight.wakeMinutes
-                        )}
-                      </>
-                    )}
-                </div>
-              </div>
-            )}
-            {sleepReg != null && (
-              <div data-testid="sleep-regularity">
-                <div
-                  className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
-                  data-testid="sri-value"
-                >
-                  {sriPresentation(sleepReg.sri).text}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Regularity
-                </div>
-              </div>
-            )}
-          </div>
-          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-            Your regularity trend, stage composition, and per-night detail moved
-            to the Sleep page.
-          </p>
-        </Link>
+          <LineChartCard
+            data={sleepDurationChart}
+            label="Sleep"
+            unit=" h"
+            color={chartSeries.violet}
+            decimals={1}
+          />
+        </ChartCard>
       ),
     },
     {
       id: "hr",
-      label: "HR",
-      present: hrChart.length > 0,
+      label: BODY_METRIC_META.hr.title,
+      present: hrAll.length > 0,
       node: (
         <ChartCard
           key="hr"
           anchorId="hr"
-          title="Heart rate (daily avg)"
+          title={BODY_METRIC_META.hr.title}
           detailHref={metricDetailHref("hr")}
           detailTitle="heart rate"
         >
           <LineChartCard
             data={hrChart}
-            label="Avg HR"
+            label={BODY_METRIC_META.hr.title}
             color={chartSeries.rose}
             unit=" bpm"
           />
@@ -1036,14 +1080,17 @@ export default async function BodySection({
     },
     {
       id: "hr-day",
-      label: "HR (day)",
-      present: hrIntraday.length > 0,
+      label: `${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} (Intraday)`,
+      // A single worn-HR sample cannot form an intraday trend. With dots hidden it
+      // painted as a large blank chart, so keep the useful daily summary and omit
+      // this zoom until there is an actual line to read.
+      present: hrIntraday.length > 1,
       node: (
         <ChartCard
           key="hr-day"
           anchorId="hr-day"
           className="lg:col-span-2"
-          title={`Heart rate over the day${latestHrDay ? ` — ${latestHrDay}` : ""}`}
+          title={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Over the Day${latestHrDay ? ` — ${latestHrDay}` : ""}`}
           // The title carries a DATE, which reads badly in "Open … detail"; the
           // accessible name names the metric instead.
           detailTitle="heart rate"
@@ -1051,7 +1098,9 @@ export default async function BodySection({
         >
           <LineChartCard
             data={hrIntraday}
-            label="HR"
+            label={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Over the Day${
+              latestHrDay ? ` — ${latestHrDay}` : ""
+            }`}
             color={chartSeries.rose}
             unit=" bpm"
             showDots={false}
@@ -1061,33 +1110,37 @@ export default async function BodySection({
     },
     {
       id: "bmi",
-      label: "BMI",
-      present: bmiChart.length > 0,
+      label: BODY_METRIC_META.bmi.title,
+      present: bmiAll.length > 0,
       node: (
         <ChartCard
           key="bmi"
           anchorId="bmi"
-          title="BMI"
+          title={BODY_METRIC_META.bmi.title}
           detailHref={metricDetailHref("bmi")}
         >
-          <LineChartCard data={bmiChart} label="BMI" color={chartSeries.sky} />
+          <LineChartCard
+            data={bmiChart}
+            label={BODY_METRIC_META.bmi.title}
+            color={chartSeries.sky}
+          />
         </ChartCard>
       ),
     },
     {
       id: "lean-mass",
-      label: "Lean mass",
-      present: leanMassChart.length > 0,
+      label: BODY_METRIC_META["lean-mass"].title,
+      present: leanMassAll.length > 0,
       node: (
         <ChartCard
           key="lean-mass"
           anchorId="lean-mass"
-          title="Lean body mass"
+          title={BODY_METRIC_META["lean-mass"].title}
           detailHref={metricDetailHref("lean-mass")}
         >
           <LineChartCard
             data={leanMassChart}
-            label="Lean mass"
+            label={BODY_METRIC_META["lean-mass"].title}
             color={chartSeries.sky}
             unit=" kg"
           />
@@ -1096,18 +1149,18 @@ export default async function BodySection({
     },
     {
       id: "bone-mass",
-      label: "Bone mass",
-      present: boneMassChart.length > 0,
+      label: BODY_METRIC_META["bone-mass"].title,
+      present: boneMassAll.length > 0,
       node: (
         <ChartCard
           key="bone-mass"
           anchorId="bone-mass"
-          title="Bone mass"
+          title={BODY_METRIC_META["bone-mass"].title}
           detailHref={metricDetailHref("bone-mass")}
         >
           <LineChartCard
             data={boneMassChart}
-            label="Bone mass"
+            label={BODY_METRIC_META["bone-mass"].title}
             color={chartSeries.violet}
             unit=" kg"
           />
@@ -1116,18 +1169,18 @@ export default async function BodySection({
     },
     {
       id: "bmr",
-      label: "BMR",
-      present: bmrChart.length > 0,
+      label: BODY_METRIC_META.bmr.title,
+      present: bmrAll.length > 0,
       node: (
         <ChartCard
           key="bmr"
           anchorId="bmr"
-          title="Basal metabolic rate"
+          title={BODY_METRIC_META.bmr.title}
           detailHref={metricDetailHref("bmr")}
         >
           <LineChartCard
             data={bmrChart}
-            label="BMR"
+            label={BODY_METRIC_META.bmr.title}
             color={chartSeries.rose}
             unit=" kcal"
           />
@@ -1136,18 +1189,18 @@ export default async function BodySection({
     },
     {
       id: "hydration",
-      label: "Hydration",
-      present: hydrationChart.length > 0,
+      label: BODY_METRIC_META.hydration.title,
+      present: hydrationAll.length > 0,
       node: (
         <ChartCard
           key="hydration"
           anchorId="hydration"
-          title="Hydration"
+          title={BODY_METRIC_META.hydration.title}
           detailHref={metricDetailHref("hydration")}
         >
           <LineChartCard
             data={hydrationChart}
-            label="Water"
+            label={BODY_METRIC_META.hydration.title}
             color={chartSeries.sky}
             unit=" L"
             {...bodyChartScale(BODY_METRIC_META.hydration)}
@@ -1157,18 +1210,18 @@ export default async function BodySection({
     },
     {
       id: "calories",
-      label: "Calories",
-      present: caloriesChart.length > 0,
+      label: BODY_METRIC_META.calories.title,
+      present: caloriesAll.length > 0,
       node: (
         <ChartCard
           key="calories"
           anchorId="calories"
-          title="Calories (intake)"
+          title={BODY_METRIC_META.calories.title}
           detailHref={metricDetailHref("calories")}
         >
           <LineChartCard
             data={caloriesChart}
-            label="Calories"
+            label={BODY_METRIC_META.calories.title}
             color={chartSeries.amber}
             unit=" kcal"
             {...bodyChartScale(BODY_METRIC_META.calories)}
@@ -1183,10 +1236,10 @@ export default async function BodySection({
     (e) => e.id
   );
 
-  // ONE presence boolean per fixed section, shared by its chip and its render.
+  // ONE presence boolean per fixed section, shared by its menu item and render.
   const hasVitals = vitalsCharts.length > 0 || (intraday && hasIntraday);
   const hasComposition = compositionCharts.some((c) => c.data.length > 0);
-  const hasMood = moodChart.length > 0;
+  const hasMood = moodAll.length > 0;
 
   // Does the growth-percentile card lead the whole stack? Ranked, not forked: true
   // when `growth` outranks every card rendered inside the chart block.
@@ -1201,54 +1254,62 @@ export default async function BodySection({
   // monitored condition actually surfaces the card it promoted instead of promoting
   // it inside a run pinned below another. No signal firing ⇒ Vitals then
   // Composition, exactly as before.
-  const chartSections: BodyChartSection[] = orderCardSections<BodyChartSection>(
-    [
-      {
-        id: "vitals",
-        heading: "Vitals",
-        description: intraday
-          ? "Today, minute by minute — worn heart rate and any timed blood-pressure or oxygen readings."
-          : "Blood pressure, oxygen saturation, respiratory rate, resting heart rate, HRV, and body temperature over the selected window.",
-        charts: intraday ? [] : orderedVitals,
-        after: intradayBlock,
-        empty: (
-          <EmptyState message="No vitals logged yet. Add a reading with “+ Log” above to see the trend." />
-        ),
-      },
-      {
-        id: "body-composition",
-        heading: "Composition",
-        description: "Body-composition trends over the selected window.",
-        charts: compositionCharts,
-      },
-    ],
-    cardOrder,
-    // The intraday swap empties the vitals run's `charts`; rank it by the vitals
-    // cards it WOULD hold, so a 1D window doesn't sink the section it belongs to.
+  const chartSections: BodyChartSection[] = stableEmptyLast(
+    orderCardSections<BodyChartSection>(
+      [
+        {
+          id: "vitals",
+          heading: "Vitals",
+          description: intraday
+            ? "Today, minute by minute — worn heart rate and any timed blood-pressure or oxygen readings."
+            : "Blood pressure, oxygen saturation, respiratory rate, resting heart rate, HRV, and body temperature over the selected window.",
+          charts: intraday ? [] : orderedVitals,
+          after: intradayBlock,
+          empty: (
+            <EmptyState message="No vitals logged yet. Add a reading with “+ Log” above to see the trend." />
+          ),
+        },
+        {
+          id: "body-composition",
+          heading: "Composition",
+          description: "Body-composition trends over the selected window.",
+          charts: compositionCharts,
+        },
+      ],
+      cardOrder,
+      // The intraday swap empties the vitals run's `charts`; rank it by the vitals
+      // cards it WOULD hold, so a 1D window doesn't sink the section it belongs to.
+      (section) =>
+        section.id === "vitals"
+          ? orderedVitals.map((c) => c.key)
+          : section.charts.map((c) => c.key)
+    ),
     (section) =>
-      section.id === "vitals"
-        ? orderedVitals.map((c) => c.key)
-        : section.charts.map((c) => c.key)
+      section.after == null &&
+      section.charts.every((chart) =>
+        chart.data.every((point) => point.value == null)
+      )
   );
 
-  // Jump chips in PAGE READING ORDER — the two chart runs in their ranked sequence,
-  // then mood, then the synced charts. Built FROM the ordered sections, so a chip
-  // row can never advertise an order the page below doesn't have.
+  // Menu items in PAGE READING ORDER — the two chart runs in their ranked sequence,
+  // then mood, then the synced charts. Built FROM the ordered sections, so the
+  // menu can never advertise an order the page below doesn't have.
   const sectionChipLabel: Record<string, string> = {
     vitals: "Vitals",
-    "body-composition": "Weight",
+    "body-composition": BODY_METRIC_META.weight.title,
   };
   const jumpChips: ChartChip[] = [
     ...chartSections
       .filter((s) => (s.id === "vitals" ? hasVitals : hasComposition))
       .map((s) => ({ id: s.id, label: sectionChipLabel[s.id] ?? s.heading })),
-    ...(hasMood ? [{ id: "mood", label: "Mood" }] : []),
+    ...(hasMood ? [{ id: "mood", label: BODY_METRIC_META.mood.title }] : []),
     ...orderedSynced.map((e) => ({ id: e.id, label: e.label })),
   ];
 
   // ── Tiles ───────────────────────────────────────────────────────────────────
-  // Each tile is the 30-day tail of the SAME display-unit series its classic chart
-  // draws above (one gather feeds both). The VITALS joined this grid in #1486, so
+  // Each tile windows the SAME display-unit series its classic chart draws above
+  // to the shared Trends range (one gather feeds both). VITALS joined this grid in
+  // #1486, so
   // `view=tiles` and `view=all` are two renderings of one metric set — not two
   // different sets. Body fat is dropped for a growth-tracked profile (matching the
   // charts/history); every other metric self-gates on presence.
@@ -1266,67 +1327,85 @@ export default async function BodySection({
     ["height", heightAll],
     ["head-circ", headCircAll],
     ["sun", sun],
-    ["steps", stepsChart],
-    ["hr", hrChart],
-    ["bmi", bmiChart],
-    ["lean-mass", leanMassChart],
-    ["bone-mass", boneMassChart],
-    ["bmr", bmrChart],
-    ["hydration", hydrationChart],
-    ["calories", caloriesChart],
-    ["mood", moodChart],
+    ["steps", stepsAll],
+    ["active-calories", activeCaloriesAll],
+    ["hr", hrAll],
+    ["bmi", bmiAll],
+    ["lean-mass", leanMassAll],
+    ["bone-mass", boneMassAll],
+    ["bmr", bmrAll],
+    ["hydration", hydrationAll],
+    ["calories", caloriesAll],
+    ["mood", moodAll],
   ];
   const metricTiles: BodyMetricTile[] = tileSeries
     .filter(([slug]) => slug !== "body-fat" || bodyFatShown)
     .map(([slug, arr]) =>
-      buildBodyMetricTile(BODY_METRIC_META[slug], arr, wu, todayStr)
+      buildBodyMetricTile(BODY_METRIC_META[slug], arr, wu, range)
     )
     .filter((t) => t.present);
 
-  // The bespoke Sleep tile for the grid — links to /sleep (strong topic keeps its
-  // own surface, #1042), NOT a metric page. A distinct node from the stack's sleep
-  // card so there's no duplicate `#sleep` anchor id across the two layouts.
+  const growthGridTiles =
+    growthPresentation?.views.map((growthView) => {
+      const points = growthView.points.flatMap((point) =>
+        point.percentile == null
+          ? []
+          : [{ date: point.date, value: Math.round(point.percentile) }]
+      );
+      const latestPercentile = points.at(-1)?.value ?? null;
+      return {
+        slug: `growth-${growthView.metric}`,
+        id: "growth" as const,
+        label: growthView.percentileTitle,
+        present: true,
+        empty: points.length === 0,
+        node: (
+          <TrendMiniCard
+            title={growthView.percentileTitle}
+            href={growthTrendsHref(growthView.metric, range)}
+            data={points}
+            unit=" percentile"
+            color={chartSeries.brand}
+            decimals={0}
+            headline={
+              latestPercentile == null
+                ? undefined
+                : ordinalPercentile(latestPercentile)
+            }
+            showChange={false}
+            yDomain={[0, 100]}
+            emptyMessage={
+              !growthView.referenceAvailable
+                ? "Not available for this age"
+                : "No data in this range"
+            }
+            testid={`body-tile-growth-${growthView.metric}`}
+          />
+        ),
+      };
+    }) ?? [];
+
+  // Sleep links to its strong-topic page rather than a metric detail route, but its
+  // tile uses the same sparkline/value component and visual contract as every
+  // neighboring Body metric.
   const sleepGridTile = hasSleep
     ? {
+        slug: "sleep",
+        id: "sleep" as const,
+        label: "Sleep",
         present: true,
-        latestDate: visibleLastNight?.wakeDay ?? null,
+        empty: sleepDurationChart.length === 0,
         node: (
-          <Link
+          <TrendMiniCard
+            title="Sleep"
             href="/sleep"
-            data-testid="body-tile-sleep"
-            className="card group flex h-full flex-col transition hover:border-brand-300 dark:hover:border-brand-700"
-          >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="font-semibold text-slate-800 dark:text-slate-100">
-                Sleep
-              </span>
-              <IconArrowRight
-                className="h-4 w-4 text-brand-600 dark:text-brand-400"
-                stroke={1.75}
-                aria-hidden
-              />
-            </div>
-            {visibleLastNight && lastNightPresentation && (
-              <>
-                <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                  {formatHm(visibleLastNight.durationMin)}
-                </div>
-                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  {lastNightPresentation.label}
-                </div>
-              </>
-            )}
-            {sleepReg != null && (
-              <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Regularity · {sriPresentation(sleepReg.sri).text}
-              </div>
-            )}
-            {!visibleLastNight && sleepReg == null && (
-              <div className="text-sm text-slate-500 dark:text-slate-400">
-                Open Sleep
-              </div>
-            )}
-          </Link>
+            data={sleepDurationChart}
+            unit=" h"
+            color={chartSeries.violet}
+            decimals={1}
+            singleReadingAsChart
+            testid="body-tile-sleep"
+          />
         ),
       }
     : null;
@@ -1336,8 +1415,16 @@ export default async function BodySection({
       {/* 1. TODAY — the day's answer comes first, then the way to add to it. */}
       <VitalsTodayStrip rows={todayVitals} date={todayStr} />
 
-      {/* Desktop-only "+ Log" expander over the ONE combined measurements form; on a
-          phone this renders nothing and the global quick-log sheet is the path. */}
+      {/* Body-metric data-hygiene findings (issue #45, domain 5): probable-error
+          day-over-day weight jumps — a safety-ish signal, so shown above the toggle
+          in both layouts. */}
+      <BodyHygieneFindings />
+
+      {/* One desktop control row: chart jump on the left, the view selector
+          geometrically centered, and the standard Log action on the right. The
+          same client component owns the modal state and mounts the shared form in
+          the standard dialog shell. On phones it renders nothing; global quick
+          entry is the logging path there. */}
       <LogMeasurementsPanel
         defaultDate={todayStr}
         weightUnit={wu}
@@ -1345,184 +1432,214 @@ export default async function BodySection({
         showBodyFat={bodyFatShown}
         showGrowth={showGrowthQuickAdd(ageYears)}
         showHeadCirc={showHeadCircEntry(ageMonths)}
+        centerControl={
+          <BodyViewToggle view={view} tilesHref={tilesHref} allHref={allHref} />
+        }
+        leftControl={
+          <div className={stackContainerClass(view)}>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                Jump to
+              </span>
+              <ChartJumpMenu items={jumpChips} />
+            </div>
+          </div>
+        }
       />
 
-      {/* Body-metric data-hygiene findings (issue #45, domain 5): probable-error
-          day-over-day weight jumps — a safety-ish signal, so shown above the toggle
-          in both layouts. */}
-      <BodyHygieneFindings />
+      {/* 1D is a real intraday lens, not a one-point daily tile grid. It becomes
+          the sole reading view at every viewport so phones keep their tiles-only
+          rule for ordinary ranges without losing the clock-axis charts 1D exists
+          to reveal. This is the same chart tree desktop reads, mounted once. */}
+      {intraday && (
+        <div className="!mt-2" data-testid="body-intraday-view">
+          <BodyTrendCharts
+            sections={chartSections.filter(
+              (section) => section.id === "vitals"
+            )}
+            annotations={annotations}
+            windows={protocolWindows}
+          />
+        </div>
+      )}
 
-      {/* #1067 Phase 2: tiles ⇄ classic-stack toggle. Default is responsive (tiles on
-          mobile, stack on desktop); the toggle pins either explicitly. */}
-      <div className="flex justify-end">
-        <BodyViewToggle view={view} tilesHref={tilesHref} allHref={allHref} />
-      </div>
+      {!intraday && (
+        <>
+          {/* Sparkline-tile overview — the only ordinary-range view on mobile. */}
+          <div
+            className={`${tilesContainerClass(view)} !mt-2`}
+            data-testid="body-tiles-view"
+          >
+            <BodyMetricTiles
+              tiles={metricTiles}
+              growth={growthGridTiles}
+              sleep={sleepGridTile}
+              order={cardOrder}
+            />
+          </div>
 
-      {/* Sparkline-tile overview — the default view on mobile. */}
-      <div className={tilesContainerClass(view)} data-testid="body-tiles-view">
-        <BodyMetricTiles
-          tiles={metricTiles}
-          sleep={sleepGridTile}
-          order={cardOrder}
-        />
-      </div>
-
-      {/* The classic full-chart stack — the default view on desktop, and the
-          `view=all` layout on every viewport. Carries the sticky jump chips + the
-          per-chart `#id` anchors (#1067 Phase 1). */}
-      <div
-        className={`${stackContainerClass(view)} space-y-6`}
-        data-testid="body-charts-all"
-      >
-        {/* Sticky chart-jump chips (#1067) — one row, its own overflow-x-auto
-            container, tapping scrolls to the chart. Only present charts appear. */}
-        <ChartJumpChips chips={jumpChips} />
-
-        {/* For a growth-tracked profile the percentile card is the headline, so it
+          {/* The classic full-chart stack — desktop only. Carries the per-chart
+              `#id` anchors used by the chart dropdown (#1067 Phase 1). */}
+          <div
+            className={`${stackContainerClass(view)} !mt-2 space-y-6`}
+            data-testid="body-charts-all"
+          >
+            {/* For a growth-tracked profile the percentile card is the headline, so it
             floats above the chart sections; adults never have one. That used to be
             planBodyCharts' `growthCardFirst` fork — it is now a CONSEQUENCE of the
             tab's one card order (#1490): the growth card leads exactly when it
             outranks every card inside the chart block. */}
-        {growthLeads && growthCard}
+            {growthLeads && growthCard}
 
-        {/* 2 + 3. Vitals then Composition, under ONE annotation toggle bar. */}
-        <BodyTrendCharts
-          sections={chartSections}
-          annotations={annotations}
-          windows={protocolWindows}
-        />
-
-        {/* 4. Growth charts (minors), then the rest of the reading half. */}
-        {!growthLeads && growthCard}
-
-        {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
-            bands, no flags, no retest hooks — mood is not a lab, so a low day is a
-            data point, never an "abnormal". Hidden until a check-in exists. */}
-        {hasMood && (
-          <ChartCard
-            anchorId="mood"
-            testid="mood-trend"
-            title="Mood"
-            description="1–5 daily check-ins · most recent ~6 months"
-            detailHref={metricDetailHref("mood")}
-            footer={
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                A subjective self-rating from your daily check-ins —
-                informational only, never range-checked.
-              </p>
-            }
-          >
-            <LineChartCard
-              data={moodChart}
-              label="Mood"
-              color={chartSeries.amber}
+            {/* 2 + 3. Vitals then Composition, under ONE annotation toggle bar. */}
+            <BodyTrendCharts
+              sections={chartSections}
+              annotations={annotations}
+              windows={protocolWindows}
             />
-          </ChartCard>
-        )}
 
-        {hasSynced && (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Synced daily metrics — most recent ~6 months (not filtered by the
-              date range above).
-            </p>
-            <div className="grid gap-6 lg:grid-cols-2">
-              {orderedSynced.map((e) => e.node)}
-            </div>
-          </div>
-        )}
+            {/* 4. Growth charts (minors), then the rest of the reading half. */}
+            {!growthLeads && growthCard}
 
-        {/* Per-source comparison + primary-source pickers (issue #14). Renders
-            nothing unless at least one metric is reported by 2+ sources. */}
-        <SourceComparison profileId={profile.id} weightUnit={wu} />
+            {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
+              bands, no flags, no retest hooks — mood is not a lab, so a low day is a
+              data point, never an "abnormal". Hidden until a check-in exists. */}
+            {hasMood && (
+              <ChartCard
+                anchorId="mood"
+                testid="mood-trend"
+                title={BODY_METRIC_META.mood.title}
+                description="1–5 daily check-ins · selected date range"
+                detailHref={metricDetailHref("mood")}
+                footer={
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    A subjective self-rating from your daily check-ins —
+                    informational only, never range-checked.
+                  </p>
+                }
+              >
+                <LineChartCard
+                  data={moodChart}
+                  label={BODY_METRIC_META.mood.title}
+                  color={chartSeries.amber}
+                />
+              </ChartCard>
+            )}
 
-        <div className="card">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            History
-          </h2>
-          {bodyMetrics.length === 0 ? (
-            <EmptyState message="No body metrics yet. Log one with “+ Log” above to see the trend." />
-          ) : (
-            <ScrollFade>
-              <table className="w-full" data-testid="body-history-table">
-                <thead>
-                  <tr className="border-b border-black/5 dark:border-white/10">
-                    <th className="th">Date</th>
-                    <th className="th">Weight</th>
-                    {bodyFatShown && <th className="th">Body fat</th>}
-                    {/* The resting-HR COLUMN stays (#1486): this table is the
-                        record EDITOR, not a second chart of the metric. */}
-                    <th className="th">Resting HR</th>
-                    <th className="th">Source</th>
-                    <th className="th">Notes</th>
-                    <th className="th"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bodyMetrics.map((w) => (
-                    <tr
-                      key={w.id}
-                      className="border-b border-black/5 dark:border-white/10"
+            {hasSynced && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Synced daily metrics in the selected date range.
+                </p>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {orderedSynced.map((e, index) => (
+                    <div
+                      key={e.id}
+                      className={
+                        orderedSynced.length % 2 === 1 &&
+                        index === orderedSynced.length - 1
+                          ? "lg:col-span-2"
+                          : ""
+                      }
                     >
-                      <td className="td whitespace-nowrap">
-                        {formatLongDate(w.date, formatPrefs)}
-                      </td>
-                      <td
-                        className="td font-medium"
-                        data-testid="body-weight-cell"
-                      >
-                        {fmtWeight(w.weight_kg, wu)}
-                      </td>
-                      {bodyFatShown && (
-                        <td className="td">
-                          {w.body_fat_pct != null ? `${w.body_fat_pct}%` : "—"}
-                        </td>
-                      )}
-                      <td className="td">{w.resting_hr ?? "—"}</td>
-                      <td className="td whitespace-nowrap">
-                        {w.document_id != null ? (
-                          <Link
-                            href={`/import/${w.document_id}`}
-                            className="text-brand-700 hover:underline dark:text-brand-400"
+                      {e.node}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="card">
+              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                History
+              </h2>
+              {bodyMetrics.length === 0 ? (
+                <EmptyState message="No body metrics yet. Log one with “+ Log” above to see the trend." />
+              ) : (
+                <ScrollFade>
+                  <table className="w-full" data-testid="body-history-table">
+                    <thead>
+                      <tr className="border-b border-black/5 dark:border-white/10">
+                        <th className="th">Date</th>
+                        <th className="th">Weight</th>
+                        {bodyFatShown && <th className="th">Body fat</th>}
+                        {/* The resting-HR COLUMN stays (#1486): this table is the
+                        record EDITOR, not a second chart of the metric. */}
+                        <th className="th">Resting HR</th>
+                        <th className="th">Source</th>
+                        <th className="th">Notes</th>
+                        <th className="th"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bodyMetrics.map((w) => (
+                        <tr
+                          key={w.id}
+                          className="border-b border-black/5 dark:border-white/10"
+                        >
+                          <td className="td whitespace-nowrap">
+                            {formatLongDate(w.date, formatPrefs)}
+                          </td>
+                          <td
+                            className="td font-medium"
+                            data-testid="body-weight-cell"
                           >
-                            {w.source_label}
-                          </Link>
-                        ) : (
-                          <span className="text-slate-500 dark:text-slate-400">
-                            {w.source_label}
-                          </span>
-                        )}
-                        {/* Edit-lock badge + resume affordance for a hand-edited
+                            {fmtWeight(w.weight_kg, wu)}
+                          </td>
+                          {bodyFatShown && (
+                            <td className="td">
+                              {w.body_fat_pct != null
+                                ? `${w.body_fat_pct}%`
+                                : "—"}
+                            </td>
+                          )}
+                          <td className="td">{w.resting_hr ?? "—"}</td>
+                          <td className="td whitespace-nowrap">
+                            {w.document_id != null ? (
+                              <Link
+                                href={`/import/${w.document_id}`}
+                                className="text-brand-700 hover:underline dark:text-brand-400"
+                              >
+                                {w.source_label}
+                              </Link>
+                            ) : (
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {w.source_label}
+                              </span>
+                            )}
+                            {/* Edit-lock badge + resume affordance for a hand-edited
                             integration row (#659): only integration-owned rows carry
                             the lock (manual/document rows can't be re-synced). */}
-                        {!!w.edited &&
-                          w.document_id == null &&
-                          !!w.source &&
-                          w.source !== "manual" && (
-                            <EditLockNotice
-                              table="body_metrics"
+                            {!!w.edited &&
+                              w.document_id == null &&
+                              !!w.source &&
+                              w.source !== "manual" && (
+                                <EditLockNotice
+                                  table="body_metrics"
+                                  id={w.id}
+                                  className="mt-1"
+                                />
+                              )}
+                          </td>
+                          <td className="td text-slate-500 dark:text-slate-400">
+                            <NotesText notes={w.notes} />
+                          </td>
+                          <td className="td text-right">
+                            <DeleteBodyMetricButton
                               id={w.id}
-                              className="mt-1"
+                              label={formatLongDate(w.date, formatPrefs)}
                             />
-                          )}
-                      </td>
-                      <td className="td text-slate-500 dark:text-slate-400">
-                        <NotesText notes={w.notes} />
-                      </td>
-                      <td className="td text-right">
-                        <DeleteBodyMetricButton
-                          id={w.id}
-                          label={formatLongDate(w.date, formatPrefs)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </ScrollFade>
-          )}
-        </div>
-      </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ScrollFade>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

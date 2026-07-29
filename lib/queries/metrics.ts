@@ -353,7 +353,7 @@ export interface SleepSessionRow {
 
 function readSleepSessions(
   profileId: number,
-  opts: { limit?: number; since?: string }
+  opts: { limit?: number; since?: string; through?: string }
 ): SleepSessionRow[] {
   const validWindow = " AND julianday(end_time) > julianday(start_time)";
   const sources = (
@@ -409,6 +409,8 @@ function readSleepSessions(
   const rowParams: (number | string)[] = [profileId];
   if (selectedSource != null) rowParams.push(selectedSource);
   rowParams.push(cutoff);
+  const throughFilter = opts.through ? " AND date <= ?" : "";
+  if (opts.through) rowParams.push(opts.through);
   const rows = db
     .prepare(
       `SELECT date, start_time AS start, end_time AS end, source, origin, value
@@ -416,6 +418,7 @@ function readSleepSessions(
         WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
           ${validWindow}
           AND date >= ?
+          ${throughFilter}
         ORDER BY end_time DESC`
     )
     .all(...rowParams) as {
@@ -426,21 +429,22 @@ function readSleepSessions(
     origin: string | null;
     value: number;
   }[];
-  return pickRowsOneOriginPerSourceDay(
+  const picked = pickRowsOneOriginPerSourceDay(
     rows,
     (r) => r.date,
     (r) => r.source,
     (r) => r.origin,
     (r) => r.value
-  )
-    .slice(0, opts.limit)
-    .map(({ date, start, end, value, source }) => ({
-      date,
-      start,
-      end,
-      value,
-      source,
-    }));
+  );
+  const limited =
+    opts.limit == null ? picked : picked.slice(0, Math.max(0, opts.limit));
+  return limited.map(({ date, start, end, value, source }) => ({
+    date,
+    start,
+    end,
+    value,
+    source,
+  }));
 }
 
 export function getSleepSessions(
@@ -457,6 +461,21 @@ export function getSleepSessionsSince(
   since: string
 ): SleepSessionRow[] {
   return readSleepSessions(profileId, { since });
+}
+
+// Every valid sleep session whose stored wake-day is inside the selected calendar
+// range. This is intentionally date-bounded rather than row-capped: a historical
+// Trends window must not disappear merely because newer nights consumed the
+// regular SRI reader's 800-row safety cap.
+export function getSleepSessionsInRange(
+  profileId: number,
+  from?: string,
+  to?: string
+): SleepSessionRow[] {
+  return readSleepSessions(profileId, {
+    since: from ?? "0000-01-01",
+    through: to,
+  });
 }
 
 // Duration-only manual sleep entries written by the measurements quick-add. Their equal
@@ -572,15 +591,85 @@ export function getHrDailySummary(
     max: number;
     n: number;
   }[];
-  return pickRowsOneSourcePerDay(
+  const picked = pickRowsOneSourcePerDay(
     rows,
     preferenceFor(profileId, "heart_rate"),
     (r) => r.date,
     (r) => r.source,
     (r) => r.n
+  ).sort((a, b) => (a.date < b.date ? -1 : 1));
+  // Match SQLite LIMIT semantics used by the other Trends queries: a negative
+  // limit is the ALL_ROWS sentinel, not Array.slice(1).
+  return (limitDays < 0 ? picked : picked.slice(-limitDays)).map(
+    ({ date, avg, min, max }) => ({ date, avg, min, max })
+  );
+}
+
+// Daily HR summary inside an explicit calendar window. Unlike the recent-days
+// reader above, this bounds the high-volume GROUP BY by the dates the caller is
+// actually rendering. A historical custom range therefore does not need to read
+// every newer day first, and the ordinary 90-day Trends view never aggregates a
+// profile's lifetime hr_minutes table. No bounds deliberately means all time.
+export function getHrDailySummaryInRange(
+  profileId: number,
+  from?: string,
+  to?: string
+): { date: string; avg: number; min: number; max: number }[] {
+  if (!from && !to) return getHrDailySummary(profileId, -1);
+
+  type HrAggregate = {
+    date: string;
+    source: string | null;
+    avg: number;
+    min: number;
+    max: number;
+    n: number;
+  };
+  let rows: HrAggregate[];
+  if (from && to) {
+    rows = db
+      .prepare(
+        `SELECT substr(ts,1,10) AS date, source,
+                AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
+                COUNT(*) AS n
+           FROM hr_minutes
+          WHERE profile_id = ?
+            AND substr(ts,1,10) >= ? AND substr(ts,1,10) <= ?
+          GROUP BY substr(ts,1,10), source`
+      )
+      .all(profileId, from, to) as HrAggregate[];
+  } else if (from) {
+    rows = db
+      .prepare(
+        `SELECT substr(ts,1,10) AS date, source,
+                AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
+                COUNT(*) AS n
+           FROM hr_minutes
+          WHERE profile_id = ? AND substr(ts,1,10) >= ?
+          GROUP BY substr(ts,1,10), source`
+      )
+      .all(profileId, from) as HrAggregate[];
+  } else {
+    rows = db
+      .prepare(
+        `SELECT substr(ts,1,10) AS date, source,
+                AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
+                COUNT(*) AS n
+           FROM hr_minutes
+          WHERE profile_id = ? AND substr(ts,1,10) <= ?
+          GROUP BY substr(ts,1,10), source`
+      )
+      .all(profileId, to!) as HrAggregate[];
+  }
+
+  return pickRowsOneSourcePerDay(
+    rows,
+    preferenceFor(profileId, "heart_rate"),
+    (row) => row.date,
+    (row) => row.source,
+    (row) => row.n
   )
-    .sort((a, b) => (a.date < b.date ? -1 : 1))
-    .slice(-limitDays)
+    .sort((left, right) => (left.date < right.date ? -1 : 1))
     .map(({ date, avg, min, max }) => ({ date, avg, min, max }));
 }
 
@@ -840,15 +929,30 @@ export function getMetricSeriesBySource(
     .all(profileId, metric, limitDays) as { date: string }[];
   if (recentDates.length === 0) return [];
   const cutoff = recentDates[recentDates.length - 1].date;
+  return getMetricSeriesBySourceInRange(profileId, metric, cutoff, null);
+}
+
+// Exact calendar-window variant for a detail page whose source overlay must obey
+// the SAME range control as its authoritative chart. Null on either side means
+// unbounded on that side; both null is reserved for an explicit all-time view.
+export function getMetricSeriesBySourceInRange(
+  profileId: number,
+  metric: string,
+  from: string | null,
+  to: string | null
+): MetricSourceSeries[] {
   const agg = metricAggregation(metric);
   if (agg === "SUM") {
     const rows = db
       .prepare(
         `SELECT date, source, origin, SUM(value) AS value
-           FROM metric_samples WHERE profile_id = ? AND metric = ? AND date >= ?
+           FROM metric_samples
+          WHERE profile_id = ? AND metric = ?
+            AND date >= COALESCE(?, '0000-00-00')
+            AND date <= COALESCE(?, '9999-12-31')
           GROUP BY date, source, origin`
       )
-      .all(profileId, metric, cutoff) as {
+      .all(profileId, metric, from, to) as {
       date: string;
       source: string | null;
       origin: string | null;
@@ -867,10 +971,13 @@ export function getMetricSeriesBySource(
   const rows = db
     .prepare(
       `SELECT date, source, AVG(value) AS value
-         FROM metric_samples WHERE profile_id = ? AND metric = ? AND date >= ?
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = ?
+          AND date >= COALESCE(?, '0000-00-00')
+          AND date <= COALESCE(?, '9999-12-31')
         GROUP BY date, source`
     )
-    .all(profileId, metric, cutoff) as {
+    .all(profileId, metric, from, to) as {
     date: string;
     source: string | null;
     value: number;
@@ -899,13 +1006,25 @@ export function getBodyMetricSeriesBySource(
     .all(profileId, limitDays) as { date: string }[];
   if (recentDates.length === 0) return [];
   const cutoff = recentDates[recentDates.length - 1].date;
+  return getBodyMetricSeriesBySourceInRange(profileId, metric, cutoff, null);
+}
+
+export function getBodyMetricSeriesBySourceInRange(
+  profileId: number,
+  metric: BodyMetricKind,
+  from: string | null,
+  to: string | null
+): MetricSourceSeries[] {
+  const col = bodyMetricColumn(metric);
   const rows = db
     .prepare(
       `SELECT date, source, AVG(${col}) AS value FROM body_metrics
-        WHERE profile_id = ? AND ${col} IS NOT NULL AND date >= ?
+        WHERE profile_id = ? AND ${col} IS NOT NULL
+          AND date >= COALESCE(?, '0000-00-00')
+          AND date <= COALESCE(?, '9999-12-31')
         GROUP BY date, source`
     )
-    .all(profileId, cutoff) as {
+    .all(profileId, from, to) as {
     date: string;
     source: string | null;
     value: number;
@@ -926,14 +1045,24 @@ export function getHrSeriesBySource(
   // giving every source the full window.
   const cutoff = recentHrCutoff(profileId, limitDays);
   if (cutoff === null) return [];
+  return getHrSeriesBySourceInRange(profileId, cutoff, null);
+}
+
+export function getHrSeriesBySourceInRange(
+  profileId: number,
+  from: string | null,
+  to: string | null
+): MetricSourceSeries[] {
   const rows = db
     .prepare(
       `SELECT substr(ts,1,10) AS date, source, AVG(bpm) AS value
          FROM hr_minutes
-        WHERE profile_id = ? AND substr(ts,1,10) >= ?
+        WHERE profile_id = ?
+          AND substr(ts,1,10) >= COALESCE(?, '0000-00-00')
+          AND substr(ts,1,10) <= COALESCE(?, '9999-12-31')
         GROUP BY substr(ts,1,10), source`
     )
-    .all(profileId, cutoff) as {
+    .all(profileId, from, to) as {
     date: string;
     source: string | null;
     value: number;

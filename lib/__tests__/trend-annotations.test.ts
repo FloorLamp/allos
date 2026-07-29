@@ -4,6 +4,7 @@ import {
   buildProtocolWindows,
   snapWindowsToDates,
   annotationKindsPresent,
+  annotationTooltipLabel,
   filterAnnotationsByKind,
   snapAnnotationsToDates,
   diffSituations,
@@ -222,6 +223,39 @@ describe("snapAnnotationsToDates", () => {
       { date: "2026-01-02", label: "x", kind: "medication" },
     ];
     expect(snapAnnotationsToDates(anns, [])).toEqual([]);
+  });
+});
+
+describe("annotationTooltipLabel", () => {
+  it("keeps event names in the hovered date label instead of chart chrome", () => {
+    const annotations: TrendAnnotation[] = [
+      {
+        date: "2026-01-10",
+        label: "Sertraline started",
+        kind: "medication",
+      },
+      {
+        date: "2026-01-10",
+        label: "Annual physical",
+        kind: "appointment",
+      },
+      { date: "2026-01-20", label: "Travel started", kind: "situation" },
+    ];
+    expect(
+      annotationTooltipLabel("January 10, 2026", "2026-01-10", annotations)
+    ).toBe("January 10, 2026 · Sertraline started · Annual physical");
+    expect(
+      annotationTooltipLabel("January 15, 2026", "2026-01-15", annotations)
+    ).toBe("January 15, 2026");
+    expect(
+      annotationTooltipLabel("January 15, 2026", "2026-01-15", annotations, [
+        {
+          start: "2026-01-01",
+          end: "2026-01-31",
+          label: "Creatine 5 g/day",
+        },
+      ])
+    ).toBe("January 15, 2026 · Creatine 5 g/day");
   });
 });
 

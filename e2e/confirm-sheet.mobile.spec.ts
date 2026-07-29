@@ -1,4 +1,6 @@
 import { test, expect } from "./fixtures";
+import { hydratedClick } from "./helpers";
+import type { Locator, Page } from "@playwright/test";
 // The confirm dialog presents as a BOTTOM SHEET on a phone (issue #1428, A).
 //
 // Why this is a real regression class: a confirm is a DECISION, and it used to
@@ -14,30 +16,39 @@ import { test, expect } from "./fixtures";
 // CANCELS, which is read-only by construction, so it can share the seeded admin
 // session with every other spec at any parallelism without contending.
 
+function firstReadingAction(page: Page): Locator {
+  return page
+    .getByTestId("metric-readings-table")
+    .locator("tbody tr")
+    .first() // first-ok: any seeded metric reading opens the same shared ConfirmDialog; every test cancels it
+    .getByRole("button", { name: "Reading actions" });
+}
+
+async function openReadingDeleteConfirm(
+  page: Page,
+  action: Locator
+): Promise<Locator> {
+  await hydratedClick(page, action);
+  const deleteItem = page.getByRole("menuitem", { name: "Delete" });
+  await expect(deleteItem).toBeVisible();
+  await hydratedClick(page, deleteItem);
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
 test("a confirm opens as a thumb-reachable sheet and cancels cleanly", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=body&view=all");
+  await page.goto("/trends/metric/weight");
 
-  // The seeded body-metrics history is the nearest guaranteed confirm on a
-  // read-only surface. Any row's delete opens the same shared dialog.
-  //
-  // `view=all` is required at phone width: since #1067 the Body tab defaults to
-  // the tile grid on mobile, and the History card (with its delete controls)
-  // lives in the classic chart stack — the same reason trends-body-mobile.spec.ts
-  // pins its anchors to that view.
-  const deletes = page.getByRole("button", { name: "Delete entry" });
-  await expect(deletes.first()).toBeVisible(); // first-ok: any seeded history row opens the same shared ConfirmDialog; this spec only CANCELS it, so which row is irrelevant
+  // Mobile Body is intentionally tiles-only. Metric details are the phone's
+  // route to the complete reading history and its row actions.
+  const readingAction = firstReadingAction(page);
+  await expect(readingAction).toBeVisible();
 
-  const dialog = page.getByTestId("confirm-dialog");
-  await expect(dialog).toHaveCount(0);
-
-  await expect(async () => {
-    if (!(await dialog.isVisible())) {
-      await deletes.first().click(); // first-ok: same row as above — re-tapping the same delete past the pre-hydration swallow
-    }
-    await expect(dialog).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: the confirm is opened by a CLIENT handler (useConfirm), so a pre-hydration tap is swallowed with no POST to settle on and no other awaitable signal
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+  const dialog = await openReadingDeleteConfirm(page, readingAction);
 
   // It is the shared responsive primitive, presenting in its sheet mode…
   await expect(dialog).toHaveAttribute("data-presentation", "dialog");
@@ -67,36 +78,24 @@ test("a confirm opens as a thumb-reachable sheet and cancels cleanly", async ({
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
   // Cancelling wrote nothing: the row is still there.
-  await expect(deletes.first()).toBeVisible(); // first-ok: the same seeded row, proving cancel was a no-op
+  await expect(readingAction).toBeVisible();
 });
 
 test("Escape and the backdrop both cancel the confirm sheet", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=body&view=all");
-  const deletes = page.getByRole("button", { name: "Delete entry" });
-  const dialog = page.getByTestId("confirm-dialog");
-
-  await expect(async () => {
-    if (!(await dialog.isVisible())) {
-      await deletes.first().click(); // first-ok: any seeded history row opens the same shared dialog; cancel-only, so the row is irrelevant
-    }
-    await expect(dialog).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: client-handler dialog, no POST to settle on past the pre-hydration swallow
+  await page.goto("/trends/metric/weight");
+  const readingAction = firstReadingAction(page);
+  let dialog = await openReadingDeleteConfirm(page, readingAction);
 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 
-  await expect(async () => {
-    if (!(await dialog.isVisible())) {
-      await deletes.first().click(); // first-ok: as above
-    }
-    await expect(dialog).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: as above
+  dialog = await openReadingDeleteConfirm(page, readingAction);
 
   // Dismissal means CANCEL, mirroring window.confirm()'s boolean contract — the
   // transactional lifecycle that earns a confirm the sheet in the first place.
   await dialog.getByTestId("confirm-dialog-backdrop").click();
   await expect(dialog).toHaveCount(0);
-  await expect(deletes.first()).toBeVisible(); // first-ok: the same seeded row, proving both dismissals were no-ops
+  await expect(readingAction).toBeVisible();
 });

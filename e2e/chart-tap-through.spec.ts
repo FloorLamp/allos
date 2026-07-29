@@ -15,7 +15,7 @@ import {
 // #1397's fix home.
 //
 // The four properties under test, in the issue's own terms:
-//   1. the card HEADER navigates, and the EXPAND icon is accessible-named;
+//   1. the card HEADER navigates, while the redundant expand icon stays off desktop;
 //   2. tapping the PLOT shows a tooltip and does NOT navigate — on touch that gesture
 //      is how you read a point, and it must never become navigation;
 //   3. the detail page renders the readings table, and a row's ⋯ menu edits and
@@ -38,38 +38,77 @@ test.describe("chart tap-through (#1488)", () => {
       username: E2E_LOGIN_TRENDS_BODY,
       password: E2E_MEMBER_PASSWORD,
     });
-    await page.setViewportSize(PHONE);
+    // The Body tab is intentionally tiles-only on a phone; the full chart stack
+    // and its large header target are the desktop reading mode.
+    await page.setViewportSize(DESKTOP);
     // view=all is the classic full-chart stack — the surface that was a dead end.
     await page.goto("/trends?tab=body&view=all");
     await expandTrendsContext(page);
 
-    const stepsCard = page.locator("#steps");
-    await expect(stepsCard).toBeVisible();
+    const chartCard = page.getByTestId("body-chart-weight");
+    await expect(chartCard).toBeVisible();
 
-    // The expand icon carries an accessible name (#794 7a) rather than being a
-    // nameless glyph.
-    const expand = stepsCard.getByTestId("chart-card-expand");
-    await expect(expand).toHaveAttribute("aria-label", "Open steps detail");
+    // The full-width header already communicates navigation on desktop, so the
+    // extra expand glyph is deliberately phone-only.
+    const expand = chartCard.getByTestId("chart-card-expand");
+    await expect(expand).toBeHidden();
 
     // TAPPING THE PLOT MUST NOT NAVIGATE. recharts owns that gesture (it is how a
     // point is read on touch), so the plot is a plain sibling of the header link —
     // never wrapped in an anchor.
-    const plot = stepsCard.getByTestId("chart-card-plot");
+    const plot = chartCard.getByTestId("chart-card-plot");
     await expect(plot.locator("xpath=ancestor::a")).toHaveCount(0);
     await plot.click({ position: { x: 120, y: 60 } });
     await expect(page).toHaveURL(/\/trends\?tab=body/);
 
     // The HEADER row is the tap target.
-    const header = stepsCard.getByTestId("chart-card-header-link");
-    await followLink(page, header, /\/trends\/metric\/steps/);
+    const header = chartCard.getByTestId("chart-card-header-link");
+    const cardBox = await chartCard.boundingBox();
+    const headerBox = await header.boundingBox();
+    expect(cardBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
+    expect(headerBox!.height).toBeGreaterThanOrEqual(44);
+    expect(headerBox!.width).toBeGreaterThan(cardBox!.width * 0.95);
+    expect(Math.abs(headerBox!.x - cardBox!.x)).toBeLessThanOrEqual(2);
+    expect(
+      Number.parseFloat(
+        await header.evaluate((element) => getComputedStyle(element).paddingTop)
+      )
+    ).toBeGreaterThanOrEqual(16);
+    const titleBox = await chartCard
+      .getByRole("heading", { name: "Weight", exact: true })
+      .boundingBox();
+    const headlineBox = await chartCard
+      .getByTestId("chart-card-headline")
+      .boundingBox();
+    expect(titleBox).not.toBeNull();
+    expect(headlineBox).not.toBeNull();
+    expect(
+      Math.abs(
+        titleBox!.y +
+          titleBox!.height / 2 -
+          (headlineBox!.y + headlineBox!.height / 2)
+      ),
+      "the desktop label and value should share one row"
+    ).toBeLessThanOrEqual(4);
+    const headerBackground = await header.evaluate(
+      (element) => getComputedStyle(element).backgroundColor
+    );
+    await header.hover();
+    await expect
+      .poll(() =>
+        header.evaluate((element) => getComputedStyle(element).backgroundColor)
+      )
+      .not.toBe(headerBackground);
+    await followLink(page, header, /\/trends\/metric\/weight/);
     await expect(
-      page.getByRole("heading", { level: 1, name: "Steps per day" })
+      page.getByRole("heading", { level: 1, name: "Weight" })
     ).toBeVisible();
 
     await page.context().close();
   });
 
-  test("the expand icon reaches the same detail page as the header", async ({
+  test("a desktop tile uses the same full-width, one-row linked header", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -77,21 +116,36 @@ test.describe("chart tap-through (#1488)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(DESKTOP);
-    await page.goto("/trends?tab=body&view=all");
+    await page.goto("/trends?tab=body&view=tiles");
 
-    const card = page.locator("#hr");
+    const card = page.getByTestId("body-tile-weight");
     await expect(card).toBeVisible();
-    await followLink(
-      page,
-      card.getByTestId("chart-card-expand"),
-      /\/trends\/metric\/hr/
-    );
-    await expect(page.getByTestId("metric-period-stats")).toBeVisible();
-    // A DERIVED metric says why it has no editable readings instead of showing an
-    // empty table that reads as missing data.
-    await expect(page.getByTestId("metric-readings")).toContainText(
-      /computed from/i
-    );
+    const header = card.getByTestId("trend-mini-header-link");
+    const [cardBox, headerBox, titleBox, valueBox] = await Promise.all([
+      card.boundingBox(),
+      header.boundingBox(),
+      header.getByText("Weight", { exact: true }).boundingBox(),
+      header.getByText(/kg$/).boundingBox(),
+    ]);
+    expect(cardBox).not.toBeNull();
+    expect(headerBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(valueBox).not.toBeNull();
+    expect(headerBox!.width).toBeGreaterThan(cardBox!.width * 0.95);
+    expect(Math.abs(headerBox!.x - cardBox!.x)).toBeLessThanOrEqual(2);
+    expect(
+      Math.abs(
+        titleBox!.y +
+          titleBox!.height / 2 -
+          (valueBox!.y + valueBox!.height / 2)
+      ),
+      "the desktop tile label and value should share one row"
+    ).toBeLessThanOrEqual(4);
+
+    await followLink(page, header, /\/trends\/metric\/weight/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Weight" })
+    ).toBeVisible();
 
     await page.context().close();
   });
@@ -127,11 +181,18 @@ test.describe("chart tap-through (#1488)", () => {
     );
     await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const field = page.getByLabel("Reading value");
+    const editingRow = field.locator("xpath=ancestor::tr");
     await field.fill(String(corrected));
-    await settledClick(
-      page,
-      page.getByRole("button", { name: "Save", exact: true })
-    );
+    // Editing owns the row until Save/Cancel. Leaving the overflow trigger in its
+    // action cell lets that cell intercept the inline Save button at tight widths.
+    await expect(
+      editingRow.getByRole("button", { name: "Reading actions" })
+    ).toHaveCount(0);
+    const save = editingRow.getByRole("button", {
+      name: "Save",
+      exact: true,
+    });
+    await settledClick(page, save);
     await expect(
       table.locator("tr").filter({ hasText: `${corrected} ms` })
     ).toHaveCount(1);

@@ -8,8 +8,8 @@
 // This module is PURE (metadata + windowing math, no DB/queries import) so it stays
 // unit-testable. The series themselves are gathered by the callers:
 //   - the Body tab builds each metric's series ONCE and feeds BOTH the classic chart
-//     stack AND the tile grid from it (the tile is the series' 30-day tail — one
-//     gather, no second computation, #221);
+//     stack AND the tile grid from it (the tile applies the shared range — one gather,
+//     no second computation, #221);
 //   - the detail page re-derives its single metric's series through the SAME queries
 //     (the biomarker-view precedent — a separate surface re-deriving via the shared
 //     query layer), then windows it here.
@@ -17,7 +17,9 @@
 import { chartSeries } from "./chart-colors";
 import { shiftDateStr } from "./date";
 import { metricDetailHref, type AppRoute } from "./hrefs";
+import { filterSeriesByRange } from "./trends";
 import { applyCardOrder, type BodyCardId } from "./trends-card-rank";
+import type { DateRange } from "./timeline-format";
 import type { BodyMetricKind } from "./types";
 
 // Stable per-metric slugs — the `/trends/metric/<slug>` route param, the tile's
@@ -46,6 +48,7 @@ export const BODY_METRIC_SLUGS = [
   // dead end left on the tab.
   "sun",
   "steps",
+  "active-calories",
   "hr",
   "bmi",
   "lean-mass",
@@ -65,10 +68,14 @@ export type BodyQuickAddForm = "measurements" | null;
 
 export interface BodyMetricMeta {
   slug: BodyMetricSlug;
-  // Short label (the tile / chip).
+  // Short label for compact chips and menus.
   label: string;
-  // Full heading (the detail-page title + the classic chart card heading).
+  // Full chart name (tile + classic card + detail-page title and tooltip).
   title: string;
+  // Optional concise/shared name for a context that qualifies the title itself.
+  // Blood pressure uses it when Today combines systolic/diastolic; heart rate uses
+  // it before context suffixes such as "Today" and "Over the Day".
+  summaryTitle?: string;
   // Display-unit suffix. Empty for unitless (BMI, steps). Weight's suffix follows
   // the login's weight preference, resolved at runtime (`weightUnit: true`).
   unit: string;
@@ -76,9 +83,9 @@ export interface BodyMetricMeta {
   weightUnit?: boolean;
   color: string;
   decimals: number;
-  // Respects the Body tab's shared date-range control (body composition + growth).
-  // Synced daily metrics are NOT windowed on the Body tab (they show the most recent
-  // ~6 months); the detail page's own range control still windows every metric.
+  // Whether the classic full-chart stack respects the Body tab's shared range.
+  // Tiles and metric-detail pages window every metric; synced full charts retain
+  // their historical ~6-month behavior.
   windowed: boolean;
   // The Goal.body_metric this metric can carry a target/overlay for, if any.
   goalMetric: BodyMetricKind | null;
@@ -95,8 +102,9 @@ export interface BodyMetricMeta {
 export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   systolic: {
     slug: "systolic",
-    label: "Systolic",
-    title: "Blood pressure (systolic)",
+    label: "BP Systolic",
+    title: "Blood Pressure (Systolic)",
+    summaryTitle: "Blood Pressure",
     unit: " mmHg",
     color: chartSeries.rose,
     decimals: 0,
@@ -106,8 +114,9 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
   diastolic: {
     slug: "diastolic",
-    label: "Diastolic",
-    title: "Blood pressure (diastolic)",
+    label: "BP Diastolic",
+    title: "Blood Pressure (Diastolic)",
+    summaryTitle: "Blood Pressure",
     unit: " mmHg",
     color: chartSeries.violet,
     decimals: 0,
@@ -118,7 +127,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   spo2: {
     slug: "spo2",
     label: "SpO\u2082",
-    title: "Oxygen saturation",
+    title: "Oxygen Saturation",
     unit: "%",
     color: chartSeries.sky,
     decimals: 0,
@@ -128,8 +137,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
   "respiratory-rate": {
     slug: "respiratory-rate",
-    label: "Resp. rate",
-    title: "Respiratory rate",
+    label: "Resp. Rate",
+    title: "Respiratory Rate",
     unit: " /min",
     color: chartSeries.violet,
     decimals: 0,
@@ -142,7 +151,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   hrv: {
     slug: "hrv",
     label: "HRV",
-    title: "Heart rate variability",
+    title: "Heart Rate Variability",
     unit: " ms",
     color: chartSeries.amber,
     decimals: 0,
@@ -158,8 +167,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   // Import-only (the baseline is the device's and never exposed), so no quick-add.
   "skin-temp": {
     slug: "skin-temp",
-    label: "Skin temp",
-    title: "Skin temperature variation",
+    label: "Skin Temp",
+    title: "Skin Temperature Variation",
     unit: " °C",
     color: chartSeries.violet,
     decimals: 1,
@@ -169,8 +178,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
   temperature: {
     slug: "temperature",
-    label: "Temperature",
-    title: "Body temperature",
+    label: "Body Temp",
+    title: "Body Temperature",
     unit: " \u00b0F",
     color: chartSeries.rose,
     decimals: 1,
@@ -192,8 +201,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
   "body-fat": {
     slug: "body-fat",
-    label: "Body fat",
-    title: "Body fat",
+    label: "Body Fat",
+    title: "Body Fat",
     unit: "%",
     color: chartSeries.violet,
     decimals: 1,
@@ -203,8 +212,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
   "resting-hr": {
     slug: "resting-hr",
-    label: "Resting HR",
-    title: "Resting heart rate",
+    label: "RHR",
+    title: "Resting Heart Rate",
     unit: " bpm",
     color: chartSeries.amber,
     decimals: 0,
@@ -225,8 +234,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
   "head-circ": {
     slug: "head-circ",
-    label: "Head circ.",
-    title: "Head circumference",
+    label: "Head Circ.",
+    title: "Head Circumference",
     unit: " cm",
     color: chartSeries.sky,
     decimals: 1,
@@ -237,7 +246,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   sun: {
     slug: "sun",
     label: "Sun",
-    title: "Sun / outdoor time",
+    title: "Sun / Outdoor Time",
     unit: " min",
     color: chartSeries.amber,
     decimals: 0,
@@ -252,7 +261,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   steps: {
     slug: "steps",
     label: "Steps",
-    title: "Steps per day",
+    title: "Daily Steps",
     unit: "",
     color: chartSeries.sky,
     decimals: 0,
@@ -261,10 +270,23 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     quickAdd: null,
     countMetric: true,
   },
+  "active-calories": {
+    slug: "active-calories",
+    label: "Active Cals",
+    title: "Active Calories",
+    unit: " kcal",
+    color: chartSeries.rose,
+    decimals: 0,
+    windowed: false,
+    goalMetric: null,
+    quickAdd: null,
+    countMetric: true,
+  },
   hr: {
     slug: "hr",
-    label: "HR",
-    title: "Heart rate (daily avg)",
+    label: "Avg HR",
+    title: "Heart Rate (Daily Avg)",
+    summaryTitle: "Heart Rate",
     unit: " bpm",
     color: chartSeries.rose,
     decimals: 0,
@@ -275,7 +297,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   bmi: {
     slug: "bmi",
     label: "BMI",
-    title: "BMI",
+    title: "Body Mass Index",
     unit: "",
     color: chartSeries.sky,
     decimals: 1,
@@ -285,8 +307,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
   "lean-mass": {
     slug: "lean-mass",
-    label: "Lean mass",
-    title: "Lean body mass",
+    label: "Lean Mass",
+    title: "Lean Body Mass",
     unit: " kg",
     color: chartSeries.sky,
     decimals: 1,
@@ -296,8 +318,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
   "bone-mass": {
     slug: "bone-mass",
-    label: "Bone mass",
-    title: "Bone mass",
+    label: "Bone Mass",
+    title: "Bone Mass",
     unit: " kg",
     color: chartSeries.violet,
     decimals: 2,
@@ -308,7 +330,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   bmr: {
     slug: "bmr",
     label: "BMR",
-    title: "Basal metabolic rate",
+    title: "Basal Metabolic Rate",
     unit: " kcal",
     color: chartSeries.rose,
     decimals: 0,
@@ -331,7 +353,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   calories: {
     slug: "calories",
     label: "Calories",
-    title: "Calories (intake)",
+    title: "Calories (Intake)",
     unit: " kcal",
     color: chartSeries.amber,
     decimals: 0,
@@ -357,6 +379,25 @@ export function isBodyMetricSlug(v: string): v is BodyMetricSlug {
   return (BODY_METRIC_SLUGS as readonly string[]).includes(v);
 }
 
+// The first saved metric ids predate the detail-page slug registry. Preserve those
+// stored keys while every newer metric uses its slug directly.
+const LEGACY_SAVED_METRIC_IDS: Partial<Record<BodyMetricSlug, string>> = {
+  "body-fat": "bodyfat",
+  "resting-hr": "resting_hr",
+};
+
+export function savedMetricIdForBodySlug(slug: BodyMetricSlug): string {
+  return LEGACY_SAVED_METRIC_IDS[slug] ?? slug;
+}
+
+export function bodyMetricSlugForSavedId(id: string): BodyMetricSlug | null {
+  const legacy = Object.entries(LEGACY_SAVED_METRIC_IDS).find(
+    ([, savedId]) => savedId === id
+  )?.[0];
+  if (legacy && isBodyMetricSlug(legacy)) return legacy;
+  return isBodyMetricSlug(id) ? id : null;
+}
+
 // Resolve a metric's display-unit suffix, appending the login's weight unit for a
 // weight-preference metric (weight); every other metric's suffix is static.
 export function resolveBodyMetricUnit(
@@ -366,53 +407,45 @@ export function resolveBodyMetricUnit(
   return meta.weightUnit ? ` ${weightUnit}` : meta.unit;
 }
 
-// A sparkline tile for the overview grid: the metric's metadata + its 30-day series
-// tail (already in display units, oldest→newest) + presence for the has-data gate.
+// A sparkline tile for the overview grid: the metric's metadata + its selected-range
+// series (already in display units, oldest→newest) + presence for the has-data gate.
 export interface BodyMetricTile {
   slug: BodyMetricSlug;
+  title: string;
   label: string;
   href: AppRoute;
   unit: string;
   color: string;
   decimals: number;
-  // The last-30-day tail of the metric's series — the tile's sparkline + latest +
+  // The points inside the shared Trends range — the tile's sparkline + latest +
   // delta all read from this (no second computation, #221).
   points: { date: string; value: number }[];
   present: boolean;
   latestDate: string | null;
 }
 
-// The last 30 days (today − 29 … today, inclusive) of a chronological series. The
-// tile's "30d delta" is over exactly this slice.
-export function last30DaySlice<T extends { date: string }>(
-  points: readonly T[],
-  todayStr: string
-): T[] {
-  const cutoff = shiftDateStr(todayStr, -29);
-  return points.filter((p) => p.date >= cutoff);
-}
-
 // Build one overview tile from a metric's FULL display-unit series (the same array
-// the classic chart renders) by taking its 30-day tail. The caller passes the series
-// it already gathered — this only shapes it.
+// the classic chart renders), windowed by the shared Trends range. Presence and
+// ordering still use the full series so a temporarily empty range does not make a
+// known metric disappear; the tile instead says there is no data in this range.
 export function buildBodyMetricTile(
   meta: BodyMetricMeta,
   fullPoints: readonly { date: string; value: number }[],
   weightUnit: string,
-  todayStr: string
+  range: DateRange
 ): BodyMetricTile {
-  const points = last30DaySlice(fullPoints, todayStr);
+  const points = filterSeriesByRange([...fullPoints], range);
   return {
     slug: meta.slug,
+    title: meta.title,
     label: meta.label,
     href: metricDetailHref(meta.slug),
     unit: resolveBodyMetricUnit(meta, weightUnit),
     color: meta.color,
     decimals: meta.decimals,
     points,
-    // Presence is over the FULL series, not the 30-day tail — a metric with data
-    // (but none in the last 30 days) still earns its tile; the sparkline just reads
-    // empty. Mirrors the Body tab's has-data chip gate.
+    // Presence is over the FULL series, not the selected window — a metric with
+    // history still earns its tile and can explicitly show an empty range.
     present: fullPoints.length > 0,
     latestDate:
       fullPoints.length > 0 ? fullPoints[fullPoints.length - 1].date : null,
@@ -429,12 +462,27 @@ export interface OrderableTile {
   label: string;
   // Has-data gate: false ⇒ the tile doesn't render.
   present: boolean;
+  // The metric exists, but the selected range has no points. This is a presentation
+  // state, not absence: the tile still renders, after every populated tile.
+  empty?: boolean;
 }
 
-// Order the overview tiles by the tab's ranked card order (#1490) — the SAME
-// sequence that orders the Body tab's charts + jump chips, so the tile grid, the
-// chart stack, and the chips can never disagree. Absent tiles are filtered here (a
-// chip can't point at a tile that isn't rendered).
+// Stable partition for card collections: preserve the meaningful relevance/user
+// order inside both groups, but keep empty selected-range states after cards that
+// can answer the user's question now.
+export function stableEmptyLast<T>(
+  items: readonly T[],
+  isEmpty: (item: T) => boolean
+): T[] {
+  return [
+    ...items.filter((item) => !isEmpty(item)),
+    ...items.filter((item) => isEmpty(item)),
+  ];
+}
+
+// Order the overview tiles by the tab's ranked card order (#1490), then sink
+// selected-range empty states without disturbing that order inside either group.
+// Absent tiles are filtered here (a chip can't point at a tile that isn't rendered).
 //
 // This replaced `orderBodyCharts`, whose "most-recently-updated first" sort
 // resequenced the grid on every device sync; presence is now a ranker signal (and
@@ -444,11 +492,12 @@ export function orderBodyMetricTiles<T extends OrderableTile>(
   tiles: readonly T[],
   order: readonly BodyCardId[]
 ): T[] {
-  return applyCardOrder(
+  const ranked = applyCardOrder(
     tiles.filter((t) => t.present),
     order,
     (t) => t.id
   );
+  return stableEmptyLast(ranked, (tile) => tile.empty === true);
 }
 
 // Period statistics for a metric detail page: latest / average / min / max / net

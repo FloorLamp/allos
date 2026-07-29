@@ -110,13 +110,12 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
 test.describe("Overview leads with charts (B)", () => {
   test("a chart tile sits inside the opening viewport", async ({ page }) => {
     await page.goto("/trends");
-    // What names the surface on a phone since #1485 F: the context bar's one-line
-    // label, not the (collapsed) tab strip. It is asserted here rather than the tab
-    // because it is the thing that must be on screen ABOVE the chart — the whole
-    // premise of "no chart without its window".
-    await expect(page.getByTestId("trends-context-label")).toHaveText(
-      "Overview · 90D"
-    );
+    // The always-visible active tab names the surface and the fixed range trigger
+    // names the chart window above the payload.
+    await expect(
+      page.getByRole("tab", { name: "Overview", exact: true })
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("trends-context-label")).toHaveText("90D");
 
     // Presence + "reachable without scrolling", not a pixel offset: toBeInViewport
     // asks exactly the question the issue does (is the payload above the fold?)
@@ -162,10 +161,8 @@ test.describe("Overview leads with charts (B)", () => {
   });
 });
 
-test.describe("one chip row, one range chip (C + D)", () => {
-  test("the saved views ride the quick-range row instead of a second row", async ({
-    page,
-  }) => {
+test.describe("one focused mobile range row (C + D)", () => {
+  test("range controls fill the row without saved views", async ({ page }) => {
     await page.goto("/trends");
     await expandTrendsContext(page);
 
@@ -174,29 +171,22 @@ test.describe("one chip row, one range chip (C + D)", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Save current" })
-    ).toBeAttached();
+    ).toHaveCount(0);
+    await expect(page.getByText("Views", { exact: true })).toHaveCount(0);
 
-    // "Merged into one row" stated structurally: the "All time" pill and the saved
-    // views' "Save current" now resolve to the SAME horizontal scroll container.
-    // Before, the views owned a second, separate full-width row.
-    const sameRow = await page.evaluate(() => {
-      const scrollerOf = (el: Element | null) => {
-        for (let a = el; a; a = a.parentElement) {
-          const o = getComputedStyle(a).overflowX;
-          if (o === "auto" || o === "scroll") return a;
-        }
-        return null;
-      };
-      const pill = Array.from(document.querySelectorAll("a")).find(
-        (a) => a.textContent?.trim() === "All time"
-      );
-      const btn = Array.from(document.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes("Save current")
-      );
-      const a = scrollerOf(pill ?? null);
-      return a != null && a === scrollerOf(btn ?? null);
+    const fill = await page.getByTestId("trends-chip-row").evaluate((row) => {
+      const inner = row.firstElementChild?.getBoundingClientRect();
+      const outer = row.getBoundingClientRect();
+      return inner
+        ? {
+            left: Math.abs(inner.left - outer.left),
+            right: Math.abs(inner.right - outer.right),
+          }
+        : null;
     });
-    expect(sameRow).toBe(true);
+    expect(fill).not.toBeNull();
+    expect(fill!.left).toBeLessThanOrEqual(1);
+    expect(fill!.right).toBeLessThanOrEqual(1);
   });
 
   test("the range-summary chip renders only for a custom window", async ({
@@ -213,11 +203,11 @@ test.describe("one chip row, one range chip (C + D)", () => {
     // …and the #1485 F context label says the same window without opening anything,
     // which is what keeps a custom-windowed chart from being read as "all time".
     await expect(page.getByTestId("trends-context-label")).toHaveText(
-      "Overview · 2026-01-01 → 2026-02-01"
+      "2026-01-01 → 2026-02-01"
     );
     await expandTrendsContext(page);
-    await expect(
-      page.getByText("2026-01-01 → 2026-02-01", { exact: true })
-    ).toBeVisible();
+    await expect(page.getByTestId("range-summary-chip")).toHaveText(
+      "2026-01-01 → 2026-02-01"
+    );
   });
 });

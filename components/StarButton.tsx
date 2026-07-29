@@ -16,11 +16,13 @@ export default function StarButton({
   itemKey,
   saved,
   compact = false,
+  iconOnlyBelowSm = false,
   label,
 }: {
   itemKey: string;
   saved: boolean;
   compact?: boolean;
+  iconOnlyBelowSm?: boolean;
   label?: string;
 }) {
   const subject = label ?? "this";
@@ -35,10 +37,21 @@ export default function StarButton({
       <button
         type="submit"
         aria-pressed={saved}
+        aria-label={
+          iconOnlyBelowSm
+            ? saved
+              ? `Unstar ${subject}`
+              : `Star ${subject}`
+            : undefined
+        }
         data-testid="star-toggle"
         title={saved ? `Unstar ${subject}` : `Star ${subject}`}
-        className={`inline-flex items-center rounded-lg border font-medium transition ${
-          compact ? "gap-1 px-2 py-1 text-xs" : "gap-1.5 px-3 py-1.5 text-sm"
+        className={`inline-flex items-center justify-center rounded-lg border font-medium transition ${
+          compact
+            ? "gap-1 px-2 py-1 text-xs"
+            : iconOnlyBelowSm
+              ? "h-9 w-9 gap-1.5 p-0 text-sm sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
+              : "gap-1.5 px-3 py-1.5 text-sm"
         } ${
           saved
             ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
@@ -46,7 +59,9 @@ export default function StarButton({
         }`}
       >
         <span>{saved ? "★" : "☆"}</span>
-        {saved ? "Starred" : "Star"}
+        <span className={iconOnlyBelowSm ? "hidden sm:inline" : undefined}>
+          {saved ? "Starred" : "Star"}
+        </span>
       </button>
     </form>
   );

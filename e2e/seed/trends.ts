@@ -19,6 +19,7 @@ import {
   TRENDS_CURATE_EMPTY_ANALYTE,
   E2E_LOGIN_TRENDS_BODY,
   TRENDS_BODY_PROFILE,
+  TRENDS_BODY_OLD_DAY,
   E2E_LOGIN_TRENDS_COMPARE,
   TRENDS_COMPARE_PROFILE,
   TRENDS_COMPARE_VIEW,
@@ -44,8 +45,9 @@ export function seedBodyMobile(): void {
   // ── Trends → Body mobile overhaul fixture (#1067 Phase 1) ─────────────────────
   // A dedicated adult profile with a KNOWN, PARTIAL set of synced body metrics so
   // the chart-jump chips + per-chart anchors are deterministic in the browser:
-  //   present → Weight/resting-HR (body-composition block), Steps, Sleep, HR (daily)
-  //   ABSENT  → hydration / BMR / calories / lean-mass / bone-mass / BMI / macros
+  //   present → Weight/resting-HR/BMI (body-composition block), Steps, Sleep,
+  //             HR (daily)
+  //   ABSENT  → hydration / BMR / calories / lean-mass / bone-mass / macros
   // so the spec can assert BOTH that present metrics get a chip (and a `#id` anchor
   // that lands on the card) AND that a chartless metric's chip is hidden. Read-only
   // (spec navigates + scrolls only). Relative dates → never stale; UTC instants
@@ -56,17 +58,41 @@ export function seedBodyMobile(): void {
     const tbToday = today(tbId);
     db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(tbId);
     db.prepare(
-      `DELETE FROM metric_samples WHERE profile_id = ? AND metric IN ('steps', 'sleep_min')`
+      `DELETE FROM metric_samples WHERE profile_id = ? AND metric IN ('steps', 'sleep_min', 'height_cm')`
     ).run(tbId);
     db.prepare(`DELETE FROM hr_minutes WHERE profile_id = ?`).run(tbId);
 
-    // Body-composition block: two weigh-ins with resting HR.
+    // Body-composition block: two manual weigh-ins with resting HR, plus a synced
+    // series on the same days. The overlap makes the metric detail page's source
+    // comparison and primary-source picker deterministic on mobile.
     const insBm = db.prepare(
       `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr, notes)
      VALUES (?, ?, ?, ?, 'e2e:trends-body')`
     );
-    insBm.run(tbId, shiftDateStr(tbToday, -7), 78.4, 58);
-    insBm.run(tbId, shiftDateStr(tbToday, -1), 77.9, 56);
+    const oldBodyDay = shiftDateStr(tbToday, -7);
+    const recentBodyDay = shiftDateStr(tbToday, -1);
+    insBm.run(tbId, oldBodyDay, 78.4, 58);
+    insBm.run(tbId, recentBodyDay, 77.9, 56);
+    const insSyncedBm = db.prepare(
+      `INSERT INTO body_metrics
+         (profile_id, date, weight_kg, resting_hr, source, notes)
+       VALUES (?, ?, ?, ?, 'health-connect', 'e2e:trends-body-source')`
+    );
+    insSyncedBm.run(tbId, oldBodyDay, 78.6, 59);
+    insSyncedBm.run(tbId, recentBodyDay, 78.1, 57);
+
+    // One stable height makes BMI derivable on both weigh-in days. It specifically
+    // gives the tile full-series history outside a 1D range, pinning the empty-in-
+    // range state instead of letting the derived tile disappear.
+    db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+       VALUES (?, 'manual', 'height_cm', ?, ?, ?, 178)`
+    ).run(
+      tbId,
+      oldBodyDay,
+      `${oldBodyDay}T08:00:00Z`,
+      `${oldBodyDay}T08:00:00Z`
+    );
 
     // Steps (additive) — three recent days so the chart + chip render and are recent.
     const insSteps = db.prepare(
@@ -82,7 +108,20 @@ export function seedBodyMobile(): void {
       insSteps.run(tbId, day, `${day}T00:00:00Z`, `${day}T23:59:59Z`, steps);
     }
 
-    // One sleep night ending today → the compact Sleep summary tile renders.
+    // A deep-past sleep night proves a historical range summarizes that night
+    // instead of deciding presence from the newer global latest session.
+    const oldSleepPrev = shiftDateStr(TRENDS_BODY_OLD_DAY, -1);
+    db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 420)`
+    ).run(
+      tbId,
+      TRENDS_BODY_OLD_DAY,
+      `${oldSleepPrev}T23:00:00Z`,
+      `${TRENDS_BODY_OLD_DAY}T06:00:00Z`
+    );
+
+    // One sleep night ending today → the default compact Sleep tile renders.
     const sleepPrev = shiftDateStr(tbToday, -1);
     db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
@@ -96,6 +135,12 @@ export function seedBodyMobile(): void {
     for (let m = 0; m < 20; m++) {
       const mm = String(m).padStart(2, "0");
       insHrTb.run(tbId, `${tbToday}T08:${mm}`, 62 + (m % 5));
+    }
+    // Deep-past HR makes an exact historical query observable. The selected day
+    // must show 88 bpm without aggregating or returning the newer buckets above.
+    for (let m = 0; m < 5; m++) {
+      const mm = String(m).padStart(2, "0");
+      insHrTb.run(tbId, `${TRENDS_BODY_OLD_DAY}T08:${mm}`, 88);
     }
 
     seedMemberLogin(E2E_LOGIN_TRENDS_BODY, tbId, "read");

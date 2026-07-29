@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { PageHeader } from "@/components/ui";
-import NavTabs from "@/components/NavTabs";
+import TabFirstPage from "@/components/TabFirstPage";
+import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { parseTrainingTab, trainingTabStrip } from "@/lib/training-tabs";
+import { parseTrainingTab } from "@/lib/training-tabs";
 import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
 import FitnessCheckSection from "./FitnessCheckSection";
@@ -64,26 +64,23 @@ export default async function TrainingPage(props: {
   })();
 
   return (
-    <div>
-      <PageHeader
-        title="Training"
-        subtitle="Review workouts, compare progress, and manage training goals."
-        // A stable, ungated door to the equipment registry (#592) — gear lives
-        // conceptually under training, but /equipment has no top-level nav item.
-        action={
-          <Link
-            href="/equipment"
-            data-testid="training-equipment-link"
-            className="shrink-0 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
-            Equipment
-          </Link>
-        }
-      />
-      <NavTabs paramKey="tab" tabs={trainingTabStrip()} activeId={activeTab}>
-        {activeSection}
-      </NavTabs>
-    </div>
+    <TabFirstPage
+      config={TRAINING_TAB_FIRST_PAGE}
+      testId="training-page"
+      // A stable, ungated door to the equipment registry (#592) — gear lives
+      // conceptually under training, but /equipment has no top-level nav item.
+      action={
+        <Link
+          href="/equipment"
+          data-testid="training-equipment-link"
+          className="shrink-0 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
+          Equipment
+        </Link>
+      }
+    >
+      {activeSection}
+    </TabFirstPage>
   );
 }
 

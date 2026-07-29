@@ -8,28 +8,34 @@ import {
 import type { BodyCardId } from "@/lib/trends-card-rank";
 
 // The Trends → Body sparkline-tile overview (#1067 Phase 2) — the default view on
-// mobile. Each present metric renders as a compact sparkline + latest value + 30-day
-// delta tile (the pillars-widget grammar, via the shared TrendMiniCard) that opens
-// its per-metric detail page; absent metrics don't render. Sleep is a SPECIAL tile —
-// it links to the dedicated /sleep page, not a metric page, because strong topics
-// keep their own surface (#1042). The tiles are the SAME series the classic chart
-// stack draws, just their 30-day tails — one gather feeds both (#221).
+// mobile. Each present metric renders as a compact selected-range sparkline + latest
+// value and delta tile (the pillars-widget grammar, via the shared TrendMiniCard) that opens
+// its per-metric detail page; absent metrics don't render. Sleep uses the same chart
+// tile grammar but links to the dedicated /sleep page, because strong topics keep
+// their own surface (#1042). The tiles are the SAME series the classic chart stack
+// draws, windowed by the shared Trends range — one gather feeds both (#221).
 
-export interface SleepTile {
+export interface SpecialBodyTile {
+  slug: string;
+  id: BodyCardId;
+  label: string;
   present: boolean;
-  latestDate: string | null;
+  empty?: boolean;
   node: ReactNode;
 }
 
 export default function BodyMetricTiles({
   tiles,
+  growth,
   sleep,
   order,
 }: {
   tiles: BodyMetricTile[];
-  // The bespoke Sleep tile (duration + regularity, linking to /sleep), ordered in
-  // with the metric tiles. Null when the profile has no sleep data.
-  sleep: SleepTile | null;
+  // Composite growth-percentile chart; null outside pediatric chart eligibility.
+  growth: SpecialBodyTile[];
+  // The Sleep chart tile links to /sleep and is ordered with the metric tiles.
+  // Null when the profile has no sleep data.
+  sleep: SpecialBodyTile | null;
   // The tab's ranked card order (#1490) — the SAME sequence the chart stack and the
   // jump chips read, so the two view modes can never disagree about what leads.
   order: readonly BodyCardId[];
@@ -44,20 +50,24 @@ export default function BodyMetricTiles({
       id: t.slug,
       label: t.label,
       present: t.present,
+      empty: t.points.length === 0,
     };
   });
-  if (sleep) {
-    nodeBySlug.set("sleep", sleep.node);
-    // Sleep's base position (just ahead of the synced daily metrics, after the
-    // vitals + composition + growth block) is declared once in BODY_CARD_LAYOUT
-    // now, not re-numbered per surface.
+  const addSpecial = (tile: SpecialBodyTile | null) => {
+    if (!tile) return;
+    nodeBySlug.set(tile.slug, tile.node);
     descriptors.push({
-      slug: "sleep",
-      id: "sleep",
-      label: "Sleep",
-      present: sleep.present,
+      slug: tile.slug,
+      id: tile.id,
+      label: tile.label,
+      present: tile.present,
+      empty: tile.empty,
     });
-  }
+  };
+  // All four percentile tiles share the ranker's `growth` position and retain
+  // their clinical order inside it. Sleep has its own base position.
+  growth.forEach(addSpecial);
+  addSpecial(sleep);
   const ordered = orderBodyMetricTiles(descriptors, order);
 
   if (ordered.length === 0) {
@@ -71,11 +81,13 @@ export default function BodyMetricTiles({
 
   return (
     <div
-      className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3"
+      className="grid auto-rows-fr grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3"
       data-testid="body-metric-tiles"
     >
       {ordered.map((d) => (
-        <div key={d.slug}>{nodeBySlug.get(d.slug)}</div>
+        <div key={d.slug} className="h-full [&>*]:h-full">
+          {nodeBySlug.get(d.slug)}
+        </div>
       ))}
     </div>
   );
@@ -84,10 +96,10 @@ export default function BodyMetricTiles({
 function renderMetricTile(t: BodyMetricTile): ReactNode {
   return (
     <TrendMiniCard
-      title={t.label}
+      title={t.title}
+      mobileTitle={t.label}
       href={t.href}
       data={t.points}
-      label={t.label}
       unit={t.unit}
       color={t.color}
       decimals={t.decimals}

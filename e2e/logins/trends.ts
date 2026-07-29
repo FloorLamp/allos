@@ -5,13 +5,15 @@
 
 // #1067 Phase 1 — Trends → Body mobile overhaul. A dedicated adult profile with a
 // KNOWN, PARTIAL set of synced body metrics so the chart-jump chips + per-chart
-// anchors are deterministic: it has weight + resting HR (the body-composition
-// block), steps, a sleep night, and one day of heart-rate minutes — but NO
-// hydration / BMR / calories / lean-mass / BMI etc., so those metrics' chips must
+// anchors are deterministic: it has manual + synced weight/resting HR (the
+// body-composition block and source-control fixture), derived BMI, steps, a sleep
+// night, and one day of heart-rate minutes — but NO
+// hydration / BMR / calories / lean-mass etc., so those metrics' chips must
 // be ABSENT (the "chartless charts hide their chip" assertion). Read-only grant;
 // the spec only navigates + scrolls (no writes), so --repeat-each stays clean.
 export const E2E_LOGIN_TRENDS_BODY = "e2e_trends_body";
 export const TRENDS_BODY_PROFILE = "Trends Body (e2e)";
+export const TRENDS_BODY_OLD_DAY = "2024-01-15";
 
 // ── Curated Trends Overview (issue #1487 rendering half / #1485 A+B) ─────────
 // A dedicated adult profile for the membership-driven Overview grid. It owns a

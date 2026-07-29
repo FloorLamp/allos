@@ -42,7 +42,8 @@ export interface GrowthPlotPoint {
 
 // A pediatric growth chart: WHO/CDC reference percentile bands (3…97) with the
 // profile's own measurement trajectory overlaid, plotted on an age (months) x-axis
-// that spans the WHO→CDC transition. Horizontally scrollable on narrow screens.
+// that spans the WHO→CDC transition. The plot scales to its card; a fixed minimum
+// width would overflow now that the four references render as separate grid cards.
 // REFERENCE CURVES — NOT MEDICAL ADVICE (disclaimer rendered by the caller card).
 export default function GrowthChart({
   bands,
@@ -145,85 +146,80 @@ export default function GrowthChart({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <div className="h-72 min-w-[520px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={data}
-            margin={{ top: 10, right: 26, bottom: 4, left: -8 }}
-          >
-            <CartesianGrid {...chartGridProps(c)} />
-            <XAxis
-              dataKey="ageMonths"
-              type="number"
-              domain={[minMonths, maxMonths]}
-              tickFormatter={tickFmt}
-              {...chartAxisProps(c)}
-              label={chartAxisLabelProps(c, axisLabel, {
-                position: "insideBottom",
-                offset: -2,
-              })}
-            />
-            <YAxis {...chartAxisProps(c)} domain={["auto", "auto"]} />
-            <Tooltip
-              formatter={(v, name) => {
-                if (name === "traj") return [`${v}${unit}`, "This profile"];
-                return [
-                  `${v}${unit}`,
-                  `${String(name).replace("p", "")}th pct`,
-                ];
-              }}
-              labelFormatter={(m) => {
-                const mo = Number(m);
-                return showYears
-                  ? `Age ${Math.round((mo / 12) * 10) / 10} y`
-                  : `Age ${Math.round(mo)} mo`;
-              }}
-              {...chartTooltipProps(c, motion)}
-            />
+    <div className="h-72 min-w-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart
+          data={data}
+          margin={{ top: 10, right: 26, bottom: 4, left: -8 }}
+        >
+          <CartesianGrid {...chartGridProps(c)} />
+          <XAxis
+            dataKey="ageMonths"
+            type="number"
+            domain={[minMonths, maxMonths]}
+            tickFormatter={tickFmt}
+            {...chartAxisProps(c)}
+            label={chartAxisLabelProps(c, axisLabel, {
+              position: "insideBottom",
+              offset: -2,
+            })}
+          />
+          <YAxis {...chartAxisProps(c)} domain={["auto", "auto"]} />
+          <Tooltip
+            formatter={(v, name) => {
+              if (name === "traj") return [`${v}${unit}`, "This profile"];
+              return [`${v}${unit}`, `${String(name).replace("p", "")}th pct`];
+            }}
+            labelFormatter={(m) => {
+              const mo = Number(m);
+              return showYears
+                ? `Age ${Math.round((mo / 12) * 10) / 10} y`
+                : `Age ${Math.round(mo)} mo`;
+            }}
+            {...chartTooltipProps(c, motion)}
+          />
 
-            {/* Current-age marker. */}
-            <ReferenceLine
-              x={currentAgeMonths}
-              stroke={c.axis}
-              strokeDasharray={chartDash.now}
-              label={chartAnnotationLabel("now", c.tick, "top")}
-            />
+          {/* Current-age marker. */}
+          <ReferenceLine
+            x={currentAgeMonths}
+            stroke={c.axis}
+            strokeDasharray={chartDash.now}
+            label={chartAnnotationLabel("now", c.tick, "top")}
+          />
 
-            {/* Reference percentile bands. */}
-            {bandMaps.map((bm) => (
-              <Line
-                key={`band-${bm.percentile}`}
-                type="monotone"
-                dataKey={`p${bm.percentile}`}
-                stroke={bandColor(bm.percentile)}
-                strokeWidth={bandWidth(bm.percentile)}
-                dot={endLabel(bm.percentile)}
-                activeDot={false}
-                isAnimationActive={false}
-                connectNulls
-              />
-            ))}
-
-            {/* The profile's own trajectory, drawn on top. */}
+          {/* Reference percentile bands. */}
+          {bandMaps.map((bm) => (
             <Line
+              key={`band-${bm.percentile}`}
               type="monotone"
-              dataKey="traj"
-              stroke={chartSeries.brand}
-              strokeWidth={2.5}
-              dot={{
-                r: 3,
-                fill: c.surface,
-                stroke: chartSeries.brand,
-                strokeWidth: 1.5,
-              }}
-              activeDot={chartActiveDot(chartSeries.brand)}
+              dataKey={`p${bm.percentile}`}
+              stroke={bandColor(bm.percentile)}
+              strokeWidth={bandWidth(bm.percentile)}
+              dot={endLabel(bm.percentile)}
+              activeDot={false}
               isAnimationActive={false}
               connectNulls
             />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+          ))}
+
+          {/* The profile's own trajectory, drawn on top. */}
+          <Line
+            type="monotone"
+            dataKey="traj"
+            stroke={chartSeries.brand}
+            strokeWidth={2.5}
+            dot={{
+              r: 3,
+              fill: c.surface,
+              stroke: chartSeries.brand,
+              strokeWidth: 1.5,
+            }}
+            activeDot={chartActiveDot(chartSeries.brand)}
+            isAnimationActive={false}
+            connectNulls
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }

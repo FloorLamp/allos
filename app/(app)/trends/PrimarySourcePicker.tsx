@@ -19,14 +19,17 @@ export default function PrimarySourcePicker({
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   return (
-    <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-      <span>Primary source</span>
+    <label
+      className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 text-xs text-slate-500 sm:flex sm:w-auto sm:flex-wrap sm:justify-end dark:text-slate-400"
+      data-testid={`primary-source-control-${metric}`}
+    >
+      <span className="shrink-0">Primary source</span>
       <select
         name="source"
         defaultValue={current}
         disabled={isPending}
         data-testid={`primary-source-${metric}`}
-        className="rounded border border-black/10 bg-white px-2 py-1 text-xs text-slate-700 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
+        className="min-w-0 w-full rounded border border-black/10 bg-white px-2 py-1 text-xs text-slate-700 sm:w-auto sm:max-w-full dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
         onChange={(e) => {
           const fd = new FormData();
           fd.set("metric", metric);
@@ -47,7 +50,7 @@ export default function PrimarySourcePicker({
       </select>
       {saved && !isPending && (
         <span
-          className="text-emerald-600 dark:text-emerald-400"
+          className="col-start-2 text-emerald-600 sm:col-auto dark:text-emerald-400"
           data-testid={`primary-source-saved-${metric}`}
         >
           Saved

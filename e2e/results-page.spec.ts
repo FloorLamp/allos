@@ -3,7 +3,7 @@ import { followLink } from "./helpers";
 
 // The Results surface (#1079): the Biomarkers / Imaging / Genomics result stores as
 // route-per-tab (`/results/<tab>`), superseding the #1042 stacked-section page. A
-// `ResultsTabs` underline strip navigates between them; bare `/results` redirects to
+// The shared tab-first strip navigates between them; bare `/results` redirects to
 // `/results/biomarkers`; the removed index routes 308-redirect to the tab routes
 // (query preserved); the per-biomarker DETAIL route (/biomarkers/view) survives.
 //
@@ -24,6 +24,43 @@ test("bare /results redirects to the Biomarkers tab and renders it (#1079)", asy
   await expect(biomarkers.getByTestId("biomarkers-pagination")).toContainText(
     "Showing"
   );
+});
+
+test("mobile Results starts with four shell-owned route tabs", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/results/biomarkers");
+
+  await expect(page.getByTestId("results-page-title")).toBeHidden();
+  const shell = page.getByTestId("shell-chrome");
+  const strip = shell.getByTestId("shell-tab-strip");
+  const tabs = strip.getByTestId("results-tabs");
+  await expect(tabs).toBeVisible();
+  await expect(tabs).toHaveCSS("overflow-y", "hidden");
+  await expect(tabs.getByRole("tab")).toHaveCount(4);
+
+  const boxes = await Promise.all(
+    ["Biomarkers", "Imaging", "Reports", "Genomics"].map(async (name) => {
+      const tab = tabs.getByRole("tab", { name });
+      await expect(tab).toHaveCSS("font-size", "14px");
+      return tab.boundingBox();
+    })
+  );
+  expect(boxes.every(Boolean)).toBe(true);
+  expect(boxes[0]!.height).toBeGreaterThanOrEqual(44);
+  for (const box of boxes.slice(1)) {
+    expect(box!.width).toBeCloseTo(boxes[0]!.width, 0);
+  }
+
+  await followLink(
+    page,
+    tabs.getByRole("tab", { name: "Imaging" }),
+    /\/results\/imaging$/
+  );
+  await expect(
+    page.getByTestId("shell-tab-strip").getByRole("tab", { name: "Imaging" })
+  ).toHaveAttribute("aria-selected", "true");
 });
 
 test("the Biomarkers browser carries the trajectory watch but no fitness-percentile inline (#1164)", async ({
@@ -49,12 +86,12 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
 }) => {
   await page.goto("/results/biomarkers");
   const tabs = page.getByTestId("results-tabs");
-  await expect(tabs.getByRole("link", { name: "Biomarkers" })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: "Biomarkers" })).toBeVisible();
 
   // Imaging tab → its own route + the seeded knee MRI in the study list.
   await followLink(
     page,
-    tabs.getByRole("link", { name: "Imaging" }),
+    tabs.getByRole("tab", { name: "Imaging" }),
     /\/results\/imaging$/
   );
   const imaging = page.getByTestId("results-imaging");
@@ -68,7 +105,7 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
   // Genomics tab → its own route + the seeded pharmacogenomic variant.
   await followLink(
     page,
-    page.getByTestId("results-tabs").getByRole("link", { name: "Genomics" }),
+    page.getByTestId("results-tabs").getByRole("tab", { name: "Genomics" }),
     /\/results\/genomics$/
   );
   await expect(

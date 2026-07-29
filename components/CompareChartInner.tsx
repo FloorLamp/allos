@@ -15,7 +15,6 @@ import { useChartColors } from "./useChartColors";
 import {
   ChartLegend,
   chartActiveDot,
-  chartAnnotationLabel,
   chartAxisProps,
   chartDash,
   chartGridProps,
@@ -37,6 +36,7 @@ import {
 } from "@/lib/chart-time-axis";
 import {
   ANNOTATION_KIND_META,
+  annotationTooltipLabel,
   snapAnnotationsToDates,
   type TrendAnnotation,
   type TrendWindow,
@@ -181,9 +181,15 @@ export default function CompareChart({
                 : `${roundChartValue(Number(v))}${name === labelA ? unitA : unitB}`,
               name,
             ]}
-            labelFormatter={(v) =>
-              formatLongDate(epochToISO(Number(v)), formatPrefs)
-            }
+            labelFormatter={(value) => {
+              const date = epochToISO(Number(value));
+              return annotationTooltipLabel(
+                formatLongDate(date, formatPrefs),
+                date,
+                snapped,
+                windows ?? []
+              );
+            }}
             {...chartTooltipProps(c, motion)}
           />
           {windowAreas.map((w, i) => {
@@ -198,7 +204,6 @@ export default function CompareChart({
                 fillOpacity={0.08}
                 stroke={color}
                 strokeOpacity={0.3}
-                label={chartAnnotationLabel(w.label, color, "insideTopLeft")}
               />
             );
           })}
@@ -209,12 +214,7 @@ export default function CompareChart({
               x={dateToEpoch(a.date)}
               stroke={ANNOTATION_KIND_META[a.kind].color}
               strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.85}
-              label={chartAnnotationLabel(
-                a.label,
-                ANNOTATION_KIND_META[a.kind].color,
-                "top"
-              )}
+              strokeOpacity={0.6}
             />
           ))}
           <Line

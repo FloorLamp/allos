@@ -7,8 +7,8 @@ import { hydratedClick } from "./helpers";
 // are enterable by hand and write to the SAME tables/keys the integration uses.
 //
 // Re-pointed by #1486: the Vitals tab merged into Body, and the body + vitals
-// quick-adds merged into ONE "Log measurements" form behind a collapsed desktop
-// "+ Log" expander. Same write cores, same canonical rows — one door instead of
+// quick-adds merged into ONE "Log measurements" form behind a desktop "+ Log"
+// modal. Same write cores, same canonical rows — one door instead of
 // three. (This project runs at desktop width; the phone's path is the #1468
 // overlay, covered by e2e/trends-body-merge.mobile.spec.ts.)
 async function openMeasurementsForm(page: Page) {
@@ -26,9 +26,9 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
 
   // A distinctive-but-synthetic set: BP pair + SpO2 + sleep. The date defaults to
   // today (the seeded fixture's clock), so a wide biomarkers window includes it.
-  await form.getByLabel("Systolic (mmHg)").fill("118");
-  await form.getByLabel("Diastolic (mmHg)").fill("76");
-  await form.getByLabel("Oxygen sat. (%)").fill("97");
+  await form.getByLabel("Blood Pressure (Systolic) (mmHg)").fill("118");
+  await form.getByLabel("Blood Pressure (Diastolic) (mmHg)").fill("76");
+  await form.getByLabel("Oxygen Saturation (%)").fill("97");
   await form.getByLabel("Sleep (hours)").fill("7.5");
 
   await form.getByRole("button", { name: "Save measurements" }).click();
@@ -43,10 +43,12 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   await expect(body.getByTestId("vitals-systolic")).toBeVisible();
   await expect(body.getByTestId("vitals-spo2")).toBeVisible();
 
-  // The sleep sample surfaces in the Body tab's compact Sleep summary tile (the
-  // detailed per-night chart moved to the dedicated /sleep page, #1066).
+  // The sleep sample surfaces in the Body tab's nightly-duration chart; detailed
+  // regularity and stage analysis stays on the dedicated /sleep page (#1066).
   await page.goto("/trends?tab=body&view=all");
-  await expect(page.getByTestId("sleep-summary-tile")).toBeVisible();
+  const sleep = page.getByTestId("sleep-summary-tile");
+  await expect(sleep).toBeVisible();
+  await expect(sleep.getByRole("application")).toBeVisible();
 
   // #114: the biomarkers browser (/results#biomarkers) ships only one bounded page of rows, so its
   // table always renders the pagination footer ("Showing N of M") — a cheap proof
@@ -68,8 +70,8 @@ test("the measurements form logs a temperature with an optional reading time (#8
 
   // Pin °F explicitly — the entry unit now defaults to the login's temperature
   // preference (#857); this reading is entered in Fahrenheit.
-  await form.getByLabel("Temperature unit").selectOption("F");
-  await form.getByLabel("Temperature", { exact: true }).fill("101.2");
+  await form.getByLabel("Body Temperature unit").selectOption("F");
+  await form.getByLabel("Body Temperature", { exact: true }).fill("101.2");
   const timeField = form.getByTestId("measurements-temp-time");
   await expect(timeField).toBeVisible();
   await timeField.fill("07:00");

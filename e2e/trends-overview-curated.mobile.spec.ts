@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { followLink, settledClick } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_CURATE,
@@ -37,7 +37,7 @@ async function curatePage(browser: Parameters<typeof loginAs>[0]) {
   );
 }
 
-const VOLUME = "Training volume";
+const VOLUME = "Training Volume";
 
 function tile(page: Page, name: string) {
   return page.getByTestId("trend-mini-card").filter({ hasText: name });
@@ -53,6 +53,48 @@ async function openTileMenu(page: Page, name: string) {
 }
 
 test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
+  test("overview chart links open their detailed metric surfaces", async ({
+    browser,
+  }) => {
+    const page = await curatePage(browser);
+    try {
+      await page.goto("/trends");
+
+      await expect(
+        tile(page, "Weight").getByTestId("trend-mini-header-link")
+      ).toHaveAttribute("href", "/trends/metric/weight");
+      await expect(
+        tile(page, "Resting Heart Rate").getByTestId("trend-mini-header-link")
+      ).toHaveAttribute("href", "/trends/metric/resting-hr");
+      const restingHeartRate = tile(page, "Resting Heart Rate");
+      await expect(
+        restingHeartRate.getByText("RHR", { exact: true })
+      ).toBeVisible();
+      await expect(
+        restingHeartRate.getByText("Resting Heart Rate", { exact: true })
+      ).not.toBeVisible();
+      await expect(
+        tile(page, VOLUME).getByTestId("trend-mini-header-link")
+      ).toHaveAttribute("href", "/training?tab=analyze");
+      await expect(
+        tile(page, TRENDS_CURATE_EMPTY_ANALYTE).getByTestId(
+          "trend-mini-header-link"
+        )
+      ).toHaveAttribute("href", /\/biomarkers\/view\?name=/);
+
+      await followLink(
+        page,
+        tile(page, "Weight").getByTestId("trend-mini-header-link"),
+        /\/trends\/metric\/weight/
+      );
+      await expect(
+        page.getByRole("heading", { level: 1, name: "Weight" })
+      ).toBeVisible();
+    } finally {
+      await page.context().close();
+    }
+  });
+
   test("unstarring a standard metric removes its tile, and the picker puts it back", async ({
     browser,
   }) => {
@@ -100,7 +142,7 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
       // (weight, resting HR) share a row: same top, different left, each under half
       // the viewport. A single-column grid fails on the `top` equality.
       const weight = tile(page, "Weight");
-      const hr = tile(page, "Resting heart rate");
+      const hr = tile(page, "Resting Heart Rate");
       const wBox = await weight.boundingBox();
       const hBox = await hr.boundingBox();
       expect(wBox, "weight tile box").not.toBeNull();
@@ -253,7 +295,7 @@ test.describe("reorder converges on drag (#1485 C)", () => {
       // through the stored order, past sunk empty rows).
       const menu = await openTileMenu(
         page,
-        second === "metric:weight" ? "Weight" : "Resting heart rate"
+        second === "metric:weight" ? "Weight" : "Resting Heart Rate"
       );
       const settled = reorderSettled(page);
       await menu.getByTestId("saved-move-up").click();
@@ -268,7 +310,7 @@ test.describe("reorder converges on drag (#1485 C)", () => {
       const back = reorderSettled(page);
       const restore = await openTileMenu(
         page,
-        second === "metric:weight" ? "Weight" : "Resting heart rate"
+        second === "metric:weight" ? "Weight" : "Resting Heart Rate"
       );
       await restore.getByTestId("saved-move-down").click();
       await expect.poll(async () => (await tileOrder(page))[0]).toBe(first);

@@ -1,7 +1,10 @@
 import {
   getBodyMetricSeriesBySource,
+  getBodyMetricSeriesBySourceInRange,
   getHrSeriesBySource,
+  getHrSeriesBySourceInRange,
   getMetricSeriesBySource,
+  getMetricSeriesBySourceInRange,
   getMedicalDocuments,
   type MetricSourceSeries,
 } from "@/lib/queries";
@@ -19,14 +22,14 @@ import { getIntegration } from "@/lib/integrations/registry";
 import { dispWeight, round } from "@/lib/units";
 import type { BodyMetricKind, IntegrationId } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
+import type { DateRange } from "@/lib/timeline-format";
 import type { CompareSeries } from "@/components/SourceCompareChartInner";
 import SourceCompareChart from "@/components/SourceCompareChart";
 import PrimarySourcePicker from "./PrimarySourcePicker";
 
-// "Compare sources" (issue #14): for every metric that more than one source is
-// reporting, a per-source overlay chart plus the primary-source picker. Renders
-// NOTHING for a single-source profile — the section only exists when there is
-// genuinely something to compare, so the Body tab stays calm.
+// "Compare sources" (issue #14): the per-source overlay and primary-source
+// picker for ONE metric detail page. Renders NOTHING for a single-source profile
+// — the control only exists when there is genuinely something to compare.
 //
 // Document series (#533): a metric extracted from two documents stays two DISTINCT
 // series (foldSourceSeries keeps document:5 and document:7 apart), so each carries
@@ -54,117 +57,123 @@ function displayValue(
   return round(value, metric.decimals);
 }
 
-interface ComparisonCard {
-  metric: ComparableMetric;
-  unit: string;
-  series: CompareSeries[];
-  current: string;
-}
-
 export default function SourceComparison({
   profileId,
   weightUnit,
+  metricKey,
+  className = "",
+  range,
 }: {
   profileId: number;
   weightUnit: WeightUnit;
+  metricKey: string;
+  className?: string;
+  range?: DateRange;
 }) {
+  const metric = COMPARABLE_METRICS.find((entry) => entry.key === metricKey);
+  if (!metric) return null;
+
   const priority = getMetricSourcePriority(profileId);
-  // Doc id → filename/date, so a 'document:<id>' series labels by the document's own
-  // identity instead of a collapsed "Document" (#533).
+  // A comparison is about the selected window. Sources with only historical
+  // readings outside it stay out of the card and picker; their saved preference
+  // remains stored and becomes visible again when the user widens the range.
+  const raw: MetricSourceSeries[] = range
+    ? metric.kind === "sample"
+      ? getMetricSeriesBySourceInRange(
+          profileId,
+          metric.key,
+          range.from ?? null,
+          range.to ?? null
+        )
+      : metric.kind === "body"
+        ? getBodyMetricSeriesBySourceInRange(
+            profileId,
+            metric.key as BodyMetricKind,
+            range.from ?? null,
+            range.to ?? null
+          )
+        : getHrSeriesBySourceInRange(
+            profileId,
+            range.from ?? null,
+            range.to ?? null
+          )
+    : metric.kind === "sample"
+      ? getMetricSeriesBySource(profileId, metric.key)
+      : metric.kind === "body"
+        ? getBodyMetricSeriesBySource(profileId, metric.key as BodyMetricKind)
+        : getHrSeriesBySource(profileId);
+  if (raw.length < 2) return null;
+
+  // Doc id → filename/date, so a 'document:<id>' series labels by the document's
+  // own identity instead of a collapsed "Document" (#533).
   const docMeta: Record<number, DocumentMeta> = {};
   for (const d of getMedicalDocuments(profileId)) {
     docMeta[d.id] = { filename: d.filename, document_date: d.document_date };
   }
-
-  interface RawCard {
-    metric: ComparableMetric;
-    unit: string;
-    raw: MetricSourceSeries[];
-  }
-  const rawCards: RawCard[] = [];
-  for (const metric of COMPARABLE_METRICS) {
-    const raw: MetricSourceSeries[] =
-      metric.kind === "sample"
-        ? getMetricSeriesBySource(profileId, metric.key)
-        : metric.kind === "body"
-          ? getBodyMetricSeriesBySource(profileId, metric.key as BodyMetricKind)
-          : getHrSeriesBySource(profileId);
-    if (raw.length < 2) continue; // nothing to compare
-    const unit = metric.key === "weight" ? ` ${weightUnit}` : metric.unit;
-    rawCards.push({ metric, unit, raw });
-  }
-  if (rawCards.length === 0) return null;
-
-  // One color per distinct source KEY across every card, so a document keeps the
-  // same de-collided color on each metric it appears in and no two documents share
-  // the fallback teal (#533).
-  const colorByKey = sourceSeriesColorMap(
-    rawCards.flatMap((c) => c.raw.map((s) => s.source))
-  );
-  const cards: ComparisonCard[] = rawCards.map(({ metric, unit, raw }) => ({
-    metric,
-    unit,
-    series: raw.map((s) => ({
-      key: s.source,
-      label: labelForSource(s.source, docMeta),
-      color: colorByKey.get(s.source) ?? SOURCE_FALLBACK_COLOR,
-      data: s.data.map((d) => ({
-        date: d.date,
-        value: displayValue(metric, d.value, weightUnit),
-      })),
+  const colorByKey = sourceSeriesColorMap(raw.map((source) => source.source));
+  const unit = metric.key === "weight" ? ` ${weightUnit}` : metric.unit;
+  const series: CompareSeries[] = raw.map((s) => ({
+    key: s.source,
+    label: labelForSource(s.source, docMeta),
+    color: colorByKey.get(s.source) ?? SOURCE_FALLBACK_COLOR,
+    data: s.data.map((d) => ({
+      date: d.date,
+      value: displayValue(metric, d.value, weightUnit),
     })),
-    current: priority[metric.key] ?? "",
   }));
+  const configuredCurrent = priority[metric.key] ?? "";
+  const visibleCurrent = raw.some(
+    (source) => source.source === configuredCurrent
+  )
+    ? configuredCurrent
+    : "";
 
   return (
-    <div className="space-y-6" data-testid="source-comparison">
-      <div>
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Compare sources
-        </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          More than one source is reporting these metrics. Each line is one
-          source; pick a primary source to make it authoritative for totals and
-          latest-value readouts (Automatic prefers manual entries, then Health
-          Connect).
-        </p>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        {cards.map(({ metric, unit, series, current }) => (
-          <div
-            key={metric.key}
-            className="card"
-            data-testid={`source-compare-${metric.key}`}
+    <section
+      className={`card min-w-0 ${className}`}
+      data-testid="source-comparison"
+      aria-labelledby={`source-comparison-${metric.key}`}
+    >
+      <div className="mb-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 sm:flex-1">
+          <h2
+            id={`source-comparison-${metric.key}`}
+            className="font-semibold text-slate-800 dark:text-slate-100"
           >
-            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                {metric.title}
-              </h3>
-              <PrimarySourcePicker
-                metric={metric.key}
-                current={current}
-                options={series.map((s) => ({ value: s.key, label: s.label }))}
-              />
-            </div>
-            <SourceCompareChart series={series} unit={unit} />
-            <div
-              className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
-              data-testid={`source-legend-${metric.key}`}
-            >
-              {series.map((s) => (
-                <span key={s.key} className="inline-flex items-center gap-1.5">
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{ backgroundColor: s.color }}
-                    aria-hidden
-                  />
-                  {s.label}
-                </span>
-              ))}
-            </div>
-          </div>
+            Compare sources
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Choose which source is authoritative for totals and latest values.
+            {range ? " The chart uses the selected range." : ""}
+          </p>
+        </div>
+        <PrimarySourcePicker
+          metric={metric.key}
+          current={visibleCurrent}
+          options={series.map((s) => ({ value: s.key, label: s.label }))}
+        />
+      </div>
+      <div
+        className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300"
+        data-testid={`source-legend-${metric.key}`}
+      >
+        {series.map((s) => (
+          <span
+            key={s.key}
+            className="inline-flex min-w-0 items-center gap-1.5"
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: s.color }}
+              aria-hidden
+            />
+            <span className="truncate">{s.label}</span>
+          </span>
         ))}
       </div>
-    </div>
+      <div data-testid={`source-compare-${metric.key}`}>
+        <SourceCompareChart series={series} unit={unit} showLegend={false} />
+      </div>
+    </section>
   );
 }

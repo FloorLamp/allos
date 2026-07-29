@@ -1,7 +1,7 @@
-import { PageHeader } from "@/components/ui";
 import type { AppRoute } from "@/lib/hrefs";
 import AnchorRedirect from "@/components/AnchorRedirect";
-import ResultsTabs from "./ResultsTabs";
+import TabFirstPage from "@/components/TabFirstPage";
+import { RESULTS_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 
 // Results (#1079): the Biomarkers / Imaging / Genomics result stores as
 // route-per-tab (`/results/<tab>`), replacing the #1042 stacked-section page. The
@@ -26,14 +26,11 @@ export default function ResultsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div>
+    <>
       <AnchorRedirect map={ANCHOR_MAP} />
-      <PageHeader
-        title="Results"
-        subtitle="Your result records in one place — labs and biomarkers, imaging studies, and genomic variants."
-      />
-      <ResultsTabs />
-      {children}
-    </div>
+      <TabFirstPage config={RESULTS_TAB_FIRST_PAGE} testId="results-page">
+        {children}
+      </TabFirstPage>
+    </>
   );
 }

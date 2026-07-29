@@ -35,6 +35,7 @@
 
 import type { Route } from "next";
 import type { PanelId } from "./biomarker-panels";
+import type { GrowthMetric } from "./growth";
 import type { IntegrationId } from "./types/integrations";
 import type { SupplementKind } from "./types/intake";
 
@@ -299,6 +300,27 @@ export function immunizationHref(vaccine: string): AppRoute {
 export function metricDetailHref(kind: string): AppRoute {
   const href: Route<`/trends/metric/${string}`> = `/trends/metric/${kind}`;
   return href as AppRoute;
+}
+
+// The composite WHO/CDC growth-percentile detail surface. It is deliberately not
+// a metric slug: one view switches among height, weight, BMI, and head circumference.
+export const GROWTH_TRENDS_HREF = "/trends/growth" as AppRoute;
+
+// Each growth measure is a separate chart while sharing one pediatric detail page.
+// The hash lands a tile/full-chart header on that measure instead of dropping the
+// reader at the top of a four-chart page.
+export function growthTrendsHref(
+  metric: GrowthMetric,
+  range?: { from?: string; to?: string }
+): AppRoute {
+  const params = new URLSearchParams();
+  if (range?.from) params.set("from", range.from);
+  if (range?.to) params.set("to", range.to);
+  // An explicitly supplied empty range means All time; no range argument means
+  // the destination's normal default.
+  if (range && !range.from && !range.to) params.set("range", "all");
+  const query = params.toString();
+  return `/trends/growth${query ? `?${query}` : ""}#growth-${metric}` as AppRoute;
 }
 
 // The illness-episode detail page (issue #856). The slug is the STABLE episode row id

@@ -75,9 +75,10 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     for (const name of ["Strength", "Cardio", "Sport"]) {
       await expect(page.getByRole("tab", { name, exact: true })).toHaveCount(0);
     }
-    await expect(page.getByTestId("chart-jump-chips")).toBeVisible();
-    await expect(page.getByTestId("chart-jump-volume")).toBeVisible();
-    await expect(page.getByTestId("chart-jump-zones")).toBeVisible();
+    // Four consecutive headed sections do not need a third navigation layer on
+    // phones. The long-page shortcut is a desktop-only dropdown.
+    await expect(page.getByTestId("chart-jump-chips")).toHaveCount(0);
+    await expect(page.getByTestId("chart-jump-menu")).not.toBeVisible();
 
     // The old un-windowed content is gone with its apology: the tab used to say
     // "Strength, cardio, and sport progress (full history)" beside a "Full

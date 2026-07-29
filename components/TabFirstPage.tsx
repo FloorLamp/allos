@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { NavTabStrip } from "@/components/NavTabs";
+import TabFirstTabs from "@/components/TabFirstTabs";
 import type { TabFirstPageConfig } from "@/components/tab-first-pages";
 import { PageHeader } from "@/components/ui";
 
@@ -12,15 +12,17 @@ import { PageHeader } from "@/components/ui";
 export default function TabFirstPage({
   config,
   children,
+  action,
   className = "",
   testId,
 }: {
   config: TabFirstPageConfig;
   children: ReactNode;
+  action?: ReactNode;
   className?: string;
   testId?: string;
 }) {
-  const { title, tabs, paramKey } = config;
+  const { title, subtitle } = config;
 
   return (
     <div
@@ -31,11 +33,11 @@ export default function TabFirstPage({
         data-testid={testId ? `${testId}-title` : undefined}
         className="hidden md:block"
       >
-        <PageHeader title={title} />
+        <PageHeader title={title} subtitle={subtitle} action={action} />
       </div>
       <h1 className="sr-only md:hidden">{title}</h1>
       <div className="hidden md:block">
-        <NavTabStrip paramKey={paramKey} tabs={tabs} prominentOnMobile />
+        <TabFirstTabs config={config} />
       </div>
       <div role="tabpanel">{children}</div>
     </div>

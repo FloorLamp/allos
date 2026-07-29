@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getDisplayFormatPrefs } from "@/lib/settings";
+import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
 import {
   getLastNightSummary,
   getSleepDurationTrend,
@@ -25,6 +25,7 @@ import SleepMoodSection from "./SleepMoodSection";
 import SleepLogAction from "./SleepLogAction";
 import OuraScores from "./OuraScores";
 import SleepTrendsSection from "./SleepTrendsSection";
+import SourceComparison from "../trends/SourceComparison";
 
 export const dynamic = "force-dynamic";
 
@@ -201,6 +202,14 @@ export default async function SleepPage() {
             />
           ) : null
         }
+      />
+
+      <SourceComparison
+        profileId={profile.id}
+        weightUnit={getUnitPrefs(login.id).weightUnit}
+        metricKey="sleep_min"
+        className="mb-6"
+        range={{ from: shiftDateStr(todayStr, -89), to: todayStr }}
       />
 
       {!hasAny && (

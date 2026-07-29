@@ -25,11 +25,13 @@ import {
 import {
   getBodyMetricDailySeries,
   getBodyMetricSeriesBySource,
+  getBodyMetricSeriesBySourceInRange,
   getDashboardStats,
   getHrDailySummary,
   getLatestBodyMetricDated,
   getMetricDailyTotals,
   getMetricSeriesBySource,
+  getMetricSeriesBySourceInRange,
   getSleepSessions,
   getSleepStageDailyTotals,
 } from "@/lib/queries";
@@ -561,6 +563,31 @@ describe("single-value + series reads honor the primary source", () => {
     expect(series[0].data).toEqual([{ date: "2024-02-04", value: 8000 }]);
     expect(series[1].data).toEqual([{ date: "2024-02-04", value: 7000 }]);
   });
+
+  it("windows a metric-sample source overlay to exact calendar bounds", () => {
+    expect(
+      getMetricSeriesBySourceInRange(
+        profileId,
+        "steps",
+        "2024-02-04",
+        "2024-02-04"
+      )
+    ).toEqual([
+      {
+        source: "health-connect",
+        data: [{ date: "2024-02-04", value: 8000 }],
+      },
+      { source: "oura", data: [{ date: "2024-02-04", value: 7000 }] },
+    ]);
+    expect(
+      getMetricSeriesBySourceInRange(
+        profileId,
+        "steps",
+        "2024-02-05",
+        "2024-02-06"
+      )
+    ).toEqual([]);
+  });
 });
 
 describe("getDashboardStats — Current weight honors the primary source (#302)", () => {
@@ -647,6 +674,19 @@ describe("getBodyMetricSeriesBySource — full per-source window (#623)", () => 
         // across sources — no mid-day cut between the two overlays.
         expect(s.data[0].date).toBe(dayStr(k - 1));
       }
+    }
+
+    const bounded = getBodyMetricSeriesBySourceInRange(
+      p,
+      "weight",
+      dayStr(9),
+      dayStr(4)
+    );
+    expect(bounded).toHaveLength(2);
+    for (const source of bounded) {
+      expect(source.data).toHaveLength(6);
+      expect(source.data[0].date).toBe(dayStr(9));
+      expect(source.data.at(-1)?.date).toBe(dayStr(4));
     }
   });
 });

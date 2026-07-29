@@ -87,6 +87,14 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     expect(
       await domOrder(page, ["body-chart-height", "body-chart-weight"])
     ).toEqual(["body-chart-height", "body-chart-weight"]);
+
+    // The separate percentile tiles occupy the same ranked `growth` slot rather
+    // than being appended independently by the tile renderer.
+    await page.goto("/trends?tab=body&view=tiles");
+    await expect(page.getByTestId("body-tile-growth-height")).toBeVisible();
+    expect(
+      await domOrder(page, ["body-tile-growth-height", "body-tile-height"])
+    ).toEqual(["body-tile-growth-height", "body-tile-height"]);
   });
 
   test("an adult with a live weight goal leads with weight", async ({

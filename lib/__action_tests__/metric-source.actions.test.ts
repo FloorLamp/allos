@@ -42,8 +42,10 @@ describe("setMetricPrimarySource", () => {
 
     expect(getMetricSourcePriority(profile.id)).toEqual({ steps: "oura" });
     expect(getMetricSourcePriority(other.id)).toEqual({}); // profile-scoped
-    expect(revalidate).toHaveBeenCalledWith("/trends");
+    expect(revalidate).toHaveBeenCalledWith("/trends", "layout");
+    expect(revalidate).toHaveBeenCalledWith("/sleep");
     expect(revalidate).toHaveBeenCalledWith("/");
+    expect(revalidate).toHaveBeenCalledTimes(3);
   });
 
   it("an empty source clears back to automatic (key removed once empty)", async () => {

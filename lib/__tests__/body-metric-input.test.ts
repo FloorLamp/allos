@@ -32,6 +32,21 @@ describe("validateBodyMetricInput", () => {
     expect(validateBodyMetricInput({ ...ok, weight: null })).toMatch(/weight/i);
   });
 
+  it("allows standalone body-fat and resting-HR detail entries", () => {
+    expect(
+      validateBodyMetricInput(
+        { weight: null, bodyFatPct: "18.5", restingHr: null },
+        { requireWeight: false }
+      )
+    ).toBeNull();
+    expect(
+      validateBodyMetricInput(
+        { weight: null, bodyFatPct: null, restingHr: "54" },
+        { requireWeight: false }
+      )
+    ).toBeNull();
+  });
+
   it("rejects a non-numeric or non-positive weight", () => {
     expect(validateBodyMetricInput({ ...ok, weight: "abc" })).toMatch(
       /weight/i

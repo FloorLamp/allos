@@ -40,6 +40,7 @@ describe("toggleSavedItem", () => {
     expect(paths).toContain("/trends");
     expect(paths).toContain("/results");
     expect(paths).toContain("/biomarkers/view");
+    expect(paths).toContain("/trends/metric/[kind]");
   });
 
   it("un-stars on a second submit (the same gesture both ways)", async () => {

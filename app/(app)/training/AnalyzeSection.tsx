@@ -271,8 +271,8 @@ export default async function AnalyzeSection({
           {view.sessions.length === 0 ? (
             <EmptyState message="No sessions in this range. Widen the range or log one." />
           ) : (
-            /* Below `sm` these session rows stack as cards (#1426): the date is the
-               card title, the view's LEADING metric — the one the chart above plots,
+            /* Below `sm` these sessions stack as flat rows (#1426): the date is the
+               row title, the view's LEADING metric — the one the chart above plots,
                so the column the user chose — is the headline value, and the rest
                become a compact meta line. `cardMetaEntries` decides which of those
                survive: a placeholder cell, or one that just repeats the date, buys

@@ -25,12 +25,14 @@ import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
 // Rule 3 pins the registry side of the promise: `/trends/metric/[kind]` is the
 // destination every registered metric taps through to, so every declared slug must
 // actually resolve to a series there — a slug added to the registry without a case in
-// the page's `fullSeriesFor` would render a detail page that silently charts nothing.
+// the shared `fullBodyMetricSeries` reader would render a detail page that silently
+// charts nothing.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const CHART_CARD = "components/ChartCard.tsx";
 const METRIC_PAGE = "app/(app)/trends/metric/[kind]/page.tsx";
+const METRIC_SERIES = "lib/body-metric-series.ts";
 
 /**
  * Where the tap-through rule is ENFORCED. The Trends hub is the surface #1488 is
@@ -153,8 +155,9 @@ describe("chart tap-through guard (issue #1488)", () => {
     ).toBeGreaterThan(0);
     expect(
       /<Link[^>]*data-testid="chart-card-expand"/.test(src) &&
-        /aria-label=\{`Open /.test(src),
-      "ChartCard's expand icon must stay a link WITH an accessible name (#794 7a)"
+        /aria-label=\{`Open /.test(src) &&
+        /data-testid="chart-card-expand"[\s\S]*?sm:hidden/.test(src),
+      "ChartCard's phone-only expand icon must stay a link WITH an accessible name (#794 7a)"
     ).toBe(true);
   });
 
@@ -203,16 +206,22 @@ describe("chart tap-through guard (issue #1488)", () => {
   });
 
   it("the metric detail page resolves every kind the registry declares", () => {
-    const src = fs.readFileSync(path.join(REPO, METRIC_PAGE), "utf8");
+    const pageSrc = fs.readFileSync(path.join(REPO, METRIC_PAGE), "utf8");
+    const seriesSrc = fs.readFileSync(path.join(REPO, METRIC_SERIES), "utf8");
+    expect(
+      pageSrc.includes("fullBodyMetricSeries("),
+      `${METRIC_PAGE} must read through ${METRIC_SERIES}, so Overview and metric ` +
+        `details cannot drift into two implementations of the same series.`
+    ).toBe(true);
     const missing = BODY_METRIC_SLUGS.filter(
-      (slug) => !src.includes(`case "${slug}":`)
+      (slug) => !seriesSrc.includes(`case "${slug}":`)
     );
     expect(
       missing,
       `/trends/metric/[kind] is the tap-through destination for every registered ` +
         `metric, so a slug in BODY_METRIC_SLUGS with no case in the page's ` +
-        `fullSeriesFor() renders a detail page that charts nothing. Add the series ` +
-        `read for:\n${missing.join("\n")}`
+        `shared fullBodyMetricSeries() renders a detail page that charts nothing. ` +
+        `Add the series read for:\n${missing.join("\n")}`
     ).toEqual([]);
   });
 
