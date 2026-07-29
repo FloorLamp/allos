@@ -5,7 +5,7 @@
 // findings. Progress itself is getFrequencyTargetProgress (the #579 rollup) — this
 // module only owns the finding identity + the behind decision.
 
-import type { FrequencyTargetProgress } from "./queries/training/goals";
+import type { FrequencyTargetProgress } from "./queries/frequency-targets";
 import {
   matchFoodInteractions,
   SEVERITY_RANK,

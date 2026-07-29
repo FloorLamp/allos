@@ -11,6 +11,7 @@ export * from "./queries/logical-outcomes";
 export * from "./queries/substance";
 export * from "./queries/sleep";
 export * from "./queries/training";
+export * from "./queries/frequency-targets";
 export * from "./queries/mobility";
 export * from "./queries/endurance";
 export * from "./queries/presence";

@@ -17,7 +17,7 @@
 import { db, today } from "../db";
 import { getWeekMode, getWeekStart } from "../settings";
 import { trailingWeeks } from "../week-window";
-import { weekWindowStart } from "./training/common";
+import { weekWindowStart } from "./profile-week";
 import { getWeeklyServingsForGroup } from "./nutrition";
 import {
   ALCOHOL_FOOD_GROUP,

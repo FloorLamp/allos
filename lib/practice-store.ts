@@ -14,7 +14,7 @@ import type { FrequencyTarget, PracticeLog } from "./types";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargets,
-} from "./queries/training/goals";
+} from "./queries/frequency-targets";
 
 export interface WellnessPractice {
   identity: string;
