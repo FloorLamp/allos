@@ -135,6 +135,21 @@ export const MVBIO_RO_ANALYTE = "Biored Glucose (e2e)";
 export const E2E_LOGIN_GRANTEDIT = "e2e_grantedit";
 export const GRANT_EDIT_PROFILE = "Grant Edit (e2e)";
 
+// #1434 — invite-flow hardening. Both are PROFILES WITHOUT LOGINS on purpose: the
+// specs need something to grant, not another identity in every login's grant matrix.
+//
+// DUP_ACCESS_PROFILE is seeded TWICE, deliberately identical, because that is the
+// bug: two same-named profiles used to render as indistinguishable checkbox rows in
+// the Access matrix and the create-login access picker — exactly where granting the
+// wrong person's record is the costliest mistake. The spec asserts the #534
+// disambiguation ordinals show up in both places.
+export const DUP_ACCESS_PROFILE = "Dup Access (e2e)";
+
+// INVITE_TARGET_PROFILE is what the emailed-invite journey grants its new member at
+// CREATE time, so the invitee lands on a real profile instead of the grantless dead
+// end. Nobody else's dependency — the journey only reads it.
+export const INVITE_TARGET_PROFILE = "Invite Target (e2e)";
+
 // ── Telegram household dose round (issue #1459) ──────────────────────────────
 // A spec-owned caregiver fixture for e2e/household-round.spec.ts. The login's
 // own_profile_id points at the CAREGIVER profile (created first, so it holds the

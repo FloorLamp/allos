@@ -1,10 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Browser } from "@playwright/test";
+import Database from "better-sqlite3";
 import fs from "node:fs";
 import { settledClick, settledFill, followLink } from "./helpers";
 import { createLoginViaFamily } from "./family-helpers";
+import { INVITE_TARGET_PROFILE } from "./fixture-logins";
 import { loginAs } from "./nav";
-import { workerMailboxPath } from "./worker-env";
+import { workerDbPath, workerMailboxPath } from "./worker-env";
 
 // Outbound email — SMTP foundation + login-lifecycle flows (issue #985). One
 // self-contained journey (so it's robust under --repeat-each): it OWNS the global
@@ -30,6 +32,23 @@ function tokenFor(email: string): string {
   const m = line!.match(/set-password\?token=([0-9a-f]+)/);
   expect(m, `no set-password token in mail to ${email}`).toBeTruthy();
   return m![1];
+}
+
+// The dedicated bare fixture profile the invited member is granted at CREATE time
+// (#1434). A profile WITHOUT a login on purpose — the journey needs something to
+// grant, not another identity in every login's grant matrix (#1392).
+function inviteTargetProfileId(): number {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(INVITE_TARGET_PROFILE) as { id: number }
+    ).id;
+  } finally {
+    db.close();
+  }
 }
 
 async function cookielessPage(browser: Browser) {
@@ -138,18 +157,29 @@ test.describe("outbound email — login lifecycle (#985)", () => {
     // ── (2) Invite flow from Family settings ────────────────────────────────
     const invitee = `invitee-${SUFFIX}`;
     const inviteeEmail = `invitee-${SUFFIX}@example.com`;
-    // Admin role so the invited login can see the app (a member with no granted
-    // profile has nowhere to land) — this spec is about the email flow, not grants.
+    // A MEMBER now, not an admin (#1434): the create form carries the login's initial
+    // profile access, so the invited member lands on a real profile instead of the
+    // grantless dead end this journey used to have to route around. PASSWORDLESS too
+    // — with the invite checked, no password is asked for or accepted, so no
+    // admin-known interim credential exists alongside the invite link.
     // The shared helper hardens the onClick+refresh create against the hydration
     // swallow / toaster false-settle; sendInviteEmail is awaited before createLogin
     // returns, so once the durable login-row lands the invite is already captured.
     await createLoginViaFamily(page, {
       username: invitee,
-      password: TEMP_PW,
       email: inviteeEmail,
-      role: "admin",
+      role: "member",
       invite: true,
+      passwordless: true,
+      accessProfileIds: [inviteTargetProfileId()],
     });
+    // The member is granted, so it carries no "no access" badge.
+    await expect(
+      page
+        .getByTestId("login-row")
+        .filter({ has: page.getByText(invitee, { exact: true }) })
+        .getByTestId("login-no-access")
+    ).toHaveCount(0);
 
     // Follow the invite link (captured mail) and set a password.
     const invPage = await cookielessPage(browser);
@@ -164,9 +194,20 @@ test.describe("outbound email — login lifecycle (#985)", () => {
       invPage.getByRole("button", { name: "Set password" })
     );
     await expect(invPage.getByTestId("set-password-done")).toBeVisible();
+    // The success step carries the username the token was minted for, so the sign-in
+    // form arrives filled in (#1434) — they just proved token possession.
+    await followLink(
+      invPage,
+      invPage.getByTestId("set-password-signin"),
+      /\/login/
+    );
+    await expect(invPage.locator('input[name="username"]')).toHaveValue(
+      invitee
+    );
     await invPage.context().close();
 
-    // The invited user can now sign in with the password THEY set.
+    // The invited member can now sign in with the password THEY set, and lands on
+    // the profile the admin granted at create time.
     const inviteeSession = await loginAs(browser, {
       username: invitee,
       password: SET_PW,
@@ -174,6 +215,9 @@ test.describe("outbound email — login lifecycle (#985)", () => {
     await expect(
       inviteeSession.getByRole("link", { name: "Data" })
     ).toBeVisible();
+    await expect(inviteeSession.getByTestId("user-menu-trigger")).toContainText(
+      INVITE_TARGET_PROFILE
+    );
     await inviteeSession.context().close();
 
     // ── (1) Forgot-password round trip ──────────────────────────────────────

@@ -55,6 +55,15 @@ export interface CreateLoginOpts {
   // Email an invite instead of setting the password out-of-band. Requires `email`
   // and a mail-configured instance (the create-invite checkbox only renders then).
   invite?: boolean;
+  // Create the login with NO password at all (issue #1434): the invite carries the
+  // credential, so the form disables the password field and the action never asks
+  // for one. Only meaningful together with `invite`; the returned `password` is
+  // empty, since nothing can sign in until the invitee spends their token.
+  passwordless?: boolean;
+  // Initial profile access for a MEMBER (issue #1434) — profile ids to check in the
+  // create form's access picker, so the login isn't born into the grantless dead
+  // end. Omit to accept the form's own default (a same-named profile, else none).
+  accessProfileIds?: readonly number[];
 }
 
 // The universal "did the login land" signal: every login (admin OR member) renders a
@@ -83,7 +92,7 @@ export async function createLoginViaFamily(
 ): Promise<Credentials> {
   const role = opts.role ?? "member";
   const username = opts.username ?? `${role}-${Date.now()}-${++familySeq}`;
-  const password = opts.password ?? MEMBER_PASSWORD;
+  const password = opts.passwordless ? "" : (opts.password ?? MEMBER_PASSWORD);
   const row = loginRowFor(page, username);
 
   // The family create button is onClick+router.refresh() (not a form submit), so no
@@ -92,17 +101,29 @@ export async function createLoginViaFamily(
   await expect(async () => {
     await page.goto("/settings/family");
     await settledFill(page, page.getByPlaceholder("Username"), username);
-    await page.getByPlaceholder("Password").fill(password);
+    if (!opts.passwordless) {
+      await page.getByPlaceholder("Password").fill(password);
+    }
     if (opts.email !== undefined) {
       await page.getByPlaceholder("Email (optional)").fill(opts.email);
     }
     if (role !== "member") {
       await page.getByTestId("create-role").selectOption(role);
     }
+    // Initial profile access (#1434) — before the invite toggle, so a passwordless
+    // create still picks its grants while the picker is on screen (it renders for a
+    // member regardless). settledCheck waits for the controlled checkbox's onChange.
+    if (opts.accessProfileIds && role === "member") {
+      for (const id of opts.accessProfileIds) {
+        await settledCheck(page, page.getByTestId(`create-access-${id}`), true);
+      }
+    }
     if (opts.invite) {
       // The invite checkbox is enabled only once a non-empty email is in state (filled
       // above); .check() throws if the click didn't stick, which fails the attempt and
       // re-drives the whole cycle — self-correcting, so no extra guard is needed.
+      // Checking it also DISABLES the password field (the invite carries the
+      // credential), which is why the fill above is skipped for a passwordless create.
       await page.getByTestId("create-invite").check();
     }
     await page.getByRole("button", { name: "Create login" }).click();
