@@ -19,6 +19,7 @@ import { settledClick } from "./helpers";
 const LOW_NAME = "Tracked Never Pushed (e2e)";
 const HIGH_NAME = "Pushed Comparison (e2e)";
 const ABANDONED_NAME = "Abandoned Habit (e2e)";
+const GUARDED_MED_NAME = "Guarded Med (e2e)";
 
 function openDb(): Database.Database {
   const db = new Database(workerDbPath());
@@ -197,6 +198,58 @@ test("accepting a demotion suggestion moves the item into the available disclosu
       .prepare("SELECT obligation FROM intake_items WHERE id = ?")
       .get(item.itemId) as { obligation: string };
     expect(stored.obligation).toBe("may");
+  } finally {
+    dropItem(db, itemId);
+    db.close();
+  }
+});
+
+test("a medication's obligation control defaults to Must and states each level's consequences (#1505)", async ({
+  page,
+}) => {
+  const db = openDb();
+  let itemId: number | null = null;
+  try {
+    // A `must` medication with a live schedule — the state the guardrail protects.
+    const med = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, obligation, condition, source, created_at)
+           VALUES (1, ?, 1, 'medication', 'must', 'daily', 'manual', ?)`
+        )
+        .run(GUARDED_MED_NAME, `${dayBack(30)} 08:00:00`).lastInsertRowid
+    );
+    itemId = med;
+    db.prepare(
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort, created_at)
+       VALUES (?, '1 tablet', 'Morning', 'any', 0, ?)`
+    ).run(med, `${dayBack(30)} 08:00:00`);
+
+    await page.goto(`/medications/${med}?action=edit`);
+    const obligation = page.getByTestId("med-obligation");
+    await expect(obligation).toHaveValue("must");
+
+    // The consequence of the CURRENT choice is always on screen — "May" must never be
+    // a bare adjective, which is the failure the whole model exists to fix. Each level
+    // names what it does, from the one shared copy the confirm dialog also quotes.
+    const hint = page.getByTestId("med-obligation-hint");
+    await expect(hint).toContainText(/follow-up nudge/i);
+
+    await obligation.selectOption("should");
+    await expect(hint).toContainText(/never escalated/i);
+
+    await obligation.selectOption("may");
+    await expect(hint).toContainText(/no reminders and no misses/i);
+    // Choosing May reveals the as-needed dose shape it IS (#851/#798 key off it).
+    await expect(page.getByTestId("redose-block")).toBeVisible();
+
+    // Nothing is written by looking: the stored obligation is untouched until save.
+    const stored = db
+      .prepare("SELECT obligation FROM intake_items WHERE id = ?")
+      .get(med) as { obligation: string };
+    expect(stored.obligation).toBe("must");
   } finally {
     dropItem(db, itemId);
     db.close();

@@ -427,10 +427,15 @@ export default function MedicationForm({
     // thing standing between a prescription and silence is this confirm. It is
     // deliberately CONSEQUENCE-STATING rather than "are you sure?": the user is
     // giving up a safety net, and the dialog names exactly which parts of it.
-    // Asked only on the TRANSITION down (a med already below must isn't re-asked on
-    // every unrelated edit) — confirm-to-leave-must, never confirm-to-keep, because
-    // the contact-consent rule only requires consent for INCREASING risk of silence.
-    const wasMust = (s?.obligation ?? "must") === "must";
+    //
+    // Asked ONLY when an EXISTING must medication is being moved down. Two exclusions,
+    // both deliberate:
+    //   • a NEW medication is a declaration, not a reduction — nothing is being taken
+    //     away, and adding a PRN painkiller should not be interrogated;
+    //   • a med already below must is not re-asked on every unrelated edit.
+    // That is the contact-consent rule's shape: consent is owed for LOSING a safety
+    // net you had, not for describing what an item is.
+    const wasMust = s != null && (s.obligation ?? "must") === "must";
     if (obligation !== "must" && wasMust) {
       const ok = await confirm({
         title: `Reduce reminders for ${label}?`,

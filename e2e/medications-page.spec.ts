@@ -218,18 +218,15 @@ test("Add medication opens one inline quick-add and full-details workspace", asy
   const scheduledStartDisplay = await scheduledStart.inputValue();
   expect(scheduledStartDisplay).not.toBe("");
 
-  const asNeededControl = panel.getByRole("checkbox", { name: /As needed/ });
-  const asNeededLabel = asNeededControl.locator("xpath=ancestor::label");
-  expect(
-    await asNeededControl.evaluate(
-      (element) => getComputedStyle(element).cursor
-    )
-  ).toBe("pointer");
-  expect(
-    await asNeededLabel.evaluate((element) => getComputedStyle(element).cursor)
-  ).toBe("pointer");
+  // #1505: the as-needed checkbox is now the obligation select — `may` IS as-needed,
+  // so choosing it is what turns the start date into an optional "Using since".
+  const obligation = panel.getByTestId("med-obligation");
+  await expect(obligation).toHaveValue("must"); // a medication defaults to must
+  await expect(panel.getByTestId("med-obligation-hint")).toContainText(
+    /follow-up nudge/i
+  );
 
-  await asNeededControl.check();
+  await obligation.selectOption("may");
   const usingSince = panel.getByLabel(/Using since/);
   await expect(usingSince).toHaveValue("");
   await expect(usingSince).not.toHaveAttribute("required");
@@ -237,23 +234,11 @@ test("Add medication opens one inline quick-add and full-details workspace", asy
     panel.getByText("Leave blank if you don’t know when you started using it.")
   ).toBeVisible();
 
-  await asNeededControl.uncheck();
+  await obligation.selectOption("must");
   await expect(panel.getByLabel("Started on")).toHaveValue(
     scheduledStartDisplay
   );
   await expect(panel.getByLabel("Started on")).toHaveAttribute("required");
-
-  await asNeededControl.evaluate((element) => {
-    (element as HTMLInputElement).disabled = true;
-  });
-  expect(
-    await asNeededControl.evaluate(
-      (element) => getComputedStyle(element).cursor
-    )
-  ).toBe("not-allowed");
-  expect(
-    await asNeededLabel.evaluate((element) => getComputedStyle(element).cursor)
-  ).toBe("not-allowed");
 
   await page.getByTestId("medication-add-toggle").click();
   await expect(panel).toHaveCount(0);
