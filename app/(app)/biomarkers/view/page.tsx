@@ -15,8 +15,14 @@ import {
   getMedicalDocumentsByIds,
   getMedicalRecords,
   getFoodSuggestions,
+  getRevisionsByRecord,
   isBiomarkerSaved,
 } from "@/lib/queries";
+import {
+  fastingLabel,
+  resultStatusLabel,
+  revisionSummary,
+} from "@/lib/lab-result-lifecycle";
 import { biomarkerFamily } from "@/lib/canonical-name";
 import {
   OTHER_PANEL,
@@ -28,7 +34,7 @@ import { tableNameKey } from "@/lib/derived-table";
 import { isIopBiomarker } from "@/lib/followup-iop";
 import TrackLabFollowUpControl from "../TrackLabFollowUpControl";
 import FoodSuggestions from "@/components/FoodSuggestions";
-import type { CanonicalBiomarker, Sex } from "@/lib/types";
+import type { CanonicalBiomarker, MedicalRecord, Sex } from "@/lib/types";
 import {
   rangeBadge,
   RANGE_BADGE_META,
@@ -120,6 +126,18 @@ function latestHeightPercentile(
   );
 }
 
+// The collection attributes a reading actually states (#1404), as display chips:
+// its lifecycle status, its fasting state, its specimen. Empty when the source said
+// none of them — an unstated status is NOT "Final", and an unstated fasting state is
+// NOT "Non-fasting", so nothing is rendered rather than something invented.
+function readingAttributes(r: MedicalRecord): string[] {
+  return [
+    resultStatusLabel(r.result_status),
+    fastingLabel(r.fasting ?? null),
+    r.specimen ?? null,
+  ].filter((x): x is string => !!x);
+}
+
 export default async function BiomarkerDetailPage(props: {
   searchParams: Promise<{ name?: string }>;
 }) {
@@ -195,6 +213,16 @@ export default async function BiomarkerDetailPage(props: {
   for (const d of getMedicalDocumentsByIds(profile.id, docIds)) {
     docLabels.set(d.id, documentLabel(d));
   }
+
+  // Correction lineage (#1404): the prior values a re-import overwrote, per reading.
+  // A re-issued lab result no longer replaces what the user read with nothing to show
+  // for it — the superseded value is preserved beside its reading (never among the
+  // readings, so it can't chart, count, or flag) and surfaces here. Derived readings
+  // carry synthetic negative ids and have no lineage; the helper filters them out.
+  const revisionsByRecord = getRevisionsByRecord(
+    profile.id,
+    series.map((r) => r.id)
+  );
 
   // Newest reading overall (series is oldest-first) for the header value.
   const latest = series[series.length - 1];
@@ -864,6 +892,25 @@ export default async function BiomarkerDetailPage(props: {
                   <td className="td whitespace-nowrap">{r.date}</td>
                   <td className="td">
                     <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+                    {/* How this result was collected and where it sits in the lab
+                        lifecycle (#1404) — shown only when the source said. */}
+                    {readingAttributes(r).length > 0 && (
+                      <div
+                        className="text-xs text-slate-500 dark:text-slate-400"
+                        data-testid="reading-attributes"
+                      >
+                        {readingAttributes(r).join(" · ")}
+                      </div>
+                    )}
+                    {(revisionsByRecord.get(r.id) ?? []).map((rev) => (
+                      <div
+                        key={rev.id}
+                        className="text-xs text-amber-700 dark:text-amber-400"
+                        data-testid="reading-revision"
+                      >
+                        {revisionSummary(rev)}
+                      </div>
+                    ))}
                   </td>
                   <td className="td text-slate-500 dark:text-slate-400">
                     {r.reference_range ?? "—"}

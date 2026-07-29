@@ -10,6 +10,11 @@ import { useCanonicalNames } from "./CanonicalNamesContext";
 import { useToast } from "./Toast";
 import { useFocusFormOnParam } from "./useFocusFormOnParam";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
+import {
+  RESULT_STATUSES,
+  RESULT_STATUS_LABELS,
+  SPECIMEN_SUGGESTIONS,
+} from "@/lib/lab-result-lifecycle";
 import type { FormResult, MedicalRecord } from "@/lib/types";
 
 // Only clinical flags are user-settable; "non-optimal" is derived from the
@@ -70,6 +75,9 @@ export default function RecordForm({
   // clear it — the add path resets this state explicitly on a successful save.
   const canonicalNames = useCanonicalNames();
   const [canonical, setCanonical] = useState(record?.canonical_name ?? "");
+  // Same controlled-Combobox treatment for the specimen picker (#1404): form.reset()
+  // can't clear a controlled input, so the add path clears it explicitly on save.
+  const [specimen, setSpecimen] = useState(record?.specimen ?? "");
 
   // The add form focuses itself when reached from the palette's "Add biomarker
   // record" (issue #29); the inline row editors (edit mode) opt out.
@@ -97,6 +105,7 @@ export default function RecordForm({
       // entry and confirm the save.
       formRef.current?.reset();
       setCanonical("");
+      setSpecimen("");
       toast("Record saved");
     }
   }
@@ -232,6 +241,64 @@ export default function RecordForm({
           placeholder="< 100"
         />
       </div>
+      {/* The collection attributes of a reading (#1404). Offered in BOTH modes: a
+          hand-entered fasting glucose needs its fasting state as much as an imported
+          one, and a user transcribing a corrected report needs to say so. All three
+          default to "unstated" — never to "final" / "non-fasting", which would be a
+          claim the reading doesn't make. */}
+      <div>
+        <label className="label" htmlFor={`rec-${uid}-result-status`}>
+          Result status
+        </label>
+        <select
+          id={`rec-${uid}-result-status`}
+          name="result_status"
+          className="input capitalize"
+          data-testid="record-result-status"
+          defaultValue={record?.result_status ?? ""}
+        >
+          <option value="">—</option>
+          {RESULT_STATUSES.map((s) => (
+            <option key={s} value={s} className="capitalize">
+              {RESULT_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="label" htmlFor={`rec-${uid}-fasting`}>
+          Fasting
+        </label>
+        <select
+          id={`rec-${uid}-fasting`}
+          name="fasting"
+          className="input"
+          data-testid="record-fasting"
+          defaultValue={record?.fasting == null ? "" : String(record.fasting)}
+        >
+          <option value="">—</option>
+          <option value="1">Fasting</option>
+          <option value="0">Non-fasting</option>
+        </select>
+      </div>
+      <div className="sm:col-span-2">
+        <label className="label" htmlFor={`rec-${uid}-specimen`}>
+          Specimen
+        </label>
+        {/* The shared Combobox in free-text mode (#1176/#1177), never a native
+            datalist: the suggestions are a curated STARTING point, and a lab that
+            prints "Capillary Whole Blood" must still be typeable. */}
+        <Combobox
+          id={`rec-${uid}-specimen`}
+          name="specimen"
+          ariaLabel="Specimen"
+          value={specimen}
+          onChange={setSpecimen}
+          options={[...SPECIMEN_SUGGESTIONS]}
+          allowFreeText
+          placeholder="e.g. Serum"
+        />
+      </div>
       <div className="sm:col-span-2">
         <label className="label" htmlFor={`rec-${uid}-notes`}>
           Notes
@@ -266,6 +333,32 @@ export default function RecordForm({
             type="hidden"
             name="provider_loaded"
             value={record?.provider_name ?? ""}
+          />
+        </div>
+      )}
+      {editing && (
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor={`rec-${uid}-ordering-provider`}>
+            Ordered by
+          </label>
+          {/* The clinician who ORDERED the test, distinct from the performing lab
+              above (#1404) — "Dr. A ordered it, Quest ran it" used to collapse into
+              one link. Same shared registry, same create-on-type picker. */}
+          <ProviderCombobox
+            id={`rec-${uid}-ordering-provider`}
+            name="ordering_provider"
+            defaultValue={record?.ordering_provider_name ?? ""}
+            placeholder="e.g. Dr. Ada Lovelace"
+          />
+          <input
+            type="hidden"
+            name="ordering_provider_id"
+            value={record?.ordering_provider_id ?? ""}
+          />
+          <input
+            type="hidden"
+            name="ordering_provider_loaded"
+            value={record?.ordering_provider_name ?? ""}
           />
         </div>
       )}

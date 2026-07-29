@@ -232,7 +232,28 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
             table: "encounters",
             onMissing: "null",
           },
+          // ORDERING provider (#1404) — the same real, enforced, outward-pointing FK
+          // as provider_id above (the clinician who ordered the test, not the lab
+          // that ran it), and the same treatment when that registry row is gone by
+          // restore time: null the link, keep the record.
+          {
+            column: "ordering_provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
         ],
+      },
+      {
+        // Correction lineage (#1404): the prior values a re-import overwrote. A CHILD
+        // of the record (ON DELETE CASCADE), so the live delete takes them with it —
+        // which means the undo must bring them back, or "undo" would quietly destroy
+        // the correction history the delete was supposed to be reversible about.
+        entity: "revisions",
+        table: "medical_record_revisions",
+        fks: [{ column: "record_id", ref: "record" }],
+        childWhere: "record_id = ?",
+        childBinds: 1,
       },
     ],
   },

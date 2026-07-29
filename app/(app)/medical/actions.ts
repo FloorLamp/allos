@@ -22,6 +22,11 @@ import {
   migrateRenamedBiomarker,
 } from "@/lib/queries";
 import { resolveProviderOnEdit } from "@/lib/providers-db";
+import {
+  normalizeResultStatus,
+  parseFasting,
+  sanitizeSpecimen,
+} from "@/lib/lab-result-lifecycle";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Revalidate the import document pages plus the biomarkers surfaces after a
@@ -82,8 +87,9 @@ export async function addRecord(formData: FormData): Promise<FormResult> {
     const info = db
       .prepare(
         `INSERT INTO medical_records
-           (date, category, name, value, value_num, unit, reference_range, notes, canonical_name, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`
+           (date, category, name, value, value_num, unit, reference_range, notes, canonical_name, profile_id,
+            result_status, fasting, specimen)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         date,
@@ -95,7 +101,14 @@ export async function addRecord(formData: FormData): Promise<FormResult> {
         (formData.get("reference_range") as string)?.trim() || null,
         (formData.get("notes") as string)?.trim() || null,
         canonical,
-        profile.id
+        profile.id,
+        // Collection attributes (#1404). Validated server-side through the SAME pure
+        // helpers the importer uses: an unknown status word or fasting value becomes
+        // NULL ("unstated") rather than reaching the column's CHECK and 500ing (the
+        // #385/#323 class — a state writable in TS but forbidden by the CHECK).
+        normalizeResultStatus(formData.get("result_status") as string | null),
+        parseFasting(formData.get("fasting")),
+        sanitizeSpecimen(formData.get("specimen") as string | null)
       );
     // Auto-flag the new reading non-optimal if it falls outside the optimal band.
     reconcileFlags(profile.id, [Number(info.lastInsertRowid)]);
@@ -152,6 +165,15 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
     String(formData.get("provider_loaded") ?? ""),
     String(formData.get("provider") ?? "")
   );
+  // The ORDERING clinician (#1404) — a separate link from the performing lab above,
+  // resolved the same unchanged-field-preserving way (#601). Individual-typed: the
+  // orderer is a person, where the performer is usually the lab organization.
+  const orderingProviderId = resolveProviderOnEdit(
+    Number(formData.get("ordering_provider_id")) || null,
+    String(formData.get("ordering_provider_loaded") ?? ""),
+    String(formData.get("ordering_provider") ?? ""),
+    "individual"
+  );
 
   // Read the reading's PRIOR canonical grouping before overwriting it, so a
   // canonical rename can carry its star + retest dismissal to the new name rather
@@ -170,7 +192,8 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
     `UPDATE medical_records
        SET date = ?, category = ?, name = ?, value = ?, value_num = ?, unit = ?,
            reference_range = ?, flag = ?, panel = ?, notes = ?, canonical_name = ?,
-           provider_id = ?,
+           provider_id = ?, ordering_provider_id = ?,
+           result_status = ?, fasting = ?, specimen = ?,
            -- Lock integration-imported rows (external_id set) against re-ingest so a
            -- hand-corrected vital isn't silently reverted by the next rolling window
            -- (issue #133). No-op for manual/document rows (external_id NULL).
@@ -189,6 +212,12 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
     str("notes"),
     canonical,
     providerId,
+    orderingProviderId,
+    // Same server-side normalization as addRecord: unknown values land as NULL
+    // ("unstated"), never in a column the CHECK would reject.
+    normalizeResultStatus(str("result_status")),
+    parseFasting(formData.get("fasting")),
+    sanitizeSpecimen(str("specimen")),
     id,
     profileId
   );

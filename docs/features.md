@@ -872,6 +872,30 @@ a calm, cited hearing-safety note on Medications, Supplements, and Upcoming,
 informational and never prescriptive. Hearing aids are tracked in the
 **Equipment** registry rather than a second medical-device table.
 
+### Result status, corrections, and how a draw was collected
+
+A lab result carries more than a number. Each reading can record its **result
+status** — the lab's own lifecycle, _preliminary / final / corrected / amended_
+(FHIR `Observation.status`) — plus whether the draw was **fasting** (a real
+tri-state: fasting, non-fasting, or unstated — a fasting glucose is read against a
+different band than a random one), the **specimen** it came from (serum, plasma,
+whole blood, urine, RBC…), and the clinician who **ordered** it, separately from
+the lab that **performed** it. All four are optional on every reading: unstated
+stays unstated, never a guessed "final" or "non-fasting". The record form offers
+them on both the add and edit paths, the AI document extractor fills them from what
+a report actually prints (a "CORRECTED REPORT" banner, a "Fasting: Yes" line, a
+printed specimen), and the deterministic FHIR importer maps `Observation.status`.
+
+**A corrected result no longer erases the one it replaces.** When a source
+re-issues a reading it already sent — same `external_id`, a changed value, or a
+status the lab itself calls corrected/amended — the value being replaced is
+preserved beside the reading before the overwrite, and the biomarker detail page
+shows it ("Corrected — was 5.2 mmol/L"). The reading itself keeps its identity, so
+everything linked to it survives; the preserved value is provenance only and never
+charts, counts, or flags. A hand-corrected reading is still never overwritten at
+all (the import edit-lock), and an ordinary re-send of an unchanged value stays a
+silent no-op.
+
 ### Visits and record provenance
 
 The Visits page pairs **Upcoming** appointments—booking, kinds, and

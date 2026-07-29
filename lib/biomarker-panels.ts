@@ -29,11 +29,15 @@
 // "Vitamin D, 25-Hydroxy". A pure test pins that no registered family straddles two
 // panels, so an over-broad family can't quietly split a group.
 //
-// SQL REALIZATION (#394 finite preimage). SQL can't call this matcher, so
-// `panelKeyOfExpr()` inlines each panel's member spellings as an `IN (...)`
-// preimage over a name expression — the same shape `biomarkerFamilyKey()` uses in
-// lib/queries/medical.ts, generated from the SAME data below so the JS and SQL
-// answers can never disagree. Every other name falls through to `other`.
+// SQL REALIZATION. SQL calls THIS resolver, through the `biomarker_panel()` SQLite
+// user function (lib/sql-functions.ts) that lib/queries/medical.biomarkerPanelKey()
+// wraps — one computation, not two realizations of it. It used to be a generated
+// finite-preimage (#394) `IN (...)` CASE over `panelMemberSpellings()`, which could
+// only enumerate each panel's finite member list (plus the enumerated members of the
+// families those names belong to) and structurally dropped a family's freeform
+// `match` matcher, so a match-only spelling was a family member to the family key and
+// panel `other` here (#1629). `panelMemberSpellings()` survives as the corpus the
+// JS↔SQL parity tests pin, not as the runtime realization.
 //
 // FALLBACK POSTURE. `other` is reserved for names the taxonomy does NOT know —
 // an un-canonicalized reading the extractor coined. It is NOT a dumping ground for
@@ -600,19 +604,22 @@ export function orderedPanelIds(): PanelId[] {
   );
 }
 
-// ---- SQL finite-preimage realization (#394) --------------------------------
+// ---- The JS↔SQL parity corpus ----------------------------------------------
 
 // Member spellings of a `family:<key>` identity, from the shared BIOMARKER_FAMILIES
-// data (imported, never duplicated — one source of truth with lib/canonical-name.ts,
-// the same discipline familyKeyOfExpr uses for the family preimage).
+// data (imported, never duplicated — one source of truth with lib/canonical-name.ts).
 const FAMILY_MEMBERS = new Map<string, readonly string[]>(
   BIOMARKER_FAMILIES.map((f) => [`${FAMILY_PREFIX}${f.key}`, f.members])
 );
 
 // The lowercased spellings that resolve to each panel: its assigned canonical
-// names PLUS every member spelling of any #482 family those names belong to, so
-// the SQL preimage and the JS matcher agree on "25-OH Vitamin D" and "eAG".
-// Deduped, insertion-ordered, so the generated SQL is deterministic.
+// names PLUS every member spelling of any #482 family those names belong to.
+// This is the ENUMERATED CORPUS the JS↔SQL parity tests walk (every spelling in it
+// must resolve to the same slug through panelForCanonicalName() and through the
+// `biomarker_panel()` user function) — deliberately NOT a runtime realization of
+// panel membership, since it can only ever see a family's finite member list and
+// never its freeform `match` matcher (#1629). Deduped and insertion-ordered, so the
+// corpus is deterministic.
 export function panelMemberSpellings(id: Exclude<PanelId, "other">): string[] {
   const out = new Set<string>();
   for (const name of BIOMARKER_PANELS[id]) {
@@ -628,27 +635,10 @@ function sqlStringLiteral(s: string): string {
   return `'${s.replace(/'/g, "''")}'`;
 }
 
-// The panel identity as a SQL expression over an arbitrary name expression — the
-// finite-preimage (#394) realization of panelForCanonicalName(), mirroring
-// familyKeyOfExpr() in lib/queries/medical.ts. Each panel's member spellings are
-// inlined as an `IN (...)` preimage; everything else falls through to `'other'`.
-// Slugs and member strings are hardcoded constants (single-quote escaped), so this
-// is injection-safe. Pass a name expression that already resolves canonical-or-raw
-// (e.g. biomarkerNameKey()).
-export function panelKeyOfExpr(nameExpr: string): string {
-  const whens = (
-    Object.keys(BIOMARKER_PANELS) as Exclude<PanelId, "other">[]
-  ).map((id) => {
-    const inList = panelMemberSpellings(id).map(sqlStringLiteral).join(", ");
-    return `WHEN lower(${nameExpr}) IN (${inList}) THEN ${sqlStringLiteral(id)}`;
-  });
-  return `CASE ${whens.join(" ")} ELSE ${sqlStringLiteral(OTHER_PANEL)} END`;
-}
-
 // The panel's SORT ORDER as a SQL expression, mapping an already-resolved panel
-// slug expression (i.e. panelKeyOfExpr's output, or a column holding it) to its
-// PANEL_LABELS order. Deliberately takes the SLUG rather than the name so the big
-// finite-preimage CASE is evaluated ONCE and this stays a small lookup — the
+// slug expression (i.e. biomarkerPanelKey()'s output, or a column holding it) to its
+// PANEL_LABELS order. Deliberately takes the SLUG rather than the name so the panel
+// resolver is evaluated ONCE and this stays a small lookup — the
 // "ORDER BY panel" clause and the JS comparator in lib/derived-table then sort by
 // the SAME curated order instead of an alphabetical accident of the slug spelling.
 export function panelOrderOfPanelExpr(panelExpr: string): string {

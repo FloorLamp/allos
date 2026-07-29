@@ -75,6 +75,10 @@ export interface ProviderLink {
 // from the absorbed row to the survivor; the schema-binding test keeps it complete.
 export const PROVIDER_LINK_COLUMNS: ProviderLink[] = [
   { table: "medical_records", column: "provider_id" },
+  // A reading links the PERFORMING lab above and, separately, the clinician who
+  // ORDERED it (#1404) — the imaging_studies two-column shape, one domain over. A
+  // merge re-points both, or the orderer link would strand on the deleted duplicate.
+  { table: "medical_records", column: "ordering_provider_id" },
   { table: "immunizations", column: "provider_id" },
   { table: "intake_items", column: "provider_id" },
   // Per-course prescriber link (#1204): a renewal course records the individual who

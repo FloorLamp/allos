@@ -96,6 +96,12 @@ export interface ImportedRecord {
   // intact); `reference_range` is stored for display + the unit-mislabel cross-check.
   reference_range?: string | null;
   flag?: MedicalFlag | null;
+  // The result's place in the lab lifecycle as the SOURCE stated it (#1404) — FHIR
+  // `Observation.status`: preliminary / final / corrected / amended. Set by the FHIR
+  // mapper when the bundle carries one of those four; unset otherwise (the C-CDA
+  // path leaves it alone — its observation statusCode is a completion state, not
+  // this lifecycle). Stored on medical_records.result_status.
+  result_status?: string | null;
   // The performing provider/organization (CCD observation `<performer>`, e.g.
   // "QUEST"), when carried. Resolved into the shared registry and linked via
   // medical_records.provider_id.
