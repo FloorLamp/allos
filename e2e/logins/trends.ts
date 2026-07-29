@@ -109,3 +109,13 @@ export const E2E_LOGIN_TRENDS_RANK_GOAL = "e2e_trends_rank_goal";
 export const TRENDS_RANK_GOAL_PROFILE = "Trends Rank Goal (e2e)";
 export const E2E_LOGIN_TRENDS_RANK_PLAIN = "e2e_trends_rank_plain";
 export const TRENDS_RANK_PLAIN_PROFILE = "Trends Rank Plain (e2e)";
+
+// ── ★-pinned Body card order (issue #1643) ───────────────────────────────────
+// A WRITE-granted member whose profile carries exactly two Body cards with data —
+// weight (a standard seed, so already starred) and steps (not seeded, so unstarred
+// and sitting in its ranked slot below weight). That contrast is the whole fixture:
+// starring steps must move it ahead of weight, re-sequencing it on Overview must
+// move it back, and unstarring must return it to its ranked slot. The spec restores
+// the seed state, so --repeat-each stays clean and no neighbour's order moves.
+export const E2E_LOGIN_TRENDS_PIN = "e2e_trends_pin";
+export const TRENDS_PIN_PROFILE = "Trends Pin (e2e)";

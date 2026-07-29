@@ -95,6 +95,7 @@ import {
   seedCompareFold,
   seedFitnessLens,
   seedRankedCardOrder,
+  seedPinnedCardOrder,
 } from "./seed/trends";
 
 seedPrelude();
@@ -162,6 +163,7 @@ seedTrendsReadings();
 seedCompareFold();
 seedFitnessLens();
 seedRankedCardOrder();
+seedPinnedCardOrder();
 seedTrainingRollup();
 seedLoadContexts();
 seedTimelineChrome();

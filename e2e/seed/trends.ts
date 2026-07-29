@@ -37,6 +37,8 @@ import {
   TRENDS_RANK_GOAL_PROFILE,
   E2E_LOGIN_TRENDS_RANK_PLAIN,
   TRENDS_RANK_PLAIN_PROFILE,
+  E2E_LOGIN_TRENDS_PIN,
+  TRENDS_PIN_PROFILE,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -449,10 +451,16 @@ export function seedRankedCardOrder(): void {
     );
   }
 
-  // 2. WEIGHT GOAL and 3. PLAIN — the SAME data shape (weigh-ins + a systolic
-  // series), differing ONLY in whether a live weight goal exists. That is what
-  // makes the pair a controlled comparison: any order difference between them is
-  // the goal signal and nothing else.
+  // 2. WEIGHT GOAL and 3. PLAIN — the SAME data shape (weigh-ins, heights, a
+  // systolic/diastolic pair, HRV and steps), differing ONLY in whether a live weight
+  // goal exists. That is what makes the pair a controlled comparison: any order
+  // difference between them is the goal signal and nothing else.
+  //
+  // The heights are there for BMI (#1659): under the everyday-first base layout the
+  // Composition run leads for BOTH profiles, so "the goal lifts weight" stopped
+  // being a DIFFERENCE between them. BMI is the goal's other card (GOAL_CARDS maps a
+  // weight goal to weight + bmi) and it sits in the synced composition TAIL, so the
+  // pair still has one card whose position only the goal can explain.
   for (const [profileName, loginName, withGoal] of [
     [TRENDS_RANK_GOAL_PROFILE, E2E_LOGIN_TRENDS_RANK_GOAL, true],
     [TRENDS_RANK_PLAIN_PROFILE, E2E_LOGIN_TRENDS_RANK_PLAIN, false],
@@ -508,6 +516,15 @@ export function seedRankedCardOrder(): void {
         `${day}T23:59:59Z`,
         steps
       );
+      // A stable adult height, so BMI is a real derived card for both profiles.
+      insSample.run(
+        id,
+        "height_cm",
+        day,
+        `${day}T06:30:00Z`,
+        `${day}T06:31:00Z`,
+        181.0
+      );
       insVital.run(
         id,
         day,
@@ -536,4 +553,52 @@ export function seedRankedCardOrder(): void {
       `e2e: seeded Trends rank ${withGoal ? "GOAL" : "PLAIN"} fixture — profile ${id} (${profileName}) (#1490)`
     );
   }
+}
+
+// ── ★-pinned Body card order (#1643) ──
+export function seedPinnedCardOrder(): void {
+  // A dedicated WRITE fixture for the arrangement substrate (#868): the spec stars,
+  // re-sequences and unstars, so it must own its profile outright — a churned saved
+  // set is exactly the state a neighbour's Trends assertion would read wrong.
+  //
+  // The shape is deliberately minimal: TWO Body cards with data. `weight` is one of
+  // the standard metric seeds every profile is created with, so it starts STARRED
+  // and leads; `steps` is not seeded, so it starts unstarred in its ranked slot
+  // behind weight. Everything the issue claims is a move between those two states.
+  //
+  // Relative dates keep both series "rich" forever; idempotent, so a reused dev
+  // server re-seeds cleanly. The saved set is left exactly as creation made it —
+  // each test restores it.
+  const id = fixtureProfileId(TRENDS_PIN_PROFILE);
+  const anchor = today(id);
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND source = 'e2e-pin'`
+  ).run(id);
+  setUserSex(id, "female");
+  setUserBirthdate(id, shiftDateStr(anchor, -365 * 38));
+
+  const insBm = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+     VALUES (?, ?, ?, 'e2e:trends-pin')`
+  );
+  const insSample = db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'e2e-pin', 'steps', ?, ?, ?, ?)`
+  );
+  for (const [ago, kg, steps] of [
+    [18, 66.4, 7300],
+    [12, 66.1, 8800],
+    [6, 65.9, 9100],
+    [2, 65.7, 10400],
+  ] as const) {
+    const day = shiftDateStr(anchor, -ago);
+    insBm.run(id, day, kg);
+    insSample.run(id, day, `${day}T00:00:00Z`, `${day}T23:59:59Z`, steps);
+  }
+
+  seedMemberLogin(E2E_LOGIN_TRENDS_PIN, id, "write");
+  console.log(
+    `e2e: seeded Trends ★-pin fixture — profile ${id} (${TRENDS_PIN_PROFILE}) (#1643)`
+  );
 }

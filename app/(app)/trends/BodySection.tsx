@@ -327,11 +327,7 @@ export default async function BodySection({
     const id = bodyCardId(key);
     const seriesKey = seriesKeyForBodyCard(id);
     return seriesKey ? (
-      <TrendTileMenu
-        itemKey={seriesKey}
-        label={label}
-        saved={pinned.has(id)}
-      />
+      <TrendTileMenu itemKey={seriesKey} label={label} saved={pinned.has(id)} />
     ) : null;
   };
   // The star rides the chart card's header-action slot, ahead of any cross-link the
@@ -656,9 +652,11 @@ export default async function BodySection({
   // still each card's own has-data gate above — the ranker only orders what the
   // section decided to render, so a monitored condition (hypertension → BP) or a
   // richly-tracked series leads the run without any card appearing or vanishing.
-  const orderedVitals = applyCardOrder(vitalsCharts, cardOrder, (c) => c.key).map(
-    withStar
-  );
+  const orderedVitals = applyCardOrder(
+    vitalsCharts,
+    cardOrder,
+    (c) => c.key
+  ).map(withStar);
 
   const intradayBlock = intraday ? (
     !hasIntraday ? (
@@ -1027,7 +1025,10 @@ export default async function BodySection({
         <ChartCard
           key="active-calories"
           anchorId="active-calories"
-          headerAction={cardStar("active-calories", BODY_METRIC_META["active-calories"].title)}
+          headerAction={cardStar(
+            "active-calories",
+            BODY_METRIC_META["active-calories"].title
+          )}
           title={BODY_METRIC_META["active-calories"].title}
           detailHref={metricDetailHref("active-calories")}
         >
@@ -1186,7 +1187,10 @@ export default async function BodySection({
         <ChartCard
           key="lean-mass"
           anchorId="lean-mass"
-          headerAction={cardStar("lean-mass", BODY_METRIC_META["lean-mass"].title)}
+          headerAction={cardStar(
+            "lean-mass",
+            BODY_METRIC_META["lean-mass"].title
+          )}
           title={BODY_METRIC_META["lean-mass"].title}
           detailHref={metricDetailHref("lean-mass")}
         >
@@ -1207,7 +1211,10 @@ export default async function BodySection({
         <ChartCard
           key="bone-mass"
           anchorId="bone-mass"
-          headerAction={cardStar("bone-mass", BODY_METRIC_META["bone-mass"].title)}
+          headerAction={cardStar(
+            "bone-mass",
+            BODY_METRIC_META["bone-mass"].title
+          )}
           title={BODY_METRIC_META["bone-mass"].title}
           detailHref={metricDetailHref("bone-mass")}
         >
