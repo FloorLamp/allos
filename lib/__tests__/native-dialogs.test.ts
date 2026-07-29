@@ -100,6 +100,9 @@ describe("native browser dialogs", () => {
     expect(nativeDialogLines(source)).toEqual([1, 2, 3, 4]);
   });
 
+  // This parses every app/component source file. It normally takes under a second,
+  // but coverage plus the other CI checks can starve the CPU-bound TypeScript AST
+  // walk past Vitest's 5 s default without weakening or failing the assertion.
   it("keeps app and component code on the shared dialog primitives", () => {
     const offenses = ["app", "components"].flatMap((root) =>
       sourceFiles(path.join(REPO, root)).flatMap((absolute) =>
@@ -110,7 +113,7 @@ describe("native browser dialogs", () => {
     );
 
     expect(offenses).toEqual([]);
-  });
+  }, 15_000);
 
   it("does not allow Playwright to silently accept native dialogs", () => {
     expect(

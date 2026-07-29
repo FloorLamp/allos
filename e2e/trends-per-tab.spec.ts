@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 
 // Issue #105: the Trends hub must render ONLY the active tab's section
 // server-side (previously all six sections rendered — and ran their queries —
@@ -34,11 +34,15 @@ test("direct navigation renders only the requested tab's section (#105)", async 
   // The Overview tiles render (fed by the deduped one-source-per-day series and the
   // robust-endpoint change badge — #395/#398). Since #1487 the grid is the profile's
   // SAVED set: the seed's standard metric saves are why the "Weight" tile is here,
-  // and it still links to the Body tab.
+  // and its full header links to the metric detail page.
   await expect(page.getByTestId("trend-mini-card").first()).toBeVisible(); // first-ok: asserts a trend mini-card renders on the tab at all — order-agnostic presence
+  const weightTile = page.locator(
+    '[data-testid="saved-tile"][data-tile-key="metric:weight"]'
+  );
+  await expect(weightTile).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Weight", exact: true })
-  ).toBeVisible();
+    weightTile.getByTestId("trend-mini-header-link")
+  ).toHaveAttribute("href", "/trends/metric/weight");
 
   // Insights: its generate form renders; the Fitness link does not.
   await page.goto("/trends?tab=insights");
@@ -146,7 +150,9 @@ test("a retired ?ftab= deep link lands on the Fitness tab, param ignored (#1492)
   await expect(page).toHaveURL(/ftab=cardio/);
 
   // The sections navigate by plain in-page anchor, which does not renavigate the
-  // tab — the hub's own strip stays the only tab level.
+  // tab — the hub's own strip stays the only tab level. Options mount only while
+  // the compact Jump to menu is open.
+  await hydratedClick(page, page.getByTestId("chart-jump-menu-trigger"));
   await page.getByTestId("chart-jump-sport").click();
   await expect(page).toHaveURL(/tab=fitness/);
   await expect(page.getByTestId("fitness-sport")).toBeVisible();

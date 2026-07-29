@@ -181,11 +181,18 @@ test.describe("chart tap-through (#1488)", () => {
     );
     await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const field = page.getByLabel("Reading value");
+    const editingRow = field.locator("xpath=ancestor::tr");
     await field.fill(String(corrected));
-    await settledClick(
-      page,
-      page.getByRole("button", { name: "Save", exact: true })
-    );
+    // Editing owns the row until Save/Cancel. Leaving the overflow trigger in its
+    // action cell lets that cell intercept the inline Save button at tight widths.
+    await expect(
+      editingRow.getByRole("button", { name: "Reading actions" })
+    ).toHaveCount(0);
+    const save = editingRow.getByRole("button", {
+      name: "Save",
+      exact: true,
+    });
+    await settledClick(page, save);
     await expect(
       table.locator("tr").filter({ hasText: `${corrected} ms` })
     ).toHaveCount(1);

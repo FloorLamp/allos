@@ -191,42 +191,21 @@ function ReadingRow({
       </Td>
       <Td slot="value">
         {editing ? (
-          <span className="flex items-center gap-1">
-            <input
-              className="input w-24 py-1 text-sm"
-              type="number"
-              step="any"
-              inputMode="decimal"
-              aria-label="Reading value"
-              value={value}
-              autoFocus
-              disabled={busy}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void save();
-                if (e.key === "Escape") setEditing(false);
-              }}
-            />
-            <button
-              type="button"
-              className="btn-primary px-2 py-1 text-xs"
-              disabled={busy}
-              onClick={() => void save()}
-            >
-              Save
-            </button>
-            <button
-              type="button"
-              className="btn px-2 py-1 text-xs"
-              disabled={busy}
-              onClick={() => {
-                setValue(String(row.editValue));
-                setEditing(false);
-              }}
-            >
-              Cancel
-            </button>
-          </span>
+          <input
+            className="input w-24 py-1 text-sm"
+            type="number"
+            step="any"
+            inputMode="decimal"
+            aria-label="Reading value"
+            value={value}
+            autoFocus
+            disabled={busy}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void save();
+              if (e.key === "Escape") setEditing(false);
+            }}
+          />
         ) : (
           <span className="tabular-nums">
             {row.display}
@@ -256,55 +235,82 @@ function ReadingRow({
         {row.notes ? <NotesText notes={row.notes} /> : "—"}
       </Td>
       <Td slot="actions">
-        <div className="flex items-center justify-end">
-          <OverflowMenu
-            label="Reading actions"
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-          >
-            {({ close }) => (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={MENU_ITEM}
-                  onClick={() => {
-                    setEditing(true);
-                    close();
-                  }}
-                >
-                  Edit
-                </button>
-                {/* Plain button (not a form action): confirm() opens a modal the
-                    user must answer, which deadlocks inside a form-action
-                    transition. */}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={MENU_ITEM_DANGER}
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: "Delete reading",
-                      message: `Delete the ${row.date} reading (${row.display}${unit})?`,
-                      confirmLabel: "Delete",
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    close();
-                    const fd = new FormData();
-                    fd.set("kind", kind);
-                    fd.set("id", String(row.id));
-                    await undoable(deleteMetricReading, fd, {
-                      deletedMessage: "Reading deleted.",
-                    });
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )}
-          </OverflowMenu>
-        </div>
+        {editing ? (
+          <span className="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              className="btn-primary px-2 py-1 text-xs"
+              disabled={busy}
+              onClick={() => void save()}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="btn px-2 py-1 text-xs"
+              disabled={busy}
+              onClick={() => {
+                setValue(String(row.editValue));
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <div className="flex items-center justify-end">
+            <OverflowMenu
+              label="Reading actions"
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+            >
+              {({ close }) => (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      setEditing(true);
+                      close();
+                    }}
+                  >
+                    Edit
+                  </button>
+                  {/* Plain button (not a form action): confirm() opens a modal the
+                      user must answer, which deadlocks inside a form-action
+                      transition. */}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM_DANGER}
+                    onClick={async () => {
+                      // The menu and confirm are two modal layers. Close the menu
+                      // before presenting the decision so Cancel cannot reveal a
+                      // stale click-away backdrop over the readings table.
+                      close();
+                      const ok = await confirm({
+                        title: "Delete reading",
+                        message: `Delete the ${row.date} reading (${row.display}${unit})?`,
+                        confirmLabel: "Delete",
+                        danger: true,
+                      });
+                      if (!ok) return;
+                      const fd = new FormData();
+                      fd.set("kind", kind);
+                      fd.set("id", String(row.id));
+                      await undoable(deleteMetricReading, fd, {
+                        deletedMessage: "Reading deleted.",
+                      });
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </OverflowMenu>
+          </div>
+        )}
       </Td>
     </tr>
   );

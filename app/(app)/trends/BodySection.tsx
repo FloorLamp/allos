@@ -1447,177 +1447,199 @@ export default async function BodySection({
         }
       />
 
-      {/* Sparkline-tile overview — the only view on mobile. */}
-      <div
-        className={`${tilesContainerClass(view)} !mt-2`}
-        data-testid="body-tiles-view"
-      >
-        <BodyMetricTiles
-          tiles={metricTiles}
-          growth={growthGridTiles}
-          sleep={sleepGridTile}
-          order={cardOrder}
-        />
-      </div>
+      {/* 1D is a real intraday lens, not a one-point daily tile grid. It becomes
+          the sole reading view at every viewport so phones keep their tiles-only
+          rule for ordinary ranges without losing the clock-axis charts 1D exists
+          to reveal. This is the same chart tree desktop reads, mounted once. */}
+      {intraday && (
+        <div className="!mt-2" data-testid="body-intraday-view">
+          <BodyTrendCharts
+            sections={chartSections.filter(
+              (section) => section.id === "vitals"
+            )}
+            annotations={annotations}
+            windows={protocolWindows}
+          />
+        </div>
+      )}
 
-      {/* The classic full-chart stack — desktop only. Carries the per-chart `#id`
-          anchors used by the chart dropdown (#1067 Phase 1). */}
-      <div
-        className={`${stackContainerClass(view)} !mt-2 space-y-6`}
-        data-testid="body-charts-all"
-      >
-        {/* For a growth-tracked profile the percentile card is the headline, so it
+      {!intraday && (
+        <>
+          {/* Sparkline-tile overview — the only ordinary-range view on mobile. */}
+          <div
+            className={`${tilesContainerClass(view)} !mt-2`}
+            data-testid="body-tiles-view"
+          >
+            <BodyMetricTiles
+              tiles={metricTiles}
+              growth={growthGridTiles}
+              sleep={sleepGridTile}
+              order={cardOrder}
+            />
+          </div>
+
+          {/* The classic full-chart stack — desktop only. Carries the per-chart
+              `#id` anchors used by the chart dropdown (#1067 Phase 1). */}
+          <div
+            className={`${stackContainerClass(view)} !mt-2 space-y-6`}
+            data-testid="body-charts-all"
+          >
+            {/* For a growth-tracked profile the percentile card is the headline, so it
             floats above the chart sections; adults never have one. That used to be
             planBodyCharts' `growthCardFirst` fork — it is now a CONSEQUENCE of the
             tab's one card order (#1490): the growth card leads exactly when it
             outranks every card inside the chart block. */}
-        {growthLeads && growthCard}
+            {growthLeads && growthCard}
 
-        {/* 2 + 3. Vitals then Composition, under ONE annotation toggle bar. */}
-        <BodyTrendCharts
-          sections={chartSections}
-          annotations={annotations}
-          windows={protocolWindows}
-        />
+            {/* 2 + 3. Vitals then Composition, under ONE annotation toggle bar. */}
+            <BodyTrendCharts
+              sections={chartSections}
+              annotations={annotations}
+              windows={protocolWindows}
+            />
 
-        {/* 4. Growth charts (minors), then the rest of the reading half. */}
-        {!growthLeads && growthCard}
+            {/* 4. Growth charts (minors), then the rest of the reading half. */}
+            {!growthLeads && growthCard}
 
-        {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
+            {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
               bands, no flags, no retest hooks — mood is not a lab, so a low day is a
               data point, never an "abnormal". Hidden until a check-in exists. */}
-        {hasMood && (
-          <ChartCard
-            anchorId="mood"
-            testid="mood-trend"
-            title={BODY_METRIC_META.mood.title}
-            description="1–5 daily check-ins · selected date range"
-            detailHref={metricDetailHref("mood")}
-            footer={
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                A subjective self-rating from your daily check-ins —
-                informational only, never range-checked.
-              </p>
-            }
-          >
-            <LineChartCard
-              data={moodChart}
-              label={BODY_METRIC_META.mood.title}
-              color={chartSeries.amber}
-            />
-          </ChartCard>
-        )}
+            {hasMood && (
+              <ChartCard
+                anchorId="mood"
+                testid="mood-trend"
+                title={BODY_METRIC_META.mood.title}
+                description="1–5 daily check-ins · selected date range"
+                detailHref={metricDetailHref("mood")}
+                footer={
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    A subjective self-rating from your daily check-ins —
+                    informational only, never range-checked.
+                  </p>
+                }
+              >
+                <LineChartCard
+                  data={moodChart}
+                  label={BODY_METRIC_META.mood.title}
+                  color={chartSeries.amber}
+                />
+              </ChartCard>
+            )}
 
-        {hasSynced && (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Synced daily metrics in the selected date range.
-            </p>
-            <div className="grid gap-6 lg:grid-cols-2">
-              {orderedSynced.map((e, index) => (
-                <div
-                  key={e.id}
-                  className={
-                    orderedSynced.length % 2 === 1 &&
-                    index === orderedSynced.length - 1
-                      ? "lg:col-span-2"
-                      : ""
-                  }
-                >
-                  {e.node}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="card">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            History
-          </h2>
-          {bodyMetrics.length === 0 ? (
-            <EmptyState message="No body metrics yet. Log one with “+ Log” above to see the trend." />
-          ) : (
-            <ScrollFade>
-              <table className="w-full" data-testid="body-history-table">
-                <thead>
-                  <tr className="border-b border-black/5 dark:border-white/10">
-                    <th className="th">Date</th>
-                    <th className="th">Weight</th>
-                    {bodyFatShown && <th className="th">Body fat</th>}
-                    {/* The resting-HR COLUMN stays (#1486): this table is the
-                        record EDITOR, not a second chart of the metric. */}
-                    <th className="th">Resting HR</th>
-                    <th className="th">Source</th>
-                    <th className="th">Notes</th>
-                    <th className="th"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bodyMetrics.map((w) => (
-                    <tr
-                      key={w.id}
-                      className="border-b border-black/5 dark:border-white/10"
+            {hasSynced && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Synced daily metrics in the selected date range.
+                </p>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  {orderedSynced.map((e, index) => (
+                    <div
+                      key={e.id}
+                      className={
+                        orderedSynced.length % 2 === 1 &&
+                        index === orderedSynced.length - 1
+                          ? "lg:col-span-2"
+                          : ""
+                      }
                     >
-                      <td className="td whitespace-nowrap">
-                        {formatLongDate(w.date, formatPrefs)}
-                      </td>
-                      <td
-                        className="td font-medium"
-                        data-testid="body-weight-cell"
-                      >
-                        {fmtWeight(w.weight_kg, wu)}
-                      </td>
-                      {bodyFatShown && (
-                        <td className="td">
-                          {w.body_fat_pct != null ? `${w.body_fat_pct}%` : "—"}
-                        </td>
-                      )}
-                      <td className="td">{w.resting_hr ?? "—"}</td>
-                      <td className="td whitespace-nowrap">
-                        {w.document_id != null ? (
-                          <Link
-                            href={`/import/${w.document_id}`}
-                            className="text-brand-700 hover:underline dark:text-brand-400"
+                      {e.node}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="card">
+              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                History
+              </h2>
+              {bodyMetrics.length === 0 ? (
+                <EmptyState message="No body metrics yet. Log one with “+ Log” above to see the trend." />
+              ) : (
+                <ScrollFade>
+                  <table className="w-full" data-testid="body-history-table">
+                    <thead>
+                      <tr className="border-b border-black/5 dark:border-white/10">
+                        <th className="th">Date</th>
+                        <th className="th">Weight</th>
+                        {bodyFatShown && <th className="th">Body fat</th>}
+                        {/* The resting-HR COLUMN stays (#1486): this table is the
+                        record EDITOR, not a second chart of the metric. */}
+                        <th className="th">Resting HR</th>
+                        <th className="th">Source</th>
+                        <th className="th">Notes</th>
+                        <th className="th"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bodyMetrics.map((w) => (
+                        <tr
+                          key={w.id}
+                          className="border-b border-black/5 dark:border-white/10"
+                        >
+                          <td className="td whitespace-nowrap">
+                            {formatLongDate(w.date, formatPrefs)}
+                          </td>
+                          <td
+                            className="td font-medium"
+                            data-testid="body-weight-cell"
                           >
-                            {w.source_label}
-                          </Link>
-                        ) : (
-                          <span className="text-slate-500 dark:text-slate-400">
-                            {w.source_label}
-                          </span>
-                        )}
-                        {/* Edit-lock badge + resume affordance for a hand-edited
+                            {fmtWeight(w.weight_kg, wu)}
+                          </td>
+                          {bodyFatShown && (
+                            <td className="td">
+                              {w.body_fat_pct != null
+                                ? `${w.body_fat_pct}%`
+                                : "—"}
+                            </td>
+                          )}
+                          <td className="td">{w.resting_hr ?? "—"}</td>
+                          <td className="td whitespace-nowrap">
+                            {w.document_id != null ? (
+                              <Link
+                                href={`/import/${w.document_id}`}
+                                className="text-brand-700 hover:underline dark:text-brand-400"
+                              >
+                                {w.source_label}
+                              </Link>
+                            ) : (
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {w.source_label}
+                              </span>
+                            )}
+                            {/* Edit-lock badge + resume affordance for a hand-edited
                             integration row (#659): only integration-owned rows carry
                             the lock (manual/document rows can't be re-synced). */}
-                        {!!w.edited &&
-                          w.document_id == null &&
-                          !!w.source &&
-                          w.source !== "manual" && (
-                            <EditLockNotice
-                              table="body_metrics"
+                            {!!w.edited &&
+                              w.document_id == null &&
+                              !!w.source &&
+                              w.source !== "manual" && (
+                                <EditLockNotice
+                                  table="body_metrics"
+                                  id={w.id}
+                                  className="mt-1"
+                                />
+                              )}
+                          </td>
+                          <td className="td text-slate-500 dark:text-slate-400">
+                            <NotesText notes={w.notes} />
+                          </td>
+                          <td className="td text-right">
+                            <DeleteBodyMetricButton
                               id={w.id}
-                              className="mt-1"
+                              label={formatLongDate(w.date, formatPrefs)}
                             />
-                          )}
-                      </td>
-                      <td className="td text-slate-500 dark:text-slate-400">
-                        <NotesText notes={w.notes} />
-                      </td>
-                      <td className="td text-right">
-                        <DeleteBodyMetricButton
-                          id={w.id}
-                          label={formatLongDate(w.date, formatPrefs)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </ScrollFade>
-          )}
-        </div>
-      </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ScrollFade>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

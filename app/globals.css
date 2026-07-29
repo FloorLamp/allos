@@ -365,12 +365,14 @@ body::before {
     [data-testid="overflow-menu-trigger"] {
     @apply max-sm:relative max-sm:h-8 max-sm:w-8;
   }
-  .metric-readings-list
-    td[data-card="actions"]
-    [data-testid="overflow-menu-trigger"]::after {
-    content: "";
-    position: absolute;
-    inset: -4px;
+  @media (max-width: 639.98px) {
+    .metric-readings-list
+      td[data-card="actions"]
+      [data-testid="overflow-menu-trigger"]::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+    }
   }
   .metric-readings-list td[data-card="meta"] {
     @apply max-sm:flex max-sm:w-full max-sm:basis-full max-sm:justify-between max-sm:gap-3 max-sm:text-right;

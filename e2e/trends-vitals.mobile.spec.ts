@@ -129,12 +129,12 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
     test.slow(); // local `next dev` compiles the Trends route on first hit
     const member = await vitalsDayPage(browser);
     try {
-      // view=all pins the classic chart stack on the phone too (#1067 Phase 2 made
-      // tiles the mobile default), which is where the vitals charts live.
+      // `view=all` is intentionally ignored on phones: an ordinary range stays on
+      // tiles, while 1D replaces that grid with the dedicated intraday lens.
       await member.goto("/trends?tab=body&view=all");
       await expandTrendsContext(member);
       // The windowed daily view is what 1D replaces.
-      await expect(member.getByTestId("vitals-systolic")).toBeVisible();
+      await expect(member.getByTestId("body-tile-systolic")).toBeVisible();
 
       await followLink(
         member,
@@ -146,7 +146,7 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
       await expect(member.getByTestId("vitals-intraday-hr")).toBeVisible();
       await expect(member.getByTestId("vitals-intraday-bp")).toBeVisible();
       await expect(member.getByTestId("vitals-intraday-spo2")).toBeVisible();
-      await expect(member.getByTestId("vitals-systolic")).toHaveCount(0);
+      await expect(member.getByTestId("body-metric-tiles")).toHaveCount(0);
 
       // C — full-bleed: the plot box spans the whole viewport (not the gutter-inset
       // content column), and doing so widens nothing (no horizontal page scroll).
