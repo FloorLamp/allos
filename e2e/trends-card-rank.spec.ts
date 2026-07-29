@@ -80,27 +80,25 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     const growth = page.getByTestId("growth-charts-card");
     await expect(growth).toBeVisible();
 
-    // The growth card sits ABOVE the chart runs — the retired planBodyCharts
-    // `growthCardFirst` fork, now a consequence of the life-stage signal. The
-    // Composition run follows it, ahead of Vitals, because height (the priority
-    // datapoint for a growing child) lives there: the same life-stage signal
-    // carries the card AND its run, so the promotion is actually visible.
+    // The growth card LEADS the flat stack — the retired planBodyCharts
+    // `growthCardFirst` fork, now a consequence of the life-stage signal alone
+    // (#1674 retired `growthCardLeads` with the boxes: the card leads because it
+    // ranks first, not because a predicate floated it).
     expect(
       await domOrder(page, [
         "growth-charts-card",
-        "body-section-vitals",
-        "body-section-body-composition",
+        "body-chart-height",
+        "body-chart-weight",
+        "vitals-systolic",
       ])
     ).toEqual([
       "growth-charts-card",
-      "body-section-body-composition",
-      "body-section-vitals",
+      // …and height leads weight for a growing child, with the clinical cards
+      // trailing both — one stack, one order, no run to lift.
+      "body-chart-height",
+      "body-chart-weight",
+      "vitals-systolic",
     ]);
-
-    // …and inside the composition run, height leads weight for a growing child.
-    expect(
-      await domOrder(page, ["body-chart-height", "body-chart-weight"])
-    ).toEqual(["body-chart-height", "body-chart-weight"]);
 
     // The separate percentile tiles occupy the same ranked `growth` slot rather
     // than being appended independently by the tile renderer.
@@ -120,15 +118,7 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     });
     await openBodyStack(page);
 
-    // The goal-tracked card's whole RUN leads: promoting `weight` inside a
-    // Composition run pinned below Vitals would be an invisible promotion. (Under
-    // #1659's base that run also leads for the PLAIN twin — see the note above.)
-    expect(
-      await domOrder(page, [
-        "body-section-vitals",
-        "body-section-body-composition",
-      ])
-    ).toEqual(["body-section-body-composition", "body-section-vitals"]);
+    // The promoted CARD leads — nothing lifts a box around it any more (#1674).
     expect(
       await domOrder(page, ["body-chart-weight", "vitals-systolic"])
     ).toEqual(["body-chart-weight", "vitals-systolic"]);
@@ -167,31 +157,31 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
 
     // Same data shape as the GOAL fixture, minus the goal: an adult, no monitored
     // condition, evenly tracked. Every card falls back to the static layout —
-    // composition first, then the vitals run in its declared sequence, then the
-    // synced charts. This is the "ranked default == the base layout" proof, and
-    // since #1659 it is also the proof that a both-rich tie no longer leads with
-    // clinical vitals: `steps` precedes every BP card.
-    expect(
-      await domOrder(page, [
-        "body-section-vitals",
-        "body-section-body-composition",
-      ])
-    ).toEqual(["body-section-body-composition", "body-section-vitals"]);
-
+    // composition, then daily activity and the heart-rate family, then the daily
+    // subjective/environment cards, then the clinical vitals, then the synced tail.
+    // This is the "ranked default == the base layout" proof, and since #1659 it is
+    // also the proof that a both-rich tie no longer leads with clinical vitals.
+    //
+    // #1674 is what makes the last clause OBSERVABLE at last: with the titled boxes
+    // gone, `steps` is ranked against the clinical cards instead of sitting in a
+    // block structurally below them, so it renders above SpO₂ and BP — the exact
+    // case reported on that issue.
     expect(
       await domOrder(page, [
         "vitals-systolic",
         "vitals-diastolic",
+        "vitals-spo2",
         "vitals-hrv",
         "body-chart-weight",
         "steps",
       ])
     ).toEqual([
       "body-chart-weight",
+      "steps",
       "vitals-hrv",
       "vitals-systolic",
       "vitals-diastolic",
-      "steps",
+      "vitals-spo2",
     ]);
 
     // Without the goal, BMI stays where the base layout puts it: the synced tail,

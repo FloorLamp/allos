@@ -351,8 +351,9 @@ test.describe("Trends → Body responsive views (#1067)", () => {
       expect(topmostTestId).toMatch(/^chart-jump-/);
     }
 
-    // Present metrics get a menu option (the fixture seeds these).
-    await expect(page.getByTestId("chart-jump-body-composition")).toBeVisible();
+    // Present metrics get a menu option (the fixture seeds these). Since #1674 the
+    // menu lists CARDS rather than section boxes, so each one names a chart.
+    await expect(page.getByTestId("chart-jump-weight")).toBeVisible();
     await expect(page.getByTestId("chart-jump-steps")).toBeVisible();
     await expect(page.getByTestId("chart-jump-sleep")).toBeVisible();
     await expect(page.getByTestId("chart-jump-hr")).toBeVisible();
@@ -366,17 +367,21 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     // comparison would miss.
     await expectNoClippedContent(page);
 
-    // A section with one useful chart uses the analysis width instead of leaving
-    // a vacant second column. The fixture has only Resting HR in Vitals.
-    const vitals = page.getByTestId("body-section-vitals");
-    const restingHr = page.getByTestId("vitals-resting-hr");
-    const [vitalsBox, restingHrBox] = await Promise.all([
-      vitals.boundingBox(),
-      restingHr.boundingBox(),
-    ]);
-    expect(vitalsBox).not.toBeNull();
-    expect(restingHrBox).not.toBeNull();
-    expect(restingHrBox!.width).toBeGreaterThan(vitalsBox!.width * 0.9);
+    // A card fills its own grid cell rather than leaving a vacant strip beside it.
+    // Read atomically: the stack shares a page with the starred grid above, whose
+    // sparklines settle after mount (#1644).
+    const cellWidths = await page.evaluate(() => {
+      const stack = document.querySelector('[data-testid="body-chart-stack"]');
+      const card = document.querySelector('[data-testid="vitals-resting-hr"]');
+      const cell = card?.closest('[data-testid^="body-stack-item-"]');
+      if (!stack || !card || !cell) return null;
+      return {
+        cell: cell.getBoundingClientRect().width,
+        card: card.getBoundingClientRect().width,
+      };
+    });
+    expect(cellWidths).not.toBeNull();
+    expect(cellWidths!.card).toBeGreaterThan(cellWidths!.cell * 0.9);
 
     // Selecting an option scrolls its chart into view (plain `#id` anchor).
     const sleepTile = page.getByTestId("sleep-summary-tile");
