@@ -16,7 +16,8 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setUserBirthdate, setUserSex } from "@/lib/settings";
-import { buildTrendsSubjectContext } from "@/lib/queries";
+import { buildTrendsSubjectContext, getBodyCardPins } from "@/lib/queries";
+import { saveItem, setSavedOrder } from "@/lib/queries/saved";
 import {
   BODY_CARD_LAYOUT,
   bodyCardOrder,
@@ -120,9 +121,11 @@ describe("buildTrendsSubjectContext — no signals (the identity case)", () => {
 
     const ctx = buildTrendsSubjectContext(profileId, anchor);
     const order = rankBodyCards(ctx);
-    // Relative order among the tracked cards is untouched by presence alone.
-    expect(at(order, "systolic")).toBeLessThan(at(order, "weight"));
+    // Relative order among the tracked cards is untouched by presence alone — it is
+    // the base layout's, which since #1659 is everyday-first: composition, then the
+    // daily activity block, then the clinical vitals a signal would have to lift.
     expect(at(order, "weight")).toBeLessThan(at(order, "steps"));
+    expect(at(order, "steps")).toBeLessThan(at(order, "systolic"));
   });
 });
 
@@ -264,23 +267,92 @@ describe("buildTrendsSubjectContext — data presence", () => {
   });
 });
 
-describe("the stored arrangement overrides the ranked default", () => {
-  it("keeps a user's order even when every signal fires", () => {
-    const { profileId, anchor } = makeProfile("rank-arranged");
+// ── The ★ substrate drives the Body order (#1643) ───────────────────────────
+//
+// The pure tier owns the COMPOSITION (pinned first, ranked remainder); what only a
+// database can show is that the pins really are the profile's saved order — the same
+// rows the Overview grid's ★ writes and its drag re-sequences — resolved through the
+// one series-key ↔ card-id mapping. `makeProfile` inserts a bare profile row, so
+// nothing is starred until a test says so.
+describe("getBodyCardPins — the Body tab's ★ arrangement", () => {
+  const star = (profileId: number, key: string): void => {
+    saveItem(profileId, "trend-metric", key);
+  };
+
+  it("is empty for a profile that has starred nothing", () => {
+    const { profileId } = makeProfile("pins-none");
+    expect(getBodyCardPins(profileId)).toEqual([]);
+  });
+
+  it("reads the saved store in SAVED order, newest star first", () => {
+    const { profileId } = makeProfile("pins-saved-order");
+    star(profileId, "weight");
+    star(profileId, "steps");
+    // Unpositioned rows order newest-first, so the latest ★ leads.
+    expect(getBodyCardPins(profileId)).toEqual(["steps", "weight"]);
+  });
+
+  it("follows setSavedOrder — the write behind the Overview drag", () => {
+    const { profileId } = makeProfile("pins-reordered");
+    star(profileId, "weight");
+    star(profileId, "steps");
+    star(profileId, "mood");
+    setSavedOrder(profileId, [
+      { kind: "trend-metric", key: "weight" },
+      { kind: "trend-metric", key: "mood" },
+      { kind: "trend-metric", key: "steps" },
+    ]);
+    expect(getBodyCardPins(profileId)).toEqual(["weight", "mood", "steps"]);
+  });
+
+  it("resolves the stored legacy saved ids onto their card ids", () => {
+    const { profileId } = makeProfile("pins-legacy-ids");
+    star(profileId, "bodyfat");
+    star(profileId, "resting_hr");
+    expect(new Set(getBodyCardPins(profileId))).toEqual(
+      new Set(["body-fat", "resting-hr"])
+    );
+  });
+
+  it("skips saved refs that name no Body card", () => {
+    const { profileId } = makeProfile("pins-non-body");
+    star(profileId, "volume"); // training volume — a saved metric, not a Body card
+    saveItem(profileId, "biomarker", "ApoB");
+    star(profileId, "steps");
+    expect(getBodyCardPins(profileId)).toEqual(["steps"]);
+  });
+
+  it("leads the tab with the pins, and ranks the remainder behind them", () => {
+    const { profileId, anchor } = makeProfile("pins-end-to-end");
+    seedWeights(profileId, anchor, 20);
+    seedSamples(profileId, "steps", anchor, 20);
+    seedVital(profileId, anchor, "Blood Pressure Systolic", 20);
+    const ctx = buildTrendsSubjectContext(profileId, anchor);
+
+    // Nothing pinned: the everyday-first ranked default (#1659).
+    const unpinned = bodyCardOrder(ctx, getBodyCardPins(profileId));
+    expect(at(unpinned, "weight")).toBeLessThan(at(unpinned, "systolic"));
+    expect(at(unpinned, "steps")).toBeLessThan(at(unpinned, "systolic"));
+
+    // Star the BP card and it leads — user intent over the neutral ranking.
+    star(profileId, "systolic");
+    const pinned = bodyCardOrder(ctx, getBodyCardPins(profileId));
+    expect(pinned[0]).toBe("systolic");
+    expect(pinned.slice(1)).toEqual(unpinned.filter((id) => id !== "systolic"));
+  });
+
+  it("keeps a growth-tracked profile's structural lead above its pins", () => {
+    // MEMBERSHIP beats ★ (#1643): the pediatric lead is the membership-tier fork
+    // #1490 moved into the signal table, so starring weight does not displace it.
+    const { profileId, anchor } = makeProfile("pins-peds");
     setUserSex(profileId, "male");
     setUserBirthdate(profileId, shiftDateStr(anchor, -365 * 7));
     seedSamples(profileId, "height_cm", anchor, 6);
-    db.prepare(
-      `INSERT INTO conditions (profile_id, name, code, code_system, status)
-       VALUES (?, 'Asthma', 'J45.909', 'ICD-10', 'active')`
-    ).run(profileId);
+    star(profileId, "weight");
 
     const ctx = buildTrendsSubjectContext(profileId, anchor);
-    // Never-arranged: the ranker decides.
-    expect(bodyCardOrder(ctx, null)[0]).toBe("growth");
-    // Arranged: the user's order wins, and the ranked cards it never saw append.
-    const arranged = bodyCardOrder(ctx, ["mood", "steps"]);
-    expect(arranged.slice(0, 2)).toEqual(["mood", "steps"]);
-    expect(arranged[2]).toBe("growth");
+    const order = bodyCardOrder(ctx, getBodyCardPins(profileId));
+    expect(order[0]).toBe("growth");
+    expect(at(order, "height")).toBeLessThan(at(order, "weight"));
   });
 });
