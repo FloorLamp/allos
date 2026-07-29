@@ -78,3 +78,26 @@ test.describe("Immunizations (#391)", () => {
     }
   });
 });
+
+// #1406 — the administration attributes school / travel / camp / employer forms ask
+// for. The fixture's "Travel dose A" carries a lot number, route, site, and an
+// adverse reaction; its same-date twin carries none, so the same table proves both
+// the rendered line AND that an unstated dose stays honestly blank.
+test("the history table shows lot / route / site and an adverse reaction (#1406)", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/records/history/immunizations");
+  await expect(page.getByTestId("records-immunizations")).toBeVisible();
+  await page.locator("summary", { hasText: "All recorded doses" }).click();
+
+  const doseA = page.getByRole("row").filter({ hasText: "Travel dose A" });
+  await expect(doseA).toContainText("lot-test-batch-42");
+  await expect(doseA).toContainText("SC");
+  await expect(doseA).toContainText("Left deltoid");
+  await expect(doseA).toContainText("Sore arm for two days");
+
+  // The twin states none of them — an unstated dose prints an em dash, never a guess.
+  const doseB = page.getByRole("row").filter({ hasText: "Travel dose B" });
+  await expect(doseB).not.toContainText("lot-test-batch-42");
+});

@@ -1,8 +1,14 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
-import { E2E_LOGIN_MENTAL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
+import {
+  E2E_LOGIN_MENTAL,
+  E2E_MEMBER_PASSWORD,
+  MENTAL_HEALTH_PROFILE,
+} from "./fixture-logins";
 
 // Mental-health instrument tracking (issue #716): the mental-health surface —
 // (#1042: folded from /medical/instruments into the /records#mental-health section).
@@ -23,6 +29,34 @@ async function pickInstrument(page: Page, key: "PHQ-9" | "GAD-7") {
 async function answerAll(page: Page, itemCount: number, value: 0 | 1 | 2 | 3) {
   for (let i = 0; i < itemCount; i++) {
     await page.getByTestId(`instrument-option-${i}-${value}`).click();
+  }
+}
+
+// The id of the score this spec just recorded, read straight from the worker's own
+// SQLite file. The row's testid is `instrument-reading-<id>`, and the History list is
+// a SHARED accumulating surface on this fixture profile — an unmarked `.first()`
+// there would be exactly the hygiene violation the harness forbids, so the spec
+// addresses ITS OWN row by id instead (#1396).
+function newestScoreId(): number {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const profileId = (
+      db
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(MENTAL_HEALTH_PROFILE) as { id: number }
+    ).id;
+    return (
+      db
+        .prepare(
+          `SELECT id FROM medical_records
+            WHERE profile_id = ? AND category = 'instrument'
+            ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileId) as { id: number }
+    ).id;
+  } finally {
+    db.close();
   }
 }
 
@@ -98,5 +132,74 @@ test.describe("mental-health instruments (#716)", () => {
     await settledClick(page, page.getByTestId("instrument-submit-outside"));
 
     await expect(rows).toHaveCount(before + 1);
+  });
+});
+
+// Correcting / removing a recorded score (#1396). Before this, a screening score was
+// create-only: a fat-fingered outside total permanently distorted the trend and could
+// permanently trip the non-dismissible crisis line. The banner RELEASE itself is
+// pinned at the DB tier (where a score-free fixture can assert its absence); this
+// spec pins the rendered affordance and that the correction actually lands.
+test.describe("correcting a recorded score (#1396)", () => {
+  let page: Page;
+
+  test.beforeAll(async ({ browser }) => {
+    page = await loginAs(browser, {
+      username: E2E_LOGIN_MENTAL,
+      password: E2E_MEMBER_PASSWORD,
+    });
+  });
+
+  test.afterAll(async () => {
+    await page.close();
+  });
+
+  test("a mis-entered outside total can be corrected in place", async () => {
+    await page.goto("/records/specialty/mental-health");
+    await page.getByTestId("instrument-select-GAD-7").click();
+    await page.getByLabel("Enter a score from elsewhere").check();
+    // The issue's case: 21 typed where 12 was meant.
+    await page.getByTestId("instrument-outside-total").fill("21");
+    await settledClick(page, page.getByTestId("instrument-submit-outside"));
+
+    const id = newestScoreId();
+    const row = page.getByTestId(`instrument-reading-${id}`);
+    await expect(row).toBeVisible();
+    await expect(
+      page.getByTestId(`instrument-reading-band-${id}`)
+    ).toContainText("Severe");
+
+    await settledClick(page, page.getByTestId(`instrument-reading-edit-${id}`));
+    await page.getByLabel("Total (0–21)").fill("12");
+    await settledClick(
+      page,
+      page
+        .getByTestId(`instrument-reading-edit-form-${id}`)
+        .getByRole("button", { name: "Save" })
+    );
+
+    await expect(row).toContainText("12");
+    await expect(
+      page.getByTestId(`instrument-reading-band-${id}`)
+    ).not.toContainText("Severe");
+  });
+
+  test("a mis-entered score can be removed from the History list", async () => {
+    await page.goto("/records/specialty/mental-health");
+    await page.getByTestId("instrument-select-GAD-7").click();
+    await page.getByLabel("Enter a score from elsewhere").check();
+    await page.getByTestId("instrument-outside-total").fill("4");
+    await settledClick(page, page.getByTestId("instrument-submit-outside"));
+
+    const id = newestScoreId();
+    const row = page.getByTestId(`instrument-reading-${id}`);
+    await expect(row).toBeVisible();
+
+    await settledClick(
+      page,
+      page.getByTestId(`instrument-reading-delete-${id}`)
+    );
+    await settledClick(page, page.getByRole("button", { name: "Remove" }));
+    await expect(row).toHaveCount(0);
   });
 });

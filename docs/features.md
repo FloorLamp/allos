@@ -1031,6 +1031,22 @@ walnut-pecan tree nuts, mammalian milk). Shown on the Allergies page and the
 Passport, framed as "commonly cross-reacts with" — reference only, never a
 diagnosis.
 
+Each allergy also carries **criticality** (FHIR `AllergyIntolerance.criticality`:
+low / high / not assessable — the potential for a _future_ exposure to be
+life-threatening, a different question from how bad the recorded reaction was), a
+**verification status** (unconfirmed / suspected / confirmed / refuted / entered
+in error), and **multiple graded reactions** (a peanut allergy that causes both
+hives _and_ anaphylaxis is two manifestations, each with its own grade). All are
+optional: unstated stays unstated and is never guessed. Verification status is
+load-bearing, not decoration — a **refuted** or **entered-in-error** allergy
+stays on the Recorded-allergies manager (so you can see and undo the refutation)
+but stops gating: it leaves the drug-allergy safety matcher, the food and
+supplement screens, the Passport's known-allergy list, and the emergency card. A
+**high-criticality** allergy leads the emergency card, ahead of the free-text
+severity ordering. The FHIR export carries all three
+(`criticality` / `verificationStatus` / `reaction[]`), and the document importer
+maps criticality and verification status when a document states them.
+
 ## Immunizations
 
 Record vaccines and doses, track them against the CDC schedule (due / overdue /
@@ -1042,6 +1058,16 @@ more important with a calm reason line (immunocompromised / dialysis →
 pneumococcal & meningococcal, healthcare worker → hepatitis B / influenza / MMR
 / varicella, pregnancy → Tdap & influenza) — informational only, not medical
 advice.
+
+A dose records the administration facts school, travel, camp, and employer forms
+ask for: **lot number**, **route** (IM / SC / ID / oral / intranasal / other),
+**site**, and any **adverse reaction** to that dose. All optional — an unstated
+field prints an em dash, never a guess — and all shown on the recorded-dose
+table, the per-vaccine dose history, the CSV export, and the FHIR `Immunization`
+resource (`lotNumber` / `route` / `site` / `reaction`). A per-vaccine
+**declination** additionally carries a structured **exemption type** (medical /
+religious / philosophical) alongside its free-text reason; an "immune" override
+never carries one, because it is not an exemption.
 
 ## Cycle
 
@@ -1104,6 +1130,19 @@ person in active behavioral-health care isn't also nagged to get screened.
 Item-level answers are stored (needed for the PHQ-9 item-9 handling below) in
 the one small `instrument_responses` table; an outside total-only score degrades
 gracefully to total-only.
+
+A recorded score can be **corrected or removed** from the History list on both
+instrument surfaces (Mental health and Substance use). This is a safety
+affordance, not a convenience: a fat-fingered outside total — a GAD-7 of 21 typed
+where 12 was meant — used to distort the trend permanently and could permanently
+trip the non-dismissible crisis line below, with no recovery path. Correcting the
+score releases that line by construction, because the banner and the History list
+read the same computation over the same stored rows. A score administered
+**item by item** in-app refuses a total edit and says so — its total is derived
+from the answers, which are the source of truth (correct it by removing it and
+answering again). Removal goes through the shared **undo** toast, and the undo
+restores the item answers with the score, so a restored PHQ-9 keeps its item-9
+signal.
 
 **Sensitivity is deliberate** (#716): this domain is **exempt from the
 milestone/streak machinery** — no streaks, no "improve your score" nudges, no

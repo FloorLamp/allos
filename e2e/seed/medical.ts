@@ -253,6 +253,33 @@ export function seedPassportSmalls(): void {
    VALUES (?, ?, 'Sneezing', 'active', ?)`
   ).run(PROFILE_ID, RAGWEED, BROWSER_DOC_ID);
 
+  // Passport-safety fixture (#1405): ONE allergy carrying criticality, a REFUTED
+  // verification status, and TWO graded manifestations — the three facts the old
+  // single-`reaction` shape could not hold. Refuted is the load-bearing case: the row
+  // stays on the management list but must drop out of the merged known-allergies view
+  // (and therefore the emergency card / drug screen). Idempotent: clear first, and the
+  // child rows cascade with the parent.
+  const SAFETY_ALLERGEN = "E2E Refuted Allergen";
+  db.prepare(
+    `DELETE FROM allergies WHERE profile_id = ? AND substance = ?`
+  ).run(PROFILE_ID, SAFETY_ALLERGEN);
+  const safetyAllergyId = Number(
+    db
+      .prepare(
+        `INSERT INTO allergies
+           (profile_id, substance, reaction, severity, status, criticality,
+            verification_status, document_id)
+         VALUES (?, ?, 'Hives', 'moderate', 'active', 'high', 'refuted', NULL)`
+      )
+      .run(PROFILE_ID, SAFETY_ALLERGEN).lastInsertRowid
+  );
+  const insReaction = db.prepare(
+    `INSERT INTO allergy_reactions (allergy_id, manifestation, severity, position)
+     VALUES (?, ?, ?, ?)`
+  );
+  insReaction.run(safetyAllergyId, "Hives", "moderate", 0);
+  insReaction.run(safetyAllergyId, "Anaphylaxis", "severe", 1);
+
   console.log(
     `e2e: seeded medical-smalls fixtures on profile ${PROFILE_ID} (#381 starred genomics, #383 canonical search, #384 allergy twins)`
   );
@@ -270,12 +297,24 @@ export function seedDuplicateImmunization(): void {
   db.prepare(
     `DELETE FROM immunizations WHERE profile_id = ? AND notes = 'e2e:dup-immz'`
   ).run(PROFILE_ID);
+  // Dose A also carries the #1406 administration attributes (lot / route / site /
+  // adverse reaction) so the history table's "Lot / route / site" column has a row to
+  // render. The lot number is a deliberately LOW-ENTROPY fictional string — a
+  // random-looking hex value would read like a real manufacturer lot to the PHI scan.
   const insDupImmz = db.prepare(
-    `INSERT INTO immunizations (profile_id, date, vaccine, dose_label, notes, source)
-   VALUES (?, '2024-05-01', 'yellow_fever', ?, 'e2e:dup-immz', NULL)`
+    `INSERT INTO immunizations
+       (profile_id, date, vaccine, dose_label, notes, source, lot_number, route, site, reaction)
+   VALUES (?, '2024-05-01', 'yellow_fever', ?, 'e2e:dup-immz', NULL, ?, ?, ?, ?)`
   );
-  insDupImmz.run(PROFILE_ID, "Travel dose A");
-  insDupImmz.run(PROFILE_ID, "Travel dose B");
+  insDupImmz.run(
+    PROFILE_ID,
+    "Travel dose A",
+    "lot-test-batch-42",
+    "subcutaneous",
+    "Left deltoid",
+    "Sore arm for two days"
+  );
+  insDupImmz.run(PROFILE_ID, "Travel dose B", null, null, null, null);
   console.log(
     `e2e: seeded two same-date yellow-fever immunizations on profile ${PROFILE_ID} (delete-confirm disambiguation, #534)`
   );
