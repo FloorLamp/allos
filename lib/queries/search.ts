@@ -812,7 +812,10 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
 // The DETERMINISTIC retrieval seam for grounded record Q&A (issue #878, Phase 2). Turn
 // a natural-language question into a capped, numbered citation set for the ACTIVE
 // profile — the model never touches the DB. Pure `extractQueryTerms` picks the salient
-// search terms; each runs the SAME profile-scoped `searchAll` fan-out every surface
+// search terms (plus their folded singulars, #1597, appended AFTER the asked-for terms
+// so the fan-out below reaches them only when the terms themselves didn't fill the cap
+// — `LIKE '%term%'` bridges singular→plural but not plural→singular); each runs the
+// SAME profile-scoped `searchAll` fan-out every surface
 // uses (so profile scoping is inherited, not re-implemented — no new `.prepare`); the
 // per-term hits are unioned (de-duped by the hit's stable key), pages are dropped (they
 // aren't records), and the pure `buildRetrievalSet` numbers the top MAX_CITATIONS.

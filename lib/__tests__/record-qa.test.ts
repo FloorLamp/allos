@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   extractQueryTerms,
+  singularizeTerm,
   buildRetrievalSet,
   buildAskPrompt,
   composeOfflineAnswer,
@@ -30,9 +31,11 @@ const HIT = (over: Partial<SearchHit>): SearchHit => ({
 
 describe("extractQueryTerms — the deterministic retrieval seam", () => {
   it("keeps salient terms and drops question scaffolding + verbs", () => {
-    // "when did I last take antibiotics?" retrieves on the record noun alone.
+    // "when did I last take antibiotics?" retrieves on the record noun alone —
+    // now with its singular fold alongside it (#1597).
     expect(extractQueryTerms("when did I last take antibiotics?")).toEqual([
       "antibiotics",
+      "antibiotic",
     ]);
   });
 
@@ -45,6 +48,53 @@ describe("extractQueryTerms — the deterministic retrieval seam", () => {
 
   it("returns no terms for a question with only stopwords", () => {
     expect(extractQueryTerms("when did I last take it?")).toEqual([]);
+  });
+});
+
+describe("plural folding (issue #1597)", () => {
+  it("folds the plural shapes a question actually uses", () => {
+    // LIKE '%term%' bridges singular→plural on its own; these are the missing
+    // direction — a plural ask against a singular-named row.
+    expect(singularizeTerm("colds")).toBe("cold");
+    expect(singularizeTerm("vaccines")).toBe("vaccine");
+    expect(singularizeTerm("allergies")).toBe("allergy");
+    expect(singularizeTerm("rashes")).toBe("rash");
+    expect(singularizeTerm("glasses")).toBe("glass");
+  });
+
+  it("leaves words whose trailing s is part of the word alone", () => {
+    for (const word of [
+      "stress",
+      "illness",
+      "virus",
+      "sinus",
+      "tinnitus",
+      "psoriasis",
+      "diagnosis",
+      "abs",
+      "cold",
+    ]) {
+      expect(singularizeTerm(word)).toBeNull();
+    }
+  });
+
+  it("emits the singular AFTER the asked-for terms, deduped", () => {
+    // Both forms run, the asked-for term first (so the term cap can never be
+    // spent on a fold), and a question already carrying both doesn't duplicate.
+    expect(extractQueryTerms("any allergies to nuts?")).toEqual([
+      "allergies",
+      "nuts",
+      "allergy",
+      "nut",
+    ]);
+    expect(extractQueryTerms("vaccines and vaccine")).toEqual([
+      "vaccines",
+      "vaccine",
+    ]);
+  });
+
+  it("keeps a purely singular question unchanged", () => {
+    expect(extractQueryTerms("how did the cold go?")).toEqual(["cold"]);
   });
 });
 
