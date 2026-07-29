@@ -27,6 +27,7 @@ import {
   getProfileHomeAssistant,
   setProfileHomeAssistant,
   setExcludedFoodGroups,
+  setProteinGoalLevel,
   isValidTimezone,
   setTimezone,
   setHomeLocation,
@@ -54,6 +55,7 @@ import { closureFindingSnapshot } from "@/lib/rule-findings";
 import { DATA_QUALITY_PREFIX } from "@/lib/data-quality";
 import { parseHome } from "@/lib/home-location";
 import { parseSkinType } from "@/lib/uv-dose";
+import { parseProteinGoalLevel } from "@/lib/protein";
 import { reconcileFlags } from "@/lib/queries";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import {
@@ -305,6 +307,26 @@ export async function saveDietaryPreferences(formData: FormData) {
   revalidatePath("/settings/nutrition");
   revalidatePath("/nutrition");
   return { ok: true };
+}
+
+// Protein goal level (#1503) — the training goal that picks the protein g/kg band.
+// The band engine has read `training_goal` since #767 but nothing ever WROTE it, so
+// every profile silently sat on the "active" band; this is the write half. Profile
+// tier (a fact about the tracked person), so the same requireWriteAccess gate as the
+// dietary preferences it sits beside. The submitted value is validated against the
+// accepted vocabulary — an unknown string is refused, never stored to read back as
+// the default.
+export async function saveProteinGoal(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const level = parseProteinGoalLevel(
+    String(formData.get("protein_goal") ?? "")
+  );
+  if (!level) return { ok: false as const, error: "Choose a protein goal." };
+  setProteinGoalLevel(profile.id, level);
+  revalidatePath("/settings/nutrition");
+  revalidatePath("/nutrition");
+  revalidatePath("/");
+  return { ok: true as const };
 }
 
 // Emergency card settings (#42) moved to the Medical surface (/medical/background)

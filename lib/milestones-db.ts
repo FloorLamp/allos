@@ -16,7 +16,7 @@ import {
   getActivitiesByDate,
 } from "./queries";
 import { isDueOn } from "./supplement-schedule";
-import { flexibleStreak } from "./streak";
+import { activityStreak } from "./streak";
 import {
   detectMilestones,
   adherenceRunLength,
@@ -97,7 +97,7 @@ export function gatherMilestoneInput(profileId: number): MilestoneInput {
   const td = today(profileId);
   return {
     totalWorkouts: totalWorkouts(profileId),
-    streak: flexibleStreak(td, getActivityDates(profileId)),
+    streak: activityStreak(td, getActivityDates(profileId)),
     adherenceRun: adherenceRunLength(adherenceDays(profileId, td)),
     completedGoals: getGoals(profileId)
       .filter((g) => g.status === "achieved" && !g.archived)

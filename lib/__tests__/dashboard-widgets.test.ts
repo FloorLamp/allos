@@ -7,6 +7,10 @@ import {
   capDashboardList,
   capActionableDashboardList,
   customizableWidgetDefs,
+  FINDING_DASHBOARD_HOME,
+  findingDashboardHome,
+  findingsForDashboardHome,
+  rollupCoachingFindings,
   dashboardHabitDomain,
   dashboardGoalsHabitsLayout,
   resolveWidgets,
@@ -415,5 +419,75 @@ describe("dashboardGoalsHabitsLayout", () => {
     expect(dashboardGoalsHabitsLayout(true, true)).toBe("split");
     expect(dashboardGoalsHabitsLayout(true, false)).toBe("full");
     expect(dashboardGoalsHabitsLayout(false, true)).toBe("full");
+  });
+});
+
+// #1533 — the dashboard rendered data-quality gaps TWICE (the Coaching-observations
+// rollup AND the Data quality widget) and the rollup's header count included the rows
+// it was double-showing. The rollup's own #449 charter is reach for findings that
+// render only on their own tabs; a family with its own dashboard widget already has
+// reach, so the registry below encodes that charter as data instead of a one-off filter.
+describe("finding dashboard homes (#1533)", () => {
+  // A stand-in for the ONE collectCoachingFindings set: two observational patterns
+  // (no dashboard home of their own) plus two structural gaps (homed to the widget).
+  const activeCoaching = [
+    { dedupeKey: "training-obs:plateau:bench" },
+    { dedupeKey: "goal-pace:7" },
+    { dedupeKey: "data-quality:birthdate" },
+    { dedupeKey: "data-quality:smoking" },
+  ];
+  const allVisible = () => true;
+  const visibleExcept = (hidden: string) => (id: string) => id !== hidden;
+
+  it("maps a homed family to its widget and leaves the rest unhomed", () => {
+    expect(findingDashboardHome("data-quality:birthdate")).toBe("data-quality");
+    expect(findingDashboardHome("training-obs:plateau:bench")).toBeNull();
+  });
+
+  it("every registered home is a real catalog widget id", () => {
+    const catalogIds = new Set(DASHBOARD_WIDGETS.map((w) => w.id));
+    for (const widgetId of Object.values(FINDING_DASHBOARD_HOME)) {
+      expect(catalogIds.has(widgetId)).toBe(true);
+    }
+  });
+
+  it("with both widgets on, the two sets are DISJOINT and their union is the whole set", () => {
+    const rollup = rollupCoachingFindings(activeCoaching, allVisible);
+    const homed = findingsForDashboardHome(activeCoaching, "data-quality");
+    const rollupKeys = rollup.map((f) => f.dedupeKey);
+    const homedKeys = homed.map((f) => f.dedupeKey);
+    expect(rollupKeys.some((k) => homedKeys.includes(k))).toBe(false);
+    expect([...rollupKeys, ...homedKeys].sort()).toEqual(
+      activeCoaching.map((f) => f.dedupeKey).sort()
+    );
+    // The rollup's own count is its length — "N patterns worth reviewing" can no
+    // longer be inflated by rows rendered in the other card.
+    expect(rollup.length).toBe(2);
+  });
+
+  it("nothing is lost when the home widget is hidden — the rollup is the catch-all", () => {
+    const rollup = rollupCoachingFindings(
+      activeCoaching,
+      visibleExcept("data-quality")
+    );
+    expect(rollup.map((f) => f.dedupeKey).sort()).toEqual(
+      activeCoaching.map((f) => f.dedupeKey).sort()
+    );
+  });
+
+  it("an unregistered family always lands in the rollup, whatever is visible", () => {
+    const findings = [{ dedupeKey: "adherence:vitamin-d" }];
+    expect(rollupCoachingFindings(findings, allVisible)).toHaveLength(1);
+    expect(findingsForDashboardHome(findings, "data-quality")).toHaveLength(0);
+  });
+
+  it("the capped slice and its overflow are computed over the rollup's own set", () => {
+    // The #1219 disclosure must not be padded with rows already on screen: cap the
+    // filtered set, never activeCoaching.
+    const rollup = rollupCoachingFindings(activeCoaching, allVisible);
+    const { shown, overflow } = capDashboardList(rollup, 1);
+    expect(shown).toHaveLength(1);
+    expect(overflow).toHaveLength(1);
+    expect([...shown, ...overflow]).toHaveLength(rollup.length);
   });
 });

@@ -26,6 +26,16 @@ get a push channel unless it's genuinely _care_. Every surface renders the SAME
 `Finding` (one computation) with the SAME dedupeKey, so a dismiss on any surface
 silences it on all of them through the shared bus.
 
+**One dashboard home per finding family (#1533).** The rollup's charter is reach
+for findings that would otherwise render only on their own tab, so a family that
+has earned its OWN dashboard widget is excluded from it: `FINDING_DASHBOARD_HOME`
+in `lib/dashboard-widgets.ts` maps a dedupeKey prefix to that widget id, and the
+page splits `activeCoaching` into the homed slice and the rollup's catch-all. The
+two sets are disjoint, their union is the whole set, the rollup's count and
+"Show N more" overflow are computed over what it renders, and hiding the home
+widget puts its family straight back into the rollup. A new family with its own
+widget adds one registry line — it does not add another one-off filter.
+
 **The hero's contract is ALWAYS-PRESENT, not always-full (#1413).** The care
 tier's `non-hideable hero` guarantee was refined on exactly one axis: the hero
 may **collapse** to a compact pinned line, because on a phone the full card cost

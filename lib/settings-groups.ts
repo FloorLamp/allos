@@ -111,7 +111,8 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     route: "/settings/nutrition",
     tier: "profile",
     adminOnly: false,
-    summary: "Food groups to leave out of suggestions and guidance.",
+    summary:
+      "The training goal behind the protein band, and food groups to leave out of suggestions and guidance.",
     relevance: "nutrition",
   },
   {

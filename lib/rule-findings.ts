@@ -410,10 +410,13 @@ export function collectCoachingFindings(
     ...buildMobilitySuggestionFindings(profileId, today),
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
-    // Appended LAST (#1045): the structural data-quality gaps join the coaching rollup
-    // (so a decline rides the shared bus and silences the dedicated widget too), but
-    // stay behind the observational domains in rollup order so the dashboard "Coaching
-    // observations" slice keeps leading with training/body patterns.
+    // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
+    // set (so a decline rides the shared bus and silences every surface), behind the
+    // observational domains. NOTE (#1533): the order is no longer load-bearing for the
+    // dashboard rollup — the rollup now excludes families that have their own dashboard
+    // widget (FINDING_DASHBOARD_HOME), so gaps don't render there at all while the Data
+    // quality widget is on. This order still shapes the coaching TAB, which is the
+    // legitimate catch-all and shows everything.
     ...buildDataQualityFindings(profileId),
   ];
 }
