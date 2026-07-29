@@ -77,6 +77,17 @@ async function toggleStepsStarFromItsCard(
   await openBodyTiles(page);
 }
 
+// The Overview grid's populated order, as the grid renders it.
+async function overviewTileKeys(page: Page): Promise<string[]> {
+  return page
+    .getByTestId("saved-tiles")
+    .evaluate((el) =>
+      Array.from(el.querySelectorAll("[data-tile-key]")).map(
+        (n) => n.getAttribute("data-tile-key") ?? ""
+      )
+    );
+}
+
 // The Overview reorder persist is a Server Action fired from a transition (no form
 // submit), so wait for its POST rather than a navigation.
 function reorderSettled(page: Page) {
@@ -131,6 +142,7 @@ test.describe("★-pinned Body card order (#1643)", () => {
       // physics standing in for the claim.
       await page.goto("/trends?tab=overview");
       await expect(page.getByTestId("saved-tiles")).toBeVisible();
+      expect((await overviewTileKeys(page))[0]).toBe("metric:steps");
       await page
         .locator('[data-tile-key="metric:steps"]')
         .getByTestId("overflow-menu-trigger")
@@ -139,6 +151,11 @@ test.describe("★-pinned Body card order (#1643)", () => {
       await expect(overviewMenu).toBeVisible();
       const settled = reorderSettled(page);
       await overviewMenu.getByTestId("saved-move-down").click();
+      // The optimistic swap first (the grid owns the list), then the persist — a
+      // navigation that outran either would read the order it was about to leave.
+      await expect
+        .poll(async () => (await overviewTileKeys(page))[0])
+        .toBe("metric:weight");
       await settled;
 
       // No control on the Body tab was touched, and its order moved with the store.
