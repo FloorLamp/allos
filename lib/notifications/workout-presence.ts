@@ -99,7 +99,8 @@ export function renderPostWorkoutFinishMessage(
     .filter((e) => !e.taken && !e.skipped)
     .sort(
       (a, b) =>
-        OBLIGATION_ORDER[a.supp.obligation] - OBLIGATION_ORDER[b.supp.obligation] ||
+        OBLIGATION_ORDER[a.supp.obligation] -
+          OBLIGATION_ORDER[b.supp.obligation] ||
         a.supp.name.localeCompare(b.supp.name)
     );
   if (pending.length === 0) return null;

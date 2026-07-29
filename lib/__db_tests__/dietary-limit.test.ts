@@ -44,8 +44,7 @@ function addSupp(
         name,
         opts.condition ?? "daily",
         opts.asNeeded ? "may" : "should"
-      )
-      .lastInsertRowid
+      ).lastInsertRowid
   );
   db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)

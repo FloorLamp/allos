@@ -143,8 +143,8 @@ describe("pauseLinkNeedsConfirm — consent gate (#1296/#449)", () => {
     expect(
       pauseLinkNeedsConfirm({ kind: "supplement", obligation: "should" })
     ).toBe(false);
-    expect(pauseLinkNeedsConfirm({ kind: "supplement", obligation: "may" })).toBe(
-      false
-    );
+    expect(
+      pauseLinkNeedsConfirm({ kind: "supplement", obligation: "may" })
+    ).toBe(false);
   });
 });

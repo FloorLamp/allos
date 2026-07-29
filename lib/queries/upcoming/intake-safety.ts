@@ -256,7 +256,9 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
     if (!supp.active || !isOfferedOn(supp, ctx)) continue;
     // ONE row per ITEM, not per dose: a may item's doses are amount shapes, not
     // occurrences, so listing three of them would invent three things to do.
-    const hint = slotHintBucket(dosesByItem.get(supp.id)?.[0]?.time_of_day ?? null);
+    const hint = slotHintBucket(
+      dosesByItem.get(supp.id)?.[0]?.time_of_day ?? null
+    );
     items.push({
       key: offeredSignalKey(supp.id),
       domain: "available",

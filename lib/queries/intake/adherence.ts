@@ -30,10 +30,7 @@ import type {
   HistoricalDoseOutcome,
 } from "../../types";
 import type { IntakeObligation } from "../../types";
-import {
-  isOfferedOn,
-  slotHintCoversNow,
-} from "../../supplement-schedule";
+import { isOfferedOn, slotHintCoversNow } from "../../supplement-schedule";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import { getSituations } from "../../settings";
 import { getEffectiveActiveSituations } from "../derived-situations";
@@ -427,7 +424,8 @@ export function logHistoricalMedicationDose(
             AND s.profile_id = ? AND s.kind = 'medication'`
       )
       .get(doseId, itemId, profileId) as
-      { item_id: number; amount: string | null; obligation: IntakeObligation } | undefined;
+      | { item_id: number; amount: string | null; obligation: IntakeObligation }
+      | undefined;
     if (!dose) return { kind: "stale-dose" };
 
     const inCourse = db
@@ -1335,7 +1333,12 @@ export function getSupplementLogsInRange(
 export function getOfferedIntakeForSlot(
   profileId: number,
   nowHhmm: string
-): { itemId: number; name: string; detail: string | null; countToday: number }[] {
+): {
+  itemId: number;
+  name: string;
+  detail: string | null;
+  countToday: number;
+}[] {
   const date = today(profileId);
   const rows = db
     .prepare(

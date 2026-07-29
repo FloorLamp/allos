@@ -451,10 +451,7 @@ export async function handleSymptomTextIntake(
 // handler's keyboard-rebuild discipline: only act when the message actually had
 // buttons, so an absent keyboard can't overwrite the text.
 import crypto from "node:crypto";
-import {
-  collapsedOfferAction,
-  expandedOfferActions,
-} from "./offer-tail";
+import { collapsedOfferAction, expandedOfferActions } from "./offer-tail";
 import type { DemoteCallback, OfferTailCallback } from "./callback-data";
 import { demoteIntakeObligation } from "../intake-obligation-write";
 import { DEMOTION_OUTCOME_TEXT } from "../supplement-demotion";
@@ -581,7 +578,10 @@ export async function handleOfferTailTap(
   if (offered.length === 0) {
     // The slot turned over (or the items were paused) since the label was rendered.
     // Say so plainly instead of opening an empty list.
-    await answerCallbackQuery(cq.id, "Nothing available in this slot right now.");
+    await answerCallbackQuery(
+      cq.id,
+      "Nothing available in this slot right now."
+    );
     return;
   }
   await updateMessageKeyboard(
@@ -628,5 +628,9 @@ export async function handleDemoteTap(
   if (outcome !== "demoted" || chatId == null || messageId == null) return;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (rows.length === 0) return;
-  await updateMessageKeyboard(chatId, messageId, removeButton(rows, cq.data as string));
+  await updateMessageKeyboard(
+    chatId,
+    messageId,
+    removeButton(rows, cq.data as string)
+  );
 }

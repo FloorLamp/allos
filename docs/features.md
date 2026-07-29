@@ -1442,27 +1442,42 @@ logged), or **situational** — a lightweight, non-clinical context toggle
 (**Illness**, **Travel**, **High stress**, **Poor sleep**) you flip on the
 **Situations** bar; a situational supplement shows only while its situation is
 active, and an active **illness/injury condition** on your record suggests
-turning the matching situation on so you don't toggle it twice. Your own
-**mandatory / high / low** priority is always your call, never re-ranked by the
-app — and marking a supplement **low** now means something everywhere: it stays
-**tracked, never pushed**. It keeps its schedule, its dose check-offs, its
-adherence history and its place on the Supplements page, but it stops competing
-for your attention — no Upcoming row, no dashboard hero entry, no digest line,
-no reminder, and no refill nudge. **Medications are exempt**: a medication marked
-low still reminds and still escalates, because a prescription's safety signal is
-never a matter of how you tagged it. Interaction, pharmacogenomic and
-upper-limit warnings ignore priority entirely and fire the same way whether a low
-supplement is involved or not.
+turning the matching situation on so you don't toggle it twice.
 
-If a high-priority supplement goes untaken for long enough, Supplements & Meds
-offers a calm **"mark it low priority?"** suggestion with the numbers behind it.
-It is only ever a suggestion — nothing changes until you tap it, and taking the
-supplement again makes the suggestion go away on its own. Dismiss it and it stays
-dismissed.
+Each item carries one thing you choose: its **obligation** — **Must**, **Should**,
+or **May** — and everything else follows from it.
+
+- **Must** — a miss is an incident. Reminders, plus a follow-up nudge if a dose
+  goes unconfirmed.
+- **Should** — a miss is a shortfall worth tracking. Reminders and adherence, but
+  never chased twice.
+- **May** — no expectation at all. It is never reminded and never counts as
+  missed; it stays on your list and one tap away in its usual slot. This is where
+  as-needed items live — a PRN painkiller and a magnesium you take when you feel
+  like it are the same shape, so they are the same setting.
+
+Marking something **May** does not hide it. It keeps its schedule as a _hint_ for
+where to offer it, it still shows on Supplements & Meds, and on Upcoming it moves
+into an "available when you want them" section rather than disappearing. If you
+only use the app through Telegram, the daily digest carries a **"Log other…"**
+button that opens into whatever is available right now — so a May item is always
+one tap away even though it never interrupts you.
+
+**Medications start as Must**, and moving one lower asks first, spelling out
+exactly what you would be giving up ("no reminders, no escalation, no missed-dose
+safety net"). Interaction, pharmacogenomic and upper-limit warnings ignore
+obligation entirely — they fire the same way whether an item is a Must or a May.
+
+If a Must or Should supplement goes untaken for long enough, Supplements & Meds
+offers a calm **"move it to May?"** suggestion with the numbers behind it, and the
+same option appears as a third button on that item's own reminder — so it reaches
+you even if you never open the app. It is only ever a suggestion: nothing changes
+until you tap it, taking the supplement again makes it go away on its own, and the
+app never suggests moving anything _up_.
 
 Your daily digest and weekly recap lead with **what changed** rather than a bare
 fraction — "Missed: magnesium (3 days) · Resumed: vitamin D (2 days)" — covering
-only the things that are allowed to push you. A quiet week says nothing at all;
+only the things you have actually committed to. A quiet week says nothing at all;
 the taken/due count stays alongside as supporting detail.
 
 Supplements live under **Nutrition → Supplements**; medications have their own

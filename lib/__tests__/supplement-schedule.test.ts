@@ -181,24 +181,27 @@ describe("isDueOn", () => {
     ).toBe(false);
     // obligation=0 behaves exactly as before.
     expect(
-      isDueOn({ condition: "daily", situation: null, obligation: "should" }, ctx())
+      isDueOn(
+        { condition: "daily", situation: null, obligation: "should" },
+        ctx()
+      )
     ).toBe(true);
   });
 });
 
 describe("contributesToDailyLimit (#635)", () => {
   it("counts an unconditional daily item", () => {
-    expect(contributesToDailyLimit({ condition: "daily", obligation: "should" })).toBe(
-      true
-    );
+    expect(
+      contributesToDailyLimit({ condition: "daily", obligation: "should" })
+    ).toBe(true);
     // obligation omitted defaults to not-PRN.
     expect(contributesToDailyLimit({ condition: "daily" })).toBe(true);
   });
 
   it("excludes a PRN (obligation) item even when daily", () => {
-    expect(contributesToDailyLimit({ condition: "daily", obligation: "may" })).toBe(
-      false
-    );
+    expect(
+      contributesToDailyLimit({ condition: "daily", obligation: "may" })
+    ).toBe(false);
   });
 
   it("excludes workout/rest/situational items (not taken every day)", () => {
@@ -208,7 +211,9 @@ describe("contributesToDailyLimit (#635)", () => {
       "rest_day",
       "situational",
     ] as const) {
-      expect(contributesToDailyLimit({ condition, obligation: "should" })).toBe(false);
+      expect(contributesToDailyLimit({ condition, obligation: "should" })).toBe(
+        false
+      );
     }
   });
 });

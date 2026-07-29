@@ -1144,7 +1144,11 @@ addSupp({ name: "Vitamin K2", obligation: "should", stack: "D3 + K2" }, [
   { amount: "100 mcg", time: "Morning", food: "with_fat" },
 ]);
 const creatineId = addSupp(
-  { name: "Creatine Monohydrate", condition: "post_workout", obligation: "may" },
+  {
+    name: "Creatine Monohydrate",
+    condition: "post_workout",
+    obligation: "may",
+  },
   [{ amount: "5 g", time: "Anytime", food: "any" }]
 );
 // Split dose across two fat-containing meals.
@@ -1425,7 +1429,9 @@ const klorConId = Number(
     1
   ).lastInsertRowid
 );
-db.prepare("UPDATE intake_items SET obligation = 'may' WHERE id = ?").run(klorConId);
+db.prepare("UPDATE intake_items SET obligation = 'may' WHERE id = ?").run(
+  klorConId
+);
 medDose.run(klorConId, "10 mEq", "Anytime", "with_food", 0);
 courseIns.run(klorConId, daysAgo(40), null, null, "Ongoing potassium support");
 

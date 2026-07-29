@@ -34,8 +34,8 @@ export default function DemotionSuggestions({
         Priority check
       </h2>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-        Items you&rsquo;ve stopped taking that you&rsquo;re still on the hook for.
-        Marking one low keeps its schedule and its tracking — it just stops
+        Items you&rsquo;ve stopped taking that you&rsquo;re still on the hook
+        for. Marking one low keeps its schedule and its tracking — it just stops
         pushing.
       </p>
       <ul className="space-y-3">

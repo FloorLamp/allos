@@ -55,10 +55,7 @@ import {
   type DigestSleep,
 } from "./digest";
 import { createLogger } from "../log";
-import {
-  collapsedOfferAction,
-  offerTailNeedsRefresh,
-} from "./offer-tail";
+import { collapsedOfferAction, offerTailNeedsRefresh } from "./offer-tail";
 import { updateMessageKeyboard } from "./telegram";
 import { messageKeyboard } from "./telegram-render";
 import {
@@ -448,9 +445,7 @@ export async function runDigest(
 // tail), a pointer from a PREVIOUS day (day rollover strips the keyboard entirely
 // rather than relabelling a stale day's message), and a slot that hasn't turned over
 // (offerTailNeedsRefresh false → zero API calls, so the common tick costs nothing).
-export async function refreshDigestOfferTail(
-  profileId: number
-): Promise<void> {
+export async function refreshDigestOfferTail(profileId: number): Promise<void> {
   const pointer = getDigestTailPointer(profileId);
   if (!pointer) return;
   const date = today(profileId);

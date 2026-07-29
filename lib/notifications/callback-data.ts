@@ -16,10 +16,7 @@ import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
-import {
-  OFFER_COLLAPSE_PREFIX,
-  OFFER_EXPAND_PREFIX,
-} from "./offer-tail";
+import { OFFER_COLLAPSE_PREFIX, OFFER_EXPAND_PREFIX } from "./offer-tail";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.

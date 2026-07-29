@@ -354,8 +354,7 @@ export default function MedicationForm({
     // Brand suggestions narrow to this med's brands when known, always led by "Generic"
     // (#851 item 3).
     setBrandOptions(medicationBrandOptions(pf.brandSuggestions));
-    if (pf.asNeeded !== undefined)
-      setObligation(pf.asNeeded ? "may" : "must");
+    if (pf.asNeeded !== undefined) setObligation(pf.asNeeded ? "may" : "must");
     if (pf.minIntervalHours !== undefined)
       setMinIntervalHours(String(pf.minIntervalHours));
     if (pf.maxDailyCount !== undefined)
@@ -741,10 +740,7 @@ export default function MedicationForm({
           CURRENT choice's consequences from the shared copy; the med-specific
           consequence confirm lives at submit (see handle()). */}
       <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
-        <label
-          className="label"
-          htmlFor={`med-obligation-${fid}`}
-        >
+        <label className="label" htmlFor={`med-obligation-${fid}`}>
           Obligation
           {suggested.has("asNeeded") && <PrefillBadge />}
         </label>

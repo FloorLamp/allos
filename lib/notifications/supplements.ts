@@ -162,7 +162,10 @@ function gatherWindowDoses(
   // The demotion candidates for THIS profile, resolved once per gather rather than
   // per dose (the detector reads a 30-day window per item — doing it inside the loop
   // would re-read the same ledger for every slot).
-  const demotableItemIds = demotionCandidateItemIds(profileId, today(profileId));
+  const demotableItemIds = demotionCandidateItemIds(
+    profileId,
+    today(profileId)
+  );
 
   const entries: WindowDose[] = [];
   for (const dose of doses) {

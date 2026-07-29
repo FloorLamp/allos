@@ -97,7 +97,8 @@ function fields(formData: FormData) {
   const kindEarly: SupplementKind =
     formData.get("kind") === "medication" ? "medication" : "supplement";
   const obligationRaw = String(
-    formData.get("obligation") ?? (kindEarly === "medication" ? "must" : "should")
+    formData.get("obligation") ??
+      (kindEarly === "medication" ? "must" : "should")
   );
   // A `may` item is PRN-shaped by construction (#1505 collapsed obligation into it), so
   // the old separate as-needed checkbox is gone: choosing May IS choosing as-needed.

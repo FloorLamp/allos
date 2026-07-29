@@ -439,9 +439,7 @@ export const OBLIGATION_ORDER: Record<IntakeObligation, number> = {
   may: 2,
 };
 
-export const OBLIGATIONS = Object.keys(
-  OBLIGATION_ORDER
-) as IntakeObligation[];
+export const OBLIGATIONS = Object.keys(OBLIGATION_ORDER) as IntakeObligation[];
 
 export const OBLIGATION_LABELS: Record<IntakeObligation, string> = {
   must: "Must",
@@ -454,7 +452,8 @@ export const OBLIGATION_LABELS: Record<IntakeObligation, string> = {
 // confirm dialog and any doc-facing surface quote the SAME consequences.
 export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
   must: "Reminders, and a follow-up nudge if a dose goes unconfirmed. A miss is an incident.",
-  should: "Reminders and adherence tracking. A miss is a shortfall, never escalated.",
+  should:
+    "Reminders and adherence tracking. A miss is a shortfall, never escalated.",
   may: "No reminders and no misses — kept on your list and one tap away when you want it.",
 };
 
@@ -476,9 +475,7 @@ export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
 // its kind. The safety tier is unchanged and stays obligation-BLIND: missed-dose
 // escalation reads the unfiltered gather, and the interaction (#144) / PGx (#710) /
 // UL (#148) warnings fire identically for a `may` member.
-export function isPushedIntake(
-  item: Pick<Supplement, "obligation">
-): boolean {
+export function isPushedIntake(item: Pick<Supplement, "obligation">): boolean {
   return item.obligation !== "may";
 }
 

@@ -362,8 +362,7 @@ export function loadMedicationsData(
 
   // A med is "loggable today" (dose check-offs shown) when it's active and either
   // PRN or due under today's context.
-  const medDue = (s: Supplement) =>
-    !!s.active && (isPrn(s) || isDueOn(s, ctx));
+  const medDue = (s: Supplement) => !!s.active && (isPrn(s) || isDueOn(s, ctx));
 
   const buildCardData = (med: Supplement): MedCardData => {
     const medDoses = dosesBySupp.get(med.id) ?? [];

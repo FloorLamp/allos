@@ -98,8 +98,7 @@ export default async function MedicationDetailPage(props: {
   // because their adherence history is schedule-derived. A null scheduled start is
   // an open-ended course, so it intentionally supplies no picker minimum.
   const historyMinDate =
-    isPrn(m.med) ||
-    m.courses.some((course) => course.started_on == null)
+    isPrn(m.med) || m.courses.some((course) => course.started_on == null)
       ? undefined
       : courseStarts.sort()[0];
   const historyMaxDate = m.courses.some((course) => !course.stopped_on)
@@ -140,10 +139,9 @@ export default async function MedicationDetailPage(props: {
 
   // Month adherence calendar (#852 item 5) — only for a SCHEDULED med; a PRN med is
   // never scheduled-due, so its grid would read entirely "not due".
-  const calendar =
-    isPrn(m.med)
-      ? null
-      : getMedicationAdherenceCalendar(profileId, m.med.id);
+  const calendar = isPrn(m.med)
+    ? null
+    : getMedicationAdherenceCalendar(profileId, m.med.id);
 
   // "Prescribed at: <visit>" (#1050) — the deterministic tier-1 link (a resolved
   // FHIR MedicationRequest.encounter) or a user-accepted suggestion, whichever set

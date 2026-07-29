@@ -203,7 +203,10 @@ describe("notifiableWindowDoses (#1156/#1505)", () => {
     const entries = [
       entry(supp(1, "Ashwagandha", "may"), dose(11, 1, "300 mg")),
       entry(supp(2, "Creatine", "should"), dose(12, 2, "5 g")),
-      entry(supp(3, "Levothyroxine", "must", "medication"), dose(13, 3, "50 mcg")),
+      entry(
+        supp(3, "Levothyroxine", "must", "medication"),
+        dose(13, 3, "50 mcg")
+      ),
       entry(supp(4, "Vitamin D", "must"), dose(14, 4, "1000 IU")),
     ];
     expect(notifiableWindowDoses(entries).map((e) => e.supp.name)).toEqual([
