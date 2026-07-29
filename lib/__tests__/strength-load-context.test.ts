@@ -85,8 +85,18 @@ describe("movementLoadKey — movement + implement (the series identity)", () =>
 
 // Newest-first, as every surface builds its session list.
 const twoMachines = [
-  { date: "2026-07-10", exercise: "Machine Chest Press", equipmentId: 7, tag: "home" },
-  { date: "2026-07-03", exercise: "Machine Chest Press", equipmentId: 7, tag: "homeOld" },
+  {
+    date: "2026-07-10",
+    exercise: "Machine Chest Press",
+    equipmentId: 7,
+    tag: "home",
+  },
+  {
+    date: "2026-07-03",
+    exercise: "Machine Chest Press",
+    equipmentId: 7,
+    tag: "homeOld",
+  },
 ];
 
 describe("loadContextSessions / pickSeedSessions — never cross a load context", () => {
@@ -101,7 +111,12 @@ describe("loadContextSessions / pickSeedSessions — never cross a load context"
 
   it("seeds from the selected machine once it has history", () => {
     const both = [
-      { date: "2026-07-12", exercise: "Machine Chest Press", equipmentId: 8, tag: "hotel" },
+      {
+        date: "2026-07-12",
+        exercise: "Machine Chest Press",
+        equipmentId: 8,
+        tag: "hotel",
+      },
       ...twoMachines,
     ];
     expect(
@@ -124,17 +139,42 @@ describe("loadContextSessions / pickSeedSessions — never cross a load context"
 
   it("does not let a machine inherit the unassigned lane's numbers", () => {
     const untagged = [
-      { date: "2026-07-10", exercise: "Machine Chest Press", equipmentId: null, tag: "legacy" },
+      {
+        date: "2026-07-10",
+        exercise: "Machine Chest Press",
+        equipmentId: null,
+        tag: "legacy",
+      },
     ];
     expect(pickSeedSessions(untagged, "Machine Chest Press", 8)).toEqual([]);
   });
 
   it("keeps two same-day activities on the same machine as ONE session", () => {
     const sameDay = [
-      { date: "2026-07-10", exercise: "Machine Chest Press", equipmentId: 7, tag: "a" },
-      { date: "2026-07-10", exercise: "Machine Chest Press", equipmentId: 7, tag: "b" },
-      { date: "2026-07-10", exercise: "Machine Chest Press", equipmentId: 8, tag: "other" },
-      { date: "2026-07-01", exercise: "Machine Chest Press", equipmentId: 7, tag: "old" },
+      {
+        date: "2026-07-10",
+        exercise: "Machine Chest Press",
+        equipmentId: 7,
+        tag: "a",
+      },
+      {
+        date: "2026-07-10",
+        exercise: "Machine Chest Press",
+        equipmentId: 7,
+        tag: "b",
+      },
+      {
+        date: "2026-07-10",
+        exercise: "Machine Chest Press",
+        equipmentId: 8,
+        tag: "other",
+      },
+      {
+        date: "2026-07-01",
+        exercise: "Machine Chest Press",
+        equipmentId: 7,
+        tag: "old",
+      },
     ];
     expect(
       pickSeedSessions(sameDay, "Machine Chest Press", 7).map((s) => s.tag)
@@ -152,9 +192,9 @@ describe("pickSeedSessions — the equipment-free path is byte-for-byte pre-#161
   ];
 
   it("still prefers the exact variant over a newer sibling", () => {
-    expect(pickSeedSessions(sessions, "Barbell Curl").map((s) => s.tag)).toEqual(
-      ["bbOld"]
-    );
+    expect(
+      pickSeedSessions(sessions, "Barbell Curl").map((s) => s.tag)
+    ).toEqual(["bbOld"]);
   });
 
   it("still falls back to the newest session for an ambiguous bare base", () => {
@@ -174,13 +214,23 @@ describe("pickSeedSessions — the equipment-free path is byte-for-byte pre-#161
     // With a real machine in the history, "which implement produced this?" is no
     // longer answerable — so a bare base seeds nothing rather than a machine's load.
     const mixed = [
-      { date: "2026-07-10", exercise: "Dumbbell Curl", equipmentId: 9, tag: "db" },
-      { date: "2026-07-01", exercise: "Barbell Curl", equipmentId: null, tag: "bb" },
+      {
+        date: "2026-07-10",
+        exercise: "Dumbbell Curl",
+        equipmentId: 9,
+        tag: "db",
+      },
+      {
+        date: "2026-07-01",
+        exercise: "Barbell Curl",
+        equipmentId: null,
+        tag: "bb",
+      },
     ];
     expect(pickSeedSessions(mixed, "Curl", null)).toEqual([]);
     // …while an exact context still resolves normally.
-    expect(pickSeedSessions(mixed, "Barbell Curl", null).map((s) => s.tag)).toEqual(
-      ["bb"]
-    );
+    expect(
+      pickSeedSessions(mixed, "Barbell Curl", null).map((s) => s.tag)
+    ).toEqual(["bb"]);
   });
 });

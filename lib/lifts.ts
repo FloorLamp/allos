@@ -1074,7 +1074,9 @@ export function exerciseHistoryNames(name: string): string[] {
  * built-in-variant work with no custom row stay in the unassigned lane and we never
  * guess which machine produced them.
  */
-export function equipmentLoadLane(equipmentId: number | null | undefined): string {
+export function equipmentLoadLane(
+  equipmentId: number | null | undefined
+): string {
   return equipmentId == null ? "none" : String(equipmentId);
 }
 

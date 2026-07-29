@@ -255,7 +255,9 @@ describe("observation dismissal keys follow the series identity (#1399)", () => 
     expect(staleExerciseSignalKey("Barbell Curl", "2026-02")).toBe(
       staleExerciseSignalKey("Curl", "2026-02")
     );
-    expect(staleExerciseLegacyKey("Barbell Curl")).not.toContain("barbell curl");
+    expect(staleExerciseLegacyKey("Barbell Curl")).not.toContain(
+      "barbell curl"
+    );
   });
 
   it("still separates two genuinely different movements", () => {

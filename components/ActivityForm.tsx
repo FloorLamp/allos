@@ -190,7 +190,9 @@ export default function ActivityForm({
   // created mid-workout is immediately pickable on every part without a reload and
   // without discarding the activity being edited.
   const addEquipment = (e: Equipment) =>
-    setEquipmentList((prev) => (prev.some((x) => x.id === e.id) ? prev : [...prev, e]));
+    setEquipmentList((prev) =>
+      prev.some((x) => x.id === e.id) ? prev : [...prev, e]
+    );
 
   // Equipment-aware base ordering for the exercise combobox (issue #345): de-rank
   // lifts whose implement kind the profile doesn't own, so cold suggestions prefer

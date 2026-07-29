@@ -105,7 +105,14 @@ beforeAll(() => {
       .lastInsertRowid
   );
   const pt = today(plainProfileId);
-  addSession(plainProfileId, shiftDateStr(pt, -20), "Barbell Curl", 40, 8, null);
+  addSession(
+    plainProfileId,
+    shiftDateStr(pt, -20),
+    "Barbell Curl",
+    40,
+    8,
+    null
+  );
   addSession(plainProfileId, shiftDateStr(pt, -5), "Curl", 50, 6, null);
 });
 
@@ -178,12 +185,9 @@ describe("getExerciseE1rmSeries load contexts (#1610)", () => {
 
   it("still merges variant spellings within one lane (#432/#1399)", () => {
     // "Barbell Curl" and "Curl" remain ONE series even with load contexts on.
-    const series = getExerciseE1rmSeries(
-      plainProfileId,
-      undefined,
-      undefined,
-      { byLoadContext: true }
-    ).filter(
+    const series = getExerciseE1rmSeries(plainProfileId, undefined, undefined, {
+      byLoadContext: true,
+    }).filter(
       (s) => exerciseHistoryKey(s.exercise) === exerciseHistoryKey("Curl")
     );
     expect(series).toHaveLength(1);

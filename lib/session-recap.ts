@@ -344,7 +344,8 @@ function groupExercises(
     }
     // First non-null implement of the exercise, exactly how RecentSession resolves a
     // session's equipment — so the recap's load context matches the history's.
-    if (e.equipmentId == null && equipmentId != null) e.equipmentId = equipmentId;
+    if (e.equipmentId == null && equipmentId != null)
+      e.equipmentId = equipmentId;
     e.sets.push(set);
   }
   return out;
