@@ -1092,7 +1092,7 @@ med.run(
 const sup = db.prepare(
   `INSERT INTO intake_items
      (profile_id, name, notes, condition, obligation, brand, product, situation, stack)
-         VALUES (1, ?, ?, ?, 'should', ?, ?, ?, ?)`
+   VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const dose = db.prepare(
   `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
@@ -1128,7 +1128,7 @@ function addSupp(
   return id;
 }
 
-// Fat-soluble, lab-confirmed deficiency → mandatory; stacked with K2.
+// Fat-soluble, lab-confirmed deficiency → must; stacked with K2.
 addSupp(
   {
     name: "Vitamin D3",
@@ -1217,7 +1217,7 @@ db.prepare(
 const medIns = db.prepare(
   `INSERT INTO intake_items
      (profile_id, name, notes, condition, obligation, kind, prescriber, active)
-         VALUES (1, ?, ?, ?, 'should', 'medication', ?, ?)`
+   VALUES (1, ?, ?, ?, ?, 'medication', ?, ?)`
 );
 const courseIns = db.prepare(
   `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
@@ -1236,7 +1236,8 @@ const medDose = db.prepare(
 // Sertraline: stopped once (side effect) then restarted — shows in Current with a
 // two-course history and a resolved side effect linked to the first course.
 const sertId = Number(
-  medIns.run("Sertraline", "SSRI", "daily", "high", "Patel", 1).lastInsertRowid
+  medIns.run("Sertraline", "SSRI", "daily", "should", "Patel", 1)
+    .lastInsertRowid
 );
 medDose.run(sertId, "50 mg", "Morning", "with_food", 0);
 const sertCourse1 = Number(
@@ -1253,7 +1254,7 @@ sideEffectIns.run(sertId, sertCourse1, "Nausea", "moderate", daysAgo(110), 1);
 
 // Amoxicillin: a completed antibiotic course — shows in Past / discontinued.
 const amoxId = Number(
-  medIns.run("Amoxicillin", "Antibiotic", "daily", "high", "Patel", 0)
+  medIns.run("Amoxicillin", "Antibiotic", "daily", "should", "Patel", 0)
     .lastInsertRowid
 );
 medDose.run(amoxId, "500 mg", "Morning", "with_food", 0);
@@ -1301,7 +1302,7 @@ const warfarinId = Number(
     "Warfarin",
     "Anticoagulant — keep vitamin K intake consistent",
     "daily",
-    "high",
+    "should",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
@@ -1320,13 +1321,10 @@ const ibuprofenId = Number(
     "Ibuprofen",
     "OTC NSAID — as needed for pain",
     "daily",
-    "low",
+    "may",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
-);
-db.prepare("UPDATE intake_items SET obligation = 'may' WHERE id = ?").run(
-  ibuprofenId
 );
 const ibuprofenDoseId = Number(
   medDose.run(ibuprofenId, "200 mg", "Anytime", "with_food", 0).lastInsertRowid
@@ -1375,7 +1373,7 @@ const simvastatinId = Number(
     "Simvastatin",
     "Statin — take in the evening",
     "daily",
-    "high",
+    "should",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
@@ -1408,13 +1406,13 @@ const hyzaarId = Number(
     "Hyzaar",
     "Combination antihypertensive (losartan/HCTZ)",
     "daily",
-    "high",
+    "may",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
 );
 db.prepare(
-  "UPDATE intake_items SET rxcui = ?, rxcui_ingredients = ?, obligation = 'may' WHERE id = ?"
+  "UPDATE intake_items SET rxcui = ?, rxcui_ingredients = ? WHERE id = ?"
 ).run("979464", '["52175","5487"]', hyzaarId);
 medDose.run(hyzaarId, "50-12.5 mg", "Anytime", "any", 0);
 courseIns.run(hyzaarId, daysAgo(40), null, null, "Ongoing for blood pressure");
@@ -1424,13 +1422,10 @@ const klorConId = Number(
     "Klor-Con",
     "Potassium chloride supplement",
     "daily",
-    "low",
+    "may",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
-);
-db.prepare("UPDATE intake_items SET obligation = 'may' WHERE id = ?").run(
-  klorConId
 );
 medDose.run(klorConId, "10 mEq", "Anytime", "with_food", 0);
 courseIns.run(klorConId, daysAgo(40), null, null, "Ongoing potassium support");

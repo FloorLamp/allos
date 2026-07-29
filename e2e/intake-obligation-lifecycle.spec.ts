@@ -92,13 +92,17 @@ test("a `may` item is tracked on its page, off the due list, and inside the avai
     lowId = low.itemId;
     highId = high.itemId;
 
-    // TRACKED: both items render on their own page, unchanged.
+    // TRACKED: both items are on their own page. The `should` one is in the due-today
+    // list; the `may` one is under "Not scheduled today", because it has no dueness —
+    // present and reachable, just not claimed to be owed.
     await page.goto("/nutrition?tab=supplements");
     await expect(
-      page.getByTestId("medicine-name").filter({ hasText: LOW_NAME })
-    ).toBeVisible();
-    await expect(
       page.getByTestId("medicine-name").filter({ hasText: HIGH_NAME })
+    ).toBeVisible();
+    const notScheduled = page.getByTestId("not-scheduled-section");
+    await notScheduled.locator("summary").click();
+    await expect(
+      notScheduled.getByTestId("medicine-name").filter({ hasText: LOW_NAME })
     ).toBeVisible();
 
     // NEVER PUSHED: only the `should` twin has an Upcoming DUE row…
@@ -165,9 +169,14 @@ test("accepting a demotion suggestion moves the item into the available disclosu
         .getByTestId("demotion-suggestion-item")
         .filter({ hasText: ABANDONED_NAME })
     ).toHaveCount(0);
-    // …and the item is still fully tracked on its own page.
+    // …and the item is still fully tracked on its own page — now under "Not
+    // scheduled today", which is what a `may` item is.
+    const notScheduled = page.getByTestId("not-scheduled-section");
+    await notScheduled.locator("summary").click();
     await expect(
-      page.getByTestId("medicine-name").filter({ hasText: ABANDONED_NAME })
+      notScheduled
+        .getByTestId("medicine-name")
+        .filter({ hasText: ABANDONED_NAME })
     ).toBeVisible();
 
     // The push tier no longer carries it.

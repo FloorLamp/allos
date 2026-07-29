@@ -654,7 +654,7 @@ export default async function SupplementsTab() {
       )}
 
       {notScheduled.length > 0 && (
-        <details>
+        <details data-testid="not-scheduled-section">
           <summary className="cursor-pointer section-label">
             Not scheduled today ({notScheduled.length})
           </summary>
