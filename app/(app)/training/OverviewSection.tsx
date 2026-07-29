@@ -37,7 +37,7 @@ import {
   suggestNextSet,
   type CardioPR,
 } from "@/lib/coaching";
-import { regionForExercise } from "@/lib/lifts";
+import { loadContextLabel, regionForExercise } from "@/lib/lifts";
 import { RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
 import { loadingDates } from "@/lib/training-zones";
 import { recommendNextWorkout } from "@/lib/workout-recommendation";
@@ -108,7 +108,13 @@ export default async function OverviewSection() {
   const summary = getJournalWeekSummary(profile.id);
   const targets = getFrequencyTargetProgress(profile.id);
   const strength = getStrengthByExercise(profile.id);
-  const strengthPrs = recentPRs(strength, todayStr, 30);
+  // PRs read the LOAD-CONTEXT grouping (#1610) so no record blends two machines;
+  // the card labels each row with its implement (#1610 forbids unlabeled splits).
+  const strengthPrs = recentPRs(
+    getStrengthByExercise(profile.id, true),
+    todayStr,
+    30
+  );
 
   const cardio = getCardioByActivity(
     profile.id,
@@ -576,7 +582,7 @@ export default async function OverviewSection() {
               title="Recent strength PRs"
               testId="overview-strength-prs"
               items={strengthPrs.slice(0, PR_CAP).map((p) => ({
-                name: p.exercise,
+                name: loadContextLabel(p.exercise, p.equipment),
                 value:
                   p.kind === "1rm"
                     ? p.bodyweight

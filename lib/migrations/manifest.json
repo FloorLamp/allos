@@ -118,5 +118,6 @@
   "117-fitbit-activity-components.ts": "9cedaadedc3769c1e216609df9d72cb5ebeb6d00bd9dd82eda506318c91e0b40",
   "118-imported-practice-logs.ts": "4a189867671bf4911cf3ff3edf9756c5f362e3febdef4b901164cae90d3c0e28",
   "119-practice-sync-provenance.ts": "6f8c12867bfa92c0ef2e2a7788488df3ff8e2e95538afd239a57da1c17d624ba",
-  "120-lab-result-lifecycle.ts": "5acc4d6add1d8d14f3fbb2acbab476406f7a89b5036787733d5a53d2e223d91a"
+  "120-lab-result-lifecycle.ts": "5acc4d6add1d8d14f3fbb2acbab476406f7a89b5036787733d5a53d2e223d91a",
+  "121-goal-equipment-context.ts": "c45955dddad2ff2bf5fc11101b8d05344039759e935fb9f1613e955b64b7249b"
 }

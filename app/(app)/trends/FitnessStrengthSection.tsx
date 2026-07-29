@@ -11,6 +11,7 @@ import {
   getWeekStart,
 } from "@/lib/settings";
 import { recentCardioPRs, recentPRs } from "@/lib/coaching";
+import { loadContextLabel } from "@/lib/lifts";
 import { chartSeries } from "@/lib/chart-colors";
 import { startOfWeekStr } from "@/lib/date";
 import { dispWeight } from "@/lib/units";
@@ -31,13 +32,19 @@ import ChartCard from "@/components/ChartCard";
 // lifts, as trends rather than as a full-history explorer table.
 //
 // Both halves are windowed reads of EXISTING computations (#221):
-//   • getExerciseE1rmSeries(profileId, since, until) — the SAME per-session best-
-//     e1RM series plateau detection reads, already collapsed onto the canonical
-//     `exerciseHistoryKey` (#331/#432/#482), so a lift and its variants are ONE
-//     trend line and ONE mover, never two half-series that each look flat.
+//   • getExerciseE1rmSeries(profileId, since, until, { byLoadContext: true }) — the
+//     SAME per-session best-e1RM series plateau detection reads, collapsed onto the
+//     canonical `exerciseHistoryKey` on the NAME axis (#331/#432/#482), so a lift
+//     and its variants are ONE trend line, and split on the LOAD axis (#1610), so a
+//     home chest press and a hotel one are two labeled lanes rather than one
+//     averaged line that looks flat while both machines are progressing.
 //   • recentPRs / recentCardioPRs, windowed exactly as the PRs block windows them,
 //     rolled up per week by the pure `prWeeks` — a rate over the records already
 //     detected, not a second PR detector.
+//
+// Every lane-split thing here is LABELED through `loadContextLabel` — #1610 forbids
+// duplicate unlabeled rows, and that constraint is precisely why the flip waited for
+// this surface to be able to name the implement.
 export default async function FitnessStrengthSection({
   window,
   weeks,
@@ -50,18 +57,24 @@ export default async function FitnessStrengthSection({
   const wu = units.weightUnit;
   const since = window.from ?? undefined;
 
-  const series = getExerciseE1rmSeries(profile.id, since, window.to);
+  const series = getExerciseE1rmSeries(profile.id, since, window.to, {
+    byLoadContext: true,
+  });
   const movers = strengthMovers(series);
-  // The charted lift is the window's most-trained one (most sessions, ties to the
-  // bigger move) — the trend most likely to answer "did my training work".
+  // The charted lift is the window's most-trained LOAD CONTEXT (most sessions, ties
+  // to the bigger move) — the trend most likely to answer "did my training work",
+  // on one comparable implement rather than averaged across machines.
   const lead = [...series]
     .filter((s) => s.points.length >= 2)
     .sort((a, b) => b.points.length - a.points.length)[0];
+  const leadLabel = lead ? loadContextLabel(lead.exercise, lead.equipment) : "";
 
   // PR rate: the same windowed records the PRs block lists, per week.
   const days = windowPrDays(window);
   const records = selectWindowPRs(
-    recentPRs(getStrengthByExercise(profile.id), window.to, days),
+    // byLoadContext (#1610): two machines each setting a record are two records,
+    // and neither one's top load is assembled from the other's stack.
+    recentPRs(getStrengthByExercise(profile.id, true), window.to, days),
     recentCardioPRs(
       getCardioByActivity(
         profile.id,
@@ -97,10 +110,10 @@ export default async function FitnessStrengthSection({
           that link. */}
       <ChartCard
         testid="fitness-e1rm-trend"
-        title={`Estimated 1RM ${lead ? `— ${lead.exercise}` : ""}`}
+        title={`Estimated 1RM ${lead ? `— ${leadLabel}` : ""}`}
         detailTitle="estimated 1RM"
         detailHref="/training?tab=analyze"
-        description="Best estimated one-rep max per session in this window, for your most-trained lift. Variants of a lift count as one."
+        description="Best estimated one-rep max per session in this window, for your most-trained lift. Variants of a lift count as one; each piece of registry equipment is tracked separately, since two machines' loads aren't comparable."
       >
         {!lead ? (
           <EmptyState
@@ -127,11 +140,11 @@ export default async function FitnessStrengthSection({
                   const delta = dispWeight(m.deltaKg, wu, 1);
                   return (
                     <li
-                      key={m.exercise}
+                      key={m.label}
                       className="flex items-baseline justify-between gap-3"
                     >
                       <span className="text-slate-700 dark:text-slate-200">
-                        {m.exercise}
+                        {m.label}
                       </span>
                       <span
                         className={`tabular-nums font-medium ${

@@ -19,6 +19,11 @@ import {
   ENDURANCE_PROFILE,
   E2E_LOGIN_TRAINING_ROLLUP,
   TRAINING_ROLLUP_PROFILE,
+  E2E_LOGIN_LOAD_CONTEXT,
+  LOAD_CONTEXT_PROFILE,
+  LOAD_CONTEXT_LIFT,
+  LOAD_CONTEXT_HOME,
+  LOAD_CONTEXT_HOTEL,
 } from "../fixture-logins";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
 import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
@@ -436,5 +441,87 @@ export function seedTrainingRollup(): void {
   seedMemberLogin(E2E_LOGIN_TRAINING_ROLLUP, profileId, "write");
   console.log(
     `e2e: seeded training-overview rollup fixture — profile ${profileId} (${TRAINING_ROLLUP_PROFILE}) (#1496)`
+  );
+}
+
+// ── Strength load contexts (#1610) ────────────────────────────────────────────
+// One exercise NAME logged on TWO registry machines at loads that are not
+// comparable: a home chest press climbing 80 → 86 kg and a hotel machine whose
+// stack geometry makes ~50 kg the right load. Before #1610 the read layer dropped
+// `exercise_sets.equipment_id`, so every strength surface averaged the two into one
+// jagged progression, and a movement-wide max let the home machine's numbers stand
+// in for the hotel machine's.
+//
+// The fixture is what makes the deferred half OBSERVABLE in the browser: two
+// contexts is the minimum at which the Analyze chooser renders, the Trends series
+// splits, and the goal form has an ambiguity to force a choice about.
+//
+// Dates are relative (#1511) and inside the 90-day Trends default so the lens sees
+// them without widening the range. Idempotent: its own rows are cleared and
+// rewritten, children first.
+export function seedLoadContexts(): void {
+  const profileId = fixtureProfileId(LOAD_CONTEXT_PROFILE);
+  const t = today(profileId);
+
+  db.prepare(
+    `DELETE FROM exercise_sets WHERE activity_id IN
+       (SELECT id FROM activities WHERE profile_id = ?)`
+  ).run(profileId);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(profileId);
+
+  const insEquipment = db.prepare(
+    `INSERT INTO equipment (profile_id, name, category) VALUES (?, ?, 'Machine')`
+  );
+  const homeId = Number(
+    insEquipment.run(profileId, LOAD_CONTEXT_HOME).lastInsertRowid
+  );
+  const hotelId = Number(
+    insEquipment.run(profileId, LOAD_CONTEXT_HOTEL).lastInsertRowid
+  );
+
+  const insAct = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, source)
+     VALUES (?, ?, 'strength', 'Chest day', 40, 'manual')`
+  );
+  const insSet = db.prepare(
+    `INSERT INTO exercise_sets
+       (activity_id, exercise, set_number, weight_kg, reps, equipment_id, warmup)
+     VALUES (?, ?, ?, ?, 5, ?, 0)`
+  );
+  const session = (ago: number, weightKg: number, equipmentId: number) => {
+    const actId = Number(
+      insAct.run(profileId, shiftDateStr(t, -ago)).lastInsertRowid
+    );
+    for (let set = 1; set <= 3; set++)
+      insSet.run(actId, LOAD_CONTEXT_LIFT, set, weightKg, equipmentId);
+  };
+
+  // The home machine PROGRESSES; the hotel machine is nearly flat. Averaged, the two
+  // read as one lift bouncing between 50 and 86 — the fabricated trend #1610 is
+  // about. The hotel machine carries the NEWEST session, so it is the context the
+  // Analyze view must default to.
+  for (const [ago, kg] of [
+    [63, 80],
+    [49, 82],
+    [35, 84],
+    [21, 86],
+  ] as const) {
+    session(ago, kg, homeId);
+  }
+  for (const [ago, kg] of [
+    [56, 50],
+    [42, 50],
+    [28, 51],
+    [7, 51],
+  ] as const) {
+    session(ago, kg, hotelId);
+  }
+
+  seedMemberLogin(E2E_LOGIN_LOAD_CONTEXT, profileId, "write");
+  console.log(
+    `e2e: seeded strength load-context fixture — profile ${profileId} (${LOAD_CONTEXT_PROFILE}) (#1610)`
   );
 }

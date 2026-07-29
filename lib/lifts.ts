@@ -1119,6 +1119,30 @@ export function movementLoadKey(
   return `${exerciseHistoryKey(exercise)}@${equipmentLoadLane(equipmentId)}`;
 }
 
+/**
+ * How a lift is NAMED once its load contexts are rendered side by side (#1610) —
+ * the movement plus the registry implement it was performed on, so two machines
+ * read as the two distinct progressions they are ("Machine Chest Press (Hotel chest
+ * press)"). The bare movement name when the sets carry no implement link.
+ *
+ * This is the display twin of `equipmentLoadLane`: wherever a surface splits a
+ * series, a PR list or a comparison by lane, it must LABEL the lanes with this —
+ * #1610 forbids duplicate UNLABELED rows, which is exactly what an unlabeled split
+ * would produce. One composer, so the plateau copy (`plateauSubject`), the Trends
+ * progression chart, the PR lists and the Analyze context chooser cannot drift into
+ * three spellings of the same name.
+ *
+ * Display only: every catalog lookup (variations, muscles, history key) still runs
+ * on the raw `exercise`, which is why the label is composed at the edge rather than
+ * folded into the stored name.
+ */
+export function loadContextLabel(
+  exercise: string,
+  equipmentLabel: string | null | undefined
+): string {
+  return equipmentLabel ? `${exercise} (${equipmentLabel})` : exercise;
+}
+
 /** Look up a lift by name (case-insensitive, with a loose contains fallback). */
 export function liftInfo(name: string): LiftDef | undefined {
   const key = name.trim().toLowerCase();

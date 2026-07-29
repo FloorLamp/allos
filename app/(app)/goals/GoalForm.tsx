@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import type { BodyMetricKind, FormResult, Goal, GoalMetric } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
-import { variantOf, composeVariant, isTimed } from "@/lib/lifts";
+import {
+  variantOf,
+  composeVariant,
+  exerciseHistoryKey,
+  isTimed,
+} from "@/lib/lifts";
 import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/goals";
@@ -31,11 +36,18 @@ const BODY_TARGET_LABEL: Record<BodyMetricKind, string> = {
 // `onDone` is called after a successful submit (e.g. to close the modal).
 export default function GoalForm({
   lifts,
+  equipment = [],
+  equipmentByExercise = {},
   weightUnit,
   editGoal,
   onDone,
 }: {
   lifts: string[];
+  // The profile's equipment registry and, per canonical movement, the implements it
+  // has been logged on (#1610). Default to empty so the picker is simply absent for a
+  // profile that owns no gear — and for every caller that predates it.
+  equipment?: { id: number; name: string }[];
+  equipmentByExercise?: Record<string, number[]>;
   weightUnit: WeightUnit;
   editGoal?: Goal;
   onDone?: () => void;
@@ -93,6 +105,43 @@ export default function GoalForm({
 
   const variant = variantOf(exercise);
   const showEquipment = !!variant && variant.group.equipment.length > 0;
+
+  // ── Load context (#1610) ──────────────────────────────────────────────────
+  // The registry implements THIS movement has been logged on. `variantOf` above is
+  // the CATALOG axis ("Barbell" vs "Dumbbell" Curl, part of the exercise NAME);
+  // this is the INSTANCE axis — two machines that both serialize as the same exact
+  // name and whose loads are not comparable. They are different questions and both
+  // can apply, which is why they render as separate rows.
+  const equipmentName = new Map(equipment.map((e) => [e.id, e.name]));
+  const loggedIds = equipmentByExercise[exerciseHistoryKey(exercise)] ?? [];
+  // A goal being EDITED keeps its own implement offered even when the movement has
+  // since lost every set on it, so opening the form can't silently widen the goal.
+  const contextIds = [
+    ...new Set(
+      [...loggedIds, editGoal?.equipment_id ?? null].filter(
+        (id): id is number => id != null && equipmentName.has(id)
+      )
+    ),
+  ];
+  const [equipmentId, setEquipmentId] = useState<string>(
+    editGoal?.equipment_id != null ? String(editGoal.equipment_id) : ""
+  );
+  // #1610: when a WEIGHT target has more than one context to choose from, silently
+  // taking the maximum across machines is the bug — so the choice is REQUIRED, with
+  // "Any machine" available as a deliberate, explicit answer rather than a default.
+  // Rep/sets/hold targets and single-context lifts keep the movement-wide default.
+  const contextRequired = contextIds.length > 1 && metric === "weight";
+  const showLoadContext = contextIds.length > 0;
+  // Derived, not stored: switching exercise (or metric) can strand a selection that
+  // the new movement never had, and the select must never render a value that is not
+  // one of its options. An unstranded pick wins; otherwise "any" (movement-wide),
+  // except when a choice is REQUIRED, where the empty placeholder holds the line.
+  const selectedContext =
+    equipmentId !== "" && contextIds.includes(Number(equipmentId))
+      ? equipmentId
+      : contextRequired && equipmentId !== "any"
+        ? ""
+        : "any";
 
   const submitLabel = editGoal ? "Save changes" : "Create goal";
   const toast = useToast();
@@ -195,6 +244,38 @@ export default function GoalForm({
                     Pick equipment
                   </span>
                 )}
+              </div>
+            )}
+            {showLoadContext && (
+              <div className="mt-3" data-testid="goal-load-context">
+                <label className="label" htmlFor="goal-equipment">
+                  Machine {contextRequired ? "" : "(optional)"}
+                </label>
+                <select
+                  id="goal-equipment"
+                  name="equipment_id"
+                  className="input"
+                  value={selectedContext}
+                  onChange={(e) => setEquipmentId(e.target.value)}
+                  required={contextRequired}
+                >
+                  {contextRequired && selectedContext === "" && (
+                    <option value="" disabled>
+                      Choose a machine…
+                    </option>
+                  )}
+                  <option value="any">Any machine</option>
+                  {contextIds.map((id) => (
+                    <option key={id} value={String(id)}>
+                      {equipmentName.get(id)}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {contextRequired
+                    ? "You’ve logged this lift on more than one machine, and their loads aren’t comparable — pick the one this target is for."
+                    : "Scope this target to one machine, or leave it across all of them."}
+                </p>
               </div>
             )}
           </div>

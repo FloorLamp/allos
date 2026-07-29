@@ -47,3 +47,19 @@ export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
 // routine and NO injury, so nothing gates the observations (deload / injured region).
 export const E2E_LOGIN_TRAINING_ROLLUP = "e2e_training_rollup";
 export const TRAINING_ROLLUP_PROFILE = "Training Rollup (e2e)";
+
+// ── Strength load contexts (#1610) ────────────────────────────────────────────
+// A dedicated ADULT profile that has logged ONE exercise name on TWO registry
+// machines at deliberately non-comparable loads — the reported bug's exact shape.
+// Both machines are needed for anything here to be observable: with one implement
+// there is no chooser to render, no second series to label, and no ambiguity for the
+// goal form to resolve. Dedicated on purpose (#868): the spec creates a goal, and a
+// goal write on a shared profile would race a neighbor. Every date is relative so
+// the fixture never goes stale.
+export const E2E_LOGIN_LOAD_CONTEXT = "e2e_load_context";
+export const LOAD_CONTEXT_PROFILE = "Load Context (e2e)";
+// The one logged exercise name both machines serialize as — no name-derived key can
+// tell them apart, which is the whole point of #1610.
+export const LOAD_CONTEXT_LIFT = "Machine Chest Press";
+export const LOAD_CONTEXT_HOME = "Zzz home chest press (e2e)";
+export const LOAD_CONTEXT_HOTEL = "Zzz hotel chest press (e2e)";

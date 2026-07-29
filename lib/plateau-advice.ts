@@ -15,6 +15,7 @@
 import {
   liftInfo,
   exerciseHistoryKey,
+  loadContextLabel,
   LIFT_OPTIONS,
   type MuscleId,
 } from "./lifts";
@@ -122,15 +123,17 @@ export function plateauBreakClause(advice: PlateauBreakAdvice): string {
  * distinct signals they are ("Machine Chest Press (Hotel chest press)"). The bare
  * movement name when the sets carry no implement link.
  *
- * Display only — every catalog lookup (variations, muscles, history key) still runs
- * on the raw `exercise`, which is why the label is composed here rather than folded
- * into the name upstream.
+ * The plateau surfaces' name for the ONE load-context label composer in lib/lifts —
+ * the same phrasing the Trends progression chart, the PR lists and the Analyze
+ * context chooser render, so a split lane is spelled identically everywhere it is
+ * named. Kept as a plateau-domain export because every plateau surface already
+ * imports its copy from this module.
  */
 export function plateauSubject(
   exercise: string,
   equipmentLabel: string | null | undefined
 ): string {
-  return equipmentLabel ? `${exercise} (${equipmentLabel})` : exercise;
+  return loadContextLabel(exercise, equipmentLabel);
 }
 
 // Surface 1 — the plateau finding detail (Training → Overview, dashboard rollup,

@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   equipmentLoadLane,
   exerciseHistoryKey,
+  loadContextLabel,
   movementLoadKey,
   strengthLoadKey,
 } from "../lifts";
 import { loadContextSessions, pickSeedSessions } from "../exercise-window";
+import { coerceLoadContext } from "../analyze-view";
+import { plateauSubject } from "../plateau-advice";
 
 // #1610: `exercise_sets.equipment_id` is the per-set implement link, but the
 // strength read/identity layer dropped it, so two registry machines that both
@@ -232,5 +235,77 @@ describe("pickSeedSessions — the equipment-free path is byte-for-byte pre-#161
     expect(
       pickSeedSessions(mixed, "Barbell Curl", null).map((s) => s.tag)
     ).toEqual(["bb"]);
+  });
+});
+
+// ── Rendering the split (the deferred half of #1610) ────────────────────────
+// A surface that splits a series, a PR list or a comparison by lane MUST label the
+// lanes: #1610 explicitly forbids duplicate unlabeled rows, and that constraint is
+// why the Trends flip waited for a chart that could name the implement.
+
+describe("loadContextLabel", () => {
+  it("names the implement beside the movement", () => {
+    expect(loadContextLabel("Machine Chest Press", "Hotel chest press")).toBe(
+      "Machine Chest Press (Hotel chest press)"
+    );
+  });
+
+  it("renders the bare movement when no implement is linked", () => {
+    // The unassigned lane, and every profile that owns no registry equipment at
+    // all: byte-for-byte the pre-#1610 rendering.
+    expect(loadContextLabel("Back Squat", null)).toBe("Back Squat");
+    expect(loadContextLabel("Back Squat", undefined)).toBe("Back Squat");
+    expect(loadContextLabel("Back Squat", "")).toBe("Back Squat");
+  });
+
+  it("gives two machines of one movement two distinct labels", () => {
+    const home = loadContextLabel("Machine Chest Press", "Home chest press");
+    const hotel = loadContextLabel("Machine Chest Press", "Hotel chest press");
+    expect(home).not.toBe(hotel);
+  });
+
+  it("is the ONE composer every load-context surface spells the name with", () => {
+    // plateauSubject (#1628's plateau copy) delegates rather than re-phrasing, so a
+    // plateau, a PR row, a mover and the Analyze header cannot drift apart.
+    expect(plateauSubject("Machine Chest Press", "Hotel chest press")).toBe(
+      loadContextLabel("Machine Chest Press", "Hotel chest press")
+    );
+    expect(plateauSubject("Back Squat", null)).toBe(
+      loadContextLabel("Back Squat", null)
+    );
+  });
+});
+
+describe("coerceLoadContext", () => {
+  const contexts = [
+    { lane: equipmentLoadLane(9), label: "Hotel chest press" },
+    { lane: equipmentLoadLane(4), label: "Home chest press" },
+    { lane: equipmentLoadLane(null), label: "Unassigned" },
+  ];
+
+  it("honors an explicitly requested lane", () => {
+    expect(coerceLoadContext(contexts, equipmentLoadLane(4))?.label).toBe(
+      "Home chest press"
+    );
+    // The unassigned lane is selectable like any other — it is a lane, not a gap.
+    expect(coerceLoadContext(contexts, "none")?.label).toBe("Unassigned");
+  });
+
+  it("defaults to the most recently used context", () => {
+    // getExerciseLoadContexts returns newest-first, so the head IS that default.
+    expect(coerceLoadContext(contexts, undefined)?.label).toBe(
+      "Hotel chest press"
+    );
+  });
+
+  it("falls back rather than rendering an empty view for a stale lane", () => {
+    // A deleted machine's id, or another exercise's, left in a bookmarked URL.
+    expect(coerceLoadContext(contexts, equipmentLoadLane(999))?.label).toBe(
+      "Hotel chest press"
+    );
+  });
+
+  it("resolves to nothing when the item has no contexts at all", () => {
+    expect(coerceLoadContext([], "none")).toBeUndefined();
   });
 });

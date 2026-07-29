@@ -198,6 +198,8 @@ describe("PR → Finding adapters", () => {
   it("maps a strength 1RM PR to a positive, prefixed finding", () => {
     const pr: PR = {
       exercise: "Back Squat",
+      equipmentId: null,
+      equipment: null,
       kind: "1rm",
       date: "2026-07-09",
       e1rmKg: 140,
@@ -207,7 +209,7 @@ describe("PR → Finding adapters", () => {
     };
     const f = prToFinding(pr, "kg");
     expect(f.domain).toBe("pr");
-    expect(f.dedupeKey).toBe("pr:strength:Back Squat:1rm");
+    expect(f.dedupeKey).toBe("pr:strength:Back Squat@none:1rm");
     expect(f.tone).toBe("positive");
     expect(f.detail).toBe("Back Squat at 120 kg × 5");
     expect(f.dueDate).toBe("2026-07-09");
@@ -216,6 +218,8 @@ describe("PR → Finding adapters", () => {
   it("renders a strength PR in the reader's weight unit", () => {
     const pr: PR = {
       exercise: "Bench Press",
+      equipmentId: null,
+      equipment: null,
       kind: "1rm",
       date: "2026-07-09",
       e1rmKg: 100,
@@ -229,6 +233,8 @@ describe("PR → Finding adapters", () => {
   it("phrases a bodyweight PR without a load", () => {
     const pr: PR = {
       exercise: "Pull-up",
+      equipmentId: null,
+      equipment: null,
       kind: "1rm",
       date: "2026-07-09",
       e1rmKg: 0,
@@ -242,6 +248,8 @@ describe("PR → Finding adapters", () => {
   it("maps a top-set weight PR", () => {
     const pr: PR = {
       exercise: "Deadlift",
+      equipmentId: null,
+      equipment: null,
       kind: "weight",
       date: "2026-07-08",
       e1rmKg: 180,
@@ -250,7 +258,7 @@ describe("PR → Finding adapters", () => {
       bodyweight: false,
     };
     const f = prToFinding(pr, "kg");
-    expect(f.dedupeKey).toBe("pr:strength:Deadlift:weight");
+    expect(f.dedupeKey).toBe("pr:strength:Deadlift@none:weight");
     expect(f.detail).toBe("Deadlift top set at 160 kg");
   });
 

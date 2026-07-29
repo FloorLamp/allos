@@ -92,7 +92,13 @@ export function getGoalProgressMap(
     .prepare(
       `SELECT a.id AS activity_id, a.date AS date, s.exercise AS exercise,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
-              s.duration_sec, s.duration_sec_right
+              s.duration_sec, s.duration_sec_right,
+              -- The per-set implement link (#1610): a goal that names an equipment
+              -- context reads only that context's sets, so a light hotel machine
+              -- can't advance a goal set on the home stack. computeGoalProgress
+              -- applies the rule (goalContextSets) — a goal naming NO implement
+              -- keeps folding every lane, exactly as before.
+              s.equipment_id AS equipment_id
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        WHERE a.profile_id = ? AND s.warmup = 0 AND s.exercise IN (${matchingNames
          .map(() => "?")

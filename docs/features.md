@@ -432,9 +432,14 @@ explicit **Finish workout** or discard action. The header distinguishes active
 movement time from elapsed wall-clock time.
 
 Each set supports weight, reps or duration, optional equipment, and RPE. The
-next-set suggestion uses prior comparable sets and the current RPE; **repeat
-last session** remains available when coaching inputs are sparse. Plateau
-language stays a hint, not an automatic program rewrite. Completing a set starts
+equipment you pick is a **load context**: loads aren't comparable across two
+machines logged under one exercise name, so seeds, recent history, records,
+plateau signals and the progression charts all stay within the implement they
+were performed on, and a machine with no history of its own seeds nothing rather
+than borrowing another's numbers. The next-set suggestion uses prior comparable
+sets and the current RPE; **repeat last session** remains available when coaching
+inputs are sparse. Plateau language stays a hint, not an automatic program
+rewrite. Completing a set starts
 the local rest timer, and finishing the workout presents one in-place session
 summary before returning to the journal.
 
@@ -527,12 +532,16 @@ Fitness separates:
 
 - **Volume & cadence** for workout density and weekly volume;
 - **Zones & cardio** for heart-rate-zone minutes, Zone 2, pace, and endurance;
-- **Strength progression** for exercise history and estimated 1RM;
+- **Strength progression** for exercise history and estimated 1RM — a lift's
+  variants count as one, while each piece of registry equipment is its own
+  labeled progression;
 - **Sport** for repeated sport/activity series;
 - **PRs this window**, linked to the underlying sessions.
 
-Deeper analysis and benchmark ladders remain under **Training → Analyze**;
-Trends shows change over time rather than duplicating the coaching workspace.
+Deeper analysis and benchmark ladders remain under **Training → Analyze**, where
+a lift logged on more than one machine keeps a single entry and offers its
+machines as labeled choices, defaulting to the one used most recently. Trends
+shows change over time rather than duplicating the coaching workspace.
 
 Nutrition shows macros and fiber, food-group frequency, goal adherence, and
 intake history over the selected range. Clinical results stay under **Medical →
@@ -680,7 +689,11 @@ automatically.
 
 ## Goals
 
-Set targets, track progress bars, mark achieved/archived; a body-weight goal
+Set targets, track progress bars, mark achieved/archived. An exercise goal can be
+scoped to one piece of equipment; a weight target on a lift you've logged on more
+than one machine asks which one rather than quietly taking the best across them,
+and a goal that names no machine measures the movement however it was performed.
+A body-weight goal
 that's off pace for its target date surfaces a calm **Goal pacing** note
 (trending away, or landing well past the deadline at your current robust trend),
 alongside a gentle safe-rate caution when weight is dropping faster than

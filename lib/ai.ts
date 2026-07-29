@@ -71,9 +71,13 @@ function gatherInsightContext(
   const activities = getActivitiesByDate(profileId, date);
 
   // PRs set ON the day (withinDays = 0), as celebratory findings.
-  const strengthPrs = recentPRs(getStrengthByExercise(profileId), date, 0).map(
-    (pr) => prToFinding(pr, units.weightUnit)
-  );
+  // byLoadContext (#1610): a record belongs to the implement it was set on, and
+  // prToFinding names that implement and keys on its lane.
+  const strengthPrs = recentPRs(
+    getStrengthByExercise(profileId, true),
+    date,
+    0
+  ).map((pr) => prToFinding(pr, units.weightUnit));
   const cardioPrs = recentCardioPRs(
     getCardioByActivity(profileId, units.distanceUnit),
     date,

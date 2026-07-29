@@ -268,6 +268,13 @@ export interface Goal {
   // exercise-linked when `exercise` and `metric` are both set.
   exercise: string | null;
   metric: GoalMetric | null;
+  // OPTIONAL load context (#1610, migration 120): the registry implement this goal's
+  // progress is measured on. NULL is the goal's DEFAULT SCOPE — movement-wide, every
+  // implement folded — NOT an "unassigned" lane; a goal that names no machine means
+  // the lift, however it was performed, which is what every pre-#1610 goal means.
+  // (Set-level `exercise_sets.equipment_id` reads the opposite way: there, NULL IS a
+  // lane. See goalContextSets in lib/goal-progress.ts.)
+  equipment_id: number | null;
   target_weight_kg: number | null;
   target_reps: number | null;
   target_sets: number | null;
