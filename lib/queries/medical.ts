@@ -26,6 +26,12 @@ export {
 } from "./medical/immunizations";
 export { previewReconcileFlags, reconcileFlags } from "./medical/flags";
 export {
+  getRecordRevisions,
+  getRevisionsByRecord,
+  insertRecordRevision,
+  type RevisionSnapshot,
+} from "./medical/revisions";
+export {
   detectRecordUnitMislabel,
   getUnitMislabelReviews,
   unitMislabelSignalKey,

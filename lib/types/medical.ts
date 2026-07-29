@@ -3,6 +3,8 @@
 // family history, care plans/goals, documents). Split out of lib/types.ts (#319);
 // the `@/lib/types` barrel re-exports everything here, so import paths are unchanged.
 
+import type { ResultStatus } from "../lab-result-lifecycle";
+
 // A healthcare provider or organization. GLOBAL — shared across the
 // whole family/instance (a family sees one "Quest Diagnostics" / "Dr. Smith"),
 // modeled like logins/profiles, so it is intentionally NOT profile-scoped. Records
@@ -178,6 +180,21 @@ export interface MedicalRecord {
   source?: string | null;
   external_id?: string | null;
   edited?: number | null;
+  // The result LIFECYCLE + collection attributes (#1404, migration 120). All
+  // nullable: a legacy or manual reading states none of them, and "unstated" is a
+  // real answer that must not be guessed into 'final' or 'non-fasting'.
+  //   • result_status — the FHIR Observation.status vocabulary
+  //     (preliminary/final/corrected/amended); see lib/lab-result-lifecycle.ts.
+  //   • fasting — 1 fasting / 0 non-fasting / NULL unstated.
+  //   • specimen — serum, plasma, whole blood, urine, RBC … (free text).
+  //   • ordering_provider_id — the clinician who ORDERED the test, distinct from
+  //     `provider_id` above (the PERFORMING lab). ordering_provider_name is joined
+  //     for display. Both absent on minimal read shapes that don't select them.
+  result_status?: ResultStatus | null;
+  fasting?: number | null;
+  specimen?: string | null;
+  ordering_provider_id?: number | null;
+  ordering_provider_name?: string | null;
   // Set on VIRTUAL records computed at read time from other readings (issue #40 —
   // derived clinical indices like Non-HDL, HOMA-IR, eGFR). These are never stored:
   // they carry a synthetic negative `id`, no `document_id`, and are read-only in the
@@ -185,6 +202,28 @@ export interface MedicalRecord {
   // (shown as the "derived" tooltip/subtitle). Absent on real stored rows.
   derived?: boolean;
   derived_formula?: string;
+}
+
+// One PRESERVED prior state of a reading (#1404, migration 120): the value a
+// re-import overwrote, captured immediately before the overwrite. A CHILD of
+// medical_records (no profile_id of its own — it is reached through `record_id`)
+// and never an observation in its own right: a superseded value must not chart,
+// count, or flag. `superseded_by_status` is what the INCOMING result called itself,
+// so a revision row answers both "what did it say?" and "did the lab call this a
+// correction?" without re-reading the live row, which may have moved on again.
+export interface MedicalRecordRevision {
+  id: number;
+  record_id: number;
+  date: string | null;
+  value: string | null;
+  value_num: number | null;
+  unit: string | null;
+  reference_range: string | null;
+  flag: MedicalFlag | null;
+  result_status: ResultStatus | null;
+  superseded_by_status: ResultStatus | null;
+  source: string | null;
+  superseded_at: string;
 }
 
 // "higher is better", "lower is better", or "best inside a range" — governs how
