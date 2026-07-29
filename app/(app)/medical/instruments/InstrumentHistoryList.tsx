@@ -152,6 +152,7 @@ export default function InstrumentHistoryList({
                 </label>
                 <DateField
                   id={`score-date-${r.id}`}
+                  data-testid={`${testidPrefix}-reading-date-${r.id}`}
                   name="date"
                   defaultValue={r.date}
                   required
@@ -163,6 +164,7 @@ export default function InstrumentHistoryList({
                 </label>
                 <input
                   id={`score-total-${r.id}`}
+                  data-testid={`${testidPrefix}-reading-total-${r.id}`}
                   name="total"
                   type="number"
                   inputMode="numeric"

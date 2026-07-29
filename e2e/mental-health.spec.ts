@@ -170,7 +170,7 @@ test.describe("correcting a recorded score (#1396)", () => {
     ).toContainText("Severe");
 
     await settledClick(page, page.getByTestId(`instrument-reading-edit-${id}`));
-    await page.getByLabel("Total (0–21)").fill("12");
+    await page.getByTestId(`instrument-reading-total-${id}`).fill("12");
     await settledClick(
       page,
       page
@@ -199,7 +199,12 @@ test.describe("correcting a recorded score (#1396)", () => {
       page,
       page.getByTestId(`instrument-reading-delete-${id}`)
     );
-    await settledClick(page, page.getByRole("button", { name: "Remove" }));
+    // Every row's own control is also labelled "Remove" — scope the confirm to the
+    // dialog so the click can't land back on the list.
+    await settledClick(
+      page,
+      page.getByTestId("confirm-dialog").getByRole("button", { name: "Remove" })
+    );
     await expect(row).toHaveCount(0);
   });
 });
