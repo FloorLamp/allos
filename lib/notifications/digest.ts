@@ -6,7 +6,7 @@
 // from assembly per the issue). The title always names the profile — a chat may be
 // shared by several profiles (the chat-id ambiguity fix).
 
-import type { NotificationMessage } from "./types";
+import type { NotificationAction, NotificationMessage } from "./types";
 import type { ActivityType, SupplementKind } from "../types";
 import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
@@ -132,6 +132,14 @@ export interface DigestInput {
   // Last night's sleep (issue #1117), or null when the sleep summary is off or
   // there's no fresh sleep data. When present the digest gets a calm Sleep section.
   sleep?: DigestSleep | null;
+  // The GUARANTEED access tail (#1505): the collapsed "Log other… · <slot>" action
+  // for this profile's `may` items, or null when the profile has none on offer today.
+  // Its presence also lowers the "is there anything to say?" bar to zero — see
+  // buildDigest — because for a tap-only user this button IS the digest's job.
+  offerTail?: NotificationAction | null;
+  // How many may items that tail covers, for the plain-text channels that cannot
+  // render an expandable keyboard (Web Push, Home Assistant).
+  offerCount?: number;
 }
 
 export interface DigestSection {
@@ -142,6 +150,10 @@ export interface DigestSection {
 export interface DigestModel {
   title: string;
   sections: DigestSection[];
+  // Carried through assembly so renderDigestMessage can attach it as the message's
+  // FIRST inline button — first because it is the one affordance that is always
+  // correct to offer, regardless of what else the day held.
+  offerTail?: NotificationAction | null;
 }
 
 // Human sleep duration: "7h 20m", "8h", "45m". Minutes in, rounded.
@@ -311,10 +323,28 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   if (newLines.length) sections.push({ heading: "New", lines: newLines });
 
-  if (sections.length === 0) return null;
+  // MINIMAL DIGEST GUARANTEE (#1505, owner-decided). Normally an empty digest is
+  // suppressed — a hollow "nothing to report" is worse than silence. But when the
+  // profile has `may` items on offer, the digest is ALSO the guaranteed access path
+  // for them, and suppressing it would leave a tap-only user with no way to reach
+  // their own list. So a tail-only message is legitimate: no sections, one button.
+  // It is not a new send either — the digest already had permission to arrive today.
+  if (sections.length === 0 && !input.offerTail) return null;
+  // A tail-only digest still needs a body: an empty message reads as a bug.
+  if (sections.length === 0) {
+    sections.push({
+      heading: "Today",
+      lines: [
+        `✅ Nothing scheduled${
+          input.offerCount ? ` — ${input.offerCount} available if you want them` : ""
+        }.`,
+      ],
+    });
+  }
   return {
     title: `☀️ Morning digest — ${input.profileName}`,
     sections,
+    offerTail: input.offerTail ?? null,
   };
 }
 
@@ -325,5 +355,13 @@ export function renderDigestMessage(model: DigestModel): NotificationMessage {
   const body = model.sections
     .map((s) => [s.heading, ...s.lines.map((l) => `• ${l}`)].join("\n"))
     .join("\n\n");
-  return { title: model.title, body, kind: "digest" };
+  // The offer tail is the message's ONLY action and deliberately its first (and
+  // only) row: a digest carries no other buttons, so "first" is trivially satisfied
+  // today and stays honest if the digest ever grows more.
+  return {
+    title: model.title,
+    body,
+    kind: "digest",
+    ...(model.offerTail ? { actions: [model.offerTail] } : {}),
+  };
 }

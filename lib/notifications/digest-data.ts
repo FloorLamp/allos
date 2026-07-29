@@ -55,6 +55,18 @@ import {
   type DigestSleep,
 } from "./digest";
 import { createLogger } from "../log";
+import {
+  collapsedOfferAction,
+  offerTailNeedsRefresh,
+} from "./offer-tail";
+import { updateMessageKeyboard } from "./telegram";
+import { messageKeyboard } from "./telegram-render";
+import {
+  clearDigestTailPointer,
+  getDigestTailPointer,
+  setDigestTailPointer,
+} from "../settings";
+import { getOfferedIntakeForSlot } from "../queries/intake";
 
 const log = createLogger("notify");
 
@@ -356,6 +368,20 @@ export function gatherDigestInput(
     // the digest doesn't invent news. The x/y fraction above stays as secondary
     // detail; the two answer different questions and are both honest.
     intakeDeltaLine: getIntakeDeltaLine(profileId, td),
+    // The guaranteed access tail (#1505). Scoped to the slot the digest is BUILT in;
+    // the tick re-labels it at each boundary and the expansion re-scopes at tap, so a
+    // morning-born keyboard never offers breakfast items at bedtime.
+    ...(() => {
+      const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+      const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+      return {
+        offerCount: offered.length,
+        offerTail:
+          offered.length > 0
+            ? collapsedOfferAction(profileId, td, nowHhmm, offered.length)
+            : null,
+      };
+    })(),
     weightKg: weightRow?.weight_kg ?? null,
     newFlaggedBiomarkers,
     newDocumentLabels,
@@ -399,4 +425,71 @@ export async function runDigest(
     setProfileSetting(profileId, "notify_digest_last_at", now.n);
   }
   return { failed };
+}
+
+// The SILENT boundary refresh (issue #1505). Once per tick, per profile: if the
+// digest we sent today is still carrying an offer tail whose slot label has gone
+// stale, re-render the keyboard — collapsed, relabelled for the slot we are actually
+// in now.
+//
+// WHY THIS IS NOT A SEND. It is one editMessageReplyMarkup on a message the user
+// already received. Telegram does not notify on an edit, no new row appears in the
+// chat, and the phone stays silent. That distinction is the whole reason the
+// guaranteed-access tail can exist at all without violating the contact-consent rule:
+// the system is allowed to keep an affordance it already gave accurate; it is not
+// allowed to spend another interruption doing so.
+//
+// It always resets to COLLAPSED. An expanded keyboard from the previous slot is
+// listing items that are no longer on offer, so leaving it open would be worse than
+// closing it — and the collapse button exists as the manual equivalent for a user who
+// expanded it and walked away.
+//
+// Three no-ops, each deliberate: no pointer (nothing sent today, or the digest had no
+// tail), a pointer from a PREVIOUS day (day rollover strips the keyboard entirely
+// rather than relabelling a stale day's message), and a slot that hasn't turned over
+// (offerTailNeedsRefresh false → zero API calls, so the common tick costs nothing).
+export async function refreshDigestOfferTail(
+  profileId: number
+): Promise<void> {
+  const pointer = getDigestTailPointer(profileId);
+  if (!pointer) return;
+  const date = today(profileId);
+  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+
+  if (pointer.date !== date) {
+    // Day rollover: yesterday's keyboard must not stay tappable, because its tokens
+    // carry yesterday's date and the expansion would refuse them anyway. Strip it and
+    // forget the pointer so this runs once, not every tick forever.
+    await updateMessageKeyboard(pointer.chatId, pointer.messageId, []).catch(
+      (e) =>
+        log.info("digest tail: rollover strip failed (ignored)", {
+          profile: profileId,
+          err: e instanceof Error ? e.message : String(e),
+        })
+    );
+    clearDigestTailPointer(profileId);
+    return;
+  }
+  if (!offerTailNeedsRefresh(pointer.renderedAt, nowHhmm)) return;
+
+  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+  const actions =
+    offered.length > 0
+      ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
+      : [];
+  try {
+    await updateMessageKeyboard(
+      pointer.chatId,
+      pointer.messageId,
+      messageKeyboard({ title: "", body: "", actions })
+    );
+    setDigestTailPointer(profileId, { ...pointer, renderedAt: nowHhmm });
+  } catch (e) {
+    // Best-effort throughout: the digest already landed, and a failed relabel is a
+    // cosmetic staleness, never a delivery failure.
+    log.info("digest tail: refresh failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
 }

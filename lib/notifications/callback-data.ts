@@ -16,6 +16,10 @@ import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
+import {
+  OFFER_COLLAPSE_PREFIX,
+  OFFER_EXPAND_PREFIX,
+} from "./offer-tail";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
@@ -983,4 +987,34 @@ export function householdTapAnswerText(
 ): string {
   const base = tapAnswerText(outcome);
   return tapLogged(outcome) ? `${memberName}: ${base}` : base;
+}
+
+// ---- The offer tail (issue #1505) ------------------------------------------
+
+export interface OfferTailCallback {
+  profileId: number;
+  date: string;
+  // Which way the tap moves the keyboard. Both directions are pure keyboard edits:
+  // no message is sent, nothing is written, nothing is logged.
+  action: "expand" | "collapse";
+}
+
+// Parse an "offer:<profileId>:<date>" / "offerc:<profileId>:<date>" tail token.
+// `date` is the digest's own day: a tap on YESTERDAY's message must not expand into
+// today's offers, because the keyboard would then be logging against a message whose
+// context has rolled over (the tick strips old keyboards for the same reason).
+export function parseOfferTailCallback(
+  data: unknown
+): OfferTailCallback | null {
+  if (typeof data !== "string") return null;
+  const [prefix, profStr, date] = data.split(":");
+  if (prefix !== OFFER_EXPAND_PREFIX && prefix !== OFFER_COLLAPSE_PREFIX)
+    return null;
+  const profileId = Number(profStr);
+  if (!profileId || !date) return null;
+  return {
+    profileId,
+    date,
+    action: prefix === OFFER_EXPAND_PREFIX ? "expand" : "collapse",
+  };
 }

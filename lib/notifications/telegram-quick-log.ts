@@ -452,6 +452,15 @@ export async function handleSymptomTextIntake(
 // buttons, so an absent keyboard can't overwrite the text.
 import crypto from "node:crypto";
 import {
+  collapsedOfferAction,
+  expandedOfferActions,
+} from "./offer-tail";
+import type { OfferTailCallback } from "./callback-data";
+import { getOfferedIntakeForSlot } from "../queries/intake";
+import { messageKeyboard } from "./telegram-render";
+import { zonedDateParts } from "../date";
+
+import {
   getCustomSymptomNames,
   getDoseEscalateChatId,
   getIntakeItemName,
@@ -461,7 +470,11 @@ import {
   logPracticeByTargetId,
 } from "../queries";
 import { today } from "../db";
-import { getProfilesByTelegramChatId, getUserAge } from "../settings";
+import {
+  getProfilesByTelegramChatId,
+  getTimezone,
+  getUserAge,
+} from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
 import { administrationOutcomeText } from "../administration-format";
 import { logSymptomCore } from "../symptom-log-write";
@@ -508,3 +521,75 @@ import {
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
 import type { NotificationAction } from "./types";
+
+// An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
+// one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.
+//
+// Nothing is sent and nothing is written — both directions are a single
+// editMessageReplyMarkup on a message that already exists. That is the mechanism
+// behind the contact-consent rule: the system may give the user more ways to reach
+// their own data without ever spending another notification on them.
+//
+// SLOT SCOPING HAPPENS HERE, at tap time, against the PROFILE-LOCAL clock — not
+// against the slot the digest was built in. A morning digest tapped at bedtime must
+// offer bedtime items; anything else would be answering a question the user asked now
+// with data from eight hours ago.
+//
+// A tap on a message from a PREVIOUS day is refused rather than silently re-scoped:
+// the keyboard belongs to that day's message, and logging "now" from it would attach
+// today's administration to yesterday's context.
+export async function handleOfferTailTap(
+  cq: TelegramCallbackQuery,
+  token: OfferTailCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || messageId == null || chatId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const date = today(profileId);
+  if (token.date !== date) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+
+  if (token.action === "collapse") {
+    await updateMessageKeyboard(
+      chatId,
+      messageId,
+      messageKeyboard({
+        title: "",
+        body: "",
+        actions: [
+          collapsedOfferAction(profileId, date, nowHhmm, offered.length),
+        ],
+      })
+    );
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+
+  if (offered.length === 0) {
+    // The slot turned over (or the items were paused) since the label was rendered.
+    // Say so plainly instead of opening an empty list.
+    await answerCallbackQuery(cq.id, "Nothing available in this slot right now.");
+    return;
+  }
+  await updateMessageKeyboard(
+    chatId,
+    messageId,
+    messageKeyboard({
+      title: "",
+      body: "",
+      actions: expandedOfferActions(profileId, date, offered, prnLogToken),
+    })
+  );
+  await answerCallbackQuery(cq.id);
+}

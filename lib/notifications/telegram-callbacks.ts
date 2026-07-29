@@ -65,6 +65,7 @@ import {
   parseFoodProteinCallback,
   parsePreventiveCallback,
   parsePrnLogCallback,
+  parseOfferTailCallback,
   parsePracticeDoneCallback,
   practiceDoneAnswerText,
   parseRefillCallback,
@@ -136,6 +137,7 @@ import {
   handleMoodTap,
   handlePracticeDoneTap,
   handlePrnLogTap,
+  handleOfferTailTap,
   handleSymptomPick,
   handleSymptomSeverity,
 } from "./telegram-quick-log";
@@ -234,6 +236,15 @@ export async function handleCallbackQuery(
   const foodOptIn = parseFoodOptInCallback(cq.data);
   if (foodOptIn) {
     await handleFoodOptIn(cq, foodOptIn);
+    return;
+  }
+
+  // The digest's offer tail (#1505): expand/collapse the "Log other…" button in
+  // place. Checked BEFORE the prn: log tokens because the expanded keyboard is made
+  // of those, and a tail tap must never be mistaken for a log.
+  const offerTail = parseOfferTailCallback(cq.data);
+  if (offerTail) {
+    await handleOfferTailTap(cq, offerTail);
     return;
   }
 

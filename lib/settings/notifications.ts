@@ -20,6 +20,7 @@ import {
   setSetting,
   getProfileSetting,
   setProfileSetting,
+  deleteProfileSetting,
   getLoginSetting,
   setLoginSetting,
 } from "./kv";
@@ -325,6 +326,72 @@ export function setFoodNudgePointer(
     "food_nudge_last_message",
     serializeFoodNudgePointer(pointer)
   );
+}
+
+// ---- The digest's live offer-tail keyboard (issue #1505) -------------------
+//
+// The digest carries the guaranteed "Log other…" tail, and that button's LABEL names
+// the slot it opens into ("Log other… · bedtime"). A morning-sent digest whose label
+// still says "morning" at 10pm is a promise the expansion won't keep, so the tick
+// re-labels it at each slot boundary.
+//
+// Doing that needs the sent message's id — the same thing the #947 food-nudge pointer
+// keeps, for the same class of reason (a live keyboard outliving its context). One
+// pointer per profile, overwritten every digest, no cleanup class: profile deletion
+// wipes the settings row and ids never recycle, so a stale pointer is at worst a
+// best-effort edit that fails harmlessly.
+//
+// `renderedAt` is the profile-local HH:MM the keyboard was last rendered at, which is
+// what offerTailNeedsRefresh compares against so a boundary pass that changes nothing
+// makes no API call.
+export interface DigestTailPointer {
+  chatId: string | number;
+  messageId: number;
+  date: string;
+  renderedAt: string;
+}
+
+export function getDigestTailPointer(
+  profileId: number
+): DigestTailPointer | null {
+  const raw = getProfileSetting(profileId, "digest_tail_last_message");
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<DigestTailPointer>;
+    if (
+      (typeof v.chatId !== "string" && typeof v.chatId !== "number") ||
+      typeof v.messageId !== "number" ||
+      typeof v.date !== "string" ||
+      typeof v.renderedAt !== "string"
+    ) {
+      return null;
+    }
+    return {
+      chatId: v.chatId,
+      messageId: v.messageId,
+      date: v.date,
+      renderedAt: v.renderedAt,
+    };
+  } catch {
+    // A corrupt blob degrades to null — the refresh simply skips this tick. It must
+    // never throw on the delivery path.
+    return null;
+  }
+}
+
+export function setDigestTailPointer(
+  profileId: number,
+  pointer: DigestTailPointer
+): void {
+  setProfileSetting(
+    profileId,
+    "digest_tail_last_message",
+    JSON.stringify(pointer)
+  );
+}
+
+export function clearDigestTailPointer(profileId: number): void {
+  deleteProfileSetting(profileId, "digest_tail_last_message");
 }
 
 // Resolve every profile an inbound Telegram chat id may act as — chat → LOGIN →
