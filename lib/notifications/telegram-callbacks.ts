@@ -66,6 +66,7 @@ import {
   parsePreventiveCallback,
   parsePrnLogCallback,
   parseOfferTailCallback,
+  parseDemoteCallback,
   parsePracticeDoneCallback,
   practiceDoneAnswerText,
   parseRefillCallback,
@@ -138,6 +139,7 @@ import {
   handlePracticeDoneTap,
   handlePrnLogTap,
   handleOfferTailTap,
+  handleDemoteTap,
   handleSymptomPick,
   handleSymptomSeverity,
 } from "./telegram-quick-log";
@@ -236,6 +238,15 @@ export async function handleCallbackQuery(
   const foodOptIn = parseFoodOptInCallback(cq.data);
   if (foodOptIn) {
     await handleFoodOptIn(cq, foodOptIn);
+    return;
+  }
+
+  // ⤓ May (#1505 part 2): accept the demotion suggestion riding this reminder. The
+  // one obligation write the notification layer can make — user-initiated, downward,
+  // and through the same compare-and-swap core the in-app card uses.
+  const demote = parseDemoteCallback(cq.data);
+  if (demote) {
+    await handleDemoteTap(cq, demote);
     return;
   }
 

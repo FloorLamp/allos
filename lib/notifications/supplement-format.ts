@@ -137,6 +137,15 @@ export interface WindowDose {
   supp: Supplement;
   taken: boolean;
   skipped: boolean;
+  // This item is currently a DEMOTION CANDIDATE (#1505 part 2) — sustainedly untaken
+  // past the detection threshold. When true the dose's button row grows a third
+  // button, ⤓ May, alongside Take and Skip.
+  //
+  // The suggestion RIDES this reminder rather than sending its own: a send exists
+  // here already, for its own reasons, and "no suggestion-initiated sends" is a hard
+  // rule. It is also why the escape hatch reaches a tap-only user at all — the person
+  // most likely to be ignoring the item is the one who never opens the app.
+  demotable?: boolean;
   adherence: AdherenceSummary;
 }
 
@@ -289,7 +298,7 @@ function doseSessionActions(
       data: `all:${profileId}:${slot}:${date}`,
     });
   }
-  for (const { dose, supp } of pending) {
+  for (const { dose, supp, demotable } of pending) {
     const row = `dose:${dose.id}`;
     actions.push({
       label: `✅ ${supp.name}`,
@@ -301,6 +310,18 @@ function doseSessionActions(
       data: `skip:${profileId}:${dose.id}:${supp.id}:${date}`,
       row,
     });
+    // Take / Skip / DEMOTE (#1505 part 2). Present only past the detection threshold,
+    // and governed SOLELY by detection state — a dismissal of the in-app card does
+    // NOT remove it (owner-decided), because the page dismissal says "not now, on this
+    // screen" while this button is the only escape hatch a tap-only user has. It
+    // disappears when adherence recovers or the user accepts.
+    if (demotable) {
+      actions.push({
+        label: "⤓ May",
+        data: `demote:${profileId}:${supp.id}:${date}`,
+        row,
+      });
+    }
   }
   return actions;
 }

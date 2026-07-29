@@ -1018,3 +1018,22 @@ export function parseOfferTailCallback(
     action: prefix === OFFER_EXPAND_PREFIX ? "expand" : "collapse",
   };
 }
+
+export interface DemoteCallback {
+  profileId: number;
+  itemId: number;
+  date: string;
+}
+
+// Parse a "demote:<profileId>:<itemId>:<date>" button token — the ⤓ May action
+// riding a dose reminder (#1505 part 2). Like every other tap token, the profile id
+// is a CROSS-CHECK only: the handler re-resolves the acting profile from the chat and
+// the write re-filters on it, so a forged id reaches nothing.
+export function parseDemoteCallback(data: unknown): DemoteCallback | null {
+  if (typeof data !== "string" || !data.startsWith("demote:")) return null;
+  const [, profStr, itemStr, date] = data.split(":");
+  const profileId = Number(profStr);
+  const itemId = Number(itemStr);
+  if (!profileId || !itemId || !date) return null;
+  return { profileId, itemId, date };
+}

@@ -455,7 +455,9 @@ import {
   collapsedOfferAction,
   expandedOfferActions,
 } from "./offer-tail";
-import type { OfferTailCallback } from "./callback-data";
+import type { DemoteCallback, OfferTailCallback } from "./callback-data";
+import { demoteIntakeObligation } from "../intake-obligation-write";
+import { DEMOTION_OUTCOME_TEXT } from "../supplement-demotion";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { messageKeyboard } from "./telegram-render";
 import { zonedDateParts } from "../date";
@@ -592,4 +594,39 @@ export async function handleOfferTailTap(
     })
   );
   await answerCallbackQuery(cq.id);
+}
+
+// A ⤓ May tap on a dose reminder (#1505 part 2): accept the demotion suggestion for
+// the named item.
+//
+// This is the ONLY obligation write the notification layer can perform, and it is a
+// downward one initiated by the user — the two properties that make it safe. It goes
+// through the SAME compare-and-swap core the in-app card uses, so the two surfaces
+// cannot diverge on outcomes, and it answers from the typed result rather than
+// confirming unconditionally: a stale button on a paused or already-may item
+// legitimately refuses.
+//
+// The tapped ROW is consumed on success — take/skip/demote all become meaningless for
+// an item that no longer has a scheduled dose — while the rest of the reminder's
+// buttons survive so the session stays usable.
+export async function handleDemoteTap(
+  cq: TelegramCallbackQuery,
+  token: DemoteCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = demoteIntakeObligation(profileId, token.itemId);
+  await answerCallbackQuery(cq.id, DEMOTION_OUTCOME_TEXT[outcome]);
+  if (outcome !== "demoted" || chatId == null || messageId == null) return;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (rows.length === 0) return;
+  await updateMessageKeyboard(chatId, messageId, removeButton(rows, cq.data as string));
 }

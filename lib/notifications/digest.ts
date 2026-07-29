@@ -14,6 +14,7 @@ import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
+import { offerTextTail } from "./offer-tail";
 import { sriPresentation } from "../sleep-regularity";
 
 // Capitalize the first letter of a noun for use at the start of a line
@@ -249,6 +250,14 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       todayLines.push(`⚑ ${h.title} — ${h.reason}`);
     }
   }
+  // The "+N available" TEXT tail (#1505). Rendered into the body — not only as a
+  // button — because Web Push and Home Assistant cannot edit a message in place and
+  // so cannot carry the expandable keyboard. They get the honest count instead of a
+  // button that could never expand. On Telegram the line and the button coexist and
+  // read as label + control, which is why this is one message rather than a
+  // channel-forked pair.
+  const availableLine = offerTextTail(input.offerCount ?? 0);
+  if (availableLine) todayLines.push(`➕ ${availableLine}`);
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });
 
   // Yesterday: what happened.
@@ -335,9 +344,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     sections.push({
       heading: "Today",
       lines: [
-        `✅ Nothing scheduled${
-          input.offerCount ? ` — ${input.offerCount} available if you want them` : ""
-        }.`,
+        "✅ Nothing scheduled." +
+          (availableLine ? ` ➕ ${availableLine}.` : ""),
       ],
     });
   }

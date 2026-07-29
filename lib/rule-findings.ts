@@ -73,6 +73,7 @@ import { situationHistoryResolver } from "./trend-annotations";
 import { getIntakeHistory } from "./intake-history";
 import {
   detectDemotionCandidates,
+  demotionItemIdFromKey,
   DEMOTION_WINDOW_DAYS,
   type DemotionInput,
 } from "./supplement-demotion";
@@ -1337,4 +1338,24 @@ export function buildSunExposureFindings(
       actionLabel: "View biomarkers",
     },
   ];
+}
+
+// The item ids that are live demotion candidates right now (#1505 part 2) — the SAME
+// detection the page card renders, exposed as a set so the reminder builder can add
+// its ⤓ May button without re-deriving the threshold.
+//
+// Deliberately NOT bus-filtered: a page dismissal hides the CARD, not the button
+// (owner-decided). The two surfaces answer different questions — "not on this screen"
+// versus "is there still an escape hatch" — and conflating them would take the only
+// affordance a tap-only user has away on a tap they made somewhere else entirely.
+export function demotionCandidateItemIds(
+  profileId: number,
+  today: string
+): Set<number> {
+  const ids = new Set<number>();
+  for (const f of buildDemotionSuggestionFindings(profileId, today)) {
+    const id = demotionItemIdFromKey(f.dedupeKey);
+    if (id != null) ids.add(id);
+  }
+  return ids;
 }
