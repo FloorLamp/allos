@@ -59,7 +59,10 @@ import {
 } from "../../risk-stratification";
 import { lifeStage } from "../../life-stage";
 import { getRiskFactors } from "./risk";
-import { biomarkerRetestIdentity } from "../../canonical-name";
+import {
+  biomarkerFamilyAnchor,
+  biomarkerRetestIdentity,
+} from "../../canonical-name";
 import { biomarkerDismissalKey } from "../../dismissal-keys";
 import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
 import {
@@ -346,7 +349,24 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
   const items: UpcomingItem[] = [];
   for (const r of byFamily.values()) {
     const name = r.canonical_name?.trim() || r.name;
-    const retestDays = retestDaysForBiomarker(r.canonical_name?.trim() || null);
+    // The name to LABEL this family's redraw by, and to match curated per-analyte
+    // rules against (#1394/#1395): the family's anchor spelling, not whichever member
+    // happens to be its newest reading. A lab reports HbA1c and its eAG re-expression
+    // on one draw and the eAG line lands with the higher id, so the representative row
+    // reads "Estimated Average Glucose" — which the diabetes risk rule (keyed on
+    // "hemoglobin a1c") does not match, silently dropping the tightening for exactly
+    // the profile that needs it. A non-family analyte is its own anchor, so this is a
+    // no-op for everything outside a registered family.
+    const anchor = biomarkerFamilyAnchor(name);
+    // The cadence is looked up on the SAME display identity everything else in this
+    // loop uses (canonical-or-raw name), and resolves through the SAME retest family
+    // the readings were grouped by above (#1394/#1395) — so a family whose newest
+    // member the dataset doesn't name (an eAG line representing the A1c family, a
+    // vitamin-D fraction representing the 25-OH clock) keeps the family's curated
+    // interval instead of dropping to the flat 365-day default. Passing the bare
+    // `canonical_name` here also silently gave a legacy row with only a raw name no
+    // cadence at all, while its clock still grouped off that raw name.
+    const retestDays = retestDaysForBiomarker(name);
     // Fold in input freshness for a derived analyte (empty for everything else).
     let effectiveDate = r.date;
     for (const input of derivedInputCanonicalNamesFor(
@@ -373,7 +393,7 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
     // Modulate the cadence by the matched risk rules (tightest multiplier wins),
     // then test staleness + band against the MODULATED interval so a high-risk
     // analyte comes due sooner.
-    const mod = retestModulationFor(name, riskFactors);
+    const mod = retestModulationFor(anchor, riskFactors);
     // Retest-worthiness gate (issues #546 / #587): an incidental one-off analyte
     // (heavy metal, allergen IgE, LDL subfraction…) with no risk-layer elevation isn't
     // a standing recurring action — drop it from the retest nudge entirely rather than
@@ -411,7 +431,10 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
       // The item is a retest nudge, not a flag alert — carry the verb so it reads
       // as an action, and (when the stale reading was flagged) acknowledge the
       // status in the detail so the row explains itself (issues #513 / #514).
-      title: biomarkerRetestTitle(name),
+      // Titled by the family ANCHOR so the line reads the same whichever member is
+      // currently newest — matching the family-stable `key` above, which would
+      // otherwise carry two different titles on two different days (#1394/#1395).
+      title: biomarkerRetestTitle(anchor),
       detail: biomarkerRetestDetail({
         effectiveDate,
         agoMonths,
