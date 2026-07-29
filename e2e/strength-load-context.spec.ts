@@ -74,7 +74,9 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     // Switching the chip switches the whole comparison to the other machine.
     await followLink(
       page,
-      contexts.getByRole("link", { name: new RegExp(LOAD_CONTEXT_HOME) }),
+      // hasText, not a name regex: the fixture's implement names carry literal
+      // parentheses, and the chip's accessible name also folds in its session count.
+      contexts.getByRole("link").filter({ hasText: LOAD_CONTEXT_HOME }),
       /lane=/
     );
     await expect(
@@ -177,7 +179,10 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
 
     // A rep target is not load-sensitive in the same way, so it keeps the
     // movement-wide default rather than forcing a machine.
-    await settledClick(page, dialog.getByRole("button", { name: "Reps" }));
+    await settledClick(
+      page,
+      dialog.getByRole("button", { name: "Reps", exact: true })
+    );
     await expect(select).toHaveJSProperty("required", false);
     await expect(select).toHaveValue("any");
 
