@@ -53,15 +53,56 @@ export function documentSourceLabel(
   return `Document #${id}`;
 }
 
-// metric key → primary source id. Metric keys are the metric_samples `metric`
-// strings ('steps', 'sleep_min', …) plus the body_metrics kinds ('weight',
-// 'body_fat', 'resting_hr') and 'heart_rate' for the hr_minutes stream.
-export type MetricSourcePriority = Record<string, string>;
+// A source CLASS (issue #1640): one selectable id standing for EVERY source in a
+// family, alongside — never replacing — its members. `documents` covers every
+// 'document:<id>' provenance, so "my DEXA scans" is one pick and one series
+// instead of one per report, and the next scan (a new document id) is covered
+// without re-picking. Members keep their own identity everywhere else: the #533
+// per-document labels/colors are unaffected.
+export const DOCUMENTS_SOURCE_CLASS = "documents";
+
+// Display name for the class — plural on purpose: it is the family, not a report.
+export const DOCUMENTS_SOURCE_LABEL = "Documents";
+
+export function isSourceClassId(id: string): boolean {
+  return id === DOCUMENTS_SOURCE_CLASS;
+}
+
+// Does one selector (a concrete source id OR a class id) match a row's source?
+// THE matching primitive — SQL mirrors it in sourceMatchSql (lib/queries/metrics).
+export function sourceMatchesSelector(
+  selector: string,
+  source: string | null | undefined
+): boolean {
+  const key = sourceKey(source);
+  if (selector === DOCUMENTS_SOURCE_CLASS) return documentSourceId(key) != null;
+  return selector === key;
+}
+
+// metric key → the profile's choice for that metric. Metric keys are the
+// metric_samples `metric` strings ('steps', 'sleep_min', …) plus the body_metrics
+// kinds ('weight', 'body_fat', 'resting_hr') and 'heart_rate' for the hr_minutes
+// stream.
+//
+// A choice is a source (or class) id plus its MODE (issue #1642):
+//   • preference (strict: false) — the chosen source first, then the instance
+//     defaults, then single-source passthrough: a day it didn't cover shows
+//     whoever did, so a chart never goes blank when a provider lapses.
+//   • strict (strict: true) — ONLY that source answers. Uncovered days are real
+//     gaps and a latest-value read with no reading is the honest empty state,
+//     never another source's number.
+export interface MetricSourceChoice {
+  source: string;
+  strict: boolean;
+}
+
+export type MetricSourcePriority = Record<string, MetricSourceChoice>;
 
 // A source id as used in priority matching: an integration id ('health-connect',
 // 'oura', 'strava'), 'manual' (which for body_metrics also covers source NULL),
-// or a 'document:<id>' provenance string. Bounded + shape-checked so a forged
-// form post can't stuff arbitrary blobs into profile_settings.
+// a 'document:<id>' provenance string, or a class id ('documents', #1640).
+// Bounded + shape-checked so a forged form post can't stuff arbitrary blobs into
+// profile_settings.
 const SOURCE_ID_RE = /^[a-z0-9][a-z0-9:_-]{0,63}$/;
 
 export function isValidSourceId(source: string): boolean {
@@ -78,6 +119,13 @@ export function sourceKey(source: string | null | undefined): string {
 }
 
 // Defensive parse of the stored JSON blob: anything malformed yields {}.
+//
+// TWO value shapes, and the bare string stays canonical for preference mode so
+// every already-stored blob keeps parsing unchanged (#1642):
+//   "oura"                       → preference
+//   { "source": "oura", "strict": true } → strict ("only this source")
+// An object without a valid `source`, or with a non-true `strict`, degrades the
+// same way anything malformed does — dropped, or read as preference.
 export function parseMetricSourcePriority(
   raw: string | null | undefined
 ): MetricSourcePriority {
@@ -88,10 +136,15 @@ export function parseMetricSourcePriority(
       return {};
     }
     const out: MetricSourcePriority = {};
-    for (const [metric, source] of Object.entries(parsed)) {
-      if (typeof source === "string" && isValidSourceId(source)) {
-        out[metric] = source;
+    for (const [metric, value] of Object.entries(parsed)) {
+      if (typeof value === "string") {
+        if (isValidSourceId(value)) out[metric] = { source: value, strict: false };
+        continue;
       }
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const { source, strict } = value as { source?: unknown; strict?: unknown };
+      if (typeof source !== "string" || !isValidSourceId(source)) continue;
+      out[metric] = { source, strict: strict === true };
     }
     return out;
   } catch {
@@ -99,37 +152,96 @@ export function parseMetricSourcePriority(
   }
 }
 
+// The object form is written ONLY for a strict choice, so a profile that never
+// touches strict mode keeps the exact blob shape it has today.
 export function serializeMetricSourcePriority(
   priority: MetricSourcePriority
 ): string {
-  return JSON.stringify(priority);
+  const out: Record<string, string | MetricSourceChoice> = {};
+  for (const [metric, choice] of Object.entries(priority)) {
+    out[metric] = choice.strict
+      ? { source: choice.source, strict: true }
+      : choice.source;
+  }
+  return JSON.stringify(out);
 }
 
 // Set (source) or clear (null) one metric's primary source, returning the new map.
+// `strict` is meaningless without a source and is dropped along with it.
 export function withMetricSource(
   priority: MetricSourcePriority,
   metric: string,
-  source: string | null
+  source: string | null,
+  strict = false
 ): MetricSourcePriority {
   const next = { ...priority };
   if (source == null || source === "") delete next[metric];
-  else next[metric] = source;
+  else next[metric] = { source, strict };
   return next;
 }
 
-// The source-preference list for a metric: the profile's explicit primary source
-// first (when set), then the instance defaults. Consumers hand this to
+// THE resolved answer to "which sources may answer for this metric, in what
+// order, and may anything else answer at all" (#14 + #1640 + #1642). ONE
+// computation, consumed by the day resolvers, the additive rollups, the
+// latest-value reads and the picker alike — no surface re-derives it.
+//
+// `order` entries are SELECTORS: a concrete source id or a class id (#1640).
+// `strict` true means `order` is exhaustive — a day/reading no listed selector
+// covers is a genuine gap, not a fallback opportunity.
+export interface SourceResolution {
+  order: string[];
+  strict: boolean;
+}
+
+export function resolveMetricSources(
+  metric: string,
+  priority: MetricSourcePriority,
+  defaults: readonly string[]
+): SourceResolution {
+  const chosen = priority[metric];
+  if (chosen?.strict) return { order: [chosen.source], strict: true };
+  const out = chosen ? [chosen.source, ...defaults] : [...defaults];
+  return { order: [...new Set(out)], strict: false };
+}
+
+// The source-preference list alone — the profile's explicit primary source first
+// (when set), then the instance defaults. Consumers hand the full resolution to
 // pickOneProviderPerDay / pickRowsOneSourcePerDay (lib/metric-providers), whose
-// fallback for a day none of these sources covers is single-source passthrough —
-// so an unset priority degrades to today's behavior.
+// fallback for a day none of these sources covers is single-source passthrough
+// (preference mode) or nothing at all (strict) — so an unset priority degrades
+// to today's behavior.
 export function sourcePreference(
   metric: string,
   priority: MetricSourcePriority,
   defaults: readonly string[]
 ): string[] {
-  const chosen = priority[metric];
-  const out = chosen ? [chosen, ...defaults] : [...defaults];
-  return [...new Set(out)];
+  return resolveMetricSources(metric, priority, defaults).order;
+}
+
+// Normalize a picker argument: a plain preference list (the default provider
+// order, and what the pure tests pass) or an already-resolved selection.
+export function asSourceResolution(
+  selection: readonly string[] | SourceResolution
+): SourceResolution {
+  return Array.isArray(selection)
+    ? { order: [...selection], strict: false }
+    : (selection as SourceResolution);
+}
+
+// The grouping key a row's source takes under a resolution (#1640): when a CLASS
+// selector is in play, every member of that class collapses onto the class id so
+// the family resolves as ONE candidate source per day; otherwise the row keeps
+// its own sourceKey, so two documents stay two series (#533).
+export function sourceGroupKey(
+  source: string | null | undefined,
+  order: readonly string[]
+): string {
+  for (const selector of order) {
+    if (isSourceClassId(selector) && sourceMatchesSelector(selector, source)) {
+      return selector;
+    }
+  }
+  return sourceKey(source);
 }
 
 // The metrics the comparison UI (Trends → Body → "Compare sources") surfaces and
@@ -248,6 +360,61 @@ export const DOCUMENT_SERIES_COLORS = [
   "#65a30d", // lime
   "#e11d48", // rose
 ] as const;
+
+// ---- The aggregated Documents series (#1640) ----
+// A per-source comparison series, structurally — the query layer's
+// MetricSourceSeries, kept structural so this stays a pure module.
+export interface SourceSeriesLike {
+  source: string;
+  data: { date: string; value: number }[];
+}
+
+// Does this comparison carry any document-sourced series at all? Gates the
+// picker's "Documents" option: ONE scan is already worth electing the class over
+// that scan's own id, because the NEXT scan (a new document id) is covered
+// without re-picking.
+export function hasDocumentSeries(series: readonly SourceSeriesLike[]): boolean {
+  return series.some((s) => documentSourceId(s.source) != null);
+}
+
+// Insert ONE aggregated 'documents' series covering every document-sourced
+// series, positioned just before its members so the aggregate leads the family.
+// The per-document series REMAIN — the class is an addition, never a relabeling,
+// so the #533 per-document identity is untouched.
+//
+// Added only when TWO OR MORE documents report the metric: with a single
+// document the aggregate would be a pixel-identical second line over the same
+// points, which reads as a rendering bug rather than as information. The picker
+// still offers the class at one document (hasDocumentSeries) — that is a
+// forward-looking choice about future scans, not a claim about this chart.
+//
+// Same-day readings from two documents AVERAGE, matching how the single-series
+// body-metric fold treats two same-day rows of one source.
+export function withDocumentsClassSeries<T extends SourceSeriesLike>(
+  series: readonly T[]
+): (T | SourceSeriesLike)[] {
+  const members = series.filter((s) => documentSourceId(s.source) != null);
+  if (members.length < 2) return [...series];
+  const byDate = new Map<string, { sum: number; n: number }>();
+  for (const member of members) {
+    for (const point of member.data) {
+      const acc = byDate.get(point.date) ?? { sum: 0, n: 0 };
+      acc.sum += point.value;
+      acc.n += 1;
+      byDate.set(point.date, acc);
+    }
+  }
+  const aggregate: SourceSeriesLike = {
+    source: DOCUMENTS_SOURCE_CLASS,
+    data: [...byDate.entries()]
+      .map(([date, { sum, n }]) => ({ date, value: sum / n }))
+      .sort((a, b) => (a.date < b.date ? -1 : 1)),
+  };
+  const firstMember = series.findIndex((s) => documentSourceId(s.source) != null);
+  const out: (T | SourceSeriesLike)[] = [...series];
+  out.splice(firstMember, 0, aggregate);
+  return out;
+}
 
 // Per-KEY color map for a comparison overlay's series (#533). A known source
 // (manual + the integrations) keeps its FIXED brand color, so Oura is the same

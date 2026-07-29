@@ -21,7 +21,10 @@ import { BODY_METRIC_META } from "@/lib/trends-body-metrics";
 
 describe("parseMetricSourcePriority", () => {
   it("round-trips a valid map", () => {
-    const map = { resting_hr: "oura", sleep_min: "health-connect" };
+    const map = {
+      resting_hr: { source: "oura", strict: false },
+      sleep_min: { source: "health-connect", strict: false },
+    };
     expect(
       parseMetricSourcePriority(serializeMetricSourcePriority(map))
     ).toEqual(map);
@@ -46,7 +49,7 @@ describe("parseMetricSourcePriority", () => {
           resting_hr: { a: 1 },
         })
       )
-    ).toEqual({ steps: "oura" });
+    ).toEqual({ steps: { source: "oura", strict: false } });
   });
 });
 
@@ -75,21 +78,32 @@ describe("isValidSourceId", () => {
 describe("withMetricSource", () => {
   it("sets, replaces, and clears one metric without touching the rest", () => {
     let map = withMetricSource({}, "steps", "oura");
-    expect(map).toEqual({ steps: "oura" });
+    expect(map).toEqual({ steps: { source: "oura", strict: false } });
     map = withMetricSource(map, "resting_hr", "health-connect");
     map = withMetricSource(map, "steps", "strava");
-    expect(map).toEqual({ steps: "strava", resting_hr: "health-connect" });
+    expect(map).toEqual({
+      steps: { source: "strava", strict: false },
+      resting_hr: { source: "health-connect", strict: false },
+    });
     map = withMetricSource(map, "steps", null);
-    expect(map).toEqual({ resting_hr: "health-connect" });
+    expect(map).toEqual({
+      resting_hr: { source: "health-connect", strict: false },
+    });
     // "" clears like null (form posts send empty strings).
-    expect(withMetricSource({ steps: "oura" }, "steps", "")).toEqual({});
+    expect(
+      withMetricSource(
+        { steps: { source: "oura", strict: false } },
+        "steps",
+        ""
+      )
+    ).toEqual({});
   });
 });
 
 describe("sourcePreference", () => {
   it("puts the chosen source first, then the defaults, deduped", () => {
     expect(
-      sourcePreference("steps", { steps: "oura" }, [
+      sourcePreference("steps", { steps: { source: "oura", strict: false } }, [
         "manual",
         "health-connect",
         "oura",
@@ -120,7 +134,7 @@ describe("sourcePreference", () => {
     expect(
       sourcePreference(
         "sleep_min",
-        { sleep_min: "fitbit-takeout" },
+        { sleep_min: { source: "fitbit-takeout", strict: false } },
         PROVIDER_PREFERENCE
       )[0]
     ).toBe("fitbit-takeout");

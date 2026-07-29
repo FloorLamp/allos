@@ -4,8 +4,16 @@ import {
   pickOneProviderPerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
+  type SourceSelection,
 } from "../metric-providers";
-import { sourceKey, sourcePreference } from "../metric-source-priority";
+import {
+  DOCUMENTS_SOURCE_CLASS,
+  resolveMetricSources,
+  sourceKey,
+  sourceMatchesSelector,
+  type MetricSourceChoice,
+  type SourceResolution,
+} from "../metric-source-priority";
 import { getMetricSourcePriority } from "../settings";
 import { metricAggregation } from "../metric-buckets";
 import { DOCUMENT_SOURCE_PREFIX } from "../body-metric-extract";
@@ -18,16 +26,40 @@ import type {
   IntegrationId,
 } from "../types";
 
-// The profile's source-preference list for a metric (issue #14): its explicit
-// primary source first (when set), then the instance defaults. Consumed by the
+// The profile's resolved source selection for a metric (issues #14/#1640/#1642):
+// its explicit primary source or class first (when set), then the instance
+// defaults — or, in strict mode, that one selector ALONE. Consumed by the
 // one-source-per-day pickers so additive metrics never sum across sources; for a
 // single-source profile this degrades to passthrough.
-function preferenceFor(profileId: number, metric: string): string[] {
-  return sourcePreference(
+function resolutionFor(profileId: number, metric: string): SourceResolution {
+  return resolveMetricSources(
     metric,
     getMetricSourcePriority(profileId),
     PROVIDER_PREFERENCE
   );
+}
+
+// The profile's explicit choice for a metric, or undefined when unset — the
+// single-value reads' entry point (they resolve one source, not a per-day order).
+function choiceFor(
+  profileId: number,
+  metric: string
+): MetricSourceChoice | undefined {
+  return getMetricSourcePriority(profileId)[metric];
+}
+
+// SQL mirror of sourceMatchesSelector: the condition matching a row's `source`
+// column to ONE selector. 'manual' covers NULL (quick-add rows) as well as the
+// journal's literal 'manual'; the 'documents' CLASS (#1640) covers every
+// 'document:<id>' provenance through a prefix LIKE. Callers splice `sql` into a
+// WHERE clause and spread `params` at that position.
+function sourceMatchSql(selector: string): { sql: string; params: string[] } {
+  if (selector === DOCUMENTS_SOURCE_CLASS) {
+    return { sql: `source LIKE '${DOCUMENT_SOURCE_PREFIX}%'`, params: [] };
+  }
+  return selector === "manual"
+    ? { sql: "(source IS NULL OR source = 'manual')", params: [] }
+    : { sql: "source = ?", params: [selector] };
 }
 
 // ---- Body metrics ----
@@ -70,7 +102,7 @@ export function getWeightsOneSourcePerDay(
 ): (BodyMetric & { weight_kg: number })[] {
   return pickRowsOneSourcePerDay(
     getWeights(profileId, limit),
-    preferenceFor(profileId, "weight"),
+    resolutionFor(profileId, "weight"),
     (r) => r.date,
     (r) => r.source
   );
@@ -142,6 +174,9 @@ export function getBodyMetricsWithSource(
 // keeps averaging every source's readings per day (they measure the same
 // quantity and a same-date manual + imported reading must agree, not sum);
 // an explicit primary source narrows it to that source's readings.
+//
+// Strict mode (#1642) removes both fallbacks: only the chosen source's rows are
+// read, and an empty result stays empty rather than reverting to all sources.
 export function getMetricDailyTotals(
   profileId: number,
   metric: string,
@@ -151,19 +186,21 @@ export function getMetricDailyTotals(
   if (metricAggregation(metric) === "AVG") {
     const chosen = priority[metric];
     if (chosen) {
+      const cond = sourceMatchSql(chosen.source);
       const rows = db
         .prepare(
           `SELECT date, AVG(value) AS value
-             FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ?
+             FROM metric_samples WHERE profile_id = ? AND metric = ? AND ${cond.sql}
             GROUP BY date ORDER BY date DESC LIMIT ?`
         )
-        .all(profileId, metric, chosen, limitDays) as {
+        .all(profileId, metric, ...cond.params, limitDays) as {
         date: string;
         value: number;
       }[];
       // Fall through to the all-sources read when the chosen source has no data
-      // at all, so a stale pick can't blank the chart.
-      if (rows.length > 0) return rows.reverse();
+      // at all, so a stale pick can't blank the chart — unless the pick is
+      // STRICT, where an empty chart is the honest answer.
+      if (rows.length > 0 || chosen.strict) return rows.reverse();
     }
     const rows = db
       .prepare(
@@ -208,7 +245,7 @@ export function getMetricDailyTotals(
         (r) => r.origin,
         (r) => r.value
       ),
-      sourcePreference(metric, priority, PROVIDER_PREFERENCE)
+      resolveMetricSources(metric, priority, PROVIDER_PREFERENCE)
     )
       .sort((a, b) => (a.date < b.date ? 1 : -1))
       // ALL_ROWS is -1 ("no limit" — that is what SQLite's `LIMIT -1` means, and the
@@ -227,20 +264,26 @@ export function getMetricDailyTotals(
 // calendar day), or null. The passport surfaces the date next to each stat.
 // A configured primary source (issue #14) wins when it has any reading; a
 // profile without one (or whose chosen source has no data) reads the newest
-// reading regardless of source, as before.
+// reading regardless of source, as before. A STRICT choice (#1642) never falls
+// back: no reading from that source means null, not another source's number.
 export function getLatestMetricSample(
   profileId: number,
   metric: string
 ): { value: number; date: string } | null {
-  const chosen = getMetricSourcePriority(profileId)[metric];
+  const chosen = choiceFor(profileId, metric);
   if (chosen) {
+    const cond = sourceMatchSql(chosen.source);
     const row = db
       .prepare(
-        "SELECT value, substr(end_time, 1, 10) AS date FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? ORDER BY end_time DESC LIMIT 1"
+        `SELECT value, substr(end_time, 1, 10) AS date FROM metric_samples
+          WHERE profile_id = ? AND metric = ? AND ${cond.sql}
+          ORDER BY end_time DESC LIMIT 1`
       )
-      .get(profileId, metric, chosen) as
-      { value: number; date: string } | undefined;
+      .get(profileId, metric, ...cond.params) as
+      | { value: number; date: string }
+      | undefined;
     if (row) return row;
+    if (chosen.strict) return null;
   }
   const row = db
     .prepare(
@@ -309,7 +352,7 @@ export function getSleepStageDailyTotals(
   return (
     pickRowsOneSourcePerDay(
       oneOrigin,
-      preferenceFor(profileId, "sleep_min"),
+      resolutionFor(profileId, "sleep_min"),
       (r) => r.date,
       (r) => r.source,
       (r) => r.deep + r.rem + r.light + r.awake
@@ -343,6 +386,10 @@ export function getSleepStageDailyTotals(
 // 'sleep_min' primary source wins; unset (or a chosen source with no sessions)
 // falls back to the source of the most recent session (the most-recently-synced
 // stream). A single-source profile is passthrough, as before.
+//
+// A STRICT choice (#1642) applies its filter unconditionally — even to a
+// single-source profile, whose lone stream is simply not the elected one — so an
+// uncovered night is absent rather than answered by whoever did record it.
 export interface SleepSessionRow {
   date: string;
   start: string;
@@ -364,15 +411,24 @@ function readSleepSessions(
       )
       .all(profileId) as { source: string | null }[]
   ).map((r) => r.source);
+  const chosen = choiceFor(profileId, "sleep_min");
   let sourceFilter = "";
-  let selectedSource: string | null = null;
-  if (sources.length > 1) {
-    const chosen = getMetricSourcePriority(profileId)["sleep_min"];
-    let picked =
-      chosen != null && sources.some((s) => sourceKey(s) === chosen)
-        ? chosen
+  let sourceParams: string[] = [];
+  const applyFilter = (selector: string) => {
+    const cond = sourceMatchSql(selector);
+    sourceFilter = ` AND ${cond.sql}`;
+    sourceParams = cond.params;
+  };
+  if (chosen?.strict) {
+    applyFilter(chosen.source);
+  } else if (sources.length > 1) {
+    const picked =
+      chosen != null &&
+      sources.some((s) => sourceMatchesSelector(chosen.source, s))
+        ? chosen.source
         : null;
-    if (picked == null) {
+    if (picked != null) applyFilter(picked);
+    else {
       const newest = db
         .prepare(
           `SELECT source FROM metric_samples
@@ -381,19 +437,19 @@ function readSleepSessions(
             ORDER BY end_time DESC LIMIT 1`
         )
         .get(profileId) as { source: string | null } | undefined;
-      picked = sourceKey(newest?.source);
+      applyFilter(sourceKey(newest?.source));
     }
-    sourceFilter = " AND source = ?";
-    selectedSource = picked;
   }
   let cutoff = opts.since;
   if (cutoff == null) {
     // Bound the read by recent wake dates before origin selection. Applying LIMIT
     // to raw rows would let duplicate origins consume the cap and drop valid older
     // nights; the final slice happens only after one origin remains per source/day.
-    const dateParams: (number | string)[] = [profileId];
-    if (selectedSource != null) dateParams.push(selectedSource);
-    dateParams.push(opts.limit ?? 800);
+    const dateParams: (number | string)[] = [
+      profileId,
+      ...sourceParams,
+      opts.limit ?? 800,
+    ];
     const recentDates = db
       .prepare(
         `SELECT date FROM metric_samples
@@ -406,9 +462,7 @@ function readSleepSessions(
     cutoff = recentDates[recentDates.length - 1].date;
   }
 
-  const rowParams: (number | string)[] = [profileId];
-  if (selectedSource != null) rowParams.push(selectedSource);
-  rowParams.push(cutoff);
+  const rowParams: (number | string)[] = [profileId, ...sourceParams, cutoff];
   const throughFilter = opts.through ? " AND date <= ?" : "";
   if (opts.through) rowParams.push(opts.through);
   const rows = db
@@ -593,7 +647,7 @@ export function getHrDailySummary(
   }[];
   const picked = pickRowsOneSourcePerDay(
     rows,
-    preferenceFor(profileId, "heart_rate"),
+    resolutionFor(profileId, "heart_rate"),
     (r) => r.date,
     (r) => r.source,
     (r) => r.n
@@ -664,7 +718,7 @@ export function getHrDailySummaryInRange(
 
   return pickRowsOneSourcePerDay(
     rows,
-    preferenceFor(profileId, "heart_rate"),
+    resolutionFor(profileId, "heart_rate"),
     (row) => row.date,
     (row) => row.source,
     (row) => row.n
@@ -694,7 +748,7 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
     .all(profileId, date) as HrMinute[];
   return pickRowsOneSourcePerDay(
     rows,
-    preferenceFor(profileId, "heart_rate"),
+    resolutionFor(profileId, "heart_rate"),
     () => date,
     (r) => r.source
   );
@@ -726,7 +780,7 @@ export function getHrMinutesInRange(
   ) as { ts: string; bpm: number; source: string | null }[];
   return pickRowsOneSourcePerDay(
     rows,
-    preferenceFor(profileId, "heart_rate"),
+    resolutionFor(profileId, "heart_rate"),
     (r) => r.ts.slice(0, 10),
     (r) => r.source
   ).map(({ ts, bpm }) => ({ ts, bpm }));
@@ -740,30 +794,21 @@ function bodyMetricColumn(metric: BodyMetricKind): string {
       : "resting_hr";
 }
 
-// SQL condition matching a body_metrics row to a primary-source pick. 'manual'
-// covers both NULL (quick-add) and the journal's literal 'manual'.
-function bodySourceCondition(source: string): {
-  sql: string;
-  params: string[];
-} {
-  return source === "manual"
-    ? { sql: "(source IS NULL OR source = 'manual')", params: [] }
-    : { sql: "source = ?", params: [source] };
-}
-
 // The most recent (non-null) recorded value for a body metric with its measured
 // date, or null. The passport shows the date next to each body stat.
 // A configured primary source for the metric (issue #14) wins when it has any
 // reading; otherwise (or when that source has none) the newest reading of any
-// source is returned, as before.
+// source is returned, as before. With the 'documents' class (#1640) this is
+// "the newest scan, whichever report it came from". A STRICT choice (#1642)
+// keeps the honest empty state instead of falling back to another source.
 export function getLatestBodyMetricDated(
   profileId: number,
   metric: BodyMetricKind
 ): { value: number; date: string } | null {
   const col = bodyMetricColumn(metric);
-  const chosen = getMetricSourcePriority(profileId)[metric];
+  const chosen = choiceFor(profileId, metric);
   if (chosen) {
-    const cond = bodySourceCondition(chosen);
+    const cond = sourceMatchSql(chosen.source);
     const row = db
       .prepare(
         `SELECT ${col} AS value, date FROM body_metrics
@@ -773,6 +818,7 @@ export function getLatestBodyMetricDated(
       .get(profileId, ...cond.params) as
       { value: number; date: string } | undefined;
     if (row) return row;
+    if (chosen.strict) return null;
   }
   const row = db
     .prepare(
@@ -809,7 +855,7 @@ export function getBodyMetricDailySeries(
         ORDER BY date DESC LIMIT ?`
     )
     .all(profileId, limit) as BodyMetricRow[];
-  return foldBodyMetricDaily(rows, preferenceFor(profileId, metric));
+  return foldBodyMetricDaily(rows, resolutionFor(profileId, metric));
 }
 
 interface BodyMetricRow {
@@ -824,11 +870,11 @@ interface BodyMetricRow {
 // latest-two trend read (#1367) so both compute the daily rollup ONE way.
 function foldBodyMetricDaily(
   rows: BodyMetricRow[],
-  preference: string[]
+  selection: SourceSelection
 ): { date: string; value: number }[] {
   const picked = pickRowsOneSourcePerDay(
     rows,
-    preference,
+    selection,
     (r) => r.date,
     (r) => r.source
   );
@@ -870,7 +916,7 @@ export function getLatestBodyMetricDailyPoints(
           )`
     )
     .all(profileId, profileId, dateLimit) as BodyMetricRow[];
-  return foldBodyMetricDaily(rows, preferenceFor(profileId, metric));
+  return foldBodyMetricDaily(rows, resolutionFor(profileId, metric));
 }
 
 // ---- Per-source comparison series (issue #14) ----
