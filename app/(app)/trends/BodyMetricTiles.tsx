@@ -29,6 +29,7 @@ export default function BodyMetricTiles({
   growth,
   sleep,
   order,
+  star,
 }: {
   tiles: BodyMetricTile[];
   // Composite growth-percentile chart; null outside pediatric chart eligibility.
@@ -39,12 +40,17 @@ export default function BodyMetricTiles({
   // The tab's ranked card order (#1490) — the SAME sequence the chart stack and the
   // jump chips read, so the two view modes can never disagree about what leads.
   order: readonly BodyCardId[];
+  // The tile's ★ control (#1643), built by the section from the one series-key ↔
+  // card-id mapping. Returns null for a card with no savable series, so the special
+  // tiles (growth percentiles, Sleep) simply carry no menu. Omitted by a caller with
+  // no save context.
+  star?: (slug: string, label: string) => ReactNode;
 }) {
   // Merge the metric tiles + the Sleep tile into ONE list ordered by the tab's card
   // order — the same sequence the chart stack + jump chips use.
   const nodeBySlug = new Map<string, ReactNode>();
   const descriptors: OrderableTile[] = tiles.map((t) => {
-    nodeBySlug.set(t.slug, renderMetricTile(t));
+    nodeBySlug.set(t.slug, renderMetricTile(t, star?.(t.slug, t.title)));
     return {
       slug: t.slug,
       id: t.slug,
@@ -93,7 +99,7 @@ export default function BodyMetricTiles({
   );
 }
 
-function renderMetricTile(t: BodyMetricTile): ReactNode {
+function renderMetricTile(t: BodyMetricTile, menu?: ReactNode): ReactNode {
   return (
     <TrendMiniCard
       title={t.title}
@@ -104,6 +110,7 @@ function renderMetricTile(t: BodyMetricTile): ReactNode {
       color={t.color}
       decimals={t.decimals}
       testid={`body-tile-${t.slug}`}
+      menu={menu}
     />
   );
 }
