@@ -97,6 +97,66 @@ test("the phone dashboard drops the page header and leads with the Now strip (#1
   }
 });
 
+test("the two-card band STACKS on a phone and goes two-up from `sm` (#1547)", async ({
+  browser,
+}) => {
+  // The bug: the band's grid was a bare `grid-cols-2` with no responsive prefix, so
+  // at 390px the two promoted cards sat side-by-side at ~170px each while the SAME
+  // widgets rendered full width in the grid below — the strip was the only dashboard
+  // surface handing its content HALF the width, which inverts its own claim to be
+  // showing the moment's most relevant card. Geometry is the only honest assertion
+  // here: a class-name check would pass against a stylesheet that never applied.
+  const phone = await openDashboard(browser, { username: E2E_LOGIN_NOWSTRIP });
+  try {
+    const strip = phone.getByTestId("now-strip");
+    await expect(strip).toHaveAttribute("data-count", "2");
+    const cards = strip.locator("[data-testid^='now-strip-card-']");
+    // Indexed rather than a leading-match shortcut: this strip is THIS fixture's
+    // own surface and its count is pinned above, so both boxes are named explicitly.
+    const [top, bottom] = [cards.nth(0), cards.nth(1)];
+    const topBox = await top.boundingBox();
+    const bottomBox = await bottom.boundingBox();
+    expect(topBox).not.toBeNull();
+    expect(bottomBox).not.toBeNull();
+    if (!topBox || !bottomBox) throw new Error("no bounding boxes");
+
+    // Stacked: the second card starts below the first's midpoint (a tolerant form of
+    // "on its own row" that survives a few pixels of gap drift), and both share the
+    // same left edge and the same width.
+    expect(bottomBox.y).toBeGreaterThan(topBox.y + topBox.height / 2);
+    expect(Math.abs(bottomBox.x - topBox.x)).toBeLessThan(2);
+    expect(Math.abs(bottomBox.width - topBox.width)).toBeLessThan(2);
+
+    // And that width is the FULL column, not half of it — the actual complaint. The
+    // strip is a sibling of the grid below, so the card matches the section's width.
+    const stripBox = await strip.boundingBox();
+    if (!stripBox) throw new Error("no strip box");
+    expect(topBox.width).toBeGreaterThan(stripBox.width * 0.9);
+  } finally {
+    await phone.context().close();
+  }
+
+  // Same page, same fixture, only the viewport differs — the whole claim. From `sm`
+  // up the band is still a band: two cards on ONE row.
+  const desktop = await openDashboard(
+    browser,
+    { username: E2E_LOGIN_NOWSTRIP },
+    DESKTOP
+  );
+  try {
+    const strip = desktop.getByTestId("now-strip");
+    await expect(strip).toHaveAttribute("data-count", "2");
+    const cards = strip.locator("[data-testid^='now-strip-card-']");
+    const leftBox = await cards.nth(0).boundingBox();
+    const rightBox = await cards.nth(1).boundingBox();
+    if (!leftBox || !rightBox) throw new Error("no bounding boxes");
+    expect(rightBox.x).toBeGreaterThan(leftBox.x + leftBox.width / 2);
+    expect(Math.abs(rightBox.y - leftBox.y)).toBeLessThan(2);
+  } finally {
+    await desktop.context().close();
+  }
+});
+
 test("desktop keeps the page header (#1413 C is a phone-only drop)", async ({
   browser,
 }) => {

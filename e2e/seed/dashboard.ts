@@ -42,6 +42,18 @@ import {
   NOW_STRIP_APPOINTMENT,
   E2E_LOGIN_NOWSAFETY,
   NOW_SAFETY_PROFILE,
+  E2E_LOGIN_FOLDREOPEN,
+  FOLD_REOPEN_PARENT_PROFILE,
+  FOLD_REOPEN_KID_A_PROFILE,
+  FOLD_REOPEN_KID_B_PROFILE,
+  FOLD_REOPEN_KID_A_SITUATION,
+  FOLD_REOPEN_KID_B_SITUATION,
+  E2E_LOGIN_FOLDTAIL,
+  FOLD_TAIL_PARENT_PROFILE,
+  FOLD_TAIL_KID_PROFILE,
+  E2E_LOGIN_FOLDWELL,
+  FOLD_WELL_PARENT_PROFILE,
+  FOLD_WELL_KID_PROFILE,
   CRISIS_OVERRIDE_LABEL,
   CRISIS_OVERRIDE_CONTACT,
   E2E_LOGIN_DAILY,
@@ -72,7 +84,13 @@ import {
   DUP_REVIEW_PROFILE,
 } from "../fixture-logins";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
-import { PROFILE_ID, ins, seedMemberLogin, fixtureProfileId } from "./common";
+import {
+  PROFILE_ID,
+  ins,
+  seedMemberLogin,
+  fixtureProfileId,
+  grantProfile,
+} from "./common";
 
 // ── Weekly recap + milestones ──
 export function seedWeeklyRecap(): void {
@@ -869,4 +887,88 @@ export function seedWhatsNew(): void {
       `e2e: seeded what's-new fixture — login ${E2E_LOGIN_WHATSNEW} granted profile ${whatsNewId} (${WHATS_NEW_PROFILE}) (#1421)`
     );
   }
+}
+
+// ── Just-recovered household band folds (#1548 / #1549) ──
+export function seedHouseholdFolds(): void {
+  // Three caregiver fixtures, one per state of the household-history promo's
+  // placement — see the header block in e2e/logins/dashboard.ts for what each state
+  // is and why the distances (3/5, 10, 20 days) are the whole fixture.
+  //
+  // ended_at is EXCLUSIVE, so an episode whose LAST ACTIVE day is `daysAgo` days back
+  // ends at today - (daysAgo - 1). That is the same arithmetic
+  // episodeReopenEligibility measures against, so the fixtures land on the intended
+  // side of both the 7-day reopen window and the 14-day promo window rather than on
+  // a boundary. Dates derive from today(profileId) — the run's FROZEN clock — never
+  // the wall clock.
+  //
+  // Idempotent for a reused dev server: each profile's episodes are cleared first,
+  // and the logins/grants upsert.
+  const resolveKid = (
+    profileName: string,
+    situation: string,
+    daysAgo: number
+  ): number => {
+    const kidId = fixtureProfileId(profileName);
+    const on = today(kidId);
+    db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(kidId);
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+       VALUES (?, ?, ?, ?)`
+    ).run(
+      kidId,
+      situation,
+      shiftDateStr(on, -(daysAgo + 6)),
+      shiftDateStr(on, -(daysAgo - 1))
+    );
+    return kidId;
+  };
+
+  // Parents first so they hold the lowest id and become the acting profile.
+  const reopenParentId = fixtureProfileId(FOLD_REOPEN_PARENT_PROFILE);
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(
+    reopenParentId
+  );
+  const reopenKidAId = resolveKid(
+    FOLD_REOPEN_KID_A_PROFILE,
+    FOLD_REOPEN_KID_A_SITUATION,
+    3
+  );
+  const reopenKidBId = resolveKid(
+    FOLD_REOPEN_KID_B_PROFILE,
+    FOLD_REOPEN_KID_B_SITUATION,
+    5
+  );
+  const reopenLoginId = seedMemberLogin(E2E_LOGIN_FOLDREOPEN, reopenParentId);
+  grantProfile(reopenLoginId, reopenKidAId);
+  grantProfile(reopenLoginId, reopenKidBId);
+  // The spec MUTATES this login's dismissal set, so clear it at seed time too — a
+  // reused dev server would otherwise start with a previous run's hides in place.
+  db.prepare(
+    "DELETE FROM login_settings WHERE login_id = ? AND key = 'recently_resolved_dismissed'"
+  ).run(reopenLoginId);
+
+  const tailParentId = fixtureProfileId(FOLD_TAIL_PARENT_PROFILE);
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(
+    tailParentId
+  );
+  const tailKidId = resolveKid(FOLD_TAIL_KID_PROFILE, "Ear infection", 10);
+  const tailLoginId = seedMemberLogin(E2E_LOGIN_FOLDTAIL, tailParentId);
+  grantProfile(tailLoginId, tailKidId);
+
+  const wellParentId = fixtureProfileId(FOLD_WELL_PARENT_PROFILE);
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(
+    wellParentId
+  );
+  const wellKidId = resolveKid(
+    FOLD_WELL_KID_PROFILE,
+    "Hand foot and mouth",
+    20
+  );
+  const wellLoginId = seedMemberLogin(E2E_LOGIN_FOLDWELL, wellParentId);
+  grantProfile(wellLoginId, wellKidId);
+
+  console.log(
+    `e2e: seeded household band-fold fixtures — reopen ${reopenParentId}/${reopenKidAId}/${reopenKidBId}, tail ${tailParentId}/${tailKidId}, well ${wellParentId}/${wellKidId} (#1548/#1549)`
+  );
 }
