@@ -212,8 +212,10 @@ test.describe("outbound email — login lifecycle (#985)", () => {
       username: invitee,
       password: SET_PW,
     });
+    // `exact` — the granted fixture profile is empty, so the dashboard also renders
+    // an "Import health data" CTA pointing at /data.
     await expect(
-      inviteeSession.getByRole("link", { name: "Data" })
+      inviteeSession.getByRole("link", { name: "Data", exact: true })
     ).toBeVisible();
     await expect(inviteeSession.getByTestId("user-menu-trigger")).toContainText(
       INVITE_TARGET_PROFILE

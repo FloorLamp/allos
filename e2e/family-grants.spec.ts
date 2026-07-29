@@ -270,7 +270,9 @@ test.describe("Family access is legible and never a dead end (#1434)", () => {
     await anon.fill('input[name="username"]', username);
     await anon.fill('input[name="password"]', password);
     await anon.click('button[type="submit"]');
-    await expect(anon.getByRole("alert")).toContainText("no profile access");
+    await expect(anon.getByTestId("login-error")).toContainText(
+      "no profile access"
+    );
     await expect(anon).toHaveURL(/\/login/);
     await anon.context().close();
 

@@ -12,7 +12,11 @@ import {
   SESSION_COOKIE,
   type Role,
 } from "@/lib/auth";
-import { safeNextPath, truncateUserAgent } from "@/lib/login-security";
+import {
+  NO_PROFILE_ACCESS,
+  safeNextPath,
+  truncateUserAgent,
+} from "@/lib/login-security";
 import { TWO_FACTOR_COOKIE } from "@/lib/session-cookie";
 import {
   evaluateLockout,
@@ -51,15 +55,6 @@ const INVALID_CODE = "Incorrect or expired code.";
 // throttled — so a prober learns nothing from the response. (The empty-field
 // prompt below is not a credential check, so it stays distinct.)
 const INVALID_CREDENTIALS = "Incorrect username or password.";
-
-// The honest outcome for a login that authenticates but can reach no profile
-// (issue #1434) — a member created before anyone granted it access. It used to
-// mint a session, redirect, and then bounce back to an EMPTY sign-in form on every
-// request, with no message and no signal to the admin. This is NOT an enumeration
-// surface: it is only ever reached AFTER the credentials (and any second factor)
-// verified, so a prober who sees it already knows the password.
-export const NO_PROFILE_ACCESS =
-  "Your login works, but it has no profile access yet — ask your admin to grant a profile.";
 
 // The grantless refusal, shared by the password step and the second-factor step so
 // both doors behave identically: no session is minted (an unusable login must not

@@ -36,7 +36,8 @@ vi.mock("next/navigation", () => ({
 const cookiesSet: { name: string; value: string }[] = [];
 
 import { db } from "@/lib/db";
-import { login, NO_PROFILE_ACCESS } from "@/app/(auth)/login/actions";
+import { login } from "@/app/(auth)/login/actions";
+import { NO_PROFILE_ACCESS } from "@/lib/login-security";
 import { resolveSessionToken, createSession, SESSION_COOKIE } from "@/lib/auth";
 import { hashPasswordSync } from "@/lib/password";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";

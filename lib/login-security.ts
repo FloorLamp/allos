@@ -32,6 +32,18 @@ export function safeNextPath(
   return isSafeNextPath(next) ? (next as AppRoute) : fallback;
 }
 
+// The honest sign-in outcome for a login that authenticates but can reach NO profile
+// (issue #1434) — a member created before anyone granted it access. It used to mint a
+// session, redirect, and then bounce back to an EMPTY sign-in form on every request,
+// with no message and no signal to the admin. Lives here (a pure module) rather than
+// in the "use server" action file, which may only export async functions, so specs and
+// tests can assert the exact copy the form shows.
+//
+// NOT an enumeration surface: it is only ever reached AFTER the credentials — and any
+// second factor — verified, so whoever sees it already holds the password.
+export const NO_PROFILE_ACCESS =
+  "Your login works, but it has no profile access yet — ask your admin to grant a profile.";
+
 // Validate a `?u=` sign-in prefill (issue #1434). After completing an invite the
 // person just proved possession of a token minted FOR that username, so the sign-in
 // form can fill it in rather than making them recall a name the admin chose. Only
