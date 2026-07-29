@@ -40,7 +40,9 @@ describe("setMetricPrimarySource", () => {
 
     await setMetricPrimarySource(fd({ metric: "steps", source: "oura" }));
 
-    expect(getMetricSourcePriority(profile.id)).toEqual({ steps: "oura" });
+    expect(getMetricSourcePriority(profile.id)).toEqual({
+      steps: { source: "oura", strict: false },
+    });
     expect(getMetricSourcePriority(other.id)).toEqual({}); // profile-scoped
     expect(revalidate).toHaveBeenCalledWith("/trends", "layout");
     expect(revalidate).toHaveBeenCalledWith("/sleep");
@@ -54,7 +56,9 @@ describe("setMetricPrimarySource", () => {
     actAs(login, profile);
 
     await setMetricPrimarySource(fd({ metric: "sleep_min", source: "oura" }));
-    expect(getMetricSourcePriority(profile.id)).toEqual({ sleep_min: "oura" });
+    expect(getMetricSourcePriority(profile.id)).toEqual({
+      sleep_min: { source: "oura", strict: false },
+    });
 
     await setMetricPrimarySource(fd({ metric: "sleep_min", source: "" }));
     expect(getMetricSourcePriority(profile.id)).toEqual({});
@@ -98,6 +102,66 @@ describe("setMetricPrimarySource", () => {
     await setMetricPrimarySource(fd({ metric: "steps", source: "oura" }));
     expect(getMetricDailyTotals(profile.id, "steps")).toEqual([
       { date: "2024-03-01", value: 7500 },
+    ]);
+  });
+  it("stores the strict flag, and clearing the source clears the mode (#1642)", async () => {
+    const login = createLogin();
+    const profile = createProfile("strict-picker", login.id);
+    actAs(login, profile);
+
+    await setMetricPrimarySource(
+      fd({ metric: "weight", source: "documents", strict: "1" })
+    );
+    expect(getMetricSourcePriority(profile.id)).toEqual({
+      weight: { source: "documents", strict: true },
+    });
+    // Only the strict shape is written as an object; preference stays a string.
+    expect(storedBlob(profile.id)).toBe(
+      '{"weight":{"source":"documents","strict":true}}'
+    );
+
+    // Switching back to preference restores today's stored shape exactly.
+    await setMetricPrimarySource(fd({ metric: "weight", source: "documents" }));
+    expect(getMetricSourcePriority(profile.id)).toEqual({
+      weight: { source: "documents", strict: false },
+    });
+    expect(storedBlob(profile.id)).toBe('{"weight":"documents"}');
+
+    // A strict flag with no source is not a choice — it clears, it doesn't store.
+    await setMetricPrimarySource(
+      fd({ metric: "weight", source: "", strict: "1" })
+    );
+    expect(getMetricSourcePriority(profile.id)).toEqual({});
+    expect(storedBlob(profile.id)).toBeUndefined();
+  });
+
+  it("a strict pick actually excludes the other source's day", async () => {
+    const login = createLogin();
+    const profile = createProfile("strict-reader", login.id);
+    actAs(login, profile);
+
+    const day = (date: string, value: number) => ({
+      metric: "steps",
+      date,
+      start_time: `${date}T00:00`,
+      end_time: `${date}T23:59`,
+      value,
+    });
+    upsertMetricSamples(profile.id, [day("2024-03-01", 9000)], "health-connect");
+    upsertMetricSamples(profile.id, [day("2024-03-01", 7500)], "oura");
+    upsertMetricSamples(profile.id, [day("2024-03-02", 8800)], "health-connect");
+
+    await setMetricPrimarySource(fd({ metric: "steps", source: "oura" }));
+    expect(getMetricDailyTotals(profile.id, "steps")).toEqual([
+      { date: "2024-03-01", value: 7500 },
+      { date: "2024-03-02", value: 8800 }, // preference: the uncovered day falls back
+    ]);
+
+    await setMetricPrimarySource(
+      fd({ metric: "steps", source: "oura", strict: "1" })
+    );
+    expect(getMetricDailyTotals(profile.id, "steps")).toEqual([
+      { date: "2024-03-01", value: 7500 }, // strict: the uncovered day is a gap
     ]);
   });
 });
