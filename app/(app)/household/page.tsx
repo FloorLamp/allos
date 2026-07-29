@@ -208,7 +208,10 @@ export default async function HouseholdPage() {
           // Cross-profile surfaces live here, and the medicine cabinet is one of them
           // (#1522) — a household-scoped registry that lost its nav row and is now
           // reached from the stable parents that consume it.
-          <div className="flex shrink-0 items-center gap-3">
+          // Wraps on a phone for the same reason the Medications header does: two
+          // affordances plus the title do not fit 360px, and the shell clips rather
+          // than scrolls, so an un-wrapping row would hide one of them outright.
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
             <SharedSuppliesLink count={countVisiblePools(profileIds)} />
             <Link
               href={EPISODES_HREF}

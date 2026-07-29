@@ -55,7 +55,14 @@ export default function MedicationAddWorkspace({
         title="Medications"
         subtitle={subtitle}
         action={
-          <div className="flex shrink-0 items-center gap-3">
+          // WRAPS on a phone (#1522 follow-up). A second affordance in this header
+          // does not fit 390px beside "Medications" and its subtitle, and the app
+          // shell clips horizontal overflow — an un-wrapping row would push the Add
+          // button off-screen entirely rather than scroll to it. So the group shrinks
+          // (no `shrink-0`) and wraps between its children: the cabinet door rides
+          // above the button on a phone and beside it from `sm` up. One content tree,
+          // both viewports.
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
             <SharedSuppliesLink count={cabinetCount} />
             <button
               type="button"
