@@ -5,7 +5,8 @@ import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// Trends → the MERGED Body tab (issue #1486). The Vitals tab retired into Body,
+// Trends → the MERGED Body census (issue #1486, a SECTION since #1644). Vitals
+// retired into Body,
 // whose sections read: Today → the two ranked chart runs → growth/history. (#1486
 // declared those runs Vitals-then-Composition; #1659 re-sequenced the base layout
 // everyday-first, so with no signal firing they now read Composition-then-Vitals —
@@ -29,39 +30,34 @@ const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 900 };
 
 async function openBody(page: Page, query = ""): Promise<void> {
-  await page.goto(`/trends?tab=body${query}`);
-  // Below `sm` the tab strip lives inside the collapsed #1485 F context bar, so
-  // asserting the lit tab means opening the bar first (a no-op at desktop width).
+  await page.goto(`/trends${query ? `?${query.replace(/^&/, "")}` : ""}#body`);
+  // Below `sm` the chip strip lives inside the collapsed #1485 F context bar, so
+  // reaching the section's chip means opening the bar first (a no-op at desktop
+  // width).
   await expandTrendsContext(page);
-  await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  await expect(page.getByTestId("trends-section-body")).toBeVisible();
 }
 
-test.describe("one tab, one ordered stack (#1486)", () => {
-  test("the tab strip carries no Vitals tab", async ({ page }) => {
+test.describe("one census, one ordered stack (#1486)", () => {
+  test("the section strip carries no Vitals destination", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await openBody(page);
-    const tabs = page.getByRole("tab");
-    // Five since #1489 folded Compare into Insights (this merge took it from
-    // seven to six); the ORDER + phone fit are that issue's spec —
-    // trends-compare-fold.mobile.spec.ts. What #1486 owns here is the absence of
-    // Vitals.
-    await expect(tabs).toHaveCount(5);
-    await expect(page.getByRole("tab", { name: "Vitals" })).toHaveCount(0);
+    const chips = page.getByTestId("trends-section-chips").getByRole("link");
+    // Five sections since #1644 folded the tabs into one page; the ORDER + phone
+    // fit are that issue's spec — trends-compare-fold.mobile.spec.ts. What #1486
+    // owns here is the absence of a Vitals destination of its own.
+    await expect(chips).toHaveCount(5);
+    await expect(chips.filter({ hasText: "Vitals" })).toHaveCount(0);
   });
 
-  test("?tab=vitals lands on Body — the old deep link is a vocabulary mapping", async ({
+  test("a retired ?tab=vitals bookmark still shows the Body census", async ({
     page,
   }) => {
     await page.setViewportSize(PHONE);
+    // The param names nothing since #1644 (no shim, #1635) — but the census it
+    // used to select is simply on the page it lands on.
     await page.goto("/trends?tab=vitals");
     await expandTrendsContext(page);
-    await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
     await expect(page.getByTestId("trends-body")).toBeVisible();
     // No redirect layer: the URL is left exactly as the caller wrote it.
     expect(page.url()).toContain("tab=vitals");
@@ -192,7 +188,7 @@ test.describe("logging: desktop uses a modal, mobile uses the overlay (#1486)", 
 
     // The #1083 preventive blood-pressure deep link still lands the user in a
     // focused field — via the #1468 overlay rather than an inline form.
-    await page.goto("/trends?tab=body&focus=blood-pressure");
+    await page.goto("/trends?focus=blood-pressure");
     const sheet = page.getByTestId("quick-entry-sheet");
     await expect(sheet).toBeVisible();
     await expect(sheet.getByTestId("measurements-quick-add")).toBeVisible();
@@ -252,7 +248,7 @@ test.describe("the form is life-stage gated (#1486)", () => {
 
       // ── The same ONE component in the #1468 overlay ─────────────────────
       await child.setViewportSize(PHONE);
-      await child.goto("/trends?tab=body&focus=height");
+      await child.goto("/trends?focus=height");
       const sheetForm = child
         .getByTestId("quick-entry-sheet")
         .getByTestId("measurements-quick-add");

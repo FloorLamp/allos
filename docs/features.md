@@ -511,10 +511,13 @@ default), so gating only kicks in once you've listed some gear.
 
 ## Trends
 
-Charts and analysis live in five tabs:
+Charts and analysis live on **one scrollable page**, navigated by a sticky strip
+of jump chips rather than tabs. Top to bottom:
 
-- **Overview** is the default "what's trending" digest of saved and pinnable
-  tiles.
+- the **"what's trending" digest** — the movers over the selected window;
+- **Starred** — your own cross-domain grid of saved, drag-orderable tiles. It is
+  the one curation surface, and the one place where nothing renders unless you
+  put it there;
 - **Body** combines vitals, acute temperature, sleep and outdoor-time signals,
   body composition, and the shared **Log measurements** form. A **Data check**
   card catches probable weight-entry errors before they skew charts.
@@ -523,21 +526,26 @@ Charts and analysis live in five tabs:
   use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
   max HR; the manual max-HR override is under **Settings → Training**.
 - **Nutrition** charts macros, fiber, hydration, and related intake trends.
-- **Insights** combines comparison tools with daily analysis and
-  weekly/monthly recap narratives.
+- **Insights** closes the page, combining comparison tools with daily analysis
+  and weekly/monthly recap narratives.
+
+Each census section streams in on its own, so the digest and your starred grid
+paint without waiting on the domains below them. Every internal link into Trends
+targets a section anchor (`/trends#body`); the old `?tab=` parameter is gone.
 
 Biomarker tables, flags, trajectories, reference ranges, food-first context,
 fitness percentiles, and pediatric interpretation live under
 **Medical → Results → Biomarkers**, not in Trends. Functional-fitness readings
 are entered through the Training **Fitness check**.
 
-The default window is the last 90 days. Every tab uses the same range model,
-saved views, and event overlays, and every overview tile opens the corresponding
+The default window is the last 90 days. Every section uses the same range model,
+saved views, and event overlays, and every starred tile opens the corresponding
 full chart rather than maintaining a second interpretation.
 
-### Overview and Body
+### Starred and Body
 
-Overview answers two questions: **what you saved** and **what changed**. Tiles
+The starred grid answers two questions: **what you saved** and **what changed**.
+Tiles
 lead with the latest reading and its age, distinguish current value from trend,
 and can be pinned and reordered. The mobile layout uses compact cards; the
 overflow menu owns secondary controls instead of crowding the chart.
@@ -549,12 +557,12 @@ self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
-The star is the **one arrangement gesture** across both tabs. Starring a body
+The star is the **one arrangement gesture** across both sections. Starring a body
 metric — on its own page, which every Body card opens — is the same save as
-starring an Overview tile, and starred cards lead the Body tab in the order the
-Overview grid holds them, so pinned cards are re-sequenced by dragging them (or
-using their overflow arrows) on Overview. There is no second reorder surface on
-Body.
+starring a grid tile, and starred cards lead the Body census in the order the
+starred grid holds them, so pinned cards are re-sequenced by dragging them (or
+using their overflow arrows) in the grid. There is no second reorder surface in
+the census.
 
 Everything unstarred follows a **ranked default** built from stable subject
 facts — life stage, live goals, monitored conditions, and whether a series has
@@ -756,7 +764,7 @@ legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 as **servings, one tap each** (undo decrements), grouped by whether the guidance
 is to eat _more_, _balance_, or _less_. A **weekly rollup** — ONE pure
 computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
-the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
+the **Trends → Nutrition** section, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from
 your flagged labs (#577) as "food before pills," each offering a one-tap **Track
 as weekly habit**. A **Weekly habits** card makes "fatty fish 2×/week" a

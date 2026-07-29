@@ -12,11 +12,17 @@ export default function TrendsSectionShell({
   id,
   heading,
   description,
+  quietHeading = false,
   children,
 }: {
   id: TrendsSection;
   heading: string;
   description?: string;
+  // The page HEAD carries no heading band (#1485 F reclaimed it, and the chip
+  // strip already names the section): the starred grid keeps its heading in the
+  // accessibility tree only, so the first tile stays inside the wave's ~400px
+  // target. Every census below scrolls into view under a visible heading.
+  quietHeading?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -28,14 +34,18 @@ export default function TrendsSectionShell({
       data-testid={`trends-section-${id}`}
       aria-labelledby={`trends-section-${id}-heading`}
     >
-      <div className="space-y-1">
+      <div className={quietHeading ? undefined : "space-y-1"}>
         <h2
           id={`trends-section-${id}-heading`}
-          className="text-lg font-semibold text-slate-800 dark:text-slate-100"
+          className={
+            quietHeading
+              ? "sr-only"
+              : "text-lg font-semibold text-slate-800 dark:text-slate-100"
+          }
         >
           {heading}
         </h2>
-        {description && (
+        {description && !quietHeading && (
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {description}
           </p>

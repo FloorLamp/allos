@@ -48,7 +48,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     const main = page.getByRole("main");
     // The seeded ongoing protocol shades the body charts, so the shared annotation
     // toggle bar offers a "Protocols" pill.

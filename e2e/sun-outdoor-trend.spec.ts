@@ -25,11 +25,8 @@ test.describe("Sun / outdoor trend chart (#1171)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/trends?tab=body&view=all");
-      await expect(member.getByRole("tab", { name: "Body" })).toHaveAttribute(
-        "aria-selected",
-        "true"
-      );
+      await member.goto("/trends?view=all");
+      await expect(member.getByTestId("trends-section-body")).toBeVisible();
 
       const card = member.getByTestId("vitals-sun-outdoor");
       await expect(card).toBeVisible();
@@ -51,11 +48,8 @@ test.describe("Sun / outdoor trend chart (#1171)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/trends?tab=body&view=all");
-      await expect(member.getByRole("tab", { name: "Body" })).toHaveAttribute(
-        "aria-selected",
-        "true"
-      );
+      await member.goto("/trends?view=all");
+      await expect(member.getByTestId("trends-section-body")).toBeVisible();
       await expect(
         member.getByRole("main").getByTestId("vitals-sun-outdoor")
       ).toHaveCount(0);

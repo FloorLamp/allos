@@ -25,7 +25,7 @@ test("Training → Overview shows a plateau finding for the flat Skullcrusher (#
 test("Trends → Body shows a data-hygiene finding for the weight jump (#45)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   const card = page.getByRole("main").getByTestId("body-hygiene-findings");
   await expect(card).toBeVisible();
   await expect(card).not.toHaveAttribute("open", "");
@@ -66,7 +66,7 @@ function resetBodyHygieneDismissals(): void {
 // bus store (dismissBodyHygiene → dismissFinding), so it stops rendering.
 test("a body-hygiene finding can be dismissed (#45)", async ({ page }) => {
   resetBodyHygieneDismissals();
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   const main = page.getByRole("main");
   await main.getByTestId("body-hygiene-findings-toggle").click();
   // Target the SEEDED 92 kg anomaly specifically: in the full suite other specs

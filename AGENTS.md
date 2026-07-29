@@ -11,9 +11,14 @@ It covers training, body metrics, nutrition, supplements and medications, a
 medical passport, Timeline, Trends, Upcoming, notifications, imports, and
 optional Claude-powered analysis.
 
-The live Trends tabs are **Overview, Body, Fitness, Nutrition, and Insights**.
-Labs, imaging, and genomics live under Medical → Results, not a Trends
-Biomarkers tab.
+Trends is ONE scrollable page (#1644), not a tab strip: a trending digest, the
+cross-domain **Starred** grid, then the **Body**, **Fitness**, and **Nutrition**
+censuses and a closing **Insights** section, navigated by sticky jump chips.
+Sections are registered in `lib/trends-sections.ts`; each census streams under
+its own `Suspense` boundary so the head never waits on it. Deep links use the
+section anchor (`trendsSectionHref`, e.g. `/trends#body`) — `?tab=` is retired
+with no shim. Labs, imaging, and genomics live under Medical → Results, not a
+Trends section.
 
 ### Logins and profiles are different
 

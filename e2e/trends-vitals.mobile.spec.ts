@@ -63,13 +63,13 @@ test.describe("the 1D pill is scoped to the Body tab (B)", () => {
 
     // The pill moved to Body with the vitals it exists for (#1486). Since #1485 F
     // the whole chip row is behind the phone context bar, so each check opens it.
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     await expandTrendsContext(page);
     await expect(pill).toBeVisible();
 
     // And the RETIRED ?tab=vitals still lands on that same tab, pill and all —
     // a vocabulary mapping, not a redirect (#1486).
-    await page.goto("/trends?tab=vitals");
+    await page.goto("/trends");
     await expandTrendsContext(page);
     await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
       "aria-selected",
@@ -79,11 +79,7 @@ test.describe("the 1D pill is scoped to the Body tab (B)", () => {
 
     // On a daily-grain series a one-day window is a single dot — worse than
     // useless — so no other tab may advertise it. The shared pills stay shared.
-    for (const tab of [
-      "/trends",
-      "/trends?tab=nutrition",
-      "/trends?tab=insights",
-    ]) {
+    for (const tab of ["/trends", "/trends", "/trends"]) {
       await page.goto(tab);
       await expandTrendsContext(page);
       // Exact, like the 1D locators above: the movers digest renders LINK chips
@@ -104,7 +100,7 @@ test.describe("the 1D pill is scoped to the Body tab (B)", () => {
     // 1D matches no SHARED quick range, so without the extra-ranges half of
     // isCustomRange it would read as a hand-picked window and re-introduce both
     // of the chrome regressions #1455 D removed.
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     await expandTrendsContext(page);
     await followLink(
       page,
@@ -131,7 +127,7 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
     try {
       // `view=all` is intentionally ignored on phones: an ordinary range stays on
       // tiles, while 1D replaces that grid with the dedicated intraday lens.
-      await member.goto("/trends?tab=body&view=all");
+      await member.goto("/trends?view=all");
       await expandTrendsContext(member);
       // The windowed daily view is what 1D replaces.
       await expect(member.getByTestId("body-tile-systolic")).toBeVisible();
@@ -189,7 +185,7 @@ test.describe("the Today strip (A)", () => {
     try {
       // The strip is the merged tab's FIRST section — above the fold on a phone,
       // before any chart or logging affordance (#1486).
-      await member.goto("/trends?tab=body");
+      await member.goto("/trends");
 
       const strip = member.getByTestId("vitals-today-strip");
       await expect(strip).toBeVisible();

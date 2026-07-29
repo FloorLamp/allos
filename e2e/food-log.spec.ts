@@ -380,7 +380,7 @@ test("food serving details are always visible and not expandable above mobile", 
 test("the Trends → Nutrition tab is the over-time view, not the duplicate rollup (#1166)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=nutrition");
+  await page.goto("/trends");
   // #1166 reframed the tab: the duplicate FoodWeeklyRollup left for /nutrition; the
   // over-time cards (macros+fiber, adherence trend, intake grid) took its place. (The
   // detailed over-time assertions live in trends-nutrition.spec.ts.)

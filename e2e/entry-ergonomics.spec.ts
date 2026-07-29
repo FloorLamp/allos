@@ -53,7 +53,7 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
   // as-is). Assert against the weight cell's stable testid — rows are date-desc,
   // so today's just-logged entry is the first one — rather than free text, which
   // also matches the (visually hidden) chart axis/point labels.
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   const weightCell = page.getByTestId("body-weight-cell").first(); // first-ok: the most-recent body-weight cell (newest-first) — order-agnostic
   await expect(weightCell).toContainText("84.3");
 });

@@ -17,7 +17,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
 }) => {
   const marker = `offline-e2e-${Date.now()}`;
 
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   // #1486: the body quick-add is now the combined "Log measurements" form behind
   // the desktop "+ Log" modal — open it before going offline.
   await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
@@ -52,7 +52,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
 
   // The row is now persisted server-side — and appears EXACTLY ONCE (the idempotency
   // ledger prevented a double-replay from the racing flush triggers).
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   await expect(page.getByText(marker)).toHaveCount(1);
 
   // A further reload (which re-runs the on-load flush against an empty queue) must
@@ -74,7 +74,7 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
 }) => {
   const marker = `offline-reject-${Date.now()}`;
 
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   // #1486: the body quick-add is now the combined "Log measurements" form behind
   // the desktop "+ Log" modal — open it before going offline.
   await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
@@ -118,7 +118,7 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
   // did NOT persist server-side.
   await expect(badge).toHaveCount(0);
   await page.unroute("**/api/offline-replay");
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   await expect(page.getByText(marker)).toHaveCount(0);
 
   // The review panel survives a reload (persisted in the dead-letter store) and can

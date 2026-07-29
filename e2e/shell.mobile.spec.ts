@@ -255,7 +255,7 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     await expect(primary).toHaveAttribute("data-quick-log-id", "log-dose");
 
     // The Body TAB is the rule, not the /trends route.
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     await expect(primary).toHaveAttribute(
       "data-quick-log-id",
       "log-measurements"

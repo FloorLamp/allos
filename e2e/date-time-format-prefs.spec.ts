@@ -72,7 +72,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // The seeded weight-jump finding embeds its dates in the default shape too
     // ("On Monday, July 6 you logged …", #1020).
     resetBodyHygieneDismissals();
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
       page
@@ -118,7 +118,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // The weight-jump finding's embedded dates follow the pref too — same
     // finding, same dedupeKey, reshaped text (#1020).
     resetBodyHygieneDismissals();
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
       page

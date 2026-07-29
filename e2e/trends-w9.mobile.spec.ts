@@ -35,7 +35,7 @@ test.describe("the range-pill row says that it scrolls (#1485 D)", () => {
   test("carries the shared fade affordance on whichever edge has more", async ({
     page,
   }) => {
-    await page.goto("/trends?tab=body&range=all");
+    await page.goto("/trends?range=all");
     await expandTrendsContext(page);
     const row = page.getByTestId("trends-chip-row");
     await expect(row).toBeVisible();
@@ -108,7 +108,7 @@ test.describe("the compare block at 390px (#1493 B)", () => {
     page,
   }) => {
     await page.goto(
-      "/trends?tab=insights&cmpA=metric%3Aweight&cmpB=metric%3Aresting_hr&range=all"
+      "/trends?cmpA=metric%3Aweight&cmpB=metric%3Aresting_hr&range=all"
     );
     const a = page.locator("#cmp-a");
     const b = page.locator("#cmp-b");

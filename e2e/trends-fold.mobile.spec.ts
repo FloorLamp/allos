@@ -107,14 +107,12 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
   });
 });
 
-test.describe("Overview leads with charts (B)", () => {
+test.describe("the hub head leads with charts (B)", () => {
   test("a chart tile sits inside the opening viewport", async ({ page }) => {
     await page.goto("/trends");
-    // The always-visible active tab names the surface and the fixed range trigger
+    // The always-visible chip strip names the sections and the fixed range trigger
     // names the chart window above the payload.
-    await expect(
-      page.getByRole("tab", { name: "Overview", exact: true })
-    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("chart-jump-starred")).toBeVisible();
     await expect(page.getByTestId("trends-context-label")).toHaveText("90D");
 
     // Presence + "reachable without scrolling", not a pixel offset: toBeInViewport

@@ -34,13 +34,10 @@ async function openBodyTab(
   page: Page,
   opts: { view?: "all" | "tiles" } = {}
 ): Promise<void> {
-  const q = opts.view
-    ? `/trends?tab=body&view=${opts.view}`
-    : "/trends?tab=body";
+  const q = opts.view ? `/trends?view=${opts.view}` : "/trends";
   await page.goto(q);
-  await expect(
-    page.getByRole("tab", { name: "Body", exact: true })
-  ).toHaveAttribute("aria-selected", "true");
+  // #1644: Body is a section of the one hub page, not a tab.
+  await expect(page.getByTestId("trends-section-body")).toBeVisible();
 }
 
 test.describe("Trends → Body responsive views (#1067)", () => {
@@ -129,7 +126,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     });
     await page.setViewportSize(PHONE);
     const yesterday = shiftDateStr(frozenNow().toISOString().slice(0, 10), -1);
-    await page.goto(`/trends?tab=body&from=${yesterday}&to=${yesterday}`);
+    await page.goto(`/trends?from=${yesterday}&to=${yesterday}`);
 
     const sleep = page.getByTestId("body-tile-sleep");
     await expect(sleep).toContainText("No data in this range");
@@ -165,7 +162,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     });
     await page.setViewportSize(PHONE);
     await page.goto(
-      `/trends?tab=body&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
+      `/trends?from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
     );
 
     await expect(page.getByTestId("body-tile-hr")).toContainText("88 bpm");
@@ -208,7 +205,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     });
     await page.setViewportSize(DESKTOP);
     await page.goto(
-      `/trends?tab=body&view=tiles&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
+      `/trends?view=tiles&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
     );
 
     const empty = page.getByTestId("body-tile-weight");
@@ -385,16 +382,14 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     await page.setViewportSize(DESKTOP);
 
     // Deep-link straight to the desktop HR chart — the anchor resolves to the card.
-    await page.goto("/trends?tab=body&view=all#hr");
-    // The always-visible tab confirms the selected surface without expanding the
-    // range controls and moving the page under the anchor.
-    await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
-    ).toHaveAttribute("aria-selected", "true");
+    await page.goto("/trends?view=all#hr");
+    // The always-visible chip strip names the sections without expanding the range
+    // controls and moving the page under the anchor.
+    await expect(page.getByTestId("chart-jump-body")).toBeVisible();
     await expect(page.locator("#hr")).toBeInViewport();
 
     // And the sleep anchor lands on the sleep tile.
-    await page.goto("/trends?tab=body&view=all#sleep");
+    await page.goto("/trends?view=all#sleep");
     await expect(page.getByTestId("sleep-summary-tile")).toBeInViewport();
 
     await page.context().close();

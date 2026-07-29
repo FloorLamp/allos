@@ -3,20 +3,24 @@ import { type Page } from "@playwright/test";
 import { hydratedClick, followLink } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 
-// The Trends phone chrome: primary tabs stay visible in one scrolling row while
-// the active chart range is a fixed trigger at the right. Tapping that trigger
-// expands only the range controls beneath the stable tabs. The whole row rides
-// the #1416 navbar's hide/reveal and replaces the heading band below `sm`.
+// The Trends phone chrome: the primary SECTION chips stay visible in one scrolling
+// row while the active chart range is a fixed trigger at the right. Tapping that
+// trigger expands only the range controls beneath the stable chips. The whole row
+// rides the #1416 navbar's hide/reveal and replaces the heading band below `sm`.
+//
+// #1644 replaced the tab strip with the page's jump chips in the same slot: the
+// chrome contract is unchanged, and STICKY-ON-MOBILE is now load-bearing rather
+// than merely nice — it is the only navigation a long single page has.
 //
 // Why only a browser can see this: every clause is layout and scroll behaviour at a
 // specific viewport. `npm run build` and the unit tier both pass on a page whose
 // context bar never appears, never expands, or covers the first chart.
 //
 // What is pinned, and why each is a real regression class:
-//   • Tabs and the range LABEL are always visible. A chart drawn over a 90-day
+//   • Chips and the range LABEL are always visible. A chart drawn over a 90-day
 //     window that a reader takes for all time is a wrong answer, and primary
 //     navigation must not be hidden behind a filter disclosure.
-//   • Expanding restores the range controls without moving/hiding the tabs, and
+//   • Expanding restores the range controls without moving/hiding the chips, and
 //     a range change through them re-windows the page and re-labels the trigger.
 //   • The bar rides the shell chrome. A sticky strip that did NOT hide with the
 //     navbar would permanently spend the band F just reclaimed.
@@ -46,8 +50,8 @@ async function scrollTo(page: Page, y: number): Promise<number> {
   return page.evaluate(() => window.scrollY);
 }
 
-test.describe("the tab-and-range context bar", () => {
-  test("shows primary tabs and the window before any chart, with range controls put away", async ({
+test.describe("the chips-and-range context bar", () => {
+  test("shows the section chips and the window before any chart, with range controls put away", async ({
     page,
   }) => {
     await page.goto("/trends");
@@ -57,7 +61,7 @@ test.describe("the tab-and-range context bar", () => {
       "data-expanded",
       "false"
     );
-    // Only the range controls are put away; the section tabs stay discoverable.
+    // Only the range controls are put away; the section chips stay discoverable.
     await expect(page.getByTestId("trends-context-controls")).toBeHidden();
     // `exact` is load-bearing on every pill locator: Playwright matches an
     // accessible name by case-insensitive SUBSTRING, and the movers digest on this
@@ -65,16 +69,14 @@ test.describe("the tab-and-range context bar", () => {
     await expect(
       page.getByRole("link", { name: "90D", exact: true })
     ).toBeHidden();
-    await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
-    ).toBeVisible();
+    await expect(page.getByTestId("chart-jump-body")).toBeVisible();
 
     // The navigation row is full bleed like the other mobile tab-first pages:
-    // no second 16px page gutter outside the tabs or range trigger. The expanded
+    // no second 16px page gutter outside the chips or range trigger. The expanded
     // range controls retain their own readable gutter below.
     const [tabsBox, toggleBox, barBox, shellBox, viewportWidth] =
       await Promise.all([
-        page.getByTestId("trends-tabs").boundingBox(),
+        page.getByTestId("trends-section-chips").boundingBox(),
         page.getByTestId("trends-context-toggle").boundingBox(),
         page.getByTestId(BAR).boundingBox(),
         page.getByTestId("shell-chrome").boundingBox(),
@@ -105,13 +107,11 @@ test.describe("the tab-and-range context bar", () => {
       "2026-01-01 → 2026-02-01"
     );
 
-    // The selected tab is communicated by the always-visible tab itself, not
-    // duplicated in the range trigger.
-    await page.goto("/trends?tab=body");
+    // The trigger names the WINDOW only; where you are on the page is the chips'
+    // job, and they are always on screen to say it.
+    await page.goto("/trends");
     await expect(page.getByTestId("trends-context-label")).toHaveText("90D");
-    await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
-    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("chart-jump-body")).toBeVisible();
   });
 
   test("tapping the range expands its controls without hiding the tabs", async ({
@@ -132,10 +132,8 @@ test.describe("the tab-and-range context bar", () => {
     await expect(
       page.getByRole("link", { name: "All time", exact: true })
     ).toBeVisible();
-    // …while the tab strip stays visible in the row above.
-    await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
-    ).toBeVisible();
+    // …while the chip strip stays visible in the row above.
+    await expect(page.getByTestId("chart-jump-body")).toBeVisible();
     // The #1455 Custom… collapse still nests inside it.
     await expect(page.getByTestId("custom-range-toggle")).toBeVisible();
     // The range label never leaves — expanded or not, the window is named.
@@ -156,9 +154,7 @@ test.describe("the tab-and-range context bar", () => {
 
     await hydratedClick(page, toggle);
     await expect(page.getByTestId("trends-context-controls")).toBeHidden();
-    await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
-    ).toBeVisible();
+    await expect(page.getByTestId("chart-jump-body")).toBeVisible();
     await expect(bar).toHaveAttribute("data-hidden", "false");
     await expect(page.getByTestId("shell-chrome")).toHaveAttribute(
       "data-hidden",
@@ -230,6 +226,30 @@ test.describe("the bar rides the shell chrome (F + #1416)", () => {
       .poll(async () => (await bar.boundingBox())?.y ?? -1)
       .toBeGreaterThan(0);
     await expect(page.getByTestId("trends-context-label")).toBeInViewport();
+    // The SECTION CHIPS come back with it (#1644): on one long page, the only way
+    // to reach another section mid-scroll is the strip riding the chrome.
+    await expect(page.getByTestId("trends-section-chips")).toBeInViewport();
+    await expect(page.getByTestId("chart-jump-nutrition")).toBeInViewport();
+  });
+
+  test("a chip tapped from deep in the page jumps to its section", async ({
+    page,
+  }) => {
+    // The long-scroll trade #1644 accepted, proven where it is paid: scroll into
+    // the Body census, reveal the chrome, and the strip is still the navigation.
+    await page.goto("/trends");
+    const bar = await barReady(page);
+    const deep = await scrollTo(page, 1200);
+    expect(deep, "Trends should be long at phone width").toBeGreaterThan(600);
+    await expect(bar).toHaveAttribute("data-hidden", "true");
+    await scrollTo(page, deep - 200);
+    await expect(bar).toHaveAttribute("data-hidden", "false");
+
+    const chip = page.getByTestId("chart-jump-insights");
+    await expect(chip).toBeInViewport();
+    await chip.click();
+    await expect(page).toHaveURL(/#insights$/);
+    await expect(page.getByTestId("trends-section-insights")).toBeInViewport();
   });
 });
 
@@ -260,7 +280,7 @@ test.describe("the heading band is given up below sm (F)", () => {
     const box = await tile.boundingBox();
     // A ceiling with headroom for ordinary content changes, well under the 646px
     // this wave started from.
-    expect(box!.y, "first chart offset on Trends → Overview").toBeLessThan(430);
+    expect(box!.y, "first chart offset on the Trends head").toBeLessThan(430);
     await expect(tile).toBeInViewport();
   });
 });
@@ -279,9 +299,7 @@ test.describe("desktop keeps the classic pills-and-tabs layout (F)", () => {
     await expect(
       page.getByRole("link", { name: "90D", exact: true })
     ).toBeVisible();
-    await expect(
-      page.getByRole("tab", { name: "Overview", exact: true })
-    ).toBeVisible();
+    await expect(page.getByTestId("chart-jump-starred")).toBeVisible();
 
     // The heading band is untouched on desktop.
     await expect(

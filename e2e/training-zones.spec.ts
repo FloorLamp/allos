@@ -16,7 +16,7 @@ test("Trends → Fitness renders the HR training-intensity section (#159)", asyn
   // #1492: the nested `?ftab=cardio` strip retired — zones are a SECTION of the
   // windowed Fitness lens now (and the old link still lands here, covered by
   // e2e/trends-fitness-lens.mobile.spec.ts).
-  await page.goto("/trends?tab=fitness");
+  await page.goto("/trends");
   const main = page.getByRole("main");
 
   const zones = main.getByTestId("training-zones");

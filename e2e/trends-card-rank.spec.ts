@@ -60,7 +60,7 @@ async function domOrder(page: Page, names: string[]): Promise<string[]> {
 async function openBodyStack(page: Page): Promise<void> {
   // `view=all` is the classic chart stack — the layout whose sequence this issue
   // decides (the tile grid reads the same order, asserted below).
-  await page.goto("/trends?tab=body&view=all");
+  await page.goto("/trends?view=all");
   await expect(page.getByTestId("trends-body")).toBeVisible();
 }
 
@@ -101,7 +101,7 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
 
     // The separate percentile tiles occupy the same ranked `growth` slot rather
     // than being appended independently by the tile renderer.
-    await page.goto("/trends?tab=body&view=tiles");
+    await page.goto("/trends?view=tiles");
     await expect(page.getByTestId("body-tile-growth-height")).toBeVisible();
     expect(
       await domOrder(page, ["body-tile-growth-height", "body-tile-height"])
@@ -136,7 +136,7 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     expect(await domOrder(page, ["bmi", "steps"])).toEqual(["bmi", "steps"]);
 
     // The tile grid reads the SAME order, so the two view modes can't disagree.
-    await page.goto("/trends?tab=body&view=tiles");
+    await page.goto("/trends?view=tiles");
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
     expect(
       await domOrder(page, [
@@ -195,7 +195,7 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     // behind steps. This is the controlled half of the GOAL assertion above.
     expect(await domOrder(page, ["bmi", "steps"])).toEqual(["steps", "bmi"]);
 
-    await page.goto("/trends?tab=body&view=tiles");
+    await page.goto("/trends?view=tiles");
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
     expect(
       await domOrder(page, [

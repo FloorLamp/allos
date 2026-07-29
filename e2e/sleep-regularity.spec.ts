@@ -12,7 +12,7 @@ import { test, expect } from "./fixtures";
 test("Trends → Body renders the sleep chart with the SRI (#160/#1066)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
     "aria-selected",
     "true"

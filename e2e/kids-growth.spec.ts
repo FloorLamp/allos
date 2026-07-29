@@ -70,7 +70,7 @@ test.describe.serial("kids growth trends", () => {
     page,
   }) => {
     await switchProfile(page, "Riley (child)");
-    await page.goto("/trends?tab=body&view=all");
+    await page.goto("/trends?view=all");
 
     // The growth fields are life-stage-gated ROWS of the ONE combined measurements
     // form since #1486 (the standalone growth quick-add retired) — reached through
@@ -131,7 +131,7 @@ test.describe.serial("kids growth trends", () => {
     // Each available reference is its own chart tile. The tile opens the matching
     // chart on the shared growth detail surface rather than a representative
     // aggregate.
-    await page.goto("/trends?tab=body&view=tiles");
+    await page.goto("/trends?view=tiles");
     const growthTile = page.getByTestId("body-tile-growth-height");
     await expect(growthTile).toBeVisible();
     await expect(growthTile.getByRole("application")).toBeVisible();
@@ -217,7 +217,7 @@ test.describe.serial("kids growth trends", () => {
     page,
   }) => {
     await switchProfile(page, "admin");
-    await page.goto("/trends?tab=body&view=all");
+    await page.goto("/trends?view=all");
     await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
@@ -233,7 +233,7 @@ test.describe.serial("kids growth trends", () => {
     await expect(
       page.getByRole("heading", { name: "Head Circumference" })
     ).toHaveCount(0);
-    await page.goto("/trends?tab=body&view=tiles");
+    await page.goto("/trends?view=tiles");
     await expect(
       page.locator('[data-testid^="body-tile-growth-"]')
     ).toHaveCount(0);
@@ -253,7 +253,7 @@ test.describe.serial("kids growth trends", () => {
     await switchProfile(page, "Riley (child)");
     await setWeightUnit(page, "lb");
     try {
-      await page.goto("/trends?tab=body&view=all");
+      await page.goto("/trends?view=all");
 
       const card = page.getByTestId("growth-chart-weight");
       await expect(card).toBeVisible();

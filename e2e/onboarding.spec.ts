@@ -235,11 +235,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
         /Explore ways to add data/,
         "/data?section=import",
       ],
-      [
-        "Monitor body metrics and labs",
-        /Record a starting metric/,
-        "/trends?tab=body",
-      ],
+      ["Monitor body metrics and labs", /Record a starting metric/, "/trends"],
     ] as const) {
       await chooseOutcome(label, actionName, href);
       if (label === "Track fitness and training") {
@@ -263,7 +259,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await firstValue
       .getByRole("link", { name: /Record a starting metric/ })
       .click();
-    await expect(page).toHaveURL(/\/trends\?tab=body/);
+    await expect(page).toHaveURL(/\/trends#body/);
     const returnBanner = page.getByTestId("onboarding-return-banner");
     await expect(returnBanner).toBeVisible();
 

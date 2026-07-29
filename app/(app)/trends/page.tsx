@@ -244,11 +244,7 @@ export default async function TrendsPage(props: {
           {/* ── The head: what moved, then what you curated ────────────────── */}
           <TrendingDigest range={range} />
 
-          <TrendsSectionShell
-            id="starred"
-            heading="Starred"
-            description="The metrics and biomarkers you starred, in your order. Drag a tile to re-sequence it; the censuses below follow this order for whatever you pin."
-          >
+          <TrendsSectionShell id="starred" heading="Starred" quietHeading>
             <StarredSection range={range} />
           </TrendsSectionShell>
 

@@ -32,19 +32,16 @@ test("the Biomarkers browser lists labs but not a re-homed instrument score (#10
   ).toHaveCount(0);
 });
 
-test("the Trends Body tab's vitals section renders the physiologic vitals (#1076/#1486)", async ({
+test("the Trends Body section's vitals block renders the physiologic vitals (#1076/#1486)", async ({
   page,
 }) => {
-  // Reachable via the tab strip — the Vitals tab retired into Body (#1486), whose
-  // FIRST chart section is the vitals.
+  // Reachable by its jump chip — the Vitals tab retired into Body (#1486), and
+  // #1644 retired the strip itself, so Body is a section of the one hub page whose
+  // FIRST chart block is the vitals.
   await page.goto("/trends");
-  await followLink(page, page.getByRole("tab", { name: "Body" }), /tab=body/);
+  await followLink(page, page.getByTestId("chart-jump-body"), /#body$/);
   const body = page.getByTestId("trends-body");
   await expect(body).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
   // The seeded blood-pressure readings render their chart card.
   await expect(body.getByTestId("vitals-systolic")).toBeVisible();
 });

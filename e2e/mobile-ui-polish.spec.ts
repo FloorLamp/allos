@@ -25,7 +25,7 @@ test.describe("mobile tab strips scroll instead of clipping (#640)", () => {
     // 390px", but #1489 cut the strip to five chips that FIT — the stronger
     // outcome, pinned by trends-compare-fold.mobile.spec.ts — so what survives here
     // is the scroller property itself plus the reachability of the last tab.
-    const strip = page.getByRole("tablist");
+    const strip = page.getByTestId("trends-section-chips");
     const overflowX = await strip.evaluate(
       (el) => getComputedStyle(el).overflowX
     );
@@ -35,13 +35,13 @@ test.describe("mobile tab strips scroll instead of clipping (#640)", () => {
     // overflow" on every page, so it could never have caught a regression here.
     await expectNoClippedContent(page);
 
-    // The Insights tab — last in the strip — is clickable: Playwright scrolls the
+    // The Insights chip — last in the strip — is clickable: Playwright scrolls the
     // strip to it, which was impossible when the strip was clipped, not scrollable.
-    const insights = page.getByRole("tab", { name: "Insights" });
-    // The tab is a real <a href> (#830), so the click navigates natively even in
-    // the pre-hydration window — no toPass() retry needed.
+    const insights = page.getByTestId("chart-jump-insights");
+    // The chip is a real <a href="#insights"> (#830), so the jump works natively
+    // even in the pre-hydration window — no toPass() retry needed.
     await insights.click();
-    await expect(insights).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/#insights$/);
     await expect(page.getByText("Date to analyze")).toBeVisible();
   });
 });
