@@ -231,7 +231,7 @@ describe("commitImportJob — save a ready paste import", () => {
     // source 'extracted'), with a schedule inferred from the sig.
     const med = db
       .prepare(
-        "SELECT name, kind, document_id, source, as_needed FROM intake_items WHERE profile_id = ? AND kind = 'medication'"
+        "SELECT name, kind, document_id, source, obligation FROM intake_items WHERE profile_id = ? AND kind = 'medication'"
       )
       .get(profile.id) as
       | {
@@ -239,13 +239,13 @@ describe("commitImportJob — save a ready paste import", () => {
           kind: string;
           document_id: number | null;
           source: string | null;
-          as_needed: number;
+          obligation: string;
         }
       | undefined;
     expect(med?.name).toBe("Lisinopril");
     expect(med?.document_id).toBeNull();
     expect(med?.source).toBe("extracted");
-    expect(med?.as_needed).toBe(0); // "daily" → scheduled, not PRN
+    expect(med?.obligation).toBe("should"); // "daily" → scheduled, not PRN
     const doseCount = (
       db
         .prepare(

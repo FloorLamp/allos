@@ -39,7 +39,7 @@ import type { Supplement } from "@/lib/types";
 const DAILY_SUPP = {
   condition: "daily",
   situation: null,
-  as_needed: 0,
+  obligation: "should",
 } as unknown as Supplement;
 
 const ANCHOR = "2026-07-15"; // arbitrary strip anchor; the strip is pure over dates
@@ -66,8 +66,8 @@ function seedScheduledHistory(mem: Database.Database): {
   const itemId = Number(
     mem
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-         VALUES (1, 'Vitamin D', 1, 'supplement', 'daily', 'high')`
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (1, 'Vitamin D', 1, 'supplement', 'daily', 'should')`
       )
       .run().lastInsertRowid
   );
@@ -199,8 +199,8 @@ function seedPrnMed(quantityOnHand: number | null = 10): {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, product, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
-         VALUES (?, 'Ibuprofen', 'Children''s oral suspension (100 mg / 5 mL)', 1, 'medication', 'daily', 'high', 1, ?, 1)`
+           (profile_id, name, product, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Ibuprofen', 'Children''s oral suspension (100 mg / 5 mL)', 1, 'medication', 'daily', 'may', ?, 1)`
       )
       .run(profileId, quantityOnHand).lastInsertRowid
   );
@@ -240,8 +240,8 @@ describe("markDoseTaken — one-per-day preserved without the UNIQUE constraint 
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-           VALUES (?, 'Lisinopril', 1, 'medication', 'daily', 'high', 30, 1)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Lisinopril', 1, 'medication', 'daily', 'should', 30, 1)`
         )
         .run(profileId).lastInsertRowid
     );
@@ -405,8 +405,8 @@ describe("getAdministrationsForItemsOnDate — batched, same output as per-item 
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
-           VALUES (?, 'Acetaminophen', 1, 'medication', 'daily', 'high', 1, 10, 1)`
+             (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Acetaminophen', 1, 'medication', 'daily', 'may', 10, 1)`
         )
         .run(profileId).lastInsertRowid
     );
@@ -419,8 +419,8 @@ describe("getAdministrationsForItemsOnDate — batched, same output as per-item 
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
-           VALUES (?, 'Loratadine', 1, 'medication', 'daily', 'high', 1, 10, 1)`
+             (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Loratadine', 1, 'medication', 'daily', 'may', 10, 1)`
         )
         .run(profileId).lastInsertRowid
     );

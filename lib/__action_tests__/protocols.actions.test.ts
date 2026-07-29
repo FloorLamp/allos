@@ -70,8 +70,8 @@ function seedIntakeItem(profileId: number, name = "Creatine"): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'low')`
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should')`
       )
       .run(profileId, name).lastInsertRowid
   );

@@ -413,8 +413,8 @@ describe("clearImportedDocumentRows never touches same-profile survivors", () =>
     // A manual medication (source NULL, document_id NULL) — the extracted-meds
     // delete is keyed on document_id + source='extracted', so this stays.
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-       VALUES (?, 'Manual Aspirin', 1, 'medication', 'daily', 'high')`
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Manual Aspirin', 1, 'medication', 'daily', 'should')`
     ).run(profile);
 
     // ---- two same-profile documents; only the FIRST is deleted ----

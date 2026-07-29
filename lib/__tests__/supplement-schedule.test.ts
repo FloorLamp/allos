@@ -174,12 +174,12 @@ describe("isDueOn", () => {
   });
 
   it("an as-needed (PRN) medication is never scheduled-due", () => {
-    // Even a daily-condition med is never "due" for a reminder when as_needed=1,
+    // Even a daily-condition med is never "due" for a reminder when obligation='may',
     // so it generates no missed-dose escalation and can't drag adherence down.
     expect(
       isDueOn({ condition: "daily", situation: null, obligation: "may" }, ctx())
     ).toBe(false);
-    // as_needed=0 behaves exactly as before.
+    // obligation=0 behaves exactly as before.
     expect(
       isDueOn({ condition: "daily", situation: null, obligation: "should" }, ctx())
     ).toBe(true);
@@ -191,11 +191,11 @@ describe("contributesToDailyLimit (#635)", () => {
     expect(contributesToDailyLimit({ condition: "daily", obligation: "should" })).toBe(
       true
     );
-    // as_needed omitted defaults to not-PRN.
+    // obligation omitted defaults to not-PRN.
     expect(contributesToDailyLimit({ condition: "daily" })).toBe(true);
   });
 
-  it("excludes a PRN (as_needed) item even when daily", () => {
+  it("excludes a PRN (obligation) item even when daily", () => {
     expect(contributesToDailyLimit({ condition: "daily", obligation: "may" })).toBe(
       false
     );

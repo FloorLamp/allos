@@ -29,8 +29,8 @@ function item(profileId: number, name: string, qty: number | null): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-         VALUES (?, ?, 1, 'medication', 'daily', 'high', ?, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should', ?, 1)`
       )
       .run(profileId, name, qty).lastInsertRowid
   );

@@ -66,7 +66,7 @@ function suggestInput(drafts: DraftIn[]) {
 function suggestionRows(profileId: number) {
   return db
     .prepare(
-      "SELECT name, priority, rationale, trigger, source_detail, model, status FROM intake_item_suggestions WHERE profile_id = ? ORDER BY name"
+      "SELECT name, obligation, rationale, trigger, source_detail, model, status FROM intake_item_suggestions WHERE profile_id = ? ORDER BY name"
     )
     .all(profileId) as {
     name: string;

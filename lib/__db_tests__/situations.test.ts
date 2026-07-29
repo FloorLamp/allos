@@ -65,8 +65,8 @@ describe("situations vocabulary (#560)", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, condition, priority, situation, situation_id)
-           VALUES (?, 'Zinc', 'situational', 'low', 'Illness', ?)`
+             (profile_id, name, condition, obligation, situation, situation_id)
+         VALUES (?, 'Zinc', 'situational', 'should', 'Illness', ?)`
         )
         .run(p, sid).lastInsertRowid
     );
@@ -90,8 +90,8 @@ describe("situations vocabulary (#560)", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, condition, priority, situation)
-           VALUES (?, 'Zinc', 'situational', 'low', 'Illness')`
+             (profile_id, name, condition, obligation, situation)
+         VALUES (?, 'Zinc', 'situational', 'should', 'Illness')`
         )
         .run(p).lastInsertRowid
     );
@@ -111,8 +111,8 @@ describe("getSituationalDueCount (#1221 part 6)", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, condition, priority, situation, situation_id, active)
-           VALUES (?, 'Melatonin', 'situational', 'low', 'Travel', ?, 1)`
+             (profile_id, name, condition, obligation, situation, situation_id, active)
+         VALUES (?, 'Melatonin', 'situational', 'should', 'Travel', ?, 1)`
         )
         .run(p, sid).lastInsertRowid
     );
@@ -161,8 +161,8 @@ describe("migration 029 backfill", () => {
       d
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, condition, priority, situation)
-           VALUES (?, 'Zinc', 'situational', 'low', 'Illness')`
+             (profile_id, name, condition, obligation, situation)
+         VALUES (?, 'Zinc', 'situational', 'should', 'Illness')`
         )
         .run(profileId).lastInsertRowid
     );

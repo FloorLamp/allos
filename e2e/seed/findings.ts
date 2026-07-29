@@ -144,7 +144,7 @@ export function seedRuleDomains(): void {
       .prepare(
         `INSERT INTO intake_items
          (profile_id, name, condition, obligation, active, source, created_at)
-         VALUES (?, ?, 'daily', 'should', 1, 'manual', ?)`
+         VALUES (?, ?, 'daily', 'must', 1, 'manual', ?)`
       )
       .run(PROFILE_ID, ADHERE_ITEM, adhereBorn).lastInsertRowid
   );

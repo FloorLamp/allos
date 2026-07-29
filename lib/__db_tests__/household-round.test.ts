@@ -122,8 +122,8 @@ function addDailyDose(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', ?)`
+           (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should')`
       )
       .run(profileId, name, opts.asNeeded ? 1 : 0).lastInsertRowid
   );

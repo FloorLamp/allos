@@ -162,8 +162,8 @@ describe("shared reason model (issue #656)", () => {
     const item = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, situation)
-           VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'high', 'Illness')`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, situation)
+         VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'should', 'Illness')`
         )
         .run(pid).lastInsertRowid
     );

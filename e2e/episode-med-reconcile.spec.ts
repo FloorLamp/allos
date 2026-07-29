@@ -241,9 +241,9 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
           db
             .prepare(
               `INSERT INTO intake_items
-               (profile_id, name, active, kind, condition, priority, as_needed, rx,
+               (profile_id, name, active, kind, condition, obligation, rx,
                 quantity_on_hand, qty_per_dose, created_at)
-             VALUES (?, ?, 1, 'medication', 'daily', 'high', 0, 1, 30, 1, '2025-06-01 12:00:00')`
+             VALUES (?, ?, 1, 'medication', 'daily', 'must', 1, 30, 1, '2025-06-01 12:00:00')`
             )
             .run(pid, medName).lastInsertRowid
         );
@@ -317,9 +317,9 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
           db
             .prepare(
               `INSERT INTO intake_items
-                 (profile_id, name, active, kind, condition, priority, as_needed, rx,
+                 (profile_id, name, active, kind, condition, obligation, rx,
                   quantity_on_hand, qty_per_dose, created_at)
-               VALUES (?, ?, 1, 'medication', 'daily', 'high', 1, 0, 10, 1, '2025-01-01 12:00:00')`
+               VALUES (?, ?, 1, 'medication', 'daily', 'may', 0, 10, 1, '2025-01-01 12:00:00')`
             )
             .run(pid, medName).lastInsertRowid
         );

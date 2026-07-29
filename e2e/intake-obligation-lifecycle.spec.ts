@@ -3,13 +3,14 @@ import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { settledClick } from "./helpers";
 
-// Issue #1505, the rendered halves:
-//   • a LOW-priority supplement is TRACKED — it renders on Supplements & Meds like
-//     any other item — but NEVER PUSHED: it has no Upcoming row, while a high one
-//     seeded beside it does. One predicate, two surfaces, visibly different.
-//   • the demotion SUGGESTION renders on Supplements & Meds for an abandoned
-//     high-priority supplement, and accepting it is what moves the item out of the
-//     push tier — the user's tap, never the system's.
+// Issue #1505, the rendered halves of the obligation model:
+//   • a `may` item is TRACKED — it renders on Supplements & Meds like any other —
+//     but NEVER PUSHED: no Upcoming due row, while a `should` twin seeded beside it
+//     has one. It is COLLAPSED, not removed: it appears in Upcoming's "available"
+//     disclosure, so the difference is visible on one screen.
+//   • the demotion SUGGESTION renders for an abandoned should-tier supplement, and
+//     accepting it is what MOVES the item from the due list into that disclosure —
+//     the user's tap, never the system's.
 //
 // Each test owns its fixture rows (unique names, deleted in `finally`) and asserts
 // only on those, so nothing here depends on the shared seed's counts. Dates are
@@ -38,7 +39,7 @@ function dayBack(back: number): string {
 function seedItem(
   db: Database.Database,
   name: string,
-  priority: "low" | "high",
+  obligation: "may" | "should",
   createdDaysAgo: number
 ): { itemId: number; doseId: number } {
   const createdAt = `${dayBack(createdDaysAgo)} 08:00:00`;
@@ -46,10 +47,10 @@ function seedItem(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, priority, condition, source, created_at)
+           (profile_id, name, active, kind, obligation, condition, source, created_at)
          VALUES (1, ?, 1, 'supplement', ?, 'daily', 'manual', ?)`
       )
-      .run(name, priority, createdAt).lastInsertRowid
+      .run(name, obligation, createdAt).lastInsertRowid
   );
   const doseId = Number(
     db
@@ -79,15 +80,15 @@ function dropItem(db: Database.Database, itemId: number | null): void {
   db.prepare("DELETE FROM intake_items WHERE id = ?").run(itemId);
 }
 
-test("a low-priority supplement is tracked on its page and absent from Upcoming (#1505)", async ({
+test("a `may` item is tracked on its page, off the due list, and inside the available disclosure (#1505)", async ({
   page,
 }) => {
   const db = openDb();
   let lowId: number | null = null;
   let highId: number | null = null;
   try {
-    const low = seedItem(db, LOW_NAME, "low", 60);
-    const high = seedItem(db, HIGH_NAME, "high", 60);
+    const low = seedItem(db, LOW_NAME, "may", 60);
+    const high = seedItem(db, HIGH_NAME, "should", 60);
     lowId = low.itemId;
     highId = high.itemId;
 
@@ -100,13 +101,25 @@ test("a low-priority supplement is tracked on its page and absent from Upcoming 
       page.getByTestId("medicine-name").filter({ hasText: HIGH_NAME })
     ).toBeVisible();
 
-    // NEVER PUSHED: only the high-priority twin has an Upcoming row.
+    // NEVER PUSHED: only the `should` twin has an Upcoming DUE row…
     await page.goto("/upcoming");
     await expect(
       page.getByTestId(`upcoming-item-dose:${high.doseId}`)
     ).toBeVisible();
     await expect(
       page.getByTestId(`upcoming-item-dose:${low.doseId}`)
+    ).toHaveCount(0);
+
+    // …and the `may` one is COLLAPSED into the availability disclosure rather than
+    // vanishing. Opening it shows the item, labelled as available, not as due.
+    const available = page.getByTestId("available-section");
+    await expect(available).toBeVisible();
+    await available.locator("summary").click();
+    await expect(
+      available.getByTestId("available-row").filter({ hasText: LOW_NAME })
+    ).toBeVisible();
+    await expect(
+      available.getByTestId("available-row").filter({ hasText: HIGH_NAME })
     ).toHaveCount(0);
   } finally {
     dropItem(db, lowId);
@@ -115,13 +128,13 @@ test("a low-priority supplement is tracked on its page and absent from Upcoming 
   }
 });
 
-test("accepting a demotion suggestion moves the item out of the push tier (#1505)", async ({
+test("accepting a demotion suggestion moves the item into the available disclosure (#1505)", async ({
   page,
 }) => {
   const db = openDb();
   let itemId: number | null = null;
   try {
-    const item = seedItem(db, ABANDONED_NAME, "high", 90);
+    const item = seedItem(db, ABANDONED_NAME, "should", 90);
     itemId = item.itemId;
     // Taken on only two of its last thirty scheduled days — an abandoned habit.
     for (const back of [29, 22]) {
@@ -137,7 +150,7 @@ test("accepting a demotion suggestion moves the item out of the push tier (#1505
       page.getByTestId(`upcoming-item-dose:${item.doseId}`)
     ).toBeVisible();
 
-    // The suggestion renders, and accepting it is the priority write.
+    // The suggestion renders, and accepting it is the obligation write.
     await page.goto("/nutrition?tab=supplements");
     const row = page
       .getByTestId("demotion-suggestion-item")
@@ -163,10 +176,18 @@ test("accepting a demotion suggestion moves the item out of the push tier (#1505
       page.getByTestId(`upcoming-item-dose:${item.doseId}`)
     ).toHaveCount(0);
 
+    // It MOVED rather than disappeared — the visible half of collapse-not-remove.
+    const available = page.getByTestId("available-section");
+    await expect(available).toBeVisible();
+    await available.locator("summary").click();
+    await expect(
+      available.getByTestId("available-row").filter({ hasText: ABANDONED_NAME })
+    ).toBeVisible();
+
     const stored = db
-      .prepare("SELECT priority FROM intake_items WHERE id = ?")
-      .get(item.itemId) as { priority: string };
-    expect(stored.priority).toBe("low");
+      .prepare("SELECT obligation FROM intake_items WHERE id = ?")
+      .get(item.itemId) as { obligation: string };
+    expect(stored.obligation).toBe("may");
   } finally {
     dropItem(db, itemId);
     db.close();

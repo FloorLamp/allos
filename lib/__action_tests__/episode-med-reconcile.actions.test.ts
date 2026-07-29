@@ -53,9 +53,8 @@ function seedOtcPrnMed(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed, rx,
-            quantity_on_hand, qty_per_dose, created_at)
-         VALUES (?, ?, 1, 'medication', 'daily', 'high', ?, ?, 10, 1, ?)`
+           (profile_id, name, active, kind, condition, obligation, rx, quantity_on_hand, qty_per_dose, created_at)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should', ?, 10, 1, ?)`
       )
       .run(
         profileId,

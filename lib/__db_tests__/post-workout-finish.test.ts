@@ -59,8 +59,8 @@ function seedPostWorkoutSupp(profileId: number): {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, 'Creatine (test)', 1, 'supplement', 'post_workout', 'high', 0)`
+           (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Creatine (test)', 1, 'supplement', 'post_workout', 'should')`
       )
       .run(profileId).lastInsertRowid
   );
@@ -408,8 +408,8 @@ describe("runPostWorkoutForActivity (the delayed-dispatch core, #1154 §B)", () 
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed)
-           VALUES (?, 'Low Post (test)', 1, 'supplement', 'post_workout', 'low', 0)`
+             (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Low Post (test)', 1, 'supplement', 'post_workout', 'may')`
         )
         .run(p).lastInsertRowid
     );

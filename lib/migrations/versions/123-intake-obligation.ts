@@ -45,6 +45,12 @@ import type { Migration } from "../runner";
 // none and is simply always available. That is a READ-side reinterpretation, so there
 // is deliberately no dose-row write in this migration.
 //
+// THE TWO VESTIGIAL COLUMNS. The rebuilt table keeps inert, unread `priority` and
+// `as_needed` columns. That is not hedging — see the comment on them in CREATE below:
+// `migrate()` replays every migration unconditionally and two shipped, immutable
+// migrations PREPARE statements naming them, which SQLite validates before looking at
+// a single row. A source-scan guard keeps them unreachable from application code.
+//
 // WHY A REBUILD. SQLite can rename a column in place (ALTER TABLE … RENAME COLUMN),
 // but it cannot attach a CHECK to it, cannot drop `as_needed`'s NOT NULL DEFAULT in
 // the same breath, and cannot do either atomically with the value remap. The enum is
@@ -124,7 +130,22 @@ const CREATE = `
     indication_condition_id INTEGER REFERENCES conditions(id),
     import_key TEXT,
     pause_situation_id INTEGER REFERENCES situations(id),
-    supply_id INTEGER REFERENCES shared_supplies(id)
+    supply_id INTEGER REFERENCES shared_supplies(id),
+    -- VESTIGIAL. Nothing reads or writes these two; obligation above replaced both.
+    -- They survive for exactly one reason: migrate() (lib/db.ts) applies EVERY
+    -- migration unconditionally, and the DB-test harness relies on replaying it
+    -- against an already-migrated database. Migrations 092 and 101 hold
+    -- db.prepare() calls that NAME these columns, and SQLite validates a statement
+    -- at PREPARE time, before any row is examined, so dropping the columns makes
+    -- those two shipped, immutable migrations throw on every replay regardless of
+    -- whether they would have inserted anything.
+    --
+    -- They are deliberately unconstrained and DEFAULT NULL: a replayed pre-123 insert
+    -- writes into them harmlessly and its row still gets obligation column default.
+    -- lib/__tests__/obligation-collapse-guard.test.ts fails the build if any
+    -- non-migration source file names either one, so they cannot quietly come back.
+    priority TEXT,
+    as_needed INTEGER
   );`;
 
 // The migration-079 snapshot triggers, verbatim. Dropped around the rebuild (see the

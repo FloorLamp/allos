@@ -39,8 +39,8 @@ function seedDailyDose(profileId: number, name = "Vitamin D"): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, qty_per_dose)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', 1)`
+           (profile_id, name, active, kind, condition, obligation, qty_per_dose)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should', 1)`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -61,8 +61,8 @@ function seedPreWorkoutDose(profileId: number, name = "Creatine"): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, qty_per_dose)
-         VALUES (?, ?, 1, 'supplement', 'pre_workout', 'high', 1)`
+           (profile_id, name, active, kind, condition, obligation, qty_per_dose)
+         VALUES (?, ?, 1, 'supplement', 'pre_workout', 'should', 1)`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -83,8 +83,8 @@ function seedLowSupplement(profileId: number, name = "Magnesium"): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', 8, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should', 8, 1)`
       )
       .run(profileId, name).lastInsertRowid
   );

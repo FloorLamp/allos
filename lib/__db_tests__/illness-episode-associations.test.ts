@@ -40,8 +40,8 @@ describe("getEpisodeInRangeEvents (#856 items 7-8)", () => {
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-           VALUES (?, 'Amoxicillin', 1, 'medication', 'daily', 'high')`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Amoxicillin', 1, 'medication', 'daily', 'should')`
         )
         .run(p).lastInsertRowid
     );

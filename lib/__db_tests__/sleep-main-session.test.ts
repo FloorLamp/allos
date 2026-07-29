@@ -528,8 +528,8 @@ describe("bedtime supplements on the Sleep page", () => {
 
     const insertItem = db.prepare(
       `INSERT INTO intake_items
-         (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-       VALUES (?, ?, 1, ?, 'daily', 'high', 0, ?)`
+         (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, ?, 1, ?, 'daily', 'should', ?)`
     );
     const createdAt = `${shiftDateStr(sleepDate, -7)} 00:00:00`;
     const magnesiumId = Number(
@@ -627,8 +627,8 @@ describe("bedtime supplements on the Sleep page", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-           VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'high', 0, ?)`
+             (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'should', ?)`
         )
         .run(historyProfileId, `${shiftDateStr(oldestSleepDate, -1)} 00:00:00`)
         .lastInsertRowid
@@ -681,8 +681,8 @@ describe("bedtime supplements on the Sleep page", () => {
     );
     const insertItem = db.prepare(
       `INSERT INTO intake_items
-         (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-       VALUES (?, ?, ?, 'supplement', 'daily', 'high', 0, ?)`
+         (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, ?, ?, 'supplement', 'daily', 'should', ?)`
     );
     const createdAt = `${shiftDateStr(sleepDate, -7)} 00:00:00`;
     const pausedId = Number(

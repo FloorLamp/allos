@@ -24,8 +24,8 @@ function seedPrnMed(profileId: number, quantityOnHand = 10): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
-         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, ?, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'may', ?, 1)`
       )
       .run(profileId, quantityOnHand).lastInsertRowid
   );

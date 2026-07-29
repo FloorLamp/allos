@@ -18,7 +18,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { collectUpcoming } from "@/lib/queries/upcoming";
+import { collectUpcoming, offeredItems } from "@/lib/queries/upcoming";
 import {
   getSupplements,
   getSupplementDoses,
@@ -29,9 +29,18 @@ import {
 import { getActiveSituations } from "@/lib/settings";
 import { supplementAdherenceToday } from "@/lib/household";
 import { isDueOn } from "@/lib/supplement-schedule";
-import { buildDemotionSuggestionFindings } from "@/lib/rule-findings";
+import {
+  buildDemotionSuggestionFindings,
+  demotionCandidateItemIds,
+} from "@/lib/rule-findings";
+import { buildSupplementReminder } from "@/lib/notifications/supplements";
+import { activeFindings } from "@/lib/findings";
+import { dismissFinding, getFindingSuppressions } from "@/lib/queries";
 import { demoteIntakeObligation } from "@/lib/intake-obligation-write";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
+import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
+import { getOfferedIntakeForSlot } from "@/lib/queries/intake";
+import type { IntakeObligation } from "@/lib/types";
 import {
   DEMOTION_PREFIX,
   demotionItemIdFromKey,
@@ -50,7 +59,7 @@ function createProfile(name: string): number {
 
 interface SeedOpts {
   kind?: "supplement" | "medication";
-  priority?: "mandatory" | "high" | "low";
+  obligation?: IntakeObligation;
   // Days before today the item (and its dose) was created — the lifetime clamp the
   // adherence strip and the demotion cold-start guard both read.
   createdDaysAgo?: number;
@@ -71,16 +80,15 @@ function seedItem(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed,
-            quantity_on_hand, qty_per_dose, created_at)
-         VALUES (?, ?, ?, ?, 'daily', ?, 0, ?, 1, ?)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose, created_at)
+         VALUES (?, ?, ?, ?, 'daily', ?, ?, 1, ?)`
       )
       .run(
         profileId,
         name,
         opts.active ?? 1,
         opts.kind ?? "supplement",
-        opts.priority ?? "high",
+        opts.obligation ?? "should",
         opts.quantityOnHand ?? null,
         createdAt
       ).lastInsertRowid
@@ -106,29 +114,42 @@ function logTaken(doseId: number, itemId: number, date: string): void {
 
 // ---- Part 1: the predicate's reach ----------------------------------------
 
-describe("#1505 part 1 — a low supplement is tracked, never pushed", () => {
-  it("is absent from Upcoming but present on the page's due list and in the adherence fraction", () => {
+describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
+  it("is absent from the DUE list and the adherence fraction, and present in the AVAILABLE disclosure", () => {
     const p = createProfile("Lifecycle Reach (test)");
     const day = today(p);
-    const low = seedItem(p, "Ashwagandha (test)", { priority: "low" });
-    const high = seedItem(p, "Creatine (test)", { priority: "high" });
+    const low = seedItem(p, "Ashwagandha (test)", { obligation: "may" });
+    const high = seedItem(p, "Creatine (test)", { obligation: "should" });
 
-    // PUSH: the low supplement is gone; the high one is there.
+    // DUE: the `may` item has no dueness at all, so no Upcoming row; the `should`
+    // one is there as before.
     const keys = collectUpcoming(p, day).map((i) => i.key);
     expect(keys).not.toContain(`dose:${low.doseId}`);
     expect(keys).toContain(`dose:${high.doseId}`);
 
-    // TRACKED: the item and its dose are untouched, and the dose is still DUE —
-    // the predicate gates pushability, never dueness.
+    // TRACKED: the item and its dose are untouched — nothing was deleted, and the
+    // slot survives as an access hint.
     const item = getSupplements(p).find((s) => s.id === low.itemId)!;
     expect(item.active).toBeTruthy();
+    expect(item.obligation).toBe("may");
+    expect(getSupplementDoses(p).some((d) => d.id === low.doseId)).toBe(true);
+    // …but it is NOT due: no dueness means no miss, which is the whole point.
     expect(
       isDueOn(item, { isWorkoutDay: false, activeSituations: new Set() })
-    ).toBe(true);
-    expect(getSupplementDoses(p).some((d) => d.id === low.doseId)).toBe(true);
+    ).toBe(false);
 
-    // TRACKED: the adherence x/y still counts it — adherence answers "what did I
-    // do", attention answers "what needs me". Two questions, two counts (#221).
+    // COLLAPSED, NOT REMOVED: it is present in the availability disclosure, so an
+    // accepted demotion reads as a move into a quieter section rather than a
+    // deletion.
+    expect(offeredItems(p, day).map((i) => i.title)).toContain(
+      "Ashwagandha (test)"
+    );
+    expect(offeredItems(p, day).map((i) => i.title)).not.toContain(
+      "Creatine (test)"
+    );
+
+    // The adherence x/y counts ONLY the pushed tier now (#1505): a `may` item has no
+    // occurrences, so it cannot drag an honest fraction down.
     const adherence = supplementAdherenceToday(
       getSupplementDoses(p),
       new Map(
@@ -142,35 +163,41 @@ describe("#1505 part 1 — a low supplement is tracked, never pushed", () => {
       },
       getTakenDoseIds(p, day)
     );
-    expect(adherence.due).toBe(2);
+    expect(adherence.due).toBe(1);
   });
 
-  it("a low MEDICATION stays on every push surface (kind decides, not priority)", () => {
-    const p = createProfile("Lifecycle LowMed (test)");
-    const med = seedItem(p, "Testoprim (test med)", {
+  it("a `must` MEDICATION stays on every push surface; a `may` one does not (obligation decides, not kind)", () => {
+    const p = createProfile("Lifecycle Med (test)");
+    const scheduled = seedItem(p, "Testoprim (test med)", {
       kind: "medication",
-      priority: "low",
+      obligation: "must",
     });
-    expect(collectUpcoming(p, today(p)).map((i) => i.key)).toContain(
-      `dose:${med.doseId}`
-    );
+    // A PRN med — `may` since the collapse — is NOT pushed, which is the behavior
+    // change kind used to hide: before #1505 the medication carve-out pushed it.
+    const prn = seedItem(p, "Testoprim PRN (test med)", {
+      kind: "medication",
+      obligation: "may",
+    });
+    const keys = collectUpcoming(p, today(p)).map((i) => i.key);
+    expect(keys).toContain(`dose:${scheduled.doseId}`);
+    expect(keys).not.toContain(`dose:${prn.doseId}`);
   });
 
-  it("the refill nudge follows the same predicate: low supplement out, low med in", () => {
+  it("the refill nudge follows the same predicate: `may` out, must/should in — either kind", () => {
     const p = createProfile("Lifecycle Refill (test)");
     const day = today(p);
-    // Both are down to a single unit on hand with a daily dose, so both would be
-    // "low supply" if priority didn't gate the nudge.
+    // All three are down to a single unit on hand with a daily dose, so all three
+    // would be "low supply" if obligation didn't gate the nudge.
     seedItem(p, "Ashwagandha (test)", {
-      priority: "low",
+      obligation: "may",
       quantityOnHand: 1,
     });
     seedItem(p, "Testoprim (test med)", {
       kind: "medication",
-      priority: "low",
+      obligation: "must",
       quantityOnHand: 1,
     });
-    seedItem(p, "Creatine (test)", { priority: "high", quantityOnHand: 1 });
+    seedItem(p, "Creatine (test)", { obligation: "should", quantityOnHand: 1 });
 
     const refills = collectUpcoming(p, day)
       .filter((i) => i.domain === "refill")
@@ -180,12 +207,13 @@ describe("#1505 part 1 — a low supplement is tracked, never pushed", () => {
     expect(refills).not.toContain("Ashwagandha (test)");
   });
 
-  it("SAFETY is untouched: an interaction warning still names a low-priority member", () => {
+  it("SAFETY is obligation-BLIND: an interaction warning still names a `may` member", () => {
     const p = createProfile("Lifecycle Safety (test)");
-    // Ginkgo (a low-priority supplement, so never pushed) alongside warfarin: the
-    // interaction fires on the PAIR regardless of either item's priority.
-    seedItem(p, "Ginkgo biloba", { priority: "low" });
-    seedItem(p, "Warfarin", { kind: "medication", priority: "high" });
+    // Ginkgo (a `may` supplement, so never pushed) alongside warfarin: the
+    // interaction fires on the PAIR regardless of either item's obligation. This is
+    // the pinned boundary — the safety engines never consult the field.
+    seedItem(p, "Ginkgo biloba", { obligation: "may" });
+    seedItem(p, "Warfarin", { kind: "medication", obligation: "should" });
 
     const hits = getInteractionWarnings(p);
     expect(hits.length).toBeGreaterThan(0);
@@ -197,7 +225,7 @@ describe("#1505 part 1 — a low supplement is tracked, never pushed", () => {
 // ---- Part 2: the demotion suggestion --------------------------------------
 
 describe("#1505 part 2 — the demotion suggestion builder", () => {
-  // A high supplement taken on only 2 of its last 30 scheduled days.
+  // A `should` supplement taken on only 2 of its last 30 scheduled days.
   function seedAbandoned(
     p: number,
     name: string,
@@ -211,7 +239,7 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
     return seeded;
   }
 
-  it("fires for an abandoned high supplement, under its REGISTERED coaching-tier prefix", () => {
+  it("fires for an abandoned should-tier supplement, under its REGISTERED coaching-tier prefix", () => {
     const p = createProfile("Demotion Fires (test)");
     const { itemId } = seedAbandoned(p, "Ashwagandha (test)");
 
@@ -262,13 +290,13 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
     expect(buildDemotionSuggestionFindings(p, today(p))).toEqual([]);
   });
 
-  it("accepting is the only priority write, and it reports refusals honestly", () => {
+  it("accepting is the only obligation write, and it reports refusals honestly", () => {
     const p = createProfile("Demotion Accept (test)");
     const { itemId, doseId } = seedAbandoned(p, "Ashwagandha (test)");
     const day = today(p);
     // Before: pushed. The suggestion has NOT changed anything on its own.
     expect(getSupplements(p).find((s) => s.id === itemId)!.obligation).toBe(
-      "high"
+      "should"
     );
     expect(collectUpcoming(p, day).map((i) => i.key)).toContain(
       `dose:${doseId}`
@@ -276,11 +304,15 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
 
     expect(demoteIntakeObligation(p, itemId)).toBe("demoted");
     expect(getSupplements(p).find((s) => s.id === itemId)!.obligation).toBe(
-      "low"
+      "may"
     );
-    // After: it has left the push tier — the two parts joined up.
+    // After: it has left the push tier and MOVED into the availability disclosure —
+    // the two parts joined up, and the move is visible rather than a disappearance.
     expect(collectUpcoming(p, day).map((i) => i.key)).not.toContain(
       `dose:${doseId}`
+    );
+    expect(offeredItems(p, day).map((i) => i.title)).toContain(
+      "Ashwagandha (test)"
     );
     // …and the suggestion is gone, because a low item is never a candidate.
     expect(buildDemotionSuggestionFindings(p, day)).toEqual([]);
@@ -288,6 +320,46 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
     // A second tap (a stale card, a double submit) refuses rather than lying.
     expect(demoteIntakeObligation(p, itemId)).toBe("already-may");
     expect(demoteIntakeObligation(p, itemId + 99999)).toBe("not-found");
+  });
+
+  it("appears on the item's OWN reminder as a third button, only past the threshold", () => {
+    const p = createProfile("Demotion Button (test)");
+    const abandoned = seedAbandoned(p, "Ashwagandha (test)");
+    const steady = seedItem(p, "Creatine (test)");
+    // A steadily-taken item: no candidate, so no button.
+    const day = today(p);
+    for (let back = 1; back <= 20; back++) {
+      logTaken(steady.doseId, steady.itemId, shiftDateStr(day, -back));
+    }
+    const ids = demotionCandidateItemIds(p, day);
+    expect(ids.has(abandoned.itemId)).toBe(true);
+    expect(ids.has(steady.itemId)).toBe(false);
+
+    // The reminder carries ⤓ May for the candidate and NOT for the steady item —
+    // ride-the-nag, zero extra sends.
+    const msg = buildSupplementReminder(p, "Morning");
+    expect(msg).not.toBeNull();
+    const demoteButtons = (msg!.actions ?? []).filter((a) =>
+      a.data?.startsWith("demote:")
+    );
+    expect(demoteButtons).toHaveLength(1);
+    expect(demoteButtons[0].data).toContain(`:${abandoned.itemId}:`);
+  });
+
+  it("a page dismissal hides the CARD but never the reminder button", () => {
+    const p = createProfile("Demotion Dismiss (test)");
+    const { itemId } = seedAbandoned(p, "Ashwagandha (test)");
+    const day = today(p);
+    const key = buildDemotionSuggestionFindings(p, day)[0].dedupeKey;
+    dismissFinding(p, key);
+
+    // The card is gone from the bus-filtered set the page renders…
+    const suppressions = getFindingSuppressions(p);
+    expect(
+      activeFindings(buildDemotionSuggestionFindings(p, day), suppressions, day)
+    ).toEqual([]);
+    // …while the reminder button, governed solely by detection state, survives.
+    expect(demotionCandidateItemIds(p, day).has(itemId)).toBe(true);
   });
 
   it("refuses a paused item, and never crosses profiles", () => {
@@ -303,11 +375,11 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
 // ---- Part 3: the digest deltas --------------------------------------------
 
 describe("#1505 part 3 — the digest reports state changes", () => {
-  it("names a broken streak among the pushed tier, and stays silent about a low one", () => {
+  it("names a broken streak among must+should, and stays silent about a `may` one", () => {
     const p = createProfile("Deltas Missed (test)");
     const day = today(p);
-    const mag = seedItem(p, "Magnesium (test)", { priority: "high" });
-    const ash = seedItem(p, "Ashwagandha (test)", { priority: "low" });
+    const mag = seedItem(p, "Magnesium (test)", { obligation: "should" });
+    const ash = seedItem(p, "Ashwagandha (test)", { obligation: "may" });
     // Both: taken on days -13..-4, missed -3..-1. Today is still pending and is
     // dropped, so each strip ends on a 3-occurrence miss run after a 10-day streak.
     for (let back = 13; back >= 4; back--) {
@@ -318,15 +390,16 @@ describe("#1505 part 3 — the digest reports state changes", () => {
 
     const input = gatherDigestInput(p, "Deltas Missed (test)");
     expect(input.intakeDeltaLine).toBe("Missed: Magnesium (test) (3 days)");
-    // The low supplement's identical lapse is NOT news — it can't push, so it
-    // can't be reported on. Its adherence history is untouched.
+    // The `may` item's identical log history is NOT news: it has no dueness, so it
+    // has no misses, so there is no state change to report. Its administrations are
+    // still in the ledger — this is a reporting boundary, not a data one.
     expect(input.intakeDeltaLine).not.toContain("Ashwagandha");
   });
 
   it("names a resumption after a real lapse", () => {
     const p = createProfile("Deltas Resumed (test)");
     const day = today(p);
-    const d3 = seedItem(p, "Vitamin D (test)", { priority: "high" });
+    const d3 = seedItem(p, "Vitamin D (test)", { obligation: "should" });
     // Taken -13..-5, missed -4..-2, taken again yesterday.
     for (let back = 13; back >= 5; back--) {
       logTaken(d3.doseId, d3.itemId, shiftDateStr(day, -back));
@@ -340,12 +413,65 @@ describe("#1505 part 3 — the digest reports state changes", () => {
   it("says nothing on a quiet window — no state change, no line", () => {
     const p = createProfile("Deltas Quiet (test)");
     const day = today(p);
-    const item = seedItem(p, "Creatine (test)", { priority: "high" });
+    const item = seedItem(p, "Creatine (test)", { obligation: "should" });
     for (let back = 13; back >= 1; back--) {
       logTaken(item.doseId, item.itemId, shiftDateStr(day, -back));
     }
     expect(
       gatherDigestInput(p, "Deltas Quiet (test)").intakeDeltaLine
     ).toBeNull();
+  });
+});
+
+// ---- Part 1, class 3: the guaranteed access path ---------------------------
+
+describe("#1505 — the digest's offer tail", () => {
+  it("exposes a `may` item IN its hinted slot and not outside it", () => {
+    const p = createProfile("Tail Slot (test)");
+    const bedtime = seedItem(p, "Magnesium (test)", { obligation: "may" });
+    db.prepare(
+      "UPDATE intake_item_doses SET time_of_day = 'Before sleep' WHERE item_id = ?"
+    ).run(bedtime.itemId);
+    // A hint-less `may` item — the aspirin case — is offered in EVERY slot.
+    const anytime = seedItem(p, "Aspirin (test)", {
+      kind: "medication",
+      obligation: "may",
+    });
+    db.prepare(
+      "UPDATE intake_item_doses SET time_of_day = NULL WHERE item_id = ?"
+    ).run(anytime.itemId);
+
+    const atBreakfast = getOfferedIntakeForSlot(p, "08:00").map((i) => i.name);
+    expect(atBreakfast).not.toContain("Magnesium (test)");
+    expect(atBreakfast).toContain("Aspirin (test)");
+
+    const atBedtime = getOfferedIntakeForSlot(p, "22:30").map((i) => i.name);
+    expect(atBedtime).toContain("Magnesium (test)");
+    expect(atBedtime).toContain("Aspirin (test)");
+  });
+
+  it("never offers a must/should item — the tail is the `may` path, not a second dose list", () => {
+    const p = createProfile("Tail Scope (test)");
+    seedItem(p, "Creatine (test)", { obligation: "should" });
+    expect(getOfferedIntakeForSlot(p, "08:00")).toEqual([]);
+  });
+
+  it("gives an all-`may` regimen a tail-only digest rather than silence", () => {
+    const p = createProfile("Tail Minimal (test)");
+    const item = seedItem(p, "Magnesium (test)", { obligation: "may" });
+    db.prepare(
+      "UPDATE intake_item_doses SET time_of_day = NULL WHERE item_id = ?"
+    ).run(item.itemId);
+
+    const input = gatherDigestInput(p, "Tail Minimal (test)");
+    expect(input.offerCount).toBe(1);
+    expect(input.offerTail).not.toBeNull();
+    // The digest is NOT suppressed: for a tap-only user this button is its job.
+    const model = buildDigest(input);
+    expect(model).not.toBeNull();
+    const msg = renderDigestMessage(model!);
+    expect(msg.actions?.[0]?.data).toContain("offer:");
+    // Channels that cannot expand a keyboard still learn the count.
+    expect(msg.body).toContain("1 available");
   });
 });

@@ -50,8 +50,8 @@ function linkedItem(profileId: number, name: string, supplyId: number): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-         VALUES (?, ?, 1, 'medication', 'daily', 'high', NULL, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should', NULL, 1)`
       )
       .run(profileId, name).lastInsertRowid
   );

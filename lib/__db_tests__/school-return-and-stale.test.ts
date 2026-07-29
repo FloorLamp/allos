@@ -58,8 +58,8 @@ function addAntipyretic(
   const item = Number(
     db
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-         VALUES (?, ?, 1, 'medication', 'daily', 'high', 1, datetime('now'))`
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, ?, 1, 'medication', 'daily', 'may', datetime('now'))`
       )
       .run(p, name).lastInsertRowid
   );

@@ -350,8 +350,8 @@ describe("intake-item link delete null-out (issue #660)", () => {
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-           VALUES (?, 'Creatine', 1, 'supplement', 'daily', 'low')`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Creatine', 1, 'supplement', 'daily', 'should')`
         )
         .run(profile).lastInsertRowid
     );

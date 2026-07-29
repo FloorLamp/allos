@@ -48,8 +48,8 @@ function seedItem(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed, critical)
-         VALUES (?, ?, 1, ?, 'daily', ?, 0, ?)`
+           (profile_id, name, active, kind, condition, obligation, critical)
+         VALUES (?, ?, 1, ?, 'daily', 'should', ?)`
       )
       .run(
         profileId,

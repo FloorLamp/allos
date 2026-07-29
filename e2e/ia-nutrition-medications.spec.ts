@@ -101,9 +101,11 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   const highPriorityRow = page
     .getByTestId("supplement-row")
     .filter({ hasText: "Evening Vitamin C (e2e)" });
+  // The seeded item is a `must` (#1505 renamed the band); the badge renders for any
+  // obligation other than the `should` default.
   await expect(
-    highPriorityRow.getByTestId("supplement-priority-high")
-  ).toHaveText("High");
+    highPriorityRow.getByTestId("intake-obligation-must")
+  ).toHaveText("Must");
   await expect(highPriorityRow.getByTestId("adherence-summary")).toBeVisible();
   const supplementNameBox = await highPriorityRow
     .getByTestId("medicine-name")
@@ -234,8 +236,8 @@ test("a newly scheduled supplement does not appear on earlier days", async ({
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, priority, condition, source, created_at)
-           VALUES (1, ?, 1, 'supplement', 'low', 'daily', 'manual', ?)`
+             (profile_id, name, active, kind, obligation, condition, source, created_at)
+           VALUES (1, ?, 1, 'supplement', 'may', 'daily', 'manual', ?)`
         )
         .run(name, createdAt).lastInsertRowid
     );
@@ -355,8 +357,8 @@ function seedBaby(): void {
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, priority, condition, source)
-           VALUES (?, ?, 1, 'supplement', 'high', 'daily', 'manual')`
+          `INSERT INTO intake_items (profile_id, name, active, kind, obligation, condition, source)
+           VALUES (?, ?, 1, 'supplement', 'should', 'daily', 'manual')`
         )
         .run(pid, BABY_SUPP).lastInsertRowid
     );
