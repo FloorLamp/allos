@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { IconArrowRight } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
@@ -53,7 +52,6 @@ import { ordinalPercentile } from "@/lib/growth-format";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import {
   applyCardOrder,
-  bodyCardId,
   bodyCardOrder,
   growthCardLeads,
   orderCardSections,
@@ -62,7 +60,6 @@ import {
   BODY_METRIC_META,
   bodyChartScale,
   buildBodyMetricTile,
-  seriesKeyForBodyCard,
   stableEmptyLast,
   type BodyMetricSlug,
   type BodyMetricTile,
@@ -94,7 +91,6 @@ import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import ChartCard, { CHART_PLOT_FILL } from "@/components/ChartCard";
 import TrendMiniCard from "@/components/TrendMiniCard";
-import TrendTileMenu from "@/components/TrendTileMenu";
 import NotesText from "@/components/NotesText";
 import ScrollFade from "@/components/ScrollFade";
 import BodyTrendCharts, {
@@ -312,41 +308,24 @@ export default async function BodySection({
     : null;
   const plan = planBodyCharts({ ageYears, ageMonths });
   const pins = getBodyCardPins(profile.id);
-  const pinned = new Set<string>(pins);
   const cardOrder = bodyCardOrder(
     buildTrendsSubjectContext(profile.id, todayStr),
-    pins
+    getBodyCardPins(profile.id)
   );
 
-  // The ★ affordance, on the census itself (#1643). A card's star writes the SAME
-  // `saved_items` row an Overview tile's does — one gesture, one store — which is
-  // what makes "pin it here, re-sequence it there" coherent rather than two
-  // languages. Cards with no savable series (the growth-percentile card, the Sleep
-  // summary, the intraday HR zoom) get no star and keep their ranked slot.
-  const cardStar = (key: string, label: string): ReactNode => {
-    const id = bodyCardId(key);
-    const seriesKey = seriesKeyForBodyCard(id);
-    return seriesKey ? (
-      <TrendTileMenu itemKey={seriesKey} label={label} saved={pinned.has(id)} />
-    ) : null;
-  };
-  // The star rides the chart card's header-action slot, ahead of any cross-link the
-  // card already carries (the temperature card's illness link).
-  const withStar = (chart: BodyChartSpec): BodyChartSpec => {
-    const star = cardStar(chart.key, chart.title);
-    if (!star) return chart;
-    return {
-      ...chart,
-      headerAction: chart.headerAction ? (
-        <>
-          {star}
-          {chart.headerAction}
-        </>
-      ) : (
-        star
-      ),
-    };
-  };
+  // WHERE THE ★ LIVES ON THIS TAB (#1643). Nowhere new — and that is the decision,
+  // not an omission. Every card here already taps through to its metric detail page
+  // (#1488's contract: the card's header IS one edge-to-edge target), and that page
+  // has carried the shipped ★ since #1456 for every registered Body slug. So the
+  // pinning gesture is one tap from every card in the census, through the affordance
+  // the card already promises.
+  //
+  // A corner ⋯ menu on each card was the obvious alternative and is the wrong trade:
+  // on a Body chart card and on a Body tile it takes ~40px out of exactly the link
+  // #1488 measures (e2e/chart-tap-through.spec.ts holds both to ≥95% of the card
+  // width), so twenty cards would pay a real tap-target cost for a second route to a
+  // gesture that is already one tap away. Overview's tiles keep their menu because
+  // membership is what that grid is for. The hint under the census names the path.
   // Body fat % is de-prioritized for a growth-tracked profile. #493: apply the ONE
   // showBodyFat predicate at EVERY interactive surface — the charts (via plan.keys),
   // the entry field, and the history column — so "not tracked" is consistent instead
@@ -652,11 +631,7 @@ export default async function BodySection({
   // still each card's own has-data gate above — the ranker only orders what the
   // section decided to render, so a monitored condition (hypertension → BP) or a
   // richly-tracked series leads the run without any card appearing or vanishing.
-  const orderedVitals = applyCardOrder(
-    vitalsCharts,
-    cardOrder,
-    (c) => c.key
-  ).map(withStar);
+  const orderedVitals = applyCardOrder(vitalsCharts, cardOrder, (c) => c.key);
 
   const intradayBlock = intraday ? (
     !hasIntraday ? (
@@ -831,7 +806,7 @@ export default async function BodySection({
       plan.keys.filter((k) => k !== "resting_hr").map((k) => chartByKey[k]),
       cardOrder,
       (c) => c.key
-    ).map(withStar),
+    ),
     (chart) => chart.data.every((point) => point.value == null)
   );
 
@@ -1001,7 +976,6 @@ export default async function BodySection({
         <ChartCard
           key="steps"
           anchorId="steps"
-          headerAction={cardStar("steps", BODY_METRIC_META.steps.title)}
           title={BODY_METRIC_META.steps.title}
           detailHref={metricDetailHref("steps")}
           detailTitle="steps"
@@ -1025,10 +999,6 @@ export default async function BodySection({
         <ChartCard
           key="active-calories"
           anchorId="active-calories"
-          headerAction={cardStar(
-            "active-calories",
-            BODY_METRIC_META["active-calories"].title
-          )}
           title={BODY_METRIC_META["active-calories"].title}
           detailHref={metricDetailHref("active-calories")}
         >
@@ -1115,7 +1085,6 @@ export default async function BodySection({
         <ChartCard
           key="hr"
           anchorId="hr"
-          headerAction={cardStar("hr", BODY_METRIC_META.hr.title)}
           title={BODY_METRIC_META.hr.title}
           detailHref={metricDetailHref("hr")}
           detailTitle="heart rate"
@@ -1167,7 +1136,6 @@ export default async function BodySection({
         <ChartCard
           key="bmi"
           anchorId="bmi"
-          headerAction={cardStar("bmi", BODY_METRIC_META.bmi.title)}
           title={BODY_METRIC_META.bmi.title}
           detailHref={metricDetailHref("bmi")}
         >
@@ -1187,10 +1155,6 @@ export default async function BodySection({
         <ChartCard
           key="lean-mass"
           anchorId="lean-mass"
-          headerAction={cardStar(
-            "lean-mass",
-            BODY_METRIC_META["lean-mass"].title
-          )}
           title={BODY_METRIC_META["lean-mass"].title}
           detailHref={metricDetailHref("lean-mass")}
         >
@@ -1211,10 +1175,6 @@ export default async function BodySection({
         <ChartCard
           key="bone-mass"
           anchorId="bone-mass"
-          headerAction={cardStar(
-            "bone-mass",
-            BODY_METRIC_META["bone-mass"].title
-          )}
           title={BODY_METRIC_META["bone-mass"].title}
           detailHref={metricDetailHref("bone-mass")}
         >
@@ -1235,7 +1195,6 @@ export default async function BodySection({
         <ChartCard
           key="bmr"
           anchorId="bmr"
-          headerAction={cardStar("bmr", BODY_METRIC_META.bmr.title)}
           title={BODY_METRIC_META.bmr.title}
           detailHref={metricDetailHref("bmr")}
         >
@@ -1256,7 +1215,6 @@ export default async function BodySection({
         <ChartCard
           key="hydration"
           anchorId="hydration"
-          headerAction={cardStar("hydration", BODY_METRIC_META.hydration.title)}
           title={BODY_METRIC_META.hydration.title}
           detailHref={metricDetailHref("hydration")}
         >
@@ -1278,7 +1236,6 @@ export default async function BodySection({
         <ChartCard
           key="calories"
           anchorId="calories"
-          headerAction={cardStar("calories", BODY_METRIC_META.calories.title)}
           title={BODY_METRIC_META.calories.title}
           detailHref={metricDetailHref("calories")}
         >
@@ -1528,25 +1485,6 @@ export default async function BodySection({
 
       {!intraday && (
         <>
-          {/* How the arrangement works, said once (#1643). The ★ is the ONLY thing
-              that reorders this tab, and the sequence of what you pin is the
-              Overview grid's saved order — so the hint names both halves rather
-              than adding a second reorder affordance here. */}
-          <p
-            className="!mt-2 text-xs text-slate-500 dark:text-slate-400"
-            data-testid="body-pin-hint"
-          >
-            Star a card to pin it to the top of this tab. Pinned cards follow
-            your{" "}
-            <Link
-              href="/trends?tab=overview"
-              className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-            >
-              Overview
-            </Link>{" "}
-            order — drag them there to re-sequence them.
-          </p>
-
           {/* Sparkline-tile overview — the only ordinary-range view on mobile. */}
           <div
             className={`${tilesContainerClass(view)} !mt-2`}
@@ -1557,8 +1495,28 @@ export default async function BodySection({
               growth={growthGridTiles}
               sleep={sleepGridTile}
               order={cardOrder}
-              star={cardStar}
             />
+
+            {/* How the arrangement works, said once (#1643) — under the census
+                rather than above it, so it explains what the reader just scanned
+                without pushing the tab's content down. The ★ is the ONLY thing that
+                reorders this tab, and the sequence of what you pin is the Overview
+                grid's saved order, so the hint names BOTH halves and where each
+                gesture lives instead of adding a second reorder affordance here. */}
+            <p
+              className="mt-3 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="body-pin-hint"
+            >
+              Star a metric on its own page — open any card — to pin it to the
+              top of this tab. Pinned cards follow your{" "}
+              <Link
+                href="/trends?tab=overview"
+                className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+              >
+                Overview
+              </Link>{" "}
+              order; drag them there to re-sequence them.
+            </p>
           </div>
 
           {/* The classic full-chart stack — desktop only. Carries the per-chart
@@ -1590,7 +1548,6 @@ export default async function BodySection({
             {hasMood && (
               <ChartCard
                 anchorId="mood"
-                headerAction={cardStar("mood", BODY_METRIC_META.mood.title)}
                 testid="mood-trend"
                 title={BODY_METRIC_META.mood.title}
                 description="1–5 daily check-ins · selected date range"

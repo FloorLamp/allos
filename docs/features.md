@@ -548,11 +548,12 @@ self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
-The star is the **one arrangement gesture** across both tabs. Starring a Body
-card is the same save as starring an Overview tile, and starred cards lead the
-Body tab in the order the Overview grid holds them — so a card is pinned where
-the census is and re-sequenced by dragging it (or using its overflow arrows) on
-Overview. There is no second reorder surface on Body.
+The star is the **one arrangement gesture** across both tabs. Starring a body
+metric — on its own page, which every Body card opens — is the same save as
+starring an Overview tile, and starred cards lead the Body tab in the order the
+Overview grid holds them, so pinned cards are re-sequenced by dragging them (or
+using their overflow arrows) on Overview. There is no second reorder surface on
+Body.
 
 Everything unstarred follows a **ranked default** built from stable subject
 facts — life stage, live goals, monitored conditions, and whether a series has

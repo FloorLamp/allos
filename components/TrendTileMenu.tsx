@@ -32,23 +32,12 @@ import { toggleSavedItem } from "@/app/(app)/saved/actions";
 // because it has nothing to show at this window — offers no arrows at all, rather
 // than two controls that would visibly do nothing. Its unstar stays, which is the
 // only thing #1456 requires of it.
-//
-// STARRING FROM THE CENSUS (#1643). Trends → Body renders the whole body-metric
-// census, and a ★ there is the SAME `saved_items` write as a ★ here — the Body tab's
-// card arrangement runs on the saved order, so pinning has to be reachable where the
-// cards actually are. That surface has UNSAVED cards too, so `saved` is a prop: the
-// item toggles rather than always unstarring. Overview keeps the default (`true`),
-// because since #1487 every tile in that grid is a saved tile by construction.
 export default function TrendTileMenu({
   itemKey,
   label,
-  saved = true,
 }: {
   itemKey: string;
   label: string;
-  // Whether the item is currently saved. Decides the verb only — one action, one
-  // store, either way.
-  saved?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const reorder = useTileReorder();
@@ -79,18 +68,12 @@ export default function TrendTileMenu({
           <button
             type="button"
             role="menuitemcheckbox"
-            aria-checked={saved}
+            aria-checked
             data-testid="star-toggle"
             className={MENU_ITEM}
-            onClick={() =>
-              void runAction(
-                star,
-                fd(),
-                saved ? `Unstarred ${label}.` : `Starred ${label}.`
-              )
-            }
+            onClick={() => void runAction(star, fd(), `Unstarred ${label}.`)}
           >
-            {saved ? "★ Unstar" : "☆ Star"}
+            ★ Unstar
           </button>
           {reorderable && (
             <>

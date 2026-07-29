@@ -1,21 +1,21 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { followLink, settledClick } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_PIN } from "./fixture-logins";
 
 // ★-PINNED Body card order (#1643) — the USER's half of the Trends → Body sequence.
 //
 // Trends had TWO user-arrangement substrates. Overview's is `saved_items`: one ★
-// store, starred from the tile's ⋯ menu, re-sequenced by drag (and the menu's arrow
-// fallback) through `reorderSaved` → `setSavedOrder`. The Body tab had a second,
-// order-only one that no UI ever wrote. #1643 retired it: the Body tab now leads with
-// the profile's STARRED cards, in the saved order, and ranks everything else behind
-// them.
+// store, starred from a tile's ⋯ menu or from a metric's own page, re-sequenced by
+// drag (and the menu's arrow fallback) through `reorderSaved` → `setSavedOrder`. The
+// Body tab had a second, order-only one that no UI ever wrote. #1643 retired it: the
+// Body tab now leads with the profile's STARRED cards, in the saved order, and ranks
+// everything else behind them.
 //
-// Only a browser can prove the two ends meet, because they are two different pages
+// Only a browser can prove the two ends meet, because they are three different pages
 // over one store. Three moves, in one fixture's own profile:
-//   1. star a Body card → it leads the Body stack;
+//   1. star a Body metric from the page its card taps through to → it leads the tab;
 //   2. re-sequence it on OVERVIEW → the Body stack follows, with no gesture on Body;
 //   3. unstar it → it drops back to its ranked slot.
 //
@@ -25,6 +25,10 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_PIN } from "./fixture-logins";
 // state, so --repeat-each stays clean and no neighbouring Trends spec's order moves.
 
 const PIN = { username: E2E_LOGIN_TRENDS_PIN, password: E2E_MEMBER_PASSWORD };
+
+const WEIGHT = "body-tile-weight";
+const STEPS = "body-tile-steps";
+const STEPS_DETAIL = "/trends/metric/steps";
 
 // Document order of the named Body tiles, keeping only the ones present. Position IS
 // the assertion, so this compares places rather than counting anything.
@@ -50,20 +54,26 @@ async function openBodyTiles(page: Page): Promise<void> {
   await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
 }
 
-// A Body card's ⋯ menu. The panel is PORTALED to <body>, so it is located on the
-// page rather than inside the card.
-async function bodyCardMenu(page: Page, testid: string) {
-  await page.getByTestId(testid).getByTestId("overflow-menu-trigger").click();
-  const menu = page.getByTestId("trend-tile-menu");
-  await expect(menu).toBeVisible();
-  return menu;
-}
-
-// Toggle one Body card's ★ and land back on a freshly rendered tab: the order is
-// composed server-side from the saved rows, so the reload is what is being asserted.
-async function toggleStar(page: Page, testid: string): Promise<void> {
-  const menu = await bodyCardMenu(page, testid);
-  await settledClick(page, menu.getByTestId("star-toggle"));
+// Toggle the steps metric's ★ through the affordance a Body card actually offers:
+// the card's own header link opens the metric page, and the ★ is there (#1456). The
+// walk THROUGH the card is the point — it is what makes "star from the census" true
+// without a second control on every card.
+async function toggleStepsStarFromItsCard(
+  page: Page,
+  expected: "false" | "true"
+): Promise<void> {
+  await followLink(
+    page,
+    page.getByTestId(STEPS).getByTestId("trend-mini-header-link"),
+    new RegExp(STEPS_DETAIL)
+  );
+  const star = page.getByTestId("star-toggle");
+  await expect(star).toHaveAttribute("aria-pressed", expected);
+  await settledClick(page, star);
+  await expect(star).toHaveAttribute(
+    "aria-pressed",
+    expected === "false" ? "true" : "false"
+  );
   await openBodyTiles(page);
 }
 
@@ -78,11 +88,8 @@ function reorderSettled(page: Page) {
   );
 }
 
-const WEIGHT = "body-tile-weight";
-const STEPS = "body-tile-steps";
-
 test.describe("★-pinned Body card order (#1643)", () => {
-  test("starring a Body card pins it to the top, unstarring returns it to its ranked slot", async ({
+  test("starring a Body metric pins its card to the top; unstarring returns it to its ranked slot", async ({
     browser,
   }) => {
     test.slow(); // local `next dev` compiles the Trends route on first hit
@@ -94,28 +101,14 @@ test.describe("★-pinned Body card order (#1643)", () => {
       // `steps` is not, so the ranked default puts steps behind it.
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([WEIGHT, STEPS]);
 
-      // The census carries the ★ itself — this is the same `saved_items` write an
-      // Overview tile's star makes, which is the whole point of one substrate.
-      const menu = await bodyCardMenu(page, STEPS);
-      await expect(menu.getByTestId("star-toggle")).toHaveAttribute(
-        "aria-checked",
-        "false"
-      );
-      await settledClick(page, menu.getByTestId("star-toggle"));
-      await openBodyTiles(page);
-
-      // Pinned cards lead, so steps overtakes weight.
+      // One gesture, one store — the same `saved_items` row an Overview tile's star
+      // writes, reached through the card the Body tab already renders.
+      await toggleStepsStarFromItsCard(page, "false");
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([STEPS, WEIGHT]);
-      const pinnedMenu = await bodyCardMenu(page, STEPS);
-      await expect(pinnedMenu.getByTestId("star-toggle")).toHaveAttribute(
-        "aria-checked",
-        "true"
-      );
-      await page.keyboard.press("Escape");
 
       // Unstar: back to the ranked slot, not to some remembered position. Restoring
       // the fixture IS the second assertion.
-      await toggleStar(page, STEPS);
+      await toggleStepsStarFromItsCard(page, "true");
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([WEIGHT, STEPS]);
     } finally {
       await page.context().close();
@@ -129,7 +122,7 @@ test.describe("★-pinned Body card order (#1643)", () => {
     const page = await loginAs(browser, PIN);
     try {
       await openBodyTiles(page);
-      await toggleStar(page, STEPS);
+      await toggleStepsStarFromItsCard(page, "false");
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([STEPS, WEIGHT]);
 
       // Move it later on OVERVIEW — the ⋯ menu's arrow is the non-pointer fallback
@@ -148,40 +141,35 @@ test.describe("★-pinned Body card order (#1643)", () => {
       await overviewMenu.getByTestId("saved-move-down").click();
       await settled;
 
-      // No star, no drag and no control of any kind was touched on the Body tab.
+      // No control on the Body tab was touched, and its order moved with the store.
       await openBodyTiles(page);
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([WEIGHT, STEPS]);
 
       // Restore: unstarring drops steps out of the pinned run entirely.
-      await toggleStar(page, STEPS);
+      await toggleStepsStarFromItsCard(page, "true");
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([WEIGHT, STEPS]);
     } finally {
       await page.context().close();
     }
   });
 
-  test("the tab says how its arrangement works, and unpinnable cards carry no star", async ({
-    browser,
-  }) => {
+  test("the tab says how its arrangement works", async ({ browser }) => {
     const page = await loginAs(browser, PIN);
     try {
       await openBodyTiles(page);
 
-      // The reorder gesture lives on Overview, so the Body tab has to say so — the
-      // alternative was a second drag surface for one job.
+      // The pin gesture lives on the metric page and the re-sequence on Overview, so
+      // the tab has to say so — the alternative was a second reorder surface here.
       const hint = page.getByTestId("body-pin-hint");
       await expect(hint).toBeVisible();
       await expect(
         hint.getByRole("link", { name: "Overview" })
       ).toHaveAttribute("href", "/trends?tab=overview");
 
-      // Every rendered Body metric card offers the ★.
+      // …and the route it describes is one tap from the card itself.
       await expect(
-        page.getByTestId(WEIGHT).getByTestId("overflow-menu-trigger")
-      ).toBeVisible();
-      await expect(
-        page.getByTestId(STEPS).getByTestId("overflow-menu-trigger")
-      ).toBeVisible();
+        page.getByTestId(STEPS).getByTestId("trend-mini-header-link")
+      ).toHaveAttribute("href", STEPS_DETAIL);
     } finally {
       await page.context().close();
     }
