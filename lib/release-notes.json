@@ -4,6 +4,20 @@
       "date": "2026-07-29",
       "entries": [
         {
+          "pr": 1662,
+          "title": "The 'just recovered' dashboard calms down — and dismissals finally stick",
+          "body": "After an illness ends, the dashboard used to stack three separate household bands. They now fold into one coherent recovered state: the reopen line carries the household-history link inline, the household strip absorbs it during the 8–14-day tail, and a quiet household shows the link without conjuring an empty strip. Dismissing the \"Recently resolved — reopen?\" line now sticks across reloads — it was the only X in the app that came back — while other caregivers on their own logins still see it, and nothing about the reopen window itself changes. The Now strip also stacks its two cards full-width on phones instead of squeezing them side by side.",
+          "kind": "fix",
+          "issues": [1547, 1548, 1549]
+        },
+        {
+          "pr": 1660,
+          "title": "Registries live where you use them, and an empty Timeline points somewhere",
+          "body": "The medicine cabinet left the sidebar: like the equipment registry, it's now reached from where you actually use it — doors on the Medications page, the Supplements tab, and Household — and visiting either registry highlights its parent nav section instead of stranding you with nothing lit. Every old URL still works. A brand-new profile's empty Timeline now offers real next steps (log something, connect a source, upload a document) instead of a bare \"No timeline events yet.\" — and only when the account is genuinely empty, never when a filter simply matched nothing.",
+          "kind": "feature",
+          "issues": [1522, 1410, 1599]
+        },
+        {
           "pr": 1657,
           "title": "Invites without passwords, and honest answers at the door",
           "body": "Inviting someone to your instance got simpler and safer. With an email invite, you no longer invent an interim password for them — the account is unusable until they set their own through the invite link. New logins can be granted profile access at creation (defaulting sensibly when a same-named profile exists), so nobody lands in an account that can see nothing. And if a login does end up without access — say its last grant was revoked — signing in now says so plainly instead of silently bouncing back to the form, stale sessions are cleaned up rather than lingering as \"active\", and the attempt is recorded for the admin. Profiles with identical names are now told apart everywhere you pick one. Also: asking your records a plural question (\"any allergies?\") now finds singular-named entries.",
