@@ -9,6 +9,7 @@
 // by construction, pinned by lib/__db_tests__/mental-health-milestone-exemption.test.ts.
 
 import { db, writeTx } from "./db";
+import { captureDelete } from "./undo-delete-db";
 import { reconcileFlags } from "./queries/medical";
 import {
   type Instrument,
@@ -39,6 +40,15 @@ function canonicalNameFor(instrument: AnyInstrument): string {
   return isInstrument(instrument)
     ? instrumentDef(instrument).canonicalName
     : substanceInstrumentDef(instrument).canonicalName;
+}
+
+// The instrument's maximum possible total, resolved across BOTH catalogs — the one
+// place a correction action asks "is this total in range?" so the mental-health and
+// substance-use surfaces can't drift apart on the same question (#1396).
+export function instrumentMaxTotal(instrument: AnyInstrument): number {
+  return isInstrument(instrument)
+    ? instrumentDef(instrument).maxTotal
+    : substanceInstrumentDef(instrument).maxTotal;
 }
 
 // One answered item (0-based index → answer), as captured by the in-app tap-through.
@@ -103,6 +113,129 @@ export function recordInstrumentScore(
     reconcileFlags(profileId, [recordId]);
     return recordId;
   });
+}
+
+// ---- Correcting a recorded score (#1396) ------------------------------------
+//
+// A screening score used to be CREATE-ONLY, and that was a safety bug, not a missing
+// nicety: every score trends like a biomarker, and a severe total (or a positive PHQ-9
+// item 9) raises the NON-DISMISSIBLE crisis line. So a fat-fingered outside total — a
+// GAD-7 of 21 typed for 12 — permanently distorted the trend AND could permanently trip
+// a banner with no recovery path. Correction and removal live here, in the same
+// auth-blind, profileId-first core as the write (#319); the calling Server Action is the
+// only auth boundary.
+//
+// The derived state needs no invalidation step: getInstrumentStates / the crisis gate
+// read the stored rows every time (ONE computation), so correcting or removing the row
+// IS the recompute — a corrected sub-threshold score releases the banner by construction.
+
+// The set of canonical_names that are instrument SCORES, across both catalogs. Used to
+// prove a targeted row really is a score before editing/deleting it, so this path can
+// never be pointed at an arbitrary lab reading (which has its own delete with its own
+// star/retest side-state sweep).
+const ALL_INSTRUMENT_NAMES: readonly string[] = [
+  ...INSTRUMENTS,
+  ...SUBSTANCE_INSTRUMENTS,
+] as readonly string[];
+
+function instrumentForName(canon: string | null): AnyInstrument | null {
+  if (!canon) return null;
+  const mh = INSTRUMENTS.find((k) => k === canon);
+  if (mh) return mh;
+  return SUBSTANCE_INSTRUMENTS.find((k) => k === canon) ?? null;
+}
+
+// The instrument a stored score belongs to, or null when the id isn't this profile's
+// instrument score at all. Lets an action validate a submitted total against the RIGHT
+// instrument's maxTotal without duplicating the identity rule.
+export function getInstrumentScoreInstrument(
+  profileId: number,
+  id: number
+): AnyInstrument | null {
+  const row = db
+    .prepare(
+      `SELECT canonical_name AS canon FROM medical_records
+        WHERE id = ? AND profile_id = ? AND category = 'instrument'`
+    )
+    .get(id, profileId) as { canon: string | null } | undefined;
+  return row ? instrumentForName(row.canon) : null;
+}
+
+// Typed outcome for an edit that can legitimately refuse (the markDoseTaken pattern) —
+// callers render it, never confirm unconditionally.
+export type UpdateInstrumentOutcome =
+  | { kind: "updated" }
+  | { kind: "not-found" }
+  // The reading was administered in-app, so its total is DERIVED from the stored item
+  // answers (the server-side source of truth the record path enforces). Letting the
+  // total be typed over would make the score disagree with the answers that produced it
+  // — and with item 9, which the crisis gate reads. The date is still editable; a wrong
+  // administered score is corrected by deleting it and re-answering.
+  | { kind: "answers-derived"; itemCount: number };
+
+export interface UpdateInstrumentInput {
+  date: string; // YYYY-MM-DD
+  total: number;
+}
+
+// Correct ONE stored score's date and/or total. Refuses a TOTAL change on an
+// administered reading (see above); a date-only change is always allowed.
+export function updateInstrumentScore(
+  profileId: number,
+  id: number,
+  input: UpdateInstrumentInput
+): UpdateInstrumentOutcome {
+  return writeTx((): UpdateInstrumentOutcome => {
+    const row = db
+      .prepare(
+        `SELECT canonical_name AS canon, value_num AS total FROM medical_records
+          WHERE id = ? AND profile_id = ? AND category = 'instrument'
+            AND canonical_name IN (${ALL_INSTRUMENT_NAMES.map(() => "?").join(",")})`
+      )
+      .get(id, profileId, ...ALL_INSTRUMENT_NAMES) as
+      | { canon: string | null; total: number | null }
+      | undefined;
+    if (!row || instrumentForName(row.canon) == null) return { kind: "not-found" };
+
+    const answered = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM instrument_responses
+          WHERE profile_id = ? AND medical_record_id = ?`
+      )
+      .get(profileId, id) as { n: number };
+    const totalChanged = Number(row.total) !== input.total;
+    if (answered.n > 0 && totalChanged)
+      return { kind: "answers-derived", itemCount: answered.n };
+
+    db.prepare(
+      `UPDATE medical_records SET date = ?, value = ?, value_num = ?
+        WHERE id = ? AND profile_id = ?`
+    ).run(input.date, String(input.total), input.total, id, profileId);
+    // Reconcile the flag exactly as the record path does — a no-op for these
+    // rangeless instruments, but the biomarker write contract stays uniform.
+    reconcileFlags(profileId, [id]);
+    return { kind: "updated" };
+  });
+}
+
+export type DeleteInstrumentOutcome =
+  | { kind: "deleted"; undoId: number | null }
+  | { kind: "not-found" };
+
+// Remove ONE stored score. Goes through the SHARED undo capture (#30) under the
+// existing `biomarker-record` kind — the score IS a medical_records row — so a
+// mis-tapped delete is recoverable from the toast, and the capture brings the item
+// answers back with it (the instrument_responses child entity registered in
+// lib/undo-delete.ts). Guarded to instrument-category rows so it can never be pointed
+// at a lab reading, whose delete owns extra star/retest side-state sweeps.
+export function deleteInstrumentScore(
+  profileId: number,
+  id: number
+): DeleteInstrumentOutcome {
+  if (getInstrumentScoreInstrument(profileId, id) == null)
+    return { kind: "not-found" };
+  const undoId = captureDelete("biomarker-record", profileId, id);
+  return undoId == null ? { kind: "not-found" } : { kind: "deleted", undoId };
 }
 
 // One stored score reading, with its derived band. `selfHarmAnswer` is the item-9 answer

@@ -255,6 +255,21 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         childWhere: "record_id = ?",
         childBinds: 1,
       },
+      {
+        // Screening-instrument item answers (#1396). A PHQ-9/GAD-7/AUDIT-C score IS a
+        // medical_records row (category 'instrument'), and its per-item answers live in
+        // instrument_responses as a CHILD (ON DELETE CASCADE), so the live delete takes
+        // them with it. They are not cosmetic: PHQ-9 item 9 is the SELF-HARM item, and
+        // the non-dismissible crisis line reads it — restoring the score without its
+        // answers would silently downgrade a restored reading from "item 9 positive" to
+        // "total-only", i.e. an undo that loses a safety signal. Captured and restored
+        // with the reading.
+        entity: "instrumentResponses",
+        table: "instrument_responses",
+        fks: [{ column: "medical_record_id", ref: "record" }],
+        childWhere: "medical_record_id = ?",
+        childBinds: 1,
+      },
     ],
   },
 

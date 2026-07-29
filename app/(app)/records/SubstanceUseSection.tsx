@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { today } from "@/lib/db";
-import { EmptyState } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { biomarkerViewHref } from "@/lib/hrefs";
 import {
@@ -12,6 +11,7 @@ import {
   shouldSuggestClinicianDiscussion,
   capProgressLine,
   substanceDef,
+  substanceInstrumentDef,
 } from "@/lib/substance-use";
 import type { SubstanceInstrument } from "@/lib/substance-use";
 import {
@@ -23,6 +23,11 @@ import { formatMonthDay, type DisplayFormatPrefs } from "@/lib/format-date";
 import { resolveSmoking, smokingStatusLabel } from "@/lib/smoking";
 import SubstanceInstrumentsForm from "@/app/(app)/medical/substance-use/SubstanceInstrumentsForm";
 import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSection";
+import InstrumentHistoryList from "@/app/(app)/medical/instruments/InstrumentHistoryList";
+import {
+  updateSubstanceInstrumentAction,
+  deleteSubstanceInstrumentAction,
+} from "@/app/(app)/medical/substance-use/actions";
 
 // The substance-use surface (issue #998), formerly the standalone
 // /medical/substance-use page, now the #substance-use section of Records ›
@@ -112,37 +117,24 @@ export default function SubstanceUseSection({
           initialInstrument={initialInstrument}
         />
         <div data-testid="substance-history">
-          {readings.length === 0 ? (
-            <EmptyState message="No screening scores yet. Answer the AUDIT-C or DAST-10 above, or enter a total from elsewhere." />
-          ) : (
-            <ul className="space-y-2">
-              {readings.map((r) => (
-                <li
-                  key={r.id}
-                  data-testid={`substance-reading-${r.id}`}
-                  className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 text-sm dark:border-white/5"
-                >
-                  <span>
-                    <Link
-                      href={biomarkerViewHref(r.instrument)}
-                      className="font-medium text-brand-600 hover:underline dark:text-brand-400"
-                    >
-                      {r.instrument}
-                    </Link>{" "}
-                    <span className="text-slate-500 dark:text-slate-400">
-                      {r.date}
-                    </span>
-                  </span>
-                  <span>
-                    <span className="font-semibold">{r.total}</span> ·{" "}
-                    <span data-testid={`substance-reading-band-${r.id}`}>
-                      {r.band.label}
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* Per-row correct/remove (#1396) — the SAME list component Mental health
+              renders, so a mis-entered AUDIT-C is correctable exactly like a
+              mis-entered GAD-7. This surface's actions carry its life-stage gate. */}
+          <InstrumentHistoryList
+            testidPrefix="substance"
+            emptyMessage="No screening scores yet. Answer the AUDIT-C or DAST-10 above, or enter a total from elsewhere."
+            updateAction={updateSubstanceInstrumentAction}
+            deleteAction={deleteSubstanceInstrumentAction}
+            rows={readings.map((r) => ({
+              id: r.id,
+              instrument: r.instrument,
+              date: r.date,
+              total: r.total,
+              bandLabel: r.band.label,
+              maxTotal: substanceInstrumentDef(r.instrument).maxTotal,
+              href: biomarkerViewHref(r.instrument),
+            }))}
+          />
         </div>
       </section>
 

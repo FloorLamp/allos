@@ -11,8 +11,13 @@ import {
 } from "@/lib/mental-health";
 import {
   recordInstrumentScore,
+  updateInstrumentScore,
+  deleteInstrumentScore,
+  getInstrumentScoreInstrument,
+  instrumentMaxTotal,
   type InstrumentAnswer,
 } from "@/lib/instrument-records";
+import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Server Actions for the mental-health instrument surface (issue #716). Standard
 // per-profile: every action operates on the session's ACTIVE profile behind
@@ -98,4 +103,57 @@ export async function recordInstrumentAction(
   });
   revalidateInstruments();
   return { ok: true, id };
+}
+
+// ---- Correcting a recorded score (#1396) ------------------------------------
+// A screening score used to be create-only, so a mis-typed outside total permanently
+// distorted the trend and could permanently trip the NON-DISMISSIBLE crisis line.
+// Both actions below re-check write access, validate against the instrument the
+// TARGET ROW actually belongs to (never a client-supplied instrument), and delegate
+// to the auth-blind core, which recomputes nothing: the crisis gate reads the stored
+// rows, so the correction IS the recompute.
+
+// Correct one score's date and/or total. Answers with the core's typed outcome —
+// an administered (item-by-item) reading refuses a total change and says so.
+export async function updateInstrumentAction(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that score.");
+  const instrument = getInstrumentScoreInstrument(profile.id, id);
+  if (!instrument) return formError("Couldn't find that score.");
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  if (!isRealIsoDate(dateRaw)) return formError("Enter a valid date.");
+  const maxTotal = instrumentMaxTotal(instrument);
+  const total = Number(formData.get("total"));
+  if (!Number.isInteger(total) || total < 0 || total > maxTotal)
+    return formError(`Enter a total between 0 and ${maxTotal}.`);
+
+  const outcome = updateInstrumentScore(profile.id, id, {
+    date: dateRaw,
+    total,
+  });
+  if (outcome.kind === "not-found")
+    return formError("Couldn't find that score.");
+  if (outcome.kind === "answers-derived")
+    return formError(
+      "This score was answered item by item, so its total comes from those answers. Delete it and answer again to correct it."
+    );
+  revalidateInstruments();
+  return formOk();
+}
+
+// Remove one score. Returns the undo token the shared delete toast restores from
+// (`{ undoId }`, the #30 contract) — never an unconditional success.
+export async function deleteInstrumentAction(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return { undoId: null };
+  const outcome = deleteInstrumentScore(profile.id, id);
+  if (outcome.kind === "not-found") return { undoId: null };
+  revalidateInstruments();
+  return { undoId: outcome.undoId };
 }
