@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   listSharedSupplyOptions,
   createPoolAction,
   linkItemAction,
   unlinkItemAction,
 } from "@/app/(app)/supplies/actions";
+import { SUPPLIES_HREF } from "@/lib/hrefs";
 
 // The "Shared supply" control (#1374), rendered inside the refill block of BOTH intake
 // forms (the one shared RefillTracking component, so supplements and medications get it
@@ -103,6 +105,20 @@ export default function SharedSupplyPicker({
           ? `This item draws from the shared bottle “${supplyName}”. Everyone linked to it decrements one count.`
           : "Link this item to a bottle the household shares, so every taker's doses decrement one count."}
       </p>
+      {/* The natural "see all bottles" exit (#1522). Only once a pool is actually
+        linked: with nothing shared there is no cabinet to walk out to, and the select
+        below is the way IN. The cabinet has no nav row — this is one of its doors. */}
+      {supplyName && (
+        <p className="mb-2 text-xs">
+          <Link
+            href={SUPPLIES_HREF}
+            data-testid="shared-supply-cabinet-link"
+            className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            See all shared bottles →
+          </Link>
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <select
           id={`shared-supply-${itemId}`}

@@ -177,6 +177,35 @@ export function resolvePoolUnlinkRestore(
   return linkedItemCount === 1 ? remaining : null;
 }
 
+// Which bottles a caller may SEE in the medicine cabinet — ONE rule, shared by the
+// /supplies page itself and the "N shared bottles" doors its consumer surfaces now
+// carry (#1522, the nav row's replacement). A pool is visible when any ACCESSIBLE
+// profile draws from it, or when NOTHING links it at all: an orphaned bottle names
+// nobody, so nothing is disclosed, and somebody has to be able to clear it. Pure, so
+// the page's list and the header count can never disagree about what "in the cabinet"
+// means. `memberProfileIds` is a pool's raw membership (cross-profile by
+// construction); the caller supplies its already-authorized accessible set.
+export function isPoolVisibleTo(
+  memberProfileIds: readonly number[],
+  accessible: ReadonlySet<number>
+): boolean {
+  return (
+    memberProfileIds.length === 0 ||
+    memberProfileIds.some((id) => accessible.has(id))
+  );
+}
+
+// The label on those cabinet doors (#1522 part C). With bottles to count, the count IS
+// the useful part ("3 shared bottles →") and doubles as the discoverability cue the
+// cabinet never had. With none, the link keeps its NAME — "Medicine cabinet", the name
+// deliberately retained once it stopped being a nav sibling of "Medications" — so an
+// empty household still learns the surface exists rather than reading "0 shared
+// bottles". Pure and shared so every door words it identically.
+export function sharedSuppliesLinkLabel(count: number): string {
+  if (count <= 0) return "Medicine cabinet";
+  return `${count} shared ${count === 1 ? "bottle" : "bottles"}`;
+}
+
 // Normalize the raw `quantity_on_hand` form field (opt-in refill tracking): a blank
 // or non-finite entry is NULL (untracked); otherwise the value floored at 0. Shared
 // by the add/update actions AND the #467 loaded-value compare so both sides of that

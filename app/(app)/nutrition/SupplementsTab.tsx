@@ -21,6 +21,7 @@ import {
   getEffectiveActiveSituations,
   getDerivedSituationLines,
   getNavRelevance,
+  countVisiblePools,
 } from "@/lib/queries";
 import { activeByKey, activeFindings } from "@/lib/findings";
 import { buildAdherencePatternFindings } from "@/lib/rule-findings";
@@ -46,6 +47,8 @@ import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
+import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, zonedDateParts } from "@/lib/date";
 import {
@@ -132,6 +135,11 @@ interface Item {
 // nutrition page.
 export default async function SupplementsTab() {
   const { login, profile } = await requireSession();
+  // The medicine-cabinet door (#1522) counts over the caller's WHOLE accessible set,
+  // not the acting profile: a shared bottle is household-scoped and has no kind of
+  // its own, so this tab and Medications show the same number and land on the same
+  // list. Everything else on this tab stays single-profile.
+  const cabinetCount = countVisiblePools((await requireScope()).ids);
   const todayStr = today(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   // Dietary preferences (#975): the RDA-adequacy food-source lines filter/substitute
@@ -737,6 +745,15 @@ export default async function SupplementsTab() {
   return (
     <SituationOptionsProvider options={situationOptionNames}>
       <div>
+        {/* The medicine-cabinet door (#1522). It lives in the TAB body, not in the
+          page header's `action` slot: that slot is `hidden md:block` on TabFirstPage
+          and is shared with the Food tab, so a header door would be desktop-only AND
+          would advertise shared bottles from a page about breakfast. One component,
+          both viewports. */}
+        <div className="mb-3 flex justify-end">
+          <SharedSuppliesLink count={cabinetCount} />
+        </div>
+
         {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
           the profile's own data, NOT a manual toggle — rendered distinctly and NON-
           toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses

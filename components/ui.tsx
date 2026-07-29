@@ -94,21 +94,32 @@ export function StatCard({
 // (#812): when the copy names a destination ("Log an activity…", "…in Settings →
 // Profile"), pass the link instead of leaving the user to navigate by hand — the
 // href is `AppRoute`, so a dead pathname is a `tsc` error (#285).
+//
+// `actions` is the SAME affordance for a surface fed by several independent
+// sources (#1410): the Timeline fills from activities, body metrics and imported
+// documents, and naming only one of them would be arbitrary. Pass one or the
+// other — `action` is the single-destination shorthand, and a caller supplying
+// both simply gets the singular one appended last. Every href stays `AppRoute`.
 export function EmptyState({
   message,
   action,
+  actions,
 }: {
   message: string;
   action?: { href: AppRoute; label: string };
+  actions?: ReadonlyArray<{ href: AppRoute; label: string }>;
 }) {
+  const links = [...(actions ?? []), ...(action ? [action] : [])];
   return (
     <div className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400">
       {message}
-      {action && (
-        <div className="mt-4">
-          <Link href={action.href} className="btn btn-sm">
-            {action.label} →
-          </Link>
+      {links.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          {links.map((link) => (
+            <Link key={link.href} href={link.href} className="btn btn-sm">
+              {link.label} →
+            </Link>
+          ))}
         </div>
       )}
     </div>

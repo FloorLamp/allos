@@ -2,6 +2,7 @@ import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
 import { OTHER_PANEL, panelLabel, parsePanelId } from "./biomarker-panels";
 import {
   biomarkerViewHref,
+  dataSectionHref,
   importHref,
   protocolHref,
   MEDICATIONS_HREF,
@@ -274,6 +275,33 @@ export function normalizeTimelineRange(
   if (from && to && from > to) return { from: to, to: from };
   return { from, to };
 }
+
+// "Nothing here" on the Timeline has TWO meanings and only one of them is a brand-new
+// account (issue #1410). With a category pill or a date window applied, an empty feed
+// is a FILTER RESULT — the reader knows why it's empty and the fix is to widen the
+// filter, so the message stays the bare "No <category> events yet." it has always been.
+// With neither applied, the account genuinely holds nothing and the fix is to put
+// something IN it: that, and only that, earns the next-action links below.
+export function isTimelineUnfiltered(
+  category: TimelineCategory | undefined,
+  range: DateRange
+): boolean {
+  return !category && !range.from && !range.to;
+}
+
+// The next actions on that base empty state — the three INGEST DOORS a timeline
+// actually fills from: something you did, something you measured, something a clinic
+// gave you. Deliberately not one CTA: naming only "log an activity" would tell a
+// reader who came to Allos with a stack of lab PDFs the wrong thing. Every href is
+// `AppRoute`, so a consolidated-away destination is a build error (#285).
+export const TIMELINE_EMPTY_ACTIONS: ReadonlyArray<{
+  href: AppRoute;
+  label: string;
+}> = [
+  { href: "/training?tab=log", label: "Log an activity" },
+  { href: "/trends?tab=body", label: "Add a body metric" },
+  { href: dataSectionHref("import"), label: "Import a document" },
+];
 
 // ---------------------------------------------------------------------------
 // Shared date-range vocabulary. The Timeline and the Trends hub both drive their

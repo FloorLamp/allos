@@ -4,6 +4,7 @@ import {
   getPickerProviders,
   getConditions,
   collectHouseholdRollup,
+  countVisiblePools,
 } from "@/lib/queries";
 import { mergedSituationOptions } from "@/lib/situations";
 import { loadMedicationsData, type MedicationsData } from "./med-data";
@@ -127,6 +128,10 @@ export default async function MedicationsPage(props: {
       <ProviderOptionsProvider providers={getPickerProviders()}>
         <SituationOptionsProvider options={situationOptions}>
           <MedicationAddWorkspace
+            // The medicine-cabinet door (#1522), counted over the WHOLE accessible
+            // set rather than the acting profile — the cabinet is household-scoped,
+            // and this is the number the /supplies page will list.
+            cabinetCount={countVisiblePools(scope.ids)}
             subtitle={
               medCount === 0
                 ? "Track prescriptions, over-the-counter medications, doses, and refills."

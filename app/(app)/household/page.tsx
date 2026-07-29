@@ -24,6 +24,7 @@ import {
   getWorkoutPresence,
   collectHouseholdRollup,
   getFindingSuppressions,
+  countVisiblePools,
 } from "@/lib/queries";
 import { collectDataQualityGaps } from "@/lib/rule-findings";
 import {
@@ -49,6 +50,7 @@ import { fmtWeight } from "@/lib/units";
 import { householdPresenceChip } from "@/lib/workout-presence";
 import { formatRelativeDate } from "@/lib/format-date";
 import { PageHeader, EmptyState } from "@/components/ui";
+import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import HouseholdCard, {
   type HouseholdCardData,
 } from "@/components/HouseholdCard";
@@ -68,6 +70,9 @@ export default async function HouseholdPage() {
   // the CARD's person unless it's the login's own card (or no own-profile is set).
   // Names are disambiguated (#534) so two same-named profiles stay distinguishable.
   const ownProfileId = ownProfileForLogin(login.id);
+  // The already-authorized accessible ids — the only legitimate input to a
+  // cross-profile reader (here, the medicine-cabinet door's count).
+  const profileIds = profiles.map((p) => p.id);
   const cardNames = disambiguateProfileNames(profiles);
   const weightUnit = getUnitPrefs(login.id).weightUnit;
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
@@ -200,13 +205,19 @@ export default async function HouseholdPage() {
         title="Household"
         subtitle="Everyone at a glance — confirm what's due, or tap a card to open that profile."
         action={
-          <Link
-            href={EPISODES_HREF}
-            className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-            data-testid="household-history-link"
-          >
-            History →
-          </Link>
+          // Cross-profile surfaces live here, and the medicine cabinet is one of them
+          // (#1522) — a household-scoped registry that lost its nav row and is now
+          // reached from the stable parents that consume it.
+          <div className="flex shrink-0 items-center gap-3">
+            <SharedSuppliesLink count={countVisiblePools(profileIds)} />
+            <Link
+              href={EPISODES_HREF}
+              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+              data-testid="household-history-link"
+            >
+              History →
+            </Link>
+          </div>
         }
       />
       {cards.length === 0 ? (
