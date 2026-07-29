@@ -120,6 +120,29 @@ domain's #482 identity function (biomarker rows group by `biomarkerFamily`). The
 refactor was behavior-neutral: it moved the branch/ordering into the shared
 cores without changing what any importer stores, skips, or counts.
 
+**A re-issued result never overwrites silently (#1404).** `medical_records` rows
+are keyed by `external_id`, and `upsertVitals` updates the matched row IN PLACE —
+so a lab that re-issues a value (a corrected potassium, an amended differential)
+used to replace a number the user had already read, with nothing left to show that
+it ever changed. The reading still keeps its id (encounter links, follow-ups, saved
+items, dismissal keys and the per-row provenance ledger all point at it), but the
+value being replaced is now preserved first, in the SAME transaction, as a
+`medical_record_revisions` child row (migration 120) carrying the prior
+value/unit/range/flag/status plus what the incoming result called itself. The
+decision of what counts as a re-issue is one pure function
+(`supersedesReading`, `lib/lab-result-lifecycle.ts`): a changed value, unit or
+date, or an incoming `corrected`/`amended` status the stored row didn't already
+carry. An idempotent re-send of the rolling window stays `unchanged` and writes
+nothing; a re-canonicalization changes how a reading is FILED, not what it said, so
+it updates in place with no revision row; and an edit-locked row is still skipped
+entirely (there is no overwrite, so there is nothing to preserve). A revision is
+provenance, never an observation: it is a CHILD (no `profile_id`, reached through
+`record_id`, ON DELETE CASCADE), so it never charts, counts or dedupes, it rides
+along with its reading through a document delete/reassign, and the undo registry
+restores it with the reading. Sources that state a result status thread it through
+`NormVital.result_status`; the deterministic FHIR importer maps
+`Observation.status` onto the same four-value vocabulary.
+
 **Weather / UV — keyless pull + a GLOBAL location cache (#1172).** The
 Open-Meteo weather/UV provider (`registry.ts` id `weather`, kind `public` — a
 keyless pull needing no account/credential, only the profile's home location)
@@ -146,7 +169,11 @@ SELECT-before-compare and routes the insert/update/unchanged split through the
 shared `classifyUpsert`/`tallyUpsert`, and each run appends one
 `integration_sync_events` row under the acting profile (the cache has no
 manually-entered rows, so the "never overwrite a manual row" invariant is
-satisfied by there being none). The two-sided **UV-dose model** is ONE pure
+satisfied by there being none). Since #1614 the `public` kind is admitted to
+`RECURRING_SOURCE_KINDS`, so Weather renders as a Connected source in Data →
+Review — latest state plus expandable history, no Sync-now button, a link back
+to its own settings — instead of surfacing only under Needs attention when
+failing. The two-sided **UV-dose model** is ONE pure
 computation (`lib/uv-dose.ts` `computeUvDose`, #221) that the read layer
 (`lib/queries/weather.ts` `getUvDoseForDay`) feeds after applying the
 **degradation ladder** live → clear-sky (`uv_index_clear_sky`, else the
@@ -164,4 +191,16 @@ Idempotency makes this safe: a mid-batch failure leaves the committed chunks in
 place and the next rolling-window push re-covers the rest; the edit-lock and
 tombstone pre-image are re-read per chunk, and every chunk's split still folds
 into ONE `recordSyncEvent` per push (the #14 accounting is per-push, not
-per-chunk).
+per-chunk). Since #1614 that failure event is honest about what landed:
+provenance sinks are chunk-transactional, `HealthConnectWriteError` carries the
+committed split, and the route records ONE `ok=0` event with the real counts
+plus drillable per-row provenance (mirroring the Fitbit Takeout shape from
+#1617) instead of null counts over durable rows.
+
+**Truncated pull runs (#1614).** A Strava/Oura/Withings run cut short by a page
+cap or 429 stays `ok=1` (its rows landed and the cursor deliberately does not
+advance), but its event carries `details.truncated` plus a standard Review
+line — written through the one `truncatedSyncDetails()` shape in
+`lib/integrations/sync-details.ts` — and the Connected-sources card badges it
+"partial" instead of a clean green success. The marker survives the details
+char-budget bounding by construction.

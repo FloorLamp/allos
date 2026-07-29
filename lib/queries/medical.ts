@@ -1,12 +1,8 @@
 import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
 import { biomarkerFamily } from "../canonical-name";
-import { BIOMARKER_FAMILY_FN } from "../sql-functions";
-import {
-  panelKeyOfExpr,
-  panelOrderOfPanelExpr,
-  type PanelId,
-} from "../biomarker-panels";
+import { BIOMARKER_FAMILY_FN, BIOMARKER_PANEL_FN } from "../sql-functions";
+import { panelOrderOfPanelExpr, type PanelId } from "../biomarker-panels";
 import type {
   CanonicalBiomarker,
   MedicalDocument,
@@ -29,6 +25,12 @@ export {
   type ImmunizationOverrideRow,
 } from "./medical/immunizations";
 export { previewReconcileFlags, reconcileFlags } from "./medical/flags";
+export {
+  getRecordRevisions,
+  getRevisionsByRecord,
+  insertRecordRevision,
+  type RevisionSnapshot,
+} from "./medical/revisions";
 export {
   detectRecordUnitMislabel,
   getUnitMislabelReviews,
@@ -116,13 +118,24 @@ function familyKeyOfExpr(nameExpr: string): string {
 export function biomarkerFamilyKey(alias = ""): string {
   return familyKeyOfExpr(biomarkerNameKey(alias));
 }
-// The normalized PANEL slug as a SQL expression (#1502) — the finite-preimage
-// (#394) realization of panelForCanonicalName(), built over the same canonical-or-
-// raw display-name key the family grouping uses, from the SAME curated assignment
-// the JS resolver reads (lib/biomarker-panels.ts). A name the taxonomy doesn't know
-// falls through to 'other'. Pass a table alias for a self-join.
+// The normalized PANEL slug as a SQL expression (#1502), over the same canonical-or-
+// raw display-name key the family grouping uses. A name the taxonomy doesn't know
+// resolves to 'other'. Pass a table alias for a self-join.
+//
+// Like the family key above, it calls the SAME pure panelForCanonicalName() the JS
+// surfaces do, through the `biomarker_panel()` SQLite user function lib/db.ts
+// registers (see lib/sql-functions.ts). This USED to be a generated finite-preimage
+// (#394) `CASE WHEN lower(name) IN (<member spellings>)` over each panel's enumerated
+// members — which inherited the #1401 blind spot one level up (#1629): a stored name
+// caught only by a family's freeform `match` matcher was a family member to the
+// family key but panel 'other' to THIS expression, so the Biomarkers panel facet and
+// the Timeline panel titles could file one reading of a family under its clinical
+// panel and a sibling reading of the same family under "Other". Behavior is otherwise
+// unchanged: every enumerated spelling resolves to the identical slug, and an unknown
+// name still resolves to 'other' (including a NULL name — the resolver maps blank to
+// the fallback exactly as the CASE's ELSE did).
 export function biomarkerPanelKey(alias = ""): string {
-  return panelKeyOfExpr(biomarkerNameKey(alias));
+  return `${BIOMARKER_PANEL_FN}(${biomarkerNameKey(alias)})`;
 }
 const BIOMARKER_PANEL_KEY = biomarkerPanelKey();
 // The panel's curated sort order, over the slug the expression above resolves.
@@ -322,6 +335,10 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
        SELECT *,
               (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
                 AS provider_name,
+              -- The ORDERING clinician (#1404), a separate link from the performing
+              -- lab above, resolved for display the same way.
+              (SELECT p.name FROM providers p WHERE p.id = medical_records.ordering_provider_id)
+                AS ordering_provider_name,
               (${LATEST_IN_GROUP}) AS is_latest FROM medical_records ${clause} ORDER BY ${orderBy}`
     )
     .all(profileId, profileId, ...args) as MedicalRecord[];
@@ -549,7 +566,9 @@ export function getRecordsForDocument(
     .prepare(
       `SELECT *,
               (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
-                AS provider_name
+                AS provider_name,
+              (SELECT p.name FROM providers p WHERE p.id = medical_records.ordering_provider_id)
+                AS ordering_provider_name
          FROM medical_records WHERE ${where.join(" AND ")} ORDER BY ${orderBy}`
     )
     .all(...args) as MedicalRecord[];

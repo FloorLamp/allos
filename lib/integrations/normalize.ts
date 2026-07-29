@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import type { ActivityType, ActivityComponent } from "@/lib/types";
+import type { ActivityType, ActivityComponent, MedicalFlag } from "@/lib/types";
+import {
+  normalizeResultStatus,
+  supersedesReading,
+} from "@/lib/lab-result-lifecycle";
+import { insertRecordRevision } from "@/lib/queries/medical/revisions";
 import {
   hasBodyMetric,
   mergeBodyMetricPartialAware,
@@ -277,6 +282,12 @@ export interface NormVital {
   canonical: string;
   value_num: number;
   unit: string;
+  // The result's place in the lab lifecycle when the SOURCE states one (#1404) —
+  // FHIR `Observation.status`: preliminary / final / corrected / amended. Optional:
+  // a device/vitals feed states nothing, which stays NULL ("unstated"), never a
+  // guessed 'final'. A source that re-issues a value as 'corrected' makes the
+  // supersession explicit rather than leaving it to be inferred from the diff.
+  result_status?: string | null;
 }
 
 export interface IngestCounts {
@@ -598,6 +609,15 @@ export function upsertHrMinutes(
 // manual + document-extracted rows). Returns the affected row ids so the caller can
 // run reconcileFlags() to set out-of-range flags. `value` mirrors value_num as text
 // (the medical UI shows `value`).
+//
+// A re-issued result (#1404) does NOT silently replace what the user already read:
+// when the incoming row supersedes the stored one — a changed value/unit/date, or an
+// incoming status the source itself calls corrected/amended — the prior state is
+// preserved as a medical_record_revisions child row FIRST, inside this same
+// transaction, and only then is the reading updated in place. The reading keeps its
+// id (every link, star, dismissal and provenance row points at it), and the value it
+// used to hold is still there to show. An idempotent re-send of the rolling window
+// is `unchanged` and writes nothing at all.
 const VITAL_COMPARE_COLS: string[] = [
   "date",
   "category",
@@ -606,6 +626,7 @@ const VITAL_COMPARE_COLS: string[] = [
   "value_num",
   "unit",
   "canonical_name",
+  "result_status",
 ];
 
 export function upsertVitals(
@@ -615,18 +636,19 @@ export function upsertVitals(
   sink?: SyncRowSink
 ): { ids: number[]; counts: UpsertCounts } {
   const find = db.prepare(
-    `SELECT id, edited, date, category, name, value, value_num, unit, canonical_name
+    `SELECT id, edited, date, category, name, value, value_num, unit, canonical_name,
+            reference_range, flag, result_status
        FROM medical_records WHERE profile_id = ? AND external_id = ?`
   );
   const insert = db.prepare(
     `INSERT INTO medical_records
-       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id, result_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE medical_records
        SET date = ?, category = ?, name = ?, value = ?, value_num = ?, unit = ?,
-           canonical_name = ?
+           canonical_name = ?, result_status = ?
      WHERE id = ?`
   );
   // Re-import tombstones for medical_records vitals (#508), keyed by external_id.
@@ -656,6 +678,7 @@ export function upsertVitals(
       // Resolved post-image (note the incoming `canonical` maps to the stored
       // `canonical_name` column). The `flag` column isn't compared: it's set out
       // of band by reconcileFlags, not by this write.
+      const status = normalizeResultStatus(r.result_status);
       const post = {
         date: r.date,
         category: r.category,
@@ -664,12 +687,46 @@ export function upsertVitals(
         value_num: r.value_num,
         unit: r.unit,
         canonical_name: r.canonical,
+        result_status: status,
       };
       const disposition = classifyUpsert(
         true,
         rowsEqual(VITAL_COMPARE_COLS, found, post)
       );
       if (disposition === "updated") {
+        // A re-ISSUED result — a changed value/unit/date, or an incoming status the
+        // source itself calls corrected/amended — preserves what it replaces BEFORE
+        // the overwrite (#1404), in this same transaction. A re-canonicalization or
+        // a category re-classification changes how the reading is FILED, not what it
+        // SAID, so it updates in place with no revision row (supersedesReading owns
+        // that distinction — one computation).
+        if (
+          supersedesReading(
+            {
+              date: found.date as string | null,
+              value: found.value as string | null,
+              value_num: found.value_num as number | null,
+              unit: found.unit as string | null,
+              result_status: found.result_status as string | null,
+            },
+            { ...post, result_status: status }
+          )
+        ) {
+          insertRecordRevision(
+            found.id,
+            {
+              date: found.date as string | null,
+              value: found.value as string | null,
+              value_num: found.value_num as number | null,
+              unit: found.unit as string | null,
+              reference_range: found.reference_range as string | null,
+              flag: found.flag as MedicalFlag | null,
+              result_status: found.result_status as string | null,
+            },
+            status,
+            source
+          );
+        }
         update.run(
           r.date,
           r.category,
@@ -678,6 +735,7 @@ export function upsertVitals(
           r.value_num,
           r.unit,
           r.canonical,
+          status,
           found.id
         );
       }
@@ -703,7 +761,8 @@ export function upsertVitals(
         r.unit,
         r.canonical,
         source,
-        r.external_id
+        r.external_id,
+        normalizeResultStatus(r.result_status)
       );
       const newId = Number(info.lastInsertRowid);
       ids.push(newId);

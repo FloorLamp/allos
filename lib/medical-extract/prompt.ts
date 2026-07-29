@@ -2,6 +2,7 @@
 // schema, and building the per-document content blocks sent to the model.
 import Anthropic from "@anthropic-ai/sdk";
 import { CATEGORIES, FLAGS } from "./constants";
+import { RESULT_STATUSES } from "../lab-result-lifecycle";
 import { ext, IMAGE_TYPES, spreadsheetToText } from "./files";
 
 export const SYSTEM = `You are a medical-records data-extraction engine. You are given a single
@@ -36,6 +37,15 @@ Rules:
   non-numeric out-of-range results, "normal" or null otherwise.
 - panel: the panel/section heading it appeared under (e.g. "Lipid Panel", "CBC",
   "Comprehensive Metabolic Panel", "Body Composition"), else null.
+- result_status: ONLY when the report states the result's status — "preliminary",
+  "final", "corrected", or "amended" (a "CORRECTED REPORT" / "AMENDED" banner or a
+  per-analyte status column). A corrected/amended result is a re-issue of a value the
+  patient may already have seen, so never guess it, and never write "final" just
+  because the report looks routine — leave null when nothing is stated.
+- fasting: 1 when the report states the specimen was drawn FASTING, 0 when it states
+  it was non-fasting/random, null when it doesn't say. Never infer from the analyte.
+- specimen: the specimen as printed ("Serum", "Plasma", "Whole Blood", "Urine",
+  "RBC", "Urine, 24-hour"), else null.
 - notes: leave null. Only set it for a short (<12 words) clinically meaningful note; never
   copy reference paragraphs, citations, methodology, or boilerplate disclaimers.
 - prescription: when a result is a MEDICATION (category "prescription") read off a pharmacy
@@ -203,6 +213,22 @@ export const TOOL: Anthropic.Tool = {
             unit: { type: ["string", "null"] },
             reference_range: { type: ["string", "null"] },
             flag: { type: ["string", "null"], enum: [...FLAGS, null] },
+            result_status: {
+              type: ["string", "null"],
+              enum: [...RESULT_STATUSES, null],
+              description:
+                "The result's stated status: preliminary / final / corrected / amended. Null unless the report states it — a corrected or amended result re-issues a value the patient may already have read.",
+            },
+            fasting: {
+              type: ["number", "null"],
+              description:
+                "1 when the report states the draw was fasting, 0 when it states non-fasting, null when unstated. Never inferred from the analyte.",
+            },
+            specimen: {
+              type: ["string", "null"],
+              description:
+                "Specimen as printed: Serum, Plasma, Whole Blood, Urine, RBC, ... Null when unstated.",
+            },
             collected_date: { type: ["string", "null"] },
             notes: { type: ["string", "null"] },
             prescription: {

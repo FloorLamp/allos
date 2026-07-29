@@ -37,6 +37,19 @@ function recordRows(profileId: number) {
   }[];
 }
 
+// The #1404 lifecycle/collection columns for one reading.
+function attributesOf(id: number) {
+  return db
+    .prepare(
+      "SELECT fasting, specimen, result_status FROM medical_records WHERE id = ?"
+    )
+    .get(id) as {
+    fasting: number | null;
+    specimen: string | null;
+    result_status: string | null;
+  };
+}
+
 beforeEach(() => revalidate.mockClear());
 
 describe("addRecord", () => {
@@ -153,6 +166,124 @@ describe("updateRecord", () => {
     expect(row.flag).toBeNull();
     const latest = getLatestMedicalRecordByCanonical(profile.id, "glucose");
     expect(latest?.value_num).toBe(85);
+  });
+});
+
+describe("the result lifecycle + collection attributes round-trip (#1404)", () => {
+  it("adds a FASTING glucose and keeps its fasting state, specimen and status", async () => {
+    const { profile } = seedActor();
+    await addRecord(
+      fd({
+        date: "2026-01-15",
+        category: "lab",
+        name: "Glucose, Fasting",
+        value: "92",
+        unit: "mg/dL",
+        canonical_name: "Glucose, Fasting",
+        fasting: "1",
+        specimen: "Plasma",
+        result_status: "final",
+      })
+    );
+    const id = recordRows(profile.id)[0].id;
+    expect(attributesOf(id)).toEqual({
+      fasting: 1,
+      specimen: "Plasma",
+      result_status: "final",
+    });
+  });
+
+  it("leaves an unstated attribute NULL rather than guessing it", async () => {
+    const { profile } = seedActor();
+    // The form's "—" options post empty strings; an absent field posts nothing.
+    await addRecord(
+      fd({
+        date: "2026-01-15",
+        category: "lab",
+        name: "Glucose",
+        value: "92",
+        fasting: "",
+        specimen: "   ",
+        result_status: "",
+      })
+    );
+    expect(attributesOf(recordRows(profile.id)[0].id)).toEqual({
+      fasting: null,
+      specimen: null,
+      result_status: null,
+    });
+  });
+
+  it("refuses a crafted status/fasting value instead of tripping the CHECK (#385)", async () => {
+    const { profile } = seedActor();
+    // A stale/crafted POST carrying a value the column's CHECK forbids must be
+    // normalized to "unstated" server-side, never reach SQLite and 500.
+    const result = await addRecord(
+      fd({
+        date: "2026-01-15",
+        category: "lab",
+        name: "Glucose",
+        value: "92",
+        fasting: "7",
+        result_status: "registered",
+      })
+    );
+    expect(result.ok).toBe(true);
+    expect(attributesOf(recordRows(profile.id)[0].id)).toEqual({
+      fasting: null,
+      specimen: null,
+      result_status: null,
+    });
+  });
+
+  it("edits them, and links the ORDERING clinician apart from the performing lab", async () => {
+    const { profile } = seedActor();
+    await addRecord(
+      fd({
+        date: "2026-01-15",
+        category: "lab",
+        name: "Potassium",
+        value: "5.2",
+      })
+    );
+    const id = recordRows(profile.id)[0].id;
+
+    await updateRecord(
+      fd({
+        id,
+        date: "2026-01-15",
+        category: "lab",
+        name: "Potassium",
+        value: "4.4",
+        canonical_name: "Potassium",
+        result_status: "corrected",
+        fasting: "0",
+        specimen: "Serum",
+        provider: "Meridian Reference Labs",
+        ordering_provider: "Ada Lovelace, MD",
+      })
+    );
+
+    expect(attributesOf(id)).toEqual({
+      fasting: 0,
+      specimen: "Serum",
+      result_status: "corrected",
+    });
+    // Two DISTINCT registry links: "Dr. A ordered it, the lab ran it" no longer
+    // collapses onto one provider_id.
+    const links = db
+      .prepare(
+        `SELECT (SELECT name FROM providers WHERE id = mr.provider_id) AS performed,
+                (SELECT name FROM providers WHERE id = mr.ordering_provider_id) AS ordered
+           FROM medical_records mr WHERE mr.id = ? AND mr.profile_id = ?`
+      )
+      .get(id, profile.id) as {
+      performed: string | null;
+      ordered: string | null;
+    };
+    expect(links.performed).toBe("Meridian Reference Labs");
+    expect(links.ordered).toBe("Ada Lovelace, MD");
+    expect(links.performed).not.toBe(links.ordered);
   });
 });
 

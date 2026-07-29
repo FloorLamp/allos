@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 120 (issue #1610): give an exercise-linked goal an OPTIONAL load
+// Migration 121 (issue #1610): give an exercise-linked goal an OPTIONAL load
 // context — the registry implement its progress is measured on.
 //
 // Two registry machines both serialize as the exact same logged exercise name
@@ -56,7 +56,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 120,
-  name: "120-goal-equipment-context",
+  id: 121,
+  name: "121-goal-equipment-context",
   up,
 };

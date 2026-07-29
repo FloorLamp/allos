@@ -1,8 +1,9 @@
 // DB INTEGRATION TIER — the normalized panel taxonomy against real SQL (#1502).
 //
 // The taxonomy's pure guards live in lib/__tests__/biomarker-panels.test.ts. What
-// only a real DB can prove is that the finite-preimage SQL realization (#394)
-// actually behaves like the JS resolver inside the query layer: that the Timeline
+// only a real DB can prove is that the SQL realization — post-#1629 the
+// `biomarker_panel()` user function, not a generated preimage CASE — actually
+// behaves like the JS resolver inside the query layer: that the Timeline
 // groups and titles a multi-panel draw by CLINICAL panel instead of the lab-vendor
 // heading, that the biomarkers facet filters by resolved panel rather than the
 // stored `panel` column, and that the stored column is left untouched as
@@ -12,7 +13,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { getTimelineEvents } from "@/lib/timeline";
 import { getMedicalRecords } from "@/lib/queries";
-import { panelForCanonicalName } from "@/lib/biomarker-panels";
+import {
+  BIOMARKER_PANELS,
+  OTHER_PANEL,
+  panelForCanonicalName,
+  panelMemberSpellings,
+  type PanelId,
+} from "@/lib/biomarker-panels";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let subject: SeededProfile;
@@ -186,5 +193,98 @@ describe("the biomarkers facet filters by resolved panel", () => {
       )
       .all(subject.profileId, DRAW_DATE) as { panel: string | null }[];
     expect(stored.map((r) => r.panel)).toEqual(["Meridian Reference Labs"]);
+  });
+});
+
+// ---- #1629: the panel facet resolves a MATCH-ONLY family spelling ------------
+//
+// The panel key used to be a second, independent realization of panel membership —
+// a generated `IN (<enumerated member spellings>)` CASE. A stored display name that
+// only a family's freeform `match` matcher catches (an un-snapped AI-coined A1c
+// spelling) was therefore a full family member to the family key (post-#1627 SQL
+// calls biomarkerFamily(), so dedup / is_latest / star / retest all agreed) and
+// panel `other` to the panel facet — so one reading of a family filed under its
+// clinical panel while its canonical sibling filed under "Other". The panel key now
+// calls the same pure resolver, so both agree on every name.
+describe("a match-only family spelling files under its family's panel (#1629)", () => {
+  let drifter: SeededProfile;
+  const DAY = "2026-01-21";
+  // Caught by isA1cFamily's regex, in NO family `members` list and in no panel's
+  // enumerated assignment — the exact shape the old preimage could not see.
+  const MATCH_ONLY = "HbA1c (Whole Blood)";
+
+  beforeAll(() => {
+    drifter = seedProfile("PanelMatchOnly");
+    const ins = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit, panel, canonical_name)
+       VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, ?)`
+    );
+    // The canonical sibling and the un-snapped spelling, same analyte, same draw.
+    ins.run(
+      drifter.profileId,
+      DAY,
+      "Hemoglobin A1c",
+      "5.4",
+      5.4,
+      "%",
+      "Meridian Reference Labs",
+      "Hemoglobin A1c"
+    );
+    ins.run(
+      drifter.profileId,
+      DAY,
+      MATCH_ONLY,
+      "5.6",
+      5.6,
+      "%",
+      "Meridian Reference Labs",
+      MATCH_ONLY
+    );
+  });
+
+  it("`?panel=glycemic` returns BOTH spellings of the family", () => {
+    const names = getMedicalRecords(drifter.profileId, {
+      panel: "glycemic",
+    }).map((r) => r.name);
+    expect(names).toContain("Hemoglobin A1c");
+    expect(names).toContain(MATCH_ONLY);
+  });
+
+  it("`?panel=other` no longer strands it away from its siblings", () => {
+    const rows = getMedicalRecords(drifter.profileId, { panel: "other" });
+    expect(rows.map((r) => r.name)).not.toContain(MATCH_ONLY);
+  });
+
+  it("the Timeline files both readings under ONE clinical panel event", () => {
+    const events = getTimelineEvents(drifter.profileId, {
+      category: "medical",
+      startDate: DAY,
+      endDate: DAY,
+    });
+    const titles = events.map((e) => e.title);
+    expect(titles).toEqual(["Glucose & insulin results"]);
+    expect(events[0].subtitle).toContain("2 results");
+  });
+
+  it("the biomarker_panel() user function agrees with the JS resolver", () => {
+    // Walk the enumerated corpus (its surviving job) plus the match-only spelling
+    // and the NULL/blank name, straight through SQL.
+    const call = db.prepare("SELECT biomarker_panel(?) AS panel");
+    const names = [
+      ...(Object.keys(BIOMARKER_PANELS) as Exclude<PanelId, "other">[]).flatMap(
+        (id) => panelMemberSpellings(id)
+      ),
+      MATCH_ONLY,
+      "Zorblax Index",
+      "",
+    ];
+    for (const name of names)
+      expect((call.get(name) as { panel: string }).panel, name).toBe(
+        panelForCanonicalName(name)
+      );
+    // A NULL display name resolves to the reserved fallback, exactly as the CASE's
+    // ELSE did — never NULL, which would match no facet at all.
+    expect((call.get(null) as { panel: string }).panel).toBe(OTHER_PANEL);
   });
 });

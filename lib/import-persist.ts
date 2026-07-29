@@ -12,6 +12,11 @@ import { resolveProviderId } from "./providers-db";
 import { cleanProviderInput, providerDedupKey } from "./providers";
 import type { ImportedProvider } from "./health-import";
 import type { PersistInput } from "./import-shape";
+import {
+  normalizeResultStatus,
+  parseFasting,
+  sanitizeSpecimen,
+} from "./lab-result-lifecycle";
 import { evictPreviewsForDocument } from "./reprocess-preview-cache";
 export {
   applyImportFollowups,
@@ -723,8 +728,8 @@ function insertImportRows(
     `INSERT OR IGNORE INTO medical_records
        (date, category, name, value, value_num, unit, reference_range, notes,
         panel, flag, canonical_name, document_id, source, external_id, provider_id,
-        profile_id, loinc)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        profile_id, loinc, result_status, fasting, specimen)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
 
   // Allergies + problem-list conditions. Own tables, same idempotency
@@ -981,7 +986,14 @@ function insertImportRows(
       scopedExternalId(r.external_id),
       providerIdFor(r.provider),
       profileId,
-      r.loinc ?? null
+      r.loinc ?? null,
+      // The result lifecycle + collection attributes the source stated (#1404).
+      // Normalized here, at the persist boundary, so a model's freeform status word
+      // or an unknown vocabulary value lands as NULL ("unstated") rather than in a
+      // column the CHECK would reject.
+      normalizeResultStatus(r.result_status),
+      parseFasting(r.fasting),
+      sanitizeSpecimen(r.specimen)
     );
     if (info.changes > 0) {
       recCount++;

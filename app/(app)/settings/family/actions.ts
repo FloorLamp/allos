@@ -350,6 +350,14 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
         `DELETE FROM integration_sync_rows WHERE event_id IN (
            SELECT id FROM integration_sync_events WHERE profile_id = ?)`
       ).run(id);
+      // Correction lineage (#1404), reached through medical_records (parent, OWNED).
+      // Its ON DELETE CASCADE FK is a no-op here because the sweep runs with
+      // foreign_keys OFF, so the child rows are cleared explicitly before the parent
+      // (mirrors exercise_sets/routine_days/integration_sync_rows above).
+      db.prepare(
+        `DELETE FROM medical_record_revisions WHERE record_id IN (
+           SELECT id FROM medical_records WHERE profile_id = ?)`
+      ).run(id);
 
       // Every directly profile-owned table, deleted by profile_id. (No FK cascade —
       // upgraded DBs got profile_id via addColumnIfMissing, which can't attach an ON

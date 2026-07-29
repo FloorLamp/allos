@@ -92,6 +92,14 @@ describe("undo-delete registry", () => {
       },
       // #1050: the visit link nulls on restore when its encounter is gone.
       { column: "encounter_id", table: "encounters", onMissing: "null" },
+      // #1404: the ORDERING provider link is the same enforced global FK as
+      // provider_id, so it nulls on restore the same way.
+      {
+        column: "ordering_provider_id",
+        table: "providers",
+        onMissing: "null",
+        global: true,
+      },
     ]);
 
     // #455: intake_items.provider_id is the SAME real enforced FK (migration 006),

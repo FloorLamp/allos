@@ -1,4 +1,5 @@
 import { classifyLoinc } from "../biomarker-loinc";
+import { normalizeResultStatus } from "../lab-result-lifecycle";
 import {
   allergyExternalId,
   careGoalExternalId,
@@ -201,6 +202,16 @@ export function observationRecords(
   // (#681/#684/#722) — the shared isUnmappedLabLoinc already excludes them from the
   // unmapped-code report, so without this the FHIR path would persist them as junk
   // labs that never surface in that report (#693).
+  // The result LIFECYCLE (#1404): FHIR `Observation.status` is exactly the
+  // preliminary/final/corrected/amended distinction medical_records.result_status
+  // stores, and dropping it is what let a re-issued value overwrite its predecessor
+  // with nothing to show for it. normalizeResultStatus keeps only those four — the
+  // retraction states (entered-in-error/cancelled) were already dropped above, and
+  // `registered`/`unknown` assert nothing about the value, so they stay NULL rather
+  // than being flattened into a 'final' the bundle never claimed.
+  const resultStatus = normalizeResultStatus(
+    typeof r?.status === "string" ? r.status : null
+  );
   return out
     .filter((rec) => {
       // Drop the same administrative/percentile codes the CDA mapper drops
@@ -208,7 +219,11 @@ export function observationRecords(
       const d = classifyLoinc(rec.loinc).disposition;
       return d !== "non-analyte" && d !== "percentile";
     })
-    .map((rec) => ({ ...rec, encounter_external_id: encExt }));
+    .map((rec) => ({
+      ...rec,
+      encounter_external_id: encExt,
+      result_status: resultStatus,
+    }));
 }
 
 // Back-compat single-reading accessor: the FIRST reading an Observation yields, or

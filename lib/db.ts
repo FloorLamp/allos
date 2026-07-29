@@ -48,8 +48,9 @@ function createDb(): Database.Database {
   const db = new Database(dbPath);
   // Shared SQL user functions (lib/sql-functions.ts) — registered on the handle
   // BEFORE anything prepares a statement, since a query that calls one fails to
-  // prepare if the function is missing. They are pure and deterministic; the only
-  // one today is biomarker_family(), the SQL half of the #482 identity family.
+  // prepare if the function is missing. They are pure and deterministic:
+  // biomarker_family(), the SQL half of the #482 identity family, and
+  // biomarker_panel(), the SQL half of the #1502 panel taxonomy.
   registerSqlFunctions(db);
   // busy_timeout MUST be the FIRST pragma set — before journal_mode = WAL (issue
   // #581). Parallel `next build` workers all open this same file on a cold boot and

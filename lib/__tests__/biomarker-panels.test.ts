@@ -8,7 +8,6 @@ import {
   PANEL_IDS,
   PANEL_LABELS,
   panelForCanonicalName,
-  panelKeyOfExpr,
   panelLabel,
   panelMemberSpellings,
   panelOrderOfPanelExpr,
@@ -242,26 +241,14 @@ describe("panel label + slug parsing", () => {
   });
 });
 
-describe("the SQL finite-preimage realization (#394)", () => {
-  it("emits one WHEN per clinical panel and falls through to 'other'", () => {
-    const sql = panelKeyOfExpr("name");
-    for (const id of Object.keys(BIOMARKER_PANELS))
-      expect(sql).toContain(`THEN '${id}'`);
-    expect(sql.trimEnd().endsWith("ELSE 'other' END")).toBe(true);
-  });
-
-  it("inlines only single-quote-escaped literals (injection-safe)", () => {
-    const sql = panelKeyOfExpr("name");
-    // Every canonical name is a plain literal; the only quotes present are the
-    // delimiters and doubled-up escapes. A stray unescaped quote would break the
-    // parity of the quote count.
-    expect(sql.split("'").length % 2).toBe(1);
-    expect(sql).not.toMatch(/;|--/);
-  });
-
-  it("agrees with the JS matcher for every canonical name AND family spelling", () => {
-    // The preimage is what SQL uses; the matcher is what JS uses. If they can
-    // disagree, the Timeline's grouping and the browser's facet disagree.
+describe("the JS↔SQL parity corpus", () => {
+  // SQL no longer re-realizes panel membership — lib/queries/medical.biomarkerPanelKey
+  // calls panelForCanonicalName() through the `biomarker_panel()` user function
+  // (#1629), so the two answers agree on EVERY name by construction, not just the
+  // enumerated ones. What survives here is the corpus itself: panelMemberSpellings
+  // must stay a faithful subset of the resolver, so the DB-tier parity walk
+  // (lib/__db_tests__/biomarker-panels.test.ts) is walking real spellings.
+  it("every corpus spelling resolves to the panel it was collected under", () => {
     for (const id of Object.keys(BIOMARKER_PANELS) as Exclude<
       PanelId,
       "other"
@@ -269,17 +256,33 @@ describe("the SQL finite-preimage realization (#394)", () => {
       for (const spelling of panelMemberSpellings(id))
         expect(panelForCanonicalName(spelling), spelling).toBe(id);
     }
-    // …and every canonical name appears in exactly one panel's preimage.
-    const preimage = new Map<string, PanelId>();
+    // …and every canonical name appears in exactly one panel's corpus.
+    const corpus = new Map<string, PanelId>();
     for (const id of Object.keys(BIOMARKER_PANELS) as Exclude<
       PanelId,
       "other"
     >[])
-      for (const s of panelMemberSpellings(id)) preimage.set(s, id);
+      for (const s of panelMemberSpellings(id)) corpus.set(s, id);
     for (const name of CANONICAL_NAMES)
-      expect(preimage.get(name.toLowerCase()), name).toBe(
+      expect(corpus.get(name.toLowerCase()), name).toBe(
         panelForCanonicalName(name)
       );
+  });
+
+  it("resolves a match-only family spelling the corpus can NEVER enumerate", () => {
+    // The #1629 defect in pure form: an un-snapped A1c spelling no family `members`
+    // list contains is still the A1c family (its `match` matcher catches it), so the
+    // panel taxonomy must place it with its canonical siblings — the enumerated
+    // corpus, by construction, cannot.
+    const matchOnly = "HbA1c (Whole Blood)";
+    const corpus = new Set(
+      (Object.keys(BIOMARKER_PANELS) as Exclude<PanelId, "other">[]).flatMap(
+        (id) => panelMemberSpellings(id)
+      )
+    );
+    expect(corpus.has(matchOnly.toLowerCase())).toBe(false);
+    expect(biomarkerFamily(matchOnly)).toBe(biomarkerFamily("Hemoglobin A1c"));
+    expect(panelForCanonicalName(matchOnly)).toBe("glycemic");
   });
 
   it("panelOrderOfPanelExpr maps every slug to its curated order", () => {

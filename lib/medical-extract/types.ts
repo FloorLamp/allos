@@ -40,6 +40,15 @@ export interface ExtractedResult {
   // Optional so existing ExtractedResult constructors (test fixtures) need no
   // change; normalizeResults always sets it (null when absent).
   prescription?: ExtractedPrescription | null;
+  // The result LIFECYCLE + collection attributes a lab report PRINTS (#1404), when
+  // it prints them: a "CORRECTED REPORT" / "Preliminary" banner, a "Fasting: Yes"
+  // line, a "Specimen: Serum" line. All null when the document is silent — an
+  // unstated status is not 'final', and an unstated fasting state is not
+  // "non-fasting". Optional for the same fixture reason as `prescription`;
+  // normalizeResults always sets them.
+  result_status?: string | null;
+  fasting?: number | null;
+  specimen?: string | null;
 }
 
 // One vaccine administration extracted from an immunization record / vaccine
