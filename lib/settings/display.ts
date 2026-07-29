@@ -227,79 +227,19 @@ export function setTrendViews(
   setProfileSetting(profileId, "trend_views", serializeViews(views));
 }
 
-// Per-profile, per-TAB Trends card arrangement (#1490 — the override half).
+// The retired `trends_card_order` accessors lived here until #1643. #1490 shipped a
+// per-profile, per-tab card ARRANGEMENT blob as the override half of the ranked
+// default, on the assumption that a drag affordance would follow. None ever did:
+// `saveTrendsCardOrder` had no UI writer, so the key never held a production row.
+// Meanwhile Trends already HAD a user-arrangement substrate — `saved_items`, which
+// the Overview grid's ★, drag and ⋯-menu arrows all write (#1456/#1487/#1485-C).
 //
-// A ranked DEFAULT order (lib/trends-card-rank.ts) serves a profile that has never
-// arranged a tab. The moment a user drags a card, THEIR order wins permanently and
-// nothing re-ranks it — the whole point of chart cards being a place, not a feed.
-// This is the storage for that arrangement.
-//
-// Storage shape follows the `dashboard_layout` precedent (a defensively-parsed JSON
-// blob in profile_settings) rather than `saved_items`: saved_items answers Overview
-// MEMBERSHIP (#1487 — which tiles a profile pinned), a different question from a
-// tab's card SEQUENCE. One key holds every tab, so a new tab needs no new key.
-// Ids are NOT validated against the registry — `mergeStoredOrder` drops unknown
-// ids and appends unseen ones at their ranked position, so a client on an older or
-// newer catalog can never corrupt the rest.
-export type TrendsCardArrangements = Record<string, string[]>;
-
-function parseArrangements(
-  v: string | null | undefined
-): TrendsCardArrangements {
-  if (!v) return {};
-  try {
-    const parsed = JSON.parse(v);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-      return {};
-    const out: TrendsCardArrangements = {};
-    for (const [tab, ids] of Object.entries(parsed)) {
-      if (!Array.isArray(ids)) continue;
-      const clean = [
-        ...new Set(
-          ids
-            .filter((x): x is string => typeof x === "string")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        ),
-      ];
-      if (clean.length > 0) out[tab] = clean;
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-// Every stored per-tab arrangement for a profile.
-export function getTrendsCardArrangements(
-  profileId: number
-): TrendsCardArrangements {
-  return parseArrangements(getProfileSetting(profileId, "trends_card_order"));
-}
-
-// One tab's stored arrangement, or null when the profile has never arranged it —
-// null is what tells the ranker "you own this order".
-export function getTrendsCardOrder(
-  profileId: number,
-  tab: string
-): string[] | null {
-  const stored = getTrendsCardArrangements(profileId)[tab];
-  return stored && stored.length > 0 ? stored : null;
-}
-
-// Persist (or clear, with an empty list) one tab's arrangement, leaving the other
-// tabs untouched.
-export function setTrendsCardOrder(
-  profileId: number,
-  tab: string,
-  ids: readonly string[]
-): void {
-  const all = getTrendsCardArrangements(profileId);
-  const clean = [...new Set(ids.map((s) => s.trim()).filter(Boolean))];
-  if (clean.length === 0) delete all[tab];
-  else all[tab] = clean;
-  setProfileSetting(profileId, "trends_card_order", JSON.stringify(all));
-}
+// #1643 folded the Body tab onto that one store rather than completing a second:
+// starred cards lead in their saved order, the ranker sequences the remainder
+// (lib/trends-card-rank.ts `bodyCardOrder`, fed by `getBodyCardPins` in
+// lib/queries/trends-context.ts). Retiring the key needed NO migration and no
+// cleanup entry — with zero writers there is nothing stored to move or prune, and
+// the read path is simply gone.
 
 // Per-profile dashboard customization — the widget order + hidden
 // set, stored as a JSON blob (same key/value precedent as active situations).

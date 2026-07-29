@@ -4,12 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWriteAccess } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import {
-  getTrendViews,
-  setTrendViews,
-  setTrendsCardOrder,
-} from "@/lib/settings";
-import { parseTab } from "@/lib/trends-tabs";
+import { getTrendViews, setTrendViews } from "@/lib/settings";
 import {
   addView,
   deleteView,
@@ -110,43 +105,12 @@ export async function dismissBodyHygiene(
   return formOk();
 }
 
-// Persist a tab's card arrangement (#1490 — the override half of the ranked
-// default). Once a profile arranges a tab, THAT order wins forever: the ranker
-// stops deciding for that tab and only supplies the position of cards the stored
-// order has never seen (mergeStoredOrder). The drag affordance that calls this
-// belongs to #1485-C's reorder extension; the contract, the storage and the merge
-// live here so the order semantics are one decision, not a UI detail.
-//
-// Per-profile display state, so requireWriteAccess (any login acting as the
-// profile), never requireAdmin. Ids are stored verbatim and validated on READ
-// against the live registry — an unknown id can never corrupt the rest.
-export async function saveTrendsCardOrder(
-  formData: FormData
-): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const tab = parseTab(String(formData.get("tab") ?? "").trim());
-  const ids = String(formData.get("ids") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (ids.length === 0) return formError("Couldn't save that layout.");
-  setTrendsCardOrder(profile.id, tab, ids);
-  revalidatePath("/trends");
-  return formOk();
-}
-
-// Forget a tab's arrangement and fall back to the ranked default. The escape hatch
-// for "I dragged something and want the app's suggestion back" — without it, one
-// drag would be irreversible.
-export async function resetTrendsCardOrder(
-  formData: FormData
-): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const tab = parseTab(String(formData.get("tab") ?? "").trim());
-  setTrendsCardOrder(profile.id, tab, []);
-  revalidatePath("/trends");
-  return formOk();
-}
+// `saveTrendsCardOrder` / `resetTrendsCardOrder` lived here until #1643. They wrote
+// #1490's per-tab arrangement blob and never gained a UI caller, so the Body tab's
+// arrangement now runs on the ONE store the ★ already writes (`saved_items`): the
+// star toggle is app/(app)/saved/actions.ts `toggleSavedItem`, the sequence is its
+// `reorderSaved`, and lib/trends-card-rank.ts `bodyCardOrder` composes pinned-first
+// over the ranked remainder. There is no second arrangement action to keep in step.
 
 // Read the hub's current URL state off the submitted form into a params bag. The
 // client injects the live ?from/to/tab/cmpA/cmpB/cmpn values as hidden inputs, so

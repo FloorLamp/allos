@@ -17,6 +17,7 @@
 import { chartSeries } from "./chart-colors";
 import { shiftDateStr } from "./date";
 import { metricDetailHref, type AppRoute } from "./hrefs";
+import { metricSeriesKey, savedRefFromSeriesKey } from "./saved-items";
 import { filterSeriesByRange } from "./trends";
 import { applyCardOrder, type BodyCardId } from "./trends-card-rank";
 import type { DateRange } from "./timeline-format";
@@ -396,6 +397,36 @@ export function bodyMetricSlugForSavedId(id: string): BodyMetricSlug | null {
   )?.[0];
   if (legacy && isBodyMetricSlug(legacy)) return legacy;
   return isBodyMetricSlug(id) ? id : null;
+}
+
+// ── The ★ ↔ Body-card correspondence (#1643) ────────────────────────────────
+//
+// The Body tab's arrangement is driven by the SAVED store (`saved_items`), whose
+// vocabulary is the Trends SERIES KEY ("metric:weight", "bio:ApoB"); the tab's own
+// vocabulary is `BodyCardId`. ONE mapping answers both directions — the #482
+// one-identity rule, which is why it lives beside `savedMetricIdForBodySlug` (the
+// legacy-id table it composes) rather than being restated per surface: the Body
+// composition read (which cards are pinned) and the star affordance (what key the
+// ★ writes) must never disagree about what a card is called.
+//
+// Only cards that ARE registered body metrics are pinnable. The three non-metric
+// cards — the WHO/CDC growth-percentile card, the Sleep summary tile and the
+// intraday "HR (day)" card — have no savable series, so they answer `null` and can
+// only ever occupy their ranked slot. A saved trend-metric that is not a body
+// metric (training volume) likewise maps to no card.
+
+// A Trends series key → the Body card it pins, or null when it names no Body card.
+export function bodyCardIdForSeriesKey(seriesKey: string): BodyCardId | null {
+  const ref = savedRefFromSeriesKey(seriesKey);
+  if (!ref || ref.kind !== "trend-metric") return null;
+  return bodyMetricSlugForSavedId(ref.key);
+}
+
+// The inverse: the series key a Body card's ★ writes, or null when it is unpinnable.
+export function seriesKeyForBodyCard(id: BodyCardId): string | null {
+  return isBodyMetricSlug(id)
+    ? metricSeriesKey(savedMetricIdForBodySlug(id))
+    : null;
 }
 
 // Resolve a metric's display-unit suffix, appending the login's weight unit for a

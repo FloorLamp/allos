@@ -42,6 +42,7 @@ import {
   getGoals,
   getMoodLogs,
   buildTrendsSubjectContext,
+  getBodyCardPins,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
@@ -55,7 +56,6 @@ import {
   growthCardLeads,
   orderCardSections,
 } from "@/lib/trends-card-rank";
-import { getTrendsCardOrder } from "@/lib/settings";
 import {
   BODY_METRIC_META,
   bodyChartScale,
@@ -294,18 +294,38 @@ export default async function BodySection({
   // subject facts — life stage, live goals, monitored conditions, data presence —
   // so the old hand-rolled forks (planBodyCharts' `growthCardFirst` and the
   // trends-body-order recency sort) are one signal table now instead of two
-  // per-surface rules. A profile that has ARRANGED this tab keeps its own order
-  // forever; the ranked default only serves a never-arranged profile.
+  // per-surface rules.
+  //
+  // The USER's half of that order is the ★ (#1643): the profile's starred cards lead
+  // in their SAVED order — the same `saved_items` sequence the Overview grid's drag
+  // and ⋯-menu arrows write — and the ranker sequences everything unpinned. There is
+  // no second arrangement store; #1490's writerless `trends_card_order` key retired
+  // with this change.
   const ageYears = getUserAge(profile.id);
   const birthdate = getUserBirthdate(profile.id);
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
   const plan = planBodyCharts({ ageYears, ageMonths });
+  const pins = getBodyCardPins(profile.id);
   const cardOrder = bodyCardOrder(
     buildTrendsSubjectContext(profile.id, todayStr),
-    getTrendsCardOrder(profile.id, "body")
+    getBodyCardPins(profile.id)
   );
+
+  // WHERE THE ★ LIVES ON THIS TAB (#1643). Nowhere new — and that is the decision,
+  // not an omission. Every card here already taps through to its metric detail page
+  // (#1488's contract: the card's header IS one edge-to-edge target), and that page
+  // has carried the shipped ★ since #1456 for every registered Body slug. So the
+  // pinning gesture is one tap from every card in the census, through the affordance
+  // the card already promises.
+  //
+  // A corner ⋯ menu on each card was the obvious alternative and is the wrong trade:
+  // on a Body chart card and on a Body tile it takes ~40px out of exactly the link
+  // #1488 measures (e2e/chart-tap-through.spec.ts holds both to ≥95% of the card
+  // width), so twenty cards would pay a real tap-target cost for a second route to a
+  // gesture that is already one tap away. Overview's tiles keep their menu because
+  // membership is what that grid is for. The hint under the census names the path.
   // Body fat % is de-prioritized for a growth-tracked profile. #493: apply the ONE
   // showBodyFat predicate at EVERY interactive surface — the charts (via plan.keys),
   // the entry field, and the history column — so "not tracked" is consistent instead
@@ -1476,6 +1496,27 @@ export default async function BodySection({
               sleep={sleepGridTile}
               order={cardOrder}
             />
+
+            {/* How the arrangement works, said once (#1643) — under the census
+                rather than above it, so it explains what the reader just scanned
+                without pushing the tab's content down. The ★ is the ONLY thing that
+                reorders this tab, and the sequence of what you pin is the Overview
+                grid's saved order, so the hint names BOTH halves and where each
+                gesture lives instead of adding a second reorder affordance here. */}
+            <p
+              className="mt-3 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="body-pin-hint"
+            >
+              Star a metric on its own page — open any card — to pin it to the
+              top of this tab. Pinned cards follow your{" "}
+              <Link
+                href="/trends?tab=overview"
+                className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+              >
+                Overview
+              </Link>{" "}
+              order; drag them there to re-sequence them.
+            </p>
           </div>
 
           {/* The classic full-chart stack — desktop only. Carries the per-chart
