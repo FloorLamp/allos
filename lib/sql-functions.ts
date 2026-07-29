@@ -17,10 +17,22 @@
 // preimage, and with it the drift: JS and SQL now agree by construction on EVERY
 // name, not just the enumerated ones.
 //
-// The families' `members` lists stay declared — they are still the finite preimage
-// the PANEL taxonomy realizes (lib/biomarker-panels.panelMemberSpellings) and the
-// corpus the JS↔SQL parity tests pin — they are simply no longer the family key's
-// only realization.
+// `biomarker_panel(name)` is the same move one level up, for the PANEL taxonomy
+// (#1629). It is the SQL half of lib/biomarker-panels.panelForCanonicalName().
+// It replaces the generated `CASE WHEN lower(name) IN (<member spellings>)` preimage
+// panelKeyOfExpr built, which realized panel membership from each panel's ENUMERATED
+// member lists (plus the enumerated members of the families those names belong to)
+// and had the identical structural blind spot: a stored display name caught only by a
+// family's freeform `match` matcher was a full family member to the family key — which
+// post-#1627 calls the real matcher — but panel `other` to the panel facet, while its
+// canonical siblings carried the real panel. The Biomarkers panel filter and the
+// Timeline panel titles could then file one reading of a family under its clinical
+// panel and another reading of the SAME family under "Other". Calling the real
+// resolver removes the preimage, and with it the drift.
+//
+// The families' `members` lists stay declared — they remain the corpus the JS↔SQL
+// parity tests pin (lib/biomarker-panels.panelMemberSpellings) — they are simply no
+// longer any key's runtime realization.
 //
 // Registered by lib/db.ts on the handle it opens, before any statement is
 // prepared, so every query path (app, scripts, DB-tier tests) has it. The function
@@ -37,10 +49,14 @@
 
 import type Database from "better-sqlite3";
 import { biomarkerFamily } from "./canonical-name";
+import { panelForCanonicalName } from "./biomarker-panels";
 
 // The SQL name of the biomarker-family function. Callers build expressions from
 // this constant so the registration and the SQL can't disagree on the spelling.
 export const BIOMARKER_FAMILY_FN = "biomarker_family";
+
+// The SQL name of the biomarker-panel function, same discipline.
+export const BIOMARKER_PANEL_FN = "biomarker_panel";
 
 // Handles that already carry the functions — registering the same name twice on
 // one handle throws, and a caller (a test re-running boot) may ask more than once.
@@ -54,7 +70,7 @@ const MEMO_LIMIT = 4096;
 // Register the shared user functions on a database handle. Idempotent per handle.
 export function registerSqlFunctions(handle: Database.Database): void {
   if (registered.has(handle)) return;
-  const memo = new Map<string, string>();
+  const familyMemo = new Map<string, string>();
   handle.function(
     BIOMARKER_FAMILY_FN,
     { deterministic: true },
@@ -64,12 +80,26 @@ export function registerSqlFunctions(handle: Database.Database): void {
       // rather than folding NULLs onto the "" identity.
       if (name == null) return null;
       const s = String(name);
-      const hit = memo.get(s);
+      const hit = familyMemo.get(s);
       if (hit !== undefined) return hit;
       const key = biomarkerFamily(s);
-      if (memo.size < MEMO_LIMIT) memo.set(s, key);
+      if (familyMemo.size < MEMO_LIMIT) familyMemo.set(s, key);
       return key;
     }
   );
+  const panelMemo = new Map<string, string>();
+  handle.function(BIOMARKER_PANEL_FN, { deterministic: true }, (name) => {
+    // NULL in, `other` out — NOT NULL. The CASE this replaces evaluated
+    // `lower(NULL) IN (…)` to NULL and fell through to its ELSE, so a NULL display
+    // name already resolved to the reserved fallback slug; the panel facet's
+    // `= 'other'` comparisons depend on that (a NULL would match no filter at all).
+    // panelForCanonicalName agrees — it maps null/blank to OTHER_PANEL.
+    const s = name == null ? "" : String(name);
+    const hit = panelMemo.get(s);
+    if (hit !== undefined) return hit;
+    const key = panelForCanonicalName(s) as string;
+    if (panelMemo.size < MEMO_LIMIT) panelMemo.set(s, key);
+    return key;
+  });
   registered.add(handle);
 }
