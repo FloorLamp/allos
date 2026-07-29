@@ -397,7 +397,7 @@ export function getLatestSyncEvent(
 export interface ConnectedSource {
   id: string;
   name: string;
-  kind: string; // IntegrationKind: 'push' | 'oauth' | 'token'
+  kind: string; // IntegrationKind: 'push' | 'oauth' | 'token' | 'public'
   connected: boolean;
   // The provider's credential died (dead/revoked token) and it flipped to
   // `needs_reauth` (issue #326) — distinct from a never-configured / user-removed
@@ -414,19 +414,26 @@ export interface ConnectedSource {
 // Health Connect is push-only, so it shows an explainer instead of the button.
 const SYNC_NOW_PROVIDERS = new Set(["strava", "oura", "withings"]);
 
-// The recurring-stream providers for the "Connected sources" section: every
-// AVAILABLE pull/push integration (Health Connect, Strava, Oura — not the outbound
-// calendar feed, not the 'planned' Garmin), each collapsed to its latest sync
-// outcome plus a short expandable history. Profile-scoped via the per-provider
-// reads it composes (getConnection / getLatestSyncEvent / getIntegrationSyncEvents).
-// A provider is only surfaced once it's been set up: currently connected, or
-// carrying historical sync events (issue #294) — a never-configured integration is
-// hidden rather than shown as an empty "Not connected" card.
+// The integration kinds that produce a RECURRING sync stream, and therefore belong in
+// "Connected sources": push (Health Connect), oauth (Strava, Withings), token (Oura),
+// and public (Weather & UV — keyless, but it runs on the hourly tick and appends a
+// sync event per run exactly like the others). Excluded: 'archive' (Fitbit Takeout is
+// a one-off upload and lives in the chronological Imports feed) and 'feed' (the
+// outbound calendar subscription, which imports nothing). Weather was missing here,
+// which left its successful history unreachable while its failures still showed under
+// Needs attention (#1614).
+const RECURRING_SOURCE_KINDS = new Set(["push", "oauth", "token", "public"]);
+
+// The recurring-stream providers for the "Connected sources" section, each collapsed
+// to its latest sync outcome plus a short expandable history. Profile-scoped via the
+// per-provider reads it composes (getConnection / getLatestSyncEvent /
+// getIntegrationSyncEvents). A provider is only surfaced once it's been set up:
+// currently connected, or carrying historical sync events (issue #294) — a
+// never-configured integration is hidden rather than shown as an empty
+// "Not connected" card.
 export function getConnectedSources(profileId: number): ConnectedSource[] {
   return INTEGRATIONS.filter(
-    (i) =>
-      i.status === "available" &&
-      (i.kind === "push" || i.kind === "oauth" || i.kind === "token")
+    (i) => i.status === "available" && RECURRING_SOURCE_KINDS.has(i.kind)
   )
     .map((i) => {
       const status = getConnection(profileId, i.id)?.status;

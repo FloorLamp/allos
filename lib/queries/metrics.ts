@@ -755,17 +755,19 @@ function foldBodyMetricDaily(
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-// The latest two DAILY points for a body metric, oldest→newest — the exact tail
-// getBodyMetricDailySeries yields, but bounded to the two most recent DATES-with-data
-// so the dashboard vitals card computes its trend delta (#1367) without materializing
-// years of synced resting-HR readings. Bounding by DISTINCT date (not a raw-row LIMIT)
-// is what keeps this behavior-identical: a day with several same-day rows still
-// collapses to ONE point through the shared fold, so these are the same two points
-// latestTrend would read off the full series. Profile-scoped in both the date subquery
-// and the outer select.
+// The latest `dateLimit` DAILY points for a body metric, oldest→newest — the exact
+// tail getBodyMetricDailySeries yields, but bounded to the most recent
+// DATES-with-data so a caller computes its trend delta (#1367) or recovery baseline
+// (#1615) without materializing years of synced resting-HR readings. Bounding by
+// DISTINCT date (not a raw-row LIMIT) is what keeps this behavior-identical: a day
+// with several same-day rows — two sources reporting one date is the normal #14
+// shape — still collapses to ONE source-prioritized point through the shared fold,
+// so these are the same points the full series would yield. Profile-scoped in both
+// the date subquery and the outer select.
 export function getLatestBodyMetricDailyPoints(
   profileId: number,
-  metric: BodyMetricKind
+  metric: BodyMetricKind,
+  dateLimit = 2
 ): { date: string; value: number }[] {
   const col = bodyMetricColumn(metric);
   const rows = db
@@ -775,10 +777,10 @@ export function getLatestBodyMetricDailyPoints(
           AND date IN (
             SELECT date FROM body_metrics
              WHERE profile_id = ? AND ${col} IS NOT NULL
-             GROUP BY date ORDER BY date DESC LIMIT 2
+             GROUP BY date ORDER BY date DESC LIMIT ?
           )`
     )
-    .all(profileId, profileId) as BodyMetricRow[];
+    .all(profileId, profileId, dateLimit) as BodyMetricRow[];
   return foldBodyMetricDaily(rows, preferenceFor(profileId, metric));
 }
 

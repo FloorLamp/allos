@@ -163,6 +163,25 @@ export function summarizeSplit(
   };
 }
 
+// The Review line for a CHUNKED write that failed mid-batch after earlier chunks
+// already committed (#1617 for Fitbit Takeout, #1614 for the Health Connect push).
+// Those chunks are durable by design, so the failure event must say what landed
+// rather than reading as "nothing happened": `changed` is inserted + updated from the
+// committed chunks, and `recovery` is the provider's own lowercase re-run clause (the
+// re-run is always safe — every upsert is idempotent on its natural key). ONE phrasing
+// for both providers so the two partial-failure lines can't drift. Pure.
+export function partialWriteFailureMessage(
+  subject: string,
+  changed: number,
+  recovery: string
+): string {
+  const n = Math.max(0, Math.round(changed));
+  if (n > 0) {
+    return `${subject} stopped after writing ${n} ${n === 1 ? "record" : "records"}. Completed chunks were kept; ${recovery}`;
+  }
+  return `${subject} failed before any records changed; ${recovery}`;
+}
+
 // Compare two rows on a fixed column set, normalizing null/undefined so a missing
 // incoming field and a stored NULL are equal. Values are pre-rounded before they
 // reach the upserts, so exact === is correct here. Pure → unit-testable; used by

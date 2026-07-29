@@ -18,7 +18,7 @@ import {
   E2E_LOGIN_VIDEO,
   VIDEO_PROFILE,
 } from "../fixture-logins";
-import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
+import { PROFILE_ID, ins, seedMemberLogin, fixtureProfileId } from "./common";
 
 // ── Rule-domain findings fixtures ──
 export function seedRuleDomains(): void {
@@ -323,6 +323,43 @@ export function seedSuppressedCenter(): void {
     ] as [string, number][]) {
       insUv.run(wxLat, wxLng, `${wxToday}T${hr}:00`, uv, uv + 1, 600, 500, 100);
     }
+    // Two successful weather syncs so the profile's Connected-sources card renders
+    // with a latest-state line AND an expandable history (#1614): before that fix
+    // Weather was excluded from getConnectedSources by kind, so the "Sync history"
+    // link on its own setup page led nowhere. Fixed past dates — nothing compares
+    // these to `now`.
+    ins.run(
+      wxId,
+      "weather",
+      "2026-07-08 05:00:00",
+      1,
+      "2026-06-25",
+      "2026-07-09",
+      336, // received
+      336, // written
+      336, // inserted
+      0, // updated
+      0, // unchanged
+      0, // skipped
+      null, // raw_ref
+      null
+    );
+    ins.run(
+      wxId,
+      "weather",
+      "2026-07-08 06:00:00",
+      1,
+      "2026-06-25",
+      "2026-07-09",
+      336, // received
+      336, // written
+      12, // inserted
+      4, // updated
+      320, // unchanged
+      0, // skipped
+      null, // raw_ref
+      null
+    );
     console.log(
       `e2e: seeded weather/UV fixture — profile ${wxId} (${WEATHER_PROFILE}), day ${wxToday} (#1172)`
     );

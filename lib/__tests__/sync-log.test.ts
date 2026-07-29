@@ -14,6 +14,7 @@ import {
   classifyUpsert,
   tallyUpsert,
   isNoOpSyncEvent,
+  partialWriteFailureMessage,
   shouldShowConnectedSource,
   planSyncEventPrune,
 } from "@/lib/integrations/sync-log";
@@ -632,5 +633,38 @@ describe("planSyncEventPrune", () => {
       { id: 1, profile_id: 1, provider: "strava", at: "2020-01-01" },
     ];
     expect(planSyncEventPrune(evs, "2099-01-01")).toEqual([1, 2, 5]);
+  });
+});
+
+// A chunked write that failed MID-BATCH left earlier chunks committed (#1617/#1614),
+// so its Review line must say what landed rather than reading as "nothing happened".
+describe("partialWriteFailureMessage", () => {
+  it("names the committed record count and the safe re-run", () => {
+    expect(
+      partialWriteFailureMessage("Takeout import", 4, "re-importing is safe.")
+    ).toBe(
+      "Takeout import stopped after writing 4 records. Completed chunks were kept; re-importing is safe."
+    );
+  });
+
+  it("singularizes one record", () => {
+    expect(partialWriteFailureMessage("Health Connect push", 1, "retry.")).toBe(
+      "Health Connect push stopped after writing 1 record. Completed chunks were kept; retry."
+    );
+  });
+
+  it("says so plainly when nothing committed", () => {
+    expect(partialWriteFailureMessage("Takeout import", 0, "retry.")).toBe(
+      "Takeout import failed before any records changed; retry."
+    );
+  });
+
+  it("never reports a negative or fractional count", () => {
+    expect(partialWriteFailureMessage("Sync", -3, "retry.")).toContain(
+      "before any records changed"
+    );
+    expect(partialWriteFailureMessage("Sync", 2.4, "retry.")).toContain(
+      "2 records"
+    );
   });
 });

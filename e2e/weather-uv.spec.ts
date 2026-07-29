@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { followLink, settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Open-Meteo weather/UV integration + the two-sided UV-dose sun model (#1172). All
@@ -34,6 +34,49 @@ test.describe("Weather & UV integration (#1172)", () => {
       );
       // The manual Sync-now control exists (drives the same idempotent sync).
       await expect(member.getByTestId("weather-sync")).toBeVisible();
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  test("the setup page's Sync history link reaches the Weather card in Review (#1614)", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_WEATHER,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/integrations/weather");
+      // The setup page has always offered this link; Weather was excluded from
+      // "Connected sources" by kind, so its successful history had no destination.
+      const historyLink = member.getByTestId("sync-history-link");
+      await expect(historyLink).toBeVisible();
+      await followLink(member, historyLink, /\/data\?section=review/);
+
+      const weatherCard = member
+        .getByTestId("review-inbox")
+        .getByTestId("source-weather");
+      await expect(weatherCard).toBeVisible();
+      await expect(weatherCard.getByText("Connected")).toBeVisible();
+      // Latest state = the newest seeded run's split.
+      await expect(
+        weatherCard.getByText("12 new · 4 changed · 320 unchanged").first() // first-ok: the latest-state line repeats inside the collapsed history list of this fixture-owned card
+      ).toBeVisible();
+      // Keyless and tick-driven: no on-demand pull button, and not the push-only
+      // explainer either — just a way back to its own settings.
+      await expect(
+        weatherCard.getByRole("button", { name: "Sync now" })
+      ).toHaveCount(0);
+      await expect(weatherCard.getByText(/Push-only/)).toHaveCount(0);
+      const back = weatherCard.getByRole("link", {
+        name: /Open Weather & UV .* settings/,
+      });
+      await expect(back).toHaveAttribute("href", "/integrations/weather");
+      // The history tail is reachable from the card too.
+      await expect(weatherCard.getByText(/Recent syncs \(2\)/)).toBeVisible();
     } finally {
       await member.context().close();
     }
