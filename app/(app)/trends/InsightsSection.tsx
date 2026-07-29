@@ -38,18 +38,21 @@ function recapTitle(
   return `${cap} recap · ${window}`;
 }
 
-// The Trends hub's Insights tab: the hub's DERIVED VIEWS over your own data —
+// The Trends hub's Insights section: the hub's DERIVED VIEWS over your own data —
 // the AI daily insights (reusing getInsights), the AI weekly/monthly recap
 // narratives (issue #20) and their generate forms, the situation-impact analytics
 // (#1297), and — since #1489 — the **Compare** overlay, which used to be a tab of
 // its own.
 //
-// THE GATE LIVES HERE, NOT ON THE TAB (#1489). The AI half is an age-gated surface,
-// but compare is age-neutral and training-restricted profiles have always had it.
-// So the hub offers the Insights tab to everyone and this section hides the gated
-// half: a restricted profile gets the compare section alone (and never a generate
-// form — the write actions re-check the gate independently, since hidden UI is not
-// an auth boundary).
+// THE GATE LIVES HERE, NOT ON THE STRIP (#1489). The AI half is an age-gated
+// surface, but compare is age-neutral and training-restricted profiles have always
+// had it. So the page offers the Insights section to everyone and this component
+// hides the gated half: a restricted profile gets the compare block alone (and
+// never a generate form — the write actions re-check the gate independently, since
+// hidden UI is not an auth boundary).
+//
+// #1644: this closes the merged page. It stayed a SECTION rather than earning a
+// surface of its own — see lib/trends-sections.ts for the reasoning.
 export default async function InsightsSection({
   range,
   cmpA,

@@ -372,7 +372,7 @@ function collectEvents(
         title: "Body metrics logged",
         subtitle: compactList(meta, 3),
         detail: b.notes,
-        href: "/trends?tab=body",
+        href: "/trends#body",
         meta: b.source && b.source !== "manual" ? [b.source] : undefined,
       },
       options
@@ -942,7 +942,7 @@ function collectEvents(
         title: "AI insight",
         subtitle: i.model,
         detail: i.summary,
-        href: "/trends?tab=insights",
+        href: "/trends#insights",
         sortTime: timeFromCreatedAt(i.created_at, tz),
       },
       options

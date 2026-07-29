@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -15,26 +16,25 @@ import {
 import { rangeSummaryLabel } from "@/lib/trends";
 import { activeRangeLabel } from "@/lib/trends-context";
 import { PageHeader } from "@/components/ui";
-import { NavTabsStrip } from "@/components/NavTabs";
 import TrendsContextBar from "@/components/TrendsContextBar";
 import DateRangeControl from "@/components/DateRangeControl";
 import {
   TrendAnnotationControls,
   TrendAnnotationProvider,
 } from "@/components/TrendAnnotationToggles";
-import OverviewSection from "./OverviewSection";
+import TrendingDigest from "./TrendingDigest";
+import StarredSection from "./StarredSection";
 import BodySection from "./BodySection";
 import { parseBodyView } from "./body-view";
 import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
+import ChartJumpChips from "./ChartJumpChips";
+import TrendsSectionShell, {
+  TrendsSectionSkeleton,
+} from "./TrendsSectionShell";
 import type { AppRoute } from "@/lib/hrefs";
-import {
-  isTabRestricted,
-  parseTab,
-  trendsTabStrip,
-  type TrendsTab,
-} from "@/lib/trends-tabs";
+import { trendsSectionStrip } from "@/lib/trends-sections";
 
 export const dynamic = "force-dynamic";
 
@@ -44,20 +44,44 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-// The Trends hub: the analytics lens — a sibling to the
-// Timeline — that aggregates the app's existing trend charts into one place under
-// a SHARED date-range control. Every section reuses existing components/queries;
-// the shared window (from/to) drives them all. Fitness (wholly age-gated content)
-// is hidden for training-restricted profiles; Insights is offered to everyone and
-// gates its AI half at the SECTION level, since its compare section is age-neutral
-// (#1489).
+// The Trends hub: the analytics lens — a sibling to the Timeline — that aggregates
+// the app's trend charts into ONE scrollable page under a SHARED date-range
+// control (issue #1644).
+//
+// ── The page, top to bottom ──────────────────────────────────────────────────
+//   1. "What's trending" digest — the movers over the shared window.
+//   2. Starred grid — the cross-domain curation surface (tile zoom, drag order via
+//      SortableOrder → reorderSaved). Still the ONE place curation is expressed,
+//      and still the one place where nothing renders unconditionally.
+//   3. Body / Fitness / Nutrition censuses — each rendering exactly what its tab
+//      rendered, starred-first-then-ranked on #1643's substrate.
+//   4. Insights — the derived views (AI narratives, situation impacts, compare)
+//      closing the page. See lib/trends-sections.ts for why it is a section here
+//      and not a surface of its own.
+//
+// The jump-chip strip takes the tab strip's slot in the context bar, so it is
+// sticky on a phone exactly where the tabs were: the long scroll stays navigable
+// and the range control still sits under it.
+//
+// ── Streaming (an acceptance criterion, not an optimization) ──────────────────
+// The tab strip WAS the render budget: #105 made the hub build only the active
+// tab. A merged page must not pay for that by serializing every domain's chart
+// assembly into first paint. So the head (digest + starred grid) renders inline —
+// the same work the Overview tab did — and each census is its own <Suspense>
+// boundary BELOW it. Nothing between the shell and those boundaries awaits a
+// census, so the first byte carries the header, the chips, the range control, the
+// head AND every section's heading + anchor (the Suspense boundary is INSIDE the
+// section shell, so a chip is never a link to something that has not rendered
+// yet), and the censuses stream in after it.
+//
+// ── `?tab=` is gone (#1635 / #1644) ──────────────────────────────────────────
+// Retired WITHOUT a compatibility shim: there is no strip left for it to select.
+// Every internal deep link moved to a section anchor (`/trends#body`) through
+// `trendsSectionHref` in the same change. The RETIRED nested `?ftab=` (#1492) went
+// with it. Unknown params are simply ignored — an old bookmark lands on the page
+// that now contains everything its tab did.
 export default async function TrendsPage(props: {
   searchParams: Promise<{
-    tab?: string | string[];
-    // The RETIRED nested Fitness strip (#1492) — read only so an old deep link can
-    // still name the Fitness tab through parseTab; the value itself is ignored and
-    // never re-emitted into a hub link.
-    ftab?: string | string[];
     from?: string | string[];
     to?: string | string[];
     // The explicit all-time sentinel (#1485 G) — see resolveTrendsRange.
@@ -85,53 +109,36 @@ export default async function TrendsPage(props: {
     firstParam(searchParams.range)
   );
   const allTime = isAllTimeRange(range);
-  // Fitness is spliced out below for restricted profiles; if it is requested via
-  // ?tab=, fall back to the default so the URL doesn't advertise a tab that isn't
-  // there (the tab strip already can't select it). Insights is NOT in that set
-  // since #1489 — a restricted profile gets the tab with only its compare section.
-  // parseTab also maps the RETIRED `?tab=vitals` onto body (#1486) and
-  // `?tab=compare` onto insights (#1489) — vocabulary mappings in
-  // lib/trends-tabs.ts, so every old deep link lands on the tab that absorbed it,
-  // compare params and all. The retired NESTED `?ftab=` (#1492) maps the same way:
-  // it names Fitness when no live `?tab=` is present, and its value is then ignored
-  // (the tab is sections now, so there is nothing left for it to select).
-  const requestedTab = parseTab(searchParams.tab, searchParams.ftab);
-  const activeTab = isTabRestricted(requestedTab, restricted)
-    ? "overview"
-    : requestedTab;
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
   const cmpNormalized = firstParam(searchParams.cmpn) === "1";
-  // #1067 Phase 2: the Body tab's overview layout mode (tiles vs the classic chart
-  // stack). Only meaningful on the Body tab; carried through the range control + tab
-  // navigation so a chosen layout survives a window change.
+  // #1067 Phase 2: the Body census's layout mode (tiles vs the classic chart
+  // stack). Carried through the range control so a chosen layout survives a
+  // window change.
   const bodyView = parseBodyView(firstParam(searchParams.view));
-  // The "1D" pill (#1466), injected through the shared control's extra-ranges slot.
-  // It moved to Body with the vitals (#1486) and stays scoped to that ONE tab on
-  // purpose: 1D is only meaningful where the surface swaps to genuinely intraday
-  // content (the Body tab's vitals section — the HR minute series + time-positioned
-  // BP/SpO2 points). On every daily-grain tab a one-day window renders a single
-  // dot, so no other tab offers it.
-  const extraRanges =
-    activeTab === "body" ? [intradayQuickRange(todayStr)] : [];
+  // The "1D" pill (#1466), injected through the shared control's extra-ranges
+  // slot. It was scoped to the Body TAB because only that surface swaps to
+  // genuinely intraday content; the Body census is now always on the page, so the
+  // pill is always offered and the swap still happens in exactly one section.
+  const extraRanges = [intradayQuickRange(todayStr)];
 
-  // Build a /trends URL, preserving the active tab + window unless overridden.
-  // Overview is the default tab, so it's dropped from the query string.
+  // Build a /trends URL, preserving the window and compare state. `section` adds
+  // the in-page anchor so a control inside a census (the Body tiles/all toggle)
+  // doesn't bounce the reader back to the top of the page.
   function trendsHref(params: {
-    tab?: TrendsTab;
     from?: string;
     to?: string;
     // The explicit all-time sentinel (#1485 G). Carried by every hub link so the
-    // window survives a tab/view switch: without it a paramless link would land
-    // back on the 90D default and "All time" would be a one-render state.
+    // window survives a view switch: without it a paramless link would land back
+    // on the 90D default and "All time" would be a one-render state.
     allTime?: boolean;
     cmpA?: string;
     cmpB?: string;
     cmpn?: boolean;
     view?: "tiles" | "all";
+    section?: string;
   }): AppRoute {
     const sp = new URLSearchParams();
-    if (params.tab && params.tab !== "overview") sp.set("tab", params.tab);
     if (params.from) sp.set("from", params.from);
     if (params.to) sp.set("to", params.to);
     if (params.allTime && !params.from && !params.to) {
@@ -142,7 +149,8 @@ export default async function TrendsPage(props: {
     if (params.cmpn) sp.set("cmpn", "1");
     if (params.view) sp.set("view", params.view);
     const qs = sp.toString();
-    return qs ? `/trends?${qs}` : "/trends";
+    const hash = params.section ? `#${params.section}` : "";
+    return `${qs ? `/trends?${qs}` : "/trends"}${hash}` as AppRoute;
   }
 
   // DateRangeControl asks for `{}` for BOTH "All time" and "Clear dates", which is
@@ -150,111 +158,51 @@ export default async function TrendsPage(props: {
   // is what mints the sentinel.
   const buildRangeHref = (r: DateRange) =>
     trendsHref({
-      tab: activeTab,
       from: r.from,
       to: r.to,
       allTime: isAllTimeRange(r),
       cmpA,
       cmpB,
       cmpn: cmpNormalized,
-      view: activeTab === "body" ? bodyView : undefined,
+      view: bodyView,
     });
 
-  // Tab-strip spec: labels only, built by the pure registry (lib/trends-tabs.ts).
-  // FIVE entries since #1489 — Vitals merged into Body (#1486) and Compare folded
-  // into Insights — in frequency order (Overview | Body | Fitness | Nutrition |
-  // Insights). Fitness is the one age-gated surface omitted entirely for
-  // training-restricted profiles, so it's never in the strip or reachable via ?tab=
-  // for them (the activeTab fallback above enforces the latter).
-  const tabStrip = trendsTabStrip(restricted);
+  // The page's section navigation, built by the pure registry
+  // (lib/trends-sections.ts). Fitness is the one age-gated section omitted
+  // entirely for training-restricted profiles, so it is neither a chip nor a
+  // render for them.
+  const sections = trendsSectionStrip(restricted);
+  const showFitness = sections.some((s) => s.id === "fitness");
 
   // The phone range trigger is built from the SAME predicates the pills light
   // themselves with, so its compact label can never disagree with the expanded
   // range control.
   const rangeLabel = activeRangeLabel(range, todayStr, extraRanges);
 
-  // #105: build ONLY the active section server-side. Passing every section as a
-  // prop rendered (and ran the queries for) all of them on every request — the
-  // client `keepMounted` flag only gated DOM, not the RSC pass. Each tab switch
-  // is already a URL navigation (NavTabs → router.replace), so this makes every
-  // Trends request compute one tab instead of all of them, at no extra round-trips.
-  const activeSection: React.ReactNode = (() => {
-    switch (activeTab) {
-      case "body":
-        return (
-          <BodySection
-            range={range}
-            view={bodyView}
-            tilesHref={trendsHref({
-              tab: "body",
-              from: range.from,
-              to: range.to,
-              allTime,
-              view: "tiles",
-            })}
-            allHref={trendsHref({
-              tab: "body",
-              from: range.from,
-              to: range.to,
-              allTime,
-              view: "all",
-            })}
-          />
-        );
-      case "nutrition":
-        return <NutritionSection range={range} />;
-      case "fitness":
-        return <FitnessSection range={range} />;
-      case "insights":
-        // The hub's "derived views" tab: AI insights + situation analytics (both
-        // age-gated INSIDE the section) plus the compare overlay, which is
-        // age-neutral and therefore the only thing a restricted profile sees here.
-        return (
-          <InsightsSection
-            range={range}
-            cmpA={cmpA}
-            cmpB={cmpB}
-            cmpNormalized={cmpNormalized}
-          />
-        );
-      case "overview":
-      default:
-        return <OverviewSection range={range} />;
-    }
-  })();
-
   return (
     <div>
       {/* Heading + subtitle are given up below `sm` (#1485 F, the #1413 dashboard
-          precedent): the context bar right under it already names the tab AND the
-          window, and the two-line subtitle is read-once orientation copy that cost
-          ~85px of every phone visit. The h1 survives as `sr-only`, so the page is
-          still named for AT and the shared-PageHeader guard stays honest. */}
+          precedent): the context bar right under it already names the window, and
+          the two-line subtitle is read-once orientation copy that cost ~85px of
+          every phone visit. The h1 survives as `sr-only`, so the page is still
+          named for AT and the shared-PageHeader guard stays honest. */}
       <PageHeader
         title="Trends"
-        subtitle="Your analytics lens — body, nutrition, fitness, and insights under one date range."
+        subtitle="Your analytics lens — body, nutrition, fitness, and insights on one page, under one date range."
         compactBelowSm
       />
 
-      {/* Tabs remain visible on phones while the range and annotation controls
-          expand below them. The provider wraps both the bar and panel because the
-          toggles rendered here filter charts registered by the active section. */}
+      {/* The chips stay visible on phones while the range and annotation controls
+          expand below them. The provider wraps both the bar and the page because
+          the toggles rendered here filter charts registered by the sections. */}
       <TrendAnnotationProvider>
         <TrendsContextBar
-          // Preserve the phone disclosure while a range link re-renders the page;
-          // changing sections still starts the new tab with controls collapsed.
-          key={activeTab}
           rangeLabel={rangeLabel}
           tabs={
-            <NavTabsStrip
-              tabs={tabStrip}
-              paramKey="tab"
-              activeId={activeTab}
-              prominentOnMobile
-              mobileLayout="scroll"
-              flush
-              testId="trends-tabs"
-              className="sm:mt-4"
+            <ChartJumpChips
+              chips={sections.map((s) => ({ id: s.id, label: s.label }))}
+              ariaLabel="Jump to section"
+              testId="trends-section-chips"
             />
           }
           controls={
@@ -263,11 +211,10 @@ export default async function TrendsPage(props: {
               range={range}
               todayStr={todayStr}
               hiddenParams={{
-                tab: activeTab === "overview" ? undefined : activeTab,
                 cmpA,
                 cmpB,
                 cmpn: cmpNormalized ? "1" : undefined,
-                view: activeTab === "body" ? bodyView : undefined,
+                view: bodyView,
               }}
               buildHref={buildRangeHref}
               idPrefix="trends"
@@ -284,16 +231,92 @@ export default async function TrendsPage(props: {
                   </span>
                 ) : undefined
               }
-              // Event / protocol-window toggles are the most specific context:
-              // the tab says what charts show, the pills say over what window,
-              // and these say which life events are drawn over them. The shared
-              // row stacks on phones and aligns the controls on desktop.
+              // Event / protocol-window toggles are the most specific context: the
+              // chips say where you are, the pills say over what window, and these
+              // say which life events are drawn over the charts. The shared row
+              // stacks on phones and aligns the controls on desktop.
               companionSlot={<TrendAnnotationControls />}
             />
           }
         />
 
-        <div role="tabpanel">{activeSection}</div>
+        <div className="space-y-10" data-testid="trends-page">
+          {/* ── The head: what moved, then what you curated ────────────────── */}
+          <TrendingDigest range={range} />
+
+          <TrendsSectionShell
+            id="starred"
+            heading="Starred"
+            description="The metrics and biomarkers you starred, in your order. Drag a tile to re-sequence it; the censuses below follow this order for whatever you pin."
+          >
+            <StarredSection range={range} />
+          </TrendsSectionShell>
+
+          {/* ── The censuses: streamed, so the head never waits on them ────── */}
+          <TrendsSectionShell
+            id="body"
+            heading="Body"
+            description="Today's readings, vitals, composition, and every synced daily metric over the selected window."
+          >
+            <Suspense fallback={<TrendsSectionSkeleton label="Body" />}>
+              <BodySection
+                range={range}
+                view={bodyView}
+                tilesHref={trendsHref({
+                  from: range.from,
+                  to: range.to,
+                  allTime,
+                  view: "tiles",
+                  section: "body",
+                })}
+                allHref={trendsHref({
+                  from: range.from,
+                  to: range.to,
+                  allTime,
+                  view: "all",
+                  section: "body",
+                })}
+              />
+            </Suspense>
+          </TrendsSectionShell>
+
+          {showFitness && (
+            <TrendsSectionShell
+              id="fitness"
+              heading="Fitness"
+              description="Volume and cadence, zones and cardio, strength progression, and sport — all windowed. Logging and the full-history explorers live on Training."
+            >
+              <Suspense fallback={<TrendsSectionSkeleton label="Fitness" />}>
+                <FitnessSection range={range} />
+              </Suspense>
+            </TrendsSectionShell>
+          )}
+
+          <TrendsSectionShell
+            id="nutrition"
+            heading="Nutrition"
+            description="Macros and fiber, food-goal adherence, and what you actually logged day by day."
+          >
+            <Suspense fallback={<TrendsSectionSkeleton label="Nutrition" />}>
+              <NutritionSection range={range} />
+            </Suspense>
+          </TrendsSectionShell>
+
+          <TrendsSectionShell
+            id="insights"
+            heading="Insights"
+            description="Derived views over the same window — situation impacts, AI recaps and daily analyses, and the compare overlay."
+          >
+            <Suspense fallback={<TrendsSectionSkeleton label="Insights" />}>
+              <InsightsSection
+                range={range}
+                cmpA={cmpA}
+                cmpB={cmpB}
+                cmpNormalized={cmpNormalized}
+              />
+            </Suspense>
+          </TrendsSectionShell>
+        </div>
       </TrendAnnotationProvider>
     </div>
   );

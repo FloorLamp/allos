@@ -36,7 +36,7 @@ export default function StepsTodayWidget({
       : null;
   return (
     <div className="card" data-testid="steps-today-widget">
-      <WidgetHeader title="Steps today" href="/trends?tab=body" />
+      <WidgetHeader title="Steps today" href="/trends#body" />
       <div className="flex items-start gap-3">
         <IconWalk
           className="mt-1 h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400"

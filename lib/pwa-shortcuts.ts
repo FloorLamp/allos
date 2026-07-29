@@ -34,7 +34,7 @@ import {
 // The query param a shortcut (or any deep link) uses to ask the shell to open a
 // logger. Deliberately NOT `FOCUS_PARAM` ("new"): that convention means
 // "navigate to a page, then scroll/focus its inline form", and it is already
-// spoken on routes a shortcut could target (`/trends?tab=body&new=weight`).
+// spoken on routes a shortcut could target (`/trends?new=weight#body`).
 // Overloading it would make one param mean two things on one URL.
 export const QUICK_PARAM = "quick";
 

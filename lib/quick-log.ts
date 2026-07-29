@@ -147,9 +147,9 @@ export function primaryQuickLog(
   // while food logging is what people reach the phone for.
   if (under(pathname, "/nutrition")) return quickLogItem("log-food");
   if (under(pathname, MEDICATIONS_HREF)) return quickLogItem("log-dose");
-  // Body metrics live behind /trends?tab=body — the tab, not the route, is the
-  // thing that makes "log measurements" the obvious action. (#1486 folded the
-  // former Vitals tab in here, so the one form covers both.)
+  // Body metrics live in the Trends Body section (/trends#body) — being on the
+  // hub at all is what makes "log measurements" the obvious action. (#1486 folded
+  // the former Vitals tab into that census, so the one form covers both.)
   if (under(pathname, "/trends") && tab === "body") {
     return quickLogItem("log-measurements");
   }

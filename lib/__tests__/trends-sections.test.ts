@@ -66,9 +66,7 @@ describe("isSectionRestricted", () => {
 
   it("agrees with the strip for every section", () => {
     for (const restricted of [false, true]) {
-      const visible = new Set(
-        trendsSectionStrip(restricted).map((s) => s.id)
-      );
+      const visible = new Set(trendsSectionStrip(restricted).map((s) => s.id));
       for (const id of TRENDS_SECTIONS) {
         expect(visible.has(id)).toBe(!isSectionRestricted(id, restricted));
       }

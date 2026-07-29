@@ -23,10 +23,11 @@ import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
 
 // Trends → Nutrition (issue #1166): the OVER-TIME nutrition view. `/nutrition` keeps the
-// log + today's adequacy + the raw servings rollup; this tab is the trend layer, re-homing
-// the nutrition trends that were scattered (macros on Body) or uncharted (fiber). Three
-// parts, each a formatter over an EXISTING gather (#221): the macros+fiber daily chart,
-// the food-goal adherence trend, and the intake-history pattern grid.
+// log + today's adequacy + the raw servings rollup; this SECTION is the trend layer
+// (`/trends#nutrition` since #1644), re-homing the nutrition trends that were scattered
+// (macros on Body) or uncharted (fiber). Three parts, each a formatter over an EXISTING
+// gather (#221): the macros+fiber daily chart, the food-goal adherence trend, and the
+// intake-history pattern grid.
 
 // The intake grid is bounded so a wide range doesn't render hundreds of cells; the most
 // recent MAX_GRID_DAYS of the window read as a scannable routine at a glance.

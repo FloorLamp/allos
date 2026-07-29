@@ -25,24 +25,31 @@ import SaveTrendPicker from "@/components/SaveTrendPicker";
 import SavedTilesGrid, {
   type SavedTileItem,
 } from "@/components/SavedTilesGrid";
-import TrendingDigest from "./TrendingDigest";
 
-// The Trends hub's Overview: the "what's trending" digest, then the profile's OWN
-// grid of trend mini-charts under the shared window.
+// The Trends hub's STARRED GRID — the profile's OWN cross-domain grid of trend
+// mini-charts under the shared window.
 //
-// #1487 — WHAT IS OVERVIEW FOR. It answers: what you saved, and what changed. The
-// domain tabs (Body / Fitness / Biomarkers) show everything; Overview shows nothing
-// unconditionally. Until this landed the grid was three things — the movers digest,
+// #1644 merged the tabs into one page and split this section from the "what's
+// trending" digest that used to share the Overview tab with it: the digest is the
+// page head, this is the curation surface directly under it, and the per-domain
+// censuses follow as their own sections. The grid's contract is UNCHANGED and is
+// now the only place it applies — the "nothing renders unconditionally" rule
+// belongs to this section, while the censuses below render always, as their tabs
+// did.
+//
+// #1487 — WHAT THIS GRID IS FOR. It answers: what you saved, and what changed. The
+// domain censuses show everything; the starred grid shows nothing
+// unconditionally. Until that landed the grid was three things — the movers digest,
 // the saved tiles (#1456), and a hardcoded SAMPLER: the four standard metric tiles
 // (weight, body fat, resting HR, training volume) rendered whether or not the user
-// cared, duplicating the domain tabs at tile zoom. That third part is what made
+// cared, duplicating the domain censuses at tile zoom. That third part is what made
 // Overview and the tabs feel like the same page twice.
 //
 // The sampler is gone. Those four are now real `saved_items` rows — seeded at
 // profile creation and, for the installed base, by migration 114 (#1487's data half,
 // lib/standard-metric-seeds.ts) — so day-one appearance is IDENTICAL and the change
-// is that the tiles are now REMOVABLE. One star answers "what's on my Overview" for
-// every kind; SaveTrendPicker (metrics AND biomarkers) is the way back.
+// is that the tiles are now REMOVABLE. One star answers "what's in my starred grid"
+// for every kind; SaveTrendPicker (metrics AND biomarkers) is the way back.
 //
 // #1456 remains the store: ONE ★ behind ONE table (`saved_items`). A saved biomarker
 // simultaneously earns the Results status card, a tile here, and passport inclusion.
@@ -56,7 +63,7 @@ import TrendingDigest from "./TrendingDigest";
 //     control stays reachable at any window (#1456). #1485 A compacts those to a
 //     one-line row and sinks them below the populated tiles, which is where the
 //     ~600px of mid-grid whitespace went.
-export default async function OverviewSection({ range }: { range: DateRange }) {
+export default async function StarredSection({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -159,15 +166,13 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
 
   return (
     <div className="space-y-6">
-      <TrendingDigest range={range} />
-
       {items.length > 0 ? (
         <SavedTilesGrid items={items} />
       ) : (
         // Everything unstarred (or a brand-new profile whose only saved metrics are
         // age-gated): the grid is genuinely empty, so it says so and offers the way
         // back rather than rendering a blank page.
-        <EmptyState message="Star metrics and biomarkers to build your overview." />
+        <EmptyState message="Star metrics and biomarkers to build your grid." />
       )}
 
       <SaveTrendPicker

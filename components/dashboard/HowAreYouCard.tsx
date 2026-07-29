@@ -288,7 +288,7 @@ export default function HowAreYouCard({
 
   return (
     <div className="card" data-testid="how-are-you-card">
-      <WidgetHeader title="How are you today?" href="/trends?tab=body" />
+      <WidgetHeader title="How are you today?" href="/trends#body" />
 
       {/* RATE — the hero face row stays first in DOM; one tap completes the check-in,
           and "More detail" reveals Energy, the gated Calm, and a note. */}

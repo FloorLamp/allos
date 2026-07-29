@@ -113,7 +113,7 @@ import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
 
-// The Trends hub's **Body** tab — the ONE physiology surface (issue #1486).
+// The Trends hub's **Body** section — the ONE physiology surface (issue #1486).
 //
 // Trends carried a Vitals tab and a Body tab that answered the same question about
 // the same person from the same rows: "what is my body doing". A blood pressure was
@@ -139,8 +139,10 @@ import BodyHygieneFindings from "./BodyHygieneFindings";
 // `tiles` they are sparkline tiles like every other metric, in `all` they are full
 // charts. One view-mode semantic, not two.
 //
-// `?tab=vitals` still lands here — a vocabulary mapping in lib/trends-tabs.ts, not a
-// redirect layer, so every old deep link keeps working.
+// #1644 retired the tab strip: this is the **Body section** of the one scrollable
+// Trends page, reachable at `/trends#body` and streamed into its own Suspense
+// boundary so the page head never waits on the ~30 reads below. Nothing about the
+// census itself changed — same membership gates, same ★-first-then-ranked order.
 
 type Point = { date: string; value: number };
 
@@ -1508,12 +1510,12 @@ export default async function BodySection({
               data-testid="body-pin-hint"
             >
               Star a metric on its own page — open any card — to pin it to the
-              top of this tab. Pinned cards follow your{" "}
+              top of this section. Pinned cards follow your{" "}
               <Link
-                href="/trends?tab=overview"
+                href="/trends#starred"
                 className="font-medium text-brand-700 hover:underline dark:text-brand-400"
               >
-                Overview
+                starred grid
               </Link>{" "}
               order; drag them there to re-sequence them.
             </p>
