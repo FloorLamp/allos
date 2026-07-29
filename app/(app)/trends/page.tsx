@@ -31,6 +31,7 @@ import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
 import ChartJumpChips from "./ChartJumpChips";
 import SectionHashScroll from "./SectionHashScroll";
+import StreamedCensus from "./StreamedCensus";
 import TrendsSectionShell, {
   TrendsSectionSkeleton,
 } from "./TrendsSectionShell";
@@ -260,24 +261,26 @@ export default async function TrendsPage(props: {
             description="Today's readings, vitals, composition, and every synced daily metric over the selected window."
           >
             <Suspense fallback={<TrendsSectionSkeleton label="Body" />}>
-              <BodySection
-                range={range}
-                view={bodyView}
-                tilesHref={trendsHref({
-                  from: range.from,
-                  to: range.to,
-                  allTime,
-                  view: "tiles",
-                  section: "body",
-                })}
-                allHref={trendsHref({
-                  from: range.from,
-                  to: range.to,
-                  allTime,
-                  view: "all",
-                  section: "body",
-                })}
-              />
+              <StreamedCensus>
+                <BodySection
+                  range={range}
+                  view={bodyView}
+                  tilesHref={trendsHref({
+                    from: range.from,
+                    to: range.to,
+                    allTime,
+                    view: "tiles",
+                    section: "body",
+                  })}
+                  allHref={trendsHref({
+                    from: range.from,
+                    to: range.to,
+                    allTime,
+                    view: "all",
+                    section: "body",
+                  })}
+                />
+              </StreamedCensus>
             </Suspense>
           </TrendsSectionShell>
 
@@ -288,7 +291,9 @@ export default async function TrendsPage(props: {
               description="Volume and cadence, zones and cardio, strength progression, and sport — all windowed. Logging and the full-history explorers live on Training."
             >
               <Suspense fallback={<TrendsSectionSkeleton label="Fitness" />}>
-                <FitnessSection range={range} />
+                <StreamedCensus>
+                  <FitnessSection range={range} />
+                </StreamedCensus>
               </Suspense>
             </TrendsSectionShell>
           )}
@@ -299,7 +304,9 @@ export default async function TrendsPage(props: {
             description="Macros and fiber, food-goal adherence, and what you actually logged day by day."
           >
             <Suspense fallback={<TrendsSectionSkeleton label="Nutrition" />}>
-              <NutritionSection range={range} />
+              <StreamedCensus>
+                <NutritionSection range={range} />
+              </StreamedCensus>
             </Suspense>
           </TrendsSectionShell>
 
@@ -309,12 +316,14 @@ export default async function TrendsPage(props: {
             description="Derived views over the same window — situation impacts, AI recaps and daily analyses, and the compare overlay."
           >
             <Suspense fallback={<TrendsSectionSkeleton label="Insights" />}>
-              <InsightsSection
-                range={range}
-                cmpA={cmpA}
-                cmpB={cmpB}
-                cmpNormalized={cmpNormalized}
-              />
+              <StreamedCensus>
+                <InsightsSection
+                  range={range}
+                  cmpA={cmpA}
+                  cmpB={cmpB}
+                  cmpNormalized={cmpNormalized}
+                />
+              </StreamedCensus>
             </Suspense>
           </TrendsSectionShell>
         </div>
