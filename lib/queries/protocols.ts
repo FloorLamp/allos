@@ -7,7 +7,7 @@
 // login's display unit HERE (the units boundary), keeping the engine unit-agnostic.
 
 import { db } from "../db";
-import { getCanonicalBiomarker } from "./medical";
+import { getAllBiomarkerSeries, getCanonicalBiomarker } from "./medical";
 import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
 import {
   getFrequencyTargetProgress,
@@ -15,6 +15,7 @@ import {
 } from "./frequency-targets";
 import {
   getBiomarkerSeriesWithDerived,
+  getDerivedBiomarkerReadings,
   getUsedCanonicalNamesWithDerived,
 } from "./derived";
 import { getSleepRegularityTrend } from "./sleep";
@@ -44,12 +45,16 @@ import { protocolHref, type AppRoute } from "../hrefs";
 import {
   getPracticeDayCount,
   getPracticeDayUsageInWindow,
-} from "../practice-log";
+  getPracticeSpellingsMap,
+  practiceSpellingsFor,
+} from "./wellness";
 import {
   biomarkerOutcomeOption,
   type OutcomeOption,
 } from "../protocol-outcome-picker";
+import { canonicalGroupKey, groupByCanonicalName } from "../biomarker-group";
 import { preferredOutcomeKeyForBiomarker } from "../outcome-identity";
+import { getRankedBiomarkerOptions } from "./biomarker-options";
 import {
   buildProtocolHeatmap,
   type ProtocolDayUsage,
@@ -289,7 +294,8 @@ function protocolUsageScope(
 export function getProtocolUsageByDay(
   profileId: number,
   protocol: Protocol,
-  today: string
+  today: string,
+  practiceSpellings?: readonly string[]
 ): ProtocolDayUsage[] {
   const end = protocol.end_date ?? today;
   const scope = protocolUsageScope(profileId, protocol);
@@ -299,7 +305,8 @@ export function getProtocolUsageByDay(
       profileId,
       scope.value,
       protocol.start_date,
-      end
+      end,
+      practiceSpellings
     );
   }
 
@@ -347,9 +354,15 @@ export function getProtocolUsageByDay(
 export function getProtocolUsage(
   profileId: number,
   protocol: Protocol,
-  today: string
+  today: string,
+  practiceSpellings?: readonly string[]
 ): ProtocolUsage {
-  const days = getProtocolUsageByDay(profileId, protocol, today);
+  const days = getProtocolUsageByDay(
+    profileId,
+    protocol,
+    today,
+    practiceSpellings
+  );
   return {
     sessions: days.reduce((sum, day) => sum + day.count, 0),
     lastUsed: days.at(-1)?.date ?? null,
@@ -432,7 +445,10 @@ export function getProtocolAdherence(
   );
 }
 
-export function getProtocolOutcomeOptions(profileId: number): OutcomeOption[] {
+export function getProtocolOutcomeOptions(
+  profileId: number,
+  today: string
+): OutcomeOption[] {
   const fixed: OutcomeOption[] = FIXED_OUTCOME_METRICS.map((m) => ({
     key: m.key,
     label: m.label,
@@ -440,7 +456,12 @@ export function getProtocolOutcomeOptions(profileId: number): OutcomeOption[] {
     panel: null,
     searchTerms: [],
   }));
-  const biomarkers = getUsedCanonicalNamesWithDerived(profileId)
+  const biomarkers = getRankedBiomarkerOptions(
+    profileId,
+    today,
+    getUsedCanonicalNamesWithDerived(profileId)
+  )
+    .map((option) => option.name)
     .filter((name) => preferredOutcomeKeyForBiomarker(name) == null)
     .map(biomarkerOutcomeOption);
   return [...fixed, ...biomarkers];
@@ -538,6 +559,116 @@ export function getProtocolComparison(
   });
 }
 
+// Detail-page picker data in one bounded gather: all offered outcomes are compared
+// against this protocol's before/during windows so options with real data in BOTH
+// windows can rank first and show a delta preview. Biomarkers are gathered through
+// one bulk read rather than one getBiomarkerSeries query per option.
+export function getProtocolOutcomePickerData(
+  profileId: number,
+  protocol: Protocol,
+  today: string,
+  weightUnit: WeightUnit
+): {
+  comparison: ProtocolComparison;
+  options: OutcomeOption[];
+} {
+  const baseOptions = getProtocolOutcomeOptions(profileId, today);
+  const baseKeys = new Set(baseOptions.map((option) => option.key));
+  // A protocol can outlive the reading that originally made a biomarker
+  // selectable. Keep every currently selected outcome in the editor so opening
+  // and saving it never silently drops a historical choice.
+  for (const key of normalizeOutcomeKeys(protocol.outcomeKeys)) {
+    if (baseKeys.has(key)) continue;
+    const parsed = parseOutcomeKey(key);
+    if (parsed?.kind !== "biomarker") continue;
+    baseOptions.push(biomarkerOutcomeOption(parsed.id));
+    baseKeys.add(key);
+  }
+  const keys = normalizeOutcomeKeys([
+    ...baseOptions.map((option) => option.key),
+    ...protocol.outcomeKeys,
+  ]);
+  const hasBiomarkers = keys.some((key) => key.startsWith("biomarker:"));
+  const storedByCanonical = hasBiomarkers
+    ? groupByCanonicalName(getAllBiomarkerSeries(profileId))
+    : new Map();
+  const derived = hasBiomarkers ? getDerivedBiomarkerReadings(profileId) : [];
+
+  const series = keys
+    .map((key): OutcomeSeries | null => {
+      const parsed = parseOutcomeKey(key);
+      if (parsed?.kind !== "biomarker") {
+        return resolveOutcomeSeries(profileId, key, weightUnit);
+      }
+
+      const canonical = parsed.id;
+      const canonicalLower = canonical.toLowerCase();
+      const rows = [
+        ...(storedByCanonical.get(canonicalGroupKey(canonical)) ?? []),
+        ...derived.filter(
+          (row) =>
+            (row.canonical_name ?? row.name).toLowerCase() === canonicalLower
+        ),
+      ].sort((a, b) =>
+        a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id
+      );
+      const cb = getCanonicalBiomarker(canonical);
+      return {
+        key,
+        label: canonical,
+        unit: cb?.unit ?? null,
+        direction:
+          (cb?.direction as OutcomeDirection | undefined) ?? "in_range",
+        samples: rows
+          .filter((row) => row.value_num != null)
+          .map((row) => ({ date: row.date, value: row.value_num as number })),
+      };
+    })
+    .filter((item): item is OutcomeSeries => item != null);
+
+  const allComparison = compareProtocol(series, {
+    startDate: protocol.start_date,
+    endDate: protocol.end_date,
+    today,
+  });
+  const comparedByKey = new Map(
+    allComparison.outcomes.map((outcome) => [outcome.key, outcome])
+  );
+  const options = baseOptions.map((option) => {
+    const outcome = comparedByKey.get(option.key);
+    if (
+      !outcome ||
+      outcome.insufficient ||
+      outcome.baseline.mean == null ||
+      outcome.intervention.mean == null ||
+      outcome.meanDelta == null
+    ) {
+      return option;
+    }
+    return {
+      ...option,
+      preview: {
+        beforeMean: outcome.baseline.mean,
+        duringMean: outcome.intervention.mean,
+        meanDelta: outcome.meanDelta,
+        unit: outcome.unit,
+        beforeN: outcome.baseline.n,
+        duringN: outcome.intervention.n,
+      },
+    };
+  });
+
+  return {
+    options,
+    comparison: {
+      ...allComparison,
+      outcomes: normalizeOutcomeKeys(protocol.outcomeKeys)
+        .map((key) => comparedByKey.get(key))
+        .filter((outcome): outcome is NonNullable<typeof outcome> => !!outcome),
+    },
+  };
+}
+
 // A compact summary of one ONGOING protocol for the dashboard widget (issue #660):
 // days elapsed, this-week practice adherence, and the primary outcome's during-
 // window trend. Every field is a FORMATTER over the SAME computations the detail
@@ -579,6 +710,7 @@ export function getActiveProtocolSummaries(
   today: string,
   weightUnit: WeightUnit
 ): ActiveProtocolSummary[] {
+  const spellingsByIdentity = getPracticeSpellingsMap(profileId);
   return getProtocols(profileId)
     .filter((p) => p.end_date == null)
     .map((protocol) => {
@@ -616,7 +748,12 @@ export function getActiveProtocolSummaries(
         practice,
         practiceTodayCount:
           practice?.scopeKind === "practice"
-            ? getPracticeDayCount(profileId, practice.value, today)
+            ? getPracticeDayCount(
+                profileId,
+                practice.value,
+                today,
+                practiceSpellingsFor(spellingsByIdentity, practice.value)
+              )
             : 0,
         primaryOutcome: primary
           ? {

@@ -119,8 +119,8 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
       db
         .prepare(
           `INSERT INTO frequency_targets
-             (profile_id, scope_kind, scope_value, per_week)
-           VALUES (1, 'practice', 'Sauna', 3)`
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (1, 'practice', 'Sauna', 'sauna', 3)`
         )
         .run().lastInsertRowid
     );

@@ -51,6 +51,35 @@ describe("protocol outcome picker (#1586)", () => {
     );
   });
 
+  it("ranks changed and comparable outcomes ahead of relevance-only hints", () => {
+    const weight = fixed("metric:weight", "Body weight");
+    weight.preview = {
+      beforeMean: 80,
+      duringMean: 78,
+      meanDelta: -2,
+      unit: "kg",
+      beforeN: 3,
+      duringN: 4,
+    };
+    const unchanged = fixed("metric:resting_hr", "Resting heart rate");
+    unchanged.preview = {
+      beforeMean: 60,
+      duringMean: 60,
+      meanDelta: 0,
+      unit: "bpm",
+      beforeN: 5,
+      duringN: 5,
+    };
+    const relevant = biomarkerOutcomeOption("Vitamin D, 25-Hydroxy");
+
+    expect(
+      rankProtocolOutcomeOptions(
+        [relevant, unchanged, weight],
+        new Set(["vitamins"])
+      ).map((option) => option.key)
+    ).toEqual([weight.key, unchanged.key, relevant.key]);
+  });
+
   it("derives panel hints from practice and intake signals", () => {
     const panels = protocolRelevantPanels({
       practice: "cardio",

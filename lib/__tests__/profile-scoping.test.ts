@@ -174,6 +174,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 038 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — its de-dupe/UPDATE/DELETE statements below are all profile_id-scoped",
   },
   {
+    file: "lib/migrations/versions/123-practice-target-unique.ts",
+    includes:
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'frequency_targets'",
+    why: "migration 123 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — mirrors migration 038",
+  },
+  {
     file: "lib/migrations/versions/042-symptom-logs.ts",
     includes: "UPDATE situations SET illness_type = 1 WHERE name = 'Illness'",
     why: "migration 042 (#799) one-shot backfill: defaults the illness_type flag ON for the SHARED built-in 'Illness' situation across ALL profiles by canonical name — a vocabulary default, not a per-profile read; every runtime situations statement stays profile_id-scoped",
@@ -282,6 +288,17 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes:
       "SELECT id, profile_id, scope_value FROM frequency_targets WHERE scope_kind = 'food_group'",
     why: "migration 038 one-shot GLOBAL dedupe read: enumerates every profile's food-group frequency targets to collapse duplicates before adding the UNIQUE index — profile_id is carried in the select-list to re-key the dedupe per owner; the UPDATE/DELETE it drives are profile_id-scoped (already allowlisted above).",
+  },
+  {
+    file: "lib/migrations/versions/123-practice-target-unique.ts",
+    includes:
+      "SELECT id, profile_id, scope_value FROM frequency_targets WHERE scope_kind = 'practice'",
+    why: "migration 123 one-shot GLOBAL dedupe read: enumerates every profile's practice targets to collapse normalized-identity duplicates before adding the UNIQUE index — profile_id is carried into the per-owner keeper map, and every mutation it drives is profile-scoped.",
+  },
+  {
+    file: "lib/migrations/versions/123-practice-target-unique.ts",
+    includes: "SELECT id, profile_id, practice FROM practice_logs ORDER BY id",
+    why: "migration 123 one-shot GLOBAL log reconciliation: enumerates practice logs with their profile_id, resolves each against that profile's keeper map, and re-keys each mutation by id AND profile_id; histories never cross profiles.",
   },
   {
     file: "lib/migrations/versions/109-health-connect-token-hash.ts",

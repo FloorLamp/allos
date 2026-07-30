@@ -7,6 +7,7 @@ import {
   rankProtocolOutcomeOptions,
   type OutcomeOption,
 } from "@/lib/protocol-outcome-picker";
+import { formatOutcomeDelta } from "@/lib/protocol-compare";
 import type { PanelId } from "@/lib/biomarker-panels";
 
 export default function ProtocolOutcomePicker({
@@ -14,11 +15,13 @@ export default function ProtocolOutcomePicker({
   selectedKeys,
   onChange,
   relevantPanels,
+  externallyDisplayedKeys,
 }: {
   options: OutcomeOption[];
   selectedKeys: string[];
   onChange: (keys: string[]) => void;
   relevantPanels: ReadonlySet<PanelId>;
+  externallyDisplayedKeys?: ReadonlySet<string>;
 }) {
   const [query, setQuery] = useState("");
   const byKey = useMemo(
@@ -28,11 +31,15 @@ export default function ProtocolOutcomePicker({
   const selected = selectedKeys
     .map((key) => byKey.get(key))
     .filter((option): option is OutcomeOption => option != null);
+  const selectedChips = selected.filter(
+    (option) => !externallyDisplayedKeys?.has(option.key)
+  );
   const selectedSet = new Set(selectedKeys);
   const available = rankProtocolOutcomeOptions(
     options.filter((option) => !selectedSet.has(option.key)),
     relevantPanels
   );
+  const hasPreviews = options.some((option) => option.preview != null);
 
   function add(key: string) {
     const option = byKey.get(key);
@@ -55,12 +62,12 @@ export default function ProtocolOutcomePicker({
 
   return (
     <div className="mt-1 space-y-2" data-testid="protocol-outcome-picker">
-      {selected.length > 0 && (
+      {selectedChips.length > 0 && (
         <div
           className="flex flex-wrap gap-1.5"
           data-testid="protocol-outcome-selected"
         >
-          {selected.map((option) => (
+          {selectedChips.map((option) => (
             <span
               key={option.key}
               className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 py-1 pl-2.5 pr-1 text-xs font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
@@ -75,11 +82,18 @@ export default function ProtocolOutcomePicker({
               >
                 <IconX className="h-3.5 w-3.5" stroke={2} aria-hidden />
               </button>
-              <input type="hidden" name="outcome_keys" value={option.key} />
             </span>
           ))}
         </div>
       )}
+      {selected.map((option) => (
+        <input
+          key={option.key}
+          type="hidden"
+          name="outcome_keys"
+          value={option.key}
+        />
+      ))}
       {available.length > 0 ? (
         <Combobox
           value={query}
@@ -90,6 +104,20 @@ export default function ProtocolOutcomePicker({
           searchTermsFor={(key) => {
             const option = byKey.get(key);
             return option ? [option.label, ...option.searchTerms] : [];
+          }}
+          badgeFor={(key) => {
+            const preview = byKey.get(key)?.preview;
+            if (!preview) return null;
+            const unit = preview.unit ? ` ${preview.unit}` : "";
+            return (
+              <span
+                className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400"
+                title={`${preview.beforeMean} → ${preview.duringMean}${unit} (${preview.beforeN} before, ${preview.duringN} during)`}
+              >
+                {formatOutcomeDelta(preview.meanDelta)}
+                {unit}
+              </span>
+            );
           }}
           placeholder="Search outcomes, e.g. ApoB or A1c"
           ariaLabel="Filter outcome metrics"
@@ -102,7 +130,10 @@ export default function ProtocolOutcomePicker({
         </p>
       )}
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Relevant panels appear first; every tracked outcome remains searchable.
+        {hasPreviews
+          ? "Outcomes with measurable before-and-during changes appear first."
+          : "Suggested outcomes appear first."}{" "}
+        Search to find any other tracked metric.
       </p>
     </div>
   );

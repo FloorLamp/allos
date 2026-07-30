@@ -23,6 +23,7 @@ import {
   IconReportMedical,
   IconChevronRight,
   IconSalad,
+  IconSparkles,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
@@ -52,8 +53,8 @@ type Leaf = {
   requiresFoodLogging?: boolean;
   // Entries carrying a `relevanceKey` are dropped when the server-resolved
   // relevance bitset (lib/nav-relevance.ts, issue #1042) reads false for that
-  // key. In nav today only Cycle uses it (the data/life-stage gate); the
-  // Vision/Dental data-presence bits from the SAME bitset now gate their folded
+  // key. Cycle, Sleep, Progress photos, and Wellness use it in nav; the
+  // Vision/Dental data-presence bits from the SAME bitset gate their folded
   // /records specialty sections instead. Cosmetic — every gated page still renders
   // on a direct URL.
   relevanceKey?: NavRelevanceKey;
@@ -202,6 +203,18 @@ const entries: Entry[] = [
     // Open to any login with 2+ accessible profiles (admin or caregiver member) —
     // issue #31. The page re-checks the accessible-profile count server-side.
     requiresMultiProfile: true,
+  },
+  // Wellness (#1620): a data-gated daily-practice surface beside Longevity,
+  // whose protocol picker shares the same practice targets. Gate = any
+  // practice-scope frequency target OR any practice log (logs-only practices are
+  // a real state). Cosmetic like Sleep/Progress — direct URLs still work, and
+  // the command palette's always-visible "Wellness practices" action preserves
+  // the first-practice creation path.
+  {
+    href: "/wellness",
+    label: "Wellness",
+    icon: IconSparkles,
+    relevanceKey: "wellness",
   },
   // Longevity took over Protocols' slot in #1042 phase 4: the healthspan-pillar
   // page whose #protocols section absorbed the old Protocols hub (the /protocols
@@ -357,9 +370,9 @@ export default function Nav({
   // the Food-logging gate stands on its own when a caller doesn't thread it.
   hasIntakeItems?: boolean;
   // The server-resolved relevance bitset (issue #1042) gating entries flagged
-  // with a `relevanceKey` (Cycle in nav; the Vision/Dental bits now gate the
-  // /records specialty sections). Defaults all-true so a caller that doesn't thread
-  // it never over-hides.
+  // with a `relevanceKey` (Cycle/Sleep/Progress/Wellness in nav; the
+  // Vision/Dental bits gate the /records specialty sections). Defaults all-true
+  // so a caller that doesn't thread it never over-hides.
   relevance?: NavRelevance;
 }) {
   const visible = entries.filter((e) =>

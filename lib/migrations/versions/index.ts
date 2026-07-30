@@ -121,6 +121,7 @@ import { migration as m119 } from "./119-practice-sync-provenance";
 import { migration as m120 } from "./120-lab-result-lifecycle";
 import { migration as m121 } from "./121-goal-equipment-context";
 import { migration as m122 } from "./122-records-safety-passport";
+import { migration as m123 } from "./123-practice-target-unique";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -251,4 +252,5 @@ export const MIGRATIONS: Migration[] = [
   m120,
   m121,
   m122,
+  m123,
 ];

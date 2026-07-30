@@ -13,12 +13,12 @@ import { fileURLToPath } from "node:url";
 // `whitespace-pre-wrap break-words`.
 //
 // NotesText takes the note as a PROP precisely so this scan has a reliable
-// signature to ban: a `.notes` value rendered as a bare JSX child (`{x.notes}` or
-// `{x.notes ?? ""}`). Passing it as a prop (`notes={x.notes}`) or interpolating it
-// in a template (`${x.notes}`) is fine — those don't render it directly. This test
-// reads the repo's own source as TEXT (no DB, no network, so it stays "pure") and
-// fails the build if a new notes surface renders a note bare instead of via
-// NotesText.
+// signature to ban: a `.notes` value rendered as a bare JSX child (`{x.notes}`,
+// `{x.notes ?? ""}`, or `{x.notes || "—"}`). Passing it as a prop
+// (`notes={x.notes}`) or interpolating it in a template (`${x.notes}`) is fine —
+// those don't render it directly. This test reads the repo's own source as TEXT (no
+// DB, no network, so it stays "pure") and fails the build if a new notes surface
+// renders a note bare instead of via NotesText.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
@@ -26,11 +26,12 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
 
 // A `.notes` (or a dotted path ending in `.notes`) rendered as the direct child of
-// a JSX expression container, optionally with a `?? ""` fallback. The leading
-// look-behind excludes a prop assignment (`notes={x.notes}` — `{` after `=`) and a
-// template interpolation (`${x.notes}` — `{` after `$`), both of which are allowed.
+// a JSX expression container, optionally with a `?? ""` or `|| "—"` fallback. The
+// leading look-behind excludes a prop assignment (`notes={x.notes}` — `{` after `=`)
+// and a template interpolation (`${x.notes}` — `{` after `$`), both of which are
+// allowed.
 const BARE_NOTES =
-  /(?<![=$])\{\s*[A-Za-z_$][\w$.]*\.notes\s*(?:\?\?\s*(['"]).*?\1)?\s*\}/;
+  /(?<![=$])\{\s*[A-Za-z_$][\w$.]*\.notes\s*(?:(?:\?\?|\|\|)\s*(['"]).*?\1)?\s*\}/;
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -69,6 +70,13 @@ function stripComments(text: string): string {
 }
 
 describe("notes rendering convention (issue #794 cluster 11a)", () => {
+  it("detects bare notes with either nullish or logical-OR fallbacks (#1624)", () => {
+    expect(BARE_NOTES.test("{record.notes}")).toBe(true);
+    expect(BARE_NOTES.test('{record.notes ?? ""}')).toBe(true);
+    expect(BARE_NOTES.test('{record.notes || "—"}')).toBe(true);
+    expect(BARE_NOTES.test("<NotesText notes={record.notes} />")).toBe(false);
+  });
+
   it("no notes surface renders a note bare — all go through <NotesText />", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {

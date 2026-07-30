@@ -14,6 +14,7 @@ import {
   getPracticeDayCount,
   getPracticeSessions,
   getFrequencyTargetProgress,
+  getWellnessPractices,
   collectUpcoming,
   dismissFinding,
 } from "@/lib/queries";
@@ -22,7 +23,14 @@ import {
   behindPractices,
   buildPracticeReminder,
 } from "@/lib/notifications/practices";
+import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { OWNED_TABLES } from "@/lib/owned-tables";
+import {
+  createWellnessPractice,
+  untrackWellnessPractice,
+  updateWellnessPractice,
+} from "@/lib/practice-store";
+import { practiceIdentity } from "@/lib/practice";
 
 function makeProfile(name: string): number {
   return Number(
@@ -40,10 +48,12 @@ function practiceTarget(
   return Number(
     db
       .prepare(
-        `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, per_week_max)
-         VALUES (?, 'practice', ?, ?, ?)`
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+         VALUES (?, 'practice', ?, ?, ?, ?)`
       )
-      .run(profileId, name, floor, ceiling).lastInsertRowid
+      .run(profileId, name, practiceIdentity(name), floor, ceiling)
+      .lastInsertRowid
   );
 }
 
@@ -54,6 +64,60 @@ describe("practice_logs store + range progress (#1259)", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("makes Wellness relevant for either target-backed or logs-only practices (#1620)", () => {
+    const empty = makeProfile("wellness-nav-empty");
+    expect(getNavRelevance(empty).wellness).toBe(false);
+
+    const logsOnly = makeProfile("wellness-nav-logs");
+    logPracticeSession(logsOnly, "Meditation", "2026-06-17");
+    expect(getNavRelevance(logsOnly).wellness).toBe(true);
+
+    const targetOnly = makeProfile("wellness-nav-target");
+    practiceTarget(targetOnly, "Breathwork", 3, null);
+    expect(getNavRelevance(targetOnly).wellness).toBe(true);
+  });
+
+  it("retiring a practice keeps its logs-only card and removes Upcoming, nudge, and dismissal state (#1621)", () => {
+    const pid = makeProfile("wellness-retire");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    const tid = practiceTarget(pid, "Meditation", 3, null);
+    logPracticeSession(pid, "Meditation", t);
+
+    expect(collectUpcoming(pid, t).map((item) => item.key)).toContain(
+      `practice:${tid}`
+    );
+    expect(behindPractices(pid).map((item) => item.targetId)).toContain(tid);
+    dismissFinding(pid, `practice:${tid}`);
+
+    expect(untrackWellnessPractice(pid, tid)).toEqual({
+      kind: "untracked",
+      targetId: tid,
+    });
+    expect(getPracticeSessions(pid, "Meditation")).toHaveLength(1);
+    expect(getWellnessPractices(pid)).toMatchObject([
+      {
+        name: "Meditation",
+        targetId: null,
+        perWeek: null,
+        sessionCount: 1,
+      },
+    ]);
+    expect(collectUpcoming(pid, t).map((item) => item.key)).not.toContain(
+      `practice:${tid}`
+    );
+    expect(behindPractices(pid)).toEqual([]);
+    expect(buildPracticeReminder(pid)).toBeNull();
+    expect(
+      db
+        .prepare(
+          `SELECT 1 FROM upcoming_dismissals
+            WHERE profile_id = ? AND signal_key = ?`
+        )
+        .get(pid, `practice:${tid}`)
+    ).toBeUndefined();
   });
 
   it("two same-day sessions are TWO rows but ONE adherence day", () => {
@@ -91,6 +155,72 @@ describe("practice_logs store + range progress (#1259)", () => {
     expect(progress?.count).toBe(2);
     expect(getPracticeDayCount(pid, "Sauna", t)).toBe(1);
     expect(getPracticeSessions(pid, "sAuNa")).toHaveLength(2);
+  });
+
+  it("database uniqueness follows practice identity within one profile (#1623)", () => {
+    const owner = makeProfile("practice-identity-owner");
+    const other = makeProfile("practice-identity-other");
+    practiceTarget(owner, "Sauna ritual", 3, null);
+
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (?, 'practice', ' SAUNA\tRITUAL ', ?, 4)`
+        )
+        .run(owner, practiceIdentity(" SAUNA\tRITUAL "))
+    ).toThrow(/UNIQUE/i);
+
+    expect(() => practiceTarget(other, "SAUNA RITUAL", 4, null)).not.toThrow();
+  });
+
+  it("refuses to rename a target onto a logs-only practice history (#1618)", () => {
+    const pid = makeProfile("rename-collision");
+    const created = createWellnessPractice(pid, "Sauna", 3, null);
+    expect(created.kind).toBe("saved");
+    if (created.kind !== "saved") throw new Error("practice was not created");
+
+    logPracticeSession(pid, "Sauna", "2026-06-15");
+    logPracticeSession(pid, "Meditation", "2026-06-14");
+    logPracticeSession(pid, "Meditation", "2026-06-16");
+
+    expect(
+      updateWellnessPractice(pid, created.targetId, "Meditation", 3, null)
+    ).toEqual({ kind: "duplicate" });
+    expect(getPracticeSessions(pid, "Sauna")).toHaveLength(1);
+    expect(getPracticeSessions(pid, "Meditation")).toHaveLength(2);
+    expect(
+      getWellnessPractices(pid).map((practice) => ({
+        name: practice.name,
+        targetId: practice.targetId,
+        sessionCount: practice.sessionCount,
+      }))
+    ).toEqual([
+      { name: "Meditation", targetId: null, sessionCount: 2 },
+      { name: "Sauna", targetId: created.targetId, sessionCount: 1 },
+    ]);
+  });
+
+  it("allows a case-only rename within one practice identity (#1618)", () => {
+    const pid = makeProfile("rename-same-identity");
+    const created = createWellnessPractice(pid, "sauna", 3, null);
+    expect(created.kind).toBe("saved");
+    if (created.kind !== "saved") throw new Error("practice was not created");
+    logPracticeSession(pid, " SAUNA ", "2026-06-16");
+
+    expect(
+      updateWellnessPractice(pid, created.targetId, "Sauna", 3, null)
+    ).toEqual({ kind: "saved", targetId: created.targetId });
+    expect(getWellnessPractices(pid)).toMatchObject([
+      {
+        identity: "sauna",
+        name: "Sauna",
+        targetId: created.targetId,
+        sessionCount: 1,
+      },
+    ]);
+    expect(getPracticeSessions(pid, "sauna")).toHaveLength(1);
   });
 
   it("supports protocol-windowed and unbounded session history", () => {

@@ -1,17 +1,20 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { IconChevronLeft, IconBarbell, IconPill } from "@tabler/icons-react";
+import { IconArrowLeft, IconBarbell, IconPill } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
   getProtocol,
-  getProtocolComparison,
-  getProtocolOutcomeOptions,
+  getProtocolOutcomePickerData,
   getProtocolPractice,
   getProtocolUsage,
   getProtocolAdherence,
   getProtocolIntakeOptions,
   getProtocolIntakeItem,
+  getPracticeDayCount,
+  getPracticeSessions,
+  getPracticeSpellingsMap,
+  practiceSpellingsFor,
 } from "@/lib/queries";
 import { getEquipment, getEquipmentById } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
@@ -19,15 +22,18 @@ import { getUnitPrefs } from "@/lib/settings";
 import { intakeHref } from "@/lib/hrefs";
 import { formatUsageSummary } from "@/lib/usage-format";
 import { protocolPracticeLabel } from "@/lib/protocol-practice";
-import { practiceCadenceText, PRACTICE_PLENTY_TEXT } from "@/lib/practice";
-import { getPracticeDayCount, getPracticeSessions } from "@/lib/practice-log";
+import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
 import { previousPracticeDuration } from "@/lib/practice";
+import PracticeCardHeader from "@/components/practices/PracticeCardHeader";
+import PracticeHistorySection from "@/components/practices/PracticeHistorySection";
+import PracticeWeeklyProgress from "@/components/practices/PracticeWeeklyProgress";
+import PageContainer from "@/components/PageContainer";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import ProtocolLogButton from "../ProtocolLogButton";
-import PracticeSessionHistory from "@/app/(app)/wellness/PracticeSessionHistory";
 import {
   updateProtocol,
+  updateProtocolOutcomes,
   endProtocol,
   resumeProtocol,
   runProtocolAgain,
@@ -52,13 +58,12 @@ export default async function ProtocolDetailPage(props: {
 
   const units = getUnitPrefs(login.id);
   const todayStr = today(profile.id);
-  const comparison = getProtocolComparison(
+  const { comparison, options } = getProtocolOutcomePickerData(
     profile.id,
     protocol,
     todayStr,
     units.weightUnit
   );
-  const options = getProtocolOutcomeOptions(profile.id);
   const practice = getProtocolPractice(profile.id, protocol);
   const gear =
     protocol.equipment_id != null
@@ -75,38 +80,79 @@ export default async function ProtocolDetailPage(props: {
   // name + kind (kind drives the surface its link points at). Null when unlinked or
   // the item was deleted.
   const intakeItem = getProtocolIntakeItem(profile.id, protocol.intake_item_id);
+  const relevantPanelIds = [
+    ...protocolRelevantPanels({
+      practice: practice
+        ? `${practice.scopeKind} ${practice.value}`
+        : undefined,
+      intakeItemName: intakeItem?.name,
+    }),
+  ];
   const adherence = getProtocolAdherence(profile.id, protocol);
+  const practiceSpellings =
+    practice?.scopeKind === "practice"
+      ? practiceSpellingsFor(
+          getPracticeSpellingsMap(profile.id),
+          practice.value
+        )
+      : [];
   // Today's running session count for the one-tap widget (#1259), only for a wellness
   // practice — the count sits beside the Log button so a second tap is informed.
   const practiceTodayCount =
     practice?.scopeKind === "practice"
-      ? getPracticeDayCount(profile.id, practice.value, todayStr)
+      ? getPracticeDayCount(
+          profile.id,
+          practice.value,
+          todayStr,
+          practiceSpellings
+        )
       : 0;
-  const usage = getProtocolUsage(profile.id, protocol, todayStr);
+  const usage = getProtocolUsage(
+    profile.id,
+    protocol,
+    todayStr,
+    practiceSpellings
+  );
   const protocolPracticeSessions =
     practice?.scopeKind === "practice"
-      ? getPracticeSessions(profile.id, practice.value, 100, {
-          start: protocol.start_date,
-          end: protocol.end_date ?? todayStr,
-        })
+      ? getPracticeSessions(
+          profile.id,
+          practice.value,
+          100,
+          {
+            start: protocol.start_date,
+            end: protocol.end_date ?? todayStr,
+          },
+          practiceSpellings
+        )
       : [];
   const previousDurationMin =
     practice?.scopeKind === "practice"
       ? previousPracticeDuration(
-          getPracticeSessions(profile.id, practice.value, 1)
+          getPracticeSessions(
+            profile.id,
+            practice.value,
+            1,
+            undefined,
+            practiceSpellings
+          )
         )
       : null;
   const hasPracticeCard = !!gear || !!practice || !!intakeItem;
   const ongoing = protocol.end_date == null;
 
   return (
-    <div>
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="protocol-detail-page"
+    >
       <Link
         href="/longevity#protocols"
-        className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
       >
-        <IconChevronLeft className="h-4 w-4" stroke={1.75} aria-hidden /> All
-        protocols
+        <IconArrowLeft className="h-4 w-4" stroke={1.75} aria-hidden />
+        Back to protocols
       </Link>
 
       <div className="space-y-6">
@@ -124,21 +170,46 @@ export default async function ProtocolDetailPage(props: {
           asOf={todayStr}
         />
 
-        <div
-          className={`grid gap-6 ${hasPracticeCard ? "lg:grid-cols-3" : ""}`}
-        >
+        <div className="grid gap-6">
           {hasPracticeCard && (
             <div
-              className="card min-w-0 space-y-3 lg:col-span-1"
+              className="card min-w-0 space-y-3"
               data-testid="protocol-practice-card"
             >
-              <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                Practice
-              </h2>
+              <PracticeCardHeader
+                name={
+                  practice?.scopeKind === "practice"
+                    ? practice.value
+                    : "Practice"
+                }
+                progress={
+                  practice?.scopeKind === "practice" && ongoing
+                    ? {
+                        count: adherence?.count ?? 0,
+                        perWeek: practice.perWeek,
+                        perWeekMax: practice.perWeekMax,
+                        pace: adherence?.pace ?? "on-pace",
+                        atCeiling: adherence?.atCeiling ?? false,
+                        testId: "protocol-adherence",
+                      }
+                    : undefined
+                }
+                action={
+                  practice?.scopeKind === "practice" ? (
+                    <Link
+                      href="/wellness"
+                      className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+                      data-testid="protocol-wellness-link"
+                    >
+                      View practice →
+                    </Link>
+                  ) : undefined
+                }
+              />
 
               {gear && (
                 <div>
-                  <div className="section-label">Gear</div>
+                  <div className="section-label">Recovery gear</div>
                   <Link
                     href={`/equipment/${gear.id}`}
                     className="mt-0.5 inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline dark:text-brand-300"
@@ -161,7 +232,7 @@ export default async function ProtocolDetailPage(props: {
 
               {intakeItem && (
                 <div>
-                  <div className="section-label">Intervention</div>
+                  <div className="section-label">Supplement or medication</div>
                   <Link
                     href={intakeHref(intakeItem.kind)}
                     className="mt-0.5 inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline dark:text-brand-300"
@@ -178,71 +249,88 @@ export default async function ProtocolDetailPage(props: {
                 </div>
               )}
 
-              {practice && ongoing && (
+              {practice && ongoing && practice.scopeKind !== "practice" && (
                 <div>
-                  <div className="section-label">Adherence this week</div>
-                  <div
-                    className="mt-0.5 text-sm text-slate-700 dark:text-slate-200"
-                    data-testid="protocol-adherence"
-                  >
-                    <span className="font-semibold tabular-nums">
-                      {adherence?.count ?? 0} /{" "}
-                      {practiceCadenceText(
-                        practice.perWeek,
-                        practice.perWeekMax
-                      )}
-                    </span>{" "}
-                    {protocolPracticeLabel(practice.scopeKind, practice.value)}
-                    {adherence?.atCeiling ? (
-                      <span className="badge ml-1.5 bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-                        {PRACTICE_PLENTY_TEXT}
-                      </span>
-                    ) : adherence?.met ? (
-                      <span className="badge ml-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                        On track
-                      </span>
-                    ) : (
-                      <span className="badge ml-1.5 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                        Behind
-                      </span>
+                  <div className="section-label">Weekly progress</div>
+                  <PracticeWeeklyProgress
+                    count={adherence?.count ?? 0}
+                    perWeek={practice.perWeek}
+                    perWeekMax={practice.perWeekMax}
+                    label={protocolPracticeLabel(
+                      practice.scopeKind,
+                      practice.value
                     )}
-                  </div>
-                  <ProtocolLogButton
-                    practice={practice}
-                    ongoing={ongoing}
-                    todayCount={practiceTodayCount}
+                    noun={
+                      practice.scopeKind === "food_group"
+                        ? "serving"
+                        : "session"
+                    }
+                    pace={adherence?.pace ?? "on-pace"}
                     atCeiling={adherence?.atCeiling ?? false}
-                    today={todayStr}
-                    defaultDurationMin={previousDurationMin}
-                    showDetails
+                    testId="protocol-adherence"
                   />
                 </div>
               )}
 
-              <div>
-                <div className="section-label">During this protocol</div>
-                <div
-                  className="mt-0.5 text-sm text-slate-700 dark:text-slate-200"
-                  data-testid="protocol-usage"
-                >
-                  {formatUsageSummary(
-                    usage.sessions,
-                    usage.lastUsed,
-                    todayStr,
-                    practice?.scopeKind === "food_group" ? "serving" : "session"
-                  )}
-                </div>
-                {practice?.scopeKind === "practice" && (
-                  <PracticeSessionHistory sessions={protocolPracticeSessions} />
-                )}
-              </div>
+              {practice && ongoing && (
+                <ProtocolLogButton
+                  practice={practice}
+                  ongoing={ongoing}
+                  todayCount={practiceTodayCount}
+                  atCeiling={adherence?.atCeiling ?? false}
+                  today={todayStr}
+                  defaultDurationMin={previousDurationMin}
+                  showDetails
+                />
+              )}
             </div>
           )}
-          <div className={`min-w-0 ${hasPracticeCard ? "lg:col-span-2" : ""}`}>
-            <ProtocolCompare comparison={comparison} />
+          <div className="min-w-0" data-testid="protocol-comparison-column">
+            <ProtocolCompare
+              comparison={comparison}
+              protocolId={protocol.id}
+              selectedKeys={protocol.outcomeKeys}
+              options={options}
+              relevantPanelIds={relevantPanelIds}
+              updateAction={updateProtocolOutcomes}
+            />
           </div>
+          {hasPracticeCard && (
+            <div className="card min-w-0" data-testid="protocol-history-card">
+              {practice?.scopeKind === "practice" ? (
+                <PracticeHistorySection
+                  title="Sessions during this protocol"
+                  sessions={protocolPracticeSessions}
+                  sessionCount={usage.sessions}
+                  lastUsed={usage.lastUsed}
+                  today={todayStr}
+                  emptyText="No sessions logged during this protocol."
+                  usageTestId="protocol-usage"
+                />
+              ) : (
+                <div>
+                  <div className="section-label">
+                    Logged during this protocol
+                  </div>
+                  <div
+                    className="mt-0.5 text-sm text-slate-700 dark:text-slate-200"
+                    data-testid="protocol-usage"
+                  >
+                    {formatUsageSummary(
+                      usage.sessions,
+                      usage.lastUsed,
+                      todayStr,
+                      practice?.scopeKind === "food_group"
+                        ? "serving"
+                        : "session"
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
