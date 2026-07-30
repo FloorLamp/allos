@@ -135,7 +135,11 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
     expect(getSupplementDoses(p).some((d) => d.id === low.doseId)).toBe(true);
     // …but it is NOT due: no dueness means no miss, which is the whole point.
     expect(
-      isDueOn(item, { isWorkoutDay: false, activeSituations: new Set() })
+      isDueOn(item, {
+        date: "2026-03-04",
+        isWorkoutDay: false,
+        activeSituations: new Set(),
+      })
     ).toBe(false);
 
     // COLLAPSED, NOT REMOVED: it is present in the availability disclosure, so an
@@ -158,6 +162,7 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
           .map((s) => [s.id, s])
       ),
       {
+        date: "2026-03-04",
         isWorkoutDay: getActivitiesByDate(p, day).length > 0,
         activeSituations: new Set(getActiveSituations(p)),
       },

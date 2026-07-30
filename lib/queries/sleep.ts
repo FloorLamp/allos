@@ -37,7 +37,7 @@ import {
 } from "../settings";
 import { doseAdherenceSince } from "../adherence-patterns";
 import { indexTakenByDose } from "../supplement-adherence";
-import { isDueOn, timeBucket } from "../supplement-schedule";
+import { doseDueOn, timeBucket } from "../supplement-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
   summarizeBedtimeSupplements,
@@ -348,7 +348,8 @@ function bedtimeSupplementsByWakeDay(
       if (!resolved && since != null && sleepDate < since) return [];
       if (
         !resolved &&
-        !isDueOn(item, {
+        !doseDueOn(item, dose, {
+          date: sleepDate,
           isWorkoutDay: workoutDays.has(sleepDate),
           activeSituations: situationsOn(sleepDate),
         })

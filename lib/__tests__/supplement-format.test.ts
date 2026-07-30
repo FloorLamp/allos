@@ -58,6 +58,10 @@ function supp(
     provider_id: null,
     source_record_id: null,
     indication_condition_id: null,
+    cadence_kind: "daily",
+    cadence_weekdays: null,
+    cadence_interval_days: null,
+    cadence_anchor_date: null,
   };
 }
 
@@ -77,6 +81,9 @@ function dose(
     retired: 0,
     created_at: null,
     updated_at: null,
+    weekdays: null,
+    start_date: null,
+    end_date: null,
   };
 }
 

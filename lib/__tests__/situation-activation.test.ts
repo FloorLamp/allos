@@ -10,7 +10,11 @@ import { situationActivationLine } from "@/lib/situations";
 type Supp = Parameters<typeof countSituationalDue>[0][number];
 
 function ctx(active: string[]) {
-  return { isWorkoutDay: false, activeSituations: new Set(active) };
+  return {
+    date: "2026-03-04",
+    isWorkoutDay: false,
+    activeSituations: new Set(active),
+  };
 }
 
 const supps: Supp[] = [

@@ -6,6 +6,7 @@ import {
   type SuppressionRecord,
 } from "../../upcoming-suppress";
 import {
+  doseDueOn,
   isDueOn,
   isOfferedOn,
   isPushedIntake,
@@ -13,6 +14,7 @@ import {
   timeBucket,
   TIME_BUCKET_LABELS,
 } from "../../supplement-schedule";
+import { cadenceLabel } from "../../intake-cadence";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
@@ -174,14 +176,23 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
   // #558: a pre_workout dose is pending on a predicted training day, before a
   // session is logged; the logged signal is the fallback when no cadence is known.
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
-  const ctx = { isWorkoutDay, activeSituations, predictedWorkoutDay };
+  const ctx = {
+    date: today,
+    isWorkoutDay,
+    activeSituations,
+    predictedWorkoutDay,
+  };
 
   const byId = new Map(supplements.map((s) => [s.id, s]));
   const items: UpcomingItem[] = [];
   for (const dose of doses) {
     if (taken.has(dose.id)) continue;
     const supp = byId.get(dose.item_id);
-    if (!supp || !supp.active || !isDueOn(supp, ctx)) continue;
+    // doseDueOn (#1602) folds the CALENDAR into the same gate: the item's cadence
+    // (weekly / every-N-days) plus this ROW's own weekday subset and validity window.
+    // A weekly methotrexate is simply absent from the due list on its six off-days —
+    // which is what lets it stay `must` instead of being demoted to silence it.
+    if (!supp || !supp.active || !doseDueOn(supp, dose, ctx)) continue;
     const detail = [
       supp.kind === "medication" ? "Medication" : null,
       supp.kind === "medication"
@@ -208,7 +219,13 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
       dueDate: null, // scheduled for today
       // Bucket label as the due-text ("Morning" / "Evening" / "Before sleep"…):
       // informative on its own and it explains the ordering to the user (#297).
-      dueText: timeBucket(dose.time_of_day),
+      // The bucket, qualified by the cadence when there is one ("Morning · Mondays"):
+      // a row that appears one day in seven must SAY so, or it reads as an ordinary
+      // daily dose the user is somehow only now seeing (#1602). One formatter
+      // (cadenceLabel) so the row, the digest and the reminder phrase it identically.
+      dueText: [timeBucket(dose.time_of_day), cadenceLabel(supp)]
+        .filter(Boolean)
+        .join(" · "),
       // Shared dose-day sort key (bucket → priority → stack → name) so morning
       // and bedtime doses no longer interleave alphabetically within the band —
       // the SAME ordering /medicine's due-today section uses (#297).
@@ -242,7 +259,12 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
   const activeSituations = getEffectiveActiveSituations(profileId, today);
   const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
-  const ctx = { isWorkoutDay, activeSituations, predictedWorkoutDay };
+  const ctx = {
+    date: today,
+    isWorkoutDay,
+    activeSituations,
+    predictedWorkoutDay,
+  };
 
   const dosesByItem = new Map<number, typeof doses>();
   for (const d of doses) {
@@ -267,7 +289,17 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
         supp.kind === "medication" ? "Medication · as needed" : "As needed",
       href: intakeHref(supp.kind),
       dueDate: null,
-      dueText: hint ? `Available · ${TIME_BUCKET_LABELS[hint]}` : "Available",
+      // Cadence on a `may` item is a LABEL, never a gate (#1602): the item stays
+      // offered every day (guaranteed access — a collapsed item must never become
+      // indistinguishable from a deleted one), and the phrase only tells the user
+      // which days it was meant for.
+      dueText: [
+        "Available",
+        hint ? TIME_BUCKET_LABELS[hint] : null,
+        cadenceLabel(supp),
+      ]
+        .filter(Boolean)
+        .join(" · "),
     });
   }
   return items.sort((a, b) => a.title.localeCompare(b.title));

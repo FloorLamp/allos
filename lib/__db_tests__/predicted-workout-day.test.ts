@@ -70,6 +70,7 @@ describe("predicted workout day (#558)", () => {
     // Due on a predicted workout day with no logged activity; hidden on rest day.
     expect(
       isDueOn(pre, {
+        date: "2026-03-04",
         isWorkoutDay: false,
         activeSituations: new Set<string>(),
         predictedWorkoutDay: isPredictedWorkoutDay(p, nextMon),
@@ -77,6 +78,7 @@ describe("predicted workout day (#558)", () => {
     ).toBe(true);
     expect(
       isDueOn(pre, {
+        date: "2026-03-04",
         isWorkoutDay: false,
         activeSituations: new Set<string>(),
         predictedWorkoutDay: isPredictedWorkoutDay(p, nextTue),

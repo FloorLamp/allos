@@ -77,12 +77,14 @@ describe("timeBucket", () => {
 describe("isDueOn", () => {
   const ctx = (
     over: Partial<{
+      date: "2026-03-04";
       isWorkoutDay: boolean;
       activeSituations: Set<string>;
       predictedWorkoutDay: boolean | null;
       postWorkoutReady: boolean;
     }> = {}
   ) => ({
+    date: "2026-03-04",
     isWorkoutDay: false,
     activeSituations: new Set<string>(),
     ...over,
@@ -95,9 +97,15 @@ describe("isDueOn", () => {
   it("workout-linked conditions follow the workout-day flag", () => {
     const pre = { condition: "pre_workout" as const, situation: null };
     const post = { condition: "post_workout" as const, situation: null };
-    expect(isDueOn(pre, ctx({ isWorkoutDay: true }))).toBe(true);
-    expect(isDueOn(pre, ctx({ isWorkoutDay: false }))).toBe(false);
-    expect(isDueOn(post, ctx({ isWorkoutDay: true }))).toBe(true);
+    expect(isDueOn(pre, ctx({ date: "2026-03-04", isWorkoutDay: true }))).toBe(
+      true
+    );
+    expect(isDueOn(pre, ctx({ date: "2026-03-04", isWorkoutDay: false }))).toBe(
+      false
+    );
+    expect(isDueOn(post, ctx({ date: "2026-03-04", isWorkoutDay: true }))).toBe(
+      true
+    );
   });
 
   // #558: pre_workout keys on the PREDICTED training day, so it's due before a
@@ -106,18 +114,46 @@ describe("isDueOn", () => {
   it("pre_workout is due on a predicted workout day with NO logged activity", () => {
     const pre = { condition: "pre_workout" as const, situation: null };
     expect(
-      isDueOn(pre, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+      isDueOn(
+        pre,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: false,
+          predictedWorkoutDay: true,
+        })
+      )
     ).toBe(true);
     expect(
-      isDueOn(pre, ctx({ isWorkoutDay: false, predictedWorkoutDay: false }))
+      isDueOn(
+        pre,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: false,
+          predictedWorkoutDay: false,
+        })
+      )
     ).toBe(false);
     // predictedWorkoutDay wins over the logged flag when known.
     expect(
-      isDueOn(pre, ctx({ isWorkoutDay: true, predictedWorkoutDay: false }))
+      isDueOn(
+        pre,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: true,
+          predictedWorkoutDay: false,
+        })
+      )
     ).toBe(false);
     // null → fall back to the logged flag (old behavior).
     expect(
-      isDueOn(pre, ctx({ isWorkoutDay: true, predictedWorkoutDay: null }))
+      isDueOn(
+        pre,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: true,
+          predictedWorkoutDay: null,
+        })
+      )
     ).toBe(true);
   });
 
@@ -127,22 +163,39 @@ describe("isDueOn", () => {
     const post = { condition: "post_workout" as const, situation: null };
     // A predicted workout day alone does not make it due — it needs a logged session.
     expect(
-      isDueOn(post, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+      isDueOn(
+        post,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: false,
+          predictedWorkoutDay: true,
+        })
+      )
     ).toBe(false);
     // Logged but session not over yet → not due.
     expect(
-      isDueOn(post, ctx({ isWorkoutDay: true, postWorkoutReady: false }))
+      isDueOn(
+        post,
+        ctx({ date: "2026-03-04", isWorkoutDay: true, postWorkoutReady: false })
+      )
     ).toBe(false);
     // Logged and session over → due.
     expect(
-      isDueOn(post, ctx({ isWorkoutDay: true, postWorkoutReady: true }))
+      isDueOn(
+        post,
+        ctx({ date: "2026-03-04", isWorkoutDay: true, postWorkoutReady: true })
+      )
     ).toBe(true);
   });
 
   it("rest_day is the inverse of a workout day", () => {
     const rest = { condition: "rest_day" as const, situation: null };
-    expect(isDueOn(rest, ctx({ isWorkoutDay: false }))).toBe(true);
-    expect(isDueOn(rest, ctx({ isWorkoutDay: true }))).toBe(false);
+    expect(
+      isDueOn(rest, ctx({ date: "2026-03-04", isWorkoutDay: false }))
+    ).toBe(true);
+    expect(isDueOn(rest, ctx({ date: "2026-03-04", isWorkoutDay: true }))).toBe(
+      false
+    );
   });
 
   // #558: rest_day follows the same predicted-vs-logged decision as pre_workout,
@@ -150,10 +203,24 @@ describe("isDueOn", () => {
   it("rest_day follows the predicted signal when known", () => {
     const rest = { condition: "rest_day" as const, situation: null };
     expect(
-      isDueOn(rest, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+      isDueOn(
+        rest,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: false,
+          predictedWorkoutDay: true,
+        })
+      )
     ).toBe(false);
     expect(
-      isDueOn(rest, ctx({ isWorkoutDay: true, predictedWorkoutDay: false }))
+      isDueOn(
+        rest,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: true,
+          predictedWorkoutDay: false,
+        })
+      )
     ).toBe(true);
   });
 
@@ -198,6 +265,7 @@ describe("situational dueness survives the isDueOn/isOfferedOn split (#1505)", (
   // not — the fixture had been mapped to `may` (see scripts/seed.ts). This describe
   // is the guard that tells those two causes apart next time.
   const ctx = (activeSituations: string[]) => ({
+    date: "2026-03-04",
     isWorkoutDay: false,
     activeSituations: new Set(activeSituations),
   });

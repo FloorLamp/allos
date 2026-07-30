@@ -19,7 +19,11 @@ import {
   OFFER_EXPAND_PREFIX,
 } from "@/lib/notifications/offer-tail";
 
-const ctx = { isWorkoutDay: false, activeSituations: new Set<string>() };
+const ctx = {
+  date: "2026-03-04",
+  isWorkoutDay: false,
+  activeSituations: new Set<string>(),
+};
 
 describe("slotHintBucket", () => {
   it("reads a real hint, and reads none from an anytime/absent slot", () => {

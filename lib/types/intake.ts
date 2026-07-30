@@ -3,6 +3,10 @@
 // lib/types.ts (#319); the `@/lib/types` barrel re-exports everything here, so
 // import paths are unchanged.
 
+import type { CadenceKind } from "../intake-cadence";
+
+export type { CadenceKind };
+
 // How a supplement's day-context is decided: every day; only on
 // workout/rest days (from the journal); or only while a named situation
 // (e.g. "Illness") is active.
@@ -162,6 +166,21 @@ export interface Supplement {
   // when unlinked. indication_condition_name is joined for the "For:" display line.
   indication_condition_id: number | null;
   indication_condition_name?: string | null;
+  // CALENDAR CADENCE (issue #1602, migration 126) — the orthogonal second half of
+  // dueness. `condition` above answers "is this the item's KIND of day?"; these answer
+  // "is today one of its days at all?", so a weekly methotrexate or an every-3-days
+  // patch can stay `must` instead of being demoted to `may` (the safety inversion that
+  // stripped reminders and escalation from exactly the drugs that need them).
+  //   cadence_kind='daily'     — every eligible day (the default; pre-#1602 behaviour)
+  //   cadence_kind='weekly'    — only on cadence_weekdays (CSV, 0=Sun … 6=Sat, the
+  //                              lib/date.ts numbering; "1"=Mondays, "1,4"=Mon+Thu)
+  //   cadence_kind='interval'  — every cadence_interval_days from cadence_anchor_date
+  // Evaluated by lib/intake-cadence.ts `cadenceOn`, ANDed into isDueOn. Cadence can
+  // only ever SUBTRACT days; it never invents obligation (see IntakeObligation).
+  cadence_kind: CadenceKind;
+  cadence_weekdays: string | null;
+  cadence_interval_days: number | null;
+  cadence_anchor_date: string | null;
 }
 
 // Whether a row is an ordinary supplement or a prescription medication.
@@ -192,6 +211,21 @@ export interface SupplementDose {
   // parent item's created_at (see doseAdherenceSince).
   created_at: string | null;
   updated_at: string | null;
+  // PER-DOSE calendar fields (issue #1602, migration 126), ANDed with the item's
+  // cadence by lib/intake-cadence.ts `doseOnDay`.
+  //   weekdays   — NULL = every one of the item's on-days (today's behaviour); set =
+  //                this ROW only on these weekdays (CSV, 0=Sun … 6=Sat). This is how
+  //                ALTERNATING AMOUNTS are expressed: warfarin is one item with a
+  //                "5 mg · Mon/Wed/Fri" row and a "2.5 mg · Tue/Thu/Sat/Sun" row, each
+  //                keeping its own adherence history under its own dose_id.
+  //   start_date / end_date — an INCLUSIVE validity window, NULL = open at that end.
+  //                This is how a TAPER is expressed (40→30→20→10 as four windowed
+  //                rows). A window expiring is NOT a retire: the row stops being due
+  //                and its logs read untouched, which is what makes "editing a dose
+  //                never rewrites adherence history" hold by construction.
+  weekdays: string | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 // A dose's resolution on a given day. A skip is a first-class LOG ROW (issue
@@ -212,6 +246,15 @@ export type DoseStatus = "taken" | "skipped";
 // button type confirm its own action against the other's log.
 export type DoseTakenOutcome =
   | "logged" // a new taken log row was written
+  // A new taken log row was written on a day this dose is NOT scheduled (issue #1602):
+  // the item's cadence or this row's own weekday/validity window excludes it. The write
+  // is IDENTICAL to "logged" — you record reality, exactly as a held item still accepts
+  // a log (#558's surfacing/ledger split) — but the ANSWER must not be a bare ✓. Every
+  // handler renders "logged — note: this is scheduled for Mondays" instead, because
+  // confirming an off-day dose silently is how a weekly drug gets taken twice in a week
+  // without anyone noticing. The existing never-confirm-unconditionally contract carries
+  // it to the row button, the Telegram callback and the offline replay for free.
+  | "logged-off-day"
   | "skipped" // a new skipped log row was written (issue #232)
   | "already-taken" // dose+date already resolved as TAKEN; nothing written
   | "already-skipped" // dose+date already resolved as SKIPPED; nothing written

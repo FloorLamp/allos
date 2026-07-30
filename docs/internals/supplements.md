@@ -210,6 +210,62 @@ documented exemption on the #553 risk-layer allowlist
 (`lib/__tests__/upcoming-risk-layer.test.ts`) — it is user-prioritized, not
 risk-prioritized.
 
+**Calendar cadence (#1602, migration 126).** `condition` answers "is this the
+item's KIND of day?"; the cadence answers the orthogonal "is today one of its
+days at all?" — weekly (`cadence_weekdays`, a CSV in the repo's 0=Sun … 6=Sat
+numbering, NOT ISO), every-N-days (`cadence_interval_days` +
+`cadence_anchor_date`), plus a per-dose weekday subset and an inclusive
+`start_date`/`end_date` window. The pure rules live in `lib/intake-cadence.ts`
+and are ANDed into the SAME gate as the condition: `isDueOn` consults
+`cadenceOn`, and `doseDueOn` adds the row's own `doseOnDay`. Every surface
+inherits it (#221) — nothing filters by cadence locally.
+
+Why it exists: before it, a weekly methotrexate either nagged DAILY or had to be
+demoted to `may` to shut it up, which also stripped reminders, missed-dose
+escalation and adherence tracking from exactly the narrow-therapeutic drugs that
+need them. The cadence lets the item stay `must` while the machinery says "not
+today". `#1505` guards the wrong door; this builds the right one.
+
+Invariants:
+
+- **The day context carries a REQUIRED `date`** (`IntakeDayContext`). Optional,
+  with a "no date ⇒ no cadence" fallback, would let a forgotten argument silently
+  revert a weekly med to daily nagging — invisible in review. Required makes it a
+  compile error.
+- **Cadence only SUBTRACTS days.** It never invents obligation, so it can never
+  make a `may` item due.
+- **On a `may` item cadence is a LABEL, never a gate.** Nothing is owed on any
+  day, so there is nothing to subtract from, and guaranteed access says a
+  collapsed item stays one tap away — hiding it six days in seven would make an
+  accepted demotion indistinguishable from a deletion.
+- **Every branch FAILS OPEN.** A weekly item with no weekday, or an interval with
+  no anchor, stays daily. Reminding too often is visible and correctable; a
+  silent blackout is not.
+- **Alternating amounts are two dose ROWS of one item** (warfarin 5 mg
+  Mon/Wed/Fri + 2.5 mg the rest), each keeping its own adherence history under
+  its own `dose_id`.
+- **A taper is windowed rows, and an expiring window is NOT a retire.** The row
+  stops being due; its logs read untouched. That is what keeps "editing a dose
+  never rewrites adherence history" true by construction for a mid-course change
+  — and why narrowing a dose's calendar deliberately does not bump its
+  `updated_at` (a re-time restarts the adherence-pattern window; changing which
+  days a dose lands on is not a new slot).
+- **Denominators count on-days only.** A weekly med at 1/1 is 100%, not 1/7; an
+  off-day scores `"na"`. The demotion detector and the digest delta classifier
+  inherit this for free, since both already treat a not-due day as transparent —
+  so a sparse cadence cannot read as abandonment.
+- **Refill divides by cadence density** (`cadenceDensity`), and only on the
+  SCHEDULE-based rate: 12 tablets of a weekly med are ≈12 weeks, not ≈12 days.
+  The history-based rate already observes the real cadence in the taken log.
+- **`markDoseTaken` on an off-day still LOGS**, returning `logged-off-day`. You
+  record reality (the same surfacing/ledger split a held item follows), but every
+  handler names the schedule — "Logged ✅ — note: scheduled for Mondays" —
+  because a bare check is how a weekly drug gets taken twice in one week.
+
+Deliberately out of v1: rolling intervals ("72h after the LAST application" —
+dueness as a function of log history is a feedback loop) and monthly-by-date.
+Both slot into `cadence_kind` later with no schema churn.
+
 **Medications follow-ups (#851).** A cluster of refinements to the shipped
 Medications page + split forms. **Rx / OTC (`rx` column, migration 045):** a
 medication is a prescription (`rx=1`) or over-the-counter (`rx=0`), replacing

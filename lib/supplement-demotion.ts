@@ -130,6 +130,12 @@ export interface DemotionCandidate {
 // A day counts only when the item was actually DUE and the day was not a deliberate
 // skip: "na" (not due) and "skipped" (a decision, #232) are transparent here exactly
 // as they are to the adherence percentage — one definition of "an occurrence".
+//
+// CADENCE flows in through "na" (#1602) with no code here: an off-cadence day is not
+// due, so the strip scores it "na" and it is not an occasion. That is what keeps a
+// sparse schedule from reading as abandonment — a weekly item accrues ~4 occasions in
+// the 30-day window, correctly under the floor below, instead of ~26 "misses" that
+// would suggest demoting a drug the user is taking exactly as prescribed.
 function isOccurrence(dot: AdherenceDot): boolean {
   return dot.state !== "na" && dot.state !== "skipped";
 }

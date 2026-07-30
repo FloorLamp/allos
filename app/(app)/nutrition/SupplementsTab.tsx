@@ -76,7 +76,7 @@ import {
 import { withPeriodOption } from "@/lib/derived-situations";
 import {
   countSituationalDue,
-  isDueOn,
+  doseDueOn,
   isPostWorkoutReady,
   timeBucket,
   TIME_BUCKETS,
@@ -191,6 +191,7 @@ export default async function SupplementsTab() {
     todayStr
   );
   const ctx = {
+    date: todayStr,
     isWorkoutDay,
     activeSituations: effectiveSituations,
     predictedWorkoutDay,
@@ -286,15 +287,14 @@ export default async function SupplementsTab() {
         date === todayStr
           ? ctx
           : {
+              date,
               isWorkoutDay: workoutDays.has(date),
               activeSituations: situationsOn(date),
             };
       const dueDoseIds = itemsFor(
-        (supplement) =>
-          !isMed(supplement) &&
-          !!supplement.active &&
-          isDueOn(supplement, dateContext)
+        (supplement) => !isMed(supplement) && !!supplement.active
       )
+        .filter((item) => doseDueOn(item.supplement, item.dose, dateContext))
         .filter((item) => existedOn(item, date))
         .map((item) => item.dose.id);
       return {
@@ -323,10 +323,20 @@ export default async function SupplementsTab() {
   // (e.g. "Poor sleep") holds exactly while that context is active, and a declared
   // surgery hold and a derived poor-sleep flow through the one union together.
   const isHeld = (s: Supplement) => !!heldBySituation(s, effectiveSituations);
-  const dueItems = itemsFor((s) => !isMed(s) && !!s.active && isDueOn(s, ctx));
+  // Per-ROW, not per-item (#1602): with a per-dose weekday subset or validity window,
+  // two rows of the SAME item can land differently today (warfarin's 5 mg row is due on
+  // Monday, its 2.5 mg row is not), so the due/not-scheduled split has to be made at the
+  // row level or an alternating pair would show both amounts every day.
+  const activeSupplementItems = itemsFor((s) => !isMed(s) && !!s.active);
+  const dueItems = activeSupplementItems.filter((i) =>
+    doseDueOn(i.supplement, i.dose, ctx)
+  );
   const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
-  const notScheduled = itemsFor(
-    (s) => !isMed(s) && !!s.active && !isDueOn(s, ctx) && !isHeld(s)
+  // An off-cadence row lands HERE — visible under "Not scheduled today" with its
+  // cadence named — rather than vanishing. Same discoverability contract as the Held
+  // section: an absence the user can see and explain is safe; a silent one is not.
+  const notScheduled = activeSupplementItems.filter(
+    (i) => !doseDueOn(i.supplement, i.dose, ctx) && !isHeld(i.supplement)
   );
   const paused = itemsFor((s) => !isMed(s) && !s.active);
 
@@ -612,15 +622,15 @@ export default async function SupplementsTab() {
     const dayItems =
       date === todayStr
         ? dueItems
-        : itemsFor(
-            (supplement) =>
-              !isMed(supplement) &&
-              !!supplement.active &&
-              isDueOn(supplement, {
+        : itemsFor((supplement) => !isMed(supplement) && !!supplement.active)
+            .filter((item) =>
+              doseDueOn(item.supplement, item.dose, {
+                date,
                 isWorkoutDay: workoutDays.has(date),
                 activeSituations: situationsOn(date),
               })
-          ).filter((item) => existedOn(item, date));
+            )
+            .filter((item) => existedOn(item, date));
     const takenCountForDay = dayItems.filter((item) =>
       takenByDose.get(item.dose.id)?.taken.has(date)
     ).length;

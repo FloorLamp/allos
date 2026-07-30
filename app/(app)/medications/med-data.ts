@@ -236,6 +236,7 @@ export function loadMedicationsData(
     nowMinutes
   );
   const ctx = {
+    date: todayStr,
     isWorkoutDay,
     activeSituations: effectiveSituations,
     predictedWorkoutDay,
