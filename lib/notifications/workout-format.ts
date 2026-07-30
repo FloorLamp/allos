@@ -5,6 +5,10 @@
 
 import { suggestTitle, type MuscleRegion } from "../lifts";
 import { frequencyScopeLabel } from "../goals";
+import {
+  workoutAcknowledgmentLine,
+  type BehindTargetPace,
+} from "../effort-class";
 import type { OrderedBehindTarget } from "../workout-recommendation";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
@@ -32,6 +36,13 @@ export interface WorkoutRecommendation {
   // firing (it isn't suppressed) but SOFTENS: it names the deload so a lighter
   // session reads as on-plan, not as falling behind. Absent / false ⇒ no note.
   deloadWeek?: boolean;
+  // The same-day acknowledgment (#1672): what was already trained today, and the pace
+  // fact that justifies pushing anyway. Present ONLY when the nudge is firing on a
+  // trained day — on every other day the message is unchanged.
+  acknowledge?: {
+    session: string;
+    forcedBy: BehindTargetPace | null;
+  } | null;
 }
 
 // Render a WorkoutRecommendation as the Telegram message. Split out from the
@@ -99,6 +110,11 @@ export function formatWorkoutReminder(
   }
 
   const lines: string[] = [];
+  // LEAD WITH WHAT THEY DID (#1672, the workout-presence copy standard): when the nudge
+  // fires on a day that already saw a session, the message opens with it. Without this
+  // the push read as "the app didn't notice my workout".
+  const ackLine = workoutAcknowledgmentLine(rec.acknowledge ?? null);
+  if (ackLine) lines.push(ackLine);
   if (deloadNote) lines.push(deloadNote);
   if (rec.exercises.length)
     lines.push(`Suggested: ${rec.exercises.join(", ")}`);

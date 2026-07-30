@@ -15,7 +15,13 @@ import {
 } from "../workout-recommendation";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
-import { gatherCoachingInput } from "../queries";
+import { gatherCoachingInput, getActivitiesByDate } from "../queries";
+import { frequencyScopeLabel } from "../goals";
+import {
+  effortClass,
+  workoutDeferralDecision,
+  type BehindTargetPace,
+} from "../effort-class";
 import {
   getWorkoutPresence,
   getFinishedActivityCredit,
@@ -88,6 +94,40 @@ export function recommendWorkout(
   )
     return null;
 
+  // SAME-DAY DEFERRAL + ACKNOWLEDGMENT (#1672). The presence gates above are
+  // window-scoped by design (#921/#981 — a finish quiets only the attempt inside the
+  // post-finish window); nothing evaluated DAY-LEVEL trained state against WEEK PACE.
+  // So: a completed TRAINING-class session today marks the day trained, and while every
+  // remaining behind training-class target is still reachable without today, the nudge
+  // HOLDS — marker-neutral (returning null keeps notify_last_workout unset, so
+  // tomorrow's attempt evaluates fresh). Pace-tight overrides the hold, and the message
+  // then opens with what they already did plus the pace fact that justifies pushing.
+  //
+  // An INCIDENTAL session (a walk, mobility work) marks nothing, so a dog-walk day
+  // leaves the day's lift reminder exactly as it was — #921's pinned line, upheld from
+  // this side too.
+  const trainedToday =
+    getActivitiesByDate(profileId, input.today).find(
+      (a) => effortClass(a.type, a.title) === "training"
+    ) ?? null;
+  const behindPace: BehindTargetPace[] = input.routine
+    .filter((t) => !t.met)
+    .map((t) => ({
+      scopeKind: t.target.scope_kind,
+      scopeValue: t.target.scope_value,
+      label: frequencyScopeLabel(t.target.scope_kind, t.target.scope_value),
+      count: t.count,
+      perWeek: t.per_week,
+      // Absent only for a fixture-shaped target; 0 reads as "today is the last day",
+      // the conservative direction (it can only make the nudge FIRE).
+      daysLeftInWindow: t.daysLeftInWindow ?? 0,
+    }));
+  const deferral = workoutDeferralDecision({
+    trainedToday: trainedToday?.title ?? null,
+    behind: behindPace,
+  });
+  if (deferral.kind === "hold") return null;
+
   const recs = recommendCoaching(input);
 
   // The behind list keeps its STRUCTURE all the way to the formatter (#1709). It used
@@ -129,5 +169,9 @@ export function recommendWorkout(
     // Deload-week softening (#741): the same flag every surface reads, carried from
     // the resolved session so the nudge phrases the deload instead of pushing hard.
     deloadWeek: nw.session?.deloadWeek ?? false,
+    // The same-day acknowledgment (#1672), present only when firing on a day that
+    // already saw a training session. Formatted from this same gathered computation, so
+    // the dashboard/coaching surfaces reading the equivalent state agree.
+    acknowledge: deferral.acknowledge,
   };
 }

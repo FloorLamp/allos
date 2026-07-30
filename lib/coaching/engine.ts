@@ -124,6 +124,10 @@ export interface RoutineTargetProgress {
   count: number;
   per_week: number;
   met: boolean;
+  // On-days remaining in the week window after today (#1672), when the gather supplies
+  // it (FrequencyTargetProgress always does; test fixtures may omit it). The workout
+  // nudge's pace-feasibility check reads it rather than re-deriving the window.
+  daysLeftInWindow?: number;
 }
 
 // The per-exercise strength slice the recommender reads (ExerciseStat satisfies it).
