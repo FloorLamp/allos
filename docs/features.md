@@ -1550,6 +1550,15 @@ before running (e.g. "9 health records re-imported instantly, no AI · 5
 scans/PDFs — 5 AI extractions, 43 of 50 daily remaining"; an all–health-record
 run has no AI cost and skips the confirmation.
 
+An AI-extracted document also shows how many of its rows the extractor itself
+was unsure about — **"· N to check"** beside the produced count — and its detail
+view opens a **Check these first** card listing exactly those rows,
+lowest-confidence first with the extractor's short reason ("unit could be mg/dL
+or mmol/L"). It only decides what a human looks at first: every row is imported
+and editable either way, nothing is auto-accepted or auto-rejected, and a
+document with no such signal (a MyChart/FHIR import, or an upload extracted
+without an AI key) shows neither.
+
 ### Failures and duplicates
 
 Spanning both sections at the top are any integration that's **currently
