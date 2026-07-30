@@ -156,6 +156,94 @@ export function seedDropReport(): void {
   );
 }
 
+// ── Import-detail + Review-feed extraction-confidence fixture ──
+export function seedExtractionConfidence(): void {
+  // ── Extraction-confidence fixture (issue #1601) ───────────────────────────────
+  // An AI-EXTRACTED document (source 'upload') whose stored import_report carries a
+  // per-record confidence summary: 3 rows the extractor hedged on (one low, two
+  // medium — one of them without a reason) among 6 rows total. It drives BOTH review
+  // surfaces: /import/906's "Check these first" card (ranked lowest-first, with a
+  // per-row tier badge) and the Data → Review feed row's "· 3 to check" badge.
+  // Fixed id 906 so the spec navigates straight to it and owns its own fixture.
+  // All content synthetic — fictional analyte/condition names, no values or PHI.
+  const CONFIDENCE_DOC_ID = 906;
+  db.prepare(`DELETE FROM medical_records WHERE document_id = ?`).run(
+    CONFIDENCE_DOC_ID
+  );
+  db.prepare(`DELETE FROM conditions WHERE document_id = ?`).run(
+    CONFIDENCE_DOC_ID
+  );
+  db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(
+    CONFIDENCE_DOC_ID
+  );
+  const confidenceReport = {
+    drops: [],
+    coverage: [],
+    imported: 6,
+    considered: 6,
+    confidence: {
+      counts: { high: 3, medium: 2, low: 1, unknown: 0 },
+      scrutiny: 3,
+      // Stored lowest-first exactly as the writer ranked it (and re-ranked on parse).
+      flags: [
+        {
+          kind: "lab",
+          label: "E2E Smudged Marker",
+          confidence: "low",
+          reason: "printed figure partly illegible",
+        },
+        {
+          kind: "lab",
+          label: "E2E Ambiguous Marker",
+          confidence: "medium",
+          reason: "unit could be mg/dL or mmol/L",
+        },
+        // A hedged row with NO reason — the card must still render it.
+        {
+          kind: "condition",
+          label: "E2E Possible Condition",
+          confidence: "medium",
+          reason: null,
+        },
+      ],
+    },
+  };
+  db.prepare(
+    `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, import_report, uploaded_at)
+   VALUES (?, ?, 'e2e-confidence-labs.pdf', '', 'application/pdf', 3072,
+           'Lab report', 'upload', 'done', 6, ?, '2026-07-08 09:40:00')`
+  ).run(CONFIDENCE_DOC_ID, PROFILE_ID, JSON.stringify(confidenceReport));
+
+  // The six rows the report describes, actually present — so the feed's produced
+  // count ("6 items") agrees with the card's "3 of 6 rows" instead of reading as
+  // #1339 drift. Two of the labs are the hedged ones the card ranks first.
+  const insConfidenceRecord = db.prepare(
+    `INSERT INTO medical_records
+     (profile_id, date, category, name, canonical_name, value, unit,
+      document_id, source)
+   VALUES (?, '2026-07-01', 'lab', ?, ?, ?, 'mg/dL', ?, 'upload')`
+  );
+  for (const [name, value] of [
+    ["E2E Smudged Marker", "18"],
+    ["E2E Ambiguous Marker", "7"],
+    ["E2E Clear Marker One", "42"],
+    ["E2E Clear Marker Two", "43"],
+    ["E2E Clear Marker Three", "44"],
+  ]) {
+    insConfidenceRecord.run(PROFILE_ID, name, name, value, CONFIDENCE_DOC_ID);
+  }
+  db.prepare(
+    `INSERT INTO conditions (profile_id, name, status, document_id, source)
+   VALUES (?, 'E2E Possible Condition', 'active', ?, 'upload')`
+  ).run(PROFILE_ID, CONFIDENCE_DOC_ID);
+
+  console.log(
+    `e2e: seeded import document ${CONFIDENCE_DOC_ID} with a per-record extraction-confidence summary (#1601)`
+  );
+}
+
 // ── Import-detail records browser + type-appropriate panels ──
 export function seedRecordsBrowser(): void {
   // ── Import-detail tabbed records-browser fixture (issue #271) ─────────────────
