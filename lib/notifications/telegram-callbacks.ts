@@ -879,7 +879,23 @@ async function handleFoodLog(
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(food.date));
     return;
   }
-  const outcome = logFoodServingCore(profileId, food.group, food.date);
+  // Pass the NUDGE'S OWN window as the explicit meal slot (#1704). The callback token
+  // asserts the window the user is logging for — it was baked in at send time — so the
+  // explicit slot is MORE honest than one derived from the tap instant: a 21:30 tap on
+  // the dinner nudge really was dinner. Omitting it stored meal_slot = null, so
+  // foodEventWindow re-derived the window from WHEN the tap landed; a tap past the
+  // nudge's slot boundary then bucketed into the later window while the rebuild asked
+  // for `food.window`, and the button's "(n)" suffix rendered 0 even though the serving
+  // logged correctly (it still showed in the day tally). With the slot carried
+  // explicitly the count matches the button pressed, and the #950 ranking + #1016
+  // counts stay consistent because both read the same foodEventWindow derivation.
+  const outcome = logFoodServingCore(
+    profileId,
+    food.group,
+    food.date,
+    undefined,
+    food.window
+  );
   await answerCallbackQuery(cq.id, foodLogAnswerText(outcome, food.group));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -925,7 +941,17 @@ async function handleFoodProtein(
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(token.date));
     return;
   }
-  const outcome = addProteinGramsCore(profileId, token.date, token.grams);
+  // The protein sibling of the #1704 omission. Its button carries the SAME #1016
+  // slot-scoped "(n)" suffix (#1379), read from the __protein__ ledger row, so a tap
+  // outside the nudge's window derived a later slot and lost the count exactly like a
+  // food-group tap. The token's window is the asserted one, so pass it explicitly.
+  const outcome = addProteinGramsCore(
+    profileId,
+    token.date,
+    token.grams,
+    undefined,
+    token.window
+  );
   await answerCallbackQuery(cq.id, foodProteinAnswerText(outcome, token.grams));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
