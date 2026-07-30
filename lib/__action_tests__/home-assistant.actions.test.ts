@@ -53,9 +53,13 @@ describe("saveHomeAssistantPrefs", () => {
         "escalation",
         "preventive",
         "workout",
+        // The stale-workout and practice nudges became REAL routable kinds in #1718
+        // (they dispatched as "other", so they could not be muted or routed at all).
+        "workout-stale",
         "workout-recap",
         "food",
         "mood",
+        "practice",
         "digest",
         "weekly-recap",
         "milestone",
