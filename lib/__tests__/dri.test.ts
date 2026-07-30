@@ -332,9 +332,9 @@ describe("the conservative-direction rule for obligation (#1505)", () => {
     )!;
     expect(t.total).toBe(600);
     expect(t.optionalTotal).toBe(200);
-    expect(t.contributors.find((c) => c.name === "Magnesium Citrate")?.optional).toBe(
-      true
-    );
+    expect(
+      t.contributors.find((c) => c.name === "Magnesium Citrate")?.optional
+    ).toBe(true);
     expect(
       t.contributors.find((c) => c.name === "Magnesium Glycinate")?.optional
     ).toBeUndefined();

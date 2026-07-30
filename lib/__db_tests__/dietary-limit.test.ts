@@ -170,7 +170,9 @@ describe("getDietaryLimitWarnings — obligation-blind at full weight (#1505)", 
     });
     addSupp(profileId, "Magnesium Citrate", "200 mg", { obligation: "may" });
 
-    const mag = getDietaryAdequacy(profileId).find((a) => a.key === "magnesium");
+    const mag = getDietaryAdequacy(profileId).find(
+      (a) => a.key === "magnesium"
+    );
     expect(mag).toBeTruthy();
     expect(mag!.total).toBe(200); // committed only
     expect(mag!.optionalTotal).toBe(200); // disclosed, not folded in

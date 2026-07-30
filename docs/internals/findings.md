@@ -761,10 +761,10 @@ direction, and the cautious direction is not the same for every aggregate.
 
 State the aggregate's polarity first, then apply the rule:
 
-| The number is a…               | Obligation may never… | So a `may` item is…                          |
-| ------------------------------ | --------------------- | -------------------------------------------- |
-| **risk** total (bigger = worse) | shrink it             | counted at full weight, and LABELLED as such |
-| **reassurance** share (bigger = better) | inflate it   | excluded from the figure, and DISCLOSED beside it |
+| The number is a…                        | Obligation may never… | So a `may` item is…                               |
+| --------------------------------------- | --------------------- | ------------------------------------------------- |
+| **risk** total (bigger = worse)         | shrink it             | counted at full weight, and LABELLED as such      |
+| **reassurance** share (bigger = better) | inflate it            | excluded from the figure, and DISCLOSED beside it |
 
 Both anchors live in `lib/dri.ts` over one shared summation:
 
@@ -796,12 +796,12 @@ predicate that read it; do not translate it literally.
 
 ## Where each rule is enforced
 
-| Rule                                                    | Enforced by                                                                                              |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Obligation decides push; kind decides clinical identity | `isPushedIntake` / `accruesMisses` / `escalatesOnMiss` (`lib/supplement-schedule.ts`)                    |
-| Safety engines are obligation-blind                     | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                   |
+| Rule                                                    | Enforced by                                                                                                                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Obligation decides push; kind decides clinical identity | `isPushedIntake` / `accruesMisses` / `escalatesOnMiss` (`lib/supplement-schedule.ts`)                                                                                                                   |
+| Safety engines are obligation-blind                     | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                                                                                                                  |
 | Conservative direction per aggregate (5a)               | `lib/__tests__/dri.test.ts` + `lib/__tests__/supplement-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions |
-| Suggest-never-write                                     | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action |
-| Recovery clears a suggestion                            | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                     |
-| Window nesting                                          | `lib/__tests__/intake-demotion.test.ts`                                                                  |
-| Reach tier per finding namespace                        | `RULE_FINDING_REGISTRY` + its reflection guards                                                          |
+| Suggest-never-write                                     | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                |
+| Recovery clears a suggestion                            | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                    |
+| Window nesting                                          | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                 |
+| Reach tier per finding namespace                        | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                         |

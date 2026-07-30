@@ -230,9 +230,9 @@ describe("situational dueness survives the isDueOn/isOfferedOn split (#1505)", (
     for (const obligation of ["must", "should", "may"] as const) {
       for (const situations of [["Illness"], []]) {
         const item = situational(obligation);
-        expect(isDueOn(item, ctx(situations)) && isOfferedOn(item, ctx(situations))).toBe(
-          false
-        );
+        expect(
+          isDueOn(item, ctx(situations)) && isOfferedOn(item, ctx(situations))
+        ).toBe(false);
       }
     }
   });
