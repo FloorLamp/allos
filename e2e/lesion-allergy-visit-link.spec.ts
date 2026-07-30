@@ -127,7 +127,11 @@ test.describe("lesion + allergy → visit links (#1526)", () => {
     expect(value).toMatch(/^\d+$/);
     await settledSelect(page, picker, value!);
 
-    await settledClick(page, page.getByRole("button", { name: "Add" }));
+    // exact: the repeatable-reactions fieldset also has an "Add reaction" button.
+    await settledClick(
+      page,
+      page.getByRole("button", { name: "Add", exact: true })
+    );
 
     // End state: the freshly recorded allergy reads its visit back through the SAME
     // sub-line the seeded row uses — the picker's label and the row's label are one
