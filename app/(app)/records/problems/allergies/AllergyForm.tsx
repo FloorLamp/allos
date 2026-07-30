@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
+import EncounterField from "@/components/EncounterField";
 import { useToast } from "@/components/Toast";
 import {
   ALLERGY_CRITICALITIES,
@@ -255,6 +257,42 @@ export default function AllergyForm({
           />
         </div>
       </div>
+      {/* Attribution (#1526): who documented this allergy, and at which visit. An
+          allergy gates drug warnings and prints on the emergency card, so "who confirmed
+          it" is the natural companion to the verification status above. */}
+      <div>
+        <label className="label" htmlFor={`allergy-provider-${uid}`}>
+          Documented by
+        </label>
+        {/* Create-on-type from the shared registry (ProviderCombobox, #1176). */}
+        <ProviderCombobox
+          id={`allergy-provider-${uid}`}
+          name="provider"
+          defaultValue={allergy?.provider_name ?? ""}
+          placeholder="e.g. Dr. Okafor"
+        />
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={allergy?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={allergy?.provider_name ?? ""}
+            />
+          </>
+        )}
+      </div>
+      <EncounterField
+        uid={uid}
+        label="Recorded at visit"
+        defaultValue={allergy?.encounter_id ?? null}
+        profileId={profileId}
+        testid={`allergy-encounter-${uid}`}
+      />
       <div>
         <label className="label" htmlFor={`allergy-notes-${uid}`}>
           Notes

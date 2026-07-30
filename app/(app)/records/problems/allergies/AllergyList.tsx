@@ -7,6 +7,7 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
+import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { medicationHref } from "@/lib/hrefs";
 import { drugAllergyMatchLabel, type DrugAllergyHit } from "@/lib/drug-allergy";
 import {
@@ -17,12 +18,14 @@ import {
   isAllergyActionable,
   isHighCriticality,
 } from "@/lib/allergy-reactions";
+import type { LinkedEncounterRef } from "@/lib/queries";
 import type { Allergy } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
 
 function buildColumns(
-  contraindications: Record<number, DrugAllergyHit[]>
+  contraindications: Record<number, DrugAllergyHit[]>,
+  recordedAt: Record<number, LinkedEncounterRef>
 ): RecordColumn<Allergy>[] {
   return [
     {
@@ -59,6 +62,17 @@ function buildColumns(
                 </span>
               ))}
             </div>
+          ) : null}
+          {/* "Recorded at: <visit>" (#1526) — the visit that documented this allergy,
+              deep-linked. An allergy gates drug warnings and prints on the emergency
+              card, so its attribution belongs beside it. Absent pillar: a row with no
+              linked visit renders nothing. */}
+          {recordedAt[a.id] ? (
+            <RecordEncounterLink
+              label="Recorded at"
+              encounter={recordedAt[a.id]}
+              testid={`allergy-visit-${a.id}`}
+            />
           ) : null}
         </>
       ),
@@ -123,16 +137,19 @@ function buildColumns(
 export default function AllergyList({
   items,
   contraindications = {},
+  recordedAt = {},
   multiView,
 }: {
   items: Stamped<Allergy>[];
   contraindications?: Record<number, DrugAllergyHit[]>;
+  // Allergy id → the visit it was recorded at (#1526), gathered once by the section.
+  recordedAt?: Record<number, LinkedEncounterRef>;
   multiView?: ListMultiView;
 }) {
   return (
     <RecordTable
       items={items}
-      columns={buildColumns(contraindications)}
+      columns={buildColumns(contraindications, recordedAt)}
       emptyMessage="No allergies recorded. Add one, or import a MyChart export."
       multiView={
         multiView

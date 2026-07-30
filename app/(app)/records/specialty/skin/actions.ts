@@ -24,6 +24,7 @@ import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
 } from "@/lib/providers-db";
+import { encounterIdForProfile } from "@/lib/queries";
 
 // Skin-lesion writes (#715). Session-scoped; every mutation is `WHERE id = ? AND
 // profile_id = ?` and the INSERT carries profile_id. Manual rows carry a NULL
@@ -67,12 +68,19 @@ export async function addSkinLesion(formData: FormData): Promise<FormResult> {
     String(formData.get("provider") ?? ""),
     "individual"
   );
+  // The visit this lesion was checked at (#1526) — validated against THIS profile, so a
+  // blank or forged id stores as "no link" rather than tripping the FK.
+  const encounterId = encounterIdForProfile(
+    profile.id,
+    formData.get("encounter_id")
+  );
   db.prepare(
     `INSERT INTO skin_lesions
        (label, body_region, body_side, size_mm, asymmetry, border, color,
         diameter, evolving, status, observed_date, finding,
-        follow_up_interval_days, notes, provider_id, source, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
+        follow_up_interval_days, notes, provider_id, encounter_id, source,
+        profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
   ).run(
     label,
     region,
@@ -89,6 +97,7 @@ export async function addSkinLesion(formData: FormData): Promise<FormResult> {
     intOrNull(formData.get("follow_up_interval_days")),
     str(formData, "notes"),
     providerId,
+    encounterId,
     profile.id
   );
   revalidateSkin();
@@ -111,12 +120,17 @@ export async function updateSkinLesion(
     String(formData.get("provider") ?? ""),
     "individual"
   );
+  const encounterId = encounterIdForProfile(
+    profile.id,
+    formData.get("encounter_id")
+  );
   db.prepare(
     `UPDATE skin_lesions
        SET label = ?, body_region = ?, body_side = ?, size_mm = ?,
            asymmetry = ?, border = ?, color = ?, diameter = ?, evolving = ?,
            status = ?, observed_date = ?, finding = ?,
-           follow_up_interval_days = ?, notes = ?, provider_id = ?
+           follow_up_interval_days = ?, notes = ?, provider_id = ?,
+           encounter_id = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     label,
@@ -134,6 +148,7 @@ export async function updateSkinLesion(
     intOrNull(formData.get("follow_up_interval_days")),
     str(formData, "notes"),
     providerId,
+    encounterId,
     id,
     profile.id
   );
