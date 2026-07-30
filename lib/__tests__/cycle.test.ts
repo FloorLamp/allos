@@ -7,7 +7,9 @@ import {
   periodLengthDays,
   periodOnDate,
   isFlowLevel,
+  isStaleOpenPeriod,
   LUTEAL_PHASE_DAYS,
+  MAX_PLAUSIBLE_PERIOD_DAYS,
   type CyclePeriod,
 } from "@/lib/cycle";
 
@@ -83,10 +85,47 @@ describe("cyclePhaseOnDate", () => {
     expect(cyclePhaseOnDate(HISTORY, day40)).toBe("follicular");
   });
 
-  it("treats an ongoing period (null end) as menstrual from its start onward", () => {
+  it("treats an ongoing period (null end) as menstrual within the plausible window", () => {
     const open: CyclePeriod[] = [period(9, "2026-04-01", null)];
     expect(cyclePhaseOnDate(open, "2026-04-01")).toBe("menstrual");
     expect(cyclePhaseOnDate(open, "2026-04-03")).toBe("menstrual");
+  });
+
+  // #1682 fix a — a forgotten "Period ended" tap must not claim menstrual forever. The
+  // record is left EXACTLY as stored; only the claim lapses.
+  it("withdraws the menstrual claim past MAX_PLAUSIBLE_PERIOD_DAYS (day 10 vs 11)", () => {
+    const open: CyclePeriod[] = [period(9, "2026-04-01", null)];
+    expect(MAX_PLAUSIBLE_PERIOD_DAYS).toBe(10);
+    // Day 10 is 04-10 (the start day is day 1) — still the last plausible bleeding day.
+    expect(cyclePhaseOnDate(open, "2026-04-10")).toBe("menstrual");
+    expect(periodOnDate(open, "2026-04-10")?.id).toBe(9);
+    expect(isStaleOpenPeriod(open[0], "2026-04-10")).toBe(false);
+    // Day 11 — the claim lapses and the date derives as it would with no open claim.
+    expect(cyclePhaseOnDate(open, "2026-04-11")).toBe("follicular");
+    expect(periodOnDate(open, "2026-04-11")).toBeNull();
+    expect(isStaleOpenPeriod(open[0], "2026-04-11")).toBe(true);
+    // The row itself is untouched — withdrawal is a read-side decision, never a write.
+    expect(open[0].period_end).toBeNull();
+    // Cycle DAY still counts from the logged start: the start is a fact, the coverage
+    // was the claim.
+    expect(cycleDayOnDate(open, "2026-04-11")).toBe(11);
+  });
+
+  it("still resolves luteal retrospectively once a next period follows a stale open one", () => {
+    // A stale open period followed by a real next start: the days before that next start
+    // derive normally rather than being swallowed by the lapsed claim.
+    const rows = [period(1, "2026-04-01", null), period(2, "2026-05-01", "2026-05-05")];
+    expect(cyclePhaseOnDate(rows, "2026-04-11")).toBe("follicular");
+    expect(cyclePhaseOnDate(rows, "2026-04-20")).toBe("luteal"); // 05-01 minus 14 = 04-17
+  });
+
+  it("a closed period is unaffected by the plausibility cap (long periods stay stored)", () => {
+    // #1682 fix b: a long RECORDED period is stored and honored as entered — it is
+    // observed by a coaching finding, never withdrawn or refused.
+    const long = [period(4, "2026-04-01", "2026-04-20")];
+    expect(cyclePhaseOnDate(long, "2026-04-18")).toBe("menstrual");
+    expect(periodOnDate(long, "2026-04-18")?.id).toBe(4);
+    expect(isStaleOpenPeriod(long[0], "2026-04-18")).toBe(false);
   });
 
   it("uses LUTEAL_PHASE_DAYS as the follicular/luteal boundary from the next start", () => {

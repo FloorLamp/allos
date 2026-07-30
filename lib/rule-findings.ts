@@ -79,6 +79,8 @@ import {
 } from "./supplement-demotion";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
+import { prolongedBleedingObservations } from "./cycle-observation";
+import { listCyclePeriods } from "./cycle-store";
 import { isPrn } from "./supplement-schedule";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import {
@@ -419,6 +421,7 @@ export function collectCoachingFindings(
     ...buildMobilitySuggestionFindings(profileId, today),
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
+    ...buildCycleBleedingFindings(profileId, today),
     // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
     // set (so a decline rides the shared bus and silences every surface), behind the
     // observational domains. NOTE (#1533): the order is no longer load-bearing for the
@@ -666,6 +669,37 @@ export function buildOralHealthFindings(profileId: number): Finding[] {
       actionLabel: "Dental care",
     },
   ];
+}
+
+// ---- Prolonged bleeding (#1682 fix b) --------------------------------------
+
+// A calm note for a recorded period at or past PROLONGED_PERIOD_DAYS bleeding days.
+// The write path deliberately STORES such a period unrefused — refusing it would make
+// the app unable to record a genuine emergency — so the observation is how the app says
+// what it noticed. COACHING tier by hard product contract (#449): it joins
+// collectCoachingFindings, its dedupeKey (`cycle-bleeding:<period_start>`,
+// CYCLE_BLEEDING_PREFIX registered) rides the shared suppression bus, and it NEVER
+// notifies / never reaches the hero — cycle carries no obligation, and a body-state
+// observation must never arrive as a push. Reads the SAME profile-scoped period history
+// every cycle surface derives from (listCyclePeriods), so the note and the recorded row
+// can't disagree about a period's length. No owned SQL added here.
+export function buildCycleBleedingFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  return prolongedBleedingObservations(listCyclePeriods(profileId), today).map(
+    (obs) => ({
+      domain: "cycle-bleeding",
+      dedupeKey: obs.dedupeKey,
+      title: obs.title,
+      detail: obs.detail,
+      // Calm, observational — never an alarm, never a push (coaching tier).
+      tone: "info",
+      evidence: "Recorded from your own period log — informational, not a diagnosis.",
+      actionHref: "/medical/cycles",
+      actionLabel: "View cycle log",
+    })
+  );
 }
 
 // ---- Nutrition input (#580): behind-target food-habit observations --------

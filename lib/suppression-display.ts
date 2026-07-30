@@ -133,6 +133,8 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     const region = titleize(part(t, 1).replace(/[_-]/g, " "));
     return region ? `Mobility suggestion — ${region}` : "Mobility suggestion";
   },
+  "cycle-bleeding:": (t) =>
+    part(t, 0) ? `Long period — ${part(t, 0)}` : "Long-period note",
   "mood-obs:": () => "Mood observation",
   "sleep-mood:": () => "Sleep & mood observation",
   "med-dup:": (t) => {

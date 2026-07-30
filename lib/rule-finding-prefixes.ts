@@ -46,6 +46,7 @@ import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
 import { MED_DUP_PREFIX } from "./medication-family";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
+import { CYCLE_BLEEDING_PREFIX } from "./cycle-observation";
 import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
 import type { ReasonCode } from "./reasons";
 
@@ -242,6 +243,20 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: DATA_QUALITY_PREFIX,
     tier: "coaching",
     builder: "buildDataQualityFindings",
+    reasons: [],
+  },
+  {
+    // Prolonged-bleeding observation (#1682): a recorded period at or past
+    // PROLONGED_PERIOD_DAYS bleeding days ("9 days of bleeding — worth discussing
+    // with a clinician"). COACHING tier by hard product contract (#449) — never a
+    // notification, never the hero: cycle carries no obligation (the attention
+    // doctrine), and the write path deliberately STORES a long period rather than
+    // refusing it, so the calm note is the whole response. Joins
+    // collectCoachingFindings and rides the shared suppression bus keyed on the
+    // period's start day, so a dismissal is per-period, never topic-wide.
+    prefix: CYCLE_BLEEDING_PREFIX,
+    tier: "coaching",
+    builder: "buildCycleBleedingFindings",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------
