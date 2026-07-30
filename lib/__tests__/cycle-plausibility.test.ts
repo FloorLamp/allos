@@ -10,21 +10,14 @@ import {
   lastEndedPeriodIn,
   openPeriodIn,
 } from "@/lib/cycle-plausibility";
-import {
-  MIN_PLAUSIBLE_PERIOD_GAP_DAYS,
-  type CyclePeriod,
-} from "@/lib/cycle";
+import { MIN_PLAUSIBLE_PERIOD_GAP_DAYS, type CyclePeriod } from "@/lib/cycle";
 
 // Pure-tier: the cycle plausibility guards (#1681 quick-action offer conditions, #1682
 // write refusals). No DB, no clock — every function takes the profile's own `today`.
 // These are the predicates BOTH the surface and the write core read, so their boundaries
 // are pinned here once.
 
-function period(
-  id: number,
-  start: string,
-  end: string | null
-): CyclePeriod {
+function period(id: number, start: string, end: string | null): CyclePeriod {
   return { id, period_start: start, period_end: end, flow: null, note: null };
 }
 
@@ -53,7 +46,9 @@ describe("canStartPeriodOn (#1681 bug 2 — the plausible gap)", () => {
   });
 
   it("never offers the start while a period is open", () => {
-    expect(canStartPeriodOn([period(1, "2026-04-18", null)], TODAY)).toBe(false);
+    expect(canStartPeriodOn([period(1, "2026-04-18", null)], TODAY)).toBe(
+      false
+    );
   });
 
   it("refuses the day a period ends — the back-to-back case the bug created", () => {
@@ -64,13 +59,13 @@ describe("canStartPeriodOn (#1681 bug 2 — the plausible gap)", () => {
   it("is false one day below the gap and true exactly at it", () => {
     expect(MIN_PLAUSIBLE_PERIOD_GAP_DAYS).toBe(10);
     // Ends 04-11 → gap 9 on 04-20.
-    expect(canStartPeriodOn([period(1, "2026-04-07", "2026-04-11")], TODAY)).toBe(
-      false
-    );
+    expect(
+      canStartPeriodOn([period(1, "2026-04-07", "2026-04-11")], TODAY)
+    ).toBe(false);
     // Ends 04-10 → gap 10 on 04-20.
-    expect(canStartPeriodOn([period(1, "2026-04-06", "2026-04-10")], TODAY)).toBe(
-      true
-    );
+    expect(
+      canStartPeriodOn([period(1, "2026-04-06", "2026-04-10")], TODAY)
+    ).toBe(true);
   });
 
   it("measures the gap from the LATEST end, not the latest start", () => {
@@ -99,9 +94,9 @@ describe("canReopenLastPeriodOn (#1681 bug 3 — the recovery window)", () => {
 
   it("refuses with nothing closed, or while a period is open", () => {
     expect(canReopenLastPeriodOn([], TODAY)).toBe(false);
-    expect(
-      canReopenLastPeriodOn([period(1, "2026-04-19", null)], TODAY)
-    ).toBe(false);
+    expect(canReopenLastPeriodOn([period(1, "2026-04-19", null)], TODAY)).toBe(
+      false
+    );
   });
 });
 
@@ -214,7 +209,9 @@ describe("checkPeriodWrite (#1682 c/d — refusals that name their conflict)", (
       TODAY
     );
     expect(r?.kind).toBe("second-open");
-    expect(cycleRefusalMessage(r!)).toMatch(/already open \(2026-04-18 – ongoing\)/);
+    expect(cycleRefusalMessage(r!)).toMatch(
+      /already open \(2026-04-18 – ongoing\)/
+    );
   });
 
   it("detects overlap, containment, and leaves touching ranges alone", () => {
@@ -285,7 +282,11 @@ describe("checkPeriodWrite (#1682 c/d — refusals that name their conflict)", (
   it("an OPEN candidate that would swallow a later period is an overlap", () => {
     const rows = [period(1, "2026-03-01", "2026-03-05")];
     expect(
-      checkPeriodWrite({ id: null, start: "2026-02-20", end: null }, rows, TODAY)
+      checkPeriodWrite(
+        { id: null, start: "2026-02-20", end: null },
+        rows,
+        TODAY
+      )
     ).toMatchObject({ kind: "overlap", conflict: { id: 1 } });
   });
 });

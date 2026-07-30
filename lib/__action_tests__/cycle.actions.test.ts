@@ -206,9 +206,11 @@ describe("cycle actions", () => {
 
     // Touching but not overlapping is fine — the day after the first one ends.
     expect(
-      (await saveCycleAction(
-        fd({ period_start: "2026-01-11", period_end: "2026-01-15" })
-      )).ok
+      (
+        await saveCycleAction(
+          fd({ period_start: "2026-01-11", period_end: "2026-01-15" })
+        )
+      ).ok
     ).toBe(true);
   });
 
@@ -235,9 +237,11 @@ describe("cycle actions", () => {
 
     // Re-saving unchanged is never a conflict with itself.
     expect(
-      (await saveCycleAction(
-        fd({ id: b.id, period_start: "2026-02-01", period_end: "2026-02-05" })
-      )).ok
+      (
+        await saveCycleAction(
+          fd({ id: b.id, period_start: "2026-02-01", period_end: "2026-02-05" })
+        )
+      ).ok
     ).toBe(true);
 
     const moved = await saveCycleAction(

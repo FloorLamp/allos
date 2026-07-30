@@ -13,11 +13,7 @@ import { shiftDateStr } from "@/lib/date";
 // long period unrefused — the app must be able to record a genuine emergency — so this
 // decides only whether to SAY something, calmly and once per period.
 
-function period(
-  id: number,
-  start: string,
-  end: string | null
-): CyclePeriod {
+function period(id: number, start: string, end: string | null): CyclePeriod {
   return { id, period_start: start, period_end: end, flow: null, note: null };
 }
 
@@ -62,7 +58,10 @@ describe("decideProlongedBleeding", () => {
     const inside = period(1, shiftDateStr(insideEnd, -9), insideEnd);
     expect(decideProlongedBleeding(inside, TODAY)).not.toBeNull();
 
-    const outsideEnd = shiftDateStr(TODAY, -(CYCLE_OBSERVATION_WINDOW_DAYS + 1));
+    const outsideEnd = shiftDateStr(
+      TODAY,
+      -(CYCLE_OBSERVATION_WINDOW_DAYS + 1)
+    );
     const outside = period(2, shiftDateStr(outsideEnd, -9), outsideEnd);
     expect(decideProlongedBleeding(outside, TODAY)).toBeNull();
   });

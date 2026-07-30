@@ -114,7 +114,10 @@ describe("cyclePhaseOnDate", () => {
   it("still resolves luteal retrospectively once a next period follows a stale open one", () => {
     // A stale open period followed by a real next start: the days before that next start
     // derive normally rather than being swallowed by the lapsed claim.
-    const rows = [period(1, "2026-04-01", null), period(2, "2026-05-01", "2026-05-05")];
+    const rows = [
+      period(1, "2026-04-01", null),
+      period(2, "2026-05-01", "2026-05-05"),
+    ];
     expect(cyclePhaseOnDate(rows, "2026-04-11")).toBe("follicular");
     expect(cyclePhaseOnDate(rows, "2026-04-20")).toBe("luteal"); // 05-01 minus 14 = 04-17
   });

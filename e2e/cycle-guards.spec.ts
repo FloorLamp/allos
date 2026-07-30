@@ -1,12 +1,9 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick, settledFill } from "./helpers";
+import { settledClick } from "./helpers";
 import { frozenNow } from "./worker-env";
-import {
-  E2E_LOGIN_CYCLE_STALE,
-  E2E_MEMBER_PASSWORD,
-} from "./fixture-logins";
+import { E2E_LOGIN_CYCLE_STALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Cycle plausibility guards (issue #1682): a period left open past the plausible maximum
 // stops claiming menstrual and prompts instead of being silently closed, and the dated
@@ -25,6 +22,27 @@ function shift(days: number): string {
   const d = new Date(frozenNow());
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+// DateField DISPLAYS a friendly date ("Jun 15, 2026") while SUBMITTING the canonical ISO
+// through a hidden input, so settledFill's same-field readback can't express the wait.
+// Fill the visible field and settle on the hidden value instead — only React state can
+// produce it, so it is the same hydration guarantee, read where the form actually reads
+// it. Then dismiss the calendar popover, which otherwise floats over the submit button.
+async function fillPeriodDate(
+  page: Page,
+  field: "start" | "end",
+  iso: string
+): Promise<void> {
+  const form = page.getByTestId("cycle-add-form");
+  const input = page.locator(`#cycle-${field}-new`);
+  const hidden = form.locator(`input[type="hidden"][name="period_${field}"]`);
+  await expect(input).toBeVisible();
+  await expect(async () => {
+    await input.fill(iso);
+    await expect(hidden).toHaveValue(iso, { timeout: 2_000 });
+  }).toPass({ timeout: 10_000, intervals: [200, 500, 1000] }); // topass-ok: hydration gate for a DateField whose display reformats a valid ISO, so a same-field value assertion can't express the wait (the #794 precedent)
+  await input.press("Escape");
 }
 
 test.describe("cycle plausibility guards (#1682)", () => {
@@ -65,7 +83,7 @@ test.describe("cycle plausibility guards (#1682)", () => {
     const rows = page.getByTestId("cycle-history-row");
     const before = await rows.count();
 
-    await settledFill(page, page.locator("#cycle-start-new"), shift(1));
+    await fillPeriodDate(page, "start", shift(1));
     await settledClick(page, form.getByRole("button", { name: "Add period" }));
 
     await expect(form.getByRole("alert")).toContainText(
@@ -82,8 +100,8 @@ test.describe("cycle plausibility guards (#1682)", () => {
     const before = await rows.count();
 
     // Inside the seeded completed period (46 → 42 days ago).
-    await settledFill(page, page.locator("#cycle-start-new"), shift(-45));
-    await settledFill(page, page.locator("#cycle-end-new"), shift(-43));
+    await fillPeriodDate(page, "start", shift(-45));
+    await fillPeriodDate(page, "end", shift(-43));
     await settledClick(page, form.getByRole("button", { name: "Add period" }));
 
     const alert = form.getByRole("alert");

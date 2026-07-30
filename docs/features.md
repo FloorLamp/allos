@@ -1247,31 +1247,31 @@ the form, the quick actions, and any future import path share them:
 - **Overlaps and a second simultaneously-open period are refused**, with the
   conflicting period named in the message. No inferred repair — the user
   resolves the conflict explicitly. Per-day
-**cycle symptoms** (cramps, bloating, breast tenderness, mood swings, low back
-pain) ride the SAME shipped symptom bar (#799/#815/#857) — a small `domain` tag
-(illness/cycle/general) on the symptom vocabulary leads each mount with its
-context's slugs, so the Cycle bar surfaces the menstrual symptoms first while
-every symptom stays loggable; phase membership is derived by DATE, so a symptom
-during a period during a cold belongs to both the illness episode and the cycle
-phase, correct by construction (no second symptom store). The **cycle phase**
-(menstrual/follicular/luteal) is DERIVED from the logged period history — one
-pure computation shared by the Cycle page's "current phase" card and a
-phase/period **chip on the Timeline day view** — and a **cycle-length +
-variability** read (average/shortest/longest/spread, a regular-vs-irregular
-verdict within a 7-day threshold, and a length trend chart) answers "is it
-regular / changing." Deliberately **tracking, not forecasting**: the luteal
-phase is only assigned retrospectively once the following period is logged, and
-there is **no** next-period or ovulation prediction and **no**
-fertility-awareness / basal-body-temperature features (that regulated tier is
-out of scope). It also feeds cycle-phase-aware biomarker reference ranges (the
-phase on a lab's collection date). Informational only, not medical advice or
-diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
-always keeps it visible — data wins, including for trans or unset-sex profiles —
-else it shows for a female profile that is premenopausal (explicit reproductive
-status beats the age proxy; with no status set, the #494 life-stage fallback
-shows it for adolescents and adults). An explicit postmenopausal status (absent
-data) hides it, as does an unknown sex or age. The gate is cosmetic —
-`/medical/cycles` never hard-blocks.
+  **cycle symptoms** (cramps, bloating, breast tenderness, mood swings, low back
+  pain) ride the SAME shipped symptom bar (#799/#815/#857) — a small `domain` tag
+  (illness/cycle/general) on the symptom vocabulary leads each mount with its
+  context's slugs, so the Cycle bar surfaces the menstrual symptoms first while
+  every symptom stays loggable; phase membership is derived by DATE, so a symptom
+  during a period during a cold belongs to both the illness episode and the cycle
+  phase, correct by construction (no second symptom store). The **cycle phase**
+  (menstrual/follicular/luteal) is DERIVED from the logged period history — one
+  pure computation shared by the Cycle page's "current phase" card and a
+  phase/period **chip on the Timeline day view** — and a **cycle-length +
+  variability** read (average/shortest/longest/spread, a regular-vs-irregular
+  verdict within a 7-day threshold, and a length trend chart) answers "is it
+  regular / changing." Deliberately **tracking, not forecasting**: the luteal
+  phase is only assigned retrospectively once the following period is logged, and
+  there is **no** next-period or ovulation prediction and **no**
+  fertility-awareness / basal-body-temperature features (that regulated tier is
+  out of scope). It also feeds cycle-phase-aware biomarker reference ranges (the
+  phase on a lab's collection date). Informational only, not medical advice or
+  diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
+  always keeps it visible — data wins, including for trans or unset-sex profiles —
+  else it shows for a female profile that is premenopausal (explicit reproductive
+  status beats the age proxy; with no status set, the #494 life-stage fallback
+  shows it for adolescents and adults). An explicit postmenopausal status (absent
+  data) hides it, as does an unknown sex or age. The gate is cosmetic —
+  `/medical/cycles` never hard-blocks.
 
 ## Mental health
 

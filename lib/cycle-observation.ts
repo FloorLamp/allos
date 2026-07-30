@@ -17,7 +17,11 @@
 // Pure (no DB/clock beyond the anchor it is handed); the DB input assembly lives in
 // buildCycleBleedingFindings (lib/rule-findings.ts).
 
-import { PROLONGED_PERIOD_DAYS, periodLengthDays, type CyclePeriod } from "./cycle";
+import {
+  PROLONGED_PERIOD_DAYS,
+  periodLengthDays,
+  type CyclePeriod,
+} from "./cycle";
 import { daysBetweenDateStr } from "./date";
 
 // dedupeKey namespace for the suppression bus + the RULE_FINDING_PREFIXES registry.
@@ -55,7 +59,8 @@ export function decideProlongedBleeding(
   const days = periodLengthDays(period);
   if (days == null || days < PROLONGED_PERIOD_DAYS) return null;
   const age = daysBetweenDateStr(period.period_end, today);
-  if (age == null || age < 0 || age > CYCLE_OBSERVATION_WINDOW_DAYS) return null;
+  if (age == null || age < 0 || age > CYCLE_OBSERVATION_WINDOW_DAYS)
+    return null;
   return {
     dedupeKey: cycleBleedingSignalKey(period.period_start),
     periodStart: period.period_start,

@@ -695,7 +695,8 @@ export function buildCycleBleedingFindings(
       detail: obs.detail,
       // Calm, observational — never an alarm, never a push (coaching tier).
       tone: "info",
-      evidence: "Recorded from your own period log — informational, not a diagnosis.",
+      evidence:
+        "Recorded from your own period log — informational, not a diagnosis.",
       actionHref: "/medical/cycles",
       actionLabel: "View cycle log",
     })
