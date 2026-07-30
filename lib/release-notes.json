@@ -4,6 +4,13 @@
       "date": "2026-07-30",
       "entries": [
         {
+          "pr": 1693,
+          "kind": "fix",
+          "title": "Charts you can actually read on a phone — and a day chart you can touch",
+          "body": "Chart text now has a real minimum: labels are sized against how small the chart can actually render, so nothing shrinks below legibility (two charts were quietly under the floor and got fixed). The day-at-a-glance chart labels your wake and bed times, names its activity blocks, and drops the machine-analysis tick marks. The intraday chart gained a touch layer: scrub for an exact heart-rate reading, drag or tap to zoom, all with the keyboard supported — and annotation labels now stay inside the plot instead of smearing past its edge.",
+          "issues": [1573, 1518, 1512, 1515]
+        },
+        {
           "pr": 1689,
           "kind": "feature",
           "title": "Search finally knows your whole record",
