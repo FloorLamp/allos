@@ -4,6 +4,20 @@
       "date": "2026-07-30",
       "entries": [
         {
+          "pr": 1707,
+          "kind": "fix",
+          "title": "Cycle tracking stops lying to you — in both directions",
+          "body": "The \"Period started today\" quick action no longer confirms success when nothing was written — it tells you a period is already open, refuses an implausibly soon restart, and shows where you are in your cycle instead of offering the wrong button the moment a period ends. A one-tap \"Still bleeding\" reopens a just-ended period. And a forgotten \"ended\" tap no longer reads as menstrual forever: after ten days the app treats the period as probably over and asks you to set the end date — your record is never changed behind your back. New entries are checked for overlaps, future dates, and impossible ranges, with every refusal naming the conflict.",
+          "issues": [1681, 1682]
+        },
+        {
+          "pr": 1706,
+          "kind": "feature",
+          "title": "Your half-entered workout survives anything",
+          "body": "Long forms now keep a local draft as you type: reload, crash, or a deploy mid-entry, and a banner offers your unsaved work back — Resume or Discard, your choice, never applied silently, always cleared once you actually save. Drafts stay on your device only and are wiped on logout. App updates also stopped yanking pages out from under you: a new version now waits with a small \"Update ready\" note, and you reload when you're ready — it even mentions if you have unsaved work open.",
+          "issues": [1699, 1700]
+        },
+        {
           "pr": 1703,
           "kind": "feature",
           "title": "A tidier supplement shelf and medicine cabinet",
