@@ -4,16 +4,21 @@ import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_PANELINDEX, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// Results › Biomarkers, the two cards ABOVE the index (issue #1578). Mobile project
-// (390×844) because the whole claim is about phone height: #1499 collapsed the tab
-// from 13.4k px to 2.8k px, but the first panel header still sat 2.5k px down, and
-// the two cards the design deliberately keeps above the list accounted for 1,487 px
-// of it — the starred card renders one uncapped tile per star (a reader with many
-// stars grows it without limit), and the hero always lists nine inputs.
+// Results › Biomarkers on a phone: how the cards around the panel index behave at
+// 390×844 (issues #1578 and #1647). Mobile project because the whole claim is about
+// phone height. #1499 collapsed the tab from 13.4k px to 2.8k px; #1578 capped the
+// two tallest cards and the first panel header still sat 1,913 px down — 2.3
+// viewports — because those two cards are 579 px and 435 px even capped, so they
+// exceed an 844 px screen between them. #1647 answers that by re-ordering the phone
+// stack instead of shrinking it further: the trajectory warning keeps its place above
+// the index and folds its rows there, and the two glance cards move BELOW the index,
+// whole. Every slot's order resets at `sm`, so desktop is unchanged.
 //
-// GEOMETRY, NOT PIXELS. The assertions are relational: what is laid out versus what
-// is not, and whether folding actually moves the index up. No absolute card height is
-// pinned — the design may change what a tile weighs, and this spec should not care.
+// GEOMETRY, NOT PIXELS. The assertions are relational — what is laid out versus what
+// is not, which block sits above which, whether folding moves the index — with ONE
+// absolute: the first panel header must sit inside the first viewport height, because
+// that is the thing #1578 asked for in those words and #1647 delivered. No card height
+// is pinned; the design may change what a tile weighs and this spec should not care.
 //
 // FIXTURE OWNERSHIP (#868). `e2e_panelindex` owns its whole profile: six starred
 // analytes (past the phone tile cap, so the fold is exercised rather than skipped)
@@ -52,30 +57,90 @@ function tile(page: Page, n: number): Locator {
     .nth(n);
 }
 
-test("folding the two cards lifts the panel index up the page (#1578)", async ({
+// Top of an element in document coordinates.
+function topOf(el: Locator): Promise<number> {
+  return el.evaluate(
+    (n) => (n as HTMLElement).getBoundingClientRect().top + window.scrollY
+  );
+}
+
+// THE ACCEPTANCE TEST for #1647, and the one place this spec pins an absolute number
+// — because "the first panel header is inside the first screen" is not expressible
+// any other way. Everything else here stays relational.
+test("the panel index leads on a phone, inside the first viewport (#1647)", async ({
   browser,
 }) => {
   const page = await openPhone(browser);
 
-  // Both capped cards are present — this profile is the case the issue measured, not
-  // one that dodges it by having nothing above the list.
+  // This profile is the case the issues measured, not one that dodges it by having
+  // nothing around the list: both capped cards render, and so does the warning.
   await expect(page.getByTestId("starred-biomarkers")).toBeVisible();
   await expect(page.getByTestId("bio-age-hero")).toBeVisible();
   await expect(page.getByTestId("bio-age-value")).toBeVisible();
+  await expect(page.getByTestId("trajectory-findings")).toBeVisible();
 
+  const header = await firstHeaderTop(page);
+  expect(header).toBeLessThan(PHONE.height);
+
+  // And it leads because the two glance cards are BELOW it — not because they were
+  // hidden. Both are still fully laid out, one scroll away.
+  expect(await topOf(page.getByTestId("starred-biomarkers"))).toBeGreaterThan(
+    header
+  );
+  expect(await topOf(page.getByTestId("bio-age-hero"))).toBeGreaterThan(header);
+
+  // The warning is the one card that keeps its place above the index.
+  expect(await topOf(page.getByTestId("trajectory-findings"))).toBeLessThan(
+    header
+  );
+
+  // The filter bar travels WITH the table across the re-order: a control that
+  // narrows a list has to stay attached to the list it narrows.
+  const filters = await topOf(page.getByTestId("medical-filters"));
+  expect(filters).toBeLessThan(header);
+  expect(filters).toBeGreaterThan(
+    await topOf(page.getByTestId("trajectory-findings"))
+  );
+
+  // "+ Add result" stays last, as it was.
+  expect(await topOf(page.getByTestId("add-result-panel"))).toBeGreaterThan(
+    await topOf(page.getByTestId("bio-age-hero"))
+  );
+
+  await page.context().close();
+});
+
+test("the trajectory watch keeps its headline above the index and folds its rows (#1647)", async ({
+  browser,
+}) => {
+  const page = await openPhone(browser);
+  const card = page.getByTestId("trajectory-findings");
+
+  // The signal survives the fold: the card is still there, still says how many
+  // analytes are trending and names them. Only the per-analyte detail folds.
+  await expect(card.getByRole("heading")).toContainText("Trajectory watch");
+  await expect(card).toContainText("trending before a single reading");
+  await expect(
+    card.getByTestId("trajectory-rollup").first() // first-ok: spec-owned profile; any one folded row proves the list is not laid out
+  ).toBeHidden();
+
+  const toggle = page.getByTestId("trajectory-rows-fold-toggle");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  // The label says how much is behind the tap, so it answers "is this worth one?".
+  await expect(toggle).toHaveText(/^Show \d+ trending analytes?$/);
+
+  // Relational, the way #1646's assertion was: unfolding the rows pushes the index
+  // back down, so the fold is what buys the index its place on the first screen.
   const folded = await firstHeaderTop(page);
-
-  // Open both folds: the page now renders what it rendered BEFORE this change — six
-  // starred tiles and the nine-input list — so the difference is exactly what the
-  // caps buy.
-  await hydratedClick(page, page.getByTestId("starred-fold-toggle"));
-  await hydratedClick(page, page.getByTestId("bio-age-inputs-fold-toggle"));
-  await expect(tile(page, 5)).toBeVisible();
+  await hydratedClick(page, toggle);
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(card.getByTestId("trajectory-rollup").first()).toBeVisible(); // first-ok: same spec-owned row
   const unfolded = await firstHeaderTop(page);
+  expect(unfolded - folded).toBeGreaterThan(100);
 
-  expect(unfolded).toBeGreaterThan(folded);
-  // Worth having: the caps are not a rounding error on a 844px screen.
-  expect(unfolded - folded).toBeGreaterThan(200);
+  // And it folds back.
+  await hydratedClick(page, toggle);
+  await expect(card.getByTestId("trajectory-rollup").first()).toBeHidden(); // first-ok: same spec-owned row
 
   await page.context().close();
 });
@@ -141,7 +206,7 @@ test("the bio-age hero folds its inputs but never its estimate caveat (#1578)", 
   await page.context().close();
 });
 
-test("desktop renders both cards whole, with no fold controls (#1578)", async ({
+test("desktop renders every card whole, above the index, with no fold controls (#1578/#1647)", async ({
   browser,
 }) => {
   const page = await openPhone(browser);
@@ -149,9 +214,30 @@ test("desktop renders both cards whole, with no fold controls (#1578)", async ({
 
   // From `sm` up the folded slots are `display: contents`, so their children are laid
   // out by the parent exactly as before this change — one grid of six starred tiles,
-  // one nine-item input list — and the toggles are gone because nothing is folded.
+  // one nine-item input list, the trajectory rows inline — and the toggles are gone
+  // because nothing is folded.
   await expect(page.getByTestId("starred-fold-toggle")).toBeHidden();
   await expect(page.getByTestId("bio-age-inputs-fold-toggle")).toBeHidden();
+  await expect(page.getByTestId("trajectory-rows-fold-toggle")).toBeHidden();
+  await expect(
+    page.getByTestId("trajectory-rollup").first() // first-ok: spec-owned profile; any one row proves the list is inline again
+  ).toBeVisible();
+
+  // Every stack slot resets its order at `sm`, so the page renders in DOM order —
+  // the unchanged #1499 section D order, glance first and index below it.
+  const header = await firstHeaderTop(page);
+  for (const id of [
+    "starred-biomarkers",
+    "trajectory-findings",
+    "bio-age-hero",
+  ])
+    expect(await topOf(page.getByTestId(id))).toBeLessThan(header);
+  expect(await topOf(page.getByTestId("starred-biomarkers"))).toBeLessThan(
+    await topOf(page.getByTestId("trajectory-findings"))
+  );
+  expect(await topOf(page.getByTestId("trajectory-findings"))).toBeLessThan(
+    await topOf(page.getByTestId("bio-age-hero"))
+  );
 
   const card = page.getByTestId("starred-biomarkers");
   for (const t of await card.getByTestId("starred-tile").all())
