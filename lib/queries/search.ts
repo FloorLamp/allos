@@ -29,11 +29,15 @@ import {
 import {
   biomarkerViewHref,
   encounterHref,
+  episodeHref,
+  equipmentHref,
   immunizationHref,
   importHref,
   intakeHref,
   medicationHref,
   nutritionTabHref,
+  protocolHref,
+  providerHref,
   timelineDayHref,
   MEDICATIONS_HREF,
   type AppRoute,
@@ -43,6 +47,27 @@ import {
   appointmentHitActions,
   biomarkerHitActions,
 } from "../hit-actions";
+import { skinLesionDisplayLabel, skinLesionIdentityKey } from "../skin-lesion";
+import {
+  dentalHitText,
+  episodeHitText,
+  equipmentHitText,
+  genomicHitText,
+  imagingHitText,
+  isoDay,
+  practiceHitText,
+  protocolHitText,
+  providerHitText,
+  skinHitText,
+} from "../search-projections";
+import { getProviderRecordCounts } from "./providers";
+import { getPracticeSearchRows } from "./wellness";
+import type {
+  DentalProcedure,
+  GenomicVariant,
+  ImagingStudy,
+  SkinLesion,
+} from "../types";
 
 // Global (Cmd-K) search fan-out. One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -57,13 +82,15 @@ import {
 // SQL LIMIT.
 //
 // HREF RULE (#1568): a hit's href is the most PRECISE destination its row data
-// supports — the per-record page (biomarker/document/encounter/medication/vaccine)
-// or a day/tab-scoped hub link (an activity's timeline day, the goals tab). A bare
-// hub route is correct ONLY where no precise target exists: the passport list
-// surfaces (condition/allergy/procedure/appointment/family-history/care plan/care
-// goal) render no per-row anchor, so their hits land on the list page until one
-// exists. This is the class typed routes CANNOT catch — `/training` is a live
-// pathname, just the wrong one — so it's pinned by data-level tests instead
+// supports — the per-record page (biomarker/document/encounter/medication/vaccine,
+// and since #1595 provider/episode/protocol/equipment) or a day/tab-scoped hub link
+// (an activity's timeline day, the goals tab). A bare hub route is correct ONLY where
+// no precise target exists: the passport list surfaces
+// (condition/allergy/procedure/appointment/family-history/care plan/care goal) and
+// the record surfaces added in #1595 that render no per-row anchor either (imaging,
+// genomics, dental, skin, practices) land on their list/tab page until one exists.
+// This is the class typed routes CANNOT catch — `/training` is a live pathname, just
+// the wrong one — so it's pinned by data-level tests instead
 // (lib/__db_tests__/search-hrefs.test.ts).
 
 const PER_DOMAIN_CAP = 5;
@@ -77,9 +104,10 @@ function likePattern(query: string): string {
 }
 
 // Trim a stored datetime ("2026-07-06 12:00:00") down to its ISO date part for
-// the recency tiebreak.
+// the recency tiebreak. Delegates to the pure projection helper so a hit's `date`
+// and the date printed in its subtitle are trimmed by ONE function.
 function isoDate(value: string | null): string | null {
-  return value ? value.slice(0, 10) : null;
+  return isoDay(value);
 }
 
 function biomarkerHits(profileId: number, like: string): SearchHit[] {
@@ -598,6 +626,384 @@ function careGoalHits(profileId: number, like: string): SearchHit[] {
   }));
 }
 
+// ── Second-generation entity domains (#1595) ─────────────────────────────────
+// Everything the app grew AFTER #19 closed the passport set: the provider directory
+// (#1055), the specialty/result record types (imaging #702, genomics #709, dental
+// #705, skin #715), illness episodes (#856), protocols (#344), wellness practices
+// (#1591), and the equipment registry (#343). They were unsearchable — and because
+// grounded record Q&A retrieves SOLELY through this fan-out (lib/record-qa.ts), a
+// question like "when was her last MRI" or "which dentist did the crown" could not
+// cite a row even with the data sitting in the table.
+//
+// Each helper keeps the established shape: one capped, PROFILE-SCOPED scan over the
+// columns a person would type, projected through the domain's pure text function
+// (lib/search-projections.ts) so the hit names the record exactly as its own page
+// does. Hrefs follow the #1568 rule — the per-record route where one exists
+// (provider / episode / protocol / equipment), the owning list surface where the
+// domain renders no per-row anchor (imaging / genomics / dental / skin / practices).
+
+// Providers the ACTIVE profile's records actually name (#1055). The registry is
+// GLOBAL, so scope comes from the per-profile link counts (getProviderRecordCounts,
+// itself profile-scoped) rather than from the providers table — searching the bare
+// registry would surface clinicians this profile has never seen, which is noise in
+// the palette and wrong in Q&A, where a citation must be one of the person's own
+// records. Same-named providers are disambiguated in the label (#134/#617's lesson
+// applied to a table whose collapse is an admin MERGE, not a read-time
+// representative): the NPI, else the address's first line.
+function providerHits(profileId: number, like: string): SearchHit[] {
+  const counts = getProviderRecordCounts(profileId);
+  if (counts.length === 0) return [];
+  const records = new Map(counts.map((c) => [c.providerId, c.records]));
+  const ids = [...records.keys()];
+  const rows = db
+    .prepare(
+      `SELECT id, name, type, specialty, npi, address
+         FROM providers
+        WHERE id IN (${ids.map(() => "?").join(", ")})
+          AND (name LIKE ? ESCAPE '\\'
+               OR specialty LIKE ? ESCAPE '\\'
+               OR npi LIKE ? ESCAPE '\\')
+        ORDER BY name COLLATE NOCASE
+        LIMIT ?`
+    )
+    .all(...ids, like, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    name: string;
+    type: string | null;
+    specialty: string | null;
+    npi: string | null;
+    address: string | null;
+  }[];
+  // Which matched names are shared by more than one provider — the labels those rows
+  // need their distinguishing attribute on.
+  const nameCounts = new Map<string, number>();
+  for (const r of rows) {
+    const key = r.name.trim().toLowerCase();
+    nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+  }
+  return rows.map((r) => {
+    const text = providerHitText(
+      { ...r, recordCount: records.get(r.id) ?? 0 },
+      { ambiguousName: (nameCounts.get(r.name.trim().toLowerCase()) ?? 0) > 1 }
+    );
+    return {
+      domain: "provider" as const,
+      key: `provider:${r.id}`,
+      ...text,
+      // The provider's registry detail page (#275) — its per-profile record listing,
+      // relationship strip, and affiliations.
+      href: providerHref(r.id),
+      // A provider is an entity, not an event: undated, so it sorts by match quality
+      // then name within its group.
+      date: null,
+    };
+  });
+}
+
+// Imaging studies (#702). `modality` is stored as its enum code ("mri", "x-ray"), and
+// LIKE is case-insensitive for ASCII, so a typed "MRI" reaches it directly.
+function imagingHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, modality, body_region, laterality, study_date, impression, indication
+         FROM imaging_studies
+        WHERE profile_id = ?
+          AND (modality LIKE ? ESCAPE '\\'
+               OR body_region LIKE ? ESCAPE '\\'
+               OR impression LIKE ? ESCAPE '\\'
+               OR indication LIKE ? ESCAPE '\\'
+               OR notes LIKE ? ESCAPE '\\')
+        ORDER BY COALESCE(study_date, '') DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, like, like, like, CANDIDATE_LIMIT) as Pick<
+    ImagingStudy,
+    | "id"
+    | "modality"
+    | "body_region"
+    | "laterality"
+    | "study_date"
+    | "impression"
+    | "indication"
+  >[];
+  return rows.map((r) => ({
+    domain: "imaging" as const,
+    key: `imaging:${r.id}`,
+    ...imagingHitText(r),
+    // Results › Imaging renders the study list with no per-row anchor, so the tab
+    // route is the most precise destination the row supports.
+    href: "/results/imaging",
+    date: isoDate(r.study_date),
+  }));
+}
+
+// Genomic variants (#709). Matches the gene, the call (genotype/star allele), the
+// variant id, the lab, and the report's own interpretation text.
+function genomicHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, gene, variant, genotype, star_allele, zygosity, significance,
+              result_type, source_lab, report_date
+         FROM genomic_variants
+        WHERE profile_id = ?
+          AND (gene LIKE ? ESCAPE '\\'
+               OR variant LIKE ? ESCAPE '\\'
+               OR genotype LIKE ? ESCAPE '\\'
+               OR star_allele LIKE ? ESCAPE '\\'
+               OR interpretation LIKE ? ESCAPE '\\'
+               OR source_lab LIKE ? ESCAPE '\\'
+               OR notes LIKE ? ESCAPE '\\')
+        ORDER BY COALESCE(report_date, '') DESC, id DESC
+        LIMIT ?`
+    )
+    .all(
+      profileId,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      CANDIDATE_LIMIT
+    ) as Pick<
+    GenomicVariant,
+    | "id"
+    | "gene"
+    | "variant"
+    | "genotype"
+    | "star_allele"
+    | "zygosity"
+    | "significance"
+    | "result_type"
+    | "source_lab"
+    | "report_date"
+  >[];
+  return rows.map((r) => ({
+    domain: "genomic" as const,
+    key: `genomic:${r.id}`,
+    ...genomicHitText(r),
+    href: "/results/genomics",
+    date: isoDate(r.report_date),
+  }));
+}
+
+// Dental procedures and findings (#705). The tooth designation is searchable as
+// typed ("14" or "#14"), and the CDT code is matched for the people who know it.
+function dentalHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, name, status, tooth, surface, procedure_date, finding
+         FROM dental_procedures
+        WHERE profile_id = ?
+          AND (name LIKE ? ESCAPE '\\'
+               OR tooth LIKE ? ESCAPE '\\'
+               OR surface LIKE ? ESCAPE '\\'
+               OR cdt_code LIKE ? ESCAPE '\\'
+               OR finding LIKE ? ESCAPE '\\'
+               OR notes LIKE ? ESCAPE '\\')
+        ORDER BY COALESCE(procedure_date, '') DESC, id DESC
+        LIMIT ?`
+    )
+    .all(
+      profileId,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      CANDIDATE_LIMIT
+    ) as Pick<
+    DentalProcedure,
+    | "id"
+    | "name"
+    | "status"
+    | "tooth"
+    | "surface"
+    | "procedure_date"
+    | "finding"
+  >[];
+  return rows.map((r) => ({
+    domain: "dental" as const,
+    key: `dental:${r.id}`,
+    ...dentalHitText(r),
+    href: "/records/specialty/dental",
+    date: isoDate(r.procedure_date),
+  }));
+}
+
+// Skin lesions (#715) — ONE hit per LESION, not per observation. Serial observations
+// of the same mole share the #482 identity, and the Skin list groups them into a
+// single card headed by the newest record; search collapses them identically, so a
+// mole photographed five times is one result whose subtitle says so (that is #134's
+// lesson in the shape this domain's read layer already defines).
+//
+// The scan is a bounded recent fetch filtered in JS (the immunizationHits pattern)
+// rather than a LIKE in SQL: a group's observation count and its head record must be
+// resolved over ALL of the lesion's rows, not only the rows that happened to match.
+// Lesion rows are few, so a capped fetch is the honest cheap answer.
+const SKIN_LESION_SCAN_LIMIT = 300;
+
+function skinHits(profileId: number, query: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, label, body_region, body_side, size_mm, status,
+              observed_date, finding, notes
+         FROM skin_lesions
+        WHERE profile_id = ?
+        ORDER BY COALESCE(observed_date, '') DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, SKIN_LESION_SCAN_LIMIT) as (Pick<
+    SkinLesion,
+    | "id"
+    | "label"
+    | "body_region"
+    | "body_side"
+    | "size_mm"
+    | "status"
+    | "observed_date"
+    | "finding"
+    | "notes"
+  > & { notes: string | null })[];
+
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = skinLesionIdentityKey(row);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+
+  const hits: SearchHit[] = [];
+  for (const [identity, group] of groups) {
+    // Rows arrive newest-first, so the first is the group head (as on the page).
+    const head = group[0];
+    const matched = group.some(
+      (r) =>
+        matchTier(skinLesionDisplayLabel(r), query) > 0 ||
+        (r.finding ? matchTier(r.finding, query) > 0 : false) ||
+        (r.notes ? matchTier(r.notes, query) > 0 : false) ||
+        (r.body_region ? matchTier(r.body_region, query) > 0 : false)
+    );
+    if (!matched) continue;
+    hits.push({
+      domain: "skin",
+      key: `skin:${identity}`,
+      ...skinHitText(head, group.length),
+      href: "/records/specialty/skin",
+      date: isoDate(head.observed_date),
+    });
+  }
+  return hits;
+}
+
+// Illness episodes (#856): the situation name, the user's note, and the outcome
+// annotation are what someone types ("when was her flu?", "how did that cold go?").
+function episodeHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, situation, started_at, ended_at, outcome
+         FROM illness_episodes
+        WHERE profile_id = ?
+          AND (situation LIKE ? ESCAPE '\\'
+               OR note LIKE ? ESCAPE '\\'
+               OR outcome LIKE ? ESCAPE '\\')
+        ORDER BY COALESCE(started_at, '') DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    situation: string;
+    started_at: string | null;
+    ended_at: string | null;
+    outcome: string | null;
+  }[];
+  return rows.map((r) => ({
+    domain: "episode" as const,
+    key: `episode:${r.id}`,
+    ...episodeHitText(r),
+    // The episode detail page (#856) — its ledger, fever curve, and linked visits.
+    href: episodeHref(r.id),
+    date: isoDate(r.started_at),
+  }));
+}
+
+// Protocols (#344): "what protocol was I running in March" — the name, the notes,
+// and the situation the protocol activates.
+function protocolHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, name, start_date, end_date, situation
+         FROM protocols
+        WHERE profile_id = ?
+          AND (name LIKE ? ESCAPE '\\'
+               OR notes LIKE ? ESCAPE '\\'
+               OR situation LIKE ? ESCAPE '\\')
+        ORDER BY (end_date IS NULL) DESC, start_date DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    name: string;
+    start_date: string;
+    end_date: string | null;
+    situation: string | null;
+  }[];
+  return rows.map((r) => ({
+    domain: "protocol" as const,
+    key: `protocol:${r.id}`,
+    ...protocolHitText(r),
+    href: protocolHref(r.id),
+    date: isoDate(r.start_date),
+  }));
+}
+
+// Wellness practices (#1591/#1622). A practice is not a row but an IDENTITY over a
+// weekly target and its logged sessions, so the reader folds spellings first
+// (getPracticeSearchRows) and the query is matched against the resolved display name
+// in JS — the same reason immunizations filter on their display name.
+function practiceHits(profileId: number, query: string): SearchHit[] {
+  return getPracticeSearchRows(profileId)
+    .filter((row) => matchTier(row.name, query) > 0)
+    .map((row) => ({
+      domain: "practice" as const,
+      key: `practice:${row.identity}`,
+      ...practiceHitText(row),
+      // The Wellness page renders one card per practice with no per-practice route.
+      href: "/wellness",
+      date: row.lastUsed,
+    }));
+}
+
+// Equipment (#343). Retired gear stays searchable — it still labels historical sets,
+// so "which bar did I PR on" has to resolve — and its hit says "Retired".
+function equipmentHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, name, category, retired
+         FROM equipment
+        WHERE profile_id = ?
+          AND (name LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\')
+        ORDER BY retired ASC, name COLLATE NOCASE
+        LIMIT ?`
+    )
+    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    name: string;
+    category: string | null;
+    retired: number;
+  }[];
+  return rows.map((r) => ({
+    domain: "equipment" as const,
+    key: `equipment:${r.id}`,
+    ...equipmentHitText(r),
+    href: equipmentHref(r.id),
+    date: null,
+  }));
+}
+
 // Extra search words per settings group — the terms people type that a one-sentence
 // summary doesn't contain. Keyed by group id so a renamed group can't strand them.
 const SETTINGS_SEARCH_KEYWORDS: Partial<Record<SettingsGroupId, string>> = {
@@ -785,6 +1191,8 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
 
   const hits: SearchHit[] = [
     ...biomarkerHits(profileId, like),
+    ...imagingHits(profileId, like),
+    ...genomicHits(profileId, like),
     ...documentHits(profileId, like),
     ...conditionHits(profileId, like),
     ...allergyHits(profileId, like),
@@ -792,7 +1200,14 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...immunizationHits(profileId, query),
     ...encounterHits(profileId, like),
     ...appointmentHits(profileId, like),
+    ...providerHits(profileId, like),
+    ...episodeHits(profileId, like),
+    ...dentalHits(profileId, like),
+    ...skinHits(profileId, query),
     ...supplementHits(profileId, like),
+    ...protocolHits(profileId, like),
+    ...practiceHits(profileId, query),
+    ...equipmentHits(profileId, like),
     ...familyHistoryHits(profileId, like),
     ...carePlanHits(profileId, like),
     ...careGoalHits(profileId, like),

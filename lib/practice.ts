@@ -103,6 +103,25 @@ export function practiceSpellingsFor(
     .slice(0, MAX_PRACTICE_SPELLINGS_PER_IDENTITY);
 }
 
+// The ONE display name for a practice identity. Practice names are user-owned open
+// vocabulary and the same identity can hold several stored spellings, so which one a
+// surface shows is a decision, not a lookup: the TARGET's spelling wins (the user
+// typed it when they set the cadence), else the most recent session's spelling, else
+// the folded identity itself as a last resort. Shared by the Wellness page aggregate
+// and the search fan-out (#1595) so a practice can never be named one thing on its
+// card and another in the palette.
+export function practiceDisplayName(input: {
+  targetSpelling?: string | null;
+  latestSpelling?: string | null;
+  identity: string;
+}): string {
+  return (
+    normalizePracticeName(input.targetSpelling) ||
+    normalizePracticeName(input.latestSpelling) ||
+    input.identity
+  );
+}
+
 // The expanded log form defaults duration from the immediately previous session.
 // A prior row with no recorded duration intentionally yields no default — old null
 // rows are never treated as if a duration had been captured.

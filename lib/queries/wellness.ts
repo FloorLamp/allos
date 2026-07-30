@@ -8,6 +8,7 @@ import type { ProtocolHeatmap } from "../protocol-heatmap";
 import {
   groupPracticeSpellings,
   MAX_PRACTICE_SPELLINGS_PER_IDENTITY,
+  practiceDisplayName,
   practiceIdentity,
   practiceSpellingsFor,
   previousPracticeDuration,
@@ -265,7 +266,11 @@ export function getWellnessPractices(
       }
       return {
         identity,
-        name: item.target?.scope_value ?? latest?.practice ?? identity,
+        name: practiceDisplayName({
+          targetSpelling: item.target?.scope_value ?? null,
+          latestSpelling: latest?.practice ?? null,
+          identity,
+        }),
         targetId: item.target?.id ?? null,
         perWeek: item.target?.per_week ?? null,
         perWeekMax: item.target?.per_week_max ?? null,
@@ -287,6 +292,117 @@ export function getWellnessPractices(
     .sort((left, right) =>
       left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
     );
+}
+
+// One practice as the global search needs it (#1595) — identity, display name, its
+// weekly cadence, and its session tally. Deliberately NOT getWellnessPractices():
+// that aggregate builds a heatmap and week-pace state per practice, which is right
+// for the page but far too much work per keystroke (and the palette renders none of
+// it). Same identity folding, same display-name decision, same cadence fields — just
+// the fields a hit shows.
+export interface PracticeSearchRow {
+  identity: string;
+  name: string;
+  perWeek: number | null;
+  perWeekMax: number | null;
+  sessionCount: number;
+  lastUsed: string | null;
+}
+
+// Every practice the profile has (a weekly target, logged sessions, or both), folded
+// to one row per identity. Two bounded queries regardless of how many practices exist:
+// the practice-scope targets and one grouped tally over practice_logs.
+export function getPracticeSearchRows(profileId: number): PracticeSearchRow[] {
+  const tallies = db
+    .prepare(
+      `SELECT practice, COUNT(*) AS sessions, MAX(date) AS last_used
+         FROM practice_logs
+        WHERE profile_id = ?
+        GROUP BY practice
+        ORDER BY last_used DESC`
+    )
+    .all(profileId) as {
+    practice: string;
+    sessions: number;
+    last_used: string | null;
+  }[];
+
+  const byIdentity = new Map<
+    string,
+    {
+      targetSpelling: string | null;
+      latestSpelling: string | null;
+      latestDate: string | null;
+      perWeek: number | null;
+      perWeekMax: number | null;
+      sessionCount: number;
+      lastUsed: string | null;
+    }
+  >();
+
+  const slot = (identity: string) => {
+    let row = byIdentity.get(identity);
+    if (!row) {
+      row = {
+        targetSpelling: null,
+        latestSpelling: null,
+        latestDate: null,
+        perWeek: null,
+        perWeekMax: null,
+        sessionCount: 0,
+        lastUsed: null,
+      };
+      byIdentity.set(identity, row);
+    }
+    return row;
+  };
+
+  for (const target of getPracticeTargets(profileId)) {
+    const identity = practiceIdentity(target.scope_value);
+    if (!identity) continue;
+    const row = slot(identity);
+    // getPracticeTargets is already ordered, so the first target for an identity
+    // wins the spelling and cadence (matching getWellnessPractices).
+    if (row.targetSpelling == null) {
+      row.targetSpelling = target.scope_value;
+      row.perWeek = target.per_week;
+      row.perWeekMax = target.per_week_max;
+    }
+  }
+
+  for (const tally of tallies) {
+    const identity = practiceIdentity(tally.practice);
+    if (!identity) continue;
+    const row = slot(identity);
+    row.sessionCount += tally.sessions;
+    if (
+      tally.last_used != null &&
+      (row.lastUsed == null || tally.last_used > row.lastUsed)
+    ) {
+      row.lastUsed = tally.last_used;
+    }
+    // The newest session's spelling is the display fallback when no target names it.
+    if (
+      row.latestDate == null ||
+      (tally.last_used != null && tally.last_used > row.latestDate)
+    ) {
+      row.latestDate = tally.last_used;
+      row.latestSpelling = tally.practice;
+    }
+  }
+
+  return [...byIdentity.entries()].map(([identity, row]) => ({
+    identity,
+    name: practiceDisplayName({
+      targetSpelling: row.targetSpelling,
+      latestSpelling: row.latestSpelling,
+      identity,
+    }),
+    perWeek: row.perWeek,
+    perWeekMax: row.perWeekMax,
+    sessionCount: row.sessionCount,
+    lastUsed: row.lastUsed,
+  }));
 }
 
 export function getAllPracticeSessions(
