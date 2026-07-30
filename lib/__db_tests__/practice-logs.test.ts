@@ -15,6 +15,7 @@ import {
   getPracticeSessions,
   getFrequencyTargetProgress,
   getWellnessPractices,
+  getTrackedPractices,
   collectUpcoming,
   dismissFinding,
 } from "@/lib/queries";
@@ -344,5 +345,81 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     logPracticeSession(pid, "Journaling", shiftDateStr(t, -2));
     expect(behindPractices(pid)).toEqual([]);
     expect(buildPracticeReminder(pid)).toBeNull();
+  });
+});
+
+// The quick surfaces' practice list (#1633): the shared read behind BOTH the
+// quick-entry overlay's row and the command palette's finite preimage. It is
+// deliberately narrower than getWellnessPractices — tracked only, no heatmap — so its
+// boundaries need pinning where the page aggregate's don't overlap them.
+describe("getTrackedPractices — the quick surfaces' list (#1633)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-17T12:00:00Z")); // a Wednesday
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("offers TRACKED practices only — history alone never re-lists an untracked one", () => {
+    const pid = makeProfile("tracked-only");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    practiceTarget(pid, "Sauna", 3, null);
+    // Logged for months, then untracked: the card and the history stay (the page
+    // aggregate still folds it in), but a quick surface offering it again would
+    // quietly undo the untrack.
+    logPracticeSession(pid, "Journaling", t);
+
+    expect(getTrackedPractices(pid).map((p) => p.name)).toEqual(["Sauna"]);
+    expect(getWellnessPractices(pid).map((p) => p.name)).toEqual([
+      "Journaling",
+      "Sauna",
+    ]);
+  });
+
+  it("counts the week and TODAY across every spelling of one identity", () => {
+    const pid = makeProfile("tracked-counts");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    practiceTarget(pid, "Cold plunge", 3, null);
+    logPracticeSession(pid, "COLD PLUNGE", t);
+    logPracticeSession(pid, "cold  plunge", t); // same day, second session
+    logPracticeSession(pid, "Cold plunge", shiftDateStr(t, -2));
+
+    const [row] = getTrackedPractices(pid);
+    expect(row).toMatchObject({
+      identity: practiceIdentity("Cold plunge"),
+      name: "Cold plunge", // the target's spelling wins
+      perWeek: 3,
+      // Adherence counts DAYS (two sessions today are one adherence day)…
+      countThisWeek: 2,
+      // …while today's tally counts SESSIONS, which is what the tap needs to show.
+      todayCount: 2,
+      atCeiling: false,
+    });
+  });
+
+  it("reports the calm at-ceiling state rather than hiding the row", () => {
+    const pid = makeProfile("tracked-ceiling");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    practiceTarget(pid, "Sauna", 2, 3);
+    for (const d of [0, -1, -2])
+      logPracticeSession(pid, "Sauna", shiftDateStr(t, d));
+
+    const [row] = getTrackedPractices(pid);
+    expect(row).toMatchObject({ countThisWeek: 3, atCeiling: true });
+    // Still offered: a dose-limited practice is never PUSHED toward more, but the user
+    // asking to log one is user-initiated access, and removing the row would be the
+    // system rewriting their intent.
+    expect(getTrackedPractices(pid)).toHaveLength(1);
+  });
+
+  it("is profile-scoped", () => {
+    const mine = makeProfile("tracked-mine");
+    const theirs = makeProfile("tracked-theirs");
+    practiceTarget(theirs, "Sauna", 3, null);
+    expect(getTrackedPractices(mine)).toEqual([]);
   });
 });

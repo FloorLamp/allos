@@ -357,9 +357,11 @@ export function getTrackedPractices(
   const out: TrackedPractice[] = [];
   for (const target of targets) {
     const identity = practiceIdentity(target.scope_value);
-    // A second target on the same identity would be a duplicate row offering the same
-    // write twice; the first (getPracticeTargets is already ordered) wins, exactly as
-    // it does in getWellnessPractices and getPracticeSearchRows.
+    // The schema already forbids two practice targets on one identity per profile
+    // (the unique (profile_id, scope_identity) index), so this is belt-and-braces: if
+    // one ever slipped in, the first — getPracticeTargets is already ordered — wins,
+    // exactly as it does in getWellnessPractices and getPracticeSearchRows, rather
+    // than the sheet offering the same write twice.
     if (!identity || seen.has(identity)) continue;
     seen.add(identity);
     const targetProgress = progress.get(target.id);

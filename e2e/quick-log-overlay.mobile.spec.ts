@@ -10,8 +10,9 @@ import {
   SHELL_PROFILE,
   SHELL_WEIGHT_KG,
   SHELL_DOSE_ITEM,
+  SHELL_PRACTICE,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 
 // Every quick-log item opens an IN-PLACE overlay (issues #1468, #1467).
 //
@@ -61,6 +62,47 @@ function shellDoseId(): number {
         )
         .get(SHELL_PROFILE, SHELL_DOSE_ITEM) as { id: number }
     ).id;
+  } finally {
+    db.close();
+  }
+}
+
+// This spec's own profile id — the scope for its practice/document cleanup.
+function shellProfileId(): number {
+  const db = openDb();
+  try {
+    return (
+      db
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(SHELL_PROFILE) as {
+        id: number;
+      }
+    ).id;
+  } finally {
+    db.close();
+  }
+}
+
+// The practice sessions and uploaded documents this spec writes. Cleared at test start
+// AND after, so --repeat-each and a re-run after a failure both begin from "none" —
+// every practice assertion below is then about the session the test itself logged.
+function clearShellPracticeLogs(): void {
+  const db = openDb();
+  try {
+    db.prepare("DELETE FROM practice_logs WHERE profile_id = ?").run(
+      shellProfileId()
+    );
+  } finally {
+    db.close();
+  }
+}
+
+function clearShellDocuments(prefix: string): void {
+  const db = openDb();
+  try {
+    db.prepare(
+      "DELETE FROM medical_documents WHERE profile_id = ? AND filename LIKE ?"
+    ).run(shellProfileId(), `${prefix}%`);
   } finally {
     db.close();
   }
@@ -274,6 +316,118 @@ test("the food and vitals overlays mount the same forms their pages carry", asyn
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     await expect(page).toHaveURL(/\/$/);
   } finally {
+    await page.context().close();
+  }
+});
+
+test("a practice logs in one tap from the sheet and the week count moves", async ({
+  browser,
+}) => {
+  // #1633: the Telegram bot has had one-tap practice logging since #1259 while the web
+  // app made you find /wellness first. This is the web catching up — and the assertion
+  // that matters is the LAST one: the session reached the same store the Wellness card
+  // counts, not merely a toast that resolved.
+  clearShellPracticeLogs();
+
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const dashboardUrl = page.url();
+
+    const overlay = await openQuickEntry(page, "log-practice");
+    const row = overlay
+      .getByTestId("quick-entry-practice-list")
+      .getByRole("listitem")
+      .filter({ hasText: SHELL_PRACTICE });
+    await expect(row).toBeVisible();
+    // The week standing the Wellness card shows, from the same computation.
+    await expect(row).toContainText("No days this week");
+    await expect(row).toContainText("Target 3×/week");
+    await expect(row.getByTestId("practice-today-count")).toContainText(
+      "No sessions yet"
+    );
+
+    await settledClick(page, row.getByTestId("practice-log-button"));
+
+    // Answered from the typed outcome, and you are STILL on the dashboard: the sheet
+    // deliberately stays open (a morning check may log a second practice), with the
+    // row's own count updated in place.
+    await expect(page.getByTestId("toast")).toContainText(
+      "Logged today's session"
+    );
+    await expect(row.getByTestId("practice-today-count")).toContainText(
+      "1 session logged"
+    );
+    expect(page.url()).toBe(dashboardUrl);
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+
+    // Durable, and from SERVER-rendered state: the Wellness card's week count moved,
+    // which is only true if the tap wrote through the shared practice store.
+    await page.goto("/wellness");
+    const card = page
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: SHELL_PRACTICE });
+    await expect(card).toContainText("1 day this week");
+  } finally {
+    clearShellPracticeLogs();
+    await page.context().close();
+  }
+});
+
+test("the Add document row files an upload in place, camera input included", async ({
+  browser,
+}) => {
+  // #1525: the in-app twin of the #1423 share target. The overlay mounts the SAME
+  // UploadForm the Data page renders — so this proves the real ingest path from a
+  // sheet row, and that a save lands you back where you were.
+  const prefix = "e2e-quicklog-doc-";
+  // The run's FROZEN clock, never wall time (#1464) — deterministic across
+  // --repeat-each, and the cleanup either side means a repeat starts from no rows.
+  const filename = `${prefix}${frozenNow().getTime()}.csv`;
+  clearShellDocuments(prefix);
+
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const dashboardUrl = page.url();
+
+    const overlay = await openQuickEntry(page, "add-document");
+    const body = page.getByTestId("quick-entry-body");
+    await expect(body).toHaveAttribute("data-form", "document");
+    // The camera capture comes free with the shared form (#1423) — "photograph the
+    // after-visit summary" works from the sheet with no camera UI of its own.
+    await expect(overlay.getByTestId("medical-upload-camera")).toHaveAttribute(
+      "capture",
+      "environment"
+    );
+
+    await overlay.getByTestId("medical-upload-input").setInputFiles({
+      name: filename,
+      mimeType: "text/csv",
+      buffer: Buffer.from(
+        "metric,value,unit,date\nGlucose,94,mg/dL,2026-01-04\n"
+      ),
+    });
+    await expect(overlay.getByTestId("medical-upload-selected")).toContainText(
+      filename
+    );
+
+    await settledClick(page, overlay.getByTestId("medical-upload-submit"));
+
+    // Filing a document has a real end, so the overlay closes — and leaves you on the
+    // page you were reading, which is the whole point of filing it from here.
+    await expect(page.getByText("Upload received")).toBeVisible();
+    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
+    expect(page.url()).toBe(dashboardUrl);
+
+    // Real, and on THIS profile: the row is in the Review import feed, gathered
+    // server-side.
+    await page.goto("/data?section=review");
+    await expect(page.getByTestId("import-feed")).toContainText(filename);
+  } finally {
+    clearShellDocuments(prefix);
     await page.context().close();
   }
 });
