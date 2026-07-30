@@ -13,6 +13,7 @@
 
 import type { NotificationKind, NotificationMessage } from "./types";
 import { TOGGLEABLE_NOTIFICATION_KINDS } from "./kinds";
+import { plainBody } from "./rich-text";
 
 // A shared-secret header HA can verify on the receiving side (webhook ids are
 // capability URLs, so this is belt-and-suspenders). Sent only when a secret is
@@ -98,7 +99,9 @@ export function buildHomeAssistantPayload(
   const doses = extractDoses(msg);
   return {
     title: msg.title,
-    body: msg.body,
+    // Plain text, like Web Push: an HA automation reads/speaks the body, so declared
+    // emphasis (#1720) is stripped rather than leaking markup into TTS.
+    body: plainBody(msg.body),
     kind: msg.kind ?? "other",
     profile: opts.profileName,
     profile_id: opts.profileId,

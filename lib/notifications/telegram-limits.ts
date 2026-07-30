@@ -24,19 +24,63 @@ export const TELEGRAM_MAX_BUTTONS = 100;
 
 // Back a hard cut off a few chars so it never lands inside an escaped HTML entity
 // (&amp; / &lt; / &gt;) — splitting one would render as literal garbage under
-// parse_mode HTML. Entities are short, so a small lookback suffices.
+// parse_mode HTML — nor inside a MARKUP TAG (`<b>` / `</code>`), which since the
+// rich-text seam (#1720) a body line can legitimately carry. Both are short, so a
+// small lookback suffices.
 function safeCutPoint(s: string, cut: number): number {
+  let out = cut;
   const amp = s.lastIndexOf("&", cut - 1);
   if (amp >= 0 && amp >= cut - 6) {
     const semi = s.indexOf(";", amp);
-    if (semi === -1 || semi >= cut) return amp; // cut before the entity, not through it
+    if (semi === -1 || semi >= cut) out = Math.min(out, amp); // before the entity
   }
-  return cut;
+  const lt = s.lastIndexOf("<", cut - 1);
+  if (lt >= 0) {
+    const gt = s.indexOf(">", lt);
+    if (gt === -1 || gt >= cut) out = Math.min(out, lt); // before the tag
+  }
+  return out;
+}
+
+// The tags left OPEN at the end of a rendered fragment, outermost first. Only the tiny
+// allowlisted set the renderer can emit (`b` / `i` / `code`) exists in this text, so a
+// simple stack scan is exact.
+function openTagsIn(html: string): string[] {
+  const stack: string[] = [];
+  const re = /<(\/?)(b|i|code)>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    if (m[1]) {
+      if (stack[stack.length - 1] === m[2]) stack.pop();
+    } else {
+      stack.push(m[2]);
+    }
+  }
+  return stack;
+}
+
+// Close any still-open tags at the end of each piece and REOPEN them at the start of
+// the next, so every piece is independently well-formed HTML. Telegram rejects a
+// message with unbalanced tags outright, which on the safety tier would mean a dose
+// reminder that delivers nothing at all — the exact failure mode the splitter exists
+// to prevent (#379), now under markup (#1720).
+function balanceTags(pieces: readonly string[]): string[] {
+  const out: string[] = [];
+  let carry: string[] = [];
+  for (const piece of pieces) {
+    const text = carry.map((t) => `<${t}>`).join("") + piece;
+    const open = openTagsIn(text);
+    const closed = [...open].reverse().map((t) => `</${t}>`).join("");
+    out.push(text + closed);
+    carry = open;
+  }
+  return out;
 }
 
 // Last-resort split of a single line longer than the limit (pathological — normal
-// overflow is many short lines). Cuts on a safe boundary so no HTML entity is
-// severed; content is preserved in order across the pieces.
+// overflow is many short lines). Cuts on a safe boundary so no HTML entity or tag is
+// severed; content is preserved in order across the pieces, and any tag left open by
+// a cut is closed and reopened so each piece parses on its own.
 function hardSplitLine(line: string, limit: number): string[] {
   const out: string[] = [];
   let rest = line;
@@ -49,7 +93,7 @@ function hardSplitLine(line: string, limit: number): string[] {
     rest = rest.slice(cut);
   }
   if (rest.length > 0) out.push(rest);
-  return out;
+  return balanceTags(out);
 }
 
 // Split rendered-HTML message text into <= `limit`-char chunks on newline

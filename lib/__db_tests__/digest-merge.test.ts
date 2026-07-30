@@ -14,6 +14,7 @@
 // Every value is synthetic (fake supplements, a fake bot token, no phones).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { plainBody } from "@/lib/notifications/rich-text";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -239,7 +240,7 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     // Sanity: renders to a single non-empty message.
     const msg = renderDigestMessage(model!);
     expect(msg.kind).toBe("digest");
-    expect(msg.body.length).toBeGreaterThan(0);
+    expect(plainBody(msg.body).length).toBeGreaterThan(0);
   });
 });
 

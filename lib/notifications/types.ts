@@ -2,6 +2,8 @@
 // supplement reminder) and dispatched to every configured channel; the core
 // knows nothing about supplements and channels know nothing about features.
 
+import type { MessageBody } from "./rich-text";
+
 export type ChannelId = "telegram" | "push" | "home-assistant";
 
 // A machine-readable classification of what a notification IS, carried on the
@@ -49,7 +51,10 @@ export interface NotificationAction {
 
 export interface NotificationMessage {
   title: string;
-  body: string;
+  // Plain text, or a RichText of builder-declared runs (#1720). The Telegram renderer
+  // turns declared emphasis into markup around already-escaped text; every other
+  // channel reads plainBody() and gets the same words without tags.
+  body: MessageBody;
   actions?: NotificationAction[];
   // Machine-readable classification (#248). Optional — channels that don't care
   // (Telegram/push) ignore it; the Home Assistant channel forwards it so an

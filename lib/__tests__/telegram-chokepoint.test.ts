@@ -119,6 +119,57 @@ describe("Telegram channel chokepoint boundary (issue #454)", () => {
     expect(offenders, offenders.join("\n")).toEqual([]);
   });
 
+  // ---- The rich-text seam's half of the boundary (issue #1720) ----
+  //
+  // Emphasis is now expressible, but ONLY as declared runs (lib/notifications/rich-text):
+  // a builder emitting a literal tag would be composing wire markup by hand, which is
+  // how interpolated user text stops being escaped. Two static rules keep the seam the
+  // only road: no literal tags in a builder, and no builder rendering wire text itself.
+
+  // The modules allowed to speak in tags: the renderer that emits them, the transport
+  // and splitter that must reason about them, and the seam that documents them.
+  const MARKUP_OWNERS = new Set([
+    "lib/notifications/telegram-render.ts",
+    "lib/notifications/telegram-api.ts",
+    "lib/notifications/telegram-limits.ts",
+    "lib/notifications/rich-text.ts",
+  ]);
+
+  // Strip line and block comments so a prose mention of `<b>` in a header comment
+  // isn't read as markup emission.
+  function stripComments(text: string): string {
+    return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[^\n]*?\/\/.*$/gm, "");
+  }
+
+  it("no builder emits literal Telegram markup — emphasis goes through the rich-text seam", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      if (MARKUP_OWNERS.has(rel.split(path.sep).join("/"))) continue;
+      if (!rel.split(path.sep).join("/").startsWith("lib/notifications/")) continue;
+      if (/<\/?(?:b|i|code)>/.test(stripComments(text))) {
+        offenders.push(`${rel} emits a literal Telegram markup tag`);
+      }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  it("only the chokepoint and the transport render a message to wire text", () => {
+    // The renderer DEFINES these; the chokepoint and transport are the only callers.
+    const allowed = new Set([
+      CHOKEPOINT,
+      TRANSPORT,
+      "lib/notifications/telegram-render.ts",
+    ]);
+    const offenders: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      if (allowed.has(rel.split(path.sep).join("/"))) continue;
+      if (/\b(renderMessageHtml|renderBodyHtml)\b/.test(stripComments(text))) {
+        offenders.push(`${rel} renders wire text itself`);
+      }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
   it("the chokepoint module and the transport module both exist", () => {
     expect(fs.existsSync(path.join(REPO, CHOKEPOINT))).toBe(true);
     expect(fs.existsSync(path.join(REPO, TRANSPORT))).toBe(true);
