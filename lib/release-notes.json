@@ -4,6 +4,13 @@
       "date": "2026-07-30",
       "entries": [
         {
+          "pr": 1703,
+          "kind": "feature",
+          "title": "A tidier supplement shelf and medicine cabinet",
+          "body": "A pass over the supplement tab and the medicine cabinet: clearer grouping, less visual noise, and the everyday actions brought forward. No behavior changes underneath — doses, schedules, and safety warnings all work exactly as before, just easier to find.",
+          "issues": []
+        },
+        {
           "pr": 1701,
           "kind": "feature",
           "title": "Upcoming stops drowning you in routine",
