@@ -16,6 +16,8 @@ import {
   SICK_COLLAPSE_PROFILE,
   E2E_LOGIN_SICK_PHOTO,
   SICK_PHOTO_PROFILE,
+  E2E_LOGIN_SICK_VIDEO,
+  SICK_VIDEO_PROFILE,
   E2E_LOGIN_SITCOACH,
   SITCOACH_PROFILE,
   E2E_LOGIN_ILLNESS_CARE,
@@ -593,5 +595,54 @@ export function seedIllness(): void {
   seedMemberLogin(E2E_LOGIN_PROTEIN, proteinProfileId, "write");
   console.log(
     `e2e: seeded protein quick-add fixture — profile ${proteinProfileId} (${PROTEIN_QUICKADD_PROFILE}) (#824)`
+  );
+}
+
+// ── Episode symptom-video strip (#1598) ──────────────────────────────────────
+// Appended to the seed run's TAIL on purpose: it introduces a profile and an
+// episode, and running it after every existing fixture keeps their row ids exactly
+// where they were.
+//
+// A dedicated sick-solo login whose OPEN episode gives the episode page's
+// SymptomVideoStrip a live upload day. The strip gathers clips over
+// [episode.start, today] and uploads them at the cockpit's log date (today), so an
+// OPEN episode is what makes an attached clip visible at all. Deliberately clipless:
+// symptom-video.spec attaches and deletes every clip it asserts on, so the fixture
+// always starts from the strip's EMPTY state (the branch nothing else renders).
+export function seedSymptomVideoEpisode(): void {
+  const pid = fixtureProfileId(SICK_VIDEO_PROFILE);
+  const on = today(pid);
+  const started = shiftDateStr(on, -2);
+
+  // Adult, so nothing on the episode page is age-gated.
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1988-06-15')`
+  ).run(pid);
+
+  // Exactly one OPEN episode — the spec reaches it through the care trail's single
+  // ongoing row, so a second episode would make that lookup ambiguous.
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(pid);
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+     VALUES (?, 'Illness', ?, NULL)`
+  ).run(pid, started);
+
+  // A small symptom history so the cockpit renders its normal shape (the strip sits
+  // below the timeline, which needs days to draw).
+  const seedSym = db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+     VALUES (?, ?, ?, ?, NULL)
+     ON CONFLICT (profile_id, date, symptom)
+     DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+  );
+  seedSym.run(pid, shiftDateStr(on, -1), "cough", 2);
+  seedSym.run(pid, on, "cough", 3);
+
+  // Start clipless even on a reused dev server; the spec owns every row here.
+  db.prepare("DELETE FROM symptom_videos WHERE profile_id = ?").run(pid);
+
+  seedMemberLogin(E2E_LOGIN_SICK_VIDEO, pid, "write");
+  console.log(
+    `e2e: seeded symptom-video episode fixture — profile ${pid} (${SICK_VIDEO_PROFILE}) (#1598)`
   );
 }

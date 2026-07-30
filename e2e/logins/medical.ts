@@ -179,3 +179,28 @@ export const PANEL_GROUPS_OTHER_ANALYTE = "E2E Unmapped Assay";
 // (only client-side disclosure is driven), so it is repeat-safe with no reset.
 export const E2E_LOGIN_PANELINDEX = "e2e_panelindex";
 export const PANEL_INDEX_PROFILE = "Panel Index (e2e)";
+
+// ── Results › Reports panes (#1598) ──────────────────────────────────────────
+// The Reports pane's two conditional shapes, neither of which the shared seed can
+// show: profile 1 owns narrative reports, so its pane is always populated and its
+// rows carry neither a performing provider nor a source document.
+//
+//   • REPORTS_EMPTY — a dedicated adult profile with NO `report` records at all,
+//     so /results/reports renders its EmptyState (the "import a CCD/XDM record"
+//     nudge). Read-only in its spec, so it stays repeat-safe with no reset.
+//   • REPORTS_SOURCE — a dedicated adult profile whose one narrative report is
+//     ATTRIBUTED (a performing lab) and DOCUMENT-LINKED (an imported CCD), so the
+//     card's provider line and its "View source document" link both render. Both
+//     branches are dead-lettered on profile 1. Read-only likewise.
+//
+// Isolated on purpose (#868): a report row on a shared profile changes that
+// profile's Reports pane for every neighbour spec that reads it.
+export const E2E_LOGIN_REPORTS_EMPTY = "e2e_reports_empty";
+export const REPORTS_EMPTY_PROFILE = "Reports Empty (e2e)";
+export const E2E_LOGIN_REPORTS_SOURCE = "e2e_reports_source";
+export const REPORTS_SOURCE_PROFILE = "Reports Source (e2e)";
+// The attributed report's name, performing lab, and the imported document it came
+// from — all obviously fictional (no real lab, no real accession).
+export const REPORTS_SOURCE_NAME = "Cytopathology Report (e2e)";
+export const REPORTS_SOURCE_PROVIDER = "E2E Reference Cytology Lab";
+export const REPORTS_SOURCE_DOCUMENT = "e2e-cytology-ccd.xml";

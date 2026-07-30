@@ -82,11 +82,12 @@ import {
   seedLesionAllergyVisitLinks,
   seedPanelGroups,
   seedPanelIndex,
+  seedReportPanes,
 } from "./seed/medical";
 import { seedCoverageGaps } from "./seed/coverage-gaps";
 import { seedNutritionTrio, seedFoodSlots } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
-import { seedIllness } from "./seed/illness";
+import { seedIllness, seedSymptomVideoEpisode } from "./seed/illness";
 import { seedCycleAndDerived, seedWindowAnalytics } from "./seed/situations";
 import { seedHaConfig } from "./seed/notifications";
 import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
@@ -172,3 +173,8 @@ seedTrainingRollup();
 seedLoadContexts();
 seedTimelineChrome();
 seedTimelineEmpty();
+// Appended LAST on purpose (#1598): both fixtures introduce profiles and rows, so
+// running them after every existing seeder leaves every other fixture's row ids
+// exactly where they were.
+seedSymptomVideoEpisode();
+seedReportPanes();
