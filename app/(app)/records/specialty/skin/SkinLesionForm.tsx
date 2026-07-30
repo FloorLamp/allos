@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
+import EncounterField from "@/components/EncounterField";
 import { useToast } from "@/components/Toast";
 import {
   SKIN_LESION_STATUSES,
@@ -240,6 +241,15 @@ export default function SkinLesionForm({
           </>
         )}
       </div>
+      {/* The visit this was checked at (#1526), beside the provider it names — the
+          finding above is a dermatologist's judgment, so the visit that produced it is
+          part of the record. Renders nothing when the profile has no visits yet. */}
+      <EncounterField
+        uid={uid}
+        label="Checked at visit"
+        defaultValue={record?.encounter_id ?? null}
+        testid={`sl-encounter-${uid}`}
+      />
       <div>
         <label className="label" htmlFor={`sl-notes-${uid}`}>
           Notes

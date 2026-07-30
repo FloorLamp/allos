@@ -34,13 +34,8 @@ async function openBodyTab(
   page: Page,
   opts: { view?: "all" | "tiles" } = {}
 ): Promise<void> {
-  const q = opts.view
-    ? `/trends?tab=body&view=${opts.view}`
-    : "/trends?tab=body";
+  const q = opts.view ? `/trends?view=${opts.view}` : "/trends";
   await page.goto(q);
-  await expect(
-    page.getByRole("tab", { name: "Body", exact: true })
-  ).toHaveAttribute("aria-selected", "true");
 }
 
 test.describe("Trends → Body responsive views (#1067)", () => {
@@ -129,7 +124,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     });
     await page.setViewportSize(PHONE);
     const yesterday = shiftDateStr(frozenNow().toISOString().slice(0, 10), -1);
-    await page.goto(`/trends?tab=body&from=${yesterday}&to=${yesterday}`);
+    await page.goto(`/trends?from=${yesterday}&to=${yesterday}`);
 
     const sleep = page.getByTestId("body-tile-sleep");
     await expect(sleep).toContainText("No data in this range");
@@ -165,7 +160,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     });
     await page.setViewportSize(PHONE);
     await page.goto(
-      `/trends?tab=body&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
+      `/trends?from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
     );
 
     await expect(page.getByTestId("body-tile-hr")).toContainText("88 bpm");
@@ -208,7 +203,7 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     });
     await page.setViewportSize(DESKTOP);
     await page.goto(
-      `/trends?tab=body&view=tiles&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
+      `/trends?view=tiles&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
     );
 
     const empty = page.getByTestId("body-tile-weight");
@@ -280,11 +275,28 @@ test.describe("Trends → Body responsive views (#1067)", () => {
 
     // Toggle first, menu second, with matched vertical centers and only the
     // compact 8px control-to-content gap.
-    const viewBox = await page.getByTestId("body-view-toggle").boundingBox();
-    const menuBox = await jumpMenu.boundingBox();
-    const logBox = await logButton.boundingBox();
-    const controlsBox = await controls.boundingBox();
-    const chartsBox = await page.getByTestId("body-charts-all").boundingBox();
+    //
+    // Read in ONE evaluate (#1644): the census now shares a page with the starred
+    // grid above it, whose sparklines settle a little after mount, so five
+    // sequential boundingBox() calls could straddle a layout shift and compare
+    // rects from different frames. One atomic read makes the geometry claim mean
+    // what it says.
+    const [viewBox, menuBox, logBox, controlsBox, chartsBox] =
+      await page.evaluate(() => {
+        const rect = (testId: string) => {
+          const el = document.querySelector(`[data-testid="${testId}"]`);
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        };
+        return [
+          rect("body-view-toggle"),
+          rect("chart-jump-menu"),
+          rect("log-measurements-toggle"),
+          rect("body-view-controls"),
+          rect("body-charts-all"),
+        ];
+      });
     expect(viewBox).not.toBeNull();
     expect(menuBox).not.toBeNull();
     expect(logBox).not.toBeNull();
@@ -336,8 +348,9 @@ test.describe("Trends → Body responsive views (#1067)", () => {
       expect(topmostTestId).toMatch(/^chart-jump-/);
     }
 
-    // Present metrics get a menu option (the fixture seeds these).
-    await expect(page.getByTestId("chart-jump-body-composition")).toBeVisible();
+    // Present metrics get a menu option (the fixture seeds these). Since #1674 the
+    // menu lists CARDS rather than section boxes, so each one names a chart.
+    await expect(page.getByTestId("chart-jump-weight")).toBeVisible();
     await expect(page.getByTestId("chart-jump-steps")).toBeVisible();
     await expect(page.getByTestId("chart-jump-sleep")).toBeVisible();
     await expect(page.getByTestId("chart-jump-hr")).toBeVisible();
@@ -351,17 +364,21 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     // comparison would miss.
     await expectNoClippedContent(page);
 
-    // A section with one useful chart uses the analysis width instead of leaving
-    // a vacant second column. The fixture has only Resting HR in Vitals.
-    const vitals = page.getByTestId("body-section-vitals");
-    const restingHr = page.getByTestId("vitals-resting-hr");
-    const [vitalsBox, restingHrBox] = await Promise.all([
-      vitals.boundingBox(),
-      restingHr.boundingBox(),
-    ]);
-    expect(vitalsBox).not.toBeNull();
-    expect(restingHrBox).not.toBeNull();
-    expect(restingHrBox!.width).toBeGreaterThan(vitalsBox!.width * 0.9);
+    // A card fills its own grid cell rather than leaving a vacant strip beside it.
+    // Read atomically: the stack shares a page with the starred grid above, whose
+    // sparklines settle after mount (#1644).
+    const cellWidths = await page.evaluate(() => {
+      const stack = document.querySelector('[data-testid="body-chart-stack"]');
+      const card = document.querySelector('[data-testid="vitals-resting-hr"]');
+      const cell = card?.closest('[data-testid^="body-stack-item-"]');
+      if (!stack || !card || !cell) return null;
+      return {
+        cell: cell.getBoundingClientRect().width,
+        card: card.getBoundingClientRect().width,
+      };
+    });
+    expect(cellWidths).not.toBeNull();
+    expect(cellWidths!.card).toBeGreaterThan(cellWidths!.cell * 0.9);
 
     // Selecting an option scrolls its chart into view (plain `#id` anchor).
     const sleepTile = page.getByTestId("sleep-summary-tile");
@@ -384,17 +401,22 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     });
     await page.setViewportSize(DESKTOP);
 
-    // Deep-link straight to the desktop HR chart — the anchor resolves to the card.
-    await page.goto("/trends?tab=body&view=all#hr");
-    // The always-visible tab confirms the selected surface without expanding the
-    // range controls and moving the page under the anchor.
+    // Deep-link straight to the desktop HR chart — the anchor resolves to the card,
+    // inside the census that streams onto the landing surface (#1644).
+    await page.goto("/trends?view=all#hr");
+    // The always-visible tab strip names the surface without expanding the range
+    // controls and moving the page under the anchor.
     await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
-    ).toHaveAttribute("aria-selected", "true");
+      page.getByRole("tab", { name: "Overview", exact: true })
+    ).toBeVisible();
     await expect(page.locator("#hr")).toBeInViewport();
 
-    // And the sleep anchor lands on the sleep tile.
-    await page.goto("/trends?tab=body&view=all#sleep");
+    // And the sleep anchor lands on the sleep tile — asserted from a FRESH load,
+    // which is what this test is about. A goto that changes only the fragment is
+    // not a load: the document stays, so the streamed census is not re-assembled
+    // and the on-load alignment this pins would never run. Leave the hub first.
+    await page.goto("/timeline");
+    await page.goto("/trends?view=all#sleep");
     await expect(page.getByTestId("sleep-summary-tile")).toBeInViewport();
 
     await page.context().close();

@@ -312,7 +312,7 @@ describe("bodyItems (merged Body tab)", () => {
     expect(items[0].detail).toBe("178 cm");
     // Every merged row lands on the Body trends tab.
     expect(new Set(items.map((i) => i.href))).toEqual(
-      new Set(["/trends?tab=body"])
+      new Set(["/trends#body"])
     );
   });
 });

@@ -32,6 +32,10 @@ const RECORD_DOMAINS: ReadonlySet<string> = new Set([
   "immunization",
   "optical",
   "dental",
+  // #1526: skin_lesions + allergies gained encounter_id (migration 125), so they join
+  // the accept/decline/unlink flow like every other clinical observation.
+  "skin",
+  "allergy",
 ]);
 
 function recordDomain(
@@ -65,6 +69,8 @@ function revalidateVisitLinks() {
   revalidatePath("/records/history/visits");
   revalidatePath("/encounters/[id]", "page");
   revalidatePath("/records");
+  // #1526: the allergy attribution also prints on the emergency card / passport.
+  revalidatePath("/profile");
   revalidatePath("/results");
   revalidatePath("/medications", "layout");
   revalidatePath("/medical/episodes", "layout");

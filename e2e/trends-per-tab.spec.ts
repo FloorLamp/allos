@@ -8,6 +8,12 @@ import { followLink, hydratedClick } from "./helpers";
 // renders the requested tab's content and NOT the other tabs' content (the
 // server-side gating), and (b) clicking a tab switches which section is
 // rendered.
+//
+// #1644 folded the Body tab into Overview and left FOUR tabs — Overview ·
+// Fitness · Nutrition · Insights, permanent by owner ruling. The #105 contract is
+// unchanged and is what keeps that merge honest: the landing surface must not drag
+// the other domains' queries along with it. e2e/trends-landing.spec.ts owns the
+// merged surface's own composition.
 
 // Markers that are data-independent (always rendered by their section's chrome):
 //   Insights → the "Date to analyze" generate form
@@ -21,7 +27,8 @@ const FITNESS_MARKER = "trends-fitness";
 test("direct navigation renders only the requested tab's section (#105)", async ({
   page,
 }) => {
-  // Overview (default): neither the Insights form nor the Fitness link render.
+  // Overview (default): neither the Insights form nor the Fitness sections render —
+  // even though this tab now also carries the body census (#1644).
   await page.goto("/trends");
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
     "aria-selected",
@@ -69,28 +76,40 @@ test("direct navigation renders only the requested tab's section (#105)", async 
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
 });
 
-test("the Trends tab strip no longer lists Biomarkers, and a stale ?tab=biomarkers falls back to the default tab (#1164)", async ({
+test("the Trends tab strip lists neither Biomarkers nor Body, and a stale ?tab= falls back to the default tab (#1164/#1644)", async ({
   page,
 }) => {
   await page.goto("/trends");
-  // Biomarkers is gone from the strip (merged into Results); the surviving tabs stay.
+  // Biomarkers is gone from the strip (merged into Results, #1164) and Body with it
+  // (merged into Overview, #1644); the surviving tabs stay.
   await expect(page.getByRole("tab", { name: "Biomarkers" })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Nutrition" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Body" })).toBeVisible();
-
-  // A stale external bookmark to the removed tab falls through the hub's unknown-?tab=
-  // fallback to the default (Overview) — no redirect, no 404.
-  await page.goto("/trends?tab=biomarkers");
-  await expect(page).toHaveURL(/\/trends\?tab=biomarkers$/);
-  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
-  // A live page, not an error: the hub heading renders and no biomarker section shows.
   await expect(
-    page.getByRole("heading", { name: "Trends", exact: true })
-  ).toBeVisible();
-  await expect(page.getByTestId("trajectory-findings")).toHaveCount(0);
+    page.getByRole("tab", { name: "Body", exact: true })
+  ).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Nutrition" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+
+  // A stale external bookmark to a removed tab falls through the hub's unknown-?tab=
+  // fallback to the default (Overview) — no redirect, no 404, no shim (#1635). That
+  // covers #1164's biomarkers and, since #1644, body/vitals — whose census the
+  // default view happens to render, which is why they need no mapping of their own.
+  for (const stale of ["biomarkers", "body", "vitals"]) {
+    await page.goto(`/trends?tab=${stale}`);
+    await expect(page).toHaveURL(new RegExp(`\\/trends\\?tab=${stale}$`));
+    await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    // A live page, not an error: the hub heading renders and no biomarker section
+    // shows.
+    await expect(
+      page.getByRole("heading", { name: "Trends", exact: true })
+    ).toBeVisible();
+    await expect(page.getByTestId("trajectory-findings")).toHaveCount(0);
+  }
+  // …and the body census the retired names wanted is right there on that default
+  // view, which is what makes dropping their aliases honest rather than lossy.
+  await expect(page.getByTestId("trends-section-body")).toBeVisible();
 });
 
 test("clicking a tab switches which section is rendered (#105)", async ({

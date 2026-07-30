@@ -114,6 +114,11 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO skin_lesions (profile_id, label, provider_id)
      VALUES (?, 'Left forearm mole', ?)`
   ).run(profileId, providerId);
+  // Allergies link the clinician who documented the allergy (#1526).
+  db.prepare(
+    `INSERT INTO allergies (profile_id, substance, provider_id)
+     VALUES (?, 'Penicillin', ?)`
+  ).run(profileId, providerId);
   // Medication courses link the prescriber of that course (#1204). A child of
   // intake_items (no own profile_id) — attach to the item inserted above.
   db.prepare(

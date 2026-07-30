@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { encounterHref } from "@/lib/hrefs";
-import { formatRecordDate } from "@/lib/record-format";
+import { formatVisitLabel } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { LinkedEncounterRef } from "@/lib/queries";
 
@@ -22,11 +22,9 @@ export default function RecordEncounterLink({
   testid?: string;
 }) {
   const fmt = useFormatPrefs();
-  const parts = [
-    encounter.type?.trim() || "Visit",
-    encounter.providerName?.trim() || null,
-    formatRecordDate(encounter.date, "", fmt) || null,
-  ].filter(Boolean);
+  // The SAME label the encounter pickers render (#1526) — one computation, so what you
+  // picked in the form is what you read back on the row.
+  const visitLabel = formatVisitLabel(encounter, fmt);
   return (
     <div
       className="mt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400"
@@ -37,7 +35,7 @@ export default function RecordEncounterLink({
         href={encounterHref(encounter.id)}
         className="underline decoration-slate-300 underline-offset-2 hover:text-slate-700 dark:decoration-slate-600 dark:hover:text-slate-200"
       >
-        {parts.join(" · ")}
+        {visitLabel}
       </Link>
     </div>
   );

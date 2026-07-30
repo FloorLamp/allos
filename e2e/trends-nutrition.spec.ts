@@ -58,16 +58,15 @@ test("an intake-grid day links into the Timeline's day view (#1166)", async ({
   await expect(page).toHaveURL(/\/timeline\?from=/);
 });
 
-test("the macros chart is GONE from Trends → Body (#1166)", async ({
+test("the macros chart is GONE from the body census (#1166)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=body");
-  await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
-  // Body is body-metrics/vitals now; macros moved to Nutrition. Neither the classic
-  // Macros chart heading nor a macros anchor/jump-chip remains here.
+  // #1644: the Body tab merged into the Overview landing surface, so the census is
+  // reached at its anchor on the default view.
+  await page.goto("/trends#body");
+  await expect(page.getByTestId("trends-section-body")).toBeVisible();
+  // The census is body-metrics/vitals; macros moved to Nutrition. Neither the
+  // classic Macros chart heading nor a macros anchor/jump-chip remains here.
   await expect(page.getByText("Macros (protein / carbs / fat)")).toHaveCount(0);
   await expect(page.locator("#macros")).toHaveCount(0);
 });

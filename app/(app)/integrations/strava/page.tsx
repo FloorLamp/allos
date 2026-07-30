@@ -275,7 +275,7 @@ function SetupCard({
           </Link>
           ; calories feed the{" "}
           <Link
-            href="/trends?tab=body"
+            href="/trends#body"
             className="text-brand-700 underline dark:text-brand-400"
           >
             Body metrics

@@ -101,7 +101,7 @@ const RESOURCE_MAPPERS: Record<
     return recs.length > 0 ? { records: recs } : { record: null };
   },
   Condition: (r) => ({ condition: mapConditionResource(r) }),
-  AllergyIntolerance: (r) => ({ allergy: mapAllergyResource(r) }),
+  AllergyIntolerance: (r, ctx) => ({ allergy: mapAllergyResource(r, ctx) }),
   MedicationRequest: (r, ctx) => ({ record: mapMedicationResource(r, ctx) }),
   MedicationStatement: (r, ctx) => ({ record: mapMedicationResource(r, ctx) }),
   Encounter: (r, ctx) => ({ encounter: mapEncounterResource(r, ctx) }),

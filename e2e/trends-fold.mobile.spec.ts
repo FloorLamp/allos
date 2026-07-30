@@ -184,9 +184,15 @@ test.describe("one focused mobile range row (C + D)", () => {
           }
         : null;
     });
+    // The pill run starts flush with the row and spans AT LEAST its full width —
+    // the row is a scroller (`w-max min-w-full`), so "fills" is a floor, not an
+    // equality. Since #1644 the landing surface offers the 1D pill (it followed the
+    // body census here), which pushes the run past 390px into exactly the overflow
+    // the #1485 D fade exists to announce — asserted next door in
+    // trends-w9.mobile.spec.ts.
     expect(fill).not.toBeNull();
     expect(fill!.left).toBeLessThanOrEqual(1);
-    expect(fill!.right).toBeLessThanOrEqual(1);
+    expect(fill!.right).toBeGreaterThanOrEqual(-1);
   });
 
   test("the range-summary chip renders only for a custom window", async ({

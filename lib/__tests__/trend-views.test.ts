@@ -271,14 +271,22 @@ describe("saved-view state completeness (#1493 C)", () => {
   });
 });
 
-describe("old-vocabulary saved views resolve through the tab aliases (#1493 C)", () => {
-  // A view stored before #1486/#1489 names a tab that no longer exists. It is a
-  // VOCABULARY mapping, not a redirect layer: the view emits the name it stored and
-  // the hub's parser lands it on the tab that absorbed it, compare params and all.
-  it("maps a stored vitals view onto Body and a compare view onto Insights", () => {
+describe("old-vocabulary saved views resolve through the hub's parser (#1493 C)", () => {
+  // A view stored before #1486/#1489/#1644 names a tab that no longer exists. The
+  // view emits the name it stored — storage is never rewritten — and the hub's
+  // parser decides where it lands: through an ALIAS where another tab absorbed it
+  // (compare → insights), and through the ordinary default fallback where the
+  // absorbing surface IS the default view (vitals/body → overview, #1644). Either
+  // way the window and compare params ride along untouched.
+  it("lands a stored vitals/body view on the default view and a compare view on Insights", () => {
     const vitals = normalizeViewParams({ tab: "vitals", from: "2026-01-01" });
     expect(viewToQuery(vitals)).toBe("tab=vitals&from=2026-01-01");
-    expect(parseTab("vitals")).toBe("body");
+    expect(parseTab("vitals")).toBe("overview");
+    // …and the same for a view saved on the Body tab itself, whose census is what
+    // the default view now renders.
+    const body = normalizeViewParams({ tab: "body", view: "tiles" });
+    expect(viewToQuery(body)).toBe("tab=body&range=all&view=tiles");
+    expect(parseTab("body")).toBe("overview");
 
     const compare = normalizeViewParams({
       tab: "compare",

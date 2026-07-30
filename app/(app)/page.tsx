@@ -841,7 +841,7 @@ export default async function Dashboard() {
             icon={IconHeartbeat}
             message="No blood pressure or resting heart rate yet. Log a reading to see it here at a glance."
             ctaLabel="Log a reading"
-            ctaHref="/trends?tab=body"
+            ctaHref="/trends#body"
           />
         );
       case "sleep-last-night":

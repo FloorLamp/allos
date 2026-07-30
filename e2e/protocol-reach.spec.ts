@@ -48,7 +48,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     const main = page.getByRole("main");
     // The seeded ongoing protocol shades the body charts, so the shared annotation
     // toggle bar offers a "Protocols" pill.
@@ -129,9 +129,13 @@ test.describe("active-protocol dashboard widget (#660 ask 2)", () => {
       page,
       main.getByRole("button", { name: "Save", exact: true })
     );
+    // settledClick proved the save POST completed; what remains is the layout
+    // refresh re-rendering the whole dashboard, which can outlast the default 5s
+    // on a loaded runner. A named ceiling, not a sleep — this still fails if the
+    // editor never exits.
     await expect(
       main.getByRole("button", { name: "Edit dashboard" })
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 20_000 });
 
     const widget = main.getByTestId("dashboard-widget-active-protocols");
     await expect(widget).toBeVisible();
@@ -145,8 +149,9 @@ test.describe("active-protocol dashboard widget (#660 ask 2)", () => {
       page,
       main.getByRole("button", { name: "Save", exact: true })
     );
+    // Same refresh latency as above (the restore is a second full-dashboard save).
     await expect(
       main.getByTestId("dashboard-widget-active-protocols")
-    ).toHaveCount(0);
+    ).toHaveCount(0, { timeout: 20_000 });
   });
 });

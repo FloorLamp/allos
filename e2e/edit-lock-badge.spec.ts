@@ -32,7 +32,7 @@ test.beforeEach(() => {
 test("edit-locked imported body metric shows the badge and can resume sync (#659)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
 
   // The badge states what the lock does, via the shared EditLockNotice.
   const notice = page.getByTestId("edit-lock-notice");

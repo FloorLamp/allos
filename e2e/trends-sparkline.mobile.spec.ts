@@ -21,7 +21,7 @@ test.describe("Trends mini-tile sparkline (#1445)", () => {
   test("a mini tile draws a sparkline with no axis chrome, and states its range as text", async ({
     page,
   }) => {
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
 
     const tile = page.getByTestId("body-tile-weight");
     await expect(tile).toBeVisible();

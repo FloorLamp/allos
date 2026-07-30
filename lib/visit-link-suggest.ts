@@ -30,6 +30,9 @@
 // the cross-domain double-listing symptom is gone at the root.
 import { daysBetweenDateStr } from "./date";
 
+// #1526 added the last two clinical observation domains: `skin` (skin_lesions) and
+// `allergy` (allergies) were the only profile-owned clinical tables with no visit link
+// at all, so they could not join this engine or the #1355 records-surface sweep.
 export type VisitLinkDomain =
   | "condition"
   | "procedure"
@@ -38,6 +41,8 @@ export type VisitLinkDomain =
   | "medication"
   | "optical"
   | "dental"
+  | "skin"
+  | "allergy"
   | "episode";
 
 export type VisitLinkConfidence = "strong" | "medium";

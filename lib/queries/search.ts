@@ -1060,7 +1060,7 @@ const PAGES: {
   },
   {
     title: "Body Metrics",
-    href: "/trends?tab=body",
+    href: "/trends#body",
     keywords: "weight body fat resting heart rate steps sleep",
   },
   {

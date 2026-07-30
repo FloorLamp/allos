@@ -287,6 +287,36 @@ assertions still shipped a defect because the OUTPUT shape was pinned as a
 constant. Same remedy in both: test the seam against a realistic fixture, and
 choose the assertion that changes when the answer changes.
 
+## Streamed sections: the harness settles the reveal (#1644)
+
+The Trends Overview surface streams its body census below a fast head (digest +
+starred grid), behind a `<Suspense>` boundary. In the streamed HTML the census
+arrives in a `<div hidden id="S:n">` staging node at the end of `<body>`, and
+React moves it into its section on a schedule of its own — a rAF, or a coalescing
+timeout that a loaded CI shard can stretch to SECONDS past the load event. During
+that window a census testid matches TWO nodes (the staged copy, then mid-move
+both), which strict mode reports as a duplicated-element bug; five spec classes
+hit it in one week, per-spec waits kept losing to their own 5s defaults, and every
+future census-touching spec inherited the trap.
+
+So the wait lives in the HARNESS, not in specs: `installStreamRevealGuard`
+(e2e/helpers.ts) wraps `goto`/`reload`/`goBack`/`goForward` so a full-document
+navigation returns only once no staging node remains, under a generous named
+ceiling. The `browser` fixture installs it on every page of every context — the
+same choke point as the frozen-clock patch, covering the built-in fixtures,
+`loginAs`, and every hand-built context. Client-side navigations render in place
+and never stage, so they need nothing.
+
+What this means when writing a spec:
+
+- Assert census content directly after a navigation — no per-spec reveal wait
+  exists, and none should be reintroduced.
+- The rule generalizes: any FUTURE streamed boundary on any page is covered by
+  the same guard, because it keys on React's staging nodes, not on Trends ids.
+- Do NOT reach for `waitForTimeout` or `networkidle` if a streamed surface
+  seems racy — if the guard's ceiling is ever exceeded, its error names the
+  stuck page; that is a finding, not a flake to sleep past.
+
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 
 ONE home for settled interactions. The file header carries the authoritative

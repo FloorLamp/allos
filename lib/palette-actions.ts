@@ -71,7 +71,7 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     icon: "scale",
     target: {
       kind: "navigate",
-      href: `/trends?tab=body&${FOCUS_PARAM}=weight`,
+      href: `/trends?${FOCUS_PARAM}=weight#body`,
     },
   },
   {
@@ -81,7 +81,7 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     icon: "heart",
     target: {
       kind: "navigate",
-      href: `/trends?tab=body&${FOCUS_PARAM}=vitals`,
+      href: `/trends?${FOCUS_PARAM}=vitals#body`,
     },
   },
   {

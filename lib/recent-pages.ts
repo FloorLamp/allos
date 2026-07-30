@@ -78,8 +78,13 @@ export const FREQUENT_MIN_VISITS = 3;
 // prefix so `/medical/episodes` beats nothing and `/records/care/providers`
 // resolves to `/records`. "/" only ever matches exactly (every path starts with
 // it).
+//
+// The query AND the hash are cut before matching: since #1644 a section deep link
+// carries its anchor (`/trends#body`), and a fragment is a position on a page, never
+// a different page — leaving it on made the Trends hub untrackable and, worse, made
+// the "don't shortcut the page you're standing on" filter miss.
 export function trackedPageFor(pathname: string): TrackedPage | null {
-  const path = pathname.split("?")[0].replace(/\/+$/, "") || "/";
+  const path = pathname.split(/[?#]/)[0].replace(/\/+$/, "") || "/";
   const exact = TRACKED_PAGES.find((p) => p.href === path);
   if (exact) return exact;
   const prefixed = TRACKED_PAGES.filter(

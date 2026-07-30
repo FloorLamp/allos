@@ -15,6 +15,13 @@ import {
   RECS_ENRICH_ALLERGY_MED,
   RECS_ENRICH_PGX_MED,
   RECS_ENRICH_PROCEDURE,
+  E2E_LOGIN_LESIONALLERGY,
+  LESIONALLERGY_PROFILE,
+  LESIONALLERGY_VISIT_TYPE,
+  LESIONALLERGY_PROVIDER,
+  LESIONALLERGY_LESION,
+  LESIONALLERGY_ALLERGY,
+  LESIONALLERGY_ALLERGY_UNLINKED,
   E2E_LOGIN_FLABS,
   FLAGGED_LAB_PROFILE,
   E2E_LOGIN_IOP,
@@ -785,6 +792,64 @@ export function seedRecordsEnrichment(): void {
       `e2e: seeded records-enrichment fixture — ${E2E_LOGIN_RECS_ENRICH} granted ${RECS_ENRICH_PROFILE} (${reId}) (#1354/#1355)`
     );
   }
+}
+
+// ── Lesion + allergy → visit links (#1526) ────────────────────────────────────
+export function seedLesionAllergyVisitLinks(): void {
+  // The two encounter-link gaps #1526 closed. ONE dermatology visit that produced BOTH
+  // observations — a lesion whose finding came from that appointment and an allergy
+  // documented at it — plus an UNLINKED allergy, so the same surface proves the link
+  // line AND its absent pillar (an unlinked row shows no visit line at all).
+  //
+  // Spec-OWNED (#868 fixture ownership): the spec also records an allergy through the
+  // form's visit picker, and a write on a shared profile would perturb another spec's
+  // allergy list. Repeat-safe: the seed is guarded on the linked allergy's presence, and
+  // a re-added picked allergy collapses to one visible row under the existing allergy
+  // representative rule (substance + reaction + status, newest row wins).
+  const laId = fixtureProfileId(LESIONALLERGY_PROFILE);
+  if (
+    !db
+      .prepare("SELECT 1 FROM allergies WHERE profile_id = ? AND substance = ?")
+      .get(laId, LESIONALLERGY_ALLERGY)
+  ) {
+    const provId = Number(
+      db
+        .prepare(
+          "INSERT INTO providers (name, type, dedup_key) VALUES (?, 'individual', 'dk:e2e-lesion-allergy-okafor')"
+        )
+        .run(LESIONALLERGY_PROVIDER).lastInsertRowid
+    );
+    const encId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, class_code, provider_id, source)
+           VALUES (?, '2026-04-20', ?, 'AMB', ?, 'manual')`
+        )
+        .run(laId, LESIONALLERGY_VISIT_TYPE, provId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO skin_lesions
+         (profile_id, label, body_region, body_side, status, observed_date,
+          finding, provider_id, encounter_id, source)
+       VALUES (?, ?, 'forearm', 'left', 'watch', '2026-04-20',
+               'benign-looking, recheck in 3 months', ?, ?, 'manual')`
+    ).run(laId, LESIONALLERGY_LESION, provId, encId);
+    db.prepare(
+      `INSERT INTO allergies
+         (profile_id, substance, reaction, status, verification_status,
+          onset_date, provider_id, encounter_id, source)
+       VALUES (?, ?, 'hives', 'active', 'confirmed', '2026-04-20', ?, ?, 'manual')`
+    ).run(laId, LESIONALLERGY_ALLERGY, provId, encId);
+    // The absent-pillar contrast: no visit, no provider, so no attribution line.
+    db.prepare(
+      `INSERT INTO allergies (profile_id, substance, reaction, status, source)
+       VALUES (?, ?, 'contact rash', 'active', 'manual')`
+    ).run(laId, LESIONALLERGY_ALLERGY_UNLINKED);
+  }
+  seedMemberLogin(E2E_LOGIN_LESIONALLERGY, laId, "write");
+  console.log(
+    `e2e: seeded lesion/allergy visit-link fixture — ${E2E_LOGIN_LESIONALLERGY} granted ${LESIONALLERGY_PROFILE} (${laId}) (#1526)`
+  );
 }
 
 // ── Results-hub panel groups (#1499 section A) ────────────────────────────────

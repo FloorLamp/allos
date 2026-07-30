@@ -512,20 +512,30 @@ default), so gating only kicks in once you've listed some gear.
 
 ## Trends
 
-Charts and analysis live in five tabs:
+Charts and analysis live in four tabs:
 
-- **Overview** is the default "what's trending" digest of saved and pinnable
-  tiles.
-- **Body** combines vitals, acute temperature, sleep and outdoor-time signals,
-  body composition, and the shared **Log measurements** form. A **Data check**
-  card catches probable weight-entry errors before they skew charts.
+- **Overview** is the landing surface, and answers "how am I doing" in one
+  scroll: the **"what's trending" digest**, then your **starred grid** — your own
+  cross-domain set of saved, drag-orderable tiles, the one curated area where
+  nothing appears unless you put it there — then the **body census**: vitals,
+  acute temperature, sleep and outdoor-time signals, body composition, and the
+  shared **Log measurements** form. A **Data check** card catches probable
+  weight-entry errors before they skew charts.
 - **Fitness** combines the workout-density heatmap, strength/cardio/sport
   progress, heart-rate-zone volume, the Zone 2 target, and polarization. Zones
   use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
   max HR; the manual max-HR override is under **Settings → Training**.
 - **Nutrition** charts macros, fiber, hydration, and related intake trends.
-- **Insights** combines comparison tools with daily analysis and
-  weekly/monthly recap narratives.
+- **Insights** combines comparison tools with daily analysis and weekly/monthly
+  recap narratives.
+
+The body census **streams in below** the digest and starred grid, so the landing
+surface paints as fast as it did when Body was its own tab. Links that used to
+target that tab now target its anchor (`/trends#body`); `?tab=body` is gone, and
+lands on the Overview surface that carries the census. The three remaining tabs
+are permanent — the deliberate asymmetry is the design: the landing surface
+answers "how am I doing", the tabs answer "how is my training or nutrition
+specifically".
 
 Biomarker tables, flags, trajectories, reference ranges, food-first context,
 fitness percentiles, and pediatric interpretation live under
@@ -533,29 +543,30 @@ fitness percentiles, and pediatric interpretation live under
 are entered through the Training **Fitness check**.
 
 The default window is the last 90 days. Every tab uses the same range model,
-saved views, and event overlays, and every overview tile opens the corresponding
+saved views, and event overlays, and every starred tile opens the corresponding
 full chart rather than maintaining a second interpretation.
 
-### Overview and Body
+### The Overview surface: starred grid and body census
 
-Overview answers two questions: **what you saved** and **what changed**. Tiles
+The starred grid answers two questions: **what you saved** and **what changed**.
+Tiles
 lead with the latest reading and its age, distinguish current value from trend,
 and can be pinned and reordered. The mobile layout uses compact cards; the
 overflow menu owns secondary controls instead of crowding the chart.
 
-Body is organized into Vitals, acute temperature, sun/outdoor time, composition,
+The census is organized into Vitals, acute temperature, sun/outdoor time, composition,
 and wellbeing. **Today** can switch dense sensor series to a 1-day intraday
 view, while longer ranges show the appropriate aggregate. Mood and other
 self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
-The star is the **one arrangement gesture** across both tabs. Starring a body
-metric — on its own page, which every Body card opens — is the same save as
-starring an Overview tile, and starred cards lead the Body tab in the order the
-Overview grid holds them, so pinned cards are re-sequenced by dragging them (or
-using their overflow arrows) on Overview. There is no second reorder surface on
-Body.
+The star is the **one arrangement gesture** across both halves of the surface —
+which is why they are one surface. Starring a body metric — on its own page, which
+every card opens — is the same save as starring a grid tile, and starred cards
+lead the census in the order the grid holds them, so pinned cards are re-sequenced
+by dragging them (or using their overflow arrows) in the grid one scroll above.
+There is no second reorder surface in the census.
 
 Everything unstarred follows a **ranked default** built from stable subject
 facts — life stage, live goals, monitored conditions, and whether a series has
@@ -946,7 +957,11 @@ stable/changed/removed (a changed lesion, re-entered as watch, keeps a fresh
 recheck rather than aging out); added manually with photo upload (the primary
 path — AI extraction from a dermatology report is a deferred follow-up), photos
 ride the per-profile upload posture (sha256 dedup, profile-scoped serving) in
-their own store.
+their own store. A lesion record also names the **visit it was checked at** (a
+picker beside its provider field): the finding and recheck interval are what a
+dermatologist tells you at an appointment, so the row reads **Checked at:** that
+visit and the visit's detail lists the lesion — the same provenance chain a
+biopsy from the same appointment already had.
 
 **Scope boundary, by design:** this is a self-monitoring record for you and your
 dermatologist — it tracks and compares, it never assesses malignancy or scores
@@ -1011,7 +1026,8 @@ preventive type code (CPT 9938x/9939x → Preventive) into a coarse set
 health / Other) that every surface keys on; the stored source `type` text is
 never rewritten. Records connect to the visit they belong to: a visit's detail
 page shows a **From this visit** section (meds started, diagnoses, procedures,
-imaging, immunizations given) plus a **From this visit?** suggestion block that
+imaging, immunizations given, skin lesions checked, allergies documented) plus a
+**From this visit?** suggestion block that
 batch-links records sharing the visit's date (a matching provider reads
 _strong_; two visits on one day become a **picker**, never a guess) — and where
 a source health record carries the reference outright (a FHIR
@@ -1129,6 +1145,18 @@ supplement screens, the Passport's known-allergy list, and the emergency card. A
 severity ordering. The FHIR export carries all three
 (`criticality` / `verificationStatus` / `reaction[]`), and the document importer
 maps criticality and verification status when a document states them.
+
+An allergy also carries its **attribution** — the clinician who documented it and
+the **visit** it was recorded at, both optional and both set from the allergy
+form (a create-on-type provider picker and a visit picker). The row then reads
+**Recorded at:** that visit, deep-linked, and the visit's own detail lists the
+allergy under _From this visit_. This is the companion to verification status: a
+_confirmed_ allergy means more when you can see who confirmed it and when. An
+imported `AllergyIntolerance.encounter` sets the visit link deterministically;
+a dangling reference imports unlinked rather than wrongly linked. The link is
+provenance only — nothing gates on it, and deleting the visit or merging the
+provider away leaves the allergy intact with the link honestly cleared or
+re-pointed.
 
 ## Immunizations
 

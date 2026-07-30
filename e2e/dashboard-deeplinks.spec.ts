@@ -199,7 +199,7 @@ test("the measurements form honors ?focus=height (#1146 pediatric-height CTA)", 
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    await page.goto("/trends?tab=body&focus=height");
+    await page.goto("/trends?focus=height");
     const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
     await expect(form.getByLabel("Height", { exact: true })).toBeFocused();

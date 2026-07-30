@@ -13,7 +13,7 @@ import { test, expect } from "./fixtures";
 test("the same confirm renders centered — not bottom-anchored — on a desktop viewport", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
 
   const deletes = page.getByRole("button", { name: "Delete entry" });
   await expect(deletes.first()).toBeVisible(); // first-ok: any seeded history row opens the same shared ConfirmDialog; this spec only CANCELS it

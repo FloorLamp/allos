@@ -147,6 +147,11 @@ export interface ImportedAllergy {
   status: AllergyStatus;
   onset_date: string | null; // YYYY-MM-DD
   external_id: string; // stable dedup key
+  // Tier-1 visit link (#1526): set when the source's AllergyIntolerance.encounter
+  // resolved in-bundle to an Encounter we also imported. The persist layer maps it to
+  // the local encounter row. Optional — the CDA allergies section carries no encounter
+  // reference, so that parser omits it.
+  encounter_external_id?: string | null;
 }
 
 // A problem-list condition pulled from a CCD Active Problems section.

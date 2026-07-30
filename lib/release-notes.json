@@ -1,6 +1,32 @@
 {
   "days": [
     {
+      "date": "2026-07-30",
+      "entries": [
+        {
+          "pr": 1686,
+          "kind": "feature",
+          "title": "The review inbox now tells you what to double-check",
+          "body": "Document extraction now reports how sure it was about each captured row. The import detail page gains a \"Check these first\" card that ranks the least-certain rows to the top with the model's stated reason, and Data → Review badges each document with how many rows deserve a look. Nothing is blocked or hidden by this — a document extracted before this feature simply shows no badge, and a row the model was confident about behaves exactly as before.",
+          "issues": [1601]
+        },
+        {
+          "pr": 1664,
+          "kind": "feature",
+          "title": "Must, should, may: your supplements and meds now carry an honest obligation",
+          "body": "Priority levels and the separate as-needed flag collapse into one clear setting: must (missing it is an incident — reminders and escalation), should (reminded and counted, never escalated), and may (never pushed, no misses — it simply stays one tap away in its usual slot). Rarely-taken supplements get a gentle Demote offer on their own reminder, never a new notification; accepting moves them into a calm \"available\" shelf on Upcoming instead of deleting anything. Medications default to must, and lowering one spells out exactly what safety net you are giving up — while interaction, gene, and upper-limit warnings fire identically no matter the level. Daily digests now lead with what actually changed — notably missed and resumed — instead of a fraction.",
+          "issues": [1505]
+        },
+        {
+          "pr": 1678,
+          "kind": "feature",
+          "title": "Wellness practices grow up: findable, editable, and safely deletable",
+          "body": "The Wellness page now shows up in navigation, recent pages, and the command palette. Practices gained the full lifecycle they were missing: cadence rules that refuse impossible values out loud, protection against two practices silently sharing one history, session editing, a shared history/progress/heatmap view, and — at last — the choice between stop tracking (keeps your history) and permanent deletion (with undo). Protocol pages were tightened alongside, and protocol outcomes now rank by which biomarkers actually have before-and-after data to show.",
+          "issues": [1618, 1619, 1620, 1621, 1622, 1623, 1624]
+        }
+      ]
+    },
+    {
       "date": "2026-07-29",
       "entries": [
         {

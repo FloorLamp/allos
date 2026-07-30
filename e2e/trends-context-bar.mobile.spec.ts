@@ -66,7 +66,7 @@ test.describe("the tab-and-range context bar", () => {
       page.getByRole("link", { name: "90D", exact: true })
     ).toBeHidden();
     await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
+      page.getByRole("tab", { name: "Overview", exact: true })
     ).toBeVisible();
 
     // The navigation row is full bleed like the other mobile tab-first pages:
@@ -106,11 +106,12 @@ test.describe("the tab-and-range context bar", () => {
     );
 
     // The selected tab is communicated by the always-visible tab itself, not
-    // duplicated in the range trigger.
-    await page.goto("/trends?tab=body");
+    // duplicated in the range trigger. (#1644 retired ?tab=body: the census rides
+    // the default view, which the Overview chip selects.)
+    await page.goto("/trends");
     await expect(page.getByTestId("trends-context-label")).toHaveText("90D");
     await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
+      page.getByRole("tab", { name: "Overview", exact: true })
     ).toHaveAttribute("aria-selected", "true");
   });
 
@@ -134,7 +135,7 @@ test.describe("the tab-and-range context bar", () => {
     ).toBeVisible();
     // …while the tab strip stays visible in the row above.
     await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
+      page.getByRole("tab", { name: "Overview", exact: true })
     ).toBeVisible();
     // The #1455 Custom… collapse still nests inside it.
     await expect(page.getByTestId("custom-range-toggle")).toBeVisible();
@@ -157,7 +158,7 @@ test.describe("the tab-and-range context bar", () => {
     await hydratedClick(page, toggle);
     await expect(page.getByTestId("trends-context-controls")).toBeHidden();
     await expect(
-      page.getByRole("tab", { name: "Body", exact: true })
+      page.getByRole("tab", { name: "Overview", exact: true })
     ).toBeVisible();
     await expect(bar).toHaveAttribute("data-hidden", "false");
     await expect(page.getByTestId("shell-chrome")).toHaveAttribute(

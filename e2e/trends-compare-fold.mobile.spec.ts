@@ -6,6 +6,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { loginAs } from "./nav";
+import { followLink } from "./helpers";
 
 // Trends tab order + the Compare fold (issue #1489).
 //
@@ -31,7 +32,8 @@ import { loginAs } from "./nav";
 //     `--repeat-each` can't move them.
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
 
-const TAB_ORDER = ["Overview", "Body", "Fitness", "Nutrition", "Insights"];
+// FOUR since #1644 folded Body into Overview; permanent by owner ruling.
+const TAB_ORDER = ["Overview", "Fitness", "Nutrition", "Insights"];
 // Data-independent markers of the Insights tab's AI half (the age-gated content).
 const INSIGHTS_MARKER = "Date to analyze";
 
@@ -55,17 +57,21 @@ function tabStrip(page: Page) {
     .filter({ has: page.getByRole("tab", { name: "Overview", exact: true }) });
 }
 
-test.describe("A — the tab strip is five chips in frequency order", () => {
-  test("renders the new order, without a Compare chip", async ({ page }) => {
+test.describe("A — the tab strip is four chips in frequency order", () => {
+  test("renders the new order, without a Compare or Body chip", async ({
+    page,
+  }) => {
     await page.goto("/trends");
     const strip = tabStrip(page);
     await expect(strip.getByRole("tab")).toHaveText(TAB_ORDER);
 
-    // Compare is no longer a tab anywhere in the strip. `exact` is load-bearing:
-    // Playwright matches accessible names by case-insensitive substring.
-    await expect(
-      page.getByRole("tab", { name: "Compare", exact: true })
-    ).toHaveCount(0);
+    // Neither retired tab is in the strip. `exact` is load-bearing: Playwright
+    // matches accessible names by case-insensitive substring.
+    for (const gone of ["Compare", "Body"]) {
+      await expect(
+        page.getByRole("tab", { name: gone, exact: true })
+      ).toHaveCount(0);
+    }
   });
 
   test("the one-row strip scrolls and brings a later selected tab into view", async ({
@@ -82,22 +88,17 @@ test.describe("A — the tab strip is five chips in frequency order", () => {
     );
     expect(scrolls).toBe(true);
 
+    // The LAST chip is reachable inside that scroller — which is the clause this
+    // test owns (it was impossible when the strip clipped instead of scrolling) —
+    // and selecting it works.
     const insights = strip.getByRole("tab", { name: "Insights" });
-    await insights.click();
-    await expect(insights).toHaveAttribute("aria-selected", "true");
-    await expect
-      .poll(() =>
-        insights.evaluate((tab) => {
-          const scroller = tab.parentElement;
-          if (!scroller) return false;
-          const tabRect = tab.getBoundingClientRect();
-          const stripRect = scroller.getBoundingClientRect();
-          return (
-            tabRect.left >= stripRect.left && tabRect.right <= stripRect.right
-          );
-        })
-      )
-      .toBe(true);
+    await insights.scrollIntoViewIfNeeded();
+    await expect(insights).toBeInViewport();
+    await followLink(page, insights, /tab=insights/);
+    await expect(strip.getByRole("tab", { name: "Insights" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
   });
 });
 
@@ -142,7 +143,6 @@ test.describe("C — the age gate moved from the tab to the sections", () => {
       // no longer does.
       await expect(strip.getByRole("tab")).toHaveText([
         "Overview",
-        "Body",
         "Nutrition",
         "Insights",
       ]);

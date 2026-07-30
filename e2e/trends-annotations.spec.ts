@@ -6,7 +6,7 @@ test.describe("desktop Trends annotations", () => {
   test("protocol controls persist across reloads and detail navigation", async ({
     page,
   }) => {
-    await page.goto("/trends?tab=body&view=all&range=all");
+    await page.goto("/trends?view=all&range=all");
 
     const controls = page.getByTestId("trend-annotation-controls");
     await expect(controls).toBeVisible();
@@ -106,7 +106,7 @@ test.describe("desktop Trends annotations", () => {
   test("chart annotation labels respect the legibility floor", async ({
     page,
   }) => {
-    await page.goto("/trends?tab=body&view=all&range=all");
+    await page.goto("/trends?view=all&range=all");
     await expect
       .poll(async () => await page.locator(".recharts-reference-area").count())
       .toBeGreaterThan(0);

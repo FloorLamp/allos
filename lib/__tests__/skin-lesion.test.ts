@@ -32,6 +32,7 @@ function les(p: Partial<SkinLesion>): SkinLesion {
     finding: null,
     follow_up_interval_days: null,
     provider_id: null,
+    encounter_id: null,
     notes: null,
     source: null,
     document_id: null,
