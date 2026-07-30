@@ -84,9 +84,13 @@ function spec(
 }
 
 export const INTRADAY_VARIANTS: Record<IntradayVariant, IntradayVariantSpec> = {
-  // Below `sm`. 360 units into a 320–420 px container: the label size lands at
-  // 10.5 units ≈ 9.4–12.3 real px.
-  compact: spec("compact", 360, 320, 420, {
+  // Below `sm`. The narrowest container is MEASURED, not assumed: the Timeline
+  // day column at a 390px viewport is ~308px once the shell padding, the day's
+  // `pl-4` indent and the card padding are taken out (an earlier guess of 320 put
+  // the labels at 8.98px — under the floor, and the browser test said so). 300
+  // keeps a little headroom. 360 units into a 300–420px container puts the label
+  // size at 11 units ≈ 9.2–12.8 real px.
+  compact: spec("compact", 360, 300, 420, {
     padLeft: 40,
     padRight: 10,
     padTop: 6,
