@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { bodyFor } from "@/lib/notifications/types";
 import { plainBody } from "@/lib/notifications/rich-text";
 import {
   buildDigest,
@@ -369,8 +370,10 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
     });
     const sleep = model?.sections.find((s) => s.heading === "Sleep");
     expect(sleep).toBeTruthy();
+    // 15m above a 7h5m baseline is inside the typical band — the line says so rather
+    // than manufacturing a "+15m" delta (#1712).
     expect(sleep?.lines[0]).toBe(
-      "😴 Last night: 7h 20m (typical ~7h 5m) · deep 1h 5m, REM 1h 35m"
+      "😴 Last night: 7h 20m about typical · deep 1h 5m, REM 1h 35m"
     );
     // The nap is a SEPARATE line, never folded into the overnight figure.
     expect(sleep?.lines).toContain("💤 + 45m nap");
@@ -383,7 +386,39 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       sleep: { lastNightMin: 480, baselineMin: 470 },
     });
     const sleep = model?.sections.find((s) => s.heading === "Sleep");
-    expect(sleep?.lines).toEqual(["😴 Last night: 8h (typical ~7h 50m)"]);
+    expect(sleep?.lines).toEqual(["😴 Last night: 8h about typical"]);
+  });
+
+  // #1712 §3: the line printed two numbers and left the conclusion to the reader.
+  it("states the verdict when the night is notably above baseline", () => {
+    const model = buildDigest({
+      ...empty,
+      sleep: { lastNightMin: 445, baselineMin: 404 }, // 7h25 vs ~6h44
+    });
+    const sleep = model?.sections.find((s) => s.heading === "Sleep");
+    expect(sleep?.lines[0]).toBe("😴 Last night: 7h 25m ▲ 41m above typical");
+  });
+
+  it("reads a short night neutrally — the digest never nags about sleep", () => {
+    const model = buildDigest({
+      ...empty,
+      sleep: { lastNightMin: 330, baselineMin: 425 }, // 5h30 vs ~7h5
+    });
+    const line = model?.sections.find((s) => s.heading === "Sleep")?.lines[0]!;
+    expect(line).toBe("😴 Last night: 5h 30m ▼ 1h 35m below typical");
+    // #1292's poor-sleep acknowledgment owns the "rough night" framing; the digest
+    // must not double up with alarm of its own.
+    expect(line.toLowerCase()).not.toMatch(/rough|poor|bad|short night|only/);
+  });
+
+  it("states the figure alone when there is no baseline to compare against", () => {
+    const model = buildDigest({
+      ...empty,
+      sleep: { lastNightMin: 445, baselineMin: 0 },
+    });
+    expect(model?.sections.find((s) => s.heading === "Sleep")?.lines[0]).toBe(
+      "😴 Last night: 7h 25m"
+    );
   });
 
   it("collapses entirely when there is no sleep data", () => {
@@ -406,5 +441,56 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
     });
     const sleep = model?.sections.find((s) => s.heading === "Sleep");
     expect(sleep?.lines.some((l) => l.includes("nap"))).toBe(false);
+  });
+});
+
+// ---- The offer tail is a CONTROL on Telegram and TEXT everywhere else (#1712) ----
+describe("digest offer tail per channel (#1712)", () => {
+  const withOffers = (count: number) =>
+    renderDigestMessage(
+      buildDigest({
+        ...empty,
+        doseCount: 9,
+        offerCount: count,
+        offerTail: {
+          label: "➕ Log other… · morning (3)",
+          data: "offerexp:1:2026-03-04",
+          row: "offer-tail",
+        },
+      })!
+    );
+
+  it("Telegram gets the button and NO body line — the button is the label", () => {
+    const msg = withOffers(3);
+    const telegram = plainBody(bodyFor(msg, "telegram"));
+    expect(telegram).not.toContain("you can log any time");
+    // The control is present and self-describing (it names the slot and the count).
+    expect(msg.actions?.[0].label).toContain("Log other…");
+    expect(msg.actions?.[0].label).toContain("(3)");
+  });
+
+  it("Web Push and Home Assistant get the line, since they cannot render the control", () => {
+    const msg = withOffers(3);
+    expect(plainBody(bodyFor(msg, "push"))).toContain(
+      "3 more supplements you can log any time"
+    );
+    expect(plainBody(bodyFor(msg, "home-assistant"))).toContain(
+      "3 more supplements you can log any time"
+    );
+    // Same message otherwise — the honest-count principle survives, only the
+    // Telegram duplicate goes.
+    expect(plainBody(bodyFor(msg, "push"))).toContain(
+      plainBody(bodyFor(msg, "telegram"))
+    );
+  });
+
+  it("no offers ⇒ no line on any channel", () => {
+    const msg = renderDigestMessage(
+      buildDigest({ ...empty, doseCount: 9, offerCount: 0 })!
+    );
+    expect(msg.bodyByChannel).toBeUndefined();
+    expect(plainBody(bodyFor(msg, "push"))).not.toContain(
+      "you can log any time"
+    );
   });
 });

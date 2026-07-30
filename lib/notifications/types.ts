@@ -57,6 +57,16 @@ export interface NotificationMessage {
   // turns declared emphasis into markup around already-escaped text; every other
   // channel reads plainBody() and gets the same words without tags.
   body: MessageBody;
+  // A per-channel REPLACEMENT body, for the narrow case where a channel structurally
+  // cannot render an affordance the default body assumes (#1712): the digest's offer
+  // tail is a keyboard control on Telegram, so its body line there would be a redundant
+  // duplicate — while Web Push and Home Assistant cannot edit a message in place, so
+  // they genuinely need the count in words. Channels that have no entry use `body`.
+  //
+  // This is deliberately NOT a general per-channel message fork: the words must stay
+  // the same message. Reach for it only when a channel cannot render the control the
+  // default copy refers to.
+  bodyByChannel?: Partial<Record<ChannelId, MessageBody>>;
   actions?: NotificationAction[];
   // Machine-readable classification (#248). Optional — channels that don't care
   // (Telegram/push) ignore it; the Home Assistant channel forwards it so an
@@ -99,6 +109,15 @@ export function profileMessagePrefix(
   profileCount: number
 ): string {
   return profileCount > 1 && name ? `[${name}] ` : "";
+}
+
+// The body a given channel should render — its override when one exists, else the
+// shared body. The ONE accessor every channel reads, so a fork can't be forgotten.
+export function bodyFor(
+  msg: NotificationMessage,
+  channel: ChannelId
+): MessageBody {
+  return msg.bodyByChannel?.[channel] ?? msg.body;
 }
 
 export function prefixMessage(

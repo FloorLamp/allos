@@ -3,7 +3,11 @@ import {
   orderBehindTargets,
   type BehindTarget,
 } from "@/lib/workout-recommendation";
-import { behindThisWeekLine } from "@/lib/notifications/workout-format";
+import {
+  behindThisWeekLine,
+  digestWorkoutLine,
+  type WorkoutRecommendation,
+} from "@/lib/notifications/workout-format";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { renderBodyHtml } from "@/lib/notifications/telegram-render";
 import {
@@ -198,5 +202,65 @@ describe("behind-target ordering and marking (#1709)", () => {
 
   it("says nothing when nothing is behind", () => {
     expect(behindThisWeekLine([])).toBeNull();
+  });
+});
+
+// ---- The digest's one-line workout preview (issue #1712 §2) ----
+//
+// The digest had no workout line at all, though recommendWorkout already computes one
+// for the dedicated nudge slot. The preview formats the SAME recommendation, so a 7am
+// heads-up and the actionable prompt later cannot disagree.
+describe("digestWorkoutLine (#1712)", () => {
+  const rec = (
+    over: Partial<WorkoutRecommendation> = {}
+  ): WorkoutRecommendation => ({
+    focus: [],
+    exercises: [],
+    behind: [],
+    rest: null,
+    onTrack: null,
+    ...over,
+  });
+
+  it("names the session and its lead exercises", () => {
+    expect(
+      digestWorkoutLine(
+        rec({
+          sessionLabel: "Back",
+          exercises: ["Lat Pulldown", "Cable Row", "Deadlift", "Pull Up"],
+        })
+      )
+    ).toBe("🏋️ Today: Back — Lat Pulldown, Cable Row, Deadlift");
+  });
+
+  it("reframes on a rest day instead of pushing", () => {
+    expect(
+      digestWorkoutLine(rec({ rest: { title: "Rest day", detail: "…" } }))
+    ).toBe("🛌 Today: Rest day");
+  });
+
+  it("reframes when the week is already on track", () => {
+    expect(
+      digestWorkoutLine(
+        rec({ onTrack: { title: "On track this week", detail: "…" } })
+      )
+    ).toBe("✅ Today: On track this week");
+  });
+
+  it("names a deload week so a lighter session reads as on-plan", () => {
+    expect(
+      digestWorkoutLine(
+        rec({
+          sessionLabel: "Push",
+          exercises: ["Bench Press"],
+          deloadWeek: true,
+        })
+      )
+    ).toBe("🏋️ Today: Push — Bench Press (deload week)");
+  });
+
+  it("is absent when there is no recommendation to preview", () => {
+    expect(digestWorkoutLine(null)).toBeNull();
+    expect(digestWorkoutLine(rec())).toBeNull();
   });
 });

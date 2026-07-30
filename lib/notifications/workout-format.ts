@@ -154,3 +154,29 @@ export function behindThisWeekLine(
   });
   return richFrom(parts);
 }
+
+// The digest's ONE-LINE workout preview (#1712 §2). Formatted from the SAME
+// WorkoutRecommendation the dedicated nudge renders, so a 7am heads-up and the
+// actionable prompt later cannot disagree — they format one computation (#221).
+//
+// Rest and on-track states REFRAME the line exactly as they reframe the nudge (never a
+// blind "train today" on a rest day), and a recommendation with nothing to say yields
+// null so the digest simply omits the line.
+export function digestWorkoutLine(
+  rec: WorkoutRecommendation | null
+): string | null {
+  if (!rec) return null;
+  if (rec.rest) return `🛌 Today: ${rec.rest.title}`;
+  if (rec.onTrack) return `✅ Today: ${rec.onTrack.title}`;
+  // suggestTitle falls back to a generic "Strength session" for an empty focus, which
+  // is fine for the nudge's TITLE but would put a contentless line in the digest — so
+  // the preview asks for a real focus or a resolved routine day before naming one.
+  const head =
+    rec.sessionLabel ?? (rec.focus.length ? suggestTitle(rec.focus) : null);
+  const exercises = rec.exercises.slice(0, 3).join(", ");
+  if (!head && !exercises) return null;
+  const deload = rec.deloadWeek ? " (deload week)" : "";
+  return exercises
+    ? `🏋️ Today: ${head ? `${head} — ` : ""}${exercises}${deload}`
+    : `🏋️ Today: ${head}${deload}`;
+}

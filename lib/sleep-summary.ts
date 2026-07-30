@@ -612,3 +612,47 @@ export function pairSleepMood(
 ): SleepMoodPoint[] {
   return sleepMoodPoints(buildSleepMoodHistory(nights, moods));
 }
+
+// ---- Last night vs baseline: the VERDICT (issue #1712) ----
+//
+// "😴 Last night: 7h 25m (typical ~6h 44m)" printed two numbers and left the
+// conclusion to the reader — 7h25 is +41 min above a 6h44 baseline, a notably good
+// night, and the line didn't say so. ONE pure classification (#221), so the digest and
+// any other surface comparing last night to baseline can't disagree.
+//
+// Tone: BELOW baseline reads neutrally and without alarm. The digest is calm-tier and
+// must not nag about a bad night — the #1292 poor-sleep acknowledgment already owns
+// that case and must not be doubled up.
+
+// Nights within this many minutes of baseline are "about typical" rather than a
+// manufactured ±3m delta.
+export const SLEEP_TYPICAL_BAND_MIN = 20;
+
+export type SleepVerdict = "above" | "below" | "typical";
+
+export function sleepVerdict(
+  lastNightMin: number,
+  baselineMin: number | null | undefined
+): SleepVerdict | null {
+  if (baselineMin == null || baselineMin <= 0) return null;
+  const delta = lastNightMin - baselineMin;
+  if (Math.abs(delta) < SLEEP_TYPICAL_BAND_MIN) return "typical";
+  return delta > 0 ? "above" : "below";
+}
+
+// "▲ 41m above typical" / "▼ 38m below typical" / "about typical", or null when there
+// is no baseline to compare against (the line then states the figure alone, which is
+// all it honestly knows).
+export function sleepVerdictPhrase(
+  lastNightMin: number,
+  baselineMin: number | null | undefined,
+  formatDuration: (min: number) => string
+): string | null {
+  const verdict = sleepVerdict(lastNightMin, baselineMin);
+  if (verdict == null) return null;
+  if (verdict === "typical") return "about typical";
+  const delta = Math.abs(Math.round(lastNightMin - (baselineMin as number)));
+  const arrow = verdict === "above" ? "▲" : "▼";
+  const direction = verdict === "above" ? "above" : "below";
+  return `${arrow} ${formatDuration(delta)} ${direction} typical`;
+}

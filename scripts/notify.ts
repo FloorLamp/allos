@@ -742,7 +742,12 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     getProfileSetting(profile.id, "notify_last_digest") !== date
   ) {
     try {
-      const dg = await runDigest(profile.id, profile.name, date);
+      const dg = await runDigest(
+        profile.id,
+        profile.name,
+        date,
+        coachingInput()
+      );
       if (dg.failed) anyFailed = true;
     } catch (e) {
       log.error("digest failed", {

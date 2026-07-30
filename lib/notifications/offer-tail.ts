@@ -98,9 +98,16 @@ export function expandedOfferActions(
 // Home Assistant). They get an honest count instead of an interactive expansion —
 // a button that can't expand would be a lie, and a second message would be a send
 // the user never consented to.
+//
+// It NAMES THE NOUN since #1712: "+3 available when you want them" never said
+// available WHAT, and on Telegram — where the button already names all three items —
+// it was a redundant duplicate of the control beside it. The Telegram body drops the
+// line entirely (the button carries it, self-describing); these channels, which have
+// no button, keep it in words. The #1505 honest-count-for-non-interactive-channels
+// principle survives; only the duplicate goes.
 export function offerTextTail(count: number): string | null {
   if (count <= 0) return null;
-  return `+${count} available when you want ${count === 1 ? "it" : "them"}`;
+  return `${count} more supplement${count === 1 ? "" : "s"} you can log any time`;
 }
 
 // Whether the collapsed tail's LABEL is now stale — i.e. the slot turned over since

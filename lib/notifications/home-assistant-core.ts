@@ -11,7 +11,11 @@
 // owns the pure half: the payload shape, the actionable-dose extraction, the
 // per-kind delivery toggle, and webhook-URL validation.
 
-import type { NotificationKind, NotificationMessage } from "./types";
+import {
+  bodyFor,
+  type NotificationKind,
+  type NotificationMessage,
+} from "./types";
 import { TOGGLEABLE_NOTIFICATION_KINDS } from "./kinds";
 import { plainBody } from "./rich-text";
 
@@ -103,7 +107,7 @@ export function buildHomeAssistantPayload(
     title: msg.title,
     // Plain text, like Web Push: an HA automation reads/speaks the body, so declared
     // emphasis (#1720) is stripped rather than leaking markup into TTS.
-    body: plainBody(msg.body),
+    body: plainBody(bodyFor(msg, "home-assistant")),
     kind: msg.kind ?? "other",
     profile: opts.profileName,
     profile_id: opts.profileId,
