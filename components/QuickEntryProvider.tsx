@@ -8,10 +8,9 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 import BottomSheet from "./BottomSheet";
 import QuickDoseList from "./quick-entry/QuickDoseList";
-import QuickPracticeList from "./quick-entry/QuickPracticeList";
-import UploadForm from "./UploadForm";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
 import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
@@ -20,6 +19,19 @@ import {
   type QuickEntryData,
 } from "@/app/(app)/quick-entry-actions";
 import type { QuickEntryForm } from "@/lib/quick-log";
+
+// The two newest bodies load ON DEMAND (#1525/#1633). This host is mounted on every
+// route, and its promise is that it COSTS NOTHING until opened — a promise about
+// JavaScript as much as about queries. The forms it already carried are small and
+// shared with pages the shell links to anyway; the upload form and the practice list
+// each drag in machinery (the file/camera inputs and the toast lifecycle, the
+// practice button's modal and date field) that no page-load should pay for. Both are
+// only rendered AFTER `loadQuickEntry` resolves, so the chunk fetch overlaps a round
+// trip that was already happening and costs nothing perceptible.
+const UploadForm = dynamic(() => import("./UploadForm"));
+const QuickPracticeList = dynamic(
+  () => import("./quick-entry/QuickPracticeList")
+);
 
 // The shared quick-entry overlay host (issue #1468).
 //

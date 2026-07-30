@@ -312,6 +312,10 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
       "log-dose",
       // ONE measurements row since #1486/#1506 — weight + vitals are one form now.
       "log-measurements",
+      // The two non-weight-scale entries a phone also needs: a tracked wellness
+      // practice (#1633) and filing a document (#1525).
+      "log-practice",
+      "add-document",
     ]) {
       await expect(sheet.getByTestId(`quick-log-${id}`)).toBeVisible();
     }
@@ -323,7 +327,12 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     await expect(sheet).toHaveCount(0);
     const overlay = page.getByTestId("quick-entry-sheet");
     await expect(overlay).toBeVisible();
-    await expect(page.locator("#m-weight")).toBeVisible();
+    // The overlay's props come from a Server Action whose response carries a
+    // re-render of the page behind it — on the seeded profile that is the heaviest
+    // page in the app, and measurably over the default 5s budget on a loaded runner
+    // (both before and after this issue's rows). A named ceiling, not a sleep: the
+    // assertion still fails if the form never mounts.
+    await expect(page.locator("#m-weight")).toBeVisible({ timeout: 20_000 });
     expect(page.url()).toBe(before);
 
     // And it is transactional: dismissing discards, which is safe here (the
@@ -348,7 +357,14 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
 
     await page.getByTestId("quick-log-more").click();
     await expect(sheet).toBeVisible();
-    await sheet.getByTestId("quick-log-sheet-backdrop").click();
+    // Near the TOP of the scrim, not its centre: the scrim spans the viewport with
+    // the panel stacked over its lower half, and at six rows (#1525/#1633) the panel
+    // reaches past the midpoint — a default centre-click would land on the panel and
+    // dismiss nothing. The affordance under test is unchanged; where it is exposed
+    // is not.
+    await sheet
+      .getByTestId("quick-log-sheet-backdrop")
+      .click({ position: { x: 20, y: 20 } });
     await expect(sheet).toHaveCount(0);
   });
 });
