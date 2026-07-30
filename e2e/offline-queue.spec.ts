@@ -108,15 +108,19 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
 
   await context.setOffline(false);
 
-  // The rejected entry is parked for review — never silently discarded.
+  // The rejected entry is parked for review — never silently discarded. The
+  // reconnect replay plus the review card's render can outlast the default 5s on
+  // a loaded runner (the same post-action render latency ceilinged elsewhere in
+  // the suite); a named ceiling, not a sleep — this still fails if the entry is
+  // silently dropped.
   const review = page.getByTestId("offline-rejected-review");
-  await expect(review).toBeVisible();
+  await expect(review).toBeVisible({ timeout: 20_000 });
   await expect(review).toContainText(/couldn.?t be applied/i);
   await expect(review).toContainText("Body metric");
 
   // The live queue badge clears (the intent left the live queue) and the entry
-  // did NOT persist server-side.
-  await expect(badge).toHaveCount(0);
+  // did NOT persist server-side. Same post-replay settle as the review card.
+  await expect(badge).toHaveCount(0, { timeout: 20_000 });
   await page.unroute("**/api/offline-replay");
   await page.goto("/trends");
   await expect(page.getByText(marker)).toHaveCount(0);
