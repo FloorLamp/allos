@@ -131,12 +131,6 @@ export interface IntradayWorkoutBlock {
   clippedEnd: boolean;
 }
 
-// What the rail DRAWS for a tick. A dose gets the violet diamond on its own row,
-// the same glyph the illness FeverChart already uses for the same fact (#1512 E):
-// same information, same mark, wherever it is drawn. Everything else is a plain
-// tick colored by tone.
-export type IntradayTickKind = "dose" | "event";
-
 export interface IntradayTick {
   key: string;
   eventId: string;
@@ -146,7 +140,6 @@ export interface IntradayTick {
   minute: number;
   label: string;
   category: TimelineCategory;
-  kind: IntradayTickKind;
   tone: NonNullable<TimelineEvent["tone"]>;
 }
 
@@ -381,7 +374,6 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
       minute,
       label: event.title,
       category: event.category,
-      kind: event.category === "medication" ? "dose" : "event",
       tone: event.tone ?? "default",
     });
   }

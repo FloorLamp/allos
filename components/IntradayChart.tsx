@@ -579,14 +579,12 @@ export default function IntradayChart({
           if (tick.minute < geo.view.from || tick.minute > geo.view.to)
             return null;
           const at = x(tick.minute);
-          const size = geo.labelSize * 0.45;
           return (
             <a
               key={tick.key}
               href={`#${tick.anchorId}`}
               data-testid="intraday-tick"
               data-tick-event={tick.eventId}
-              data-tick-kind={tick.kind}
             >
               <title>{`${tick.label} · ${clock(tick.minute)}`}</title>
               {/* A generous transparent hit area — the drawn tick is thin. */}
@@ -597,35 +595,21 @@ export default function IntradayChart({
                 height={geo.tickH}
                 fill="transparent"
               />
-              {tick.kind === "dose" ? (
-                // #1512 E: a dose wears the illness chart's violet diamond, so the
-                // same fact gets the same mark wherever it is drawn — and the
-                // SHAPE, not only the color, is what separates it from a document
-                // import (the #1220 non-color-channel rule, applied to a glyph).
-                <path
-                  data-testid="intraday-dose-marker"
-                  d={`M ${at} ${geo.tickTop + geo.tickH / 2 - size} l ${size} ${size} l ${-size} ${size} l ${-size} ${-size} z`}
-                  fill={chartSeries.violet}
-                />
-              ) : (
-                <>
-                  <line
-                    x1={at}
-                    y1={geo.tickTop + 2}
-                    x2={at}
-                    y2={geo.tickTop + geo.tickH}
-                    stroke={TONE_COLOR[tick.tone]}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                  />
-                  <circle
-                    cx={at}
-                    cy={geo.tickTop + 2}
-                    r={2.4}
-                    fill={TONE_COLOR[tick.tone]}
-                  />
-                </>
-              )}
+              <line
+                x1={at}
+                y1={geo.tickTop + 2}
+                x2={at}
+                y2={geo.tickTop + geo.tickH}
+                stroke={TONE_COLOR[tick.tone]}
+                strokeWidth={2}
+                strokeLinecap="round"
+              />
+              <circle
+                cx={at}
+                cy={geo.tickTop + 2}
+                r={2.4}
+                fill={TONE_COLOR[tick.tone]}
+              />
             </a>
           );
         })}

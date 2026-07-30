@@ -179,6 +179,105 @@ export async function expectNoClippedContent(page: Page): Promise<void> {
   expect(offenders, offenders.join("\n")).toEqual([]);
 }
 
+// The SVG half of the containment guard (issue #1573).
+//
+// `expectNoClippedContent` above walks DOM boxes, and that is exactly why it did
+// not catch this: an SVG `<text>` that paints past its own plot is still inside a
+// `<svg>` element whose box fits the viewport, so the element-level walk sees
+// nothing wrong. #1573 was found by measuring — an annotation label at the right
+// SIZE (10px, the #1445 floor) whose right edge landed at 449px against a 390px
+// viewport, and same-row labels stacking into a smear.
+//
+// So every rendered `<text>` inside a chart is measured against BOTH bounds that
+// matter: its own owning `<svg>` (the plot it belongs to) and the viewport. The
+// layout that keeps them inside is computed in `lib/chart-svg.ts` (clampLabel /
+// placeRowLabels); this is the browser-side proof.
+//
+// Call it after the charts are visible, at whatever viewport the case is about.
+export async function expectSvgTextInsidePlot(page: Page): Promise<void> {
+  const offenders = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const TOL = 2;
+    const bad: string[] = [];
+    for (const text of Array.from(document.querySelectorAll("svg text"))) {
+      const box = text.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue; // not rendered
+      const style = getComputedStyle(text);
+      if (style.visibility === "hidden" || style.opacity === "0") continue;
+      const owner = text.closest("svg");
+      if (!owner) continue;
+      const plot = owner.getBoundingClientRect();
+      if (plot.width === 0) continue;
+      const label = (text.textContent ?? "").trim().slice(0, 40);
+      const id =
+        owner.getAttribute("data-testid") ??
+        owner.parentElement?.getAttribute("data-testid") ??
+        owner.tagName;
+      if (box.right > plot.right + TOL || box.left < plot.left - TOL) {
+        bad.push(
+          `"${label}" paints outside its plot (${id}): ` +
+            `[${Math.round(box.left)}, ${Math.round(box.right)}] vs ` +
+            `plot [${Math.round(plot.left)}, ${Math.round(plot.right)}]`
+        );
+      }
+      if (box.right > vw + TOL || box.left < -TOL) {
+        bad.push(
+          `"${label}" paints outside the viewport (${id}): ` +
+            `right=${Math.round(box.right)} left=${Math.round(box.left)} vs ` +
+            `viewport=${vw}`
+        );
+      }
+    }
+    return bad.slice(0, 20);
+  });
+  expect(offenders, offenders.join("\n")).toEqual([]);
+}
+
+// The other half of #1573's sibling issue (#1518): a chart label at the right
+// PLACE is still unreadable at 3.5px. Asserts every rendered chart `<text>` is at
+// least `minPx` of real type — which for a scaled viewBox means measuring what the
+// browser actually painted, not the number in the source.
+export async function expectSvgTextLegible(
+  page: Page,
+  minPx = 9
+): Promise<void> {
+  const sizes = await page.evaluate(() => {
+    const out: { label: string; px: number; owner: string }[] = [];
+    for (const text of Array.from(document.querySelectorAll("svg text"))) {
+      const box = text.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      const owner = text.closest("svg");
+      if (!owner) continue;
+      const plot = owner.getBoundingClientRect();
+      const viewBox = owner.getAttribute("viewBox");
+      const units = viewBox ? Number(viewBox.split(/\s+/)[2]) : 0;
+      // A viewBox font size is in USER UNITS; what it PAINTS at is that size
+      // times the container ratio. Measure the painted size, which is the only
+      // number a reader experiences.
+      const declared = Number.parseFloat(getComputedStyle(text).fontSize);
+      const px =
+        units > 0 && plot.width > 0
+          ? (declared * plot.width) / units
+          : declared;
+      out.push({
+        label: (text.textContent ?? "").trim().slice(0, 30),
+        px: Math.round(px * 100) / 100,
+        owner: owner.getAttribute("data-testid") ?? owner.tagName,
+      });
+    }
+    return out;
+  });
+  expect(sizes.length, "the page should be drawing chart text").toBeGreaterThan(
+    0
+  );
+  const tooSmall = sizes.filter((s) => s.px < minPx);
+  expect(
+    tooSmall,
+    `chart text below ${minPx}px effective size:\n` +
+      tooSmall.map((s) => `"${s.label}" (${s.owner}) at ${s.px}px`).join("\n")
+  ).toEqual([]);
+}
+
 // Follow a Next.js <Link> reliably, retrying the click until the client router
 // actually commits the navigation.
 //

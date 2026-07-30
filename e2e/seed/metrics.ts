@@ -575,6 +575,22 @@ export function seedIntradayPanel(): void {
       idInstant(idToday, "19:40")
     );
 
+    // #1512 C — an AI insight ON the intraday day. It is stamped by the generation
+    // JOB's created_at, so it carries a clock time and used to land on the tick rail
+    // at whatever minute the job happened to run. It must render in the feed list
+    // BELOW and produce no tick: the chart is a map of the person's day, not of the
+    // app's activity.
+    db.prepare("DELETE FROM insights WHERE profile_id = ?").run(idId);
+    db.prepare(
+      `INSERT INTO insights (profile_id, date, summary, model, created_at)
+       VALUES (?, ?, ?, 'e2e-fixture', ?)`
+    ).run(
+      idId,
+      idToday,
+      "Synthetic fixture insight for the intraday tick-rail exclusion.",
+      idInstant(idToday, "03:07")
+    );
+
     // The data-gate day: one weigh-in, no clock time anywhere.
     db.prepare(
       "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, 74.2, 'manual')"

@@ -134,7 +134,6 @@ describe("the row stack collapses to the day's layers", () => {
             minute: 600,
             label: "Doc",
             category: "document",
-            kind: "event",
             tone: "default",
           },
         ],

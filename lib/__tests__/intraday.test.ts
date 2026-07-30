@@ -488,24 +488,6 @@ describe("buildIntradayModel — the tick rail", () => {
       )
     ).toBeNull();
   });
-
-  // #1512 E. A dose is the story on a sick day, and it already has a purpose-built
-  // glyph on the illness chart. The model names the kind so both charts can draw
-  // the same mark; everything else stays a plain tick.
-  it("marks a timed medication event as a dose and everything else as an event", () => {
-    const dose: TimelineEvent = {
-      id: "medication:7",
-      date: DAY,
-      category: "medication",
-      title: "Ibuprofen 200 mg",
-      sortTime: "14:20",
-    };
-    const model = buildIntradayModel(input({ events: [...ticked, dose] }))!;
-    const byId = new Map(model.ticks.map((t) => [t.eventId, t.kind]));
-    expect(byId.get("medication:7")).toBe("dose");
-    expect(byId.get("document:9")).toBe("event");
-    expect(byId.get("symptom:x")).toBe("event");
-  });
 });
 
 describe("buildIntradayModel — the now-marker", () => {
