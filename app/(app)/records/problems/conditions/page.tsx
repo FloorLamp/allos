@@ -1,6 +1,7 @@
 import { requireScope } from "@/lib/scope";
 import ConditionsSection from "../../ConditionsSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +20,14 @@ export default async function RecordsConditionsPage(props: {
   // own view-set list-first. Single view is byte-identical to requireSession().
   const scope = await requireScope();
   return (
-    <section data-testid="records-conditions">
-      <SectionSubtitle>
-        Your problem list — active conditions and diagnoses, coded (ICD-10 /
-        SNOMED) when imported from a health record.
+    <PageContainer width="flow" data-testid="records-conditions">
+      <SectionSubtitle
+        title="Conditions"
+        more="Imported conditions may include ICD-10 or SNOMED codes from your health record."
+      >
+        Review active and resolved conditions and diagnoses.
       </SectionSubtitle>
       <ConditionsSection scope={scope} cond={one(searchParams.cond)} />
-    </section>
+    </PageContainer>
   );
 }

@@ -23,7 +23,7 @@ test("Visits leads with Upcoming then Past, and keeps entry behind + Add (#1497)
     /\bbtn\b/
   );
 
-  // The list sections precede the entry panel in the DOM on every viewport.
+  // The primary add CTA leads, followed by the two visit lists.
   expect(
     await page.evaluate(() => {
       const upcomingNode = document.querySelector(
@@ -35,11 +35,11 @@ test("Visits leads with Upcoming then Past, and keeps entry behind + Add (#1497)
       )!;
       return [
         !!(
-          upcomingNode.compareDocumentPosition(pastNode) &
+          addNode.compareDocumentPosition(upcomingNode) &
           Node.DOCUMENT_POSITION_FOLLOWING
         ),
         !!(
-          pastNode.compareDocumentPosition(addNode) &
+          upcomingNode.compareDocumentPosition(pastNode) &
           Node.DOCUMENT_POSITION_FOLLOWING
         ),
       ];

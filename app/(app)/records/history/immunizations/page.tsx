@@ -21,7 +21,7 @@ export default async function RecordsImmunizationsPage(props: {
   const scope = await requireScope();
   return (
     <div data-testid="records-immunizations">
-      <SectionSubtitle>
+      <SectionSubtitle title="Immunizations">
         Your vaccination record measured against a simplified CDC/ACIP schedule.
       </SectionSubtitle>
       <ImmunizationsSection

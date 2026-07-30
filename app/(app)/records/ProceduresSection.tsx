@@ -41,6 +41,15 @@ export default function ProceduresSection({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-6">
+        <AddEntryPanel
+          testId="add-procedure-panel"
+          panelId="add-procedure-panel-body"
+          label="Add procedure"
+          defaultOpen={!!prefillName}
+          presentation="modal"
+        >
+          <ProcedureForm action={addProcedure} prefillName={prefillName} />
+        </AddEntryPanel>
         <ProcedureList
           items={procedures}
           performedAt={performedAt}
@@ -48,21 +57,6 @@ export default function ProceduresSection({
             multi ? { actingProfileId: scope.actingProfileId } : undefined
           }
         />
-        <div>
-          <AddEntryPanel
-            testId="add-procedure-panel"
-            panelId="add-procedure-panel-body"
-            label="Add procedure"
-            defaultOpen={!!prefillName}
-            presentation="modal"
-          >
-            <ProcedureForm action={addProcedure} prefillName={prefillName} />
-          </AddEntryPanel>
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Imported procedures come from uploaded health records (CCD
-            Procedures section).
-          </p>
-        </div>
       </div>
     </ProviderOptionsProvider>
   );

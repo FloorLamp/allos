@@ -109,6 +109,7 @@ test.describe("Provider registry closeout", () => {
     page,
   }) => {
     await page.goto("/records/specialty/vision");
+    await page.getByTestId("add-prescription-panel-toggle").click();
     const form = page.getByTestId("optical-prescription-form");
     await form.getByLabel("Prescriber").fill("Dr. Vision E2E");
     await settledClick(page, form.getByRole("button", { name: "Add" }));

@@ -11,7 +11,7 @@ test.describe("health risk factors (issue #517)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#risk-factors");
 
     const card = page.getByTestId("risk-factors");
     await expect(card).toBeVisible();
@@ -40,7 +40,7 @@ test.describe("health risk factors (issue #517)", () => {
     await expect(flu).toContainText("Healthcare worker");
 
     // Reset to off, leaving the shared fixture as we found it.
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#risk-factors");
     await page.getByTestId("risk-healthcare_worker").uncheck();
     await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     await page.reload();

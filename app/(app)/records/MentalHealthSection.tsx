@@ -12,6 +12,7 @@ import type { Instrument } from "@/lib/mental-health";
 import { instrumentDef } from "@/lib/mental-health";
 import InstrumentsView from "@/app/(app)/medical/instruments/InstrumentsView";
 import InstrumentHistoryList from "@/app/(app)/medical/instruments/InstrumentHistoryList";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import {
   updateInstrumentAction,
   deleteInstrumentAction,
@@ -78,8 +79,6 @@ export default function MentalHealthSection({
         </Link>
       </p>
 
-      <InstrumentsView defaultDate={td} initialInstrument={initialInstrument} />
-
       {/* History + trend */}
       <section className="space-y-3" data-testid="instrument-history">
         <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -106,6 +105,19 @@ export default function MentalHealthSection({
           }))}
         />
       </section>
+
+      <AddEntryPanel
+        testId="add-mental-health-screening-panel"
+        panelId="add-mental-health-screening-panel-body"
+        label="Add screening"
+        defaultOpen={!!initialInstrument}
+        presentation="modal"
+      >
+        <InstrumentsView
+          defaultDate={td}
+          initialInstrument={initialInstrument}
+        />
+      </AddEntryPanel>
     </div>
   );
 }

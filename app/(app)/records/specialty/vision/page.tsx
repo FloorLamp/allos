@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import VisionSection from "../../VisionSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +16,14 @@ export default async function RecordsVisionPage() {
   const { login, profile } = await requireSession();
   if (!getNavRelevance(profile.id).vision) redirect("/records/specialty/skin");
   return (
-    <div data-testid="records-vision">
-      <SectionSubtitle more="Prescriptions can be added manually or imported from an uploaded prescription slip.">
+    <PageContainer width="flow" data-testid="records-vision">
+      <SectionSubtitle
+        title="Vision"
+        more="Prescriptions can be added manually or imported from an uploaded prescription slip."
+      >
         Review eyeglass and contact-lens prescriptions over time.
       </SectionSubtitle>
       <VisionSection profileId={profile.id} loginId={login.id} />
-    </div>
+    </PageContainer>
   );
 }

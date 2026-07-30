@@ -79,7 +79,7 @@ export default function AddEntryPanel({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const closeModal = useCallback(() => setOpen(false), []);
-  const gap = dense ? "mb-5" : "mb-6";
+  const gap = presentation === "modal" ? "" : dense ? "mb-5" : "mb-6";
 
   if (presentation === "modal") {
     return (

@@ -16,7 +16,7 @@ export default function RecordsTabs({ groups }: { groups: RecordsGroup[] }) {
   const activeGroup =
     groups.find((g) => pathname.startsWith(g.basePath)) ?? groups[0];
   return (
-    <div className="mb-6">
+    <div className="sub-chrome sticky top-[var(--shell-chrome-h)] z-20 -mx-4 mb-6 bg-white/85 px-4 pb-3 backdrop-blur-xl md:static md:z-auto md:mx-0 md:bg-transparent md:px-0 md:pb-0 md:backdrop-blur-none dark:bg-ink-950/85 md:dark:bg-transparent">
       {/* Primary: group tabs. */}
       <div
         data-testid="records-group-tabs"
@@ -44,7 +44,7 @@ export default function RecordsTabs({ groups }: { groups: RecordsGroup[] }) {
       {activeGroup.panes.length > 1 ? (
         <div
           data-testid="records-sub-tabs"
-          className="mt-3 flex flex-wrap gap-2"
+          className="mt-3 flex flex-nowrap gap-2 overflow-x-auto pb-1"
         >
           {activeGroup.panes.map((p) => {
             const active = pathname === p.href;

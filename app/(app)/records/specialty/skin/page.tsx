@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import SkinSection from "../../SkinSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +10,14 @@ export const dynamic = "force-dynamic";
 export default async function RecordsSkinPage() {
   const { profile } = await requireSession();
   return (
-    <div data-testid="records-skin">
-      <SectionSubtitle more="Each record can include a body-map location, size, ABCDE observations, dated photos, and a tracked recheck.">
+    <PageContainer width="flow" data-testid="records-skin">
+      <SectionSubtitle
+        title="Skin"
+        more="Each record can include a body-map location, size, ABCDE observations, dated photos, and a tracked recheck."
+      >
         Track moles and spots over time.
       </SectionSubtitle>
       <SkinSection profileId={profile.id} />
-    </div>
+    </PageContainer>
   );
 }

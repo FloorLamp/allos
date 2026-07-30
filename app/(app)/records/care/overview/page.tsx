@@ -3,7 +3,9 @@ import BackgroundSection from "../../BackgroundSection";
 import FamilyHistorySection from "../../FamilyHistorySection";
 import CarePlanSection from "../../CarePlanSection";
 import HealthGoalsSection from "../../HealthGoalsSection";
-import { SectionHeader } from "../../SectionHeader";
+import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
+import CareOverviewDisclosure from "./CareOverviewDisclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -18,42 +20,48 @@ export default async function RecordsCareOverviewPage() {
   // it's person-level context, not a flat record list. Single view is byte-identical.
   const scope = await requireScope();
   return (
-    <div className="space-y-8">
-      <section data-testid="records-background">
-        <SectionHeader
-          id="background"
-          title="Background"
-          subtitle="Smoking history and health risk factors — person-level context that tailors screening reminders."
-        />
+    <PageContainer width="flow" className="space-y-5">
+      <SectionSubtitle title="Care overview">
+        Keep the personal context, family history, plans, and clinical goals
+        that shape your care.
+      </SectionSubtitle>
+
+      <CareOverviewDisclosure
+        id="background"
+        title="Background"
+        description="Smoking history and health risk factors"
+        hashAliases={["smoking-history", "risk-factors"]}
+        testId="records-background"
+      >
         <BackgroundSection profileId={scope.actingProfileId} />
-      </section>
+      </CareOverviewDisclosure>
 
-      <section data-testid="records-family-history">
-        <SectionHeader
-          id="family-history"
-          title="Family history"
-          subtitle="Review conditions affecting relatives."
-        />
+      <CareOverviewDisclosure
+        id="family-history"
+        title="Family history"
+        description="Conditions affecting relatives"
+        testId="records-family-history"
+      >
         <FamilyHistorySection scope={scope} />
-      </section>
+      </CareOverviewDisclosure>
 
-      <section data-testid="records-care-plan">
-        <SectionHeader
-          id="care-plan"
-          title="Care plan"
-          subtitle="Review planned and ordered care."
-        />
+      <CareOverviewDisclosure
+        id="care-plan"
+        title="Care plan"
+        description="Planned and ordered care"
+        testId="records-care-plan"
+      >
         <CarePlanSection scope={scope} />
-      </section>
+      </CareOverviewDisclosure>
 
-      <section data-testid="records-health-goals">
-        <SectionHeader
-          id="health-goals"
-          title="Health goals"
-          subtitle="Review clinical goals and targets."
-        />
+      <CareOverviewDisclosure
+        id="health-goals"
+        title="Health goals"
+        description="Clinical goals and targets"
+        testId="records-health-goals"
+      >
         <HealthGoalsSection scope={scope} />
-      </section>
-    </div>
+      </CareOverviewDisclosure>
+    </PageContainer>
   );
 }

@@ -20,7 +20,10 @@ export default async function RecordsVisitsPage(props: {
   const showHousehold = scope.profiles.length > 1;
   return (
     <div data-testid="records-visits">
-      <SectionSubtitle more="Use Add visit to schedule an appointment or log one that already happened. Completing a scheduled appointment can also create its visit-history entry and close matching preventive or care-plan items.">
+      <SectionSubtitle
+        title="Visits"
+        more="Use Add visit to schedule an appointment or log one that already happened. Completing a scheduled appointment can also create its visit-history entry and close matching preventive or care-plan items."
+      >
         Manage upcoming appointments and your visit history.
       </SectionSubtitle>
       <VisitsSection

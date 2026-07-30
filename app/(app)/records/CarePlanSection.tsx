@@ -64,26 +64,20 @@ export default function CarePlanSection({ scope }: { scope: ProfileScope }) {
             ))}
           </div>
         )}
+        <AddEntryPanel
+          testId="add-care-plan-panel"
+          panelId="add-care-plan-panel-body"
+          label="Add care-plan item"
+          presentation="modal"
+        >
+          <CarePlanForm action={addCarePlanItem} />
+        </AddEntryPanel>
         <CarePlanList
           items={items}
           multiView={
             multi ? { actingProfileId: scope.actingProfileId } : undefined
           }
         />
-        <div>
-          <AddEntryPanel
-            testId="add-care-plan-panel"
-            panelId="add-care-plan-panel-body"
-            label="Add care-plan item"
-            presentation="modal"
-          >
-            <CarePlanForm action={addCarePlanItem} />
-          </AddEntryPanel>
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Imported care-plan items come from uploaded health records (Plan of
-            Treatment section).
-          </p>
-        </div>
       </div>
     </ProviderOptionsProvider>
   );

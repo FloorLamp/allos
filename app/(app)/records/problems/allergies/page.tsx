@@ -1,6 +1,7 @@
 import { requireScope } from "@/lib/scope";
 import AllergiesSection from "../../AllergiesSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +12,14 @@ export const dynamic = "force-dynamic";
 export default async function RecordsAllergiesPage() {
   const scope = await requireScope();
   return (
-    <section data-testid="records-allergies">
-      <SectionSubtitle more="Allergen-specific IgE sensitizations detected in lab results appear alongside documented allergies and can inform the emergency card.">
+    <PageContainer width="flow" data-testid="records-allergies">
+      <SectionSubtitle
+        title="Allergies"
+        more="Allergen-specific IgE sensitizations detected in lab results appear alongside documented allergies and can inform the emergency card."
+      >
         Review documented allergies and sensitizations.
       </SectionSubtitle>
       <AllergiesSection scope={scope} />
-    </section>
+    </PageContainer>
   );
 }

@@ -99,32 +99,40 @@ export default function VisitsSection({
   // the active list stays actionable. getAppointments returns soonest-first.
   const scheduled = appointments.filter((a) => a.status === "scheduled");
   const settled = appointments.filter((a) => a.status !== "scheduled");
-  const upcomingCount = scheduled.filter(
+  const upcomingScheduled = scheduled.filter(
     (a) => a.scheduled_at.slice(0, 10) >= now
-  ).length;
+  );
+  const overdueScheduled = scheduled.filter(
+    (a) => a.scheduled_at.slice(0, 10) < now
+  );
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-10">
-        {showHousehold && (
-          <div className="-mt-2">
-            <Link
-              href={EPISODES_HREF}
-              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-              data-testid="household-view-link"
-            >
-              Illness episodes →
-            </Link>
-          </div>
-        )}
+        <AddEntryPanel
+          testId="add-visit-panel"
+          panelId="add-visit-panel-body"
+          label="Add visit"
+          defaultOpen={focusNew || !!bookPrefill}
+          presentation="modal"
+        >
+          <AddVisitEntry
+            createAppointment={createAppointment}
+            addEncounter={addEncounter}
+            defaultDate={bookPrefill ? prefillDate : now}
+            today={now}
+            prefill={bookPrefill}
+            focusNew={focusNew}
+          />
+        </AddEntryPanel>
 
         {/* Upcoming — the appointments surface. */}
         <section data-testid="visits-upcoming">
           <h3 className="mb-3 flex items-center gap-2 section-label">
             Upcoming
-            {scheduled.length > 0 && (
+            {upcomingScheduled.length > 0 && (
               <span className="text-slate-500 dark:text-slate-400">
-                ({upcomingCount} scheduled)
+                ({upcomingScheduled.length} scheduled)
               </span>
             )}
           </h3>
@@ -132,16 +140,34 @@ export default function VisitsSection({
             {/* No inner "Scheduled" label (#1449): the outer heading names the
                 list; the count that carries information lives with it. */}
             <section>
-              {scheduled.length === 0 ? (
+              {upcomingScheduled.length === 0 ? (
                 <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
               ) : (
                 <AppointmentList
-                  items={scheduled}
+                  items={upcomingScheduled}
                   defaultDate={now}
                   carePlanItems={openCarePlanItems}
                 />
               )}
             </section>
+
+            {overdueScheduled.length > 0 && (
+              <details className="card border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20">
+                <summary className="cursor-pointer font-semibold text-amber-800 dark:text-amber-200">
+                  Past date—update status{" "}
+                  <span className="text-sm font-normal">
+                    ({overdueScheduled.length})
+                  </span>
+                </summary>
+                <div className="mt-3">
+                  <AppointmentList
+                    items={overdueScheduled}
+                    defaultDate={now}
+                    carePlanItems={openCarePlanItems}
+                  />
+                </div>
+              </details>
+            )}
 
             {settled.length > 0 && (
               <details className="card">
@@ -176,25 +202,15 @@ export default function VisitsSection({
           />
         </section>
 
-        {/* Rare-cadence entry belongs after both lists. Existing add/deep-link
-          params auto-open it so command-palette and preventive-care paths still
-          land directly in the form. */}
-        <AddEntryPanel
-          testId="add-visit-panel"
-          panelId="add-visit-panel-body"
-          label="Add visit"
-          defaultOpen={focusNew || !!bookPrefill}
-          presentation="modal"
-        >
-          <AddVisitEntry
-            createAppointment={createAppointment}
-            addEncounter={addEncounter}
-            defaultDate={bookPrefill ? prefillDate : now}
-            today={now}
-            prefill={bookPrefill}
-            focusNew={focusNew}
-          />
-        </AddEntryPanel>
+        {showHousehold && (
+          <Link
+            href={EPISODES_HREF}
+            className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+            data-testid="household-view-link"
+          >
+            View illness episodes →
+          </Link>
+        )}
       </div>
     </ProviderOptionsProvider>
   );

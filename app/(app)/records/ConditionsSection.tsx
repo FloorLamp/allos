@@ -75,6 +75,14 @@ export default function ConditionsSection({
 
   return (
     <div className="space-y-6">
+      <AddEntryPanel
+        testId="add-condition-panel"
+        panelId="add-condition-panel-body"
+        label="Add condition"
+        presentation="modal"
+      >
+        <ConditionForm action={addCondition} />
+      </AddEntryPanel>
       <FilterPills
         options={FILTERS}
         value={active}
@@ -89,20 +97,6 @@ export default function ConditionsSection({
           multi ? { actingProfileId: scope.actingProfileId } : undefined
         }
       />
-      <div>
-        <AddEntryPanel
-          testId="add-condition-panel"
-          panelId="add-condition-panel-body"
-          label="Add condition"
-          presentation="modal"
-        >
-          <ConditionForm action={addCondition} />
-        </AddEntryPanel>
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Imported problems come from uploaded health records (CCD Active
-          Problems section).
-        </p>
-      </div>
     </div>
   );
 }

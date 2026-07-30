@@ -38,14 +38,19 @@ export function SectionHeader({
 
 // The descriptive line for a SOLO pane (the tab strip already provides the title).
 export function SectionSubtitle({
+  title,
   children,
   more,
 }: {
+  title: string;
   children: React.ReactNode;
   more?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6" data-testid="records-pane-intro">
+    <div className="mb-5" data-testid="records-pane-intro">
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+        {title}
+      </h2>
       <p className="text-sm text-slate-500 dark:text-slate-400">{children}</p>
       {more ? <IntroMore>{more}</IntroMore> : null}
     </div>

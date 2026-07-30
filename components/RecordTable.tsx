@@ -131,9 +131,9 @@ export default function RecordTable<T extends { id: number }>({
   const colSpan = columns.length + 1 + (multiView ? 1 : 0);
 
   return (
-    <div className="card overflow-x-auto p-0">
-      <table className="w-full border-collapse text-sm">
-        <thead>
+    <div className="card overflow-visible p-0 sm:overflow-x-auto">
+      <table className="block w-full border-collapse text-sm sm:table">
+        <thead className="hidden sm:table-header-group">
           <tr className="border-b border-black/5 dark:border-white/5">
             {multiView && (
               <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-300">
@@ -180,18 +180,18 @@ export default function RecordTable<T extends { id: number }>({
             <th className="px-3 py-2" />
           </tr>
         </thead>
-        <tbody>
+        <tbody className="block sm:table-row-group">
           {rows.map((item) =>
             editingId === item.id ? (
-              <tr key={item.id}>
-                <td colSpan={colSpan} className="p-3">
+              <tr key={item.id} className="block sm:table-row">
+                <td colSpan={colSpan} className="block p-3 sm:table-cell">
                   {renderEditForm(item, () => setEditingId(null))}
                 </td>
               </tr>
             ) : (
               <tr
                 key={item.id}
-                className="border-b border-black/5 transition hover:bg-slate-50 dark:border-white/5 dark:hover:bg-ink-850"
+                className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-black/5 px-3 py-3 transition last:border-b-0 hover:bg-slate-50 sm:table-row sm:p-0 dark:border-white/5 dark:hover:bg-ink-850"
               >
                 {multiView &&
                   (() => {
@@ -199,7 +199,7 @@ export default function RecordTable<T extends { id: number }>({
                     const isActing =
                       subject.profileId === multiView.actingProfileId;
                     return (
-                      <td className="px-3 py-2 align-top">
+                      <td className="col-span-2 row-start-1 mb-1 block p-0 align-top sm:table-cell sm:px-3 sm:py-2">
                         {subjectChipVisible({ multi: true, isActing }) ? (
                           <SubjectChip subject={subject} />
                         ) : null}
@@ -209,12 +209,27 @@ export default function RecordTable<T extends { id: number }>({
                 {columns.map((col, i) => (
                   <td
                     key={i}
-                    className={`px-3 py-2 ${col.cellClassName ?? ""}`}
+                    className={`min-w-0 ${
+                      i === 0
+                        ? `col-start-1 ${
+                            multiView ? "row-start-2" : "row-start-1"
+                          } block pr-2 sm:table-cell sm:px-3 sm:py-2`
+                        : "col-span-2 mt-1 flex items-start gap-2 p-0 text-sm sm:table-cell sm:px-3 sm:py-2"
+                    } ${col.cellClassName ?? ""}`}
                   >
+                    {i > 0 ? (
+                      <span className="w-24 shrink-0 text-xs font-medium text-slate-400 sm:hidden">
+                        {col.header}
+                      </span>
+                    ) : null}
                     {col.cell(item)}
                   </td>
                 ))}
-                <td className="px-3 py-2">
+                <td
+                  className={`col-start-2 ${
+                    multiView ? "row-start-2" : "row-start-1"
+                  } block p-0 sm:table-cell sm:px-3 sm:py-2`}
+                >
                   {(() => {
                     // Per-item write gate (#858/#1328): in multi-view a row whose
                     // SUBJECT is read-only-granted shows no edit/delete; single-view

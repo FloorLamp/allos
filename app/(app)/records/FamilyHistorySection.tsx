@@ -24,26 +24,20 @@ export default function FamilyHistorySection({
 
   return (
     <div className="space-y-6">
+      <AddEntryPanel
+        testId="add-family-history-panel"
+        panelId="add-family-history-panel-body"
+        label="Add family history"
+        presentation="modal"
+      >
+        <FamilyHistoryForm action={addFamilyHistory} />
+      </AddEntryPanel>
       <FamilyHistoryList
         items={entries}
         multiView={
           multi ? { actingProfileId: scope.actingProfileId } : undefined
         }
       />
-      <div>
-        <AddEntryPanel
-          testId="add-family-history-panel"
-          panelId="add-family-history-panel-body"
-          label="Add family history"
-          presentation="modal"
-        >
-          <FamilyHistoryForm action={addFamilyHistory} />
-        </AddEntryPanel>
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Imported entries come from uploaded health records (CCD Family History
-          section).
-        </p>
-      </div>
     </div>
   );
 }

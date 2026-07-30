@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import ProvidersSection from "../../ProvidersSection";
 import { SectionSubtitle } from "../../SectionHeader";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +10,11 @@ export const dynamic = "force-dynamic";
 export default async function RecordsProvidersPage() {
   const { profile } = await requireSession();
   return (
-    <div data-testid="records-providers">
-      <SectionSubtitle more="Record counts reflect the active profile.">
+    <PageContainer width="flow" data-testid="records-providers">
+      <SectionSubtitle title="Providers">
         Review clinicians and care organizations.
       </SectionSubtitle>
       <ProvidersSection profileId={profile.id} profileName={profile.name} />
-    </div>
+    </PageContainer>
   );
 }

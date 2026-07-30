@@ -40,26 +40,24 @@ export default function SkinSection({ profileId }: { profileId: number }) {
         }}
       >
         <div className="space-y-6">
+          <AddEntryPanel
+            testId="add-skin-lesion-panel"
+            panelId="add-skin-lesion-panel-body"
+            label="Add skin lesion"
+            presentation="modal"
+          >
+            <SkinLesionForm action={addSkinLesion} />
+          </AddEntryPanel>
           <SkinLesionList
             items={records}
             followUps={followUps}
             photos={photos}
             checkedAt={checkedAt}
           />
-          <div>
-            <AddEntryPanel
-              testId="add-skin-lesion-panel"
-              panelId="add-skin-lesion-panel-body"
-              label="Add skin lesion"
-              presentation="modal"
-            >
-              <SkinLesionForm action={addSkinLesion} />
-            </AddEntryPanel>
-            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-              This is a self-monitoring record for you and your dermatologist —
-              it tracks and compares lesions, it does not assess them.
-            </p>
-          </div>
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            This is a self-monitoring record for you and your dermatologist — it
+            tracks and compares lesions, it does not assess them.
+          </p>
         </div>
       </EncounterOptionsProvider>
     </ProviderOptionsProvider>

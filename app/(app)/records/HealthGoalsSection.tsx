@@ -22,25 +22,20 @@ export default function HealthGoalsSection({ scope }: { scope: ProfileScope }) {
 
   return (
     <div className="space-y-6">
+      <AddEntryPanel
+        testId="add-health-goal-panel"
+        panelId="add-health-goal-panel-body"
+        label="Add health goal"
+        presentation="modal"
+      >
+        <CareGoalForm action={addCareGoal} />
+      </AddEntryPanel>
       <CareGoalList
         items={goals}
         multiView={
           multi ? { actingProfileId: scope.actingProfileId } : undefined
         }
       />
-      <div>
-        <AddEntryPanel
-          testId="add-health-goal-panel"
-          panelId="add-health-goal-panel-body"
-          label="Add health goal"
-          presentation="modal"
-        >
-          <CareGoalForm action={addCareGoal} />
-        </AddEntryPanel>
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Imported goals come from uploaded health records (Goals section).
-        </p>
-      </div>
     </div>
   );
 }

@@ -36,6 +36,14 @@ export default function VisionSection({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-6">
+        <AddEntryPanel
+          testId="add-prescription-panel"
+          panelId="add-prescription-panel-body"
+          label="Add prescription"
+          presentation="modal"
+        >
+          <OpticalPrescriptionForm action={addOpticalPrescription} />
+        </AddEntryPanel>
         <CreateVisitFromRecord
           profileId={profileId}
           offers={createVisitOffersList}
@@ -48,19 +56,9 @@ export default function VisionSection({
           items={prescriptions}
           today={today(profileId)}
         />
-        <div>
-          <AddEntryPanel
-            testId="add-prescription-panel"
-            panelId="add-prescription-panel-body"
-            label="Add prescription"
-            presentation="modal"
-          >
-            <OpticalPrescriptionForm action={addOpticalPrescription} />
-          </AddEntryPanel>
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            OD = right eye, OS = left eye.
-          </p>
-        </div>
+        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+          OD = right eye, OS = left eye.
+        </p>
       </div>
     </ProviderOptionsProvider>
   );

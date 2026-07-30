@@ -76,6 +76,9 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   await expect(page.getByTestId("records-family-history")).toBeVisible();
   await expect(page.getByTestId("records-care-plan")).toBeVisible();
   await expect(page.getByTestId("records-health-goals")).toBeVisible();
+  await expect(page.getByTestId("smoking-history")).toBeHidden();
+  await page.getByTestId("records-background").locator("summary").click();
+  await expect(page.getByTestId("smoking-history")).toBeVisible();
 
   // Care › Providers — the heavy directory, a solo pane.
   await followLink(
@@ -176,6 +179,9 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/records/history/immunizations");
+  await page
+    .locator("summary", { hasText: "CDC recommended schedule" })
+    .click();
   const grid = page.getByTestId("cdc-schedule-grid");
   await expect(grid).toBeVisible();
 
@@ -251,8 +257,11 @@ test("the five specialty sub-tabs render with rare entry collapsed and the crisi
     /\/records\/specialty\/mental-health$/
   );
   await expect(
-    page.getByTestId("records-mental-health").getByTestId("instruments-form")
+    page
+      .getByTestId("records-mental-health")
+      .getByTestId("add-mental-health-screening-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("instruments-form")).toBeHidden();
   await expect(
     page
       .getByTestId("records-mental-health")
@@ -271,8 +280,9 @@ test("the five specialty sub-tabs render with rare entry collapsed and the crisi
   await expect(
     page
       .getByTestId("records-substance-use")
-      .getByTestId("substance-instruments-form")
+      .getByTestId("add-substance-screening-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("substance-instruments-form")).toBeHidden();
 });
 
 test("a no-data profile hides the Vision/Dental sub-tabs AND its route re-gates (#1079)", async ({

@@ -184,13 +184,26 @@ export default function ImmunizationsSection({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div>
+        <div className="mb-6 flex flex-wrap items-start gap-2">
+          <AddEntryPanel
+            testId="add-immunization-panel"
+            panelId="add-immunization-panel-body"
+            label="Add immunization"
+            presentation="modal"
+            dense
+          >
+            <ImmunizationForm action={addImmunization} defaultDate={now} />
+          </AddEntryPanel>
+          <MyChartImport compact />
+        </div>
+
         {/* Section status line + at-a-glance counts (the old PageHeader subtitle +
           action, inlined so the merged /records SectionHeader stays generic). */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {subtitle}
           </p>
-          <div className="hidden gap-2 sm:flex">
+          <div className="flex gap-2">
             <Summary count={summary.overdueCount} label="Overdue" tone="rose" />
             <Summary count={summary.dueCount} label="Due" tone="amber" />
             <Summary
@@ -334,24 +347,6 @@ export default function ImmunizationsSection({
           </div>
         )}
 
-        <div className="mb-6">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            CDC recommended schedule
-          </h2>
-          <ScheduleGrid
-            records={records.map((r) => ({
-              vaccine: r.vaccine,
-              date: r.date,
-              dose_label: r.dose_label,
-              notes: r.notes,
-              source: r.source,
-            }))}
-            birthdate={birthdate}
-            ageMonths={ageMonths}
-            assessments={summary.assessments}
-          />
-        </div>
-
         <div className="space-y-6">
           <div className="space-y-6">
             <div className="card">
@@ -427,26 +422,35 @@ export default function ImmunizationsSection({
                 )}
               </div>
             </details>
+
+            <details className="card">
+              <summary className="cursor-pointer text-slate-800 dark:text-slate-100">
+                <h3 className="inline font-semibold">
+                  CDC recommended schedule
+                </h3>
+              </summary>
+              <div className="mt-3">
+                <ScheduleGrid
+                  records={records.map((r) => ({
+                    vaccine: r.vaccine,
+                    date: r.date,
+                    dose_label: r.dose_label,
+                    notes: r.notes,
+                    source: r.source,
+                  }))}
+                  birthdate={birthdate}
+                  ageMonths={ageMonths}
+                  assessments={summary.assessments}
+                />
+              </div>
+            </details>
           </div>
 
-          <div>
-            <AddEntryPanel
-              testId="add-immunization-panel"
-              panelId="add-immunization-panel-body"
-              label="Add immunization"
-              presentation="modal"
-            >
-              <ImmunizationForm action={addImmunization} defaultDate={now} />
-            </AddEntryPanel>
-            <div className="space-y-4">
-              <MyChartImport />
-              <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-                Simplified schedule. The tracked schedule is a practical subset
-                of the CDC/ACIP recommendations and does not model risk
-                conditions, pregnancy, or shared-decision cases.
-              </p>
-            </div>
-          </div>
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            Simplified schedule. The tracked schedule is a practical subset of
+            the CDC/ACIP recommendations and does not model risk conditions,
+            pregnancy, or shared-decision cases.
+          </p>
         </div>
       </div>
     </ProviderOptionsProvider>

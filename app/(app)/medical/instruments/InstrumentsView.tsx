@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   INSTRUMENTS,
   INSTRUMENT_OPTIONS,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/mental-health";
 import { recordInstrumentAction } from "./actions";
 import DateField from "@/components/DateField";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 
 // The mental-health instrument surface (#716) — a public-domain PHQ-9/GAD-7 tap-through
 // that computes the score in-app (the guided-battery pattern, #834), plus an outside
@@ -26,6 +28,8 @@ export default function InstrumentsView({
   // param and passes it. Absent/unknown ⇒ the PHQ-9 default.
   initialInstrument?: Instrument;
 }) {
+  const router = useRouter();
+  const closeEntryModal = useAddEntryModalClose();
   const containerRef = useRef<HTMLDivElement>(null);
   const [instrument, setInstrument] = useState<Instrument>(
     initialInstrument ?? "PHQ-9"
@@ -87,6 +91,8 @@ export default function InstrumentsView({
       return;
     }
     reset();
+    closeEntryModal?.();
+    router.refresh();
   }
 
   return (

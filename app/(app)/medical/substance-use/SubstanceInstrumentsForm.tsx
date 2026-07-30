@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   SUBSTANCE_INSTRUMENTS,
   substanceInstrumentDef,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/substance-use";
 import { recordSubstanceInstrumentAction } from "./actions";
 import DateField from "@/components/DateField";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 
 // The substance-instrument capture form (#998) — the #716 guided-battery pattern:
 // in-app AUDIT-C and DAST-10 tap-throughs (DAST-10 since #1085) that compute the
@@ -29,6 +31,8 @@ export default function SubstanceInstrumentsForm({
   // param and passes it. Absent/unknown ⇒ the AUDIT-C default.
   initialInstrument?: SubstanceInstrument;
 }) {
+  const router = useRouter();
+  const closeEntryModal = useAddEntryModalClose();
   const containerRef = useRef<HTMLDivElement>(null);
   const [instrument, setInstrument] = useState<SubstanceInstrument>(
     initialInstrument ?? "AUDIT-C"
@@ -95,6 +99,8 @@ export default function SubstanceInstrumentsForm({
       return;
     }
     reset();
+    closeEntryModal?.();
+    router.refresh();
   }
 
   return (

@@ -29,25 +29,23 @@ export default function DentalSection({ profileId }: { profileId: number }) {
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="space-y-6">
+        <AddEntryPanel
+          testId="add-dental-record-panel"
+          panelId="add-dental-record-panel-body"
+          label="Add dental record"
+          presentation="modal"
+        >
+          <DentalProcedureForm action={addDentalProcedure} />
+        </AddEntryPanel>
         <CreateVisitFromRecord
           profileId={profileId}
           offers={createVisitOffersList}
         />
         <DentalProcedureList items={records} followUps={followUps} />
-        <div>
-          <AddEntryPanel
-            testId="add-dental-record-panel"
-            panelId="add-dental-record-panel-body"
-            label="Add dental record"
-            presentation="modal"
-          >
-            <DentalProcedureForm action={addDentalProcedure} />
-          </AddEntryPanel>
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            This is a record of dental work and findings, not a clinical
-            charting tool.
-          </p>
-        </div>
+        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+          This is a record of dental work and findings, not a clinical charting
+          tool.
+        </p>
       </div>
     </ProviderOptionsProvider>
   );
