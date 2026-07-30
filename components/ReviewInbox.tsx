@@ -3,6 +3,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import type { IntegrationSyncEvent, IntegrationId } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
+import { isStaleSyncEvent } from "@/lib/integrations/staleness";
 import { integrationDetailHref, type AppRoute } from "@/lib/hrefs";
 import type { FeedEntry } from "@/lib/import-feed";
 import RelativeTime from "@/components/RelativeTime";
@@ -95,14 +96,23 @@ export default function ReviewInbox({
           <ul className="space-y-3">
             {issues.map((ev) => {
               const href = providerHref(ev.provider);
+              // The silent-stop signal (#1685) is a synthetic issue with no recorded
+              // failure behind it, so "sync failed" would be a claim we can't support:
+              // nothing failed, nothing arrived. Say what we actually observed. Its `at`
+              // is the last SUCCESSFUL sync, which is what the relative time should read.
+              const stale = isStaleSyncEvent(ev);
               return (
                 <li
-                  key={ev.id}
+                  // Synthetic issues share a sentinel id across providers, so the row key
+                  // must include the provider or two stopped sources would collide.
+                  key={`${ev.provider}:${ev.id}`}
+                  data-testid={`import-issue-${ev.provider}`}
                   className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-900/50 dark:bg-rose-950/20"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium text-slate-800 dark:text-slate-100">
-                      {providerName(ev.provider)} sync failed
+                      {providerName(ev.provider)}{" "}
+                      {stale ? "sync has stopped" : "sync failed"}
                     </span>
                     <RelativeTime
                       value={ev.at}

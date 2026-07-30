@@ -697,6 +697,30 @@ dose reminder the item was already generating — never as its own message.
 Corollary of the corollary: a suggestion about an item that has stopped
 generating sends has no delivery path, and that is correct, not a gap.
 
+**Ride-the-nag applied to a structural signal (#1685, owner-decided 2026-07-30).**
+A broken integration is the same shape one level up. It is not a rule-engine
+finding — it carries no `Finding`, no builder, and no bus suppression (structural
+signals are non-suppressible: you reconnect them, you don't snooze them), so it
+is deliberately NOT in `RULE_FINDING_REGISTRY`, for exactly the reason `refill:`
+and `pool-refill:` aren't — the registry's reflection guards read builder output,
+and a namespace no builder emits would fail them. Its reach question is still the
+same one: how far may it travel?
+
+The answer is **the daily digest and nothing else**. It reaches Upcoming, the
+dashboard hero and Data → Review as it always did, and it is now counted and
+NAMED in the morning digest — the one message that was already going to send.
+There is no dedicated notification and no escalation.
+
+Why it earns a push channel at all, when `condition-review`, `followup` and
+`med-monitor` are deliberately kept off it: this is the one signal whose entire
+purpose is to work while the user is NOT looking. An integration exists so data
+flows without opening the app, which makes a dead one precisely the state its
+owner is least likely to notice, and a revoked grant is unrecoverable without
+their re-consent, so waiting never fixes it. A signal that only reaches surfaces
+you must open to see inverts the feature it is reporting on. That is a reach
+argument, not a severity one — which is why it stops at decorating an existing
+send rather than earning its own.
+
 **A keyboard edit is not a send; an edit that would notify is.** Telegram's
 `editMessageReplyMarkup` changes a message the user already received and does not
 ring their phone. That is what lets #1505's offer tail stay accurate across slot

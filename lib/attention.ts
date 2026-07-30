@@ -54,11 +54,22 @@ import { type Reason, concatReasons, flaggedReason } from "./reasons";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 import type { IntegrationId } from "./types";
 
-// A failing/needs-reauth integration provider, reduced to what the model renders.
+// A broken integration provider, reduced to what the model renders. `kind` distinguishes
+// the two ways a provider can be broken (#1685), because they need different copy and ask
+// the user for different things:
+//   "failing" — a recorded failure / dead grant. The cause is known and the fix is
+//               consent: reconnect.
+//   "stale"   — nothing has failed, and nothing has arrived either. The connection may be
+//               perfectly authorized; all we honestly know is that it stopped, so the
+//               copy states the observation ("no data since <date>") and asks the user to
+//               check rather than claiming a cause.
+// Both carry the SAME item key, so a provider is one row on every surface no matter which
+// signal raised it, and the gather guarantees only one of the two can fire per provider.
 export interface AttentionIntegration {
   id: IntegrationId | null;
   provider: string;
   detail: string | null;
+  kind?: "failing" | "stale";
 }
 
 // A newly-flagged biomarker plus its optional risk-layer reasons (issue #656 item
@@ -127,23 +138,37 @@ export function buildFlaggedItem(
   };
 }
 
-// A failing/needs-reauth integration → a shared attention item. Structural (you
-// reconnect it, you don't snooze it), so it's non-suppressible and files under the
-// "For review" grouping alongside the import-review count.
-function integrationToItem(i: AttentionIntegration): UpcomingItem {
+// A broken integration → a shared attention item. Structural (you reconnect it, you
+// don't snooze it), so it's non-suppressible and files under the "For review" grouping
+// alongside the import-review count.
+//
+// Exported since #1685 so the morning digest can render the SAME item the two web
+// surfaces do rather than re-deriving a second description of a broken sync (#221).
+//
+// The two kinds share the key, the domain, the grouping and the href, and differ only in
+// the words: a stale connection must not be told to "Reconnect", because reconnecting is
+// a guess about a cause we have no evidence for — the honest ask is to check it.
+export function integrationToItem(i: AttentionIntegration): UpcomingItem {
   const reconnectHref = i.id ? integrationDetailHref(i.id) : null;
+  const stale = i.kind === "stale";
   return {
     key: `integration:${i.id ?? i.provider}`,
     domain: "integration",
     signalGroup: "review",
-    title: `${i.provider} sync needs attention`,
-    detail: i.detail ?? "Reconnect to resume syncing.",
+    title: stale
+      ? `${i.provider} sync has stopped`
+      : `${i.provider} sync needs attention`,
+    detail:
+      i.detail ??
+      (stale
+        ? "No recent data from this source."
+        : "Reconnect to resume syncing."),
     // Match the CTA's promise: known, connectable providers go straight to their
     // setup page. Unknown/planned providers safely fall back to Review.
     href: reconnectHref ?? dataSectionHref("review"),
     dueDate: null,
-    dueText: "Reconnect",
-    actionLabel: "Reconnect",
+    dueText: stale ? "No recent data" : "Reconnect",
+    actionLabel: stale ? "Check connection" : "Reconnect",
     suppressible: false,
   };
 }

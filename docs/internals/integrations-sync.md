@@ -214,3 +214,48 @@ line — written through the one `truncatedSyncDetails()` shape in
 `lib/integrations/sync-details.ts` — and the Connected-sources card badges it
 "partial" instead of a clean green success. The marker survives the details
 char-budget bounding by construction.
+
+**Silent stop — the staleness signal (#1685).** The two existing "this provider
+needs attention" signals are both event-driven, and neither can see a connection
+that is recording nothing at all. `isAuthRefreshFailure` (#326) only flips a
+connection to `needs_reauth` on a DEFINITIVE auth failure — 429/5xx/timeouts stay
+transient on purpose, or a passing cloud hiccup would tear down a healthy
+connection — and `currentlyFailingProviders` only fires when a provider's LATEST
+recorded event is a failure. A phone exporter the OS stopped running, or a poll
+that never gets far enough to log, leaves the connection sitting at `connected`
+with a green badge, syncing nothing. The only evidence is negative.
+
+So a connected provider whose **last successful sync** is older than a
+per-provider threshold raises the SAME `integration:<id>` attention item, with
+its own copy. The derivation is pure (`lib/integrations/staleness.ts`) and the
+thresholds live beside each provider's other metadata in
+`lib/integrations/registry.ts` as `staleAfterDays` (null = exempt: a manual
+archive import has no cadence to be late against, a `planned` provider has no
+connection, and the calendar feed is outbound). It measures the **sync**, not the
+data: every polled provider records an `ok=1` event for each successful poll
+including a quiet one (`isQuietSync`), so a week between weigh-ins or a rest week
+is not staleness — which is what makes a day threshold safe to state at all.
+
+Three deliberate non-firings: an exempt provider; a provider already carrying a
+failing/needs-reauth signal (it is reported ONCE — the reauth item names the
+cause, and a staleness line naming the symptom underneath it would be noise); and
+a connection that has never synced successfully (the copy is "no data since
+&lt;date&gt;", which needs a date, and firing there would flag every
+freshly-created connection).
+
+It reaches the surfaces the same way the expired-Health-Connect signal (#607)
+does — as a synthetic issue folded into `getImportIssues`, carrying the shared
+`STALE_SYNC_EVENT_ID` sentinel — so the profile-menu badge, the Data → Review
+Issues list, the dashboard hero, the Upcoming page and the morning digest all
+read one list and cannot disagree about which sources are broken. Because the
+sentinel is shared across providers it is **not unique per row**: any list
+rendering these keys on `(provider, id)`. The signal is self-clearing: one healthy
+sync and the derivation stops firing, with no lifecycle of its own.
+
+The copy is deliberately distinct from the reauth wording. A revoked grant needs
+the user's consent again, so "Reconnect" is correct; a stale connection may be
+perfectly authorized and simply not delivering, so the item states the
+observation ("&lt;Provider&gt; sync has stopped · No data since &lt;date&gt;")
+and asks the user to check, rather than asserting a cause it has no evidence for.
+The Data → Review row makes the same distinction — "sync has stopped" instead of
+"sync failed", which would claim a failure that never happened.

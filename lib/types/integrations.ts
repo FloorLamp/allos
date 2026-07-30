@@ -41,6 +41,22 @@ export interface IntegrationDef {
   blurb: string;
   dataTypes: string[];
   docsUrl?: string;
+  // How many whole days a CONNECTED provider may go without a successful sync before
+  // it is treated as silently stopped (#1685). The transient-vs-definitive classifier
+  // (lib/integrations/auth-failure.ts, #326) deliberately keeps a 429/5xx/timeout from
+  // tearing down a healthy connection, and the failing-provider detector only fires
+  // when the provider's LATEST event is a failure — neither covers a connection that
+  // records nothing at all (a phone exporter that stopped pushing, a refresh that
+  // never gets far enough to log). This threshold is that cover: it belongs beside the
+  // provider's other metadata because the right number is a property of how the
+  // provider delivers, not of the detector.
+  //
+  // NULL = exempt, and exemption is a statement about the provider: a manual archive
+  // import has no cadence to be late against, and a planned/outbound entry never syncs
+  // inbound at all. Read ONLY through syncStalenessThreshold (lib/integrations/
+  // staleness.ts) so the badge, the attention item, and the digest line share one
+  // derivation (#221).
+  staleAfterDays?: number | null;
 }
 
 // Persisted connection state for a provider (integration_connections table).
