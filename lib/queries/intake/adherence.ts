@@ -1376,6 +1376,7 @@ export function getOfferedIntakeForSlot(
   // other dueness surface reads (declared ∪ derived), so an offer can't disagree with
   // the page about whether a situational item applies today.
   const ctx = {
+    date,
     isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
     activeSituations: getEffectiveActiveSituations(profileId, date),
     predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),

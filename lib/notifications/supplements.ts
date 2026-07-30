@@ -32,7 +32,7 @@ import {
   indexTakenByDose,
 } from "../supplement-adherence";
 import {
-  isDueOn,
+  doseDueOn,
   isPostWorkoutReady,
   timeBucket,
 } from "../supplement-schedule";
@@ -131,6 +131,7 @@ function gatherWindowDoses(
   const isForToday = date === today(profileId);
   const nowMinutes = isForToday ? currentMinutesOfDay(profileId) : null;
   const ctx = {
+    date,
     isWorkoutDay: activitiesToday.length > 0,
     // Derived context (#1292/#1298) widens the active set for TODAY only (a surfacing
     // path); a past-day reminder scores against the declared set (the history resolver
@@ -171,7 +172,12 @@ function gatherWindowDoses(
   for (const dose of doses) {
     const supp = suppById.get(dose.item_id);
     if (!supp) continue;
-    if (!isDueOn(supp, ctx)) continue;
+    // The CALENDAR gate on the SEND path (#1602): a weekly med's reminder fires on its
+    // on-days only, and an out-of-window taper row stops reminding without being
+    // retired. This is the half that makes the whole feature safe to use — the item can
+    // stay `must` (reminders + missed-dose escalation intact) precisely because the
+    // machinery can now say "not today" instead of the user having to silence it.
+    if (!doseDueOn(supp, dose, ctx)) continue;
     if (
       doseSendSlot(
         supp.condition,
@@ -190,7 +196,8 @@ function gatherWindowDoses(
     const strip = doseStrip(
       since ? windowDates.filter((d) => d >= since) : windowDates,
       (d) =>
-        isDueOn(supp, {
+        doseDueOn(supp, dose, {
+          date: d,
           isWorkoutDay: workoutDays.has(d),
           activeSituations: situationsOn(d),
         }),

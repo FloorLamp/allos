@@ -28,8 +28,8 @@ import {
 } from "../sleep-regularity";
 import {
   countSituationalDue,
+  doseDueOn,
   heldItemsBy,
-  isDueOn,
 } from "../supplement-schedule";
 import {
   getActiveSituations,
@@ -205,7 +205,8 @@ export function gatherDigestInput(
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
     return doses
       .filter((d) =>
-        isDueOn(suppById.get(d.item_id)!, {
+        doseDueOn(suppById.get(d.item_id)!, d, {
+          date,
           isWorkoutDay,
           activeSituations: situationsOn(date),
           predictedWorkoutDay: null,
@@ -331,6 +332,7 @@ export function gatherDigestInput(
   // user isn't surprised by the extra due items.
   const effectiveSituations = getEffectiveActiveSituations(profileId, td);
   const situationalActiveCount = countSituationalDue(active, {
+    date: td,
     isWorkoutDay: false,
     activeSituations: effectiveSituations,
   });

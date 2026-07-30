@@ -30,7 +30,7 @@ import {
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { loadContextLabel } from "../lifts";
 import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
-import { isDueOn } from "../supplement-schedule";
+import { doseDueOn } from "../supplement-schedule";
 import { getIntakeDeltaLine } from "../intake-history";
 import { activityStreak, currentStreak } from "../streak";
 import {
@@ -111,7 +111,8 @@ function windowAdherence(
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
     const dueIds = doses
       .filter((dose) =>
-        isDueOn(suppById.get(dose.item_id)!, {
+        doseDueOn(suppById.get(dose.item_id)!, dose, {
+          date: d,
           isWorkoutDay,
           activeSituations: situationsOn(d),
         })

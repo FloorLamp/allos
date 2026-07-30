@@ -194,7 +194,7 @@ import {
   indexTakenByDose,
   stripWithoutTrailingPending,
 } from "./supplement-adherence";
-import { isDueOn, timeBucket } from "./supplement-schedule";
+import { doseDueOn, timeBucket } from "./supplement-schedule";
 
 // ---- #449: the unified coaching-findings collection -------------------------
 
@@ -1192,7 +1192,8 @@ export function buildAdherencePatternFindings(
       doseStrip(
         windowDates,
         (date) =>
-          isDueOn(supp, {
+          doseDueOn(supp, d, {
+            date,
             isWorkoutDay: workoutDays.has(date),
             activeSituations: situationsOn(date),
           }),

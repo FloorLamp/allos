@@ -4,7 +4,8 @@
 // the raw results to these helpers, so the cross-profile view is built without
 // any new cross-profile SQL and the logic stays unit-testable.
 
-import { isDueOn } from "./supplement-schedule";
+import { doseDueOn, type IntakeDayContext } from "./supplement-schedule";
+import type { DoseCadence, ItemCadence } from "./intake-cadence";
 import { goalBarClass, goalPct, isGoalLive } from "./goals";
 import type { Goal, Supplement } from "./types";
 import type { GoalProgress } from "./goal-progress";
@@ -27,12 +28,12 @@ export interface Adherence {
 // of and cannot drag an honest number down. It comes for free — isDueOn short-
 // circuits on `may` — which is why the obligation must be in the Pick.
 export function supplementAdherenceToday(
-  doses: { id: number; item_id: number }[],
+  doses: (DoseCadence & { id: number; item_id: number })[],
   activeSuppById: Map<
     number,
-    Pick<Supplement, "condition" | "situation" | "obligation">
+    Pick<Supplement, "condition" | "situation" | "obligation"> & ItemCadence
   >,
-  ctx: { isWorkoutDay: boolean; activeSituations: Set<string> },
+  ctx: IntakeDayContext,
   takenDoseIds: Set<number>
 ): Adherence {
   let due = 0;
@@ -40,7 +41,11 @@ export function supplementAdherenceToday(
   for (const dose of doses) {
     const supp = activeSuppById.get(dose.item_id);
     if (!supp) continue;
-    if (!isDueOn(supp, ctx)) continue;
+    // doseDueOn, not isDueOn: an off-cadence day and an out-of-window dose row must
+    // leave the DENOMINATOR alone too (#1602). A weekly med counted as due every day
+    // would read 1/7 on a perfectly-followed week — the same dishonest fraction the
+    // `may` short-circuit exists to prevent, arriving through the calendar instead.
+    if (!doseDueOn(supp, dose, ctx)) continue;
     due++;
     if (takenDoseIds.has(dose.id)) taken++;
   }

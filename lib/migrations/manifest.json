@@ -123,5 +123,6 @@
   "122-records-safety-passport.ts": "9e0ba72173e8535d8b9e6c613910b027ded99387ea83b3f720cd19024e027e5a",
   "123-practice-target-unique.ts": "6de62238efed4ab8a39844646e269413d7657744ec369cc22b03c4b619737d1a",
   "124-intake-obligation.ts": "e5e127076182158b1f2fcc993a7a26dd1e8f9e79e824570dcfa36742cd0b9466",
-  "125-lesion-allergy-encounter-link.ts": "6de7506f174495c52f6ab75ec794797dbe4ff323f0896ff567801f894cfe246f"
+  "125-lesion-allergy-encounter-link.ts": "6de7506f174495c52f6ab75ec794797dbe4ff323f0896ff567801f894cfe246f",
+  "126-intake-cadence.ts": "648800f0369bdf0c46269ec8883c884e12690187f91145f0a5992fc45d248484"
 }

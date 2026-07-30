@@ -98,6 +98,7 @@ export default async function HouseholdPage() {
       getSupplementDoses(pid),
       activeSuppById,
       {
+        date: day,
         isWorkoutDay: getActivitiesByDate(pid, day).length > 0,
         activeSituations: new Set(getActiveSituations(pid)),
       },

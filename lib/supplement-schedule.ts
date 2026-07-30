@@ -9,6 +9,12 @@ import type {
   SupplementCondition,
   IntakeObligation,
 } from "./types";
+import {
+  cadenceOn,
+  doseOnDay,
+  type DoseCadence,
+  type ItemCadence,
+} from "./intake-cadence";
 
 export type TimeBucket =
   "Morning" | "Midday" | "Evening" | "Before sleep" | "Anytime";
@@ -137,16 +143,29 @@ export function heldBySituation(
 // A rest-day magnesium is not offered on a training day even though nothing is owed,
 // so both questions need the same condition evaluation — and it must be ONE
 // function, or the offer surfaces would slowly drift from the due surfaces.
+// The day-context every condition evaluation reads. `date` is the profile-LOCAL
+// calendar day (YYYY-MM-DD) the question is being asked about — not "now": every caller
+// already resolves it (to score a past day, to project today), and making it part of
+// the context is what lets the calendar cadence (#1602) be evaluated in the SAME gate
+// as the condition instead of as a second filter each surface has to remember.
+//
+// It is REQUIRED, deliberately. An optional date with a "no date ⇒ no cadence" fallback
+// would mean a caller that forgot it silently reverts a weekly methotrexate to nagging
+// every day — the exact harm #1602 exists to end, and invisible in review. Required
+// makes every such omission a compile error instead.
+export interface IntakeDayContext {
+  date: string;
+  isWorkoutDay: boolean;
+  activeSituations: Set<string>;
+  predictedWorkoutDay?: boolean | null;
+  postWorkoutReady?: boolean;
+}
+
 export function conditionAppliesOn(
   supp: Pick<Supplement, "condition" | "situation"> & {
     pause_situation?: string | null;
   },
-  ctx: {
-    isWorkoutDay: boolean;
-    activeSituations: Set<string>;
-    predictedWorkoutDay?: boolean | null;
-    postWorkoutReady?: boolean;
-  }
+  ctx: IntakeDayContext
 ): boolean {
   // Held BEATS due (issue #1296): a situational hold suppresses the item on every
   // surfacing path before any condition is evaluated — including a `daily` med and a
@@ -175,11 +194,12 @@ export function conditionAppliesOn(
 }
 
 export function isDueOn(
-  supp: Pick<Supplement, "condition" | "situation"> & {
-    obligation?: IntakeObligation;
-    pause_situation?: string | null;
-  },
-  ctx: Parameters<typeof conditionAppliesOn>[1]
+  supp: Pick<Supplement, "condition" | "situation"> &
+    ItemCadence & {
+      obligation?: IntakeObligation;
+      pause_situation?: string | null;
+    },
+  ctx: IntakeDayContext
 ): boolean {
   // A `may` item has NO DUENESS at all (#1505). This is the single short-circuit that
   // used to be `as_needed`, widened to the obligation level that absorbed it: an item
@@ -187,7 +207,28 @@ export function isDueOn(
   // in a fraction, and cannot be reminded. Its slot survives as an ACCESS HINT — read
   // by isOfferedOn / slotHintCoversNow and the offer surfaces, never by this one.
   if (supp.obligation === "may") return false;
+  // The CALENDAR gate (#1602), ANDed with the condition gate. Order is irrelevant to
+  // the result and deliberate for reading: obligation first (is anything owed at all?),
+  // then the calendar (is today one of this item's days?), then the day's context (is
+  // it the right kind of day?). A cadence can only ever remove days from a schedule the
+  // user already declared — it never creates dueness, which is why it is safe to AND it
+  // in here rather than to give it its own surface-by-surface filter.
+  if (!cadenceOn(supp, ctx.date)) return false;
   return conditionAppliesOn(supp, ctx);
+}
+
+// Whether ONE DOSE ROW of a due item lands on this day — the item's dueness ANDed with
+// the row's own weekday subset and validity window (#1602). Every surface that iterates
+// dose rows (Upcoming, the digest, reminders, adherence denominators, the recap) calls
+// THIS rather than isDueOn + a local dose filter, so an alternating-amount pair and a
+// taper window can never mean one thing on the page and another in a reminder (#221).
+export function doseDueOn(
+  supp: Parameters<typeof isDueOn>[0],
+  dose: DoseCadence,
+  ctx: IntakeDayContext
+): boolean {
+  if (!isDueOn(supp, ctx)) return false;
+  return doseOnDay(dose, ctx.date);
 }
 
 // ---- Slot hints (issue #1505) ---------------------------------------------
@@ -231,12 +272,21 @@ export function slotHintCoversNow(
 //
 // "Offered" is NOT "due": nothing here creates an obligation, a miss, or a send. It
 // only answers whether the item is worth putting one tap away right now.
+//
+// CADENCE IS DELIBERATELY NOT A GATE HERE (#1602). On a `may` item nothing is owed on
+// any day, so a calendar rule has nothing to subtract from — and the guaranteed-access
+// rule says a `may` item is ALWAYS one tap away. Hiding a weekly `may` item on six days
+// out of seven would make an accepted demotion indistinguishable from a deletion, which
+// is the exact failure the collapse-don't-filter rule exists to prevent. So on a `may`
+// item the cadence fields are an offer HINT only: they still label the row ("Mondays")
+// via cadenceLabel, and they never remove it. The condition gate stays, because a hold
+// or a rest-day condition is a statement about TODAY rather than about a calendar.
 export function isOfferedOn(
   supp: Pick<Supplement, "condition" | "situation"> & {
     obligation?: IntakeObligation;
     pause_situation?: string | null;
   },
-  ctx: Parameters<typeof conditionAppliesOn>[1]
+  ctx: IntakeDayContext
 ): boolean {
   if (supp.obligation !== "may") return false;
   return conditionAppliesOn(supp, ctx);

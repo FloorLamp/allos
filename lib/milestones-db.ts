@@ -15,7 +15,7 @@ import {
   getTakenDoseIds,
   getActivitiesByDate,
 } from "./queries";
-import { isDueOn } from "./supplement-schedule";
+import { doseDueOn } from "./supplement-schedule";
 import { activityStreak } from "./streak";
 import {
   detectMilestones,
@@ -73,7 +73,8 @@ function adherenceDays(profileId: number, td: string): AdherenceDay[] {
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
     const dueIds = doses
       .filter((d) =>
-        isDueOn(suppById.get(d.item_id)!, {
+        doseDueOn(suppById.get(d.item_id)!, d, {
+          date,
           isWorkoutDay,
           activeSituations: situations,
         })
