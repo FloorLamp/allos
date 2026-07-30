@@ -4,6 +4,20 @@
       "date": "2026-07-30",
       "entries": [
         {
+          "pr": 1715,
+          "kind": "fix",
+          "title": "Broken syncs finally speak up — and food taps count right",
+          "body": "A revoked or persistently failing integration used to sit quietly on-device while your data went stale. The morning digest now names each broken source with a link to fix it, and a connection that simply stopped syncing — recording nothing at all — raises its own attention item with per-provider staleness thresholds. Also fixed: tapping a Telegram food nudge outside its original window now counts toward the right meal, so the button's (n) tally matches what you actually logged.",
+          "issues": [1685, 1704]
+        },
+        {
+          "pr": 1711,
+          "kind": "fix",
+          "title": "Journal search now searches your whole history",
+          "body": "Searching or filtering the training log used to look only at the days already loaded on screen — a matching workout from months ago simply didn't exist as far as the page knew. Search and every filter now query your entire ledger, paging over the matches themselves, with a new source filter and a fault count that reflects your whole history. An unfiltered journal loads exactly as fast as before.",
+          "issues": [1634]
+        },
+        {
           "pr": 1707,
           "kind": "fix",
           "title": "Cycle tracking stops lying to you — in both directions",
