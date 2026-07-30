@@ -5,40 +5,21 @@
 // online, it just can't persist a queue. The pure intent shapes + decision logic
 // live in lib/offline/queue.ts (unit-tested); this file is the browser-only glue and
 // is exercised by the Playwright e2e (offline-queue.spec.ts), not the pure suite.
+//
+// The database itself is opened through lib/offline/idb.ts, which is shared with the
+// form-draft store (#1699) — one database, one version, one upgrade path. A QUEUED
+// WRITE and a DRAFT are different things (see lib/offline/drafts.ts for the
+// boundary); they cohabit only so there is a single PHI perimeter on the device.
 
 import type { QueuedIntent, RejectedEntry } from "@/lib/offline/queue";
-
-const DB_NAME = "allos-offline";
-// v2 adds the REJECTED dead-letter store (issue #475): a rejected/undeliverable
-// intent leaves the live queue but is preserved here for the user to review + re-enter.
-const DB_VERSION = 2;
-const STORE = "intents";
-const REJECTED = "rejected";
-
-function hasIndexedDB(): boolean {
-  return typeof indexedDB !== "undefined";
-}
-
-// Open (creating on first use) the queue database. Rejects are swallowed by callers
-// so a blocked/failed open never breaks a submit.
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: "key" });
-      }
-      // Keyed by the wrapped intent's idempotency key so re-parking the same key is
-      // an overwrite, not a duplicate.
-      if (!db.objectStoreNames.contains(REJECTED)) {
-        db.createObjectStore(REJECTED, { keyPath: "intent.key" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+import {
+  INTENTS_STORE as STORE,
+  REJECTED_STORE as REJECTED,
+  DRAFTS_STORE,
+  hasIndexedDB,
+  openOfflineDb as openDb,
+  txDone as done,
+} from "@/lib/offline/idb";
 
 function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(STORE, mode).objectStore(STORE);
@@ -46,14 +27,6 @@ function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
 
 function rejectedTx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(REJECTED, mode).objectStore(REJECTED);
-}
-
-function done(t: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error);
-    t.onabort = () => reject(t.error);
-  });
 }
 
 // Append an intent to the queue. Best-effort: resolves even if IndexedDB is
@@ -212,16 +185,22 @@ export async function countIntents(): Promise<number> {
   }
 }
 
-// Drop the entire queue AND the rejected dead-letter store. Called on logout /
-// profile switch so one login's queued PHI never lingers for the next (issue #28:
-// clear the queue on logout; #475: the parked rejected entries hold the same PHI).
+// Drop the entire queue, the rejected dead-letter store AND the form drafts. Called
+// on logout so one login's device-local PHI never lingers for the next (issue #28:
+// clear the queue on logout; #475: the parked rejected entries hold the same PHI;
+// #1699: so do half-typed drafts).
 export async function clearQueue(): Promise<void> {
   if (!hasIndexedDB()) return;
   try {
     const db = await openDb();
-    const t = db.transaction([STORE, REJECTED], "readwrite");
+    const t = db.transaction([STORE, REJECTED, DRAFTS_STORE], "readwrite");
     t.objectStore(STORE).clear();
     t.objectStore(REJECTED).clear();
+    // #1699: half-typed form drafts are PHI at rest too, and logout is the one
+    // moment every device-local store must go. Clearing them HERE (rather than
+    // asking each logout button to remember a second call) keeps the wipe
+    // complete by construction.
+    t.objectStore(DRAFTS_STORE).clear();
     await done(t);
     db.close();
   } catch {
