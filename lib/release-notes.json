@@ -4,6 +4,20 @@
       "date": "2026-07-30",
       "entries": [
         {
+          "pr": 1730,
+          "kind": "fix",
+          "title": "Imaging saves show up reliably — and failures say so",
+          "body": "Adding an imaging study could occasionally leave the list unchanged even though the save landed, because the page's refresh path pointed at a redirect stub. Saves now repaint the imaging list directly, and a refused submission shows its error instead of silently rendering nothing.",
+          "issues": []
+        },
+        {
+          "pr": 1729,
+          "kind": "fix",
+          "title": "Biomarkers on your phone: results first",
+          "body": "On a phone, the Biomarkers page used to open with nearly 1,900 pixels of summary cards before the first actual panel of results. The panel index now leads — visible on the first screen — with the trajectory warning keeping its headline up top and folding its details, while the starred lens and bio-age cards follow whole below. Desktop is unchanged.",
+          "issues": [1647]
+        },
+        {
           "pr": 1715,
           "kind": "fix",
           "title": "Broken syncs finally speak up — and food taps count right",
