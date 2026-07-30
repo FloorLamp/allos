@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IconFlame } from "@tabler/icons-react";
+import { IconChevronRight, IconFlame } from "@tabler/icons-react";
 import {
   adherenceSummary,
   adherenceSummaryVisibility,
@@ -100,7 +100,7 @@ export function SharedSupplyChip({
   const across = pool.memberCount > 1 ? " across everyone" : "";
   const days =
     pool.daysLeft == null
-      ? "shared bottle"
+      ? null
       : pool.daysLeft <= 0
         ? `out of supply${across}`
         : `≈${pool.daysLeft} day${pool.daysLeft === 1 ? "" : "s"}${across}`;
@@ -108,16 +108,24 @@ export function SharedSupplyChip({
     <Link
       href={SUPPLIES_HREF}
       data-testid="shared-supply-chip"
-      className={`badge whitespace-nowrap ${
+      className={`inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-medium underline-offset-2 hover:underline ${
         pool.low
-          ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-          : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
+          ? "text-amber-700 dark:text-amber-300"
+          : "text-brand-700 dark:text-brand-400"
       }`}
       title={`Shared supply — ${pool.name}, drawn from by ${pool.memberCount} tracked item${
         pool.memberCount === 1 ? "" : "s"
       }`}
     >
-      {pool.low ? "Low · " : ""}Shared · {days}
+      <span>
+        {pool.low ? "Low · " : ""}Shared bottle
+        {days ? ` · ${days}` : ""}
+      </span>
+      <IconChevronRight
+        className="h-3.5 w-3.5"
+        stroke={1.75}
+        aria-hidden="true"
+      />
     </Link>
   );
 }

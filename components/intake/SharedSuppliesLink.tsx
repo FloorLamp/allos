@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IconArchive } from "@tabler/icons-react";
+import { IconArchive, IconChevronRight } from "@tabler/icons-react";
 import { sharedSuppliesLinkLabel } from "@/lib/refill";
 import { SUPPLIES_HREF } from "@/lib/hrefs";
 
@@ -9,7 +9,7 @@ import { SUPPLIES_HREF } from "@/lib/hrefs";
 // and #1522 moved it off the sidebar onto its consumers, the way /equipment has
 // always been reached (Training's header, the activity form's picker). This is that
 // door, rendered by every consumer surface: the Medications header, the Nutrition →
-// Supplements header, and the Household header.
+// Supplements sidebar, and the Household header.
 //
 // STABLE, not conditional. The row it replaced was `requiresMultiProfile`, so it
 // appeared unannounced the moment a second profile was added and there was no
@@ -44,7 +44,13 @@ export default function SharedSuppliesLink({
       className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm font-medium text-brand-600 hover:underline dark:text-brand-400 ${className}`}
     >
       <IconArchive aria-hidden className="h-4 w-4 shrink-0" stroke={1.75} />
-      {label} →
+      {label}
+      <IconChevronRight
+        aria-hidden
+        className="h-4 w-4 shrink-0"
+        data-testid="shared-supplies-chevron"
+        stroke={1.75}
+      />
     </Link>
   );
 }

@@ -124,6 +124,7 @@ import {
 } from "./supplement-actions";
 import { getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
+import { IconChevronDown } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
 
@@ -664,9 +665,10 @@ export default async function SupplementsTab() {
       )}
 
       {notScheduled.length > 0 && (
-        <details data-testid="not-scheduled-section">
-          <summary className="cursor-pointer section-label">
-            Not scheduled today ({notScheduled.length})
+        <details data-testid="not-scheduled-section" className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750">
+            <span>More supplements ({notScheduled.length})</span>
+            <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
           </summary>
           <div className="mt-2 space-y-3">
             {notScheduled.map((item) => renderRow(item, false))}
@@ -768,15 +770,6 @@ export default async function SupplementsTab() {
   return (
     <SituationOptionsProvider options={situationOptionNames}>
       <div>
-        {/* The medicine-cabinet door (#1522). It lives in the TAB body, not in the
-          page header's `action` slot: that slot is `hidden md:block` on TabFirstPage
-          and is shared with the Food tab, so a header door would be desktop-only AND
-          would advertise shared bottles from a page about breakfast. One component,
-          both viewports. */}
-        <div className="mb-3 flex justify-end">
-          <SharedSuppliesLink count={cabinetCount} />
-        </div>
-
         {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
           the profile's own data, NOT a manual toggle — rendered distinctly and NON-
           toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
@@ -1021,9 +1014,6 @@ export default async function SupplementsTab() {
           pgxWarnings={pgxWarnings}
           coverage={safetyCoverage}
         />
-        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
-          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
-        ) : null}
 
         {supplementItems.length === 0 ? (
           <div
@@ -1052,12 +1042,15 @@ export default async function SupplementsTab() {
                 </section>
                 <section className="p-4">
                   <h2 className="mb-3 section-label">Manage</h2>
-                  <AddSupplementModal
-                    allSupplements={supplements}
-                    stackItems={stackItems}
-                    pgxVariants={pgxVariants}
-                    trainingRestricted={trainingRestricted}
-                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <AddSupplementModal
+                      allSupplements={supplements}
+                      stackItems={stackItems}
+                      pgxVariants={pgxVariants}
+                      trainingRestricted={trainingRestricted}
+                    />
+                    <SharedSuppliesLink count={cabinetCount} />
+                  </div>
                 </section>
               </div>
             </aside>
@@ -1107,10 +1100,18 @@ export default async function SupplementsTab() {
                     suggestions={suggestionPanel}
                   />
                 </section>
+                <section className="p-4">
+                  <h2 className="mb-3 section-label">Manage</h2>
+                  <SharedSuppliesLink count={cabinetCount} />
+                </section>
               </div>
             </aside>
           </div>
         )}
+
+        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
+          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
+        ) : null}
       </div>
     </SituationOptionsProvider>
   );

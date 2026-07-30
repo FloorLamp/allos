@@ -314,6 +314,8 @@ server, and freezes the run's clock. Specs import `test` and `expect` from
 Use stable test IDs and the settled interaction helpers in `e2e/helpers.ts`.
 Do not add `waitForTimeout`, `networkidle`, or an unmarked `.first()` on a shared
 surface. A test owns its fixture data and must not exact-count shared seed rows.
+Do not write redundant assertions or defensive assert checks for conditions
+already proven by types or prior control flow.
 See `docs/internals/e2e-hygiene.md`.
 
 ## Implementation conventions

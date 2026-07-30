@@ -30,9 +30,15 @@ import { parseQuantityOnHand } from "@/lib/refill";
 export interface SupplyResult {
   ok: boolean;
   error?: string;
+  supply?: {
+    id: number;
+    name: string;
+    strength: string | null;
+  } | null;
 }
 
-const ok = (): SupplyResult => ({ ok: true });
+const ok = (supply?: SupplyResult["supply"]): SupplyResult =>
+  supply === undefined ? { ok: true } : { ok: true, supply };
 const fail = (error: string): SupplyResult => ({ ok: false, error });
 
 function revalidateSupplies(): void {
@@ -156,7 +162,7 @@ export async function createPoolAction(
   const supplyId = createSharedSupply(f, seed);
   if (itemId && itemProfileId) linkItemToPool(itemProfileId, itemId, supplyId);
   revalidateSupplies();
-  return ok();
+  return ok({ id: supplyId, name: f.name, strength: f.strength });
 }
 
 // Edit a shared bottle: name/strength/form/threshold/notes plus the counter, which goes
@@ -218,11 +224,15 @@ export async function linkItemAction(
   if (!itemId || !supplyId) return fail("Couldn't find that item.");
   const profileId = await requireItemWriteAccess(itemId);
   if (!profileId) return fail("Couldn't find that item.");
-  if (!getSharedSupply(supplyId))
-    return fail("Couldn't find that shared bottle.");
+  const supply = getSharedSupply(supplyId);
+  if (!supply) return fail("Couldn't find that shared bottle.");
   linkItemToPool(profileId, itemId, supplyId);
   revalidateSupplies();
-  return ok();
+  return ok({
+    id: supply.id,
+    name: supply.name,
+    strength: supply.strength,
+  });
 }
 
 export async function unlinkItemAction(
@@ -234,5 +244,5 @@ export async function unlinkItemAction(
   if (!profileId) return fail("Couldn't find that item.");
   unlinkItemFromPool(profileId, itemId);
   revalidateSupplies();
-  return ok();
+  return ok(null);
 }

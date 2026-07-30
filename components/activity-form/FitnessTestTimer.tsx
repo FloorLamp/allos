@@ -197,7 +197,7 @@ export default function FitnessTestTimer({
           type="button"
           onClick={openTakeover}
           data-testid={`${base}-launch`}
-          className="btn-secondary flex w-full items-center justify-center gap-2 py-2.5 text-sm font-semibold"
+          className="btn-ghost flex w-full items-center justify-center gap-2 py-2.5 text-sm font-semibold"
         >
           <IconPlayerPlayFilled className="h-4 w-4" />
           {started
