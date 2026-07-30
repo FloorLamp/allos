@@ -194,6 +194,11 @@ export interface PersistAllergy {
   verification_status?: AllergyVerificationStatus | null;
   onset_date: string | null;
   external_id: string | null;
+  // Tier-1 visit link (#1526): the Encounter this AllergyIntolerance referenced
+  // (AllergyIntolerance.encounter in R4/R5). The persist layer resolves it to the local
+  // encounter row and stamps encounter_id, exactly as it does for conditions and
+  // procedures. Null/absent on the AI and CDA paths (neither carries the reference).
+  encounter_external_id?: string | null;
 }
 
 export interface PersistCondition {
@@ -1130,6 +1135,7 @@ export function healthRecordToPersistInput(
       status: a.status,
       onset_date: a.onset_date,
       external_id: a.external_id,
+      encounter_external_id: a.encounter_external_id ?? null,
     })),
     conditions: (parsed.conditions ?? []).map((c) => ({
       name: c.name,

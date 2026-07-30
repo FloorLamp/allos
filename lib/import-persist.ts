@@ -193,6 +193,11 @@ export function clearImportedDocumentRows(
     "immunizations",
     "optical_prescriptions",
     "dental_procedures",
+    // #1526: skin_lesions + allergies carry encounter_id too now (migration 125). A
+    // MANUAL lesion or allergy tier-2 linked to a visit THIS document produced has the
+    // same dangling-FK hazard as its siblings, so it must be freed here as well.
+    "skin_lesions",
+    "allergies",
   ]) {
     db.prepare(
       `UPDATE ${table} SET encounter_id = NULL
@@ -306,6 +311,9 @@ export function moveImportedDocumentRows(
       "immunizations",
       "optical_prescriptions",
       "dental_procedures",
+      // #1526: same same-profile invariant for the two newest link columns.
+      "skin_lesions",
+      "allergies",
     ]) {
       db.prepare(
         `UPDATE ${table} SET encounter_id = NULL
@@ -1274,6 +1282,16 @@ function insertImportRows(
       docSource,
       "immunizations",
       input.immunizations,
+      resolveEnc
+    );
+    // #1526: an allergy documented at a visit the same bundle carries
+    // (AllergyIntolerance.encounter) gets the same deterministic tier-1 link, so the
+    // attribution arrives with the import instead of waiting for a manual pick.
+    linkRowsByExternalId(
+      profileId,
+      docSource,
+      "allergies",
+      input.allergies,
       resolveEnc
     );
   }
