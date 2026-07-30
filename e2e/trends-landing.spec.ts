@@ -1,6 +1,5 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { censusRevealed } from "./trends-chrome";
 
 // The Trends LANDING SURFACE (#1644): the Body tab merged into Overview.
 //
@@ -39,7 +38,6 @@ test("the landing surface reads digest → starred grid → body census", async 
   page,
 }) => {
   await page.goto("/trends");
-  await censusRevealed(page, "body", "trends-body");
 
   const order = (await landingOrder(page)).filter(Boolean);
   // The two anchored parts, in reading order, with the census last.
@@ -64,7 +62,6 @@ test("the census is a section of this surface, reachable by its anchor", async (
   page,
 }) => {
   await page.goto("/trends#body");
-  await censusRevealed(page, "body", "trends-body");
 
   // The anchor every retired `?tab=body` link was rewritten to lands ON the census
   // — the deep-link contract the whole href sweep depends on.
@@ -76,7 +73,6 @@ test("the census is a section of this surface, reachable by its anchor", async (
 
 test("the curated grid stays the only curated area", async ({ page }) => {
   await page.goto("/trends");
-  await censusRevealed(page, "body", "trends-body");
 
   // Curation lives in the grid: its tiles are saved rows, and the picker that adds
   // to them is the grid's, not the census's.
@@ -109,7 +105,6 @@ test("the census streams below the head instead of blocking it", async ({
 
   // In the browser the streamed census settles into real, readable content.
   await page.goto("/trends");
-  await censusRevealed(page, "body", "trends-body");
   await expect(page.getByTestId("trends-section-loading")).toHaveCount(0);
 });
 
@@ -122,7 +117,6 @@ test("a stale ?tab=body bookmark lands on this surface, unredirected (#1635)", a
     await page.goto(`/trends${query}`);
     await expect(page).toHaveURL(new RegExp(`\\/trends\\${query}$`));
     await expect(page.getByTestId("trends-overview")).toBeVisible();
-    await censusRevealed(page, "body", "trends-body");
   }
 });
 
@@ -132,7 +126,6 @@ test("the shared window drives the head and the census together", async ({
   // One range control at the surface's head, not one per part: a window change
   // re-renders both halves.
   await page.goto("/trends?range=all");
-  await censusRevealed(page, "body", "trends-body");
   await expect(page.getByTestId("saved-tiles")).toBeVisible();
   await expect(page.getByTestId("trends-context-label")).toHaveText("All");
 });

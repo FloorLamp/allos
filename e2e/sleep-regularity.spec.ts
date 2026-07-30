@@ -1,5 +1,4 @@
 import { test, expect } from "./fixtures";
-import { censusRevealed } from "./trends-chrome";
 // Issue #160 / #1066: Trends → Body charts nightly sleep duration and keeps the SRI
 // as supporting context once enough nights of sleep sessions exist; the detailed
 // regularity and stage analysis lives on the dedicated /sleep page (#1066).
@@ -14,9 +13,6 @@ test("Trends → Body renders the sleep chart with the SRI (#160/#1066)", async 
   page,
 }) => {
   await page.goto("/trends");
-  // The body census streams onto the landing surface (#1644): wait for it to be
-  // revealed INTO its section before querying its content.
-  await censusRevealed(page, "body", "trends-body");
   await expect(page.getByTestId("trends-section-body")).toBeVisible();
 
   const main = page.getByRole("main");

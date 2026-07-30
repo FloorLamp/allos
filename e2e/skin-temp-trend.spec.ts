@@ -1,6 +1,5 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { censusRevealed } from "./trends-chrome";
 import { E2E_LOGIN_SKIN_TEMP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Skin temperature variation on Trends → Body. Health Connect delivers ONE nightly
@@ -24,9 +23,6 @@ test.describe("Skin temperature variation trend", () => {
     });
     try {
       await member.goto("/trends?view=all");
-      // The body census streams onto the landing surface (#1644): wait for it to be
-      // revealed INTO its section before querying its content.
-      await censusRevealed(member, "body", "trends-body");
       await expect(member.getByTestId("trends-section-body")).toBeVisible();
 
       const card = member.getByTestId("vitals-skin-temp");
@@ -47,9 +43,6 @@ test.describe("Skin temperature variation trend", () => {
       // invisible on a phone. Assert the tile too, or the responsive pair can drift.
       await member.setViewportSize({ width: 390, height: 844 });
       await member.goto("/trends?view=tiles");
-      // The body census streams onto the landing surface (#1644): wait for it to be
-      // revealed INTO its section before querying its content.
-      await censusRevealed(member, "body", "trends-body");
       const tile = member.getByTestId("body-tile-skin-temp");
       await expect(tile).toBeVisible();
       await expect(tile.getByText("Skin Temp", { exact: true })).toBeVisible();
@@ -67,9 +60,6 @@ test.describe("Skin temperature variation trend", () => {
     // other fixture writes that metric — so the card is data-gated off while the rest
     // of the Body tab still renders.
     await page.goto("/trends?view=all");
-    // The body census streams onto the landing surface (#1644): wait for it to be
-    // revealed INTO its section before querying its content.
-    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("trends-section-body")).toBeVisible();
     await expect(
       page.getByRole("main").getByTestId("vitals-skin-temp")

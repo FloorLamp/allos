@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { censusRevealed, expandTrendsContext } from "./trends-chrome";
+import { expandTrendsContext } from "./trends-chrome";
 import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -35,7 +35,6 @@ async function openBody(page: Page, query = ""): Promise<void> {
   // reaching the section's chip means opening the bar first (a no-op at desktop
   // width).
   await expandTrendsContext(page);
-  await censusRevealed(page, "body", "trends-body");
 }
 
 test.describe("one census, one ordered stack (#1486)", () => {

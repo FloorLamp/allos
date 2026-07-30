@@ -1,5 +1,4 @@
 import { test, expect } from "./fixtures";
-import { censusRevealed } from "./trends-chrome";
 import Database from "better-sqlite3";
 import { restoreEditLockRow } from "./edit-lock-fixture";
 import { workerDbPath } from "./worker-env";
@@ -34,9 +33,6 @@ test("edit-locked imported body metric shows the badge and can resume sync (#659
   page,
 }) => {
   await page.goto("/trends");
-  // The body census streams onto the landing surface (#1644): wait for it to be
-  // revealed INTO its section before querying its content.
-  await censusRevealed(page, "body", "trends-body");
 
   // The badge states what the lock does, via the shared EditLockNotice.
   const notice = page.getByTestId("edit-lock-notice");

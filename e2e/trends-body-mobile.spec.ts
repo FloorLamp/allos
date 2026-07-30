@@ -3,7 +3,7 @@ import { type Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import { loginAs } from "./nav";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
-import { censusRevealed, expandTrendsContext } from "./trends-chrome";
+import { expandTrendsContext } from "./trends-chrome";
 import { frozenNow } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
@@ -36,9 +36,6 @@ async function openBodyTab(
 ): Promise<void> {
   const q = opts.view ? `/trends?view=${opts.view}` : "/trends";
   await page.goto(q);
-  // #1644: Body is a streamed section of the one hub page, not a tab — wait for
-  // its content to be revealed INTO that section before asserting on it.
-  await censusRevealed(page, "body", "trends-body");
 }
 
 test.describe("Trends → Body responsive views (#1067)", () => {
@@ -165,7 +162,6 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     await page.goto(
       `/trends?from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
     );
-    await censusRevealed(page, "body", "trends-body");
 
     await expect(page.getByTestId("body-tile-hr")).toContainText("88 bpm");
     const sleep = page.getByTestId("body-tile-sleep");
@@ -209,7 +205,6 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     await page.goto(
       `/trends?view=tiles&from=${TRENDS_BODY_OLD_DAY}&to=${TRENDS_BODY_OLD_DAY}`
     );
-    await censusRevealed(page, "body", "trends-body");
 
     const empty = page.getByTestId("body-tile-weight");
     const populated = page.getByTestId("body-tile-sleep");
@@ -409,7 +404,6 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     // Deep-link straight to the desktop HR chart — the anchor resolves to the card,
     // inside the census that streams onto the landing surface (#1644).
     await page.goto("/trends?view=all#hr");
-    await censusRevealed(page, "body", "trends-body");
     // The always-visible tab strip names the surface without expanding the range
     // controls and moving the page under the anchor.
     await expect(
@@ -423,7 +417,6 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     // and the on-load alignment this pins would never run. Leave the hub first.
     await page.goto("/timeline");
     await page.goto("/trends?view=all#sleep");
-    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("sleep-summary-tile")).toBeInViewport();
 
     await page.context().close();

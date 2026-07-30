@@ -2,7 +2,6 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { followLink, settledClick } from "./helpers";
-import { censusRevealed } from "./trends-chrome";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_PIN } from "./fixture-logins";
 
 // ★-PINNED Body card order (#1643) — the USER's half of the Trends → Body sequence.
@@ -54,7 +53,6 @@ async function openBodyTiles(page: Page): Promise<void> {
   await page.goto("/trends?view=tiles");
   // The census streams in (#1644) — wait for its section to hold it before the
   // unscoped tile queries below.
-  await censusRevealed(page, "body", "body-metric-tiles");
 }
 
 // Toggle the steps metric's ★ through the affordance a Body card actually offers:
@@ -144,8 +142,6 @@ test.describe("★-pinned Body card order (#1643)", () => {
       // the honest way to assert "Body follows the saved order" without pointer
       // physics standing in for the claim.
       await page.goto("/trends");
-      // The census streams (#1644): wait for its reveal before the card queries.
-      await censusRevealed(page, "body", "trends-body");
       await expect(page.getByTestId("saved-tiles")).toBeVisible();
       expect((await overviewTileKeys(page))[0]).toBe("metric:steps");
       await page

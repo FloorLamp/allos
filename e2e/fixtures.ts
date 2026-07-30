@@ -8,6 +8,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { installStreamRevealGuard } from "./helpers";
 import {
   ADMIN_PASSWORD,
   ADMIN_USERNAME,
@@ -240,6 +241,12 @@ export const test = base.extend<{}, WorkerFixtures>({
     ): Promise<BrowserContext> => {
       const context = await original(...args);
       await context.clock.setSystemTime(at);
+      // Every page from every context gets the streamed-reveal guard (#1644):
+      // full-document navigations wait out React's Suspense staging window, so
+      // no spec can catch a census testid in its two-copies-in-the-DOM state.
+      // Same rationale as the clock patch above for living HERE: half the suite
+      // builds its own contexts, and this hook covers them all.
+      context.on("page", installStreamRevealGuard);
       return context;
     };
     (browser as { newContext: Browser["newContext"] }).newContext = patched;

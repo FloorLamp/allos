@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { censusRevealed } from "./trends-chrome";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_RANK_PEDS,
@@ -64,7 +63,6 @@ async function openBodyStack(page: Page): Promise<void> {
   await page.goto("/trends?view=all");
   // The census streams in (#1644): wait for its section to hold it before the
   // unscoped card queries below.
-  await censusRevealed(page, "body", "trends-body");
 }
 
 test.describe("Trends → Body ranked default card order (#1490)", () => {
@@ -101,8 +99,6 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
     // The separate percentile tiles occupy the same ranked `growth` slot rather
     // than being appended independently by the tile renderer.
     await page.goto("/trends?view=tiles");
-    // The census streams (#1644): wait for its reveal before the card queries.
-    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("body-tile-growth-height")).toBeVisible();
     expect(
       await domOrder(page, ["body-tile-growth-height", "body-tile-height"])
@@ -130,8 +126,6 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
 
     // The tile grid reads the SAME order, so the two view modes can't disagree.
     await page.goto("/trends?view=tiles");
-    // The census streams (#1644): wait for its reveal before the card queries.
-    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
     expect(
       await domOrder(page, [
@@ -194,7 +188,6 @@ test.describe("Trends → Body ranked default card order (#1490)", () => {
 
     // The census streams (#1644): wait for its reveal before the card queries.
 
-    await censusRevealed(page, "body", "trends-body");
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
     expect(
       await domOrder(page, [

@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { expectNoClippedContent, followLink } from "./helpers";
 import { loginAs } from "./nav";
-import { censusRevealed, expandTrendsContext } from "./trends-chrome";
+import { expandTrendsContext } from "./trends-chrome";
 import {
   E2E_LOGIN_VITALS_DAY,
   E2E_MEMBER_PASSWORD,
@@ -193,7 +193,6 @@ test.describe("the Today strip (A)", () => {
       // before any chart or logging affordance (#1486).
       await member.goto("/trends");
 
-      await censusRevealed(member, "body", "trends-body");
       const strip = member.getByTestId("vitals-today-strip");
       await expect(strip).toBeVisible();
 

@@ -287,34 +287,35 @@ assertions still shipped a defect because the OUTPUT shape was pinned as a
 constant. Same remedy in both: test the seam against a realistic fixture, and
 choose the assertion that changes when the answer changes.
 
-## Streamed sections: assert INSIDE the section (#1644)
+## Streamed sections: the harness settles the reveal (#1644)
 
-The Trends Overview surface streams its body census in below a fast head (digest +
-starred grid), behind a `<Suspense>` boundary. That changes what a locator can see
-for the first few hundred milliseconds after a navigation:
+The Trends Overview surface streams its body census below a fast head (digest +
+starred grid), behind a `<Suspense>` boundary. In the streamed HTML the census
+arrives in a `<div hidden id="S:n">` staging node at the end of `<body>`, and
+React moves it into its section on a schedule of its own — a rAF, or a coalescing
+timeout that a loaded CI shard can stretch to SECONDS past the load event. During
+that window a census testid matches TWO nodes (the staged copy, then mid-move
+both), which strict mode reports as a duplicated-element bug; five spec classes
+hit it in one week, per-spec waits kept losing to their own 5s defaults, and every
+future census-touching spec inherited the trap.
 
-- The streamed census first arrives in a `<div hidden id="S:n">` staging node at
-  the end of `<body>`; React then moves it into its section. React BATCHES those
-  reveals (about a frame, longer on a loaded machine), so the window is real.
-- During it, a bare `page.getByTestId("body-metric-tiles")` can resolve to the
-  STAGED copy (hidden — an assertion that waits forever on visibility) or, mid-move,
-  to BOTH copies — a strict-mode violation, which reads like a duplicated testid
-  bug rather than the timing it is.
+So the wait lives in the HARNESS, not in specs: `installStreamRevealGuard`
+(e2e/helpers.ts) wraps `goto`/`reload`/`goBack`/`goForward` so a full-document
+navigation returns only once no staging node remains, under a generous named
+ceiling. The `browser` fixture installs it on every page of every context — the
+same choke point as the frozen-clock patch, covering the built-in fixtures,
+`loginAs`, and every hand-built context. Client-side navigations render in place
+and never stage, so they need nothing.
 
-The rule, and it is cheap: **scope census assertions to their section.** The
-`<section id="body" data-testid="trends-section-body">` element is part of the
-page shell, never of the staged copy, so anything scoped to it is immune AND waits
-for the reveal by construction:
+What this means when writing a spec:
 
-```ts
-// e2e/trends-chrome.ts — navigate, call once, then assert freely.
-await censusRevealed(page, "body", "trends-body");
-await expect(page.getByTestId("body-metric-tiles")).toBeVisible(); // now unambiguous
-```
-
-`censusRevealed` is that one line, named. Do NOT reach for `waitForTimeout` or a
-`networkidle` here: the reveal is a DOM state with a deterministic signal, which is
-exactly the case the settled helpers exist for.
+- Assert census content directly after a navigation — no per-spec reveal wait
+  exists, and none should be reintroduced.
+- The rule generalizes: any FUTURE streamed boundary on any page is covered by
+  the same guard, because it keys on React's staging nodes, not on Trends ids.
+- Do NOT reach for `waitForTimeout` or `networkidle` if a streamed surface
+  seems racy — if the guard's ceiling is ever exceeded, its error names the
+  stuck page; that is a finding, not a flake to sleep past.
 
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 

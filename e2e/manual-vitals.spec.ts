@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { hydratedClick } from "./helpers";
-import { censusRevealed } from "./trends-chrome";
 
 // #16: manual vitals entry — the measures that previously could ONLY arrive via the
 // Health Connect exporter (blood pressure, glucose, SpO2, temperature, sleep, HRV)
@@ -14,9 +13,6 @@ import { censusRevealed } from "./trends-chrome";
 // overlay, covered by e2e/trends-body-merge.mobile.spec.ts.)
 async function openMeasurementsForm(page: Page) {
   await page.goto("/trends");
-  // The body census streams onto the landing surface (#1644): wait for it to be
-  // revealed INTO its section before querying its content.
-  await censusRevealed(page, "body", "trends-body");
   await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
   const form = page.getByTestId("measurements-quick-add");
   await expect(form).toBeVisible();
@@ -43,9 +39,6 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   // The reading surfaces in the merged Body tab's VITALS section (#1076/#1486),
   // widened so today's entry is in range regardless of the default window.
   await page.goto("/trends?view=all&from=2000-01-01&to=2100-01-01");
-  // The body census streams onto the landing surface (#1644): wait for it to be
-  // revealed INTO its section before querying its content.
-  await censusRevealed(page, "body", "trends-body");
   const body = page.getByTestId("trends-body");
   await expect(body.getByTestId("vitals-systolic")).toBeVisible();
   await expect(body.getByTestId("vitals-spo2")).toBeVisible();
@@ -53,9 +46,6 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   // The sleep sample surfaces in the Body tab's nightly-duration chart; detailed
   // regularity and stage analysis stays on the dedicated /sleep page (#1066).
   await page.goto("/trends?view=all");
-  // The body census streams onto the landing surface (#1644): wait for it to be
-  // revealed INTO its section before querying its content.
-  await censusRevealed(page, "body", "trends-body");
   const sleep = page.getByTestId("sleep-summary-tile");
   await expect(sleep).toBeVisible();
   await expect(sleep.getByRole("application")).toBeVisible();
@@ -96,9 +86,6 @@ test("the measurements form logs a temperature with an optional reading time (#8
   // section (#1076/#1486): recent-readings grammar with a fever line, not a lab
   // trajectory.
   await page.goto("/trends?view=all&from=2000-01-01&to=2100-01-01");
-  // The body census streams onto the landing surface (#1644): wait for it to be
-  // revealed INTO its section before querying its content.
-  await censusRevealed(page, "body", "trends-body");
   await expect(
     page.getByTestId("trends-body").getByTestId("vitals-temperature")
   ).toBeVisible();

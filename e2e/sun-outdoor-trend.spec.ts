@@ -1,6 +1,5 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { censusRevealed } from "./trends-chrome";
 import {
   E2E_LOGIN_SUN,
   E2E_LOGIN_SUN_NOHOME,
@@ -27,9 +26,6 @@ test.describe("Sun / outdoor trend chart (#1171)", () => {
     });
     try {
       await member.goto("/trends?view=all");
-      // The body census streams onto the landing surface (#1644): wait for it to be
-      // revealed INTO its section before querying its content.
-      await censusRevealed(member, "body", "trends-body");
       await expect(member.getByTestId("trends-section-body")).toBeVisible();
 
       const card = member.getByTestId("vitals-sun-outdoor");
@@ -53,9 +49,6 @@ test.describe("Sun / outdoor trend chart (#1171)", () => {
     });
     try {
       await member.goto("/trends?view=all");
-      // The body census streams onto the landing surface (#1644): wait for it to be
-      // revealed INTO its section before querying its content.
-      await censusRevealed(member, "body", "trends-body");
       await expect(member.getByTestId("trends-section-body")).toBeVisible();
       await expect(
         member.getByRole("main").getByTestId("vitals-sun-outdoor")

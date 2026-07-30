@@ -23,32 +23,10 @@ export async function expandTrendsContext(page: Page): Promise<void> {
   await expect(page.getByTestId("trends-context-controls")).toBeVisible();
 }
 
-// Wait for a streamed census section to be REVEALED (#1644).
-//
-// The Trends landing surface streams its body census below a fast head, so the
-// census arrives in a `<div hidden id="S:n">` staging node and React moves it into
-// its section a beat later — React BATCHES boundary reveals (~a frame, longer on a
-// loaded machine). Two consequences for a spec, and this helper closes both:
-//
-//   • Before the move, a bare `getByTestId("body-metric-tiles")` matches the STAGED
-//     copy, which is hidden — an assertion that waits out its timeout on visibility.
-//   • DURING the move both copies exist for an instant, which is a strict-mode
-//     violation that reads like a duplicated-testid bug rather than the timing it is.
-//
-// So the wait has two halves. Scoping to `trends-section-<id>` proves the REAL copy
-// is in place (the section element lives in the page shell, never in the staged
-// copy); the page-wide count proves the STAGED copy is gone, which is the half a
-// scoped assertion cannot see. `marker` must therefore be a testid that is unique
-// page-wide once revealed (`trends-body`, `body-metric-tiles`).
-//
-// Navigate, call this once, then assert freely.
-export async function censusRevealed(
-  page: Page,
-  section: "body",
-  marker: string
-): Promise<void> {
-  await expect(
-    page.getByTestId(`trends-section-${section}`).getByTestId(marker)
-  ).toBeVisible();
-  await expect(page.getByTestId(marker)).toHaveCount(1);
-}
+// `censusRevealed` lived here between #1644 landing and the harness-level
+// streamed-reveal guard replacing it. The class it patched per spec — a census
+// testid matching both the hidden staged copy and the revealed one while React's
+// Suspense reveal is pending — is now closed for EVERY spec by
+// `installStreamRevealGuard` (e2e/helpers.ts), which the `browser` fixture
+// installs on every page of every context: full-document navigations return only
+// after the staging nodes are gone. Specs assert census content directly.
