@@ -602,8 +602,8 @@ export function seedIntradayPanel(): void {
     ) {
       const item = db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, condition, priority, active, source)
-         VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+          `INSERT INTO intake_items (profile_id, name, condition, obligation, active, source)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual')`
         )
         .run(shellId, SHELL_DOSE_ITEM);
       db.prepare(

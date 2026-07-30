@@ -302,7 +302,7 @@ function bedtimeSupplementsByWakeDay(
   if (sleepDateByWakeDay.size === 0) return new Map();
 
   const supplements = getSupplements(profileId).filter(
-    (item) => item.kind === "supplement" && item.as_needed !== 1
+    (item) => item.kind === "supplement" && item.obligation !== "may"
   );
   const supplementById = new Map(supplements.map((item) => [item.id, item]));
   const supplementDoses = getSupplementDosesForHistory(profileId).filter(

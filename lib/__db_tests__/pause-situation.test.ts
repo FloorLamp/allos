@@ -42,8 +42,8 @@ function seedDailyDose(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, qty_per_dose, pause_situation_id)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', 1, ?)`
+           (profile_id, name, active, kind, condition, obligation, qty_per_dose, pause_situation_id)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should', 1, ?)`
       )
       .run(profileId, name, pauseId).lastInsertRowid
   );
@@ -102,9 +102,8 @@ describe("pause-during-situation dueness (#1296)", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, qty_per_dose,
-              situation_id, pause_situation_id)
-           VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'high', 1, ?, ?)`
+             (profile_id, name, active, kind, condition, obligation, qty_per_dose, situation_id, pause_situation_id)
+         VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'should', 1, ?, ?)`
         )
         .run(p, illnessId, preId).lastInsertRowid
     );

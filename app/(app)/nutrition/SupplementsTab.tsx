@@ -24,7 +24,10 @@ import {
   countVisiblePools,
 } from "@/lib/queries";
 import { activeByKey, activeFindings } from "@/lib/findings";
-import { buildAdherencePatternFindings } from "@/lib/rule-findings";
+import {
+  buildAdherencePatternFindings,
+  buildDemotionSuggestionFindings,
+} from "@/lib/rule-findings";
 import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import {
@@ -78,10 +81,10 @@ import {
   timeBucket,
   TIME_BUCKETS,
   TIME_BUCKET_LABELS,
-  PRIORITY_ORDER,
-  PRIORITY_LABELS,
+  OBLIGATION_ORDER,
+  OBLIGATION_LABELS,
   CONDITION_LABELS,
-  priorityClass,
+  obligationClass,
   workoutDaySubtitleLabel,
   heldBySituation,
   type TimeBucket,
@@ -106,6 +109,7 @@ import {
 } from "@/lib/intake-pairs";
 import SuggestionsForm from "./SuggestionsForm";
 import AdherenceFindings from "./AdherenceFindings";
+import DemotionSuggestions from "./DemotionSuggestions";
 import SupplementSchedule from "./SupplementSchedule";
 import SupplementInsightBadges from "./SupplementInsightBadges";
 import AddSupplementModal from "./AddSupplementModal";
@@ -347,13 +351,13 @@ export default async function SupplementsTab() {
     .map(([k]) => k);
 
   // Group due items by time bucket; within a bucket use the SHARED dose-day
-  // comparator (priority → stack → name) so this section and the Upcoming /
+  // comparator (obligation → stack → name) so this section and the Upcoming /
   // needs-attention surfaces order a dose day identically (issue #297). The
   // buckets already partition by time-of-day, so the comparator's leading bucket
-  // key is a constant within each group and the residual order is priority → …
+  // key is a constant within each group and the residual order is obligation → …
   const doseEntry = (it: Item): DoseDayEntry => ({
     timeOfDay: it.dose.time_of_day,
-    priority: it.supplement.priority,
+    obligation: it.supplement.obligation,
     stack: it.supplement.stack,
     name: it.supplement.name,
   });
@@ -424,6 +428,14 @@ export default async function SupplementsTab() {
   const suggestions = getPendingSuggestions(profile.id);
   const adherenceFindings = activeFindings(
     buildAdherencePatternFindings(profile.id, todayStr),
+    suppressions,
+    todayStr
+  );
+  // Priority demotion suggestions (#1505 part 2) — the same coaching-tier engine the
+  // dashboard rollup and the coaching tab read, filtered through the SAME suppression
+  // bus, so dismissing here silences it everywhere.
+  const demotionFindings = activeFindings(
+    buildDemotionSuggestionFindings(profile.id, todayStr),
     suppressions,
     todayStr
   );
@@ -642,7 +654,7 @@ export default async function SupplementsTab() {
       )}
 
       {notScheduled.length > 0 && (
-        <details>
+        <details data-testid="not-scheduled-section">
           <summary className="cursor-pointer section-label">
             Not scheduled today ({notScheduled.length})
           </summary>
@@ -677,7 +689,8 @@ export default async function SupplementsTab() {
         <div className="mt-4 space-y-3">
           {[...suggestions]
             .sort(
-              (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+              (a, b) =>
+                OBLIGATION_ORDER[a.obligation] - OBLIGATION_ORDER[b.obligation]
             )
             .map((suggestion) => (
               <div
@@ -694,9 +707,9 @@ export default async function SupplementsTab() {
                     </span>
                   )}
                   <span
-                    className={`badge ${priorityClass(suggestion.priority)}`}
+                    className={`badge ${obligationClass(suggestion.obligation)}`}
                   >
-                    {PRIORITY_LABELS[suggestion.priority]}
+                    {OBLIGATION_LABELS[suggestion.obligation]}
                   </span>
                   {suggestion.condition !== "daily" && (
                     <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
@@ -978,6 +991,15 @@ export default async function SupplementsTab() {
                 </FindingCard>
               );
             })}
+          </div>
+        )}
+
+        {/* Priority demotion suggestions (#1505): high/mandatory supplements that have
+          gone sustainedly untaken, offered for the `low` tag. Calm and hideable —
+          accepting is the user's own obligation write, never the system's. */}
+        {demotionFindings.length > 0 && (
+          <div className="mb-4">
+            <DemotionSuggestions findings={demotionFindings} />
           </div>
         )}
 

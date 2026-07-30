@@ -61,7 +61,7 @@ export function schoolReturnStatusFor(
   if (lastFeverAtMs == null) return null;
 
   // Last ANTIPYRETIC administration in the episode window. Mirrors
-  // assembleIllnessEpisode's PRN gather (as_needed + status 'taken', profile-scoped by
+  // assembleIllnessEpisode's PRN gather (obligation 'may' + status 'taken', profile-scoped by
   // JOIN), then filters to fever reducers via the curated PRN dataset.
   const from = episode.firstDay ?? OPEN_START_FLOOR;
   const to = episode.lastActiveDay ?? episode.asOf;
@@ -72,7 +72,7 @@ export function schoolReturnStatusFor(
               l.given_at AS given_at, l.taken_at AS taken_at
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
-        WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.as_needed = 1
+        WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
           AND l.date >= ? AND l.date <= ?
         ORDER BY COALESCE(l.given_at, l.taken_at) ASC, l.id ASC`
     )

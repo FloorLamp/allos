@@ -9,19 +9,36 @@
 export type SupplementCondition =
   "daily" | "pre_workout" | "post_workout" | "rest_day" | "situational";
 
-// Importance band. `mandatory` is reserved for lab-confirmed deficiencies
-// (normally set by the AI engine); `high`/`low` are user-managed.
+// THE user-owned obligation level (issue #1505). One field replacing what used to be
+// smeared across three proxies: `priority` (mandatory/high/low, nominally a sort key
+// that quietly grew push meaning), `as_needed` (a second boolean that ALSO meant "no
+// scheduled dueness"), and `kind` (doing duty for pushability on top of its real job).
 //
-// This is a STATIC, user-owned sort key — never recomputed from context (#559).
-// Unlike a screening/retest priority (#517), which DERIVES a clinical judgment the
-// user can't encode, a supplement's importance is the user's own explicit tag: the
-// ground truth, not something to infer. So there is deliberately NO dynamic priority
-// ENGINE for supplements — context only GATES dueness (isDueOn hides a rest-day item
-// on a workout day, a situational item while inactive), it never INVENTS priority.
-// The one legitimately-dynamic axis is time-urgency (a due-but-unconfirmed
-// time-critical dose escalating as its window passes), and that rides the EXISTING
-// dose-reminder/missed-dose escalation lattice, not this band.
-export type SupplementPriority = "mandatory" | "high" | "low";
+// It answers exactly one question — what does the user owe this item? — and every
+// derived behavior reads off it:
+//
+//   must    a miss is an INCIDENT          → remind + missed-dose escalation
+//   should  a miss is a tracked SHORTFALL  → remind, never escalate
+//   may     there is NO EXPECTATION        → never pushed; no dueness, no misses,
+//                                            no adherence fraction — ledger only
+//
+// `may` absorbs PRN wholesale: an as-needed item is definitionally "no expectation on
+// any day", so the amount-only dose shape (#851), the redose interval/max notice
+// (#798) and the over-max finding (#1027) all key off `may` rather than a separate
+// flag. A slot on a `may` item SURVIVES as an ACCESS HINT — it scopes where and when
+// the item is OFFERED (the digest tail, keyboards, quick log), never whether it is
+// due. Magnesium is may + a bedtime hint; aspirin is may with no hint and is simply
+// always available.
+//
+// DECLARED ONLY, FOREVER (#559, renamed with the field). This is the user's own
+// statement of intent — the ground truth, not something to infer. Context GATES
+// dueness (isDueOn hides a rest-day item on a workout day, a situational item while
+// inactive); it never INVENTS obligation. Nothing in the system writes this field
+// without an explicit user action: the demotion engine (#1505 part 2) DETECTS and
+// SUGGESTS, and the user's tap is the write. The one legitimately-dynamic axis is
+// time-urgency (a due-but-unconfirmed must dose escalating as its window passes), and
+// that rides the existing dose-reminder/escalation lattice, not this field.
+export type IntakeObligation = "must" | "should" | "may";
 
 // How a dose relates to food. A property of the substance (fat-soluble vitamins
 // need dietary fat; plant sterols go before a meal; some must be on an empty
@@ -36,7 +53,7 @@ export interface Supplement {
   active: number;
   created_at: string;
   condition: SupplementCondition;
-  priority: SupplementPriority;
+  obligation: IntakeObligation;
   brand: string | null; // manufacturer, e.g. "Thorne" (free text)
   product: string | null; // specific product/SKU (free text)
   // Situational context (condition = 'situational'). `situation` is the display
@@ -83,11 +100,15 @@ export interface Supplement {
   // the first "Refilled" one-tap records it. Remembered so subsequent refills reuse the
   // size without re-asking; NOT the on-hand counter.
   last_fill_size: number | null;
-  // Medication identity. kind splits medications from
-  // supplements (shared table/machinery); prescriber/pharmacy/rx_number are
-  // medication-only free text; as_needed (0/1) marks a PRN med that generates no
-  // scheduled reminders/escalation/adherence-due (an as-needed med is never
-  // "missed"). Dose strength (mg/IU) reuses the existing dose `amount`.
+  // CLINICAL IDENTITY — kind's whole job since #1505. It splits medications from
+  // supplements for the SAFETY engines (drug interactions #144 and PGx #710 vs
+  // supplement upper limits #148), surface routing (`/medications` vs the supplements
+  // tab), passport/med-list inclusion, and prescription/refill semantics.
+  // It deliberately no longer decides PUSHABILITY — `obligation` does — with one
+  // guardrail: a medication DEFAULTS to `must`, and moving it below must requires an
+  // explicit, consequence-stating confirmation at the write boundary.
+  // prescriber/pharmacy/rx_number are medication-only free text. Dose strength
+  // (mg/IU) reuses the existing dose `amount`.
   kind: SupplementKind;
   prescriber: string | null;
   pharmacy: string | null;
@@ -98,7 +119,6 @@ export interface Supplement {
   // prescriber/pharmacy/Rx-number/provider fields (they show only for a prescription).
   // Always 0 for a supplement (the flag is a medication concept).
   rx: number;
-  as_needed: number;
   // PRN redose notice (issue #798). A per-item, opt-in, administration-armed
   // reminder for the redose window opening ("6h since Ibuprofen — your minimum
   // interval has passed · 2 of 4 today"). redose_notice is the opt-in flag;
@@ -339,7 +359,7 @@ export interface SupplementSuggestion {
   time_of_day: string | null;
   food_timing: FoodTiming;
   condition: SupplementCondition;
-  priority: SupplementPriority;
+  obligation: IntakeObligation;
   brand: string | null;
   product: string | null;
   situation: string | null;

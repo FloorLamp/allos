@@ -138,7 +138,7 @@ export function seedIllness(): void {
       // "last ibuprofen …" clause appears on the other caregiver's hero only after it.
       const has = db
         .prepare(
-          "SELECT id FROM intake_items WHERE profile_id = ? AND name = 'Ibuprofen' AND as_needed = 1"
+          "SELECT id FROM intake_items WHERE profile_id = ? AND name = 'Ibuprofen' AND obligation = 'may'"
         )
         .get(profileId) as { id: number } | undefined;
       if (!has) {
@@ -146,9 +146,8 @@ export function seedIllness(): void {
           db
             .prepare(
               `INSERT INTO intake_items
-               (profile_id, name, active, kind, condition, priority, as_needed,
-                quantity_on_hand, qty_per_dose, min_interval_hours, max_daily_count)
-             VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, 20, 1, 6, 4)`
+               (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose, min_interval_hours, max_daily_count)
+         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'may', 20, 1, 6, 4)`
             )
             .run(profileId).lastInsertRowid
         );
@@ -228,8 +227,8 @@ export function seedIllness(): void {
       db
         .prepare(
           `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, situation, situation_id)
-         VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'high', 'Illness', ?)`
+           (profile_id, name, active, kind, condition, obligation, situation, situation_id)
+         VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'should', 'Illness', ?)`
         )
         .run(sitCoachId, illnessSitId).lastInsertRowid
     );
@@ -436,8 +435,8 @@ export function seedIllness(): void {
       db
         .prepare(
           `INSERT INTO intake_items
-           (profile_id, name, kind, priority, active, as_needed, rx)
-         VALUES (?, 'Amoxicillin', 'medication', 'high', 1, 0, 1)`
+           (profile_id, name, kind, obligation, active, rx)
+         VALUES (?, 'Amoxicillin', 'medication', 'should', 1, 1)`
         )
         .run(hhChildId).lastInsertRowid
     );
@@ -538,8 +537,8 @@ export function seedIllness(): void {
     `DELETE FROM encounters WHERE profile_id = ? AND reason LIKE '%prescribed antibiotics%'`
   ).run(askRecordsId);
   db.prepare(
-    `INSERT INTO intake_items (profile_id, name, kind, condition, priority, active, source, notes)
-   VALUES (?, ?, 'medication', 'daily', 'high', 1, 'manual', 'Antibiotics course for a sinus infection')`
+    `INSERT INTO intake_items (profile_id, name, kind, condition, obligation, active, source, notes)
+         VALUES (?, ?, 'medication', 'daily', 'should', 1, 'manual', 'Antibiotics course for a sinus infection')`
   ).run(askRecordsId, ASK_RECORDS_MED);
   db.prepare(
     `INSERT INTO encounters (profile_id, date, type, reason)

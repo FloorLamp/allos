@@ -124,8 +124,8 @@ function seedLowSupplement(profileId: number, name = "Vitamin D"): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', 8, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should', 8, 1)`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -146,8 +146,8 @@ function seedCriticalMed(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed, critical)
-         VALUES (?, ?, 1, 'medication', 'daily', 'mandatory', 0, 1)`
+           (profile_id, name, active, kind, condition, obligation, critical)
+         VALUES (?, ?, 1, 'medication', 'daily', 'must', 1)`
       )
       .run(profileId, name).lastInsertRowid
   );

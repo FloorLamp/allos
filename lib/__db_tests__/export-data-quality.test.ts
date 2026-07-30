@@ -28,16 +28,14 @@ beforeAll(() => {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, prescriber, pharmacy,
-            rx_number, as_needed, critical, quantity_on_hand)
-         VALUES (?, 'Lisinopril', 1, 'medication', 'daily', 'high', 'Dr. Ada Test',
-                 'Test Pharmacy', 'RX-555-0142', 0, 1, 30)`
+           (profile_id, name, active, kind, condition, obligation, prescriber, pharmacy, rx_number, critical, quantity_on_hand)
+         VALUES (?, 'Lisinopril', 1, 'medication', 'daily', 'should', 'Dr. Ada Test', 'Test Pharmacy', 'RX-555-0142', 1, 30)`
       )
       .run(profileId).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-     VALUES (?, 'Vitamin D', 1, 'supplement', 'daily', 'medium')`
+    `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Vitamin D', 1, 'supplement', 'daily', 'should')`
   ).run(profileId);
 
   // One taken dose and one SKIPPED dose on the same medication.
@@ -98,7 +96,7 @@ describe("intake_log distinguishes skipped from taken (#466)", () => {
 });
 
 describe("supplements dataset keeps medication identity (#466)", () => {
-  it("carries kind + prescriber/pharmacy/rx/as_needed/critical/quantity", () => {
+  it("carries kind + prescriber/pharmacy/rx/obligation/critical/quantity", () => {
     const rows = getDataset("supplements")!.rows(profileId);
     const med = rows.find((r) => r.name === "Lisinopril")!;
     expect(med).toMatchObject({

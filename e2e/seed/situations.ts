@@ -113,8 +113,8 @@ export function seedCycleAndDerived(): void {
         db
           .prepare(
             `INSERT INTO intake_items
-             (profile_id, name, kind, condition, priority, situation, situation_id, active, as_needed)
-           VALUES (?, ?, 'supplement', 'situational', 'high', ?, ?, 1, 0)`
+             (profile_id, name, kind, condition, obligation, situation, situation_id, active)
+         VALUES (?, ?, 'supplement', 'situational', 'should', ?, ?, 1)`
           )
           .run(dsId, name, situation, sitId).lastInsertRowid
       );

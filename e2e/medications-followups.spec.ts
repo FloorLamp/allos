@@ -60,10 +60,12 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   await expect(rxToggle).toBeVisible();
   await expect(rxToggle).not.toBeChecked();
 
-  // The ibuprofen pick auto-marks it PRN via label-default prefill; if not, check the
-  // "As needed (PRN)" box so the redose block + amount-only dose row render.
-  const prn = addCard.getByRole("checkbox", { name: /As needed/ });
-  if (!(await prn.isChecked())) await prn.check();
+  // The ibuprofen pick auto-marks it PRN via label-default prefill; if not, choose
+  // May by hand — since #1505 `may` IS the as-needed shape, so selecting it is what
+  // reveals the redose block and the amount-only dose row.
+  const obligation = addCard.getByTestId("med-obligation");
+  if ((await obligation.inputValue()) !== "may")
+    await obligation.selectOption("may");
 
   // The one-line redose copy (#851 item 5): the terse explainer up front, the verbose
   // confirm-discipline text tucked behind a "How it works" disclosure.

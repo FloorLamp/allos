@@ -29,7 +29,6 @@ import {
 import {
   countSituationalDue,
   heldItemsBy,
-  doseReminderNotifies,
   isDueOn,
 } from "../supplement-schedule";
 import {
@@ -42,6 +41,7 @@ import {
   getTimezone,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
+import { getIntakeDeltaLine } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
@@ -55,6 +55,15 @@ import {
   type DigestSleep,
 } from "./digest";
 import { createLogger } from "../log";
+import { collapsedOfferAction, offerTailNeedsRefresh } from "./offer-tail";
+import { updateMessageKeyboard } from "./telegram";
+import { messageKeyboard } from "./telegram-render";
+import {
+  clearDigestTailPointer,
+  getDigestTailPointer,
+  setDigestTailPointer,
+} from "../settings";
+import { getOfferedIntakeForSlot } from "../queries/intake";
 
 const log = createLogger("notify");
 
@@ -222,19 +231,14 @@ export function gatherDigestInput(
   }
   const todayGroups = groupUpcoming(upcoming, td);
   // The dose glance headline counts the DUE dose items collectUpcoming surfaced
-  // (bus-honored + #558) — the same items the Today section bands over. The
-  // #1156 priority floor applies to this PUSH surface: a low-priority SUPPLEMENT
-  // dose stays on the in-app surfaces (Upcoming, Supplements page) but is
-  // excluded from the digest's actionable dose count — tracked, not nagged.
-  const doseByIdForFloor = new Map(doses.map((d) => [d.id, d]));
+  // (bus-honored + #558) — the same items the Today section bands over. No local
+  // priority filter here any more (#1505): the "tracked, never pushed" exclusion now
+  // lives in collectUpcoming's doseItems, the ONE shared model this reads, so the
+  // digest count, the Upcoming rows, the aggregate and the hero can no longer
+  // disagree about which doses are pushable (#221 — one question, one computation).
   const todayDoseIds = upcoming
     .filter((i) => i.domain === "dose" && i.doseId != null)
-    .map((i) => i.doseId as number)
-    .filter((id) => {
-      const d = doseByIdForFloor.get(id);
-      const supp = d ? suppById.get(d.item_id) : undefined;
-      return supp ? doseReminderNotifies(supp) : true;
-    });
+    .map((i) => i.doseId as number);
   const doseCount = todayDoseIds.length;
 
   // Yesterday: activities, supplement adherence x/y, weight if logged.
@@ -356,6 +360,25 @@ export function gatherDigestInput(
     todayGroups,
     activities,
     adherence,
+    // Delta headline (#1505 part 3): WHICH pushed obligations changed state, from the
+    // ONE shared classifier every digest channel formats. Null on a quiet window —
+    // the digest doesn't invent news. The x/y fraction above stays as secondary
+    // detail; the two answer different questions and are both honest.
+    intakeDeltaLine: getIntakeDeltaLine(profileId, td),
+    // The guaranteed access tail (#1505). Scoped to the slot the digest is BUILT in;
+    // the tick re-labels it at each boundary and the expansion re-scopes at tap, so a
+    // morning-born keyboard never offers breakfast items at bedtime.
+    ...(() => {
+      const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+      const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+      return {
+        offerCount: offered.length,
+        offerTail:
+          offered.length > 0
+            ? collapsedOfferAction(profileId, td, nowHhmm, offered.length)
+            : null,
+      };
+    })(),
     weightKg: weightRow?.weight_kg ?? null,
     newFlaggedBiomarkers,
     newDocumentLabels,
@@ -399,4 +422,69 @@ export async function runDigest(
     setProfileSetting(profileId, "notify_digest_last_at", now.n);
   }
   return { failed };
+}
+
+// The SILENT boundary refresh (issue #1505). Once per tick, per profile: if the
+// digest we sent today is still carrying an offer tail whose slot label has gone
+// stale, re-render the keyboard — collapsed, relabelled for the slot we are actually
+// in now.
+//
+// WHY THIS IS NOT A SEND. It is one editMessageReplyMarkup on a message the user
+// already received. Telegram does not notify on an edit, no new row appears in the
+// chat, and the phone stays silent. That distinction is the whole reason the
+// guaranteed-access tail can exist at all without violating the contact-consent rule:
+// the system is allowed to keep an affordance it already gave accurate; it is not
+// allowed to spend another interruption doing so.
+//
+// It always resets to COLLAPSED. An expanded keyboard from the previous slot is
+// listing items that are no longer on offer, so leaving it open would be worse than
+// closing it — and the collapse button exists as the manual equivalent for a user who
+// expanded it and walked away.
+//
+// Three no-ops, each deliberate: no pointer (nothing sent today, or the digest had no
+// tail), a pointer from a PREVIOUS day (day rollover strips the keyboard entirely
+// rather than relabelling a stale day's message), and a slot that hasn't turned over
+// (offerTailNeedsRefresh false → zero API calls, so the common tick costs nothing).
+export async function refreshDigestOfferTail(profileId: number): Promise<void> {
+  const pointer = getDigestTailPointer(profileId);
+  if (!pointer) return;
+  const date = today(profileId);
+  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+
+  if (pointer.date !== date) {
+    // Day rollover: yesterday's keyboard must not stay tappable, because its tokens
+    // carry yesterday's date and the expansion would refuse them anyway. Strip it and
+    // forget the pointer so this runs once, not every tick forever.
+    await updateMessageKeyboard(pointer.chatId, pointer.messageId, []).catch(
+      (e) =>
+        log.info("digest tail: rollover strip failed (ignored)", {
+          profile: profileId,
+          err: e instanceof Error ? e.message : String(e),
+        })
+    );
+    clearDigestTailPointer(profileId);
+    return;
+  }
+  if (!offerTailNeedsRefresh(pointer.renderedAt, nowHhmm)) return;
+
+  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+  const actions =
+    offered.length > 0
+      ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
+      : [];
+  try {
+    await updateMessageKeyboard(
+      pointer.chatId,
+      pointer.messageId,
+      messageKeyboard({ title: "", body: "", actions })
+    );
+    setDigestTailPointer(profileId, { ...pointer, renderedAt: nowHhmm });
+  } catch (e) {
+    // Best-effort throughout: the digest already landed, and a failed relabel is a
+    // cosmetic staleness, never a delivery failure.
+    log.info("digest tail: refresh failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
 }

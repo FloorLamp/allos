@@ -55,8 +55,8 @@ function seed(): void {
     db.pragma("busy_timeout = 5000");
     // Profile 1 is the seeded active profile the e2e login acts as.
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, priority)
-       VALUES (1, ?, 1, 'medication', 'high')`
+      `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+       VALUES (1, ?, 1, 'medication', 'must')`
     ).run(MED);
   } finally {
     db.close();

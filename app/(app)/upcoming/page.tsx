@@ -33,6 +33,8 @@ import { today } from "@/lib/db";
 import {
   collectMultiProfileAttention,
   collectMultiProfileSuppressed,
+  collectMultiProfileOffered,
+  type ProfiledOfferedItem,
   type ProfiledSuppressedEntry,
 } from "@/lib/queries";
 import { type MemberSection, type AttentionPageGroup } from "@/lib/attention";
@@ -82,6 +84,7 @@ export const dynamic = "force-dynamic";
 // domains plus the unified model's "something's off" signals (issue #524).
 const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   dose: IconPill,
+  available: IconPill,
   "prn-max": IconPill,
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
@@ -155,6 +158,10 @@ export default async function UpcomingPage(props: {
   const model = collectMultiProfileAttention(viewIds, units);
   const total = model.total;
   const suppressed = collectMultiProfileSuppressed(viewIds, units);
+  // `may` items on offer today (#1505) — availability, deliberately NOT folded into
+  // `total`. The headline count answers "what do I owe"; folding an offer into it
+  // would recreate the exact inflation this model removes.
+  const offered = collectMultiProfileOffered(viewIds);
 
   // Per-member "today" for correct relative due-text on each merged row, and the
   // per-item subject identity (#534) resolved ONCE through the shared stampSubjects
@@ -259,6 +266,8 @@ export default async function UpcomingPage(props: {
           )}
         </div>
       )}
+
+      {offered.length > 0 && <AvailableSection items={offered} />}
 
       {suppressed.length > 0 && (
         <SuppressedSection
@@ -614,6 +623,51 @@ function SubjectChip({ subject }: { subject: SubjectInfo }) {
 // findings-suppression bus (issue #1151), now cross-profile (#1096): each row's
 // Restore targets the ITEM's own profile (profile_id threaded), never the acting
 // one.
+// The COLLAPSED "available" disclosure (issue #1505). A `may` item has no obligation,
+// so it is not work — but removing it outright would make an accepted demotion look
+// like a deletion, and would hide the one place a tap-only user browses. So it
+// collapses instead: closed by default, counted on the summary, one tap from its
+// item. The shape follows the Snoozed & dismissed disclosure directly below it, which
+// is the same "present but not pressing" idea.
+//
+// Deliberately NOT banded, NOT dated, and NOT part of the page total.
+function AvailableSection({ items }: { items: ProfiledOfferedItem[] }) {
+  return (
+    <details className="mt-8" data-testid="available-section">
+      <summary className="cursor-pointer section-label">
+        Available when you want them{" "}
+        <span className="text-slate-500 dark:text-slate-400">
+          ({items.length})
+        </span>
+      </summary>
+      <div className="card mt-2 space-y-1 p-2">
+        {items.map((item) => (
+          <Link
+            key={`${item.profileId}:${item.key}`}
+            href={item.href ?? "/medications"}
+            data-testid="available-row"
+            className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-ink-750"
+          >
+            <IconPill
+              className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+              stroke={1.75}
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium text-slate-600 dark:text-slate-300">
+                {item.title}
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {item.dueText ?? "Available"}
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function SuppressedSection({
   items,
   multi,

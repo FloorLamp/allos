@@ -101,6 +101,9 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
       ? "Weight-loss rate caution"
       : "Goal pacing note",
   "adherence:": () => "Supplement adherence pattern",
+  // #1505: keyed on the ITEM id, so there is no name in the key to render — the
+  // label names the decision instead ("you chose to keep the current priority").
+  "demote-obligation:": () => "Obligation demotion suggestion",
   "food-suggest:": (t) => {
     const n = titleize(t.replace(/[_-]/g, " "));
     return n ? `Food suggestion — ${n}` : "Food suggestion";
@@ -164,6 +167,15 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
   // ---- Due & scheduled (Upcoming care tier) --------------------------------
   { prefix: "dose:", domain: "Due & scheduled", label: () => "Scheduled dose" },
   { prefix: "refill:", domain: "Due & scheduled", label: () => "Refill nudge" },
+  {
+    // A declined `may` availability offer (#1505). Not in RULE_FINDING_REGISTRY for
+    // the same reason `refill:` isn't — it is an Upcoming domain key, not a rule
+    // builder's — but it must still be NAMEABLE here, or declining an offer would
+    // leave an unlabelled row in Snoozed & dismissed with no way to restore it.
+    prefix: "available:",
+    domain: "Due & scheduled",
+    label: () => "Available item",
+  },
   {
     // Shared supply pool low-stock (#1374). Registered HERE and not in
     // RULE_FINDING_REGISTRY for the same reason `refill:` isn't: it is an Upcoming

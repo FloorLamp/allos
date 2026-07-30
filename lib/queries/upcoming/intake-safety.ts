@@ -5,7 +5,14 @@ import {
   isItemHiddenBySuppression,
   type SuppressionRecord,
 } from "../../upcoming-suppress";
-import { isDueOn, timeBucket } from "../../supplement-schedule";
+import {
+  isDueOn,
+  isOfferedOn,
+  isPushedIntake,
+  slotHintBucket,
+  timeBucket,
+  TIME_BUCKET_LABELS,
+} from "../../supplement-schedule";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
@@ -26,8 +33,16 @@ import { getInstrumentStates } from "../../instrument-records";
 import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
 import { crisisFindingLine } from "../../crisis-resources";
 import { getResolvedCrisisResources } from "../../settings";
-import { refillSignalKey, poolRefillSignalKey } from "../../refill-nudge";
-import { getPoolView, poolIdsForProfiles } from "../intake/supply-pool";
+import {
+  refillSignalKey,
+  poolRefillSignalKey,
+  offeredSignalKey,
+} from "../../refill-nudge";
+import {
+  getPoolView,
+  poolIdsForProfiles,
+  poolPushes,
+} from "../intake/supply-pool";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";
@@ -135,6 +150,18 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 // supplement schedule's isDueOn with today's workout/situation context, and the
 // per-dose taken-log read). A PRN (as_needed) med is never scheduled-due, so
 // isDueOn already drops it. Only NOT-yet-taken doses are surfaced.
+//
+// This is the DUE list — must + should only. A `may` item never reaches it, because
+// isDueOn short-circuits on `may` (#1505): with no obligation there is no dueness, so
+// there is nothing here to be late for. That single short-circuit is what keeps the
+// Upcoming rows, the #1504 aggregate count, the dashboard hero, the calendar feed and
+// the digest's Today section agreeing, instead of five surface-local filters (#221).
+//
+// `may` items are NOT dropped from the page — they are COLLAPSED. `offeredItems`
+// below gathers them as "available" for Upcoming's disclosure, so demotion reads as a
+// visible MOVE into a quieter section rather than a disappearance. Obligation, not
+// kind, decides: a medication is here because it is `must`/`should`, not because it
+// is a medication.
 export function doseItems(profileId: number, today: string): UpcomingItem[] {
   const supplements = getSupplements(profileId);
   const doses = getSupplementDoses(profileId);
@@ -187,7 +214,7 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
       // the SAME ordering /medicine's due-today section uses (#297).
       sortHint: doseSortKey({
         timeOfDay: dose.time_of_day,
-        priority: supp.priority,
+        obligation: supp.obligation,
         stack: supp.stack,
         name: supp.name,
       }),
@@ -197,6 +224,55 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
   return items;
 }
 
+// `may` items ON OFFER today (issue #1505) — the collapsed-not-removed half of the
+// Upcoming model. These are NOT due, carry no date, and must never be banded with the
+// due rows or counted in the hero/aggregate headline: they are an availability list,
+// rendered behind a disclosure the way food suggestions are.
+//
+// Scoped by `isOfferedOn` (the item's day condition, obligation `may`) and labelled
+// with its slot HINT so the row reads "available · bedtime" rather than implying a
+// time it is owed at. A hint-less item reads plainly "available".
+//
+// Returned as UpcomingItem for one reason only: the suppression bus and the row
+// renderer already speak that shape. The `band` is deliberately absent and `dueDate`
+// null so nothing downstream can mistake one of these for work.
+export function offeredItems(profileId: number, today: string): UpcomingItem[] {
+  const supplements = getSupplements(profileId);
+  const doses = getSupplementDoses(profileId);
+  const activeSituations = getEffectiveActiveSituations(profileId, today);
+  const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
+  const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
+  const ctx = { isWorkoutDay, activeSituations, predictedWorkoutDay };
+
+  const dosesByItem = new Map<number, typeof doses>();
+  for (const d of doses) {
+    const list = dosesByItem.get(d.item_id);
+    if (list) list.push(d);
+    else dosesByItem.set(d.item_id, [d]);
+  }
+
+  const items: UpcomingItem[] = [];
+  for (const supp of supplements) {
+    if (!supp.active || !isOfferedOn(supp, ctx)) continue;
+    // ONE row per ITEM, not per dose: a may item's doses are amount shapes, not
+    // occurrences, so listing three of them would invent three things to do.
+    const hint = slotHintBucket(
+      dosesByItem.get(supp.id)?.[0]?.time_of_day ?? null
+    );
+    items.push({
+      key: offeredSignalKey(supp.id),
+      domain: "available",
+      title: supp.name,
+      detail:
+        supp.kind === "medication" ? "Medication · as needed" : "As needed",
+      href: intakeHref(supp.kind),
+      dueDate: null,
+      dueText: hint ? `Available · ${TIME_BUCKET_LABELS[hint]}` : "Available",
+    });
+  }
+  return items.sort((a, b) => a.title.localeCompare(b.title));
+}
+
 // Tracked meds/supplements running low on supply (reuses lib/refill's pure math;
 // doses/day comes from the shared getRefillRates — the ACTUAL taken-log rate when
 // history is thick enough, else the scheduled-dose-count estimate — matching the
@@ -204,8 +280,12 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
 // days-left) drives the band, so an item with 0 days left lands in Today and a
 // week of runway lands in This week.
 export function refillItems(profileId: number, today: string): UpcomingItem[] {
+  // Tracked, never pushed (#1505): a refill nudge IS a push, so the same shared
+  // predicate the dose items use gates it here and in the notify tick's runRefills.
+  // The Supplements page still shows the item's supply state — this drops only the
+  // nudge, never the fact.
   const tracked = getSupplements(profileId).filter(
-    (s) => s.active && s.quantity_on_hand != null
+    (s) => s.active && s.quantity_on_hand != null && isPushedIntake(s)
   );
   if (tracked.length === 0) return [];
   const rates = getRefillRates(profileId);
@@ -249,6 +329,10 @@ export function poolRefillItems(
   for (const supplyId of poolIdsForProfiles([profileId])) {
     const pool = getPoolView(supplyId);
     if (!pool || !pool.low || pool.daysLeft == null) continue;
+    // Tracked, never pushed (#1505), pooled edition: a bottle whose every ACTIVE
+    // member is a low-priority supplement drops out of the nudge. Any pushable
+    // member keeps the whole pool's signal alive — see poolPushes.
+    if (!poolPushes(pool.members)) continue;
     items.push({
       key: poolRefillSignalKey(pool.id),
       domain: "refill",

@@ -38,8 +38,8 @@ function addMedication(
   const id = Number(
     db
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, active, kind, priority)
-         VALUES (?, ?, 1, 'medication', 'high')`
+        `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+         VALUES (?, ?, 1, 'medication', 'should')`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -201,8 +201,8 @@ describe("getPgxWarnings — the negative cases (#448 guards)", () => {
     });
     // A supplement literally named to collide — the gather filters kind='medication'.
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, priority)
-       VALUES (?, 'Clopidogrel', 1, 'supplement', 'low')`
+      `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+         VALUES (?, 'Clopidogrel', 1, 'supplement', 'should')`
     ).run(profileId);
     expect(getPgxWarnings(profileId)).toEqual([]);
   });

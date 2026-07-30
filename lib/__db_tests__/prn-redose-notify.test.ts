@@ -55,9 +55,8 @@ function seedRedoseMed(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed,
-            redose_notice, min_interval_hours, max_daily_count)
-         VALUES (?, 'Ibuprofen (test)', 1, 'medication', 'daily', 'high', 1, ?, ?, ?)`
+           (profile_id, name, active, kind, condition, obligation, redose_notice, min_interval_hours, max_daily_count)
+         VALUES (?, 'Ibuprofen (test)', 1, 'medication', 'daily', 'may', ?, ?, ?)`
       )
       .run(profileId, redoseNotice, minInterval, maxDaily).lastInsertRowid
   );

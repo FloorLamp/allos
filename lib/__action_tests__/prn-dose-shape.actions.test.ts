@@ -54,7 +54,7 @@ describe("PRN medication dose collapse (#851 item 9)", () => {
       fd({
         name: "Ibuprofen",
         kind: "medication",
-        as_needed: "1",
+        obligation: "may",
         doses: TWO_SLOTTED,
       })
     );

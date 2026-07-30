@@ -69,7 +69,7 @@ import { getIntakeSafetyContext } from "./safety";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import { activeByKey } from "../../findings";
 import { getFindingSuppressions } from "../upcoming/suppressions";
-import { contributesToDailyLimit } from "../../supplement-schedule";
+import { contributesToDailyLimit, isPrn } from "../../supplement-schedule";
 import { getSupplements, getSupplementDoses } from "./schedule";
 
 // ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
@@ -140,17 +140,24 @@ function stackDriContext(
     arr.push(d.amount);
     dosesBySupp.set(d.item_id, arr);
   }
-  // Only items taken EVERY day contribute to the DAILY UL/RDA totals (#635): a PRN
-  // item is on-demand and a workout/rest/situational item applies only on some
-  // days, so summing either as a full daily dose was a standing false "above upper
-  // limit" care-tier alarm. The pure contributesToDailyLimit mirrors isDueOn's PRN
-  // short-circuit; the item's active flag is still gated downstream in the DRI math.
+  // Only items on an EVERY-DAY schedule contribute to the DAILY UL/RDA totals (#635):
+  // a workout/rest/situational item applies only on some days, so summing it as a full
+  // daily dose was a standing false "above upper limit" care-tier alarm. That gate is
+  // the SCHEDULE and is obligation-blind (#1505).
+  //
+  // Obligation is TAGGED here, not filtered: an on-demand (`may`) item is passed
+  // through marked `optional`, and lib/dri.ts applies it per question in the
+  // conservative direction — full weight in the UL risk total (labelled), excluded
+  // from the RDA reassurance share (disclosed as an aside). Filtering here would force
+  // one direction on both questions, which is how the UL under-counted before.
+  // The item's active flag is still gated downstream in the DRI math.
   const items: StackItem[] = supplements
     .filter((s) => contributesToDailyLimit(s))
     .map((s) => ({
       name: s.name,
       active: !!s.active,
       doseAmounts: dosesBySupp.get(s.id) ?? [],
+      optional: isPrn(s),
     }));
 
   const birthdate = getUserBirthdate(profileId);

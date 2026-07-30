@@ -1,5 +1,14 @@
 # Notifications — architecture deep-dive
 
+> **Who may be contacted, and about what, is decided by the intake `obligation`
+> model and the attention doctrine, not per-channel.** `must` reminds and
+> escalates; `should` reminds; `may` is never pushed and reaches the user only
+> through surfaces they open themselves — including the daily digest's
+> guaranteed "Log other…" tail, whose slot-boundary refresh is a keyboard EDIT
+> and therefore not a send. See
+> [the attention doctrine](findings.md#the-attention-doctrine) and
+> [supplements](supplements.md).
+
 Status: **shipped** · extracted verbatim from AGENTS.md (#597)
 
 Maintainer documentation for `lib/notifications/`: delivery channels and the

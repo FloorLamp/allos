@@ -293,8 +293,8 @@ describe("resilient restore when a captured FK target was deleted meanwhile", ()
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, provider_id)
-           VALUES (?, ?, 1, 'medication', 'daily', 'high', ?)`
+             (profile_id, name, active, kind, condition, obligation, provider_id)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should', ?)`
         )
         .run(q.profileId, `${q.tag} Atorvastatin`, providerId).lastInsertRowid
     );
@@ -426,8 +426,8 @@ describe("resilient restore on the merge-undo + intake-document FK paths (#598)"
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, source, document_id)
-           VALUES (?, ?, 1, 'medication', 'daily', 'high', 'extracted', ?)`
+             (profile_id, name, active, kind, condition, obligation, source, document_id)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should', 'extracted', ?)`
         )
         .run(q.profileId, `${q.tag} Metformin`, q.documentId).lastInsertRowid
     );

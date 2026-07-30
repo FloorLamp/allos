@@ -27,7 +27,12 @@
 // profile's local date. A refill nudge is a non-time-critical episode nudge — it must
 // never fire at the 3am date rollover.
 
-import { getPoolView, listPoolViews, type PoolView } from "../queries/intake";
+import {
+  getPoolView,
+  listPoolViews,
+  poolPushes,
+  type PoolView,
+} from "../queries/intake";
 import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
 import {
@@ -121,7 +126,12 @@ export async function runPoolRefills(
     id: p.id,
     name: p.name,
     daysLeft: p.daysLeft,
-    low: p.low,
+    // Tracked, never pushed (#1505): a bottle whose entire ACTIVE membership is
+    // low-priority supplements drops out of the nudge (poolPushes). Any pushable
+    // member keeps the pooled signal, so a shared warfarin bottle is never silenced
+    // by someone else's optional-supplement link. Folding it into `low` also means a
+    // live marker self-heals through planPoolRefillNudges' normal clear path.
+    low: p.low && poolPushes(p.members),
   }));
 
   // The FULL set of live markers — not just the current candidates — so a marker whose

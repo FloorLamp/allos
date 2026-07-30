@@ -44,7 +44,9 @@ import {
   collectUpcoming,
   collectSuppressedUpcoming,
   getFindingSuppressions,
+  offeredItems,
 } from "./upcoming";
+import { isItemHiddenBySuppression } from "../upcoming-suppress";
 import {
   domainForRichKey,
   resolveSuppressedKeyDisplay,
@@ -324,6 +326,33 @@ export function collectMultiProfileSuppressed(
     const now = today(pid);
     for (const e of collectSuppressedAttention(pid, now, units)) {
       out.push({ ...e, profileId: pid });
+    }
+  }
+  return out;
+}
+
+// ---- The "available" disclosure (issue #1505) ------------------------------
+
+// A `may` item on offer today, stamped with the profile it belongs to. Same
+// per-member loop as collectMultiProfileSuppressed: each member's offer set is
+// evaluated in ITS OWN today, never a shared clock (#1096).
+export type ProfiledOfferedItem = UpcomingItem & { profileId: number };
+
+// Every in-view profile's `may` items on offer today, bus-filtered so a declined
+// offer stays declined. These are AVAILABILITY, not work: the Upcoming page renders
+// them behind a collapsed disclosure, they carry no band or due date, and they are
+// deliberately NOT part of `total` — the headline count answers "what do I owe", and
+// folding availability into it would recreate the exact inflation #1505 removes.
+export function collectMultiProfileOffered(
+  viewIds: readonly number[]
+): ProfiledOfferedItem[] {
+  const out: ProfiledOfferedItem[] = [];
+  for (const pid of viewIds) {
+    const map = getFindingSuppressions(pid);
+    const now = today(pid);
+    for (const item of offeredItems(pid, now)) {
+      if (isItemHiddenBySuppression(item, map.get(item.key), now)) continue;
+      out.push({ ...item, profileId: pid });
     }
   }
   return out;

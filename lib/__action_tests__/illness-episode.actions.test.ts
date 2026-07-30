@@ -406,8 +406,8 @@ describe("episode event ledger actions", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed)
-           VALUES (?, 'Test fever reducer', 1, 'medication', 'daily', 'high', 1)`
+             (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Test fever reducer', 1, 'medication', 'daily', 'may')`
         )
         .run(profile.id).lastInsertRowid
     );
@@ -416,7 +416,7 @@ describe("episode event ledger actions", () => {
         .prepare(
           `INSERT INTO intake_item_doses
              (item_id, amount, time_of_day, food_timing, sort)
-           VALUES (?, '100 mg', 'as_needed', 'any', 0)`
+           VALUES (?, '100 mg', 'Anytime', 'any', 0)`
         )
         .run(itemId).lastInsertRowid
     );
@@ -556,8 +556,8 @@ describe("episode event ledger actions", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed)
-           VALUES (?, 'Cross-profile fever reducer', 1, 'medication', 'daily', 'high', 1)`
+             (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Cross-profile fever reducer', 1, 'medication', 'daily', 'may')`
         )
         .run(subject.id).lastInsertRowid
     );
@@ -566,7 +566,7 @@ describe("episode event ledger actions", () => {
         .prepare(
           `INSERT INTO intake_item_doses
              (item_id, amount, time_of_day, food_timing, sort)
-           VALUES (?, '100 mg', 'as_needed', 'any', 0)`
+           VALUES (?, '100 mg', 'Anytime', 'any', 0)`
         )
         .run(itemId).lastInsertRowid
     );

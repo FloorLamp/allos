@@ -28,9 +28,8 @@ function seedMed(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, condition, priority, kind, active, as_needed,
-            quantity_on_hand, qty_per_dose, last_fill_size)
-         VALUES (?, 'Metformin', 'daily', 'low', 'medication', 1, 0, ?, ?, ?)`
+           (profile_id, name, condition, obligation, kind, active, quantity_on_hand, qty_per_dose, last_fill_size)
+         VALUES (?, 'Metformin', 'daily', 'should', 'medication', 1, ?, ?, ?)`
       )
       .run(
         profileId,

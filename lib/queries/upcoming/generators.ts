@@ -168,6 +168,11 @@ import {
   refillItems,
   uvOverexposureItems,
 } from "./intake-safety";
+// The `may` availability gather (#1505) is re-exported rather than folded into
+// collectUpcoming on purpose: it is NOT due work, so it must never join the banded
+// set, the total, or the hero. The Upcoming page reads it separately for its
+// collapsed disclosure.
+export { offeredItems } from "./intake-safety";
 
 // Biomarker categories a retest nudge makes sense for: `lab` ONLY (#1076).
 // Vitals/scans/prescriptions aren't "labs to redraw", genomics/reference never go
