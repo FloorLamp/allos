@@ -4,7 +4,10 @@ import {
   foodGroupBySlug,
   canonicalFoodGroup,
   FOOD_GROUPS,
+  FOOD_GROUP_EMOJI,
+  foodGroupEmoji,
 } from "@/lib/datasets/food-groups";
+import { foodGroupIconKey } from "@/lib/food-group-icon";
 import {
   citationPresent,
   identityResolves,
@@ -61,5 +64,39 @@ describe("food-groups dataset on the curated-dataset framework", () => {
   it("canonicalFoodGroup refuses an unknown group with null (the refusal gate)", () => {
     expect(canonicalFoodGroup("__no_such_group__")).toBeNull();
     expect(canonicalFoodGroup("")).toBeNull();
+  });
+});
+
+// ---- One emoji per group (issue #1710) ----
+//
+// The glyphs are what make the Telegram button grid and the tally scannable, and the web
+// food bar reads the SAME catalog — so a missing or duplicated glyph is a cross-surface
+// vocabulary bug, not a cosmetic one.
+describe("food-group emoji catalog (#1710)", () => {
+  it("covers every catalog group exactly once", () => {
+    const slugs = FOOD_GROUPS.map((g) => g.slug).sort();
+    expect(Object.keys(FOOD_GROUP_EMOJI).sort()).toEqual(slugs);
+    for (const slug of slugs) expect(foodGroupEmoji(slug)).not.toBe("");
+  });
+
+  it("gives no two groups the same glyph", () => {
+    const glyphs = Object.values(FOOD_GROUP_EMOJI);
+    expect(new Set(glyphs).size).toBe(glyphs.length);
+  });
+
+  it("degrades to no emoji for a retired/unknown slug", () => {
+    expect(foodGroupEmoji("not_a_group")).toBe("");
+  });
+
+  // The web food surfaces render Tabler SVG icons per group (lib/food-group-icon.ts) —
+  // a richer glyph system than emoji, and adding emoji there would double-mark every
+  // row. So the two vocabularies are not merged; what IS pinned is that they cover the
+  // catalog identically, so a group can never be glyphed on one surface and bare on the
+  // other.
+  it("covers exactly the groups the web icon map covers", () => {
+    for (const g of FOOD_GROUPS) {
+      expect(foodGroupEmoji(g.slug)).not.toBe("");
+      expect(foodGroupIconKey(g.slug)).toBeTruthy();
+    }
   });
 });
