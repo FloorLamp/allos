@@ -295,6 +295,14 @@ sessions per day, and retain editable session history. **Stop tracking** removes
 the weekly target and its reminders without deleting logged sessions; any
 protocol using that target is explicitly unlinked.
 
+A tracked practice is one tap away from anywhere: the quick-actions menu's **Log
+practice** overlay lists each one with this week's standing, and the command
+palette commits a session from `log sauna`. Both go through the same write the
+practice card's **Log now** button uses, and both report what actually
+happened — a session log is never confirmed unconditionally. A practice you have
+stopped tracking keeps its card and history but is no longer offered by the
+quick surfaces.
+
 **Start from a template** prefills the form for a common experiment — the **Sun
 exposure** template pairs daily **outdoor daylight minutes** (intersecting your
 outdoor activities' time windows with the local daylight window from your home
@@ -1568,8 +1576,9 @@ retained as **No longer linked** until a user explicitly deletes it.
 **Cmd/Ctrl-K** (or the sidebar's Search button) opens one command palette over
 the **active profile's** data — never another profile you can reach. Typing
 does three things at once: it parses an inline quick log (`weight 82.5` commits a
-body-metrics entry on Enter), offers create **actions** (start a workout, add a
-result, log a practice), and runs a debounced search across every record domain.
+body-metrics entry on Enter, and `log sauna` commits a session for a practice you
+track), offers create **actions** (start a workout, add a result, add a document),
+and runs a debounced search across every record domain.
 Arrows and Enter walk one flat list; results are grouped by domain in a fixed
 order, best match first (exact beats prefix beats substring, ties broken by
 recency).
@@ -1590,6 +1599,12 @@ practice, and a provider surfaces only when your own records name them (the
 registry itself is shared, and browsing all of it is the Providers directory's
 job). A few hits carry an inline action, so you can log a dose, mark a refill,
 or complete an appointment without leaving the palette.
+
+The inline quick log only recognizes practices you already track, and only
+behind a verb — `log sauna`, `did sauna` — so typing a practice name to find it
+stays a search. **Add document** answers to whichever word you have in mind
+(upload, scan, lab report, a photo of a result) and opens the same upload
+overlay the quick-actions menu opens, in place.
 
 **Ask about your records** answers a natural-language question — "when did I
 last take antibiotics?" — from those same rows and nothing else. The retrieval
@@ -1779,9 +1794,16 @@ overlays for:
 - a dose;
 - an activity;
 - measurements including weight, body fat, blood pressure, glucose, oxygen,
-  temperature, sleep, HRV, and resting heart rate.
+  temperature, sleep, HRV, and resting heart rate;
+- a **wellness practice** — every practice you track, with this week's standing
+  and today's count, one tap from logging a session;
+- **a document** — the same upload form the Data page carries, including the
+  camera input, so a lab report or a photo of an after-visit summary can be
+  filed without leaving the page you were on.
 
-Saving closes the overlay and leaves the underlying page in place. Confirmation
+Saving closes the overlay and leaves the underlying page in place. Practice and
+food logging deliberately keep the overlay open — a session or a serving is
+rarely the only one — while an upload closes it. Confirmation
 dialogs render as bottom sheets on phones and centered dialogs on larger
 screens.
 

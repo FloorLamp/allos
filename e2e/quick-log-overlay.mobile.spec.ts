@@ -3,7 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { settledClick } from "./helpers";
-import { loginAs } from "./nav";
+import { loginAs, openCommandPalette } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_SHELL,
@@ -428,6 +428,70 @@ test("the Add document row files an upload in place, camera input included", asy
     await expect(page.getByTestId("import-feed")).toContainText(filename);
   } finally {
     clearShellDocuments(prefix);
+    await page.context().close();
+  }
+});
+
+test("the palette reaches the same two surfaces the sheet does", async ({
+  browser,
+}) => {
+  // Browse vs. search over ONE set of forms (#1506). The sheet is the browse
+  // surface — one row per destination; the palette is the search surface, where a
+  // typed practice name commits a session (#1633, the web catching up to Telegram's
+  // one-tap) and any of the words for "document" opens the very same overlay (#1525).
+  // Neither surface gets a form, or a write path, of its own.
+  clearShellPracticeLogs();
+
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const dashboardUrl = page.url();
+
+    const input = await openCommandPalette(page);
+
+    // A bare practice name is a SEARCH: no quick-log row, so Enter can never log a
+    // session someone was only looking up.
+    await input.fill(SHELL_PRACTICE);
+    await expect(page.getByTestId("palette-quicklog")).toHaveCount(0);
+
+    // Behind the verb it is a command, previewed before it is committed.
+    await input.fill(`log ${SHELL_PRACTICE}`);
+    const preview = page.getByTestId("palette-quicklog");
+    await expect(preview).toContainText(SHELL_PRACTICE);
+    await input.press("Enter");
+    // The Server Action's response carries a revalidated render, which can outlast
+    // the default on a loaded runner; a named ceiling, not a sleep — and the
+    // Wellness assertion below re-proves the write either way.
+    await expect(page.getByTestId("toast")).toContainText(
+      "Logged today's session",
+      { timeout: 20_000 }
+    );
+    expect(page.url()).toBe(dashboardUrl);
+
+    // "lab report" — one of the words people reach for — opens the SAME overlay the
+    // sheet's Add document row opens, in place.
+    const reopened = await openCommandPalette(page);
+    await reopened.fill("lab report");
+    await page.getByTestId("palette-action-add-document").click();
+    await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
+    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
+      "data-form",
+      "document"
+    );
+    await expect(page.getByTestId("medical-upload-camera")).toBeVisible();
+    expect(page.url()).toBe(dashboardUrl);
+
+    await page.keyboard.press("Escape");
+
+    // The palette's write went to the same store the card counts — not a parallel one.
+    await page.goto("/wellness");
+    await expect(
+      page
+        .getByTestId("wellness-practice-card")
+        .filter({ hasText: SHELL_PRACTICE })
+    ).toContainText("1 day this week");
+  } finally {
+    clearShellPracticeLogs();
     await page.context().close();
   }
 });
