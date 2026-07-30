@@ -55,20 +55,7 @@ import {
   ORPHAN_SUPPRESSION_LABEL,
   type SuppressionDomain,
 } from "../suppression-display";
-import { getImportIssues, getReviewPairCount } from "./integrations";
-
-// The failing/needs-reauth providers reduced to what the model renders (one entry
-// per currently-broken provider).
-function integrationAttention(profileId: number): AttentionIntegration[] {
-  return getImportIssues(profileId).map((ev) => {
-    const integration = getIntegration(ev.provider as IntegrationId);
-    return {
-      id: integration?.id ?? null,
-      provider: integration?.name ?? ev.provider,
-      detail: ev.error ?? "Reconnect to resume syncing.",
-    };
-  });
-}
+import { getIntegrationAttention, getReviewPairCount } from "./integrations";
 
 // The stable flagged-biomarker window (issue #283): a result flagged in the last N
 // days needs attention, regardless of whether/when a Telegram digest went out. The
@@ -135,7 +122,7 @@ export function collectAttentionModel(
   return buildAttentionModel({
     upcoming: collectUpcoming(profileId, today, units),
     flaggedBiomarkers,
-    integrations: integrationAttention(profileId),
+    integrations: getIntegrationAttention(profileId),
     reviewCount: getReviewPairCount(profileId),
     today,
   });

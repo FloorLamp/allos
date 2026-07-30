@@ -93,6 +93,10 @@ export interface DigestInput {
   // formats it into the Today section (doses summarized by the count line above, so
   // they're excluded from the banded lines to avoid double-counting).
   todayGroups: BandGroup[];
+  // The absolute public app URL, when configured — used to make the broken-sync lines'
+  // hrefs tappable (#1685), the same deepLinkBase convention the food/preventive nudges
+  // use. Empty/absent ⇒ the lines render without a link rather than a broken relative one.
+  deepLinkBase?: string;
   // Count of situational intake items due TODAY because their situation is active
   // (issue #662 item 1) — the optional digest mention of the same "N situational
   // items now active" the situations bar shows. Optional/0 ⇒ the line is omitted.
@@ -248,6 +252,17 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     for (const line of due.lines) todayLines.push(line);
     for (const h of due.highlights) {
       todayLines.push(`⚑ ${h.title} — ${h.reason}`);
+    }
+    // Broken syncs, named (#1685). The band count above says how many; these say which,
+    // and link where the fix lives. Present for as long as the connection is broken and
+    // gone the morning after a healthy sync — the signal self-clears because the item
+    // behind it does (currentlyFailingProviders / the staleness threshold), so nothing
+    // here needs its own lifecycle.
+    const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
+    for (const s of due.syncIssues) {
+      const detail = s.detail ? ` — ${s.detail}` : "";
+      const link = base ? ` ${base}${s.href}` : "";
+      todayLines.push(`🔌 ${s.title}${detail}${link}`);
     }
   }
   // The "+N available" TEXT tail (#1505). Rendered into the body — not only as a

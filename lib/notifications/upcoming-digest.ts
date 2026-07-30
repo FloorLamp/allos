@@ -10,6 +10,7 @@
 
 import type { BandGroup, UpcomingDomain, UpcomingItem } from "../upcoming";
 import { primaryReason } from "../reasons";
+import type { AppRoute } from "../hrefs";
 
 // Singular noun per domain; the summary pluralizes with a trailing "s". "lab"
 // reads naturally as the retest signal ("1 lab, 2 labs"); "training target" and
@@ -72,14 +73,26 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   // but the exhaustive Record needs an entry. DOMAIN_SEQ omits them, so they're
   // never counted even if one ever appeared.
   "biomarker-flag": "flagged result",
+  // A broken sync (#1685). The ONLY signal-group domain that IS in DOMAIN_SEQ, so it is
+  // the only one this digest counts. See the sequence below for why it earns that.
   integration: "sync issue",
   review: "review item",
 };
 
 // Fixed within-band ordering for the count phrase, matching the page's domain
 // order so the digest reads in the same sequence the user sees.
+//
+// `integration` joins the sequence in #1685 — the one deliberate addition from outside
+// the date-scheduled set. The reasoning, recorded because every other omission above is
+// also deliberate: an integration exists so data flows WITHOUT opening the app, which
+// makes a dead one exactly the state its owner is least likely to notice, and a revoked
+// grant is unrecoverable without their re-consent, so waiting never fixes it. Reaching
+// only the surfaces you have to open to see inverts the feature's purpose. It rides the
+// digest that already sends — no dedicated notification, no escalation, no new schedule
+// (the ride-the-nag corollary of the attention doctrine).
 const DOMAIN_SEQ: UpcomingDomain[] = [
   "dose",
+  "integration",
   "prn-max",
   "refill",
   "dietary-limit",
@@ -110,6 +123,20 @@ export interface DigestHighlight {
   reason: string;
 }
 
+// One broken-sync line for the digest (#1685), lifted from the SAME UpcomingItem the
+// hero and the Upcoming page render — never a second description of a broken sync.
+// A bare per-band count ("1 sync issue") cannot be acted on: you need to know WHICH
+// source stopped and where to fix it. So the count line stays the glance, and this names
+// the provider and carries its href — the same relationship the #656 "why" highlights
+// have with the counts they sit under.
+export interface DigestSyncIssue {
+  title: string;
+  detail: string | null;
+  // The item's own href, relative (e.g. "/integrations/withings"). The renderer makes it
+  // absolute when a public app URL is configured and drops it otherwise.
+  href: AppRoute;
+}
+
 export interface UpcomingDigestModel {
   title: string;
   // One compact line per non-empty band, e.g. "Today: 2 doses, 1 appointment".
@@ -118,6 +145,9 @@ export interface UpcomingDigestModel {
   // structured reason (issue #656). Empty when nothing due carries a reason — the
   // digest then reads exactly as before (counts only).
   highlights: DigestHighlight[];
+  // The broken-sync lines (#1685), in banded order. Empty for a healthy profile, which
+  // is what keeps a working setup's digest byte-identical to before.
+  syncIssues: DigestSyncIssue[];
   // Total items across all bands (drives the title count).
   total: number;
 }
@@ -151,6 +181,24 @@ export function digestHighlights(groups: BandGroup[]): DigestHighlight[] {
     if (seen.has(item.title)) continue;
     seen.add(item.title);
     out.push({ title: item.title, reason: primaryReason(item.reasons)!.text });
+  }
+  return out;
+}
+
+// The banded set's broken-sync items, in band order (#1685). Reads the items straight
+// off the model — title, detail and href as the shared builder already decided them — so
+// the digest can never word a broken sync differently from the hero.
+export function digestSyncIssues(groups: BandGroup[]): DigestSyncIssue[] {
+  const out: DigestSyncIssue[] = [];
+  for (const g of groups) {
+    for (const item of g.items) {
+      if (item.domain !== "integration") continue;
+      out.push({
+        title: item.title,
+        detail: item.detail ?? null,
+        href: item.href,
+      });
+    }
   }
   return out;
 }
@@ -198,13 +246,18 @@ export function buildUpcomingDigest(
     .map((g) => ({ label: g.label, summary: summarizeBand(g, exclude) }))
     .filter((b) => b.summary.length > 0)
     .map((b) => `${b.label}: ${b.summary}`);
-  if (lines.length === 0) return null;
+  const syncIssues = digestSyncIssues(nonEmpty);
+  // A day whose ONLY banded content is a broken sync still has something to say (#1685):
+  // returning null here would drop the named line along with the count and leave the dead
+  // integration reaching nothing again, which is the whole bug.
+  if (lines.length === 0 && syncIssues.length === 0) return null;
   const total = nonEmpty.reduce((n, g) => n + g.items.length, 0);
   const who = profileName ? ` — ${profileName}` : "";
   return {
     title: `🔔 Due soon${who}`,
     lines,
     highlights: digestHighlights(nonEmpty),
+    syncIssues,
     total,
   };
 }

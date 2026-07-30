@@ -22,6 +22,8 @@ import {
   getDerivedSituationLines,
 } from "../queries";
 import { groupUpcoming } from "../upcoming";
+import { integrationToItem } from "../attention";
+import { getIntegrationAttention } from "../queries/integrations";
 import {
   mainSleepNights,
   sleepSessionDurationMinutes,
@@ -39,6 +41,7 @@ import {
   setProfileSetting,
   getProfileSleepDigest,
   getTimezone,
+  getPublicUrl,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import { getIntakeDeltaLine } from "../intake-history";
@@ -230,7 +233,19 @@ export function gatherDigestInput(
       (i) => i.domain !== "visit" && i.domain !== "screening"
     );
   }
-  const todayGroups = groupUpcoming(upcoming, td);
+  // Broken syncs join the banded set (#1685) — the ONE place the digest learns about a
+  // dead integration. They are built by the SAME integrationToItem the dashboard hero and
+  // the Upcoming page render, from the SAME getIntegrationAttention list the Data → Review
+  // badge counts, so the four surfaces cannot disagree about which sources are broken or
+  // what to call them (#221). Deliberately appended AFTER `upcoming` is used for the dose
+  // headline and the situational counts below: those read the date-scheduled set and must
+  // not see a structural signal.
+  //
+  // They band as Today (no dueDate, no band override), which is the honest reading — a
+  // sync that stopped is not scheduled for a date, it is broken NOW.
+  const integrationItems =
+    getIntegrationAttention(profileId).map(integrationToItem);
+  const todayGroups = groupUpcoming([...upcoming, ...integrationItems], td);
   // The dose glance headline counts the DUE dose items collectUpcoming surfaced
   // (bus-honored + #558) — the same items the Today section bands over. No local
   // priority filter here any more (#1505): the "tracked, never pushed" exclusion now
@@ -360,6 +375,9 @@ export function gatherDigestInput(
     derivedSituationLines,
     intakeKinds,
     todayGroups,
+    // Makes the broken-sync lines' hrefs tappable (#1685); empty when no public URL is
+    // configured, in which case the lines still name the provider.
+    deepLinkBase: getPublicUrl(),
     activities,
     adherence,
     // Delta headline (#1505 part 3): WHICH pushed obligations changed state, from the
