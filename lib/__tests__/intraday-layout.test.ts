@@ -17,6 +17,7 @@ import {
   rowLabel,
   sleepEdgeLabels,
   workoutBlockLayout,
+  workoutLabels,
   type IntradayVariant,
 } from "@/lib/intraday-layout";
 import { MINUTES_IN_DAY, type IntradayModel } from "@/lib/intraday";
@@ -347,30 +348,61 @@ describe("bed and wake labels (#1512 A)", () => {
 });
 
 describe("workout block names (#1512 B)", () => {
-  it("names a long block and never paints past its right edge", () => {
+  it("names a long block INSIDE it and never paints past its right edge", () => {
     const w = workout({ startMinute: 480, endMinute: 780 }); // 5 h
     const geo = intradayGeometry(model({ workouts: [w] }), "wide");
     const layout = workoutBlockLayout(geo, w)!;
     expect(layout.showIcon).toBe(true);
-    expect(layout.text).not.toBeNull();
-    expect(layout.textX).toBeGreaterThanOrEqual(layout.left);
-    expect(
-      layout.textX + layout.text!.length * geo.labelSize * 0.6
-    ).toBeLessThanOrEqual(layout.left + layout.width + 1e-9);
+    expect(layout.text).toBe("Morning ride");
+    const [label] = workoutLabels(geo, [w]);
+    expect(label.mode).toBe("inside");
+    expect(label.end).toBeLessThanOrEqual(layout.left + layout.width + 1e-9);
   });
 
-  it("elides a name the block cannot hold", () => {
-    const w = workout({
-      startMinute: 480,
-      endMinute: 620,
-      title: "Evening ride with the club along the river",
-    });
+  // The arithmetic that makes "inside the block" almost never available: a
+  // one-hour session is 1/24th of the axis. The name goes BESIDE it instead —
+  // which is the half of #1512 B that actually fixes "a 45-minute run and a
+  // 45-minute lift look identical".
+  it("puts an ordinary session's name BESIDE its block", () => {
+    const w = workout({ startMinute: 480, endMinute: 540 }); // 1 h
     const geo = intradayGeometry(model({ workouts: [w] }), "wide");
     const layout = workoutBlockLayout(geo, w)!;
-    expect(layout.text!.endsWith("…")).toBe(true);
+    expect(layout.text).toBeNull(); // does not fit inside
+    const [label] = workoutLabels(geo, [w]);
+    expect(label.mode).toBe("beside");
+    expect(label.text).toBe("Morning ride");
+    expect(label.start).toBeGreaterThanOrEqual(layout.left + layout.width);
+    expect(label.end).toBeLessThanOrEqual(geo.plotRight + 1e-9);
   });
 
-  it("falls back to icon-only for a short block", () => {
+  it("keeps a late block's beside-name inside the plot (#1573)", () => {
+    // The block ends AT midnight, so its label wants to start past the right
+    // edge. It paints inward instead of off the chart.
+    const w = workout({
+      startMinute: 1380,
+      endMinute: 1440,
+      title: "Evening ride with the club",
+    });
+    const geo = intradayGeometry(model({ workouts: [w] }), "compact");
+    const [label] = workoutLabels(geo, [w]);
+    expect(label.mode).toBe("beside");
+    expect(label.start).toBeGreaterThanOrEqual(geo.plotLeft - 1e-9);
+    expect(label.end).toBeLessThanOrEqual(geo.plotRight + 1e-9);
+  });
+
+  it("elides a name wider than the whole plot rather than clipping it", () => {
+    const w = workout({
+      startMinute: 600,
+      endMinute: 660,
+      title: "Evening ride with the club along the river and back again twice",
+    });
+    const geo = intradayGeometry(model({ workouts: [w] }), "compact");
+    const [label] = workoutLabels(geo, [w]);
+    expect(label.text.endsWith("…")).toBe(true);
+    expect(label.end).toBeLessThanOrEqual(geo.plotRight + 1e-9);
+  });
+
+  it("keeps the icon but drops the name for a sliver block", () => {
     const w = workout({ startMinute: 480, endMinute: 500 });
     const geo = intradayGeometry(model({ workouts: [w] }), "compact");
     const layout = workoutBlockLayout(geo, w)!;
@@ -382,8 +414,28 @@ describe("workout block names (#1512 B)", () => {
     const geo = intradayGeometry(model({ workouts: [w] }), "compact");
     const layout = workoutBlockLayout(geo, w)!;
     expect(layout.showIcon).toBe(false);
-    expect(layout.text).toBeNull();
     expect(layout.width).toBeGreaterThan(0);
+  });
+
+  // #1573's rule, applied to this row: the longer session keeps its name and the
+  // neighbour that would overlap loses ITS TEXT ONLY — block, glyph and <title>
+  // all stay.
+  it("drops a colliding neighbour's name, longer session first", () => {
+    const long = workout({
+      key: "long",
+      startMinute: 480,
+      endMinute: 660,
+      title: "Long ride",
+    });
+    const short = workout({
+      key: "short",
+      startMinute: 665,
+      endMinute: 680,
+      title: "Short lift",
+    });
+    const geo = intradayGeometry(model({ workouts: [long, short] }), "compact");
+    const labels = workoutLabels(geo, [long, short]);
+    expect(labels.map((l) => l.key)).toEqual(["long"]);
   });
 
   it("clips a block to a zoomed window and drops one outside it", () => {
@@ -403,6 +455,15 @@ describe("workout block names (#1512 B)", () => {
         w
       )
     ).toBeNull();
+    expect(
+      workoutLabels(
+        intradayGeometry(model({ workouts: [w] }), "wide", {
+          from: 900,
+          to: 1000,
+        }),
+        [w]
+      )
+    ).toEqual([]);
   });
 });
 

@@ -52,6 +52,7 @@ import {
   sleepEdgeLabels,
   wantsFineDetail,
   workoutBlockLayout,
+  workoutLabels,
   zone2Position,
   type IntradayGeometry,
   type IntradayVariant,
@@ -160,6 +161,9 @@ export default function IntradayChart({
   const y = (bpm: number) => projectBpm(geo, bpm);
   const ticks = axisTicks(geo);
   const bedWake = sleepEdgeLabels(geo, model.sleep, clock);
+  const workoutName = new Map(
+    workoutLabels(geo, model.workouts).map((label) => [label.key, label])
+  );
   const zoomed = view != null;
 
   const segments = useMemo(
@@ -236,10 +240,14 @@ export default function IntradayChart({
     setCursor(null);
   }, []);
 
+  // NO setPointerCapture here, deliberately. Capturing the pointer on the <svg>
+  // retargets the subsequent `click` to the capturing element, which SWALLOWS the
+  // tick and block anchors underneath — the exact affordance #1515 promises to
+  // keep working. The drag is tracked on the svg's own pointermove instead, and a
+  // gesture that never exceeds the zoom threshold leaves the click to the anchor.
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     const minute = minuteAtClientX(event.clientX);
     if (minute == null) return;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
     setDrag({ from: minute, to: minute });
     setCursor(minute);
   };
@@ -482,6 +490,7 @@ export default function IntradayChart({
         {model.workouts.map((w) => {
           const layout = workoutBlockLayout(geo, w);
           if (!layout) return null;
+          const name = workoutName.get(w.key);
           const block = (
             <>
               <title>{`${w.title} · ${clock(w.startMinute)}–${clock(w.endMinute)}`}</title>
@@ -522,15 +531,17 @@ export default function IntradayChart({
                   />
                 </svg>
               )}
-              {layout.text && (
+              {name && (
                 <text
                   data-testid="intraday-workout-name"
-                  x={layout.textX}
+                  data-placement={name.mode}
+                  x={name.x}
                   y={geo.workTop + geo.workH / 2 + geo.labelSize * 0.35}
+                  textAnchor={name.anchor}
                   fontSize={geo.labelSize}
                   fill={chartNeutral}
                 >
-                  {layout.text}
+                  {name.text}
                 </text>
               )}
             </>
@@ -618,7 +629,7 @@ export default function IntradayChart({
         {model.nowMinute != null &&
           model.nowMinute >= geo.view.from &&
           model.nowMinute <= geo.view.to && (
-            <g data-testid="intraday-now">
+            <g data-testid="intraday-now" pointerEvents="none">
               <title>{`Now · ${clock(model.nowMinute)}`}</title>
               <line
                 x1={x(model.nowMinute)}
@@ -633,9 +644,15 @@ export default function IntradayChart({
           )}
 
         {/* ── Layer 6: the interaction marks (#1515) ── */}
+        {/* The interaction marks are pointer-TRANSPARENT. They are drawn last, so
+            they paint over the tick and block anchors — and an SVG element under
+            the pointer becomes the click target, which would silently swallow the
+            very anchors #1515 promises to keep working (the crosshair sits exactly
+            under the cursor by construction). */}
         {dragSpan && (
           <rect
             data-testid="intraday-selection"
+            pointerEvents="none"
             x={x(dragSpan.from)}
             y={geo.padTop}
             width={Math.max(1, x(dragSpan.to) - x(dragSpan.from))}
@@ -645,7 +662,11 @@ export default function IntradayChart({
           />
         )}
         {cursor != null && (
-          <g data-testid="intraday-cursor" data-minute={Math.round(cursor)}>
+          <g
+            data-testid="intraday-cursor"
+            data-minute={Math.round(cursor)}
+            pointerEvents="none"
+          >
             <line
               x1={x(cursor)}
               y1={geo.padTop}

@@ -30,6 +30,7 @@ import {
   textWidth,
   viewBoxFontSize,
   type PlacedLabel,
+  type RowLabelInput,
 } from "./chart-svg";
 import {
   MINUTES_IN_DAY,
@@ -423,14 +424,17 @@ export interface WorkoutBlockLayout {
 }
 
 /**
- * Where a workout block's NAME goes (#1512 B). A 45-minute run and a 45-minute
- * lift are identical rectangles today; the title exists in the model and reaches
- * only the `<title>` tooltip, which is another touch dead end.
+ * The block's own rectangle, its glyph, and whether its name fits INSIDE it.
  *
- * The block's own pixel width is the budget: full name where it fits, elided
- * where it nearly does, icon-only for a short block, and a bare rectangle when
- * even the glyph would overflow. Nothing is ever painted past the block's right
- * edge — that is `elideToWidth`, not a clip path.
+ * Almost nothing does. A one-hour session is 1/24th of a 24-hour axis — about 27
+ * user units of a 660-unit plot — which holds a 13-unit icon and not much else.
+ * That is the honest arithmetic, and it is why `workoutLabels` below places most
+ * names BESIDE the block instead (#1512 B says "inside/beside"): a name that only
+ * ever renders for a six-hour hike would not have fixed the "a 45-minute run and a
+ * 45-minute lift look identical" complaint at all.
+ *
+ * Nothing is painted past the block's right edge here — that is `elideToWidth`,
+ * not a clip path.
  */
 export function workoutBlockLayout(
   geo: IntradayGeometry,
@@ -448,9 +452,75 @@ export function workoutBlockLayout(
   const showIcon = width >= iconSize + iconPad * 2;
   const textX = left + (showIcon ? iconPad + iconSize + iconPad : iconPad);
   const budget = left + width - iconPad - textX;
-  const text =
-    budget > 0 ? elideToWidth(workout.title, budget, geo.labelSize) : null;
-  return { key: workout.key, left, width, showIcon, iconSize, text, textX };
+  // Inside only when the WHOLE name fits: an elided name inside a narrow block
+  // ("Mor…") is less informative than the same name painted in full beside it.
+  const fits =
+    budget > 0 && textWidth(workout.title, geo.labelSize) <= budget
+      ? workout.title
+      : null;
+  return {
+    key: workout.key,
+    left,
+    width,
+    showIcon,
+    iconSize,
+    text: fits,
+    textX,
+  };
+}
+
+export interface WorkoutLabel extends PlacedLabel {
+  key: string;
+  /** `inside` when the block itself held the name; `beside` when it is painted in
+   *  the row's free space just past the block's right edge. */
+  mode: "inside" | "beside";
+}
+
+/**
+ * Where every workout block's NAME goes (#1512 B), as ONE row layout.
+ *
+ * A 45-minute run and a 45-minute lift are identical rectangles until something
+ * names them, and the name only reached the SVG `<title>` — a touch dead end.
+ * But a session is a sliver of a 24-hour axis, so "inside the block" is available
+ * to almost no real session; the name goes BESIDE the block, in the row's own free
+ * space, whenever the block cannot hold it.
+ *
+ * Because those labels then share one baseline, they are subject to the same
+ * collision rule as every other label row (#1573): the LONGER session wins, and a
+ * name that would overlap a kept one is dropped rather than smeared. The block,
+ * its glyph and its `<title>` are still there — only the redundant text goes.
+ */
+export function workoutLabels(
+  geo: IntradayGeometry,
+  workouts: readonly IntradayWorkoutBlock[]
+): WorkoutLabel[] {
+  const items: (RowLabelInput & { mode: "inside" | "beside" })[] = [];
+  for (const workout of workouts) {
+    const layout = workoutBlockLayout(geo, workout);
+    if (!layout) continue;
+    const inside = layout.text != null;
+    const gap = geo.labelSize * 0.35;
+    items.push({
+      key: workout.key,
+      mode: inside ? "inside" : "beside",
+      x: inside ? layout.textX : layout.left + layout.width + gap,
+      text: workout.title,
+      fontSize: geo.labelSize,
+      anchor: "start",
+      // Longer session wins a collision, and a name the block itself carries
+      // outranks one leaning on shared space.
+      priority: workout.endMinute - workout.startMinute + (inside ? 1e6 : 0),
+    });
+  }
+  const placed = placeRowLabels(items, {
+    left: geo.plotLeft,
+    right: geo.plotRight,
+    minGap: geo.labelSize * 0.4,
+  });
+  return items.flatMap((item) => {
+    const label = placed.get(item.key);
+    return label ? [{ ...label, key: item.key, mode: item.mode }] : [];
+  });
 }
 
 /** The HR row's value labels, right-aligned into the left gutter. */
