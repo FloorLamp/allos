@@ -41,12 +41,14 @@ import { recapRangeLabel } from "@/lib/weekly-recap";
 import { runRefills } from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runEscalations } from "@/lib/notifications/escalate";
+import { getNotifyError } from "@/lib/notifications";
+import { setDeliveryFailure } from "@/lib/notifications/delivery-marker";
 import { ESCALATION_SUPPRESSION_POLICY } from "@/lib/notifications/escalation";
 import { isHiddenUnderPolicy } from "@/lib/lifecycle";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { refillMarkerKey } from "@/lib/refill-nudge";
 import { getNotifySchedule } from "@/lib/settings";
-import { recordPreventiveDone } from "@/lib/queries";
+import { markDoseSkipped, recordPreventiveDone } from "@/lib/queries";
 import { buildWorkoutTargetReminder } from "@/lib/notifications/workouts";
 import { runEaseBack, easeBackMarkerKey } from "@/lib/notifications/ease-back";
 import { gatherCoachingInput } from "@/lib/queries";
@@ -380,7 +382,8 @@ describe("runPreventive orchestrator", () => {
 });
 
 // =====================================================================
-// runEscalations — safety tier (NEVER bus-gated), Telegram-only send
+// runEscalations — safety tier (NEVER bus-gated), dispatched to EVERY configured
+// channel through the chokepoint since #1716 (it used to be Telegram-only).
 // =====================================================================
 
 // Wire an escalation-ready fixture: a critical med with an untaken morning dose,
@@ -553,8 +556,144 @@ describe("runEscalations orchestrator", () => {
     expect(res.failed).toBe(false);
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBe(date);
     // The POST body carries the override chat id, not the profile's own.
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    const telegramCall = fetchMock.mock.calls.find((c) =>
+      String(c[0]).includes("api.telegram.org")
+    )!;
+    const body = JSON.parse(telegramCall[1].body as string);
     expect(String(body.chat_id)).toBe("555999");
+  });
+
+  // ---- #1716: the escalation goes through the dispatch chokepoint ----
+
+  it("reaches a configured Home Assistant channel, not Telegram alone (#1716)", async () => {
+    const p = newProfile("EscFanOut");
+    const { doseId, date } = escalationFixture(p);
+    configureTelegram(p);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    const res = await runEscalations(
+      p,
+      "EscFanOut",
+      date,
+      LATE_HOUR,
+      getNotifySchedule(p)
+    );
+    expect(res.failed).toBe(false);
+    // BOTH channels were attempted — the settings matrix offers `escalation` routing
+    // per channel, and before #1716 only Telegram could structurally receive it.
+    const hosts = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(hosts.some((u) => u.includes("api.telegram.org"))).toBe(true);
+    expect(hosts.some((u) => u.includes("homeassistant.local"))).toBe(true);
+    expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBe(date);
+
+    // The HA payload carries the escalation kind + the elapsed-time body, and its
+    // dose entries expose BOTH resolutions the message offers (taken and skipped).
+    const haCall = fetchMock.mock.calls.find((c) =>
+      String(c[0]).includes("homeassistant.local")
+    )!;
+    const payload = JSON.parse(haCall[1].body as string);
+    expect(payload.kind).toBe("escalation");
+    expect(payload.body).toContain("unconfirmed for");
+    expect(
+      payload.doses.map((d: { action: string }) => d.action).sort()
+    ).toEqual(["skipped", "taken"]);
+  });
+
+  it("a failed escalation records the delivery outcome (#1716)", async () => {
+    const p = newProfile("EscAccounting");
+    const { doseId, date } = escalationFixture(p);
+    configureTelegram(p);
+    stubFetch({ telegramOk: false });
+
+    const res = await runEscalations(
+      p,
+      "EscAccounting",
+      date,
+      LATE_HOUR,
+      getNotifySchedule(p)
+    );
+    expect(res.failed).toBe(true);
+    expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBeUndefined();
+    // A BROKEN SAFETY CHANNEL is now visible in Settings' delivery health. Before
+    // #1716 the escalation bypassed dispatch()'s recordDeliveryOutcome entirely, so
+    // the loudest message in the app could fail silently and forever.
+    const marker = getNotifyError();
+    expect(marker).not.toBeNull();
+    expect(marker!.channel).toBe("telegram");
+  });
+
+  it("a healthy escalation dispatch clears a stale delivery marker (#1716)", async () => {
+    const p = newProfile("EscAccountingClear");
+    const { date } = escalationFixture(p);
+    configureTelegram(p);
+    stubFetch();
+
+    setDeliveryFailure(
+      "telegram",
+      "an earlier failure",
+      new Date().toISOString()
+    );
+    expect(getNotifyError()).not.toBeNull();
+
+    await runEscalations(
+      p,
+      "EscAccountingClear",
+      date,
+      LATE_HOUR,
+      getNotifySchedule(p)
+    );
+    // Cleared only because this dispatch actually ATTEMPTED the failing channel —
+    // the #192 channel-aware clear, now reached by the safety tier too.
+    expect(getNotifyError()).toBeNull();
+  });
+
+  it("the message states how long the dose has been unconfirmed (#1716)", async () => {
+    const p = newProfile("EscElapsed");
+    const { date } = escalationFixture(p);
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+
+    // 12:00 tick against the 08:00 Morning slot → 4h unconfirmed.
+    await runEscalations(
+      p,
+      "EscElapsed",
+      date,
+      LATE_HOUR,
+      getNotifySchedule(p)
+    );
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(String(body.text)).toContain("morning slot, unconfirmed for 4h");
+  });
+
+  it("a dose SKIPPED through the escalation button ends the loop and matches the reminder's ledger (#1716)", async () => {
+    const p = newProfile("EscSkip");
+    const { doseId, date } = escalationFixture(p);
+    configureTelegram(p);
+    stubFetch();
+
+    // The escalation's ⏭ Skip performs markDoseSkipped — the SAME write the dose
+    // reminder's own skip performs, so the ledger cannot tell the two apart.
+    const outcome = markDoseSkipped(p, doseId, null, date);
+    expect(outcome).toBe("skipped");
+    const row = db
+      .prepare(
+        `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+      )
+      .get(doseId, date) as { status: string } | undefined;
+    expect(row?.status).toBe("skipped");
+
+    // And a skip ENDS the escalation loop through the existing skippedDoseIds gate —
+    // no marker of its own, no further nag.
+    const res = await runEscalations(
+      p,
+      "EscSkip",
+      date,
+      LATE_HOUR,
+      getNotifySchedule(p)
+    );
+    expect(res.failed).toBe(false);
+    expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBeUndefined();
   });
 });
 

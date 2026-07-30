@@ -7,6 +7,7 @@
 // lib/__tests__/callback-data.test.ts.
 
 import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { OUTDATED_MESSAGE_TEXT } from "@/lib/notifications/callback-data";
 
 // Stub the RAW Telegram Bot API transport (issue #454's guarded boundary), keeping
 // the chokepoint (telegram.ts: rebuildMessage/closeMessage/…) and the pure render
@@ -167,8 +168,9 @@ describe("preventive buttons route to the shared server functions", () => {
       )
       .get(p.profileId);
     expect(row).toBeFalsy();
-    // Answered with a bare ack (no text) — the tap wasn't authorized.
-    expect(lastAnswerText()).toBeUndefined();
+    // The tap wasn't authorized, so nothing was written — and the answer SAYS SO
+    // (#1716): a bare ack stops the spinner and reads as success.
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
   });
 });
 
@@ -333,7 +335,8 @@ describe("escalation buttons (caregiver two-way)", () => {
       .prepare(`SELECT 1 FROM intake_item_logs WHERE dose_id = ? AND date = ?`)
       .get(criticalDoseId, date);
     expect(log).toBeFalsy();
-    expect(lastAnswerText()).toBeUndefined();
+    // Refused and answered honestly (#1716) — never a silent, success-looking ack.
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
   });
 
   it("✅ on a retired dose logs nothing and answers stale (never falsely confirms)", async () => {
@@ -519,8 +522,8 @@ describe("escalation authz binds to the dose's own supplement (#615)", () => {
       .prepare(`SELECT 1 FROM intake_item_logs WHERE dose_id = ? AND date = ?`)
       .get(sensitiveDoseId, date);
     expect(log).toBeFalsy();
-    // Unauthorized → bare ack, no toast text.
-    expect(lastAnswerText()).toBeUndefined();
+    // Unauthorized → nothing written, and the toast says the tap didn't take (#1716).
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
   });
 
   it("med X's caregiver chat cannot escack-silence med Y's escalation (no marker)", async () => {
@@ -534,7 +537,7 @@ describe("escalation authz binds to the dose's own supplement (#615)", () => {
     expect(
       getProfileSetting(p.profileId, escalationMarkerKey(sensitiveDoseId))
     ).toBeFalsy();
-    expect(lastAnswerText()).toBeUndefined();
+    expect(lastAnswerText()).toBe(OUTDATED_MESSAGE_TEXT);
   });
 
   it("the profile's OWN chat still confirms med Y with a correct token", async () => {

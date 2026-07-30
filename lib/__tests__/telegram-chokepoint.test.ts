@@ -138,14 +138,17 @@ describe("Telegram channel chokepoint boundary (issue #454)", () => {
   // Strip line and block comments so a prose mention of `<b>` in a header comment
   // isn't read as markup emission.
   function stripComments(text: string): string {
-    return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[^\n]*?\/\/.*$/gm, "");
+    return text
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[^\n]*?\/\/.*$/gm, "");
   }
 
   it("no builder emits literal Telegram markup — emphasis goes through the rich-text seam", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {
       if (MARKUP_OWNERS.has(rel.split(path.sep).join("/"))) continue;
-      if (!rel.split(path.sep).join("/").startsWith("lib/notifications/")) continue;
+      if (!rel.split(path.sep).join("/").startsWith("lib/notifications/"))
+        continue;
       if (/<\/?(?:b|i|code)>/.test(stripComments(text))) {
         offenders.push(`${rel} emits a literal Telegram markup tag`);
       }

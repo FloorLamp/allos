@@ -50,6 +50,7 @@ import {
   parseHouseholdDoseCallback,
   escalationAckAnswerText,
   escalationAckCloseText,
+  escalationSkipCloseText,
   escalationTakeCloseText,
   foodLogAnswerText,
   foodOptInAnswerText,
@@ -310,8 +311,9 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // Unknown/malformed token: ack so the client stops the spinner, do nothing.
-  await answerCallbackQuery(cq.id);
+  // Unknown/malformed token — a button from a message whose token shape has since
+  // been retired. Nothing is written, so answer honestly rather than silently (#1716).
+  await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
 }
 
 // A per-render nonce carried in a PRN log button's callback_data — the "dedup
@@ -402,7 +404,7 @@ async function handlePreventiveTap(
       ? resolveTapProfile(pv, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const outcome = applyPreventiveTap(profileId, pv);
@@ -441,7 +443,7 @@ async function handleRefillTap(
       ? resolveTapProfile(rf, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const outcome = applyRefillTap(profileId, rf);
@@ -465,7 +467,7 @@ async function handleEscalationTap(
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   // The chats authorized to act on this escalation: every chat the escalation could
@@ -481,7 +483,24 @@ async function handleEscalationTap(
   ];
   const profileId = resolveEscalationTap(esc, String(chatId), authorizedChats);
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+
+  if (esc.action === "skip") {
+    // ⏭ Skip → markDoseSkipped, the SAME write the dose reminder's skip performs, so
+    // the ledger cannot tell the two apart (#1716). A skip is a decision: it ends the
+    // escalation loop through the existing skippedDoseIds gate rather than needing a
+    // marker of its own. Never an unconditional confirm — an already-taken or stale
+    // dose is answered by the status that actually stands.
+    const outcome = markDoseSkipped(
+      profileId,
+      esc.doseId,
+      esc.suppId,
+      esc.date
+    );
+    await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome));
+    await replaceMessage(cq, escalationSkipCloseText(outcome));
     return;
   }
 
@@ -609,9 +628,12 @@ async function handleDoseTap(
       : null;
   if (profileId == null) {
     // A chat that maps to no configured profile (or a token minted for a
-    // profile that doesn't share this chat): ack to stop Telegram retrying,
-    // then do nothing.
-    await answerCallbackQuery(cq.id);
+    // profile that doesn't share this chat): write nothing and SAY SO (#1716). A
+    // silent ack stops the spinner and reads as success — on the safety tier that
+    // means a caregiver believing a critical dose is confirmed when nothing was
+    // logged. Every refusal answers the same honest text the seven sibling handlers
+    // already used.
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
 
@@ -706,7 +728,7 @@ async function handleHouseholdDoseTap(
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const access = resolveHouseholdTapAccess(String(chatId), tap);
@@ -776,7 +798,7 @@ async function handleAllTaken(
       ? resolveTapProfile(all, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
 
@@ -866,7 +888,7 @@ async function handleFoodLog(
       ? resolveTapProfile(food, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   // Belt-and-suspenders cross-date guard (#947): a stale keyboard from a previous day
@@ -934,7 +956,7 @@ async function handleFoodProtein(
       ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   if (foodTapDateGuard(token.date, today(profileId)).kind === "stale-date") {
@@ -989,7 +1011,7 @@ async function handleFoodMore(
     messageId == null ||
     rows.length === 0
   ) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const current = countVisibleFoodButtons(rows);
@@ -1018,7 +1040,7 @@ async function handleFoodOptIn(
       ? resolveTapProfile(opt, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   setProfileFoodTelegram(profileId, opt.enable);

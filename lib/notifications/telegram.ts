@@ -30,7 +30,11 @@ import {
 import { today } from "../db";
 import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
-import type { NotificationChannel, NotificationMessage } from "./types";
+import type {
+  DispatchOptions,
+  NotificationChannel,
+  NotificationMessage,
+} from "./types";
 import { prefixMessage } from "./types";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
@@ -66,16 +70,24 @@ export {
 
 export const telegramChannel: NotificationChannel = {
   id: "telegram",
-  isConfigured(profileId: number) {
+  isConfigured(profileId: number, opts?: DispatchOptions) {
     // Login-scoped channel fan-out (issue #1072): a message ABOUT this profile is
     // deliverable when the bot is configured AND at least one MANAGING login has an
     // enabled Telegram chat (and hasn't muted this profile). The channel resolves N
     // recipients now, not one profile chat.
     const { telegramBotToken } = getTelegramBotConfig();
     if (!telegramBotToken) return false;
+    // An EXPLICIT chat override (#615's escalate_chat_id, routed through dispatch by
+    // #1716) is deliverable on its own: the caregiver chat was configured for this
+    // item and does not depend on the profile having any managing-login recipient.
+    if (opts?.telegramChatIds?.length) return true;
     return resolveTelegramRecipients(profileId).length > 0;
   },
-  async send(profileId: number, msg: NotificationMessage) {
+  async send(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ) {
     // Fan the message out to every managing login's chat (deduped by chat id, so a
     // shared family group gets ONE copy). Each recipient is gated by ITS login's
     // Telegram disabled-kinds set (#928, now login-scoped per #1072) — a kind a
@@ -85,6 +97,19 @@ export const telegramChannel: NotificationChannel = {
     // always allowed. Enforced HERE, inside the chokepoint, so the gate can't be
     // bypassed by a raw-primitive send. A send throw for ANY recipient propagates so
     // dispatch() marks the channel failed and the slot can retry.
+    // An explicit chat override REPLACES the fan-out for this send (#615/#1716): the
+    // targets are raw chat ids, not logins, so the per-login disabled-kinds gate below
+    // does not apply to them — the chat was named for exactly this item, and a
+    // per-login mute of a chat that isn't a login's is meaningless. Deduped so a
+    // repeated id can't double-send. A throw still propagates, so dispatch() records
+    // the delivery outcome for an override send exactly as for a fan-out send.
+    const override = opts?.telegramChatIds;
+    if (override?.length) {
+      for (const chatId of Array.from(new Set(override))) {
+        await sendMessageRaw(chatId, msg);
+      }
+      return;
+    }
     const recipients = resolveTelegramRecipients(profileId);
     for (const { loginId, chatId } of recipients) {
       if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginId)))

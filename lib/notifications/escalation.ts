@@ -8,9 +8,11 @@
 // today, the dose is still unconfirmed, it hasn't already been escalated today,
 // and enough time (escalateAfterMin) has elapsed since the window's slot hour.
 
-import type { NotificationMessage } from "./types";
+import type { NotificationAction, NotificationMessage } from "./types";
 import type { LifecycleSuppressionPolicy } from "../lifecycle";
+import type { SupplementKind } from "../types/intake";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
+import { intakeHref } from "../hrefs";
 
 // The send slots escalation chases: the four fixed windows plus the PreWorkout
 // pseudo-slot (#1154) — a critical `anytime` pre_workout dose whose reminder
@@ -44,6 +46,9 @@ export interface EscalationCandidate {
   amount: string | null;
   product?: string | null;
   window: EscalationWindow;
+  // Which surface the item lives on, so the message can carry the right deep link
+  // (#1716) — a medication points at Medications, a supplement at the Supplements tab.
+  kind: SupplementKind;
   // The window's scheduled reminder hour (0–23, profile-local), so the elapsed
   // check anchors on when the reminder went out.
   slotHour: number;
@@ -78,6 +83,12 @@ export interface EscalationDue {
   amount: string | null;
   product?: string | null;
   window: EscalationWindow;
+  kind: SupplementKind;
+  // Minutes since the window's own slot hour — the fact that MADE this fire, which
+  // the message states outright (#1716). Anchored on the slot, not on the escalation
+  // threshold: "unconfirmed for 2h 40m" is time since the dose was due, which is what
+  // a caregiver is deciding on.
+  unconfirmedMinutes: number;
   escalateChatId: string | null;
 }
 
@@ -125,46 +136,87 @@ export function escalationsDue(
       amount: c.amount,
       ...(c.product ? { product: c.product } : {}),
       window: c.window,
+      kind: c.kind,
+      unconfirmedMinutes: Math.max(0, input.nowMinutes - c.slotHour * 60),
       escalateChatId: c.escalateChatId,
     });
   }
   return out;
 }
 
+// How long a dose has been unconfirmed, in the redose formatter's phrasing register
+// (`redose-format.ts` is the audit's exemplar): "2h 40m", "3h", "45m". Never invents
+// precision it doesn't have — a whole-hour elapsed drops the minutes half, and under
+// an hour reads in minutes alone.
+export function elapsedLabel(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
 // The escalation message. Always names the profile (escalations may land in a
 // shared/caregiver chat where whose dose it is isn't obvious — see the chat-id
-// ambiguity fix). Two caregiver buttons (issue #233): ✅ Confirmed taken routes
+// ambiguity fix).
+//
+// THE BODY STATES THE FACT THAT MADE IT FIRE (#1716): the slot AND how long the dose
+// has been unconfirmed. "hasn't been confirmed yet. Check in." never said how long,
+// though the elapsed time was computed to decide the send in the first place.
+//
+// THREE caregiver affordances, not two (#233 + #1716): ✅ Confirmed taken routes
 // through markDoseTaken's outcome union (a stale tap never falsely logs a critical
-// med), and 👍 I'm on it acknowledges + suppresses re-nudge WITHOUT claiming the
-// dose was taken. Both authorize by chat id — the escalation may go to the supp's
-// escalate_chat_id, which the tap handler now accepts alongside the profile's own
-// chat. The token carries ids only (profile/dose/supp) plus the day, so a late tap
-// still resolves the right dose to the right date.
+// med), ⏭ Skip records the DELIBERATE decision through markDoseSkipped — exactly the
+// dose reminder's own precedent, and a skipped dose already ends the escalation loop —
+// and 👍 I'm on it acknowledges + suppresses re-nudge WITHOUT claiming the dose was
+// taken. Without Skip, "we decided not to give it" forced a false confirm, an
+// indefinite ack, or an app visit. All three authorize by chat id — the escalation may
+// go to the supp's escalate_chat_id, which the tap handler accepts alongside the
+// profile's own chat. The token carries ids only (profile/dose/supp) plus the day, so
+// a late tap still resolves the right dose to the right date. A deep link rides along
+// when a public URL is configured (every sibling builder carries one).
 export function renderEscalationMessage(
   profileName: string,
   due: EscalationDue,
   profileId: number,
-  date: string
+  date: string,
+  deepLinkBase = ""
 ): NotificationMessage {
   const who = profileName ? `${profileName} — ` : "";
   const dose = formatMedicationDoseProduct(due.amount, due.product);
   const amt = dose ? ` (${dose})` : "";
   const suppId = due.supplementId;
+  const base = deepLinkBase.replace(/\/$/, "");
+  const actions: NotificationAction[] = [
+    {
+      label: "✅ Confirmed taken",
+      data: `esctake:${profileId}:${due.doseId}:${suppId}:${date}`,
+      row: "esc",
+    },
+    {
+      label: "⏭ Skip",
+      data: `escskip:${profileId}:${due.doseId}:${suppId}:${date}`,
+      row: "esc",
+    },
+    {
+      label: "👍 I'm on it",
+      data: `escack:${profileId}:${due.doseId}:${suppId}:${date}`,
+      row: "esc",
+    },
+  ];
+  if (base) {
+    actions.push({
+      label:
+        due.kind === "medication" ? "Open medications →" : "Open supplements →",
+      url: `${base}${intakeHref(due.kind)}`,
+    });
+  }
   return {
     title: `⚠️ Missed dose: ${who}${due.supplementName}`,
-    body: `The ${escalationWindowPhrase(due.window)} dose of ${due.supplementName}${amt} hasn't been confirmed yet. Check in.`,
+    body:
+      `${due.supplementName}${amt} — ${escalationWindowPhrase(due.window)} slot, ` +
+      `unconfirmed for ${elapsedLabel(due.unconfirmedMinutes)}.`,
     kind: "escalation",
-    actions: [
-      {
-        label: "✅ Confirmed taken",
-        data: `esctake:${profileId}:${due.doseId}:${suppId}:${date}`,
-        row: "esc",
-      },
-      {
-        label: "👍 I'm on it",
-        data: `escack:${profileId}:${due.doseId}:${suppId}:${date}`,
-        row: "esc",
-      },
-    ],
+    actions,
   };
 }

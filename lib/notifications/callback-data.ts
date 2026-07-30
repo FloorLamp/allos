@@ -374,7 +374,9 @@ export function refillAnswerText(outcome: RefillTapOutcome): string {
 // The token mirrors a dose tap's shape (profile/dose/supp/date) under distinct
 // "esctake"/"escack" prefixes.
 
-export type EscalationAction = "take" | "ack";
+// ⏭ Skip joins the two original affordances (#1716): a skip is a RECORDED DELIBERATE
+// DECISION, distinct from silence, and skipped doses already end the escalation loop.
+export type EscalationAction = "take" | "ack" | "skip";
 
 export interface EscalationCallback {
   profileId: number;
@@ -384,14 +386,15 @@ export interface EscalationCallback {
   action: EscalationAction;
 }
 
-// Parse an "esctake:…" / "escack:…" token (same field layout as a dose token).
-// Malformed (wrong prefix, bad ids, missing date) → null.
+// Parse an "esctake:…" / "escskip:…" / "escack:…" token (same field layout as a dose
+// token). Malformed (wrong prefix, bad ids, missing date) → null.
 export function parseEscalationCallback(
   data: unknown
 ): EscalationCallback | null {
   if (typeof data !== "string") return null;
   let action: EscalationAction;
   if (data.startsWith("esctake:")) action = "take";
+  else if (data.startsWith("escskip:")) action = "skip";
   else if (data.startsWith("escack:")) action = "ack";
   else return null;
   const [, profStr, doseStr, suppStr, date] = data.split(":");
@@ -459,6 +462,25 @@ export function escalationTakeCloseText(outcome: DoseTakenOutcome): string {
     return "This dose was marked skipped ⏭ — check the app.";
   }
   return OUTDATED_MESSAGE_TEXT;
+}
+
+// Replacement message body after an escalation ⏭ Skip tap (#1716), per
+// markDoseSkipped's outcome. A skip that STANDS closes the escalation honestly; an
+// already-taken dose is not silently overwritten, and a stale/paused dose says so.
+// Shares the ledger — and therefore the vocabulary — with the dose reminder's own skip.
+export function escalationSkipCloseText(outcome: DoseTakenOutcome): string {
+  switch (outcome) {
+    case "skipped":
+    case "already-skipped":
+      return "Skipped ⏭ — recorded as a decision, not a miss.";
+    case "logged-off-day":
+    case "already-taken":
+      return "Already confirmed taken ✅";
+    case "inactive":
+    case "stale-dose":
+    default:
+      return OUTDATED_MESSAGE_TEXT;
+  }
 }
 
 // Replacement message body after an escalation 👍 I'm-on-it tap, per

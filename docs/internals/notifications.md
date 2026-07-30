@@ -60,7 +60,10 @@ login-keyed (`push_subscriptions.login_id`).
   group two logins both point at gets ONE message (the profile-name-in-title
   #380 is now universal). Escalation (`runEscalations`) fans out the same way
   but its `escalate_chat_id` supplement override, when set, supersedes the
-  fan-out (per-item caregiver routing). Callback taps resolve **chat → login →
+  fan-out (per-item caregiver routing). Since #1716 that override rides the
+  dispatch call as a `DispatchOptions.telegramChatIds` routing hint rather than
+  a direct Telegram send, so the safety tier keeps per-item routing AND gains
+  delivery accounting — see the escalation paragraph below. Callback taps resolve **chat → login →
   in-scope profiles** (`getProfilesByTelegramChatId` rewritten over
   `login_settings`+`login_profiles`); the button token still names the acting
   profile, so the tap logic is unchanged.
@@ -180,7 +183,17 @@ off notifications. A _safety_ reminder — scheduled **dose reminders**,
 DELIBERATELY **not** bus-gated (same non-hideable-safety reasoning as #171's
 attention strip): a page dismissal must never silence a possibly-critical
 medication signal, so their per-day/slot (or per-administration) markers stay
-the only dedup. As of #942, missed-dose escalation is the **first lifecycle
+the only dedup. **Missed-dose escalation dispatches like every other builder
+(#1716):** it used to call `sendTelegramMessage` directly, which made the
+loudest safety-tier message the only one that reached Telegram ONLY — while the
+kind registry offers `escalation` per-channel routing and the Home Assistant
+channel advertises escalation light-flashes, neither of which could structurally
+happen — and it bypassed `dispatch()`'s `recordDeliveryOutcome`, so a broken
+safety channel never set the delivery-health marker and stayed invisible in
+Settings. It now goes through `dispatch()`; the message states the elapsed time
+that made it fire ("morning slot, unconfirmed for 2h 40m") and carries a deep
+link. The fan-out's warn-never-block posture on a muted safety kind is
+unchanged. As of #942, missed-dose escalation is the **first lifecycle
 tenant**: it declares `ESCALATION_SUPPRESSION_POLICY = "safety-ungated"`
 (`lib/notifications/escalation.ts`), the #449 carve-out expressed as DATA in the
 shared `LifecycleSuppressionPolicy` vocabulary (`lib/lifecycle.ts`,
@@ -231,17 +244,28 @@ the same link as its notification click-through
 (`buildPushPayload`/`pushClickThroughUrl` in `push-core.ts`) and Home Assistant
 forwards it in the payload's `links[]`, refill 📦 Ordered onto a
 `refillSignalKey` bus-snooze (+ deep link; no amount-bearing "mark refilled"),
-escalation ✅ Confirmed taken/👍 I'm on it onto `markDoseTaken`/an ack that sets
-the episode marker without logging the dose. Payloads carry **ids only** (never
+escalation ✅ Confirmed taken/⏭ Skip/👍 I'm on it onto `markDoseTaken`/
+`markDoseSkipped`/an ack that sets the episode marker without logging the dose.
+The ⏭ Skip (#1716) is the dose reminder's own precedent applied to the
+escalation: a skip is a RECORDED DELIBERATE DECISION — distinct from silence —
+written through the same `markDoseSkipped` core, so the ledger cannot tell an
+escalation skip from a reminder skip, and the existing `skippedDoseIds` gate
+ends the escalation loop with no marker of its own. Without it, "we decided not
+to give it" forced a false confirm, an indefinite ack, or an app visit. Payloads carry **ids only** (never
 names — 64-byte limit, AUTOINCREMENT ids never recycle), every handler answers
 from a **typed outcome union** (the `DoseTakenOutcome` pattern — never
 unconditionally confirm; a stale/foreign tap gets the outdated-message
 replacement), buttons are removed/replaced on consumption, and escalation taps
 authorize by **chat id** (any chat the escalation fanned out to for that profile
 — the managing logins' chats — OR the supplement's `escalate_chat_id`; anyone in
-the caregiver chat may confirm, by design, #1072). Pure parse/decide lives in
-`lib/notifications/callback-data.ts` (unit-tested); the handler flows in
-`telegram-callbacks.ts`. **Channel chokepoint (#454):** every outbound Telegram
+the caregiver chat may confirm, by design, #1072). **A refusal is never
+SILENT (#1716):** an unresolvable/unauthorized profile used to `answerCallbackQuery`
+with no text — the spinner stops and the tap LOOKS successful, which on the
+safety tier means a caregiver believing a critical dose is confirmed when
+nothing was written. Every refusal path now answers `OUTDATED_MESSAGE_TEXT`, the
+callback-silence variant of the never-confirm-unconditionally rule (#232). Pure
+parse/decide lives in `lib/notifications/callback-data.ts` (unit-tested); the
+handler flows in `telegram-callbacks.ts`. **Channel chokepoint (#454):** every outbound Telegram
 write — the tick's channel send, escalation's explicit-chat send, and the
 callback edit/rebuild paths — routes through the ONE chokepoint module
 `lib/notifications/telegram.ts` (`telegramChannel` / `sendTelegramMessage` /

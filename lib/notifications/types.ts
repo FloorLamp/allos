@@ -63,11 +63,29 @@ export interface NotificationMessage {
   kind?: NotificationKind;
 }
 
+// Per-send delivery routing a caller may need on TOP of the profile's own configured
+// channels. Today there is exactly one: the missed-dose escalation's per-item
+// `escalate_chat_id` (#615), which routes THAT item's Telegram copy to one explicit
+// caregiver chat instead of the managing-login fan-out. It rides the dispatch call —
+// rather than the escalation sending Telegram itself — so the safety tier keeps
+// dispatch()'s delivery accounting and still reaches Web Push / Home Assistant (#1716).
+// Channels that don't understand an option ignore it.
+export interface DispatchOptions {
+  // Explicit Telegram chat ids that REPLACE the profile's fan-out recipients for this
+  // one send. An override chat is not a login, so it carries no per-login
+  // disabled-kinds gate — it was configured for exactly this item.
+  telegramChatIds?: readonly string[];
+}
+
 export interface NotificationChannel {
   id: ChannelId;
-  // Enabled and credentials present for the given profile.
-  isConfigured(profileId: number): boolean;
-  send(profileId: number, msg: NotificationMessage): Promise<void>;
+  // Enabled and credentials present for the given profile, under this send's routing.
+  isConfigured(profileId: number, opts?: DispatchOptions): boolean;
+  send(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ): Promise<void>;
 }
 
 // Prefix a message's title with a profile name so a shared channel (or a

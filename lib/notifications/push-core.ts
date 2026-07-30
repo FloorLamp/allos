@@ -83,7 +83,8 @@ export function buildPushPayload(
   // never forked — the words (including the status words that carry the meaning) are
   // identical to the Telegram copy, only the markup is gone.
   const plain = plainBody(msg.body);
-  const body = plain.length > MAX_BODY ? `${plain.slice(0, MAX_BODY - 1)}…` : plain;
+  const body =
+    plain.length > MAX_BODY ? `${plain.slice(0, MAX_BODY - 1)}…` : plain;
   const payload: PushPayload = { title: msg.title, body, url };
   return JSON.stringify(payload);
 }

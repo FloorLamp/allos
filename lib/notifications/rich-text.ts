@@ -51,13 +51,7 @@ export type MessageBody = string | RichText;
 // A value acceptable inside `rich` interpolation: plain text (escaped later), a
 // declared run, a nested RichText, or nullish (dropped, so a conditional fragment
 // reads naturally).
-export type RichPart =
-  | string
-  | number
-  | RichSpan
-  | RichText
-  | null
-  | undefined;
+export type RichPart = string | number | RichSpan | RichText | null | undefined;
 
 export function isRichText(value: unknown): value is RichText {
   return (
@@ -160,11 +154,7 @@ export function rich(
 // The body's runs, with a plain string normalized to one unstyled run. The single
 // accessor every renderer uses, so string and rich bodies can't take different paths.
 export function bodySpans(body: MessageBody): readonly RichSpan[] {
-  return typeof body === "string"
-    ? body
-      ? [{ text: body }]
-      : []
-    : body.spans;
+  return typeof body === "string" ? (body ? [{ text: body }] : []) : body.spans;
 }
 
 // The body as PLAIN TEXT — the exact content Web Push and Home Assistant carry, and

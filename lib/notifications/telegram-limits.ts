@@ -70,7 +70,10 @@ function balanceTags(pieces: readonly string[]): string[] {
   for (const piece of pieces) {
     const text = carry.map((t) => `<${t}>`).join("") + piece;
     const open = openTagsIn(text);
-    const closed = [...open].reverse().map((t) => `</${t}>`).join("");
+    const closed = [...open]
+      .reverse()
+      .map((t) => `</${t}>`)
+      .join("");
     out.push(text + closed);
     carry = open;
   }

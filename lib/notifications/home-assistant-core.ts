@@ -46,12 +46,14 @@ export interface HomeAssistantPayload {
 }
 
 // Map a callback-token prefix that actuates a dose to the /dose action it implies.
-// `take`/`esctake` (a confirmed-taken tap) → "taken"; `skip` → "skipped". `escack`
-// (an "I'm on it" ack) resolves nothing on the dose, so it's intentionally absent.
+// `take`/`esctake` (a confirmed-taken tap) → "taken"; `skip`/`escskip` → "skipped".
+// `escack` (an "I'm on it" ack) resolves nothing on the dose, so it's intentionally
+// absent.
 const DOSE_ACTION_BY_PREFIX: Record<string, "taken" | "skipped"> = {
   take: "taken",
   skip: "skipped",
   esctake: "taken",
+  escskip: "skipped",
 };
 
 // Extract the actionable doses from a message's action tokens. The dose tokens are

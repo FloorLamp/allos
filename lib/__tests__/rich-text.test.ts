@@ -30,7 +30,9 @@ describe("rich-text seam (#1720)", () => {
   it("a plain-string body renders byte-identically to the old escape-everything path", () => {
     const body = "Vitamin D3 · 2000 IU\nMagnesium & zinc <after food>";
     const msg = { title: "💊 Morning", body };
-    expect(renderMessageHtml(msg)).toBe(`<b>${esc("💊 Morning")}</b>\n${esc(body)}`);
+    expect(renderMessageHtml(msg)).toBe(
+      `<b>${esc("💊 Morning")}</b>\n${esc(body)}`
+    );
     expect(renderBodyHtml(body)).toBe(esc(body));
   });
 
@@ -57,9 +59,9 @@ describe("rich-text seam (#1720)", () => {
   it("italic and code render, and code nests outside emphasis", () => {
     expect(renderBodyHtml(rich`${italic("soon")}`)).toBe("<i>soon</i>");
     expect(renderBodyHtml(rich`${code("5 mg")}`)).toBe("<code>5 mg</code>");
-    expect(renderBodyHtml(richFrom([{ text: "x", bold: true, code: true }]))).toBe(
-      "<code><b>x</b></code>"
-    );
+    expect(
+      renderBodyHtml(richFrom([{ text: "x", bold: true, code: true }]))
+    ).toBe("<code><b>x</b></code>");
   });
 
   it("plain channels get the same words with the markup stripped", () => {
