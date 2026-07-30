@@ -502,6 +502,16 @@ export interface Allergy {
   // `SELECT * FROM allergies` row has not been composed yet.
   reactions?: readonly AllergyManifestation[];
   notes: string | null;
+  // Attribution (#1526): who documented this allergy, and at which visit. An allergy
+  // gates drug-interaction warnings and prints on the emergency card, so "who
+  // confirmed it and when" is what a clinician asks before trusting it — the natural
+  // companion to `verification_status`. Both nullable, both no-ON-DELETE: the allergy
+  // outlives the visit and the provider record.
+  provider_id: number | null;
+  // Documenting provider, joined for display. Optional because a raw
+  // `SELECT * FROM allergies` row has not joined the registry.
+  provider_name?: string | null;
+  encounter_id: number | null;
   source: string | null;
   document_id: number | null;
   external_id: string | null;
@@ -820,6 +830,10 @@ export interface SkinLesion {
   provider_id: number | null;
   // Recording provider, joined for display (#1088). NULL for a self-photographed lesion.
   provider_name?: string | null;
+  // The visit this lesion was checked at (#1526) — the `finding` above is what a
+  // dermatologist told you AT an appointment, so the judgment and the visit that
+  // produced it stay linked. Nullable, no ON DELETE: the lesion outlives the visit.
+  encounter_id: number | null;
   notes: string | null;
   source: string | null;
   document_id: number | null;

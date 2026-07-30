@@ -945,7 +945,11 @@ stable/changed/removed (a changed lesion, re-entered as watch, keeps a fresh
 recheck rather than aging out); added manually with photo upload (the primary
 path — AI extraction from a dermatology report is a deferred follow-up), photos
 ride the per-profile upload posture (sha256 dedup, profile-scoped serving) in
-their own store.
+their own store. A lesion record also names the **visit it was checked at** (a
+picker beside its provider field): the finding and recheck interval are what a
+dermatologist tells you at an appointment, so the row reads **Checked at:** that
+visit and the visit's detail lists the lesion — the same provenance chain a
+biopsy from the same appointment already had.
 
 **Scope boundary, by design:** this is a self-monitoring record for you and your
 dermatologist — it tracks and compares, it never assesses malignancy or scores
@@ -1010,7 +1014,8 @@ preventive type code (CPT 9938x/9939x → Preventive) into a coarse set
 health / Other) that every surface keys on; the stored source `type` text is
 never rewritten. Records connect to the visit they belong to: a visit's detail
 page shows a **From this visit** section (meds started, diagnoses, procedures,
-imaging, immunizations given) plus a **From this visit?** suggestion block that
+imaging, immunizations given, skin lesions checked, allergies documented) plus a
+**From this visit?** suggestion block that
 batch-links records sharing the visit's date (a matching provider reads
 _strong_; two visits on one day become a **picker**, never a guess) — and where
 a source health record carries the reference outright (a FHIR
@@ -1128,6 +1133,18 @@ supplement screens, the Passport's known-allergy list, and the emergency card. A
 severity ordering. The FHIR export carries all three
 (`criticality` / `verificationStatus` / `reaction[]`), and the document importer
 maps criticality and verification status when a document states them.
+
+An allergy also carries its **attribution** — the clinician who documented it and
+the **visit** it was recorded at, both optional and both set from the allergy
+form (a create-on-type provider picker and a visit picker). The row then reads
+**Recorded at:** that visit, deep-linked, and the visit's own detail lists the
+allergy under _From this visit_. This is the companion to verification status: a
+_confirmed_ allergy means more when you can see who confirmed it and when. An
+imported `AllergyIntolerance.encounter` sets the visit link deterministically;
+a dangling reference imports unlinked rather than wrongly linked. The link is
+provenance only — nothing gates on it, and deleting the visit or merging the
+provider away leaves the allergy intact with the link honestly cleared or
+re-pointed.
 
 ## Immunizations
 

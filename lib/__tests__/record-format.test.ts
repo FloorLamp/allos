@@ -5,6 +5,7 @@ import {
   formatRecordDateTime,
   titleCase,
   statusTone,
+  formatVisitLabel,
 } from "@/lib/record-format";
 import { documentSource } from "@/lib/body-metric-extract";
 
@@ -93,6 +94,47 @@ describe("formatRecordDateTime", () => {
     expect(formatRecordDateTime(null)).toBe("—");
     expect(formatRecordDateTime("")).toBe("—");
     expect(formatRecordDateTime(null, "")).toBe("");
+  });
+});
+
+describe("formatVisitLabel (#1526 — one computation for 'which visit is this?')", () => {
+  it("leads with the type, then the provider, then the date", () => {
+    expect(
+      formatVisitLabel({
+        date: "2026-05-04",
+        type: "Dermatology",
+        providerName: "Dr. Okafor",
+      })
+    ).toBe("Dermatology · Dr. Okafor · May 4, 2026");
+  });
+
+  it("drops an absent provider rather than leaving a dangling separator", () => {
+    expect(
+      formatVisitLabel({
+        date: "2026-05-04",
+        type: "Allergy clinic",
+        providerName: null,
+      })
+    ).toBe("Allergy clinic · May 4, 2026");
+  });
+
+  it("falls back to a generic 'Visit' so a picker option is never blank", () => {
+    expect(
+      formatVisitLabel({ date: "2026-05-04", type: null, providerName: null })
+    ).toBe("Visit · May 4, 2026");
+    // Whitespace-only source values are treated as absent, not as content.
+    expect(
+      formatVisitLabel({ date: "2026-05-04", type: "  ", providerName: "  " })
+    ).toBe("Visit · May 4, 2026");
+  });
+
+  it("follows the login's date shape, so the picker and the row sub-line agree", () => {
+    expect(
+      formatVisitLabel(
+        { date: "2026-05-04", type: "Dermatology", providerName: null },
+        { dateFormat: "dmy", timeFormat: "24h" }
+      )
+    ).toBe("Dermatology · 4 May 2026");
   });
 });
 

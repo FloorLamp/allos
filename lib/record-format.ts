@@ -66,6 +66,37 @@ export function formatRecordDateTime(
   return `${datePart}, ${timePart}`;
 }
 
+// A visit, reduced to the three things that identify it in prose. Structurally the
+// LinkedEncounterRef the visit-link query layer returns (lib/queries/visit-links),
+// restated here so this pure module has no import into the DB layer.
+export interface VisitLabelRef {
+  date: string;
+  type: string | null;
+  providerName: string | null;
+}
+
+// ONE computation for "which visit is this?" (#1526). Every surface that names a
+// linked visit renders it identically — the per-row "Recorded at / Checked at:"
+// sub-line (RecordEncounterLink), and the encounter picker's <option> text on the
+// allergy and skin-lesion forms. Without a single formatter the picker and the
+// resulting sub-line would drift, and the user would pick "Dermatology · Mar 3" then
+// read back something else. The type leads (it is what the user calls the visit),
+// the provider is context, the date disambiguates two visits of the same kind.
+// Falls back to a generic "Visit" when the row carries no type, so an option is
+// never blank.
+export function formatVisitLabel(
+  visit: VisitLabelRef,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
+  return [
+    visit.type?.trim() || "Visit",
+    visit.providerName?.trim() || null,
+    formatRecordDate(visit.date, "", prefs) || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 // Capitalize the first character of a lowercase enum value (e.g. a status or
 // category) for display. Leaves the rest untouched.
 export function titleCase(s: string): string {

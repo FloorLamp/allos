@@ -317,7 +317,10 @@ function allergySeverityText(r: any): string | null {
   return null;
 }
 
-export function mapAllergyResource(r: any): ImportedAllergy | null {
+export function mapAllergyResource(
+  r: any,
+  ctx?: FhirBundleCtx
+): ImportedAllergy | null {
   if (isEnteredInError(r)) return null;
   const substance = conceptName(r?.code);
   // Match the CDA pickCode preference exactly (ICD-10 first, else the primary /
@@ -349,6 +352,9 @@ export function mapAllergyResource(r: any): ImportedAllergy | null {
       substanceCode: code,
       onsetDate: onset,
     }),
+    // Tier-1 visit link (#1526): the visit that documented this allergy, when the
+    // bundle said so. Null when there's no reference or it dangles — never a guess.
+    encounter_external_id: encounterRefExternalId(r, ctx),
   };
 }
 
