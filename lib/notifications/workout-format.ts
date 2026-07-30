@@ -4,12 +4,19 @@
 // ./recommend (recommendWorkout); ./workouts wires the two together.
 
 import { suggestTitle, type MuscleRegion } from "../lifts";
+import { frequencyScopeLabel } from "../goals";
+import type { OrderedBehindTarget } from "../workout-recommendation";
 import type { NotificationAction, NotificationMessage } from "./types";
+import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
 
 export interface WorkoutRecommendation {
   focus: MuscleRegion[];
   exercises: string[];
-  behind: string[]; // behind-target labels, for message context
+  // The behind weekly targets, ALREADY ordered and marked by the pure core (#1709):
+  // the target that drove today's suggestion leads, the rest follow by deficit. Kept
+  // structured to here so the formatter can relate the list to the recommendation —
+  // flattening it upstream is exactly what disconnected the two halves.
+  behind: OrderedBehindTarget[];
   // Recovery/celebration awareness carried from the unified coaching engine (#221),
   // so the reminder can note a rest day or an on-track week instead of blindly
   // pushing a workout. Null when the top-line recommendation isn't rest/on-track.
@@ -97,8 +104,7 @@ export function formatWorkoutReminder(
     lines.push(`Suggested: ${rec.exercises.join(", ")}`);
   else if (rec.focus.length) lines.push(`Focus: ${rec.focus.join(", ")}`);
   if (rec.onTrack) lines.push(rec.onTrack.detail);
-  if (rec.behind.length)
-    lines.push(`Behind this week: ${rec.behind.join(", ")}`);
+  const behindLine = behindThisWeekLine(rec.behind);
 
   return {
     title: rec.onTrack
@@ -106,8 +112,29 @@ export function formatWorkoutReminder(
       : focusLabel
         ? `🏋️ Today's workout — ${focusLabel}`
         : "🏋️ Today's workout",
-    body: lines.join("\n"),
+    body: joinBody([lines.join("\n"), behindLine], "\n"),
     kind: "workout",
     ...(guideActions.length ? { actions: guideActions } : {}),
   };
+}
+
+// The marker on the target that drove today's suggestion (#1709). BOTH forms, by
+// owner decision: the `← today` suffix always (it renders identically on every channel
+// and reads naturally in-app) plus bold where markup is supported, degrading cleanly to
+// the suffix alone on Web Push / Home Assistant.
+export const BEHIND_DRIVER_SUFFIX = " ← today";
+
+// "Back 0/2 ← today, Chest 1/2, Lower body 1/2, Cardio 1/2" — the list in the order the
+// core decided, with the driving target marked. Null when nothing is behind.
+export function behindThisWeekLine(
+  behind: readonly OrderedBehindTarget[]
+): MessageBody | null {
+  if (behind.length === 0) return null;
+  const parts: (string | ReturnType<typeof bold>)[] = ["Behind this week: "];
+  behind.forEach((t, i) => {
+    if (i > 0) parts.push(", ");
+    const label = `${frequencyScopeLabel(t.scopeKind, t.scopeValue)} ${t.count}/${t.perWeek}`;
+    parts.push(t.driving ? bold(`${label}${BEHIND_DRIVER_SUFFIX}`) : label);
+  });
+  return richFrom(parts);
 }

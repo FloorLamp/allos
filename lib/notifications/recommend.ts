@@ -8,9 +8,11 @@
 // boundaries follow the configured app timezone (via gatherCoachingInput).
 
 import { now as clockNow } from "../clock";
-import { frequencyScopeLabel } from "../goals";
 import { illnessCoachingMode, recommendCoaching } from "../coaching";
-import { recommendNextWorkout } from "../workout-recommendation";
+import {
+  orderBehindTargets,
+  recommendNextWorkout,
+} from "../workout-recommendation";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
 import { gatherCoachingInput } from "../queries";
@@ -88,12 +90,14 @@ export function recommendWorkout(
 
   const recs = recommendCoaching(input);
 
-  const behind = input.routine
-    .filter((t) => !t.met)
-    .map(
-      (t) =>
-        `${frequencyScopeLabel(t.target.scope_kind, t.target.scope_value)} ${t.count}/${t.per_week}`
-    );
+  // The behind list keeps its STRUCTURE all the way to the formatter (#1709). It used
+  // to be flattened to opaque strings right here, in routine-declaration order, so by
+  // the time the formatter ran the connection between "Suggested: Back" and the list
+  // that explains it was gone. Ordering + marking live in the pure core beside the
+  // recommendation; label formatting belongs to the formatter.
+  const driver =
+    nw.items.find((i) => i.reason === "routine-gap")?.target ?? null;
+  const behind = orderBehindTargets(nw.behind, driver?.id ?? null);
 
   const top = recs[0];
   const rest =
