@@ -75,15 +75,9 @@ function deleteActivitiesTitled(...titles: string[]) {
   const h = new Database(DB_PATH);
   try {
     for (const title of titles) {
-      const rows = h
-        .prepare("SELECT id FROM activities WHERE title = ?")
-        .all(title) as { id: number }[];
-      for (const { id } of rows) {
-        h.prepare("DELETE FROM activity_components WHERE activity_id = ?").run(
-          id
-        );
-        h.prepare("DELETE FROM activities WHERE id = ?").run(id);
-      }
+      // Child rows (exercise components, routes, videos) cascade off the activity —
+      // the same one-statement cleanup the other activity-owning specs use.
+      h.prepare("DELETE FROM activities WHERE title = ?").run(title);
     }
   } finally {
     h.close();
@@ -97,7 +91,7 @@ function deleteSupplement(name: string) {
       .prepare("SELECT id FROM intake_items WHERE name = ?")
       .all(name) as { id: number }[];
     for (const { id } of rows) {
-      h.prepare("DELETE FROM intake_doses WHERE item_id = ?").run(id);
+      h.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(id);
       h.prepare("DELETE FROM intake_items WHERE id = ?").run(id);
     }
   } finally {

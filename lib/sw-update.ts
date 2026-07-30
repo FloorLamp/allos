@@ -26,6 +26,19 @@
 export const SW_SKIP_WAITING = "allos-skip-waiting";
 
 /**
+ * How long the page waits for the worker handshake before reloading anyway.
+ *
+ * The tap IS the request to reload; the SKIP_WAITING round-trip is only how we
+ * arrange for the reload to land on the NEW build. A waiting worker can go stale
+ * between the offer and the tap — the browser may have replaced or discarded it —
+ * and when that happens the handshake never answers. Leaving the user's tap
+ * unanswered is the one outcome the button must not have, so the reload proceeds on
+ * its own timer. It is still exactly one reload (the same guard covers both paths),
+ * and it is still nothing the user did not ask for.
+ */
+export const SW_RELOAD_FALLBACK_MS = 1500;
+
+/**
  * Whether a waiting worker is an UPDATE worth offering.
  *
  * `controlled` is the discriminator: a waiting worker on an already-controlled page

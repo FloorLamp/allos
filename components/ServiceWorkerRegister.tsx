@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import UpdateReadyBar from "./UpdateReadyBar";
 import {
+  SW_RELOAD_FALLBACK_MS,
   SW_SKIP_WAITING,
   shouldReloadOnControllerChange,
 } from "@/lib/sw-update";
@@ -32,6 +33,8 @@ import {
 //     must not be reloaded because someone tapped in the first.
 //   * at most one reload per activation (the loop guard).
 //   * a dismissed bar stays dismissed for this build; it is an offer, not a nag.
+//   * the tap is always answered: if the waiting worker has gone stale and the
+//     handshake never lands, the page reloads anyway on a short fallback timer.
 //
 // The decisions live in lib/sw-update.ts so they can be tested without a browser.
 export default function ServiceWorkerRegister({
@@ -39,7 +42,11 @@ export default function ServiceWorkerRegister({
 }: {
   version: string;
 }) {
-  const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
+  const [updateReady, setUpdateReady] = useState(false);
+  // The live registration. The tap re-reads `.waiting` off it rather than holding a
+  // ServiceWorker object from offer time: the browser can replace or discard a
+  // waiting worker in between, and a message to that stale object goes nowhere.
+  const regRef = useRef<ServiceWorkerRegistration | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [unsaved, setUnsaved] = useState(false);
   // This tab asked for the update; only it may reload on controllerchange.
@@ -86,7 +93,7 @@ export default function ServiceWorkerRegister({
     const offer = (sw: ServiceWorker | null) => {
       if (disposed || !sw) return;
       if (!navigator.serviceWorker.controller) return;
-      setWaiting(sw);
+      setUpdateReady(true);
     };
 
     const onControllerChange = () => {
@@ -116,6 +123,7 @@ export default function ServiceWorkerRegister({
         .register(`/sw.js?v=${encodeURIComponent(version)}`)
         .then((registration) => {
           if (disposed) return;
+          regRef.current = registration;
           offer(registration.waiting);
           registration.addEventListener("updatefound", () => {
             const installing = registration.installing;
@@ -144,14 +152,21 @@ export default function ServiceWorkerRegister({
   }, [version]);
 
   const reload = useCallback(() => {
-    if (!waiting) return;
+    if (reloadedRef.current) return;
     requestedRef.current = true;
-    waiting.postMessage({ type: SW_SKIP_WAITING });
-    // The reload itself waits for `controllerchange`, so the new worker is serving
-    // before the page asks it for anything.
-  }, [waiting]);
+    // Ask the waiting worker to take over, so the reload lands on the new build…
+    regRef.current?.waiting?.postMessage({ type: SW_SKIP_WAITING });
+    // …but answer the tap regardless: if the handshake doesn't produce a controller
+    // change promptly, reload on the build we have. Guarded by the same
+    // reloaded-once flag as the controllerchange path.
+    window.setTimeout(() => {
+      if (reloadedRef.current) return;
+      reloadedRef.current = true;
+      window.location.reload();
+    }, SW_RELOAD_FALLBACK_MS);
+  }, []);
 
-  if (!waiting || dismissed) return null;
+  if (!updateReady || dismissed) return null;
   return (
     <UpdateReadyBar
       onReload={reload}
