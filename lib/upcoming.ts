@@ -177,6 +177,13 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   review: 16,
 };
 
+// Every UpcomingDomain, at RUNTIME. Derived from DOMAIN_ORDER, which the type system
+// already forces to be exhaustive, so a newly added domain appears here the moment it
+// is given a rank. That is what lets the #1504 rollup-scope test enumerate the domains
+// and require each one to CHOOSE whether it folds — a domain can neither drift into a
+// rollup nor silently stay out of the census.
+export const UPCOMING_DOMAINS = Object.keys(DOMAIN_ORDER) as UpcomingDomain[];
+
 // The viewer's display units for measurement-carrying item strings (#1019 — the
 // display-unit policy): a WEB boundary (the Upcoming page, the dashboard hero)
 // resolves the login's prefs and passes them down so the item builders format

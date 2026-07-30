@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { settledClick } from "./helpers";
+import { expandUpcomingAggregates, settledClick } from "./helpers";
 
 // Issue #1505, the rendered halves of the obligation model:
 //   • a `may` item is TRACKED — it renders on Supplements & Meds like any other —
@@ -108,6 +108,10 @@ test("a `may` item is tracked on its page, off the due list, and inside the avai
 
     // NEVER PUSHED: only the `should` twin has an Upcoming DUE row…
     await page.goto("/upcoming");
+    // The DUE rows fold per band (#1504); the availability disclosure below is a
+    // separate, deliberately un-folded surface — a `may` item is in neither the
+    // dose aggregate nor its count.
+    await expandUpcomingAggregates(page.getByRole("main"), "dose");
     await expect(
       page.getByTestId(`upcoming-item-dose:${high.doseId}`)
     ).toBeVisible();
@@ -151,6 +155,7 @@ test("accepting a demotion suggestion moves the item into the available disclosu
 
     // It still pushes — the suggestion has changed nothing on its own.
     await page.goto("/upcoming");
+    await expandUpcomingAggregates(page.getByRole("main"), "dose");
     await expect(
       page.getByTestId(`upcoming-item-dose:${item.doseId}`)
     ).toBeVisible();

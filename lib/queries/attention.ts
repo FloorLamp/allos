@@ -43,9 +43,11 @@ import {
 import {
   collectUpcoming,
   collectSuppressedUpcoming,
+  doseDayProgress,
   getFindingSuppressions,
   offeredItems,
 } from "./upcoming";
+import type { DoseDayProgress } from "../upcoming-aggregate";
 import { isItemHiddenBySuppression } from "../upcoming-suppress";
 import {
   domainForRichKey,
@@ -355,5 +357,22 @@ export function collectMultiProfileOffered(
       out.push({ ...item, profileId: pid });
     }
   }
+  return out;
+}
+
+// ---- The dose aggregate's progress fraction (issue #1504) -------------------
+
+// Each in-view member's dose progress for TODAY, keyed by profile — the denominator
+// behind the collapsed dose aggregate's "9 of 14 taken". Same per-member loop as the
+// collectors above: each member's day is evaluated in ITS OWN today (#1096), never a
+// shared clock, so a member whose timezone has not rolled over still reports the day
+// they are actually in. The page sums the map for the interleaved band and reads one
+// entry for a by-person section, so each presentation prints a fraction over exactly
+// the rows it is showing.
+export function collectMultiProfileDoseProgress(
+  viewIds: readonly number[]
+): Map<number, DoseDayProgress> {
+  const out = new Map<number, DoseDayProgress>();
+  for (const pid of viewIds) out.set(pid, doseDayProgress(pid, today(pid)));
   return out;
 }

@@ -1,7 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { settledClick, settledSelect } from "./helpers";
+import {
+  expandUpcomingAggregates,
+  settledClick,
+  settledSelect,
+} from "./helpers";
 
 // Issue #1602, the rendered halves of non-daily intake cadence:
 //   • a WEEKLY medication is off the due list on its off-days — while staying listed
@@ -145,6 +149,9 @@ test("a weekly medication is off the due list on its off-days without being demo
     // NOT DUE today: no Upcoming row for the weekly med, while its daily twin has one.
     // Under the old model the only way to get this silence was to demote the item.
     await page.goto("/upcoming");
+    // Scheduled doses fold per band (#1504) — open the fold so this asserts on the
+    // real rows: cadence decides what is IN the fold, not whether it is folded.
+    await expandUpcomingAggregates(page.getByRole("main"), "dose");
     await expect(
       page.getByTestId(`upcoming-item-dose:${dailyDoseId}`)
     ).toBeVisible();
@@ -187,6 +194,7 @@ test("an alternating pair shows one amount today and the other tomorrow (#1602)"
     const otherDoseId = seedDose(db, itemId, "2.5 mg", otherDays, 1);
 
     await page.goto("/upcoming");
+    await expandUpcomingAggregates(page.getByRole("main"), "dose");
     // Exactly one of the two rows is due — the whole reason alternating amounts are two
     // rows rather than one row whose amount the user has to reinterpret each morning.
     await expect(

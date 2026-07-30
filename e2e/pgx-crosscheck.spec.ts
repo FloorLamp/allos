@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { expandUpcomingAggregates } from "./helpers";
 import Database from "better-sqlite3";
 import {
   expandIntakeWarnings,
@@ -106,6 +107,9 @@ test.describe("Pharmacogenomics cross-check (#710)", () => {
   test("surfaces the PGx finding on Upcoming", async ({ page }) => {
     await page.goto("/upcoming");
     const main = page.getByRole("main");
+    // PGx notes fold into the med-safety disclosure (#1504) — open it, then assert
+    // the individual finding is intact behind it.
+    await expandUpcomingAggregates(main, "med-safety");
 
     const finding = main
       .locator('[data-testid^="upcoming-item-pgx:"]')

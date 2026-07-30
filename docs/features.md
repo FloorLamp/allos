@@ -355,6 +355,27 @@ and, when the last reading was out of range or non-optimal, noting that status
 so a flagged value isn't mistaken for a bare retest), goal deadlines, and
 training targets.
 
+### Routine folds, safety never does
+
+A planning page that lists every scheduled dose and every pairwise
+medication-safety note as its own full row buries the things actually worth
+noticing. So the page **folds the routine, per band**: the band's scheduled doses
+collapse into one row that always states the count and the day's progress
+("**5 doses left · 1 of 6 taken**"), and its **interaction + PGx** notes collapse
+into one "**N medication-safety notes**" row. Both are collapsed on every visit
+(nothing is remembered), one tap opens the real rows, and every row behind the
+fold is unchanged — the same **Mark taken**, the same per-item snooze/dismiss,
+the same link.
+
+The **count is never hidden**, and the **safety classes are never folded**: a
+**PRN over its confirmed daily max** and any safety-tier reminder render as
+individual rows **above** the fold, in both states. A **drug-allergy** match
+keeps its own row too — it deliberately outranks a pairwise interaction — as do
+the singular findings (a fever pattern, a screening, a pre-procedure note). A
+band with only a couple of doses does not fold at all. `may` items are not
+involved: they were never owed, so they live in the separate **"Available when
+you want them"** disclosure and count toward neither number.
+
 ### Risk-aware timing
 
 Retests, screenings, and immunizations are **risk-stratified**: your **family

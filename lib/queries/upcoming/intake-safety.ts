@@ -83,6 +83,7 @@ import {
   type UpcomingDisplayUnits,
   type UpcomingItem,
 } from "../../upcoming";
+import type { DoseDayProgress } from "../../upcoming-aggregate";
 import type { DistanceUnit, TemperatureUnit } from "../../settings";
 import {
   type Reason,
@@ -165,6 +166,28 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 // kind, decides: a medication is here because it is `must`/`should`, not because it
 // is a medication.
 export function doseItems(profileId: number, today: string): UpcomingItem[] {
+  return scheduledDoseRows(profileId, today)
+    .filter((row) => !row.taken)
+    .map((row) => doseRowToItem(row));
+}
+
+// One dose the day's schedule asks for, plus whether it is already logged taken.
+// The DUE gate is applied identically for both halves, which is the point: the rows
+// the page shows and the denominator it prints come from ONE evaluation, so
+// "9 of 14 taken" can never disagree with the rows behind the disclosure (#1504).
+interface ScheduledDoseRow {
+  supp: ReturnType<typeof getSupplements>[number];
+  dose: ReturnType<typeof getSupplementDoses>[number];
+  taken: boolean;
+}
+
+// Today's scheduled dose set — must/should only, cadence- and context-gated — with
+// the taken ones INCLUDED (they are what the day asked for, and a progress fraction
+// that dropped them would have no denominator).
+function scheduledDoseRows(
+  profileId: number,
+  today: string
+): ScheduledDoseRow[] {
   const supplements = getSupplements(profileId);
   const doses = getSupplementDoses(profileId);
   const taken = getTakenDoseIds(profileId, today);
@@ -184,61 +207,78 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
   };
 
   const byId = new Map(supplements.map((s) => [s.id, s]));
-  const items: UpcomingItem[] = [];
+  const rows: ScheduledDoseRow[] = [];
   for (const dose of doses) {
-    if (taken.has(dose.id)) continue;
     const supp = byId.get(dose.item_id);
     // doseDueOn (#1602) folds the CALENDAR into the same gate: the item's cadence
     // (weekly / every-N-days) plus this ROW's own weekday subset and validity window.
     // A weekly methotrexate is simply absent from the due list on its six off-days —
     // which is what lets it stay `must` instead of being demoted to silence it.
     if (!supp || !supp.active || !doseDueOn(supp, dose, ctx)) continue;
-    const detail = [
-      supp.kind === "medication" ? "Medication" : null,
-      supp.kind === "medication"
-        ? formatMedicationDoseProduct(dose.amount, supp.product)
-        : dose.amount,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    // A situational item is due specifically BECAUSE its situation is active (the
-    // gate isDueOn just applied) — carry that as a structured reason (issue #656
-    // item 5) so the same "due because Illness is active" explanation the medicine
-    // page shows as a bare tag can reach the digest / a reminder, not only the row.
-    const reasons: Reason[] =
-      supp.condition === "situational" && supp.situation
-        ? [situationReason(supp.situation)]
-        : [];
-    items.push({
-      key: `dose:${dose.id}`,
-      domain: "dose",
-      title: supp.name,
-      detail: detail || null,
-      reasons: reasons.length ? reasons : undefined,
-      href: intakeHref(supp.kind),
-      dueDate: null, // scheduled for today
-      // Bucket label as the due-text ("Morning" / "Evening" / "Before sleep"…):
-      // informative on its own and it explains the ordering to the user (#297).
-      // The bucket, qualified by the cadence when there is one ("Morning · Mondays"):
-      // a row that appears one day in seven must SAY so, or it reads as an ordinary
-      // daily dose the user is somehow only now seeing (#1602). One formatter
-      // (cadenceLabel) so the row, the digest and the reminder phrase it identically.
-      dueText: [timeBucket(dose.time_of_day), cadenceLabel(supp)]
-        .filter(Boolean)
-        .join(" · "),
-      // Shared dose-day sort key (bucket → priority → stack → name) so morning
-      // and bedtime doses no longer interleave alphabetically within the band —
-      // the SAME ordering /medicine's due-today section uses (#297).
-      sortHint: doseSortKey({
-        timeOfDay: dose.time_of_day,
-        obligation: supp.obligation,
-        stack: supp.stack,
-        name: supp.name,
-      }),
-      doseId: dose.id,
-    });
+    rows.push({ supp, dose, taken: taken.has(dose.id) });
   }
-  return items;
+  return rows;
+}
+
+// Today's dose progress for the Upcoming aggregate's always-visible fraction
+// (#1504): how many doses the schedule asked for, and how many are logged taken.
+// Same gate, same set as the rows — see scheduledDoseRows.
+export function doseDayProgress(
+  profileId: number,
+  today: string
+): DoseDayProgress {
+  const rows = scheduledDoseRows(profileId, today);
+  return {
+    scheduled: rows.length,
+    taken: rows.reduce((n, r) => n + (r.taken ? 1 : 0), 0),
+  };
+}
+
+function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
+  const detail = [
+    supp.kind === "medication" ? "Medication" : null,
+    supp.kind === "medication"
+      ? formatMedicationDoseProduct(dose.amount, supp.product)
+      : dose.amount,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  // A situational item is due specifically BECAUSE its situation is active (the
+  // gate isDueOn just applied) — carry that as a structured reason (issue #656
+  // item 5) so the same "due because Illness is active" explanation the medicine
+  // page shows as a bare tag can reach the digest / a reminder, not only the row.
+  const reasons: Reason[] =
+    supp.condition === "situational" && supp.situation
+      ? [situationReason(supp.situation)]
+      : [];
+  return {
+    key: `dose:${dose.id}`,
+    domain: "dose",
+    title: supp.name,
+    detail: detail || null,
+    reasons: reasons.length ? reasons : undefined,
+    href: intakeHref(supp.kind),
+    dueDate: null, // scheduled for today
+    // Bucket label as the due-text ("Morning" / "Evening" / "Before sleep"…):
+    // informative on its own and it explains the ordering to the user (#297).
+    // The bucket, qualified by the cadence when there is one ("Morning · Mondays"):
+    // a row that appears one day in seven must SAY so, or it reads as an ordinary
+    // daily dose the user is somehow only now seeing (#1602). One formatter
+    // (cadenceLabel) so the row, the digest and the reminder phrase it identically.
+    dueText: [timeBucket(dose.time_of_day), cadenceLabel(supp)]
+      .filter(Boolean)
+      .join(" · "),
+    // Shared dose-day sort key (bucket → priority → stack → name) so morning
+    // and bedtime doses no longer interleave alphabetically within the band —
+    // the SAME ordering /medicine's due-today section uses (#297).
+    sortHint: doseSortKey({
+      timeOfDay: dose.time_of_day,
+      obligation: supp.obligation,
+      stack: supp.stack,
+      name: supp.name,
+    }),
+    doseId: dose.id,
+  };
 }
 
 // `may` items ON OFFER today (issue #1505) — the collapsed-not-removed half of the

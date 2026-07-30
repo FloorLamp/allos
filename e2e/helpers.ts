@@ -120,6 +120,49 @@ export async function centerOf(
   throw new Error("element never settled into a stable position");
 }
 
+// Open the Upcoming page's display aggregates (issue #1504).
+//
+// The planning page folds a band's scheduled doses into one disclosure, and its
+// interaction + PGx notes into another, collapsed on every visit. A spec that
+// asserts on an individual dose / interaction / PGx ROW has to open the fold
+// first — the rows are real and unchanged, they are just behind a <details>.
+//
+// Native <details>, so this needs no hydration and no server round-trip; it is
+// idempotent (an already-open disclosure is skipped) and tolerant of a page with
+// no aggregate at all, so a spec may call it unconditionally after navigating.
+// Pass a `kind` to open only that class.
+export type UpcomingAggregateKind = "dose" | "med-safety";
+
+export async function expandUpcomingAggregates(
+  scope: Page | Locator,
+  kind?: UpcomingAggregateKind
+): Promise<void> {
+  // Exact testids, never a `^=` prefix: the summary INSIDE each disclosure is
+  // `upcoming-aggregate-summary-<kind>`, which a prefix match would also select —
+  // and a <summary> has no <summary> of its own, so the loop would hang on it.
+  const kinds: UpcomingAggregateKind[] = kind ? [kind] : ["dose", "med-safety"];
+  const selector = kinds
+    .map((k) => `[data-testid="upcoming-aggregate-${k}"]`)
+    .join(", ");
+  const aggregates = scope.locator(selector);
+  const count = await aggregates.count();
+  for (let i = 0; i < count; i++) {
+    const disclosure = aggregates.nth(i);
+    const open = await disclosure.evaluate(
+      (el) => (el as HTMLDetailsElement).open
+    );
+    if (open) continue;
+    const summary = disclosure.locator("summary");
+    // Centre it before clicking. Opening one disclosure grows the page under the
+    // next one, and at phone width the mobile shell's fixed bottom bar can sit over
+    // wherever it lands — Playwright's own minimal auto-scroll then never reaches an
+    // actionable hit target. Centring clears both bars at every viewport.
+    await summary.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await summary.click();
+    await expect(disclosure).toHaveJSProperty("open", true);
+  }
+}
+
 // Mobile clipped-content guard (issue #1063). The app shell deliberately clips
 // horizontal overflow (`<main className="… overflow-x-clip">` in
 // app/(app)/layout.tsx), so broken phone-width layouts never page-scroll — they
