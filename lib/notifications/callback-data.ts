@@ -554,17 +554,11 @@ export function parsePracticeDoneCallback(
   return { profileId, targetId, token };
 }
 
-// The toast answer for a practice Done tap, from the typed write outcome. Honest per
-// outcome (the markDoseTaken contract): the running count on a fresh log, an honest
-// "couldn't log" otherwise — never an unconditional confirm.
-export function practiceDoneAnswerText(outcome: PracticeLogOutcome): string {
-  if (outcome.kind === "logged") {
-    return outcome.count === 1
-      ? "Logged today's session"
-      : `Logged — ${outcome.count} sessions today`;
-  }
-  return "Couldn't log that session.";
-}
+// The toast answer for a practice Done tap is `practiceLogOutcomeText` in lib/practice.ts
+// — the SAME sentence the Wellness card's button, the quick-entry overlay row, and the
+// command palette's inline quick log say, because they all answer from one write core's
+// one typed outcome (#1633). It used to live here, which made the chat surface the
+// accidental owner of a domain string three web surfaces also needed.
 
 // ---- Workout finish/discard over Telegram (the stale-nudge buttons, #1205) ----
 // The "⏱️ Still working out?" nudge's "Finish workout" / "Discard" buttons carry the

@@ -1,6 +1,7 @@
 "use server";
 
 import { requireSession } from "@/lib/auth";
+import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
 import { ageInMonthsFromBirthdate, shiftDateStr } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
@@ -20,6 +21,8 @@ import {
   currentFoodSlot,
   getFoodMealDays,
   getFoodGroupLogOrder,
+  getTrackedPractices,
+  type TrackedPractice,
 } from "@/lib/queries";
 import { upcomingDueText } from "@/lib/upcoming";
 import type { FoodGroup } from "@/lib/food-groups";
@@ -41,8 +44,14 @@ import type { QuickEntryForm } from "@/lib/quick-log";
 // Telegram tap) between page load and opening the sheet must not appear due
 // here. A layout-time snapshot would be as stale as the page.
 //
+// It also serves the COMMAND PALETTE's practice list (#1633): the palette needs the
+// same finite tracked-practice set to recognize `log sauna` client-side, and a second
+// gather for it would be a second opinion about which practices a quick surface offers.
+// One action, one answer, both surfaces.
+//
 // READ-ONLY. It gathers props; every write still goes through the form's own
-// existing Server Action (addMeasurements / logFoodServing / markTaken), which
+// existing Server Action (addMeasurements / logFoodServing / markTaken /
+// logPractice / uploadMedicalDocument), which
 // carries its own write gate. `requireSession()` is therefore
 // the right gate — the same posture as loadSyncRows / runGlobalSearch — and it
 // is allowlisted as such in lib/__tests__/actions-write-access.test.ts.
@@ -84,6 +93,20 @@ export type QuickEntryData =
       slot: FoodSlot;
     }
   | { form: "dose"; doses: QuickEntryDose[] }
+  | {
+      // The tracked practices, each with the standing the shared card shows (#1633).
+      // Plain rows, not a second opinion: they come from the same weekly-progress
+      // computation the Wellness page reads.
+      form: "practice";
+      practices: TrackedPractice[];
+    }
+  | {
+      // Nothing to gather for the upload form beyond the demo gate the Data page
+      // applies to its own mount (#1525) — the files come from the user, and every
+      // size/type/dedup rule lives server-side in the ingest engine.
+      form: "document";
+      demo: boolean;
+    }
   // A form that has nothing to offer this profile right now — an infant profile
   // has no adult food-group catalog (#591), and "no doses due" is a real answer,
   // not an empty list to stare at. Carrying it as a VARIANT keeps the host from
@@ -145,6 +168,32 @@ export async function loadQuickEntry(
       ) as Record<FoodSlot, FoodGroup[]>,
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,
+    };
+  }
+
+  if (form === "practice") {
+    // The tracked-practice list (a practice-scope frequency target IS the user's
+    // declaration that they mean to keep doing it). A profile with none gets an honest
+    // answer pointing at where practices are set up, the same shape "no doses are due"
+    // takes — never an empty list to stare at.
+    const practices = getTrackedPractices(profile.id, date);
+    if (practices.length === 0) {
+      return {
+        form: "unavailable",
+        message:
+          "No tracked practices yet. Add one under Wellness to log sessions from here.",
+      };
+    }
+    return { form: "practice", practices };
+  }
+
+  if (form === "document") {
+    // Demo mode (#181): the Data page disables its upload input for a restricted login,
+    // and this mount of the SAME form asks the same question — the write is already
+    // refused server-side; this is the UX on top.
+    return {
+      form: "document",
+      demo: isDemoRestricted(isDemoMode(), login.role),
     };
   }
 

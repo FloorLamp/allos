@@ -14,6 +14,7 @@ import {
   groupPracticeSpellings,
   practiceSpellingsFor,
   practiceDisplayName,
+  practiceLogOutcomeText,
 } from "@/lib/practice";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 import { resolveSuppressedKeyDisplay } from "@/lib/suppression-display";
@@ -213,5 +214,29 @@ describe("practiceDisplayName", () => {
         identity: "sauna",
       })
     ).toBe("sauna");
+  });
+});
+
+describe("practiceLogOutcomeText (#1633)", () => {
+  it("reports the day's running count on a fresh log", () => {
+    expect(
+      practiceLogOutcomeText({ kind: "logged", count: 1, date: "2026-07-30" })
+    ).toBe("Logged today's session");
+    expect(
+      practiceLogOutcomeText({ kind: "logged", count: 3, date: "2026-07-30" })
+    ).toBe("Logged — 3 sessions today");
+  });
+
+  it("never confirms an outcome that wrote nothing", () => {
+    // A session log is not idempotent, so silence-as-success is a lie: every non-logged
+    // branch has to say so, on every surface that shares this one sentence.
+    for (const outcome of [
+      { kind: "invalid-date" },
+      { kind: "stale-target" },
+    ] as const) {
+      expect(practiceLogOutcomeText(outcome)).toBe(
+        "Couldn't log that session."
+      );
+    }
   });
 });
