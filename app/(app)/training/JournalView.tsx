@@ -344,10 +344,14 @@ export default function JournalView({
     // filtered feed must pick those edits up too rather than showing a stale window.
   }, [filtersKey, filtersActive, initialGroups]);
 
-  // A new filter set starts at the top of its own result list.
+  // A new ACTIVE filter set starts at the top of its own result list. Deliberately
+  // not on the clearing transition: the deep-link handler clears every filter and
+  // then widens the window to reach its target, and a reset firing on that same key
+  // change would clobber the width it just asked for — the target would never render
+  // and the scroll would never land.
   useEffect(() => {
-    setVisibleDays(14);
-  }, [filtersKey]);
+    if (filtersActive) setVisibleDays(14);
+  }, [filtersKey, filtersActive]);
 
   // The server's answer for THE filters currently on screen, or null while none has
   // arrived yet (first fetch, or a newer filter set in flight). Only a key match
@@ -371,7 +375,14 @@ export default function JournalView({
   // beyond the client window, then fetch the next-older window from the server —
   // the next-older MATCHING window when a filter is on (#1634).
   const hasMoreLoaded = filtered.length > visibleDays;
-  const activeCursor = serverFiltered ? serverFiltered.cursor : cursor;
+  // While a filter is active but the store's answer has not arrived, there is no
+  // honest cursor to offer: the unfiltered chain's cursor would page in an unrelated
+  // older window. Withhold the pager for that beat rather than page the wrong set.
+  const activeCursor = serverFiltered
+    ? serverFiltered.cursor
+    : filtersActive
+      ? null
+      : cursor;
   const canFetchMore = activeCursor != null;
   async function handleLoadMore() {
     if (hasMoreLoaded) {
