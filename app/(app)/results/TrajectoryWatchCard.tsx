@@ -1,6 +1,7 @@
 import { IconTrendingUp, IconX } from "@tabler/icons-react";
 import type { Finding } from "@/lib/findings";
 import FindingRow from "@/components/FindingRow";
+import PhoneFold from "@/components/PhoneFold";
 import {
   rollupTrajectoryFindings,
   type TrajectoryAnalyteGroup,
@@ -25,6 +26,10 @@ import {
 //
 // The grouping/cap decision is the pure lib/trajectory-rollup; this component is
 // the formatter over its result.
+//
+// #1647: below `sm` the row list folds behind a toggle and the card's headline
+// sentence stays. That is the price of keeping this card ABOVE the panel index on a
+// phone while the two glance cards move below it — see lib/phone-fold's PHONE_STACK.
 export default function TrajectoryWatchCard({
   findings,
   dismissAction,
@@ -117,22 +122,42 @@ export default function TrajectoryWatchCard({
         {n} analyte{n === 1 ? "" : "s"} trending before a single reading crosses
         a line{rollup.names ? ` — ${rollup.names}` : ""}.
       </p>
-      <ul className="space-y-3">
-        {rollup.shown.map((g) => renderGroup(g, false))}
-      </ul>
-      {rollup.overflow.length > 0 && (
-        <details className="group mt-3" data-testid="trajectory-findings-more">
-          <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
-            <span className="group-open:hidden">
-              Show all {rollup.groups.length} →
-            </span>
-            <span className="hidden group-open:inline">Show fewer</span>
-          </summary>
-          <ul className="mt-3 space-y-3">
-            {rollup.overflow.map((g) => renderGroup(g, true))}
-          </ul>
-        </details>
-      )}
+      {/* PHONE FOLD (#1647). This card keeps its place ABOVE the panel index at every
+          width — it is the one surface here that has to find the reader rather than be
+          looked up — so on a phone it pays for that place by folding its ROWS. What
+          stays is the whole signal: that something is trending, how many analytes, and
+          which ones (the sentence above names them). What folds is the per-analyte
+          detail, one tap away. From `sm` up the folded slot is `display: contents`, so
+          the list and the overflow disclosure are laid out by this card exactly as
+          before — no desktop change, and no second row tree. */}
+      <PhoneFold
+        testId="trajectory-rows-fold"
+        showLabel={`Show ${n} trending analyte${n === 1 ? "" : "s"}`}
+        hideLabel="Hide trending analytes"
+        folded={
+          <>
+            <ul className="space-y-3">
+              {rollup.shown.map((g) => renderGroup(g, false))}
+            </ul>
+            {rollup.overflow.length > 0 && (
+              <details
+                className="group mt-3"
+                data-testid="trajectory-findings-more"
+              >
+                <summary className="cursor-pointer list-none text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400 [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">
+                    Show all {rollup.groups.length} →
+                  </span>
+                  <span className="hidden group-open:inline">Show fewer</span>
+                </summary>
+                <ul className="mt-3 space-y-3">
+                  {rollup.overflow.map((g) => renderGroup(g, true))}
+                </ul>
+              </details>
+            )}
+          </>
+        }
+      />
     </div>
   );
 }
