@@ -6,7 +6,7 @@
 // from assembly per the issue). The title always names the profile — a chat may be
 // shared by several profiles (the chat-id ambiguity fix).
 
-import type { NotificationMessage } from "./types";
+import type { NotificationAction, NotificationMessage } from "./types";
 import type { ActivityType, SupplementKind } from "../types";
 import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
@@ -14,6 +14,7 @@ import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
+import { offerTextTail } from "./offer-tail";
 import { sriPresentation } from "../sleep-regularity";
 
 // Capitalize the first letter of a noun for use at the start of a line
@@ -113,6 +114,13 @@ export interface DigestInput {
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
   // counts deliberate skips (#232), surfaced alongside taken.
   adherence: { taken: number; skipped: number; due: number } | null;
+  // The state-change HEADLINE for the pushed tier (#1505 part 3) —
+  // "Missed: Magnesium (3 days) · Resumed: Vitamin D (2 days)" — preformatted by the
+  // ONE shared `intakeDeltaLine` the weekly recap and the household card also render.
+  // Null on a quiet window, which is the signal to say nothing: a fraction always has
+  // a value, but a delta only exists when something actually changed. Optional so
+  // older callers/fixtures are unchanged.
+  intakeDeltaLine?: string | null;
   // Weight logged yesterday, canonical kg. Rendered in kg by policy: the
   // notification has no login-unit context (multiple logins, each with its own
   // weight preference, can watch one profile), so all notification builders emit
@@ -125,6 +133,14 @@ export interface DigestInput {
   // Last night's sleep (issue #1117), or null when the sleep summary is off or
   // there's no fresh sleep data. When present the digest gets a calm Sleep section.
   sleep?: DigestSleep | null;
+  // The GUARANTEED access tail (#1505): the collapsed "Log other… · <slot>" action
+  // for this profile's `may` items, or null when the profile has none on offer today.
+  // Its presence also lowers the "is there anything to say?" bar to zero — see
+  // buildDigest — because for a tap-only user this button IS the digest's job.
+  offerTail?: NotificationAction | null;
+  // How many may items that tail covers, for the plain-text channels that cannot
+  // render an expandable keyboard (Web Push, Home Assistant).
+  offerCount?: number;
 }
 
 export interface DigestSection {
@@ -135,6 +151,10 @@ export interface DigestSection {
 export interface DigestModel {
   title: string;
   sections: DigestSection[];
+  // Carried through assembly so renderDigestMessage can attach it as the message's
+  // FIRST inline button — first because it is the one affordance that is always
+  // correct to offer, regardless of what else the day held.
+  offerTail?: NotificationAction | null;
 }
 
 // Human sleep duration: "7h 20m", "8h", "45m". Minutes in, rounded.
@@ -230,12 +250,26 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       todayLines.push(`⚑ ${h.title} — ${h.reason}`);
     }
   }
+  // The "+N available" TEXT tail (#1505). Rendered into the body — not only as a
+  // button — because Web Push and Home Assistant cannot edit a message in place and
+  // so cannot carry the expandable keyboard. They get the honest count instead of a
+  // button that could never expand. On Telegram the line and the button coexist and
+  // read as label + control, which is why this is one message rather than a
+  // channel-forked pair.
+  const availableLine = offerTextTail(input.offerCount ?? 0);
+  if (availableLine) todayLines.push(`➕ ${availableLine}`);
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });
 
   // Yesterday: what happened.
   const yLines: string[] = [];
   for (const a of input.activities) {
     yLines.push(`🏋️ ${a.title}${activityStat(a)}`);
+  }
+  // The delta headline LEADS the intake report (#1505 part 3): "which of the things
+  // that push me changed state" is the news; the fraction below is the supporting
+  // detail. Rendered from the preformatted shared line, never recomputed here.
+  if (input.intakeDeltaLine) {
+    yLines.push(`🔁 ${input.intakeDeltaLine}`);
   }
   if (input.adherence) {
     // Skips are excluded from the "of N due" figure (they weren't intended
@@ -298,10 +332,27 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   if (newLines.length) sections.push({ heading: "New", lines: newLines });
 
-  if (sections.length === 0) return null;
+  // MINIMAL DIGEST GUARANTEE (#1505, owner-decided). Normally an empty digest is
+  // suppressed — a hollow "nothing to report" is worse than silence. But when the
+  // profile has `may` items on offer, the digest is ALSO the guaranteed access path
+  // for them, and suppressing it would leave a tap-only user with no way to reach
+  // their own list. So a tail-only message is legitimate: no sections, one button.
+  // It is not a new send either — the digest already had permission to arrive today.
+  if (sections.length === 0 && !input.offerTail) return null;
+  // A tail-only digest still needs a body: an empty message reads as a bug.
+  if (sections.length === 0) {
+    sections.push({
+      heading: "Today",
+      lines: [
+        "✅ Nothing scheduled." +
+          (availableLine ? ` ➕ ${availableLine}.` : ""),
+      ],
+    });
+  }
   return {
     title: `☀️ Morning digest — ${input.profileName}`,
     sections,
+    offerTail: input.offerTail ?? null,
   };
 }
 
@@ -312,5 +363,13 @@ export function renderDigestMessage(model: DigestModel): NotificationMessage {
   const body = model.sections
     .map((s) => [s.heading, ...s.lines.map((l) => `• ${l}`)].join("\n"))
     .join("\n\n");
-  return { title: model.title, body, kind: "digest" };
+  // The offer tail is the message's ONLY action and deliberately its first (and
+  // only) row: a digest carries no other buttons, so "first" is trivially satisfied
+  // today and stays honest if the digest ever grows more.
+  return {
+    title: model.title,
+    body,
+    kind: "digest",
+    ...(model.offerTail ? { actions: [model.offerTail] } : {}),
+  };
 }

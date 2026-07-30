@@ -15,6 +15,7 @@
 //     item has left the tracked set entirely (issue #325).
 
 import { getSupplements, getRefillRates } from "../queries";
+import { isPushedIntake } from "../supplement-schedule";
 import { nutritionTabHref } from "../hrefs";
 import { getFindingSuppressions } from "../queries/upcoming";
 import {
@@ -104,9 +105,13 @@ export async function runRefills(
   profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
-  // Only active items that opted into quantity tracking.
+  // Only active items that opted into quantity tracking — and only ones that may ride
+  // a PUSH surface at all (#1505). A refill nudge IS a push, so the SAME shared
+  // predicate the Upcoming refill items and the dose reminders consult gates it here:
+  // a LOW-priority supplement's supply state stays visible on the Supplements page,
+  // it just never nudges. Kind decides for medications, so a low med still nudges.
   const tracked = getSupplements(profileId).filter(
-    (s) => s.active && s.quantity_on_hand != null
+    (s) => s.active && s.quantity_on_hand != null && isPushedIntake(s)
   );
   if (tracked.length === 0) return { failed: false };
 

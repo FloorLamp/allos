@@ -149,7 +149,7 @@ describe("addSupplement", () => {
       fd({
         name: "As-needed test medication",
         kind: "medication",
-        as_needed: "1",
+        obligation: "may",
         started_on: "",
       })
     );
@@ -164,7 +164,7 @@ describe("addSupplement", () => {
         id: med.id,
         name: med.name,
         kind: "medication",
-        as_needed: "1",
+        obligation: "may",
         course_id: course.id,
         started_on: "2025-02-03",
       })
@@ -178,7 +178,7 @@ describe("addSupplement", () => {
         id: med.id,
         name: med.name,
         kind: "medication",
-        as_needed: "1",
+        obligation: "may",
         course_id: course.id,
         started_on: "",
       })

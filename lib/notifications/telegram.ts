@@ -23,8 +23,12 @@ import {
   getFoodNudgePointer,
   getLoginTelegramDisabledKinds,
   getTelegramBotConfig,
+  getTimezone,
+  setDigestTailPointer,
   setFoodNudgePointer,
 } from "../settings";
+import { today } from "../db";
+import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
 import type { NotificationChannel, NotificationMessage } from "./types";
 import { prefixMessage } from "./types";
@@ -97,6 +101,14 @@ export const telegramChannel: NotificationChannel = {
       // is gated on Telegram deliverability and is overwhelmingly single-chat).
       if (msg.kind === "food" && messageId != null)
         await rotateFoodNudgePointer(profileId, chatId, messageId, msg);
+      // A DIGEST carrying the offer tail (#1505) records its message id for the same
+      // class of reason: the tail's label names the slot it opens into, so the tick
+      // has to re-label it at each boundary — which needs the message to edit. Same
+      // chokepoint placement and same strictly-best-effort posture as the food
+      // pointer above; a bookkeeping failure must never turn a delivered digest into
+      // a failed one.
+      if (msg.kind === "digest" && messageId != null && msg.actions?.length)
+        recordDigestTailPointer(profileId, chatId, messageId);
     }
   },
 };
@@ -138,6 +150,30 @@ async function rotateFoodNudgePointer(
     // Any unexpected error (a settings write throw, etc.) stays swallowed — the send
     // succeeded and this bookkeeping must never turn a delivery into a failure.
     log.info("food nudge: pointer rotation failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+// Store the just-sent digest's message id so the tick can re-label its offer tail at
+// the next slot boundary (#1505). Best-effort: a settings-write throw is swallowed —
+// the digest was delivered, and the worst case of a missing pointer is a tail whose
+// label goes stale until tomorrow's digest.
+function recordDigestTailPointer(
+  profileId: number,
+  chatId: string | number,
+  messageId: number
+): void {
+  try {
+    setDigestTailPointer(profileId, {
+      chatId,
+      messageId,
+      date: today(profileId),
+      renderedAt: zonedDateParts(getTimezone(profileId), new Date()).hhmm,
+    });
+  } catch (e) {
+    log.info("digest tail: pointer store failed (ignored)", {
       profile: profileId,
       err: e instanceof Error ? e.message : String(e),
     });

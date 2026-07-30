@@ -59,7 +59,7 @@ export function quickAddMedicationFields(
   push("product", input.product?.trim() || null);
 
   if (input.asNeeded) {
-    out.push(["as_needed", "1"]);
+    out.push(["obligation", "may"]);
     const interval =
       input.minIntervalHours != null && input.minIntervalHours > 0
         ? input.minIntervalHours

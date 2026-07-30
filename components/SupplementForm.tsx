@@ -23,13 +23,15 @@ import { useIntakeRxcui } from "@/components/intake/useIntakeRxcui";
 import { serializeRxcuiIngredients } from "@/lib/rxnorm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
+import type { IntakeObligation } from "@/lib/types";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
   availableConditions,
   CONDITION_LABELS,
-  PRIORITIES,
-  PRIORITY_LABELS,
+  OBLIGATIONS,
+  OBLIGATION_HINTS,
+  OBLIGATION_LABELS,
   defaultFoodTiming,
   pauseLinkNeedsConfirm,
 } from "@/lib/supplement-schedule";
@@ -89,6 +91,9 @@ export default function SupplementForm({
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [situation, setSituation] = useState(s?.situation ?? "");
+  const [obligation, setObligation] = useState<IntakeObligation>(
+    s?.obligation ?? "should"
+  );
   const [pauseSituation, setPauseSituation] = useState(
     s?.pause_situation ?? ""
   );
@@ -146,14 +151,10 @@ export default function SupplementForm({
     // Consent gate (#1296): a situational hold on a mandatory-priority item silences
     // its reminders while the situation is active — confirm before linking it.
     const pause = pauseSituation.trim();
-    const priority = String(formData.get("priority") ?? "high");
     if (
       pause &&
       pause !== (s?.pause_situation ?? "") &&
-      pauseLinkNeedsConfirm({
-        kind: "supplement",
-        priority: priority as Supplement["priority"],
-      })
+      pauseLinkNeedsConfirm({ kind: "supplement", obligation })
     ) {
       const ok = await confirm({
         title: "Pause reminders?",
@@ -193,22 +194,36 @@ export default function SupplementForm({
 
   const advancedFields = (
     <>
+      {/* Obligation (#1505) — the ONE user-owned field deciding reminders, misses
+          and escalation. The hint under the selector states the consequences of the
+          CURRENT choice, because "May" is otherwise an adjective with no visible
+          meaning: the whole failure this model fixes was a level nobody could see
+          the effect of. Copy comes from the shared OBLIGATION_HINTS so the form, the
+          med confirm dialog and the docs quote one wording. */}
       <div>
-        <label className="label" htmlFor={`supp-priority-${fid}`}>
-          Priority
+        <label className="label" htmlFor={`supp-obligation-${fid}`}>
+          Obligation
         </label>
         <select
-          id={`supp-priority-${fid}`}
-          name="priority"
-          defaultValue={s?.priority ?? "high"}
+          id={`supp-obligation-${fid}`}
+          name="obligation"
+          data-testid="supp-obligation"
+          value={obligation}
+          onChange={(e) => setObligation(e.target.value as IntakeObligation)}
           className="input"
         >
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {PRIORITY_LABELS[p]}
+          {OBLIGATIONS.map((o) => (
+            <option key={o} value={o}>
+              {OBLIGATION_LABELS[o]}
             </option>
           ))}
         </select>
+        <p
+          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="supp-obligation-hint"
+        >
+          {OBLIGATION_HINTS[obligation]}
+        </p>
       </div>
 
       <div>

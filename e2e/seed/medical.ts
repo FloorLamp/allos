@@ -448,8 +448,8 @@ export function seedDataQualityGaps(): void {
     `DELETE FROM intake_items WHERE profile_id = ? AND name = 'DQ Mystery Pill'`
   ).run(dqGappyId);
   db.prepare(
-    `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
-   VALUES (?, 'DQ Mystery Pill', 1, 'medication', 1)`
+    `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+         VALUES (?, 'DQ Mystery Pill', 1, 'medication', 'may')`
   ).run(dqGappyId);
   seedMemberLogin(E2E_LOGIN_DQ_GAPPY, dqGappyId, "write");
 
@@ -737,8 +737,8 @@ export function seedRecordsEnrichment(): void {
       Number(
         db
           .prepare(
-            `INSERT INTO intake_items (profile_id, name, kind, active, as_needed, source)
-           VALUES (?, ?, 'medication', 1, 0, 'manual')`
+            `INSERT INTO intake_items (profile_id, name, kind, active, source, obligation)
+         VALUES (?, ?, 'medication', 1, 'manual', 'should')`
           )
           .run(reId, name).lastInsertRowid
       );

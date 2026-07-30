@@ -123,8 +123,8 @@ export function seedNutritionTrio(): void {
     const fiberItemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-         VALUES (?, 'Fiber capsules', 1, 'supplement', 'daily', 'low')`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Fiber capsules', 1, 'supplement', 'daily', 'should')`
         )
         .run(nutritionId).lastInsertRowid
     );

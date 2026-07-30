@@ -16,6 +16,11 @@ import { primaryReason } from "../reasons";
 // "vaccine" mirror the page's language.
 const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   dose: "dose",
+  // A `may` item on offer (#1505). NEVER pushed — omitted from DOMAIN_SEQ, so it is
+  // never counted in this digest; its access path is the digest's own "Log other…"
+  // tail, which is user-initiated. The noun exists only because the Record is
+  // exhaustive.
+  available: "available item",
   "prn-max": "over-max PRN",
   refill: "refill",
   "dietary-limit": "intake limit",

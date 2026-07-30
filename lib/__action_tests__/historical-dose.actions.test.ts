@@ -18,12 +18,10 @@ function seedMedication(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed,
-            quantity_on_hand, qty_per_dose)
-         VALUES (?, 'History Test Medication', 1, 'medication', 'daily', 'high',
-                 ?, 10, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'History Test Medication', 1, 'medication', 'daily', ?, 10, 1)`
       )
-      .run(profileId, opts.asNeeded ? 1 : 0).lastInsertRowid
+      .run(profileId, opts.asNeeded ? "may" : "must").lastInsertRowid
   );
   const doseId = Number(
     db

@@ -121,5 +121,6 @@
   "120-lab-result-lifecycle.ts": "5acc4d6add1d8d14f3fbb2acbab476406f7a89b5036787733d5a53d2e223d91a",
   "121-goal-equipment-context.ts": "c45955dddad2ff2bf5fc11101b8d05344039759e935fb9f1613e955b64b7249b",
   "122-records-safety-passport.ts": "9e0ba72173e8535d8b9e6c613910b027ded99387ea83b3f720cd19024e027e5a",
-  "123-practice-target-unique.ts": "6de62238efed4ab8a39844646e269413d7657744ec369cc22b03c4b619737d1a"
+  "123-practice-target-unique.ts": "6de62238efed4ab8a39844646e269413d7657744ec369cc22b03c4b619737d1a",
+  "124-intake-obligation.ts": "e5e127076182158b1f2fcc993a7a26dd1e8f9e79e824570dcfa36742cd0b9466"
 }

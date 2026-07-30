@@ -49,8 +49,9 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
 
   // Prefill: PRN on (reveals the redose block), interval 8h / max 3, dose 220 mg —
   // each marked "from label defaults".
-  const asNeeded = addCard.getByRole("checkbox", { name: /As needed/ });
-  await expect(asNeeded).toBeChecked();
+  // #1505: the as-needed CHECKBOX became the obligation SELECT — "as needed" IS
+  // `may`, so the label-default prefill now lands on that value instead of a tick.
+  await expect(addCard.getByTestId("med-obligation")).toHaveValue("may");
   await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
   await expect(addCard.getByTestId("redose-interval")).toHaveValue("8");
   await expect(addCard.getByTestId("redose-max")).toHaveValue("3");
@@ -88,10 +89,8 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
     .first() // first-ok: transient combobox list this spec just opened (Dextromethorphan suggestion); first match is intended
     .click();
 
-  // The curated `typical` PRN convention prefills the As-needed toggle (marked).
-  await expect(
-    addCard.getByRole("checkbox", { name: /As needed/ })
-  ).toBeChecked();
+  // The curated `typical` PRN convention prefills the obligation as `may` (marked).
+  await expect(addCard.getByTestId("med-obligation")).toHaveValue("may");
   await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
 
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
@@ -110,7 +109,7 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
   // Turn PRN ON by hand first (touches the field), then pick a med whose label
   // convention is also PRN — the pick must not re-drive/override the touched toggle,
   // and (proving "touched") leaving it as the user set it.
-  await addCard.getByRole("checkbox", { name: /As needed/ }).check();
+  await addCard.getByTestId("med-obligation").selectOption("may");
   await addCard.getByLabel("Name").fill("Naproxen");
   await addCard
     .getByRole("listbox")
@@ -121,8 +120,7 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
 
   // Still checked (the user's own choice), and NOT marked "from label defaults" — the
   // resolver skipped the touched field.
-  const asNeeded = addCard.getByRole("checkbox", { name: /As needed/ });
-  await expect(asNeeded).toBeChecked();
+  await expect(addCard.getByTestId("med-obligation")).toHaveValue("may");
   // Dose strength (untouched) still prefilled from the label.
   await expect(addCard.getByLabel("Amount")).toHaveValue("220 mg");
 });

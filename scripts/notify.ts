@@ -71,7 +71,10 @@ import { runPreventive } from "../lib/notifications/preventive";
 import { runIllnessCare } from "../lib/notifications/illness-care";
 import { runEaseBack } from "../lib/notifications/ease-back";
 import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
-import { runDigest } from "../lib/notifications/digest-data";
+import {
+  refreshDigestOfferTail,
+  runDigest,
+} from "../lib/notifications/digest-data";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
@@ -739,6 +742,20 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       });
       anyFailed = true;
     }
+  }
+
+  // Keep today's digest offer tail (#1505) labelled for the slot we are ACTUALLY in.
+  // Runs every tick, outside the digest's own hour gate, and is silent by
+  // construction: at most one keyboard EDIT, which Telegram does not notify on. It
+  // no-ops entirely when the slot hasn't turned over, so the ordinary tick pays
+  // nothing for it. Never allowed to fail the tick — a stale label is cosmetic.
+  try {
+    await refreshDigestOfferTail(profile.id);
+  } catch (e) {
+    log.info("digest tail refresh failed (ignored)", {
+      profile: profile.id,
+      err: e instanceof Error ? e.message : String(e),
+    });
   }
 
   // Weekly recap (#32): once a week, on the chosen weekday at weeklyRecapHour

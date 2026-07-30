@@ -18,12 +18,12 @@ vi.mocked(revalidatePath);
 function redoseRow(id: number) {
   return db
     .prepare(
-      `SELECT as_needed, min_interval_hours AS mih, max_daily_count AS mdc,
+      `SELECT obligation, min_interval_hours AS mih, max_daily_count AS mdc,
               redose_notice AS rn
          FROM intake_items WHERE id = ?`
     )
     .get(id) as {
-    as_needed: number;
+    obligation: string;
     mih: number | null;
     mdc: number | null;
     rn: number;
@@ -50,7 +50,7 @@ describe("redose fields on addSupplement", () => {
       fd({
         name: "Ibuprofen",
         kind: "medication",
-        as_needed: "1",
+        obligation: "may",
         min_interval_hours: "6",
         max_daily_count: "4",
         redose_notice: "1",
@@ -58,7 +58,7 @@ describe("redose fields on addSupplement", () => {
     );
     expect(r.ok).toBe(true);
     const row = redoseRow(lastItemId());
-    expect(row.as_needed).toBe(1);
+    expect(row.obligation).toBe("may");
     expect(row.mih).toBe(6);
     expect(row.mdc).toBe(4);
     expect(row.rn).toBe(1);
@@ -69,7 +69,7 @@ describe("redose fields on addSupplement", () => {
       fd({
         name: "Acetaminophen",
         kind: "medication",
-        as_needed: "1",
+        obligation: "may",
         // interval left blank
         max_daily_count: "6",
         redose_notice: "1",
@@ -92,7 +92,7 @@ describe("redose fields on addSupplement", () => {
       })
     );
     const row = redoseRow(lastItemId());
-    expect(row.as_needed).toBe(0);
+    expect(row.obligation).toBe("must");
     expect(row.mih).toBeNull();
     expect(row.mdc).toBeNull();
     expect(row.rn).toBe(0);
@@ -105,7 +105,7 @@ describe("redose fields on updateSupplement", () => {
       fd({
         name: "Naproxen",
         kind: "medication",
-        as_needed: "1",
+        obligation: "may",
         min_interval_hours: "8",
         max_daily_count: "3",
         redose_notice: "1",
@@ -127,7 +127,7 @@ describe("redose fields on updateSupplement", () => {
     );
     expect(r.ok).toBe(true);
     const row = redoseRow(id);
-    expect(row.as_needed).toBe(0);
+    expect(row.obligation).toBe("must");
     expect(row.mih).toBeNull();
     expect(row.mdc).toBeNull();
     expect(row.rn).toBe(0);

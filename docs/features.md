@@ -1453,9 +1453,52 @@ logged), or **situational** — a lightweight, non-clinical context toggle
 (**Illness**, **Travel**, **High stress**, **Poor sleep**) you flip on the
 **Situations** bar; a situational supplement shows only while its situation is
 active, and an active **illness/injury condition** on your record suggests
-turning the matching situation on so you don't toggle it twice. Your own
-**mandatory / high / low** priority is the sort order — always your call, never
-re-ranked by the app.
+turning the matching situation on so you don't toggle it twice.
+
+Each item carries one thing you choose: its **obligation** — **Must**, **Should**,
+or **May** — and everything else follows from it.
+
+- **Must** — a miss is an incident. Reminders, plus a follow-up nudge if a dose
+  goes unconfirmed.
+- **Should** — a miss is a shortfall worth tracking. Reminders and adherence, but
+  never chased twice.
+- **May** — no expectation at all. It is never reminded and never counts as
+  missed; it stays on your list and one tap away in its usual slot. This is where
+  as-needed items live — a PRN painkiller and a magnesium you take when you feel
+  like it are the same shape, so they are the same setting.
+
+Marking something **May** does not hide it. It keeps its schedule as a _hint_ for
+where to offer it, it still shows on Supplements & Meds, and on Upcoming it moves
+into an "available when you want them" section rather than disappearing. If you
+only use the app through Telegram, the daily digest carries a **"Log other…"**
+button that opens into whatever is available right now — so a May item is always
+one tap away even though it never interrupts you.
+
+**Medications start as Must**, and moving one lower asks first, spelling out
+exactly what you would be giving up ("no reminders, no escalation, no missed-dose
+safety net"). Interaction, pharmacogenomic and upper-limit warnings ignore
+obligation entirely — they fire the same way whether an item is a Must or a May.
+
+The two nutrient totals treat a **May** item differently on purpose, and in each
+case the cautious direction wins. An **upper-limit** warning is about risk, so a
+May item counts at its full amount and the warning simply says it did ("including
+as-needed items") — your obligation setting can never make an exposure look
+smaller than it is. The **"% of the RDA" adequacy** note is reassurance, so the
+share counts only what you have committed to taking, and anything from as-needed
+items is named beside it rather than folded in. The nutrient still appears either
+way; nothing goes quiet because you asked not to be nudged.
+
+If a Must or Should supplement goes untaken for long enough, Supplements & Meds
+offers a calm **"move it to May?"** suggestion with the numbers behind it, and the
+same option appears as a third button on that item's own reminder — so it reaches
+you even if you never open the app. It is only ever a suggestion: nothing changes
+until you tap it, taking the supplement again makes it go away on its own, and the
+app never suggests moving anything _up_.
+
+Your daily digest and weekly recap lead with **what changed** rather than a bare
+fraction — "Missed: magnesium (3 days) · Resumed: vitamin D (2 days)" — covering
+only the things you have actually committed to. A quiet week says nothing at all;
+the taken/due count stays alongside as supporting detail.
 
 Supplements live under **Nutrition → Supplements**; medications have their own
 **Medications** surface. They intentionally share one intake model so dose
@@ -1560,6 +1603,15 @@ a **Re-extract all documents** button in its header that previews the AI cost
 before running (e.g. "9 health records re-imported instantly, no AI · 5
 scans/PDFs — 5 AI extractions, 43 of 50 daily remaining"; an all–health-record
 run has no AI cost and skips the confirmation.
+
+An AI-extracted document also shows how many of its rows the extractor itself
+was unsure about — **"· N to check"** beside the produced count — and its detail
+view opens a **Check these first** card listing exactly those rows,
+lowest-confidence first with the extractor's short reason ("unit could be mg/dL
+or mmol/L"). It only decides what a human looks at first: every row is imported
+and editable either way, nothing is auto-accepted or auto-rejected, and a
+document with no such signal (a MyChart/FHIR import, or an upload extracted
+without an AI key) shows neither.
 
 ### Failures and duplicates
 

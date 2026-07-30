@@ -1,0 +1,337 @@
+import type Database from "better-sqlite3";
+import type { Migration } from "../runner";
+
+// Migration 124 (issue #1505): collapse `priority` + `as_needed` into ONE
+// user-owned field, `obligation` — the storage half of the intake obligation model.
+//
+// WHY a rename and not an in-place widening. The old model smeared one question —
+// "what does the user owe this item?" — across three proxies. `priority`
+// (mandatory/high/low) was a within-day SORT ORDER that quietly grew push meaning;
+// `as_needed` was a second, orthogonal boolean that ALSO meant "never scheduled-due";
+// and `kind` was doing duty for pushability on top of its real job (clinical
+// identity). A `low` item that still accrued misses was should-math wearing
+// may-semantics, which is incoherent — and no amount of new code on top of the old
+// column names would have stopped the old intuition transferring. So the columns are
+// RENAMED as the semantics change, simultaneously and deliberately:
+//
+//     must   — a miss is an incident        (remind + missed-dose escalation)
+//     should — a miss is a tracked shortfall (remind, never escalate)
+//     may    — there is no expectation       (never pushed; no dueness, no misses)
+//
+// THE MAPPING, and why each arm is the honest one:
+//
+//     as_needed = 1  →  may      PRN is definitionally "no expectation on any day".
+//                                It is the ORIGINAL may, so it absorbs into the level
+//                                rather than surviving beside it. Its amount-only dose
+//                                shape (#851), redose interval/max (#798) and prn-max
+//                                findings (#1027) now key off `obligation = 'may'`.
+//     mandatory      →  must     A miss was already an incident (this is the tier the
+//                                `critical` escalation opt-in has always sat inside).
+//     high           →  should   The default. A miss is a shortfall worth counting.
+//     low            →  may      The user's own "this is optional" — which is exactly
+//                                "no expectation". The consequence (may items stop
+//                                accruing misses at all) is the point: an item you
+//                                declared optional should not be able to fail.
+//
+// The as_needed arm WINS over the priority arm: a PRN item's priority tag was never
+// load-bearing (nothing was ever scheduled-due to prioritize), so `as_needed = 1 AND
+// priority = 'mandatory'` is a PRN aspirin, not a must. Ordering the CASE that way is
+// the whole reason this is a CASE and not two UPDATEs.
+//
+// SLOT SURVIVES ON `may` AS AN ACCESS HINT. Nothing about the dose rows changes here:
+// a may item keeps whatever `time_of_day` its doses carry, and that string stops
+// meaning "due then" and starts meaning "offer it here" — the digest tail, the
+// keyboards and quick log scope by it. Magnesium keeps its bedtime hint; aspirin has
+// none and is simply always available. That is a READ-side reinterpretation, so there
+// is deliberately no dose-row write in this migration.
+//
+// THE TWO VESTIGIAL COLUMNS. The rebuilt table keeps inert, unread `priority` and
+// `as_needed` columns. That is not hedging — see the comment on them in CREATE below:
+// `migrate()` replays every migration unconditionally and two shipped, immutable
+// migrations hold prepared statements naming them, which SQLite validates before
+// looking at a single row. A source-scan guard keeps them unreachable from
+// application code, and
+// a compatibility TRIGGER (below) translates a legacy insert's intent onto
+// `obligation`, so a replayed pre-124 migration writes what it meant rather than
+// landing on the column default.
+//
+// WHY A REBUILD. SQLite can rename a column in place (ALTER TABLE … RENAME COLUMN),
+// but it cannot attach a CHECK to it, cannot drop `as_needed`'s NOT NULL DEFAULT in
+// the same breath, and cannot do either atomically with the value remap. The enum is
+// worth a real CHECK — this field now decides whether a person gets contacted — so
+// the table is rebuilt to its final shape by the standard create → copy → drop →
+// rename, exactly like migrations 006 / 090 / 106.
+//
+// FK / CASCADE SAFETY. `intake_items` is a FK PARENT (intake_item_doses,
+// intake_item_logs, intake_item_pairs, medication_courses, administration rows…) and
+// a FK CHILD (providers, medical_documents, encounters, medical_records, conditions,
+// situations, shared_supplies). The runner applies migrations with foreign_keys
+// DISABLED, so the DROP doesn't cascade-wipe the children; they reference the table by
+// NAME and follow the RENAME. Ids are preserved by the INSERT…SELECT, so every child
+// FK stays resolved. Every nullable link is nulled pre-copy so the re-enabled FK check
+// meets a clean graph.
+//
+// TRIGGER SAFETY. Two triggers on `intake_item_logs` (migration 079) read
+// `intake_items` in their bodies to snapshot a dose's product. SQLite validates every
+// trigger body against the schema when a table is RENAMED, so the rename step fails
+// with "no such table: main.intake_items" during the window between the DROP and the
+// RENAME — the table the trigger names does not exist yet. They are therefore dropped
+// before the rebuild and recreated verbatim after it. Recreating them here duplicates
+// migration 079's text on purpose: 079 is frozen (shipped migrations are immutable),
+// so its definitions cannot be factored out, and a rebuild that silently lost a
+// snapshot trigger would stop recording what was actually taken.
+//
+// REPLAY SAFETY (the non-version-gated migrate() test wrapper replays up()
+// unconditionally): the rebuild short-circuits when the live table already carries the
+// `obligation` column. Production runs it exactly once behind the user_version gate.
+//
+// Profile-AGNOSTIC by design (allowlisted in lib/__tests__/profile-scoping.test.ts):
+// a one-shot schema rebuild that copies every column verbatim, never reading one
+// profile's data into another's.
+
+// The rebuilt table's FINAL shape: migration 112's shape with `priority` and
+// `as_needed` replaced by `obligation`. Every other column/default is unchanged.
+// `should` is the DEFAULT — a newly added item is a tracked commitment, not an
+// incident-grade one and not an unlogged nice-to-have. (Medications default to `must`
+// at the FORM layer, not here: the storage default has to serve both surfaces, and the
+// med guardrail is a write-path decision the user can see and confirm.)
+const CREATE = `
+  CREATE TABLE intake_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL REFERENCES profiles(id),
+    name TEXT NOT NULL,
+    notes TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    critical INTEGER NOT NULL DEFAULT 0,
+    escalate_after_min INTEGER,
+    escalate_chat_id TEXT,
+    quantity_on_hand REAL,
+    qty_per_dose REAL NOT NULL DEFAULT 1,
+    kind TEXT NOT NULL DEFAULT 'supplement',
+    prescriber TEXT,
+    pharmacy TEXT,
+    rx_number TEXT,
+    document_id INTEGER REFERENCES medical_documents(id),
+    source TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    provider_id INTEGER REFERENCES providers(id),
+    condition TEXT NOT NULL DEFAULT 'daily',
+    obligation TEXT NOT NULL DEFAULT 'should' CHECK (obligation IN ('must','should','may')),
+    brand TEXT,
+    product TEXT,
+    situation TEXT,
+    stack TEXT,
+    rxcui TEXT,
+    rxcui_ingredients TEXT,
+    situation_id INTEGER REFERENCES situations(id),
+    min_interval_hours REAL CHECK (min_interval_hours IS NULL OR min_interval_hours > 0),
+    max_daily_count INTEGER CHECK (max_daily_count IS NULL OR max_daily_count > 0),
+    redose_notice INTEGER NOT NULL DEFAULT 0,
+    rx INTEGER NOT NULL DEFAULT 0,
+    last_fill_size REAL,
+    encounter_id INTEGER REFERENCES encounters(id),
+    source_record_id INTEGER REFERENCES medical_records(id),
+    indication_condition_id INTEGER REFERENCES conditions(id),
+    import_key TEXT,
+    pause_situation_id INTEGER REFERENCES situations(id),
+    supply_id INTEGER REFERENCES shared_supplies(id),
+    -- VESTIGIAL. Nothing reads or writes these two; obligation above replaced both.
+    -- They survive for exactly one reason: migrate() (lib/db.ts) applies EVERY
+    -- migration unconditionally, and the DB-test harness relies on replaying it
+    -- against an already-migrated database. Migrations 092 and 101 hold
+    -- prepared statements that NAME these columns, and SQLite validates a statement
+    -- at PREPARE time, before any row is examined, so dropping the columns makes
+    -- those two shipped, immutable migrations throw on every replay regardless of
+    -- whether they would have inserted anything.
+    --
+    -- They are deliberately unconstrained and DEFAULT NULL: a replayed pre-124 insert
+    -- writes into them harmlessly and its row still gets obligation column default.
+    -- lib/__tests__/obligation-collapse-guard.test.ts fails the build if any
+    -- non-migration source file names either one, so they cannot quietly come back.
+    priority TEXT,
+    as_needed INTEGER
+  );`;
+
+// The migration-079 snapshot triggers, verbatim. Dropped around the rebuild (see the
+// header) and recreated after the rename.
+const TRIGGERS = [
+  `CREATE TRIGGER IF NOT EXISTS intake_log_snapshot_product_insert
+    AFTER INSERT ON intake_item_logs
+    FOR EACH ROW
+    WHEN NEW.product IS NULL
+    BEGIN
+      UPDATE intake_item_logs
+         SET product = (SELECT i.product FROM intake_items i WHERE i.id = NEW.item_id)
+       WHERE id = NEW.id;
+    END;`,
+  `CREATE TRIGGER IF NOT EXISTS intake_log_snapshot_product_taken
+    AFTER UPDATE OF status ON intake_item_logs
+    FOR EACH ROW
+    WHEN NEW.status = 'taken' AND OLD.status <> 'taken'
+    BEGIN
+      UPDATE intake_item_logs
+         SET product = (SELECT i.product FROM intake_items i WHERE i.id = NEW.item_id)
+       WHERE id = NEW.id;
+    END;`,
+];
+
+const TRIGGER_NAMES = [
+  "intake_log_snapshot_product_insert",
+  "intake_log_snapshot_product_taken",
+];
+
+// LEGACY-INSERT COMPATIBILITY. The vestigial columns exist so pre-124 migrations still
+// PREPARE; this trigger makes those inserts still MEAN what they meant. Without it a
+// replayed migration 101 (which projects a recovery placeholder as `as_needed = 1`)
+// would land a row on the `should` column default and silently turn a PRN placeholder
+// into a scheduled, reminded medication — a compatibility shim that half-works is worse
+// than none, because the half that fails is the behavior.
+//
+// It fires only when a row arrives carrying a legacy value AND the obligation column
+// took its default, so it is inert for every application insert (which never names the
+// dead columns — the source-scan guard enforces that) and idempotent besides.
+//
+// The arm order mirrors the backfill CASE exactly: PRN wins over the old priority tag.
+const LEGACY_COMPAT_TRIGGER = `
+  CREATE TRIGGER IF NOT EXISTS intake_items_legacy_obligation_compat
+  AFTER INSERT ON intake_items
+  FOR EACH ROW
+  WHEN NEW.obligation = 'should'
+   AND (NEW.as_needed = 1 OR NEW.priority IN ('mandatory', 'low'))
+  BEGIN
+    UPDATE intake_items
+       SET obligation = CASE
+             WHEN NEW.as_needed = 1 THEN 'may'
+             WHEN NEW.priority = 'mandatory' THEN 'must'
+             ELSE 'may'
+           END
+     WHERE id = NEW.id;
+  END;`;
+
+const INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_intake_items_document ON intake_items(profile_id, document_id);",
+  "CREATE INDEX IF NOT EXISTS idx_intake_items_encounter ON intake_items(profile_id, encounter_id);",
+  "CREATE INDEX IF NOT EXISTS idx_intake_items_import_key ON intake_items(profile_id, import_key);",
+  "CREATE INDEX IF NOT EXISTS idx_intake_items_indication_condition ON intake_items(profile_id, indication_condition_id);",
+  "CREATE INDEX IF NOT EXISTS idx_intake_items_source_record ON intake_items(profile_id, source_record_id);",
+  "CREATE INDEX IF NOT EXISTS idx_intake_items_supply ON intake_items(supply_id);",
+];
+
+// Nullable link columns → their parent; a dangling value is nulled before the FK'd copy.
+const LINKS: { column: string; parent: string }[] = [
+  { column: "document_id", parent: "medical_documents" },
+  { column: "provider_id", parent: "providers" },
+  { column: "situation_id", parent: "situations" },
+  { column: "pause_situation_id", parent: "situations" },
+  { column: "encounter_id", parent: "encounters" },
+  { column: "source_record_id", parent: "medical_records" },
+  { column: "indication_condition_id", parent: "conditions" },
+  { column: "supply_id", parent: "shared_supplies" },
+];
+
+function columnNames(db: Database.Database, table: string): string[] {
+  return (
+    db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  ).map((r) => r.name);
+}
+
+function rebuildIntakeItems(db: Database.Database): void {
+  const cols = new Set(columnNames(db, "intake_items"));
+  if (cols.size === 0) return; // partial handle — nothing to converge
+  if (cols.has("obligation")) return; // already collapsed — replay no-op
+
+  // Null any dangling nullable link so the deferred FK check at commit can't fail.
+  for (const { column, parent } of LINKS) {
+    if (!cols.has(column)) continue;
+    db.exec(
+      `UPDATE intake_items SET ${column} = NULL
+         WHERE ${column} IS NOT NULL
+           AND ${column} NOT IN (SELECT id FROM ${parent});`
+    );
+  }
+
+  // Drop the log-snapshot triggers first — their bodies name `intake_items`, and the
+  // RENAME below re-validates every trigger body against a schema in which that table
+  // does not exist yet. Recreated verbatim after the rename.
+  for (const name of TRIGGER_NAMES) db.exec(`DROP TRIGGER IF EXISTS ${name};`);
+
+  const scratch = "intake_items__new124";
+  db.exec(
+    CREATE.replace("CREATE TABLE intake_items (", `CREATE TABLE ${scratch} (`)
+  );
+
+  // Every carried-over column except the two being collapsed, in the rebuilt table's
+  // order; `obligation` is appended and computed by the CASE.
+  const carried = columnNames(db, scratch).filter(
+    (c) => c !== "obligation" && cols.has(c)
+  );
+  const colList = carried.join(", ");
+  // The as_needed arm is FIRST on purpose (see the header): PRN wins over whatever
+  // priority tag a PRN item happened to carry. An unrecognized legacy priority falls
+  // through to `should`, the safe middle — never silently to `may` (which would drop
+  // an item off every push surface) and never to `must` (which would start escalating
+  // something that never did).
+  const obligationExpr = cols.has("as_needed")
+    ? `CASE
+         WHEN as_needed = 1 THEN 'may'
+         WHEN priority = 'mandatory' THEN 'must'
+         WHEN priority = 'low' THEN 'may'
+         ELSE 'should'
+       END`
+    : `CASE
+         WHEN priority = 'mandatory' THEN 'must'
+         WHEN priority = 'low' THEN 'may'
+         ELSE 'should'
+       END`;
+
+  db.exec(
+    `INSERT INTO ${scratch} (${colList}, obligation)
+       SELECT ${colList}, ${obligationExpr} FROM intake_items;`
+  );
+  db.exec(`DROP TABLE intake_items;`);
+  db.exec(`ALTER TABLE ${scratch} RENAME TO intake_items;`);
+  for (const idx of INDEXES) db.exec(idx);
+  for (const trg of TRIGGERS) db.exec(trg);
+  db.exec(LEGACY_COMPAT_TRIGGER);
+}
+
+// The AI suggestion queue proposes an obligation for an item that does not exist yet,
+// so its column moves in lock-step or an accepted suggestion would write a value the
+// rebuilt `intake_items` CHECK rejects. No `as_needed` here (a suggestion never
+// proposed a PRN), so the mapping is the priority arm alone. RENAME COLUMN + UPDATE
+// rather than a rebuild: this table is neither an FK parent nor CHECK-constrained on
+// this column, so there is nothing a rebuild would buy.
+function renameSuggestionColumn(db: Database.Database): void {
+  const cols = new Set(columnNames(db, "intake_item_suggestions"));
+  if (cols.size === 0 || cols.has("obligation")) return;
+  if (!cols.has("priority")) return;
+  db.exec(
+    `ALTER TABLE intake_item_suggestions RENAME COLUMN priority TO obligation;`
+  );
+  db.exec(
+    `UPDATE intake_item_suggestions
+        SET obligation = CASE obligation
+              WHEN 'mandatory' THEN 'must'
+              WHEN 'low' THEN 'may'
+              ELSE 'should'
+            END;`
+  );
+}
+
+export function up(db: Database.Database): void {
+  // MUST be applied with foreign_keys disabled — the runner and the migrate() test
+  // wrapper both toggle it off around migration application (issue #95) so this
+  // FK-parent rebuild can drop its table without its children being wiped. Wrapped in
+  // one (possibly nested) transaction for atomicity.
+  const run = db.transaction(() => {
+    rebuildIntakeItems(db);
+    renameSuggestionColumn(db);
+  });
+  run.immediate();
+}
+
+export const migration: Migration = {
+  id: 124,
+  name: "124-intake-obligation",
+  up,
+};

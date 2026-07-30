@@ -38,10 +38,15 @@ const RISK_AWARE = new Set<string>([
 // due signals.
 const ALLOWLIST: Record<string, string> = {
   doseItems:
-    "scheduled dose for today — user-set mandatory/high/low priority, NOT " +
-    "risk-ranked (#559: supplements are user-prioritized, so the risk engine " +
-    "must not recompute their priority); the only dynamic axis is time-urgency " +
-    "via the existing dose/escalation lattice, not this layer",
+    "scheduled dose for today — the user's own must/should obligation (#559 → " +
+    "#1505), NOT risk-ranked: obligation is DECLARED, so the risk engine must not " +
+    "recompute it; the only dynamic axis is time-urgency via the existing " +
+    "dose/escalation lattice, not this layer",
+  offeredItems:
+    "`may` items on offer today (#1505) — AVAILABILITY, not a due signal at all. " +
+    "It carries no date and no band, renders only inside Upcoming's collapsed " +
+    "disclosure, and is excluded from the page total and the hero; ranking an " +
+    "offer would be ranking something the user owes nothing on",
   refillItems: "supply run-out math — not a risk-ranked due signal",
   poolRefillItems:
     "shared supply pool run-out math (#1374) — the pooled twin of refillItems, " +

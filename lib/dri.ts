@@ -176,30 +176,65 @@ export function selectBand(
 
 // ---- Stack summation + UL check (pure, tested) ----
 
+// THE CONSERVATIVE-DIRECTION RULE for obligation in this module (#1505).
+//
+// Obligation (`must` / `should` / `may`) is a statement about PUSHING — what the
+// system may initiate about an item — not about pharmacology. So it must never move
+// a safety-adjacent number in the reassuring direction. The catch is that "the
+// reassuring direction" is not the same for the two questions this module answers,
+// which is why there is one rule with two opposite consequences:
+//
+//   * The UL check is a RISK number. Bigger is worse. Obligation may never SHRINK
+//     it, so an on-demand (`may`) item counts at FULL amount, exactly like a `must`
+//     one, and the line simply LABELS that it did. Dropping it would erase the
+//     exposure of the very items nothing is nudging about.
+//
+//   * The RDA adequacy note is a REASSURANCE number. Bigger reads as better
+//     covered. Obligation may never INFLATE it, so the share is computed from
+//     COMMITTED intake only (`must` + `should`) and the on-demand remainder is
+//     reported as a labelled aside. Counting a bottle the user takes "sometimes"
+//     toward "you're at 80% of the RDA" would overstate what they reliably get.
+//
+// Both surfaces therefore see every item; neither silently omits one. The rule is
+// "label, don't drop" for risk and "exclude, then disclose" for reassurance.
+//
+// The upstream schedule gate (contributesToDailyLimit) stays obligation-blind for
+// the same reason; obligation is applied HERE, per question, where the direction of
+// caution is known.
+
 // One item in the stack the checker sees — decoupled from the DB row so the pure
 // tests can construct it directly. `doseAmounts` is the item's CURRENT scheduled
 // dose amounts (one string per dose row, e.g. ["400 mg", "400 mg"] for a split
-// dose); their nutrient content is summed for the item.
+// dose); their nutrient content is summed for the item. `optional` marks an
+// on-demand item (`may` obligation, formerly PRN): it still counts toward the UL
+// total but is excluded from — and disclosed beside — the RDA share, per the
+// conservative-direction rule above.
 export interface StackItem {
   name: string;
   active: boolean;
   doseAmounts: (string | null)[];
+  optional?: boolean;
 }
 
 export interface NutrientContribution {
   name: string;
   amount: number;
+  optional?: boolean;
 }
 
 // A nutrient's summed supplemental intake across the stack, with its UL/RDA for the
 // profile's age/sex. `total`/`ul`/`rda` are in `unit`. `contributors` lists the
-// items that contributed (for the evidence line), largest first.
+// items that contributed (for the evidence line), largest first. `optionalTotal` is
+// the part of `total` coming from on-demand (`may`) items — always a SUBSET of
+// `total`, never subtracted from it here, so each consumer can apply the
+// conservative-direction rule for its own question.
 export interface StackNutrientTotal {
   key: string;
   label: string;
   unit: "mg" | "mcg";
   basis: "supplemental" | "total";
   total: number;
+  optionalTotal: number;
   ul: number | null;
   rda: number | null;
   contributors: NutrientContribution[];
@@ -217,7 +252,11 @@ export function summarizeStack(
 ): StackNutrientTotal[] {
   const totals = new Map<
     string,
-    { amount: number; contributors: NutrientContribution[] }
+    {
+      amount: number;
+      optionalAmount: number;
+      contributors: NutrientContribution[];
+    }
   >();
 
   for (const item of items) {
@@ -239,9 +278,18 @@ export function summarizeStack(
     }
     if (!contributed) continue;
 
-    const bucket = totals.get(key) ?? { amount: 0, contributors: [] };
+    const bucket = totals.get(key) ?? {
+      amount: 0,
+      optionalAmount: 0,
+      contributors: [],
+    };
     bucket.amount += itemAmount;
-    bucket.contributors.push({ name: item.name, amount: itemAmount });
+    if (item.optional) bucket.optionalAmount += itemAmount;
+    bucket.contributors.push({
+      name: item.name,
+      amount: itemAmount,
+      optional: item.optional ? true : undefined,
+    });
     totals.set(key, bucket);
   }
 
@@ -256,6 +304,7 @@ export function summarizeStack(
       unit: nutrient.unit,
       basis: nutrient.basis,
       total: bucket.amount,
+      optionalTotal: bucket.optionalAmount,
       ul: band?.ul ?? null,
       rda: band?.rda ?? null,
       contributors: bucket.contributors.sort((a, b) => b.amount - a.amount),
@@ -266,6 +315,10 @@ export function summarizeStack(
 
 // A nutrient whose stack total EXCEEDS its UL — the payload behind both the
 // /medicine warning row and the dismissible Upcoming finding.
+// `includesOptional` is true when at least one on-demand (`may`) item fed the total.
+// The amount is NOT reduced — per the conservative-direction rule a risk number may
+// never shrink because of an obligation — the flag exists so the detail line can say
+// so out loud.
 export interface UlWarning {
   key: string;
   label: string;
@@ -273,6 +326,7 @@ export interface UlWarning {
   basis: "supplemental" | "total";
   total: number;
   ul: number;
+  includesOptional: boolean;
   contributors: NutrientContribution[];
 }
 
@@ -295,6 +349,7 @@ export function stackUlWarnings(
       basis: t.basis,
       total: t.total,
       ul: t.ul,
+      includesOptional: t.optionalTotal > 0,
       contributors: t.contributors,
     }));
 }
@@ -344,8 +399,11 @@ export function ulConditionCaveat(
 
 // The informational, never-prescriptive detail line. Wording respects the basis:
 // a supplemental-only UL states the stack total directly; a total-intake UL notes
-// that food adds still more. An optional condition caveat (ulConditionCaveat) is
-// appended when the population UL may be unreliable for an active condition (#657).
+// that food adds still more. When an on-demand item fed the total, the line SAYS so
+// (#1505) — the amount is never reduced, but the user is told what it counted, so a
+// total they don't take every single day is explained rather than mysterious. An
+// optional condition caveat (ulConditionCaveat) is appended when the population UL
+// may be unreliable for an active condition (#657).
 export function ulWarningDetail(
   w: UlWarning,
   conditionCaveat?: string | null
@@ -356,7 +414,10 @@ export function ulWarningDetail(
     w.basis === "supplemental"
       ? `Your supplements total about ${amt}/day of supplemental ${w.label} — above the ${ul} Tolerable Upper Intake Level (UL) for your age.`
       : `Your supplements alone total about ${amt}/day of ${w.label} — above the ${ul} Tolerable Upper Intake Level (UL) for total intake at your age, and food and drink add still more.`;
-  const base = `${lead} Discuss with your clinician before changing anything.`;
+  const inclusion = w.includesOptional
+    ? " This total counts every item that supplements it, including as-needed items."
+    : "";
+  const base = `${lead}${inclusion} Discuss with your clinician before changing anything.`;
   return conditionCaveat ? `${base} ${conditionCaveat}` : base;
 }
 
@@ -381,14 +442,19 @@ export function ulWarningEvidence(w: UlWarning): string {
 // total-diet requirement regardless of a UL's supplemental/total basis).
 
 // A nutrient the stack supplements at BELOW its RDA, with the share the supplements
-// alone cover. `sharePct` is total/rda as a percent (0–99, since >= 100 is not a
-// shortfall). Payload behind the /medicine adequacy row.
+// alone cover. `total` and `sharePct` are COMMITTED intake only — `must` + `should`
+// items — because this is a reassurance number and an obligation may never inflate
+// one (see the conservative-direction rule at the top of this module). `optionalTotal`
+// is the on-demand remainder, reported as a labelled aside rather than folded in.
+// `sharePct` is committed/rda as a percent (0–99, since >= 100 is not a shortfall).
+// Payload behind the /medicine adequacy row.
 export interface RdaAdequacy {
   key: string;
   label: string;
   unit: "mg" | "mcg";
   basis: "supplemental" | "total";
   total: number;
+  optionalTotal: number;
   rda: number;
   sharePct: number;
   contributors: NutrientContribution[];
@@ -396,9 +462,17 @@ export interface RdaAdequacy {
 
 // The below-RDA subset of the stack: nutrients the active stack ACTUALLY contributes
 // (so a nutrient the user isn't supplementing never shows — we won't imply a food gap
-// we can't see) whose supplemental total is STRICTLY BELOW the RDA for the profile's
-// age/sex. A total at/above the RDA is not reported (the stack already meets it on its
-// own). Nutrients with no RDA for the band (e.g. boron) are skipped. Dataset order.
+// we can't see) whose COMMITTED supplemental total is STRICTLY BELOW the RDA for the
+// profile's age/sex. A committed total at/above the RDA is not reported (the stack
+// already meets it on its own). Nutrients with no RDA for the band (e.g. boron) are
+// skipped. Dataset order.
+//
+// "Committed" excludes on-demand (`may`) items (#1505): the share is a reassurance
+// figure, so it counts only what the user has actually committed to taking, and the
+// on-demand remainder rides along as `optionalTotal` for the detail line to disclose.
+// A nutrient supplemented ONLY on demand still appears — with a 0-ish committed share
+// and the aside — rather than vanishing, so the surface never goes quiet about a
+// nutrient the user is supplementing.
 export function stackRdaAdequacy(
   items: StackItem[],
   ageYears: number | null,
@@ -406,15 +480,18 @@ export function stackRdaAdequacy(
 ): RdaAdequacy[] {
   return summarizeStack(items, ageYears, sex)
     .filter((t): t is StackNutrientTotal & { rda: number } => t.rda != null)
-    .filter((t) => t.total < t.rda)
-    .map((t) => ({
+    .map((t) => ({ t, committed: t.total - t.optionalTotal }))
+    .filter(({ t, committed }) => committed > 0 || t.optionalTotal > 0)
+    .filter(({ t, committed }) => committed < t.rda)
+    .map(({ t, committed }) => ({
       key: t.key,
       label: t.label,
       unit: t.unit,
       basis: t.basis,
-      total: t.total,
+      total: committed,
+      optionalTotal: t.optionalTotal,
       rda: t.rda,
-      sharePct: Math.round((t.total / t.rda) * 100),
+      sharePct: Math.round((committed / t.rda) * 100),
       contributors: t.contributors,
     }));
 }
@@ -437,10 +514,17 @@ export function rdaAdequacyTitle(a: RdaAdequacy): string {
 export function rdaAdequacyDetail(a: RdaAdequacy): string {
   const amt = `${fmtAmount(a.total)} ${a.unit}`;
   const rda = `${fmtAmount(a.rda)} ${a.unit}`;
-  return (
+  const base =
     `Your supplements alone provide about ${amt}/day of ${a.label} — roughly ${a.sharePct}% of the ${rda}/day RDA for your age. ` +
-    `Food provides the rest, so a low share here does NOT mean a shortfall — it's just what your stack contributes.`
-  );
+    `Food provides the rest, so a low share here does NOT mean a shortfall — it's just what your stack contributes.`;
+  // The on-demand aside (#1505): named, but explicitly outside the share, so the
+  // percentage stays a figure the user can rely on rather than one propped up by
+  // bottles they only reach for sometimes.
+  const aside =
+    a.optionalTotal > 0
+      ? ` A further ${fmtAmount(a.optionalTotal)} ${a.unit}/day comes from as-needed items, which aren't counted toward this share.`
+      : "";
+  return `${base}${aside}`;
 }
 
 // The "what's contributing" evidence line, mirroring ulWarningEvidence.

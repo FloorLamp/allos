@@ -66,8 +66,8 @@ function seed(): void {
        VALUES (1, 'CYP2D6', '*1/*1xN', 'pharmacogenomic', 'Ultrarapid metabolizer', ?)`
     ).run(LAB);
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, priority)
-       VALUES (1, ?, 1, 'medication', 'high')`
+      `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+       VALUES (1, ?, 1, 'medication', 'must')`
     ).run(ABACAVIR);
   } finally {
     db.close();

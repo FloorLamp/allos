@@ -132,8 +132,8 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-           VALUES (?, ?, 1, 'supplement', 'daily', 'high', ?, 1)`
+             (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should', ?, 1)`
         )
         .run(profileId, `${tag} Vitamin D`, quantityOnHand).lastInsertRowid
     );
@@ -154,8 +154,8 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, prescriber, as_needed)
-           VALUES (?, ?, 1, 'medication', 'daily', 'high', 'Dr Who', 0)`
+             (profile_id, name, active, kind, condition, obligation, prescriber)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should', 'Dr Who')`
         )
         .run(profileId, `${tag} Lisinopril`).lastInsertRowid
     );

@@ -71,8 +71,8 @@ function addMedication(profileId: number, name: string): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, kind, priority, active, as_needed, rx)
-         VALUES (?, ?, 'medication', 'high', 1, 0, 1)`
+        `INSERT INTO intake_items (profile_id, name, kind, obligation, active, rx)
+         VALUES (?, ?, 'medication', 'should', 1, 1)`
       )
       .run(profileId, name).lastInsertRowid
   );

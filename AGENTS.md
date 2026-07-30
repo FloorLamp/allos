@@ -258,16 +258,27 @@ at `/nutrition?tab=supplements`; medications render at `/medications`. The
 former combined `/medicine` route is gone and 404s. Use `intakeHref(kind)` for
 kind-to-surface links.
 
+One user-owned field, **`obligation`** (`must`/`should`/`may`), decides push and
+adherence; it replaced both `priority` and `as_needed` in migration 124. `must`
+reminds and escalates, `should` reminds and counts but never escalates, `may` has
+no dueness at all — never pushed, never missed, tracked in the ledger and always
+one tap away. `kind` decides CLINICAL identity (which safety engine, which
+surface, passport inclusion), not pushability; medications default to `must` and
+moving one lower needs an explicit consequence-stating confirm.
+
 Important invariants:
 
-- PRN medication is never scheduled-due.
+- A `may` item is never scheduled-due (it absorbed PRN).
 - Editing a dose must not rewrite adherence history.
 - A removed dose with logs is retired rather than deleted.
 - Confirming a dose snapshots the amount onto the log.
 - `markDoseTaken` may refuse retired doses or paused items; callers render its
   typed outcome.
-- User priority is static and user-owned; context gates dueness but does not
-  invent priority.
+- Obligation is declared only, forever: context gates dueness but never invents
+  obligation, and nothing writes the field without a user action. The demotion
+  engine detects and SUGGESTS; the user's tap is the write.
+- A `may` item is COLLAPSED on aggregates, never filtered out — removing it would
+  make an accepted demotion indistinguishable from a deletion.
 
 See `docs/internals/supplements.md`.
 
@@ -371,7 +382,12 @@ See `docs/internals/e2e-hygiene.md`.
   include the attribute that actually distinguishes otherwise identical choices.
 - Findings have an explicit reach policy: care findings may reach Upcoming,
   attention surfaces, and notifications; coaching findings stay in calm,
-  hideable surfaces. See `docs/internals/findings.md`.
+  hideable surfaces. See `docs/internals/findings.md` — which also holds the **attention doctrine**:
+  the surface taxonomy (system-initiated sends / rendered aggregates /
+  user-initiated access), the contact-consent rule (the system may reduce contact
+  unilaterally, never increase it or rewrite user-owned state), which domains can
+  carry an obligation at all, and the right-sizing family every "the system
+  noticed X" suggestion belongs to.
 
 ## Repository hygiene
 

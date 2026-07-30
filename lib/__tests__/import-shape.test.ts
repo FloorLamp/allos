@@ -1074,3 +1074,103 @@ describe("extractionToPersistInput — structured prescription (#414)", () => {
     expect(rec.courses ?? null).toBeNull();
   });
 });
+
+describe("extractionToPersistInput — per-record confidence (#1601)", () => {
+  function confidenceOf(over: Parameters<typeof doneExtraction>[0]) {
+    const input = extractionToPersistInput(doneExtraction(over), "2099-12-31");
+    return parseImportReport(input.meta.importReport)?.confidence ?? null;
+  }
+
+  it("summarizes every domain's rows and flags the hedged ones lowest-first", () => {
+    const confidence = confidenceOf({
+      results: [
+        mkResult({
+          name: "Sodium",
+          canonical_name: "Sodium",
+          confidence: "high",
+        }),
+        mkResult({
+          name: "Ferritin",
+          canonical_name: "Ferritin",
+          confidence: "low",
+          confidence_reason: "value smudged",
+        }),
+        mkResult({
+          category: "vitals",
+          name: "Body Temperature",
+          canonical_name: "Body Temperature",
+          confidence: "medium",
+          confidence_reason: "unit ambiguous",
+        }),
+      ],
+      conditions: [
+        {
+          name: "Asthma",
+          code: null,
+          code_system: null,
+          status: null,
+          onset_date: null,
+          resolved_date: null,
+          confidence: "medium",
+          confidence_reason: "stated as possible",
+        },
+      ],
+      allergies: [
+        {
+          substance: "Penicillin",
+          substance_code: null,
+          substance_code_system: null,
+          reaction: null,
+          severity: null,
+          status: null,
+          onset_date: null,
+          confidence: "high",
+        },
+      ],
+    })!;
+    expect(confidence.counts).toEqual({
+      high: 2,
+      medium: 2,
+      low: 1,
+      unknown: 0,
+    });
+    expect(confidence.scrutiny).toBe(3);
+    // Lowest first, then document order within a tier — and each flag carries the
+    // row's own name plus the domain it came from, so the reviewer can find it.
+    expect(
+      confidence.flags.map((f) => [f.kind, f.label, f.confidence, f.reason])
+    ).toEqual([
+      ["lab", "Ferritin", "low", "value smudged"],
+      ["vitals", "Body Temperature", "medium", "unit ambiguous"],
+      ["condition", "Asthma", "medium", "stated as possible"],
+    ]);
+  });
+
+  it("is null for an extraction that carries no confidence at all", () => {
+    // The replay of a pre-#1601 stored extraction (and any keyless/offline path):
+    // the rows still import, they just carry no certainty signal — so the review
+    // surfaces show nothing rather than a fabricated one.
+    expect(
+      confidenceOf({
+        results: [mkResult({ name: "Sodium", canonical_name: "Sodium" })],
+      })
+    ).toBeNull();
+  });
+
+  it("counts an unrecognized answer as unknown, not as doubt", () => {
+    const confidence = confidenceOf({
+      results: [
+        mkResult({
+          name: "Sodium",
+          canonical_name: "Sodium",
+          confidence: "low",
+        }),
+        // A model that answered off-vocabulary: normalizeResults already reduced it
+        // to null, so it lands in `unknown` and stays out of the badge count.
+        mkResult({ name: "Glucose", canonical_name: "Glucose" }),
+      ],
+    })!;
+    expect(confidence.counts.unknown).toBe(1);
+    expect(confidence.scrutiny).toBe(1);
+  });
+});

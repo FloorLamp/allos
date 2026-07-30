@@ -70,8 +70,16 @@ import {
   type DataQualityGap,
 } from "./data-quality";
 import { situationHistoryResolver } from "./trend-annotations";
+import { getIntakeHistory } from "./intake-history";
+import {
+  detectDemotionCandidates,
+  demotionItemIdFromKey,
+  DEMOTION_WINDOW_DAYS,
+  type DemotionInput,
+} from "./supplement-demotion";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
+import { isPrn } from "./supplement-schedule";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import {
   fitnessRetestDue,
@@ -398,6 +406,7 @@ export function collectCoachingFindings(
     ...buildBodyHygieneFindings(profileId, today, wu, prefs),
     ...buildGoalPacingFindings(profileId, today),
     ...buildAdherencePatternFindings(profileId, today),
+    ...buildDemotionSuggestionFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
     ...buildSubstanceUseFindings(profileId),
@@ -1167,7 +1176,7 @@ export function buildAdherencePatternFindings(
   for (const d of doses) {
     const supp = suppById.get(d.item_id);
     // Only active, scheduled (non-PRN) items produce due days to miss.
-    if (!supp || !supp.active || supp.as_needed) continue;
+    if (!supp || !supp.active || isPrn(supp)) continue;
     const status = takenByDose.get(d.id);
     // Clamp the window to the dose's lifetime (#430): a day before the dose
     // existed with its current schedule is not a "miss" it defeated the
@@ -1209,6 +1218,58 @@ export function buildAdherencePatternFindings(
   }
 
   return detectAdherencePatterns(inputs).map(adherencePatternToFinding);
+}
+
+// ---- Domain: priority demotion suggestions (coaching tier, issue #1505) ----
+
+// A calm, dismissible SUGGESTION that a high/mandatory SUPPLEMENT the profile has
+// effectively stopped taking be re-tagged `low` — "tracked, never pushed" — with the
+// user's tap as the only priority write (#559 intact; see lib/supplement-demotion for
+// the full contract and the medication/PRN/paused/cold-start exclusions).
+//
+// COACHING tier (#449) by hard product contract: it joins collectCoachingFindings,
+// rides the shared suppression bus under DEMOTION_PREFIX, renders on the Supplements
+// page and the calm dashboard rollup — and NEVER becomes a notification. Nagging
+// someone about a supplement they have chosen not to take is precisely the failure
+// mode this whole issue exists to remove, so it must not arrive as a push.
+//
+// Reads through the ONE shared item-level history gather (getIntakeHistory), the same
+// evidence the digest deltas read, so the suggestion and the digest can never
+// disagree about a day. No owned SQL.
+export function buildDemotionSuggestionFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const inputs: DemotionInput[] = getIntakeHistory(
+    profileId,
+    today,
+    DEMOTION_WINDOW_DAYS
+  ).map(({ item, strip, existedWholeWindow }) => ({
+    itemId: item.id,
+    name: item.name,
+    kind: item.kind,
+    obligation: item.obligation,
+    asNeeded: Boolean(isPrn(item)),
+    active: Boolean(item.active),
+    strip,
+    existedWholeWindow,
+    // Episode anchor = the current year (#436): a lapse that recurs a year after
+    // being dismissed re-surfaces instead of being silenced forever.
+    periodAnchor: today.slice(0, 4),
+  }));
+
+  return detectDemotionCandidates(inputs).map((c) => ({
+    domain: "demote-obligation",
+    dedupeKey: c.key,
+    supersedes: c.legacyKey,
+    title: c.title,
+    detail: c.detail,
+    // Calm FYI — an observation about the user's own log, never an alarm.
+    tone: "info" as const,
+    evidence: `${c.takenDays} of ${c.occurrences} scheduled days over the last ${DEMOTION_WINDOW_DAYS} days`,
+    actionHref: nutritionTabHref("supplements"),
+    actionLabel: "Open supplements",
+  }));
 }
 
 // ---- Domain: sun exposure (coaching tier only, issue #571) ----------------
@@ -1277,4 +1338,24 @@ export function buildSunExposureFindings(
       actionLabel: "View biomarkers",
     },
   ];
+}
+
+// The item ids that are live demotion candidates right now (#1505 part 2) — the SAME
+// detection the page card renders, exposed as a set so the reminder builder can add
+// its ⤓ May button without re-deriving the threshold.
+//
+// Deliberately NOT bus-filtered: a page dismissal hides the CARD, not the button
+// (owner-decided). The two surfaces answer different questions — "not on this screen"
+// versus "is there still an escape hatch" — and conflating them would take the only
+// affordance a tap-only user has away on a tap they made somewhere else entirely.
+export function demotionCandidateItemIds(
+  profileId: number,
+  today: string
+): Set<number> {
+  const ids = new Set<number>();
+  for (const f of buildDemotionSuggestionFindings(profileId, today)) {
+    const id = demotionItemIdFromKey(f.dedupeKey);
+    if (id != null) ids.add(id);
+  }
+  return ids;
 }

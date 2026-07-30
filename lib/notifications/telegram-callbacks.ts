@@ -65,6 +65,8 @@ import {
   parseFoodProteinCallback,
   parsePreventiveCallback,
   parsePrnLogCallback,
+  parseOfferTailCallback,
+  parseDemoteCallback,
   parsePracticeDoneCallback,
   practiceDoneAnswerText,
   parseRefillCallback,
@@ -136,6 +138,8 @@ import {
   handleMoodTap,
   handlePracticeDoneTap,
   handlePrnLogTap,
+  handleOfferTailTap,
+  handleDemoteTap,
   handleSymptomPick,
   handleSymptomSeverity,
 } from "./telegram-quick-log";
@@ -234,6 +238,24 @@ export async function handleCallbackQuery(
   const foodOptIn = parseFoodOptInCallback(cq.data);
   if (foodOptIn) {
     await handleFoodOptIn(cq, foodOptIn);
+    return;
+  }
+
+  // ⤓ May (#1505 part 2): accept the demotion suggestion riding this reminder. The
+  // one obligation write the notification layer can make — user-initiated, downward,
+  // and through the same compare-and-swap core the in-app card uses.
+  const demote = parseDemoteCallback(cq.data);
+  if (demote) {
+    await handleDemoteTap(cq, demote);
+    return;
+  }
+
+  // The digest's offer tail (#1505): expand/collapse the "Log other…" button in
+  // place. Checked BEFORE the prn: log tokens because the expanded keyboard is made
+  // of those, and a tail tap must never be mistaken for a log.
+  const offerTail = parseOfferTailCallback(cq.data);
+  if (offerTail) {
+    await handleOfferTailTap(cq, offerTail);
     return;
   }
 

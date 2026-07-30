@@ -57,8 +57,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
     // An ACTIVE medication with NO confirmed RxCUI → name-only safety matching.
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-       VALUES (?, 'Mystery Pill', 1, 'medication', 'daily', 'high', 0)`
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Mystery Pill', 1, 'medication', 'daily', 'should')`
     ).run(profileId);
 
     const findings = buildDataQualityFindings(profileId);
@@ -124,8 +124,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
     const medId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-           VALUES (?, 'Solo Mystery Pill', 1, 'medication', 'daily', 'high', 0)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Solo Mystery Pill', 1, 'medication', 'daily', 'should')`
         )
         .run(profileId).lastInsertRowid
     );
@@ -137,8 +137,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
     // A second unconfirmed med → the list filtered to the unconfirmed slice.
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-       VALUES (?, 'Second Mystery Pill', 1, 'medication', 'daily', 'high', 0)`
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Second Mystery Pill', 1, 'medication', 'daily', 'should')`
     ).run(profileId);
     const many = buildDataQualityFindings(profileId).find(
       (f) => f.dedupeKey === dataQualityDedupeKey("med-rxcui")

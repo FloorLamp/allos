@@ -103,8 +103,10 @@ test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", a
   )}`;
   await addCard.getByLabel("Name").fill(name);
 
-  // Marking it PRN reveals the redose-notice block.
-  await addCard.getByRole("checkbox", { name: /As needed/ }).check();
+  // Marking it PRN reveals the redose-notice block. "As needed" IS the `may`
+  // obligation since #1505 — the standalone as_needed checkbox was collapsed into the
+  // single obligation select, so PRN is now expressed by choosing `may`.
+  await addCard.getByTestId("med-obligation").selectOption("may");
   const block = addCard.getByTestId("redose-block");
   await expect(block).toBeVisible();
 

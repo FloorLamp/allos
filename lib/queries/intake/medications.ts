@@ -20,6 +20,7 @@ import {
 import type { PediatricFormContext } from "../../prn-dosing";
 import type { WeightUnit } from "../../settings";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
+import type { IntakeObligation } from "../../types";
 
 // The pediatric label-dosing context (#798) for a medication form: the profile's age
 // in months + its latest recorded weight, so a PRN med form (full or the #843 quick-
@@ -64,14 +65,14 @@ export function getEpisodeMedReconciliation(
 
   const meds = db
     .prepare(
-      `SELECT id, name, as_needed, rx, date(created_at) AS created_on
+      `SELECT id, name, obligation, rx, date(created_at) AS created_on
          FROM intake_items
         WHERE profile_id = ? AND kind = 'medication' AND active = 1`
     )
     .all(profileId) as {
     id: number;
     name: string;
-    as_needed: number;
+    obligation: IntakeObligation;
     rx: number;
     created_on: string;
   }[];
@@ -96,7 +97,7 @@ export function getEpisodeMedReconciliation(
   const inputs: EpisodeMedInput[] = meds.map((m) => ({
     itemId: m.id,
     name: m.name,
-    asNeeded: m.as_needed === 1,
+    asNeeded: m.obligation === "may",
     rx: m.rx === 1,
     hasOpenCourse: true, // active=1 upholds the "active ⇔ open course" invariant
     createdOn: m.created_on,

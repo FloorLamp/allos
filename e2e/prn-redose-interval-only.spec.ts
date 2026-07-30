@@ -50,7 +50,10 @@ test("PRN med with ONLY a minimum interval still shows redose guidance (#1458)",
   const addCard = page.getByTestId("medication-add-panel");
   await expect(addCard).toBeVisible();
   await addCard.getByLabel("Name").fill(name);
-  await addCard.getByRole("checkbox", { name: /As needed/ }).check();
+  // "As needed" IS the `may` obligation since #1505 — the standalone as_needed
+  // checkbox was collapsed into the single obligation select, so PRN is now
+  // expressed by choosing `may` rather than by ticking a separate box.
+  await addCard.getByTestId("med-obligation").selectOption("may");
 
   const block = addCard.getByTestId("redose-block");
   await expect(block).toBeVisible();

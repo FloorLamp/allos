@@ -26,8 +26,8 @@ function addSupp(profileId: number, name: string, amount: string): void {
   const item = Number(
     db
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'low', 0)`
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should')`
       )
       .run(profileId, name).lastInsertRowid
   );

@@ -69,8 +69,8 @@ function newPrnMed(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, product, active, kind, condition, priority, as_needed)
-         VALUES (?, ?, 'Children''s oral suspension (100 mg / 5 mL)', 1, 'medication', 'daily', 'high', 1)`
+           (profile_id, name, product, active, kind, condition, obligation)
+         VALUES (?, ?, 'Children''s oral suspension (100 mg / 5 mL)', 1, 'medication', 'daily', 'may')`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -198,8 +198,8 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     const supId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-           VALUES (?, 'Vitamin D', 1, 'supplement', 'daily', 'low', 0)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Vitamin D', 1, 'supplement', 'daily', 'should')`
         )
         .run(p).lastInsertRowid
     );

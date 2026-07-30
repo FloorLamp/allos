@@ -84,8 +84,8 @@ beforeAll(() => {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, critical, escalate_chat_id)
-         VALUES (?, 'TG233 Warfarin', 1, 'medication', 'daily', 'mandatory', 1, ?)`
+           (profile_id, name, active, kind, condition, obligation, critical, escalate_chat_id)
+         VALUES (?, 'TG233 Warfarin', 1, 'medication', 'daily', 'must', 1, ?)`
       )
       .run(p.profileId, CARE_CHAT).lastInsertRowid
   );
@@ -482,8 +482,8 @@ describe("escalation authz binds to the dose's own supplement (#615)", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, critical)
-           VALUES (?, 'TG615 Sensitive Med', 1, 'medication', 'daily', 'mandatory', 1)`
+             (profile_id, name, active, kind, condition, obligation, critical)
+         VALUES (?, 'TG615 Sensitive Med', 1, 'medication', 'daily', 'must', 1)`
         )
         .run(p.profileId).lastInsertRowid
     );
@@ -573,8 +573,8 @@ describe("handleAllTaken tolerates an already-logged dose (#616)", () => {
         db
           .prepare(
             `INSERT INTO intake_items
-               (profile_id, name, active, kind, condition, priority)
-             VALUES (?, ?, 1, 'supplement', 'daily', 'high')`
+               (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should')`
           )
           .run(hp.profileId, name).lastInsertRowid
       );

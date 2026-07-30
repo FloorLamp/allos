@@ -451,6 +451,14 @@ export async function handleSymptomTextIntake(
 // handler's keyboard-rebuild discipline: only act when the message actually had
 // buttons, so an absent keyboard can't overwrite the text.
 import crypto from "node:crypto";
+import { collapsedOfferAction, expandedOfferActions } from "./offer-tail";
+import type { DemoteCallback, OfferTailCallback } from "./callback-data";
+import { demoteIntakeObligation } from "../intake-obligation-write";
+import { DEMOTION_OUTCOME_TEXT } from "../supplement-demotion";
+import { getOfferedIntakeForSlot } from "../queries/intake";
+import { messageKeyboard } from "./telegram-render";
+import { zonedDateParts } from "../date";
+
 import {
   getCustomSymptomNames,
   getDoseEscalateChatId,
@@ -461,7 +469,11 @@ import {
   logPracticeByTargetId,
 } from "../queries";
 import { today } from "../db";
-import { getProfilesByTelegramChatId, getUserAge } from "../settings";
+import {
+  getProfilesByTelegramChatId,
+  getTimezone,
+  getUserAge,
+} from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
 import { administrationOutcomeText } from "../administration-format";
 import { logSymptomCore } from "../symptom-log-write";
@@ -508,3 +520,117 @@ import {
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
 import type { NotificationAction } from "./types";
+
+// An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
+// one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.
+//
+// Nothing is sent and nothing is written — both directions are a single
+// editMessageReplyMarkup on a message that already exists. That is the mechanism
+// behind the contact-consent rule: the system may give the user more ways to reach
+// their own data without ever spending another notification on them.
+//
+// SLOT SCOPING HAPPENS HERE, at tap time, against the PROFILE-LOCAL clock — not
+// against the slot the digest was built in. A morning digest tapped at bedtime must
+// offer bedtime items; anything else would be answering a question the user asked now
+// with data from eight hours ago.
+//
+// A tap on a message from a PREVIOUS day is refused rather than silently re-scoped:
+// the keyboard belongs to that day's message, and logging "now" from it would attach
+// today's administration to yesterday's context.
+export async function handleOfferTailTap(
+  cq: TelegramCallbackQuery,
+  token: OfferTailCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || messageId == null || chatId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const date = today(profileId);
+  if (token.date !== date) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+
+  if (token.action === "collapse") {
+    await updateMessageKeyboard(
+      chatId,
+      messageId,
+      messageKeyboard({
+        title: "",
+        body: "",
+        actions: [
+          collapsedOfferAction(profileId, date, nowHhmm, offered.length),
+        ],
+      })
+    );
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+
+  if (offered.length === 0) {
+    // The slot turned over (or the items were paused) since the label was rendered.
+    // Say so plainly instead of opening an empty list.
+    await answerCallbackQuery(
+      cq.id,
+      "Nothing available in this slot right now."
+    );
+    return;
+  }
+  await updateMessageKeyboard(
+    chatId,
+    messageId,
+    messageKeyboard({
+      title: "",
+      body: "",
+      actions: expandedOfferActions(profileId, date, offered, prnLogToken),
+    })
+  );
+  await answerCallbackQuery(cq.id);
+}
+
+// A ⤓ May tap on a dose reminder (#1505 part 2): accept the demotion suggestion for
+// the named item.
+//
+// This is the ONLY obligation write the notification layer can perform, and it is a
+// downward one initiated by the user — the two properties that make it safe. It goes
+// through the SAME compare-and-swap core the in-app card uses, so the two surfaces
+// cannot diverge on outcomes, and it answers from the typed result rather than
+// confirming unconditionally: a stale button on a paused or already-may item
+// legitimately refuses.
+//
+// The tapped ROW is consumed on success — take/skip/demote all become meaningless for
+// an item that no longer has a scheduled dose — while the rest of the reminder's
+// buttons survive so the session stays usable.
+export async function handleDemoteTap(
+  cq: TelegramCallbackQuery,
+  token: DemoteCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = demoteIntakeObligation(profileId, token.itemId);
+  await answerCallbackQuery(cq.id, DEMOTION_OUTCOME_TEXT[outcome]);
+  if (outcome !== "demoted" || chatId == null || messageId == null) return;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (rows.length === 0) return;
+  await updateMessageKeyboard(
+    chatId,
+    messageId,
+    removeButton(rows, cq.data as string)
+  );
+}

@@ -48,6 +48,13 @@ export interface HouseholdCardData {
   // This profile's "today" (resolved in its timezone) — for the appointment due-text.
   today: string;
   adherence: Adherence;
+  // The pushed tier's state-change headline (#1505 part 3) — "Missed: Magnesium
+  // (3 days)" — preformatted by the ONE shared `intakeDeltaLine` the morning digest
+  // and the weekly recap also render. Null on a quiet window: no state change, no
+  // line. The x/y fraction beside it is unchanged and still counts low-priority
+  // supplements — adherence answers "what did I do", this answers "what changed
+  // among the things that push me".
+  intakeDeltaLine: string | null;
   lastActivity: { title: string; when: string } | null;
   activities7d: number;
   // Preformatted in the viewing login's unit preference, or null with no weigh-in.
@@ -224,6 +231,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
   const {
     profile,
     adherence,
+    intakeDeltaLine,
     lastActivity,
     activities7d,
     weightLabel,
@@ -300,6 +308,20 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
             aria-hidden="true"
           />
           <span className="min-w-0">{dataQuality}</span>
+        </div>
+      )}
+
+      {intakeDeltaLine && (
+        <div
+          data-testid="household-intake-delta"
+          className="mt-3 flex items-start gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+        >
+          <IconPill
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+            stroke={1.75}
+            aria-hidden="true"
+          />
+          <span className="min-w-0">{intakeDeltaLine}</span>
         </div>
       )}
 
