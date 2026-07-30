@@ -947,10 +947,14 @@ export default function JournalView({
             <div className="space-y-3">
               {/* "None" is now a claim about the WHOLE ledger (#1634), not about the
                   loaded windows — the store selected the matching days, so there is
-                  nothing left to widen to. The pending line only shows while the
-                  store's answer for these filters is still in flight. */}
-              <EmptyState message="No activities match your filters." />
-              {searchPendingNote}
+                  nothing left to widen to. Which is exactly why it must not be said
+                  EARLY: until the store has answered, the visible list is only the
+                  client refinement over the loaded window, and an empty one there
+                  means "not found yet", not "not in your history". So the pending
+                  line REPLACES the verdict rather than sitting under it. */}
+              {searchPendingNote || (
+                <EmptyState message="No activities match your filters." />
+              )}
             </div>
           ) : (
             <div className="space-y-6">
