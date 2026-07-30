@@ -38,7 +38,20 @@ import {
 // returns we (a) clear the file input so re-selecting the SAME file re-fires the
 // change event, and (b) toast a confirmation pointing at the Review tab, where
 // the unified import feed tracks extraction through to completion.
-export default function UploadForm({ demo = false }: { demo?: boolean }) {
+//
+// Mounted in TWO places since #1525: the Data → File upload tab and the quick-log
+// sheet's "Add document" overlay. The overlay is a mount, not a fork — one form, one
+// `uploadMedicalDocument` action — and `onUploaded` is the only thing the second mount
+// adds: the overlay closes itself once files are actually ingested, so filing a
+// document while you were doing something else returns you to what you were doing
+// (#1468). The page mount passes nothing and behaves exactly as it always has.
+export default function UploadForm({
+  demo = false,
+  onUploaded,
+}: {
+  demo?: boolean;
+  onUploaded?: () => void;
+}) {
   const [selected, setSelected] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +131,10 @@ export default function UploadForm({ demo = false }: { demo?: boolean }) {
         onClick: () => router.push("/data?section=review"),
       },
     });
+    // Only after a real ingest — a zero-file submit returned above with its hint, and
+    // dismissing the host on an upload that did not happen would be the same lie the
+    // typed-outcome rule exists to prevent.
+    onUploaded?.();
   }
 
   return (

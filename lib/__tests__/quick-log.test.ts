@@ -77,13 +77,24 @@ describe("quickLogMenu", () => {
       // because they were two forms on two Trends tabs. They are one form now, so
       // a second row would just be a second door onto the same fields.
       "log-measurements",
+      // #1633 — the web catching up to the Telegram bot's one-tap practice log.
+      "log-practice",
+      // #1525 — the one non-log row: filing a document, the in-app twin of the
+      // share target. Last, because it is the odd verb out.
+      "add-document",
     ]);
   });
 
   it("drops the training-only entries for an age-restricted profile", () => {
     const ids = quickLogMenu(true).map((i) => i.id);
     expect(ids).not.toContain(LOG_ACTIVITY_ID);
-    expect(ids).toEqual(["log-food", "log-dose", "log-measurements"]);
+    expect(ids).toEqual([
+      "log-food",
+      "log-dose",
+      "log-measurements",
+      "log-practice",
+      "add-document",
+    ]);
   });
 });
 
@@ -129,7 +140,13 @@ describe("the registry itself", () => {
     const forms = QUICK_LOG_ITEMS.flatMap((i) =>
       i.target.kind === "overlay" ? [i.target.form] : []
     );
-    expect(forms).toEqual(["food", "dose", "measurements"]);
+    expect(forms).toEqual([
+      "food",
+      "dose",
+      "measurements",
+      "practice",
+      "document",
+    ]);
   });
 
   it("opens the measurements form as an overlay, not the old focus-param deep link", () => {
@@ -141,5 +158,47 @@ describe("the registry itself", () => {
 
   it("falls back to Log activity for an unknown id", () => {
     expect(quickLogItem("nope").id).toBe(LOG_ACTIVITY_ID);
+  });
+
+  it("carries exactly ONE document row, opening the shared upload form (#1525)", () => {
+    const documents = QUICK_LOG_ITEMS.filter(
+      (i) => i.target.kind === "overlay" && i.target.form === "document"
+    );
+    expect(documents.map((i) => i.id)).toEqual(["add-document"]);
+    expect(quickLogItem("add-document").target).toEqual({
+      kind: "overlay",
+      form: "document",
+    });
+    // Subject-bound media (a form-check video, a symptom photo, a lesion photo) is
+    // deliberately NOT here: each needs a subject, so a global entry point would have
+    // to ask "what is this of?" — worse than starting from the subject. A medical
+    // document is the one whose subject the extraction figures out.
+    const forms = QUICK_LOG_ITEMS.flatMap((i) =>
+      i.target.kind === "overlay" ? [i.target.form] : []
+    );
+    expect(forms).not.toContain("photo");
+    expect(forms).not.toContain("video");
+  });
+
+  it("promotes NEITHER the document nor the practice row on any route (#1525/#1633)", () => {
+    // The promotion map stays deliberately short: a page whose own screen already
+    // carries the form buys nothing by spending the bar's one slot on it (the same
+    // reasoning that keeps Nutrition → Supplements from claiming it). Data shows the
+    // upload form on arrival; Wellness shows a Log-now button per practice card.
+    for (const path of [
+      "/",
+      "/data",
+      "/wellness",
+      "/timeline",
+      "/nutrition",
+      "/medications",
+      "/trends",
+      "/longevity",
+      "/upcoming",
+      "/settings",
+    ]) {
+      expect(primaryQuickLog(path).id, path).not.toBe("add-document");
+      expect(primaryQuickLog(path).id, path).not.toBe("log-practice");
+    }
   });
 });

@@ -8,10 +8,16 @@
 // palette component maps `icon`/`target` to real behavior.
 
 import type { AppRoute } from "./hrefs";
+import type { QuickEntryForm } from "./quick-log";
 
 export type PaletteActionTarget =
   // Open the activity editor overlay via the ActivityEditor context (no nav).
   | { kind: "activity" }
+  // Open an existing form in the shared quick-entry overlay, in place (#1468) — the
+  // SAME `QuickEntryForm` key the quick-log sheet's registry uses, because browse (the
+  // sheet) and search (the palette) are two surfaces over one set of forms, not two
+  // encodings of "open a create form" (#1506).
+  | { kind: "overlay"; form: QuickEntryForm }
   // Start a LIVE workout (issue #340): opens the create form in the in-gym layout
   // (rest timer + set check-off). Hidden for age-restricted profiles (#489).
   | { kind: "live" }
@@ -35,7 +41,8 @@ export interface PaletteAction {
     | "calendar"
     | "chart"
     | "camera"
-    | "sparkles";
+    | "sparkles"
+    | "document";
   target: PaletteActionTarget;
 }
 
@@ -129,6 +136,29 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     ],
     icon: "sparkles",
     target: { kind: "navigate", href: `/wellness?${FOCUS_PARAM}=1` },
+  },
+  {
+    id: "add-document",
+    // The palette is a SEARCH surface, so the one sheet row ("Add document") is reached
+    // here by whichever word the user has in mind — upload, scan, lab report, a photo of
+    // a result (#1506's browse-vs-search doctrine). Every one of them opens the SAME
+    // overlay the sheet opens, mounting the SAME UploadForm the Data page renders:
+    // neither surface gets a form of its own.
+    label: "Add document",
+    keywords: [
+      "upload",
+      "scan",
+      "document",
+      "file",
+      "lab report",
+      "pdf",
+      "photo of a result",
+      "after-visit summary",
+      "health record export",
+      "attach",
+    ],
+    icon: "document",
+    target: { kind: "overlay", form: "document" },
   },
   {
     id: "add-biomarker",

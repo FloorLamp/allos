@@ -37,14 +37,25 @@ import { DEFAULT_TRENDS_TAB, parseTab } from "./trends-tabs";
 
 // Icon keys resolved to real Tabler icons in components/QuickLogSheet.tsx (the
 // registry stays pure/serializable, like PALETTE_ACTIONS).
-export type QuickLogIcon = "barbell" | "salad" | "pill" | "scale" | "heartbeat";
+export type QuickLogIcon =
+  | "barbell"
+  | "salad"
+  | "pill"
+  | "scale"
+  | "heartbeat"
+  | "sparkles"
+  | "document";
 
 // Which existing form the shared quick-entry overlay mounts (issue #1468). The
 // overlay host owns the form→component map; this stays a serializable key so the
 // registry is pure. `dose` is the today's-due-doses list whose confirm buttons
 // answer from the typed DoseTakenOutcome — the existing action, reached, never
 // re-implemented.
-export type QuickEntryForm = "food" | "measurements" | "dose";
+// `practice` is the tracked wellness practices with the SAME one-tap LogPracticeButton
+// the Wellness card carries (#1633); `document` mounts the SAME UploadForm Data → File
+// upload renders, camera input included (#1525).
+export type QuickEntryForm =
+  "food" | "measurements" | "dose" | "practice" | "document";
 
 export type QuickLogTarget =
   // Open the shared activity editor in place (the DOCK — a live workout is a
@@ -116,6 +127,28 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // shared-content rule exists to prevent. Same MeasurementsQuickAdd component
     // the Body tab's desktop expander mounts; only the mount changes.
     target: { kind: "overlay", form: "measurements" },
+  },
+  {
+    id: "log-practice",
+    label: "Log practice",
+    hint: "Sauna, meditation, or another tracked practice",
+    icon: "sparkles",
+    // One-tap practice logging, which the Telegram bot has had since #1259 while the web
+    // app made you find /wellness first (#1633). The overlay mounts the SAME
+    // LogPracticeButton the Wellness card renders over the same logPractice action — no
+    // second write path, and the sheet lists exactly the practices you track.
+    target: { kind: "overlay", form: "practice" },
+  },
+  {
+    id: "add-document",
+    label: "Add document",
+    hint: "Lab report, visit summary, or a photo of one",
+    icon: "document",
+    // The other thing people do on a phone: FILE something (#1525). The in-app twin of
+    // the #1423 share target — the same UploadForm Data → File upload renders, so the
+    // same ingest engine, size/type gates, per-profile storage and dedup apply, and the
+    // camera input (`capture="environment"`) comes along for free.
+    target: { kind: "overlay", form: "document" },
   },
 ];
 

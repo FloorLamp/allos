@@ -69,7 +69,6 @@ import {
   parseOfferTailCallback,
   parseDemoteCallback,
   parsePracticeDoneCallback,
-  practiceDoneAnswerText,
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,

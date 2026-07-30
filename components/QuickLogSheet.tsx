@@ -3,10 +3,12 @@
 import {
   IconBarbell,
   IconChevronRight,
+  IconFileText,
   IconHeartbeat,
   IconPill,
   IconSalad,
   IconScale,
+  IconSparkles,
 } from "@tabler/icons-react";
 import BottomSheet from "./BottomSheet";
 import { useActivityEditor } from "./ActivityEditorProvider";
@@ -36,6 +38,10 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   pill: IconPill,
   scale: IconScale,
   heartbeat: IconHeartbeat,
+  // The glyphs these surfaces already wear: the Wellness nav's sparkles and the
+  // search palette's document page.
+  sparkles: IconSparkles,
+  document: IconFileText,
 };
 
 export default function QuickLogSheet({

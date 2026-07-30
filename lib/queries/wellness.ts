@@ -294,6 +294,97 @@ export function getWellnessPractices(
     );
 }
 
+// One TRACKED practice as the quick surfaces need it (#1633): the practices the user
+// has declared a weekly cadence for, with this week's standing and today's running
+// count. Deliberately narrower than WellnessPractice — no heatmap, no session list —
+// because the overlay row and the palette's finite preimage render neither, and this
+// gathers on every sheet open / palette open.
+export interface TrackedPractice {
+  targetId: number;
+  identity: string;
+  name: string;
+  perWeek: number;
+  perWeekMax: number | null;
+  countThisWeek: number;
+  atCeiling: boolean;
+  pace: FrequencyPace;
+  // Sessions logged TODAY, folded across the identity's spellings — what the shared
+  // LogPracticeButton shows beside its tap so a second tap is informed, not accidental.
+  todayCount: number;
+}
+
+// The quick surfaces' practice list: one row per practice-scope frequency target.
+//
+// TRACKED, not "every practice with history": a weekly cadence is the user's own
+// declaration that this is something they mean to keep doing, which is exactly what a
+// one-tap logger should offer. An untracked practice keeps its history and its page card
+// (getWellnessPractices still folds it in); it just doesn't claim a row in a surface that
+// has to stay scannable — and an untracked practice reappearing here would quietly
+// undo the untrack. It is also the finite preimage the palette matches typed input
+// against (the #394 posture), so both quick surfaces offer exactly the same set.
+//
+// Two bounded reads regardless of how many practices exist: the shared weekly progress
+// computation (the same getFrequencyTargetProgress every cadence surface reads, so the
+// overlay can never disagree with the Wellness card) plus one grouped tally of today's
+// logs, folded by practiceIdentity in JS — SQL cannot call that normalizer, and today's
+// rows are a bounded set.
+export function getTrackedPractices(
+  profileId: number,
+  asOf = profileToday(profileId)
+): TrackedPractice[] {
+  const targets = getPracticeTargets(profileId);
+  if (targets.length === 0) return [];
+  const progress = new Map(
+    getFrequencyTargetProgress(profileId)
+      .filter((item) => item.target.scope_kind === "practice")
+      .map((item) => [item.target.id, item])
+  );
+  const todayRows = db
+    .prepare(
+      `SELECT practice, COUNT(*) AS n FROM practice_logs
+        WHERE profile_id = ? AND date = ?
+        GROUP BY practice`
+    )
+    .all(profileId, asOf) as { practice: string; n: number }[];
+  const todayByIdentity = new Map<string, number>();
+  for (const row of todayRows) {
+    const identity = practiceIdentity(row.practice);
+    if (!identity) continue;
+    todayByIdentity.set(identity, (todayByIdentity.get(identity) ?? 0) + row.n);
+  }
+
+  const seen = new Set<string>();
+  const out: TrackedPractice[] = [];
+  for (const target of targets) {
+    const identity = practiceIdentity(target.scope_value);
+    // The schema already forbids two practice targets on one identity per profile
+    // (the unique (profile_id, scope_identity) index), so this is belt-and-braces: if
+    // one ever slipped in, the first — getPracticeTargets is already ordered — wins,
+    // exactly as it does in getWellnessPractices and getPracticeSearchRows, rather
+    // than the sheet offering the same write twice.
+    if (!identity || seen.has(identity)) continue;
+    seen.add(identity);
+    const targetProgress = progress.get(target.id);
+    out.push({
+      targetId: target.id,
+      identity,
+      name: practiceDisplayName({
+        targetSpelling: target.scope_value,
+        identity,
+      }),
+      perWeek: target.per_week,
+      perWeekMax: target.per_week_max,
+      countThisWeek: targetProgress?.count ?? 0,
+      atCeiling: targetProgress?.atCeiling ?? false,
+      pace: targetProgress?.pace ?? "on-pace",
+      todayCount: todayByIdentity.get(identity) ?? 0,
+    });
+  }
+  return out.sort((left, right) =>
+    left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
+  );
+}
+
 // One practice as the global search needs it (#1595) — identity, display name, its
 // weekly cadence, and its session tally. Deliberately NOT getWellnessPractices():
 // that aggregate builds a heatmap and week-pace state per practice, which is right

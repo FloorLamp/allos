@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 import BottomSheet from "./BottomSheet";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
@@ -18,6 +19,19 @@ import {
   type QuickEntryData,
 } from "@/app/(app)/quick-entry-actions";
 import type { QuickEntryForm } from "@/lib/quick-log";
+
+// The two newest bodies load ON DEMAND (#1525/#1633). This host is mounted on every
+// route, and its promise is that it COSTS NOTHING until opened — a promise about
+// JavaScript as much as about queries. The forms it already carried are small and
+// shared with pages the shell links to anyway; the upload form and the practice list
+// each drag in machinery (the file/camera inputs and the toast lifecycle, the
+// practice button's modal and date field) that no page-load should pay for. Both are
+// only rendered AFTER `loadQuickEntry` resolves, so the chunk fetch overlaps a round
+// trip that was already happening and costs nothing perceptible.
+const UploadForm = dynamic(() => import("./UploadForm"));
+const QuickPracticeList = dynamic(
+  () => import("./quick-entry/QuickPracticeList")
+);
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -89,6 +103,8 @@ const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
   measurements: { title: "Log measurements", ownsHeading: true },
   dose: { title: "Log dose", ownsHeading: false },
+  practice: { title: "Log practice", ownsHeading: false },
+  document: { title: "Add document", ownsHeading: false },
 };
 
 type LoadState =
@@ -227,6 +243,20 @@ function QuickEntryBody({
       );
     case "dose":
       return <QuickDoseList doses={data.doses} onDone={onDone} />;
+    case "practice":
+      // No `onSaved`: like the food bar, practice logging has no single "saved"
+      // moment — multi-session days are the point and a morning check may log two
+      // different practices. The user dismisses when they're done; the taps already
+      // refresh the page behind, so "stay put" still holds.
+      return <QuickPracticeList practices={data.practices} />;
+    case "document":
+      // The SAME UploadForm Data → File upload renders — same ingest engine, same
+      // gates, same per-profile storage and dedup, and the #1423 camera input rides
+      // along. A successful upload closes the sheet: filing a document is a
+      // transaction with a real end, and #1468's contract is that it lands you back
+      // on the page you were on. The confirmation toast (with its "Track in Review"
+      // action) is posted by the form itself and outlives the sheet.
+      return <UploadForm demo={data.demo} onUploaded={onDone} />;
     case "unavailable":
       return (
         <p

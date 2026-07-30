@@ -95,7 +95,7 @@ export async function handlePracticeDoneTap(
     return;
   }
   const outcome = logPracticeByTargetId(profileId, token.targetId);
-  await answerCallbackQuery(cq.id, practiceDoneAnswerText(outcome));
+  await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
 
   const messageId = cq.message?.message_id;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -468,6 +468,7 @@ import {
   logAdministration,
   logPracticeByTargetId,
 } from "../queries";
+import { practiceLogOutcomeText } from "../practice";
 import { today } from "../db";
 import {
   getProfilesByTelegramChatId,
@@ -497,7 +498,6 @@ import {
   parseSymptomSeverityCallback,
   parseTempReply,
   parseTempReplyMarker,
-  practiceDoneAnswerText,
   removeButton,
   replacementWithTitle,
   resolveTapProfile,

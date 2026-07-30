@@ -8,6 +8,7 @@ import "../../scripts/load-env";
 import path from "node:path";
 import { db, today } from "../../lib/db";
 import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "../../lib/date";
+import { practiceIdentity } from "../../lib/practice";
 import { EDIT_LOCK_SIGNATURE } from "../edit-lock-fixture";
 import {
   E2E_LOGIN_COMPARE,
@@ -16,6 +17,8 @@ import {
   SHELL_PROFILE,
   SHELL_DOSE_ITEM,
   SHELL_DOSE_AMOUNT,
+  SHELL_PRACTICE,
+  SHELL_PRACTICE_PER_WEEK,
   E2E_LOGIN_VITALS_DAY,
   VITALS_DAY_PROFILE,
   VITALS_DAY_TEMP_TIME,
@@ -627,8 +630,30 @@ export function seedIntradayPanel(): void {
        VALUES (?, ?, '08:00', 'any', 0)`
       ).run(Number(item.lastInsertRowid), SHELL_DOSE_AMOUNT);
     }
+    // One tracked practice, no sessions (#1633): the quick-log sheet's practice row
+    // lists what the profile TRACKS, so a frequency target alone is the whole
+    // precondition — the spec logs the session it then asserts.
+    if (
+      !db
+        .prepare(
+          `SELECT 1 FROM frequency_targets
+            WHERE profile_id = ? AND scope_kind = 'practice' AND scope_value = ?`
+        )
+        .get(shellId, SHELL_PRACTICE)
+    ) {
+      db.prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, scope_identity, per_week)
+         VALUES (?, 'practice', ?, ?, ?)`
+      ).run(
+        shellId,
+        SHELL_PRACTICE,
+        practiceIdentity(SHELL_PRACTICE),
+        SHELL_PRACTICE_PER_WEEK
+      );
+    }
     console.log(
-      `e2e: seeded mobile-shell fixture — ${E2E_LOGIN_SHELL} granted ${SHELL_PROFILE} (${shellId}), one due dose (#1416/#1468)`
+      `e2e: seeded mobile-shell fixture — ${E2E_LOGIN_SHELL} granted ${SHELL_PROFILE} (${shellId}), one due dose, one tracked practice (#1416/#1468/#1633)`
     );
   }
 }

@@ -56,7 +56,13 @@ import {
   type SearchHit,
 } from "@/lib/search-rank";
 import { matchPaletteActions, type PaletteAction } from "@/lib/palette-actions";
-import { parseQuickLog, type QuickLogWeight } from "@/lib/palette-quick-log";
+import {
+  parseQuickLog,
+  type QuickLogCommand,
+  type QuickLogPracticeOption,
+} from "@/lib/palette-quick-log";
+import { useQuickEntry } from "@/components/QuickEntryProvider";
+import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
 import type { WeightUnit } from "@/lib/settings";
 import type { AppRoute } from "@/lib/hrefs";
 
@@ -120,12 +126,13 @@ const ACTION_ICONS: Record<
   chart: (p) => <IconChartLine {...p} />,
   camera: (p) => <IconCamera {...p} />,
   sparkles: (p) => <IconSparkles {...p} />,
+  document: (p) => <IconFileText {...p} />,
 };
 
 // The palette's flat, navigable item model — quick-log preview, then create
 // actions, then search hits. `highlight` indexes into the array these produce.
 type PaletteItem =
-  | { kind: "quicklog"; log: QuickLogWeight }
+  | { kind: "quicklog"; log: QuickLogCommand }
   | { kind: "action"; action: PaletteAction }
   | { kind: "hit"; hit: SearchHit };
 
@@ -145,12 +152,20 @@ export default function CommandPalette({
     hasLastActivity,
     canStartWorkout,
   } = useActivityEditor();
+  const { open: openQuickEntry } = useQuickEntry();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<SearchGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  // The tracked practices this profile can quick-log by name (#1633). Gathered ON OPEN
+  // rather than propped from the layout: the palette is mounted on every route and this
+  // is a per-profile read, so a layout-time snapshot would tax ~60 routes for a list
+  // that matters only once the palette is up (the quick-entry overlay's own reasoning).
+  // It only feeds the PREVIEW row — `paletteQuickLog` re-derives the set server-side
+  // before it writes anything.
+  const [practices, setPractices] = useState<QuickLogPracticeOption[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -169,8 +184,8 @@ export default function CommandPalette({
   // Derived synchronously from the query: the quick-log preview (or null) and the
   // matching create actions. An empty query shows all actions as a resting menu.
   const quickLog = useMemo(
-    () => (q ? parseQuickLog(query, weightUnit) : null),
-    [query, q, weightUnit]
+    () => (q ? parseQuickLog(query, weightUnit, practices) : null),
+    [query, q, weightUnit, practices]
   );
   // Drop the "Repeat last activity" action when nothing's been logged — there's
   // no last activity to repeat (issue #337).
@@ -215,6 +230,34 @@ export default function CommandPalette({
 
   useLockBodyScroll(open);
 
+  // Gather the tracked practices once per open, through the SAME read the quick-entry
+  // overlay's practice row uses — so "which practices can I log from a quick surface?"
+  // has one answer, not one per surface. A failure leaves the list empty: `log sauna`
+  // simply falls through to search, which is the honest degradation for a preview.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void loadQuickEntry("practice").then(
+      (data) => {
+        if (cancelled) return;
+        setPractices(
+          data.form === "practice"
+            ? data.practices.map((p) => ({
+                identity: p.identity,
+                name: p.name,
+              }))
+            : []
+        );
+      },
+      () => {
+        if (!cancelled) setPractices([]);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   // Reset state when the palette closes so it opens fresh next time.
   useEffect(() => {
     if (!open) {
@@ -226,6 +269,9 @@ export default function CommandPalette({
       setAsk(null);
       setAskError(null);
       setAsking(false);
+      // Dropped on close so a practice added (or untracked) between opens is never
+      // matched from a stale list.
+      setPractices([]);
     }
   }, [open]);
 
@@ -317,6 +363,12 @@ export default function CommandPalette({
       } else if (action.target.kind === "repeat") {
         close();
         openRepeatLast();
+      } else if (action.target.kind === "overlay") {
+        // In place, exactly as the quick-log sheet opens it (#1468): a palette action
+        // that files a document must leave you on the page you were reading.
+        const form = action.target.form;
+        close();
+        openQuickEntry(form);
       } else {
         // A matching data search may already be in flight by the time an action
         // is picked. Its Server Action response can race an App Router push and
@@ -326,11 +378,11 @@ export default function CommandPalette({
         window.location.assign(action.target.href);
       }
     },
-    [close, openCreate, openLive, openRepeatLast]
+    [close, openCreate, openLive, openRepeatLast, openQuickEntry]
   );
 
   const commitQuickLog = useCallback(
-    async (log: QuickLogWeight) => {
+    async (log: QuickLogCommand) => {
       if (log.error || committing) return;
       setCommitting(true);
       try {
