@@ -13,6 +13,7 @@ import {
   validatePracticeCadence,
   groupPracticeSpellings,
   practiceSpellingsFor,
+  practiceDisplayName,
 } from "@/lib/practice";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 import { resolveSuppressedKeyDisplay } from "@/lib/suppression-display";
@@ -177,5 +178,40 @@ describe("practice identity + dedupeKey namespace (#1259)", () => {
     expect(PRACTICE_STARTER_LIST).toContain("Red light therapy");
     expect(PRACTICE_STARTER_LIST).toContain("Sauna");
     expect(PRACTICE_STARTER_LIST.length).toBeGreaterThanOrEqual(6);
+  });
+});
+
+// The ONE display-name decision for a practice identity (#1595): the Wellness card
+// and the search palette must name a practice the same way, and a practice's stored
+// spellings can disagree ("Cold plunge" as the target, "cold  plunge" on the log).
+describe("practiceDisplayName", () => {
+  it("prefers the target's spelling — the one the user typed when setting cadence", () => {
+    expect(
+      practiceDisplayName({
+        targetSpelling: "Cold plunge",
+        latestSpelling: "cold  plunge",
+        identity: practiceIdentity("Cold plunge"),
+      })
+    ).toBe("Cold plunge");
+  });
+
+  it("falls back to the newest session's spelling for a logs-only practice", () => {
+    expect(
+      practiceDisplayName({
+        targetSpelling: null,
+        latestSpelling: " Breathwork ",
+        identity: practiceIdentity("breathwork"),
+      })
+    ).toBe("Breathwork");
+  });
+
+  it("falls back to the folded identity when no spelling survives", () => {
+    expect(
+      practiceDisplayName({
+        targetSpelling: "   ",
+        latestSpelling: null,
+        identity: "sauna",
+      })
+    ).toBe("sauna");
   });
 });

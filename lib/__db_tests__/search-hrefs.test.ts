@@ -107,6 +107,74 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     );
   });
 
+  // #1595 extended the fan-out with nine entity domains, so the same rule has nine
+  // more chances to be broken. Every one of those domains that HAS a per-record
+  // route must use it — a hit landing on the owning hub instead is the #1568 bug
+  // wearing a new domain, and typed routes cannot catch it.
+  it("every added domain with a detail route deep-links it, never its hub", () => {
+    const p = newProfile("palette-entity-domains");
+    const providerId = Number(
+      db
+        .prepare(
+          `INSERT INTO providers (name, type, dedup_key)
+           VALUES ('PHREF Larkspur Clinic', 'organization', 'phref-larkspur')`
+        )
+        .run().lastInsertRowid
+    );
+    // The registry is global; a provider is searchable through this profile's own
+    // record links, so the hit needs one.
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, provider_id)
+       VALUES (?, '2026-04-01', 'PHREF Larkspur visit', ?)`
+    ).run(p, providerId);
+    const episodeId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, started_at)
+           VALUES (?, 'PHREF Larkspur cold', '2026-04-02')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const protocolId = Number(
+      db
+        .prepare(
+          `INSERT INTO protocols (profile_id, name, start_date)
+           VALUES (?, 'PHREF Larkspur block', '2026-04-03')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const equipmentId = Number(
+      db
+        .prepare(
+          `INSERT INTO equipment (profile_id, name, category)
+           VALUES (?, 'PHREF Larkspur bar', 'Barbell')`
+        )
+        .run(p).lastInsertRowid
+    );
+
+    expect(
+      hit(p, "PHREF Larkspur Clinic", "provider", "PHREF Larkspur Clinic").href
+    ).toBe(`/providers/${providerId}`);
+    expect(
+      hit(p, "PHREF Larkspur cold", "episode", "PHREF Larkspur cold").href
+    ).toBe(`/medical/episodes/${episodeId}`);
+    expect(
+      hit(p, "PHREF Larkspur block", "protocol", "PHREF Larkspur block").href
+    ).toBe(`/protocols/${protocolId}`);
+    expect(
+      hit(p, "PHREF Larkspur bar", "equipment", "PHREF Larkspur bar").href
+    ).toBe(`/equipment/${equipmentId}`);
+
+    // And none of them settled for the surface's hub/index.
+    const hrefs = searchAll(p, "PHREF Larkspur")
+      .filter((g) => g.domain !== "page")
+      .flatMap((g) => g.hits.map((h) => h.href));
+    expect(hrefs.length).toBeGreaterThanOrEqual(4);
+    for (const hub of ["/providers", "/medical/episodes", "/equipment"]) {
+      expect(hrefs).not.toContain(hub);
+    }
+  });
+
   it("no hit for a row-backed domain returns the bare /training hub", () => {
     const p = newProfile("palette-sweep");
     db.prepare(
