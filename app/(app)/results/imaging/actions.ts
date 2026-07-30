@@ -37,8 +37,16 @@ import {
 // satisfies its screening exactly as before (the procedure-inference path is
 // untouched); the screening-vs-diagnostic decision is deferred to the owner (#703).
 
+// The studies list renders at `/results/imaging` (#1079). Bare `/results` is a
+// pure `redirect()` stub to `/results/biomarkers` (see its page.tsx) and renders
+// no imaging at all, so revalidating it never invalidated the surface these writes
+// change — leaving the client-side `router.refresh()` in ImagingStudyForm as the
+// ONLY thing that could repaint the list after an add/edit/delete. Revalidating
+// the route that actually RENDERS the list gives the action's own response a fresh
+// tree for that surface, an independent second repaint path. Same correction
+// `app/(app)/results/actions.ts` already carries for `/results/biomarkers`.
 function revalidateImaging() {
-  revalidatePath("/results");
+  revalidatePath("/results/imaging");
   revalidatePath("/timeline");
   revalidatePath("/profile");
   revalidatePath("/");
