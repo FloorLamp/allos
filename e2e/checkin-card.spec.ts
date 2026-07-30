@@ -284,3 +284,71 @@ test.describe("Well-day symptom logging + burden tilt (#1300)", () => {
     await expect(coachingCard).toContainText("easier session");
   });
 });
+
+// ---- The auto-paused check-in, made visible (issue #1668) ----
+//
+// The evening reminder auto-pauses after quiet days. The mechanism is right (#992 — a
+// disengaged user must not be nagged), but the SILENCE read as "notifications broke"
+// and there was no in-app trace or way to resume short of remembering to log a mood.
+// The paused state is DERIVED (the ignored streak), never a stored flag, so this drives
+// it by setting that streak directly and asserting the card presents and clears it.
+test.describe("mood check-in auto-pause visibility (#1668)", () => {
+  // Set the profile's ignored-send streak, the state shouldSendMoodCheckin reads.
+  function setIgnoredStreak(profileName: string, count: number): void {
+    const db = new Database(workerDbPath());
+    try {
+      db.pragma("busy_timeout = 5000");
+      const row = db
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(profileName) as { id: number } | undefined;
+      if (!row) throw new Error(`no profile ${profileName}`);
+      db.prepare(
+        `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'mood_checkin_enabled', '1')
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+      ).run(row.id);
+      db.prepare(
+        `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'mood_checkin_ignored', ?)
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+      ).run(row.id, String(count));
+    } finally {
+      db.close();
+    }
+  }
+
+  test("a paused check-in says so on the card, and Resume clears it", async ({
+    page,
+  }) => {
+    test.slow();
+    const profile = "checkinpause";
+    await createProfileViaFamily(page, profile);
+    setIgnoredStreak(profile, 5); // at the auto-pause line
+    await page.goto("/");
+
+    const card = page.getByTestId("how-are-you-card");
+    await expect(card).toBeVisible();
+
+    // The pause is stated — no guilt, no streak language.
+    const banner = card.getByTestId("mood-checkins-paused");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("paused");
+
+    // Resume is one tap, and the banner goes with it (the streak reset is the same
+    // write logging a mood performs).
+    await settledClick(page, card.getByTestId("mood-checkins-resume"));
+    await expect(card.getByTestId("mood-checkins-paused")).toHaveCount(0, {
+      timeout: 20_000, // named ceiling: server action + dashboard re-render
+    });
+  });
+
+  test("a running check-in shows no paused state at all", async ({ page }) => {
+    test.slow();
+    const profile = "checkinrunning";
+    await createProfileViaFamily(page, profile);
+    setIgnoredStreak(profile, 0);
+    await page.goto("/");
+
+    const card = page.getByTestId("how-are-you-card");
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId("mood-checkins-paused")).toHaveCount(0);
+  });
+});

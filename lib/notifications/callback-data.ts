@@ -892,6 +892,46 @@ export function parseMoodCheckinCallback(
   return { profileId, valence: Number(m[2]), date: m[3] };
 }
 
+// The "Keep daily check-ins" token (#1668): "moodkeep:<profileId>:<date>". Ids only.
+export interface MoodKeepCallback {
+  profileId: number;
+  date: string;
+}
+
+export function parseMoodKeepCallback(data: unknown): MoodKeepCallback | null {
+  if (typeof data !== "string" || !data.startsWith("moodkeep:")) return null;
+  const m = /^moodkeep:(\d+):(\d{4}-\d{2}-\d{2})$/.exec(data);
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  if (!profileId) return null;
+  return { profileId, date: m[2] };
+}
+
+// The outcome of a keep/resume — a typed union, never a boolean, so the toast states
+// what actually happened. "already-active" covers the tap on a message whose streak was
+// meanwhile reset by a logged mood (the auto-resume path), which is not a failure.
+export type MoodKeepOutcome = "kept" | "already-active" | "not-enabled";
+
+export function moodKeepAnswerText(outcome: MoodKeepOutcome): string {
+  switch (outcome) {
+    case "kept":
+      return "Got it — daily check-ins continue 🙂";
+    case "already-active":
+      return "Check-ins are already running — nothing to resume.";
+    case "not-enabled":
+    default:
+      return "Check-ins are off — turn them on in Settings → Notifications.";
+  }
+}
+
+// The closing line the announcement collapses to once kept (its title is retained
+// above it by replacementWithTitle).
+export function moodKeepCloseText(outcome: MoodKeepOutcome): string {
+  return outcome === "kept"
+    ? "Daily check-ins will keep coming 🙂"
+    : moodKeepAnswerText(outcome);
+}
+
 // The 1..4 severity button labels (mirrors the symptom-log bar's scale).
 export const SYMPTOM_SEVERITY_LABELS: Record<number, string> = {
   1: "Mild",

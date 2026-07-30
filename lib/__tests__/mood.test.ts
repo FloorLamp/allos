@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  decideMoodKeep,
+  isFinalMoodCheckin,
+  isMoodCheckinPaused,
+  MOOD_CHECKIN_PAUSE_NOTICE,
+  MOOD_CHECKIN_PAUSED_LABEL,
+} from "@/lib/mood";
+import {
   normalizeMoodInput,
   parseMoodFactors,
   shouldSendMoodCheckin,
@@ -364,5 +371,77 @@ describe("parseMoodCheckinCallback", () => {
     expect(parseMoodCheckinCallback("mood:0:4:2026-07-19")).toBeNull();
     expect(parseMoodCheckinCallback("take:7:4:2026-07-19")).toBeNull();
     expect(parseMoodCheckinCallback(42)).toBeNull();
+  });
+});
+
+// ---- The auto-pause, announced (issue #1668) ----
+//
+// The pause was INVISIBLE: reminders simply stopped, which reads as "notifications
+// broke". The mechanism is right (#992 — a disengaged user must not be nagged); this
+// closes the visibility gap without turning contact reduction into a question the user
+// must answer to keep being left alone.
+describe("mood check-in pause visibility (#1668)", () => {
+  it("the send that will EXHAUST the streak is the one that announces", () => {
+    // Every earlier send is silent — the announcement fires once, on the last one.
+    for (let i = 0; i < MOOD_CHECKIN_AUTOPAUSE_DAYS - 1; i++) {
+      expect(isFinalMoodCheckin(i)).toBe(false);
+    }
+    expect(isFinalMoodCheckin(MOOD_CHECKIN_AUTOPAUSE_DAYS - 1)).toBe(true);
+    // Past the line nothing sends at all, so nothing announces.
+    expect(isFinalMoodCheckin(MOOD_CHECKIN_AUTOPAUSE_DAYS)).toBe(false);
+  });
+
+  it("the announcement rides a send that was happening anyway — it adds none", () => {
+    // The final reminder is still a legitimate send by the unchanged gate.
+    expect(
+      shouldSendMoodCheckin({
+        enabled: true,
+        alreadyLoggedToday: false,
+        ignoredCount: MOOD_CHECKIN_AUTOPAUSE_DAYS - 1,
+      })
+    ).toBe(true);
+    // And the pause still proceeds for someone who ignores it.
+    expect(
+      shouldSendMoodCheckin({
+        enabled: true,
+        alreadyLoggedToday: false,
+        ignoredCount: MOOD_CHECKIN_AUTOPAUSE_DAYS,
+      })
+    ).toBe(false);
+  });
+
+  it("paused is DERIVED state — enabled stays true, and logging lifts it", () => {
+    expect(
+      isMoodCheckinPaused({
+        enabled: true,
+        ignoredCount: MOOD_CHECKIN_AUTOPAUSE_DAYS,
+      })
+    ).toBe(true);
+    expect(isMoodCheckinPaused({ enabled: true, ignoredCount: 0 })).toBe(false);
+    // A disabled check-in is OFF, not paused — the card must not offer to resume it.
+    expect(isMoodCheckinPaused({ enabled: false, ignoredCount: 99 })).toBe(
+      false
+    );
+  });
+
+  it("keep/resume is one decision with a typed outcome, never a blind confirm", () => {
+    expect(decideMoodKeep({ enabled: true, ignoredCount: 4 })).toBe("kept");
+    // Already re-armed elsewhere (a mood logged on another device) — not a failure.
+    expect(decideMoodKeep({ enabled: true, ignoredCount: 0 })).toBe(
+      "already-active"
+    );
+    expect(decideMoodKeep({ enabled: false, ignoredCount: 4 })).toBe(
+      "not-enabled"
+    );
+  });
+
+  it("the copy carries no guilt and no streak language (#992/#716)", () => {
+    for (const copy of [MOOD_CHECKIN_PAUSE_NOTICE, MOOD_CHECKIN_PAUSED_LABEL]) {
+      expect(copy.toLowerCase()).not.toMatch(
+        /streak|missed|failed|don't break|keep it up|day \d|in a row/
+      );
+    }
+    // It says what will happen and why it's fine — nothing more.
+    expect(MOOD_CHECKIN_PAUSE_NOTICE.toLowerCase()).toContain("no pressure");
   });
 });

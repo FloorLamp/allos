@@ -268,6 +268,38 @@ export async function handleMoodTap(
   );
 }
 
+// The "Keep daily check-ins" tap (#1668). Resets the ignored streak — the SAME write a
+// logged mood performs, so one mechanism serves three entry points — and answers from
+// the typed decision, never an unconditional confirm: the streak may have been re-armed
+// already by a mood logged elsewhere, and the check-in may have been turned off since
+// the message was sent.
+export async function handleMoodKeepTap(
+  cq: TelegramCallbackQuery,
+  token: MoodKeepCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || chatId == null || messageId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = decideMoodKeep({
+    enabled: getProfileMoodCheckin(profileId),
+    ignoredCount: getMoodCheckinIgnored(profileId),
+  });
+  if (outcome === "kept") resetMoodCheckinIgnored(profileId);
+  await answerCallbackQuery(cq.id, moodKeepAnswerText(outcome));
+  await closeMessage(
+    chatId,
+    messageId,
+    replacementWithTitle(cq.message?.text, moodKeepCloseText(outcome))
+  );
+}
+
 export async function handleSymptomSeverity(
   cq: TelegramCallbackQuery,
   token: SymptomSeverityCallback
@@ -503,9 +535,12 @@ import {
 import { practiceLogOutcomeText } from "../practice";
 import { today } from "../db";
 import {
+  getMoodCheckinIgnored,
+  getProfileMoodCheckin,
   getProfilesByTelegramChatId,
   getTimezone,
   getUserAge,
+  resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
 import {
@@ -518,7 +553,7 @@ import { now as clockNow } from "../clock";
 import { logSymptomCore } from "../symptom-log-write";
 import { upsertMoodLog } from "../offline/writes";
 import { getMoodOnDate } from "../queries/mood";
-import { moodFace, moodLabel } from "../mood";
+import { decideMoodKeep, moodFace, moodLabel } from "../mood";
 import { logTemperatureCore } from "../temperature-log";
 import { symptomLabel, symptomSlugs, SYMPTOMS } from "../symptoms";
 import { currentEpisodeForProfile } from "../illness-episode";
@@ -531,6 +566,9 @@ import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
   parseMoodCheckinCallback,
+  parseMoodKeepCallback,
+  moodKeepAnswerText,
+  moodKeepCloseText,
   parsePrnLogCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
@@ -543,6 +581,7 @@ import {
   tempReplyMarker,
   OUTDATED_MESSAGE_TEXT,
   type MoodCheckinCallback,
+  type MoodKeepCallback,
   type PracticeDoneCallback,
   type PrnLogCallback,
   type SymptomPickCallback,

@@ -76,6 +76,7 @@ import {
   parseSkipCallback,
   parseTakeCallback,
   parseMoodCheckinCallback,
+  parseMoodKeepCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
   parseTempReply,
@@ -140,6 +141,7 @@ export {
 } from "./telegram-quick-log";
 import {
   handleMoodTap,
+  handleMoodKeepTap,
   handlePracticeDoneTap,
   handlePrnLogTap,
   handleOfferTailTap,
@@ -297,6 +299,14 @@ export async function handleCallbackQuery(
   const moodTap = parseMoodCheckinCallback(cq.data);
   if (moodTap) {
     await handleMoodTap(cq, moodTap);
+    return;
+  }
+
+  // "Keep daily check-ins" (#1668): the confirm-to-KEEP affordance the final reminder
+  // carries before the auto-pause takes effect.
+  const moodKeep = parseMoodKeepCallback(cq.data);
+  if (moodKeep) {
+    await handleMoodKeepTap(cq, moodKeep);
     return;
   }
 
