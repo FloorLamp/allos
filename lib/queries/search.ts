@@ -55,6 +55,7 @@ import {
   genomicHitText,
   imagingHitText,
   isoDay,
+  likePattern,
   practiceHitText,
   protocolHitText,
   providerHitText,
@@ -95,13 +96,6 @@ import type {
 
 const PER_DOMAIN_CAP = 5;
 const CANDIDATE_LIMIT = 25;
-
-// Escape LIKE wildcards so a literal % or _ (or \) in the query matches itself,
-// then wrap for a substring match. Paired with `ESCAPE '\'` in the SQL.
-function likePattern(query: string): string {
-  const escaped = query.replace(/[\\%_]/g, (c) => "\\" + c);
-  return `%${escaped}%`;
-}
 
 // Trim a stored datetime ("2026-07-06 12:00:00") down to its ISO date part for
 // the recency tiebreak. Delegates to the pure projection helper so a hit's `date`

@@ -350,3 +350,15 @@ export function equipmentHitText(row: {
     subtitle: subtitleOf([row.category, row.retired === 1 ? "Retired" : null]),
   };
 }
+
+// ── Shared SQL text-matching (#1595, reused by #1634) ────────────────────────
+
+// Escape LIKE wildcards so a literal % or _ (or \) in the query matches itself,
+// then wrap for a substring match. Paired with `ESCAPE '\'` in the SQL. Lives here
+// rather than inside the palette fan-out because the Journal's server-side feed
+// filter (lib/queries/training/activities.ts) runs the SAME kind of substring scan —
+// two text searches over the user's own words must escape them one way.
+export function likePattern(query: string): string {
+  const escaped = query.replace(/[\\%_]/g, (c) => "\\" + c);
+  return `%${escaped}%`;
+}

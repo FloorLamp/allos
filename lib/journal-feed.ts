@@ -9,6 +9,7 @@
 
 import {
   getJournalPage,
+  resolveJournalFilterSpec,
   getSetsForActivities,
   getRoutePolylinesForActivities,
   getActiveCaloriesForActivities,
@@ -18,6 +19,11 @@ import { getEquipment } from "./equipment";
 import { getActivityVideosForActivities } from "./activity-video-write";
 import { buildJournalCards, type DayGroup } from "./journal-card";
 import { mergeJournalDayGroups } from "./journal-multi-view";
+import {
+  EMPTY_JOURNAL_FILTERS,
+  journalFiltersActive,
+  type JournalFilters,
+} from "./journal-filters";
 import type { DatedWeight } from "./calorie-estimate";
 import type { UnitPrefs } from "./settings";
 import {
@@ -42,14 +48,26 @@ export interface JournalFeedPage {
 // newest day). `dayLimit` days of activities are loaded, their sets fetched, and the
 // pure buildJournalCards run over them — the same derivation HistorySection used to
 // run inline over ALL activities.
+//
+// FILTERS (issue #1634). When `filters` is active the window is the next `dayLimit`
+// days that CONTAIN a match anywhere in the ledger — not the next `dayLimit` days —
+// so `nextBefore` pages over matches and a hit twenty windows deep lands on page
+// one. The store answers "which days", the pure journalCardMatches answers "which
+// cards" (the client applies it as it always has, now over a complete day set). An
+// INACTIVE filter set resolves to no spec at all, so the unfiltered feed keeps its
+// exact pre-#1634 query and cost.
 export function buildJournalFeedPage(
   profileId: number,
   before: string | null,
   units: UnitPrefs,
   formatPrefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
-  dayLimit: number = JOURNAL_PAGE_DAYS
+  dayLimit: number = JOURNAL_PAGE_DAYS,
+  filters: JournalFilters = EMPTY_JOURNAL_FILTERS
 ): JournalFeedPage {
-  const page = getJournalPage(profileId, before, dayLimit);
+  const spec = journalFiltersActive(filters)
+    ? resolveJournalFilterSpec(profileId, filters)
+    : undefined;
+  const page = getJournalPage(profileId, before, dayLimit, spec);
   if (page.activities.length === 0) {
     return { groups: [], nextBefore: page.nextBefore };
   }
@@ -113,15 +131,31 @@ export function buildJournalFeedPage(
 // component then stamps subject NAME/photo/access identity (lib/scope stampSubjects)
 // and each member's own restriction onto the cards. In single view the caller uses
 // buildJournalFeedPage directly, so nothing here touches the single-profile path.
+//
+// FILTERS (issue #1634) compose with the per-member cursors rather than assuming a
+// single one: each member's OWN newest window of MATCHING days is built by the
+// per-profile assembler above (its own preimages, its own labels) and the merge is
+// unchanged, so two members' matches interleave by date exactly as their unfiltered
+// cards do. The merged feed still has no cross-member pager — it is a recent-window
+// overview — so what a filter changes is which days each member contributes, not how
+// paging works.
 export function buildMultiViewJournalGroups(
   viewIds: readonly number[],
   actingProfileId: number,
   units: UnitPrefs,
-  formatPrefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  formatPrefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  filters: JournalFilters = EMPTY_JOURNAL_FILTERS
 ): DayGroup[] {
   const members = viewIds.map((profileId) => ({
     profileId,
-    groups: buildJournalFeedPage(profileId, null, units, formatPrefs).groups,
+    groups: buildJournalFeedPage(
+      profileId,
+      null,
+      units,
+      formatPrefs,
+      JOURNAL_PAGE_DAYS,
+      filters
+    ).groups,
   }));
   const today = todayFn(actingProfileId);
   const yesterday = yesterdayFn(actingProfileId);

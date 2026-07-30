@@ -8,7 +8,25 @@ import {
 import { shiftDateStr, weekdayOfDateStr } from "../../date";
 import { db, today } from "../../db";
 import { decayedWeight } from "../../decay";
-import { LIFT_OPTIONS, baseLiftName } from "../../lifts";
+import {
+  LIFT_OPTIONS,
+  baseLiftName,
+  muscleFor,
+  regionForExercise,
+} from "../../lifts";
+import {
+  storedActivityFault,
+  type StoredActivity,
+  type StoredSet,
+} from "../../activity-validate";
+import {
+  activityProvenanceKey,
+  JOURNAL_SOURCE_DOCUMENT,
+  JOURNAL_SOURCE_MANUAL,
+} from "../../journal-format";
+import type { JournalFilters } from "../../journal-filters";
+import { likePattern } from "../../search-projections";
+import { DOCUMENT_SOURCE_PREFIX } from "../../body-metric-extract";
 import {
   rankByFrequency,
   prioritizeRoutineSlots,
@@ -261,29 +279,141 @@ export interface JournalPage {
   nextBefore: string | null; // cursor for the next-older page, or null when exhausted
 }
 
+// The SQL-shaped form of the feed's active filters (issue #1634) — what
+// resolveJournalFilterSpec() turns a JournalFilters into once per request. Every
+// field is already reduced to something a WHERE clause can use: the derived filters
+// (muscle/region tag, fault) arrive as finite PREIMAGES resolved in JS, because
+// regionForExercise() and storedActivityFault() are pure TypeScript that SQLite
+// cannot run (the #394 pattern, as getPracticeSpellings does for spelling families).
+//
+// `null` on a field means "this filter is not active". An EMPTY preimage array
+// means "active, and nothing in the ledger can match" — the page is empty, which is
+// very different from absent; keep the two apart.
+export interface JournalFilterSpec {
+  query: string | null; // free text (already trimmed), matched by LIKE
+  type: ActivityType | null;
+  source: string | null; // a provenance KEY (activityProvenanceKey)
+  // Lowercased exercise names whose muscle/region is the selected tag.
+  tagExercises: readonly string[] | null;
+  // Activity ids whose storedActivityFault() is non-null.
+  faultIds: readonly number[] | null;
+}
+
+export const NO_JOURNAL_FILTERS: JournalFilterSpec = {
+  query: null,
+  type: null,
+  source: null,
+  tagExercises: null,
+  faultIds: null,
+};
+
+export function journalFilterSpecActive(spec: JournalFilterSpec): boolean {
+  return (
+    spec.query != null ||
+    spec.type != null ||
+    spec.source != null ||
+    spec.tagExercises != null ||
+    spec.faultIds != null
+  );
+}
+
+// The `source` half of the WHERE clause for a provenance KEY. Mirrors
+// activityProvenanceKey()'s collapse in SQL: 'manual' covers NULL and the literal
+// 'manual'; 'document' covers every 'document:<id>' row; anything else is the raw
+// integration id stored on the row.
+function journalSourceClause(key: string): { sql: string; params: unknown[] } {
+  if (key === JOURNAL_SOURCE_MANUAL)
+    return { sql: "(a.source IS NULL OR a.source = 'manual')", params: [] };
+  if (key === JOURNAL_SOURCE_DOCUMENT)
+    return {
+      // Prefix match — DOCUMENT_SOURCE_PREFIX carries no LIKE wildcards itself.
+      sql: "a.source LIKE ?",
+      params: [`${DOCUMENT_SOURCE_PREFIX}%`],
+    };
+  return { sql: "a.source = ?", params: [key] };
+}
+
+// Build the shared `AND …` fragments + params for a filter spec. Used by the day
+// scan below; deliberately a SUPERSET of the pure card predicate
+// (lib/journal-filters.ts) — see that module's superset contract.
+function journalFilterSql(spec: JournalFilterSpec): {
+  sql: string;
+  params: unknown[];
+} {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (spec.type != null) {
+    clauses.push("a.type = ?");
+    params.push(spec.type);
+  }
+  if (spec.source != null) {
+    const s = journalSourceClause(spec.source);
+    clauses.push(s.sql);
+    params.push(...s.params);
+  }
+  if (spec.faultIds != null) {
+    if (spec.faultIds.length === 0) return { sql: " AND 0", params: [] };
+    clauses.push(`a.id IN (${spec.faultIds.map(() => "?").join(",")})`);
+    params.push(...spec.faultIds);
+  }
+  if (spec.tagExercises != null) {
+    if (spec.tagExercises.length === 0) return { sql: " AND 0", params: [] };
+    clauses.push(
+      `EXISTS (SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+                 AND LOWER(TRIM(s.exercise)) IN (${spec.tagExercises
+                   .map(() => "?")
+                   .join(",")}))`
+    );
+    params.push(...spec.tagExercises);
+  }
+  if (spec.query != null) {
+    const like = likePattern(spec.query);
+    // The three places the card's free text comes from: the activity title, the
+    // exercise names of its sets (the legacy/strength part names), and the names
+    // inside its stored components JSON (cardio/sport part names). json_each is
+    // guarded by json_valid because a present-but-unparseable `components` string
+    // is a real stored state (the card layer treats it as an empty list) and
+    // json_each would raise on it.
+    clauses.push(
+      `(a.title LIKE ? ESCAPE '\\'
+        OR EXISTS (SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+                     AND s.exercise LIKE ? ESCAPE '\\')
+        OR (a.components IS NOT NULL AND json_valid(a.components)
+            AND EXISTS (SELECT 1 FROM json_each(a.components) je
+                          WHERE json_extract(je.value, '$.name') LIKE ? ESCAPE '\\')))`
+    );
+    params.push(like, like, like);
+  }
+  return {
+    sql: clauses.length === 0 ? "" : ` AND ${clauses.join(" AND ")}`,
+    params,
+  };
+}
+
 export function getJournalPage(
   profileId: number,
   before: string | null,
-  dayLimit: number
+  dayLimit: number,
+  spec: JournalFilterSpec = NO_JOURNAL_FILTERS
 ): JournalPage {
   const limit = Math.max(1, dayLimit);
+  const filter = journalFilterSql(spec);
   // Over-fetch one extra date so we can tell whether an older page exists without
-  // issuing a separate count (or a trailing page that comes back empty).
-  const dateRows = (
-    before == null
-      ? db.prepare(
-          `SELECT DISTINCT date FROM activities WHERE profile_id = ?
-             ORDER BY date DESC LIMIT ?`
-        )
-      : db.prepare(
-          `SELECT DISTINCT date FROM activities WHERE profile_id = ? AND date < ?
-             ORDER BY date DESC LIMIT ?`
-        )
-  ).all(
-    ...(before == null
-      ? [profileId, limit + 1]
-      : [profileId, before, limit + 1])
-  ) as {
+  // issuing a separate count (or a trailing page that comes back empty). Under a
+  // filter the scan selects the days that CONTAIN a match across the whole ledger,
+  // so `nextBefore` pages over MATCHES, not over raw days (issue #1634).
+  const dateRows = db
+    .prepare(
+      `SELECT DISTINCT a.date AS date FROM activities a
+        WHERE a.profile_id = ?${before == null ? "" : " AND a.date < ?"}${filter.sql}
+        ORDER BY a.date DESC LIMIT ?`
+    )
+    .all(
+      profileId,
+      ...(before == null ? [] : [before]),
+      ...filter.params,
+      limit + 1
+    ) as {
     date: string;
   }[];
 
@@ -291,6 +421,11 @@ export function getJournalPage(
   const days = dateRows.slice(0, limit).map((r) => r.date);
   if (days.length === 0) return { activities: [], days: [], nextBefore: null };
 
+  // EVERY activity on the selected days — including, under a filter, the ones that
+  // do NOT match. Deliberate: the filter selects DAYS here and the pure card
+  // predicate (journalCardMatches) selects CARDS within them, and the card layer
+  // needs a day's full row set anyway for the manual-merge sibling picker, which
+  // must keep offering a same-day duplicate a search would otherwise hide (#64).
   const placeholders = days.map(() => "?").join(",");
   const activities = db
     .prepare(
@@ -303,6 +438,137 @@ export function getJournalPage(
     activities,
     days,
     nextBefore: hasMore ? days[days.length - 1] : null,
+  };
+}
+
+// ---- Journal filter preimages (issue #1634) ----
+
+// The profile's distinct exercise names, as stored. Small (dozens–hundreds even for
+// a long history) and the input to the tag preimage below. cache(): a request that
+// resolves the tag filter and re-renders would otherwise re-scan it.
+const distinctExerciseNames = cache(function distinctExerciseNames(
+  profileId: number
+): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT s.exercise AS exercise
+           FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+          WHERE a.profile_id = ?`
+      )
+      .all(profileId) as { exercise: string }[]
+  ).map((r) => r.exercise);
+});
+
+// The FINITE PREIMAGE of a muscle/region badge: which of the profile's own exercise
+// names map to it (issue #1634, the #394 pattern). regionForExercise/muscleFor are
+// pure TypeScript with a loose contains-fallback, so they cannot be expressed in
+// SQL — and the catalog alone is not the preimage either, because a user's free-text
+// exercise name still resolves through that fallback. So the mapping is evaluated in
+// JS over the names the profile ACTUALLY logged, and the result becomes an IN-list.
+// Bounded by the distinct-name count, resolved once per request.
+export function getJournalTagExercises(
+  profileId: number,
+  tag: { kind: "muscle" | "region"; value: string }
+): string[] {
+  const out = new Set<string>();
+  for (const name of distinctExerciseNames(profileId)) {
+    const hit =
+      tag.kind === "muscle"
+        ? muscleFor(name) === tag.value
+        : regionForExercise(name) === tag.value;
+    if (hit) out.add(name.trim().toLowerCase());
+  }
+  return [...out];
+}
+
+// Every activity the editor could NOT re-save as-is, by id, with the total count —
+// the honest backing for the "Can't be saved" filter AND its badge. Before #1634
+// both were derived from the LOADED pages, so a faulty row in an unfetched window
+// neither showed up nor was counted (and, with no fault on page one, the toggle did
+// not render at all — the filter was unreachable).
+//
+// COST. storedActivityFault() is a pure judgment over the row plus its sets, so this
+// walks the profile's activities and exercise_sets once. That is the SAME shape of
+// scan the Journal page already pays for its analytics side panel
+// (getStrengthByExercise reads every non-warmup set of the profile), so it does not
+// change the surface's cost class — and cache() collapses it to one pass per request
+// no matter how many callers ask.
+export interface ActivityFaults {
+  ids: number[]; // faulty activity ids, newest day first
+  count: number;
+}
+
+export const getActivityFaults = cache(function getActivityFaults(
+  profileId: number
+): ActivityFaults {
+  const rows = db
+    .prepare(
+      `SELECT id, type, title, start_time, end_time, components,
+              distance_km, duration_min
+         FROM activities WHERE profile_id = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId) as (StoredActivity & { id: number })[];
+  const setRows = db
+    .prepare(
+      `SELECT s.activity_id AS activityId, s.exercise, s.weight_kg, s.reps,
+              s.weight_kg_right, s.reps_right, s.duration_sec,
+              s.duration_sec_right, s.equipment_id
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ?
+        ORDER BY s.activity_id, s.set_number`
+    )
+    .all(profileId) as (StoredSet & { activityId: number })[];
+  const byActivity = new Map<number, StoredSet[]>();
+  for (const s of setRows) {
+    const arr = byActivity.get(s.activityId);
+    if (arr) arr.push(s);
+    else byActivity.set(s.activityId, [s]);
+  }
+  const ids: number[] = [];
+  for (const a of rows) {
+    if (storedActivityFault(a, byActivity.get(a.id) ?? []) != null)
+      ids.push(a.id);
+  }
+  return { ids, count: ids.length };
+});
+
+// The provenance KEYS present in this profile's ledger, for the source filter's
+// option list (issue #1634). A distinct-scan collapsed through the SAME
+// activityProvenanceKey the card chips and the pure predicate use, so every provider
+// is exactly one option and 'document:<id>' rows don't fan out into one option per
+// uploaded file. Manual first, then the rest alphabetically by key — a stable order
+// that doesn't shuffle as history grows. cache(): one scan per request.
+export const getJournalSourceKeys = cache(function getJournalSourceKeys(
+  profileId: number
+): string[] {
+  const rows = db
+    .prepare("SELECT DISTINCT source FROM activities WHERE profile_id = ?")
+    .all(profileId) as { source: string | null }[];
+  const keys = new Set(rows.map((r) => activityProvenanceKey(r.source)));
+  const rest = [...keys].filter((k) => k !== JOURNAL_SOURCE_MANUAL).sort();
+  return keys.has(JOURNAL_SOURCE_MANUAL)
+    ? [JOURNAL_SOURCE_MANUAL, ...rest]
+    : rest;
+});
+
+// Turn the feed's user-facing filters into the SQL-shaped spec, resolving the two
+// derived filters against this profile's own data. Called ONCE per feed request (the
+// page assembler), never per render.
+export function resolveJournalFilterSpec(
+  profileId: number,
+  filters: JournalFilters
+): JournalFilterSpec {
+  const query = filters.query.trim();
+  return {
+    query: query === "" ? null : query,
+    type: filters.type,
+    source: filters.source,
+    tagExercises: filters.tag
+      ? getJournalTagExercises(profileId, filters.tag)
+      : null,
+    faultIds: filters.faultOnly ? getActivityFaults(profileId).ids : null,
   };
 }
 
