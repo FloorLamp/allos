@@ -32,6 +32,14 @@ const active = (name: string, doseAmounts: (string | null)[]): StackItem => ({
   doseAmounts,
 });
 
+// An on-demand (`may` obligation) stack member — the conservative-direction subject.
+const onDemand = (name: string, doseAmounts: (string | null)[]): StackItem => ({
+  name,
+  active: true,
+  doseAmounts,
+  optional: true,
+});
+
 describe("parseQuantity", () => {
   it("parses a plain mass amount", () => {
     expect(parseQuantity("400 mg")).toEqual({ value: 400, unit: "mg" });
@@ -305,6 +313,130 @@ describe("stackRdaAdequacy (issue #578 — the RDA inverse)", () => {
     const detail = rdaAdequacyDetail(a);
     expect(detail.toLowerCase()).toContain("supplements alone provide");
     expect(detail.toLowerCase()).not.toContain("deficien");
+  });
+});
+
+describe("the conservative-direction rule for obligation (#1505)", () => {
+  // One obligation, two aggregates, opposite treatments — each erring toward caution.
+  // The seeded shape both browser specs use: a committed 400 mg + an on-demand 200 mg.
+  const stack = [
+    active("Magnesium Glycinate", ["400 mg"]),
+    onDemand("Magnesium Citrate", ["200 mg"]),
+  ];
+
+  it("summarizeStack reports the on-demand part WITHOUT subtracting it", () => {
+    // The split is carried, not applied: total stays whole so each consumer can
+    // choose its own direction. A summation that pre-subtracted would force one.
+    const t = summarizeStack(stack, 30, "male").find(
+      (x) => x.key === "magnesium"
+    )!;
+    expect(t.total).toBe(600);
+    expect(t.optionalTotal).toBe(200);
+    expect(t.contributors.find((c) => c.name === "Magnesium Citrate")?.optional).toBe(
+      true
+    );
+    expect(
+      t.contributors.find((c) => c.name === "Magnesium Glycinate")?.optional
+    ).toBeUndefined();
+  });
+
+  it("RISK: the UL total counts an on-demand item at FULL weight and says so", () => {
+    const w = stackUlWarnings(stack, 30, "male")[0];
+    // 600, not 400. Obligation is a wish about pushing, not a fact about intake.
+    expect(w.total).toBe(600);
+    expect(w.includesOptional).toBe(true);
+    expect(ulWarningDetail(w)).toContain("600 mg");
+    expect(ulWarningDetail(w)).toContain("including as-needed items");
+  });
+
+  it("RISK: the disclosure appears only when an on-demand item actually contributed", () => {
+    const w = stackUlWarnings(
+      [active("Magnesium Glycinate", ["600 mg"])],
+      30,
+      "male"
+    )[0];
+    expect(w.includesOptional).toBe(false);
+    expect(ulWarningDetail(w)).not.toContain("as-needed");
+  });
+
+  it("RISK: an on-demand item can raise a stack OVER the UL on its own", () => {
+    // 300 committed is under the 350 UL; +100 on-demand crosses it. Dropping the
+    // on-demand amount would silence this warning entirely — the regression that
+    // made contributesToDailyLimit obligation-blind.
+    const w = stackUlWarnings(
+      [
+        active("Magnesium Glycinate", ["300 mg"]),
+        onDemand("Magnesium Citrate", ["100 mg"]),
+      ],
+      30,
+      "male"
+    );
+    expect(w).toHaveLength(1);
+    expect(w[0].total).toBe(400);
+  });
+
+  it("REASSURANCE: the RDA share counts COMMITTED intake only, and discloses the rest", () => {
+    const a = stackRdaAdequacy(stack, 30, "male");
+    expect(a).toHaveLength(1);
+    // Adult male magnesium RDA 420. Committed 400 → 95%, not 600/420 (which would
+    // not even be a shortfall). Obligation may never inflate a reassurance figure.
+    expect(a[0].total).toBe(400);
+    expect(a[0].optionalTotal).toBe(200);
+    expect(a[0].sharePct).toBe(95);
+    const detail = rdaAdequacyDetail(a[0]);
+    expect(detail).toContain("400 mg");
+    expect(detail).toContain("A further 200 mg");
+    expect(detail).toContain("aren't counted toward this share");
+  });
+
+  it("REASSURANCE: no aside when nothing is on demand", () => {
+    const a = stackRdaAdequacy(
+      [active("Magnesium Glycinate", ["200 mg"])],
+      30,
+      "male"
+    )[0];
+    expect(a.optionalTotal).toBe(0);
+    expect(rdaAdequacyDetail(a)).not.toContain("as-needed");
+  });
+
+  it("REASSURANCE: a nutrient supplemented ONLY on demand still appears", () => {
+    // Excluding an amount from the share must never delete the row: going quiet
+    // about a nutrient the user supplements is the worst outcome for a demoted item.
+    const a = stackRdaAdequacy(
+      [onDemand("Magnesium Citrate", ["200 mg"])],
+      30,
+      "male"
+    );
+    expect(a).toHaveLength(1);
+    expect(a[0].total).toBe(0);
+    expect(a[0].sharePct).toBe(0);
+    expect(a[0].optionalTotal).toBe(200);
+    expect(rdaAdequacyDetail(a[0])).toContain("A further 200 mg");
+  });
+
+  it("REASSURANCE: committed intake at/above the RDA is still not reported", () => {
+    // The on-demand extra cannot resurrect a row the committed total already met…
+    expect(
+      stackRdaAdequacy(
+        [
+          active("Magnesium Glycinate", ["420 mg"]),
+          onDemand("Magnesium Citrate", ["200 mg"]),
+        ],
+        30,
+        "male"
+      )
+    ).toEqual([]);
+    // …nor can it satisfy one the committed total misses.
+    const a = stackRdaAdequacy(
+      [
+        active("Magnesium Glycinate", ["100 mg"]),
+        onDemand("Magnesium Citrate", ["400 mg"]),
+      ],
+      30,
+      "male"
+    );
+    expect(a).toHaveLength(1);
+    expect(a[0].sharePct).toBe(24);
   });
 });
 

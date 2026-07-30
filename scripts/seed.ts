@@ -1192,12 +1192,16 @@ const ironId = addSupp(
   { name: "Iron", obligation: "may", notes: "Empty stomach for absorption" },
   [{ amount: "18 mg", time: "Morning", food: "empty_stomach" }]
 );
-// Situational: only surfaces while "Illness" is active.
+// Situational: only surfaces while "Illness" is active. `should` by INTENT (#1505),
+// not by literal translation of its old `priority: "low"`: a situational item exists
+// to COME DUE when its situation activates, which is the whole point of the demo (and
+// what the situations browser test asserts). A `may` situational item would only ever
+// be "available", so the seed would stop demonstrating the gate it was written for.
 const zincId = addSupp(
   {
     name: "Zinc",
     condition: "situational",
-    obligation: "may",
+    obligation: "should",
     situation: "Illness",
     notes: "Immune support",
   },

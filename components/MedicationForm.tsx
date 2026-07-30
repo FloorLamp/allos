@@ -442,7 +442,7 @@ export default function MedicationForm({
         message:
           obligation === "may"
             ? `${label} will get no reminders, no missed-dose escalation, and no missed-dose safety net. It stays on your list and one tap away when you want it. Continue?`
-            : `${label} will still be reminded and still counted, but a missed dose will no longer escalate — no follow-up nudge, no caregiver alert. Continue?`,
+            : `${label} will still be reminded and still counted, but it loses missed-dose escalation — no follow-up nudge if a dose goes unconfirmed, no caregiver alert. Continue?`,
         confirmLabel: "Reduce reminders",
       });
       if (!ok) return;

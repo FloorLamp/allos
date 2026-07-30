@@ -752,12 +752,55 @@ The correspondence is about ROUTINE DUENESS only. A safety finding's tier is
 decided by the finding, never by the obligation of the item it names — that
 boundary is the one thing in this document that has no exceptions.
 
+### 5a. The conservative-direction rule
+
+Obligation-blindness answers whether a safety finding may FIRE. A second question
+sits behind it: when a safety-adjacent finding is computed from an aggregate, may
+obligation change the NUMBER? Sometimes yes — but only ever in the cautious
+direction, and the cautious direction is not the same for every aggregate.
+
+State the aggregate's polarity first, then apply the rule:
+
+| The number is a…               | Obligation may never… | So a `may` item is…                          |
+| ------------------------------ | --------------------- | -------------------------------------------- |
+| **risk** total (bigger = worse) | shrink it             | counted at full weight, and LABELLED as such |
+| **reassurance** share (bigger = better) | inflate it   | excluded from the figure, and DISCLOSED beside it |
+
+Both anchors live in `lib/dri.ts` over one shared summation:
+
+- The **upper-limit (UL)** warning is a risk total. A `may` item contributes its
+  full daily amount and `ulWarningDetail` appends "including as-needed items".
+- The **RDA adequacy** note is a reassurance share. It is computed from committed
+  (`must` + `should`) intake only, and `rdaAdequacyDetail` names the on-demand
+  remainder as an aside that is explicitly outside the share.
+
+Two consequences worth stating because both were once violated:
+
+1. **The upstream gate stays obligation-blind.** `contributesToDailyLimit` filters
+   on SCHEDULE alone. Obligation is applied per question, downstream, where the
+   direction of caution is known — a single upstream filter would silently force
+   one direction on both questions.
+2. **Neither direction is allowed to make a nutrient disappear.** Excluding an
+   amount from a share is not the same as dropping the row: a nutrient the user
+   supplements is still reported, because going quiet about it is the outcome the
+   demoting user least expects and least wants.
+
+The trap this rule exists to catch is a lossy vocabulary translation. Pre-#1505
+`as_needed` asserted a FACT about the schedule ("no standing daily intake"), so
+excluding it from a daily total was sound. `may` asserts only a WISH about pushing
+("don't nudge me"), and a daily item demoted to `may` is usually still taken every
+day. Carrying the old exclusion across the collapse therefore lost real
+milligrams — and with them a UL warning the user needed precisely because nothing
+was nudging them any more. When a field's meaning widens, re-derive every
+predicate that read it; do not translate it literally.
+
 ## Where each rule is enforced
 
 | Rule                                                    | Enforced by                                                                                              |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Obligation decides push; kind decides clinical identity | `isPushedIntake` / `accruesMisses` / `escalatesOnMiss` (`lib/supplement-schedule.ts`)                    |
 | Safety engines are obligation-blind                     | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                   |
+| Conservative direction per aggregate (5a)               | `lib/__tests__/dri.test.ts` + `lib/__tests__/supplement-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions |
 | Suggest-never-write                                     | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action |
 | Recovery clears a suggestion                            | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                     |
 | Window nesting                                          | `lib/__tests__/intake-demotion.test.ts`                                                                  |

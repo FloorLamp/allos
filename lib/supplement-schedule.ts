@@ -334,18 +334,28 @@ export function pauseLinkNeedsConfirm(
 
 // Whether an item's dose amounts count toward the DAILY Tolerable Upper Intake
 // Level (UL) / RDA sum (issue #635). The UL is a chronic *daily* threshold, so only
-// an item taken EVERY day contributes its full amount each day. A `may` item (which
-// absorbed PRN, #1505) is taken on demand — never a standing daily intake (mirroring isDueOn's PRN
-// short-circuit) — and a pre_workout / post_workout / rest_day / situational item
-// applies only on some days; counting either as a full daily dose overstates the
-// daily total and produces a standing false "above upper limit" (care-tier) alarm.
-// Conservatively, only an unconditional `daily` item contributes — the safe choice
-// for a care-tier gather where a false positive is worse than a missed occasional
-// exceedance.
+// an item taken EVERY day contributes its full amount each day: a pre_workout /
+// post_workout / rest_day / situational item applies only on some days, and counting
+// one as a full daily dose overstates the daily total and produces a standing false
+// "above upper limit" (care-tier) alarm. So the gate is the SCHEDULE, and only an
+// unconditional `daily` item contributes.
+//
+// This predicate is deliberately obligation-BLIND (#1505), and that is a correction,
+// not an omission. Pre-#1505 it also excluded `as_needed`, which was defensible
+// because `as_needed` asserted something narrow and factual: this item has no
+// standing daily intake. Obligation's `may` does NOT assert that. It says only that
+// the USER wants no expectation attached — no reminders, no misses — which is a
+// statement about pushing, not about pharmacology. A daily-scheduled item the user
+// demoted to `may` is very often still swallowed every day; carrying the old
+// exclusion across the collapse would silently drop its milligrams out of a
+// chronic-exposure total and lose a UL warning the user needs precisely because
+// nothing is nudging them about the item any more. Obligation must never shrink a
+// risk number (see the conservative-direction rule in lib/dri.ts). Callers that want
+// to distinguish committed intake from on-demand intake do so by LABELLING the
+// contribution, not by dropping it.
 export function contributesToDailyLimit(
-  item: Pick<Supplement, "condition"> & { obligation?: IntakeObligation }
+  item: Pick<Supplement, "condition">
 ): boolean {
-  if (item.obligation === "may") return false;
   return item.condition === "daily";
 }
 
@@ -451,9 +461,9 @@ export const OBLIGATION_LABELS: Record<IntakeObligation, string> = {
 // selector so the choice is never a bare adjective. Kept here so the form, the med
 // confirm dialog and any doc-facing surface quote the SAME consequences.
 export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
-  must: "Reminders, and a follow-up nudge if a dose goes unconfirmed. A miss is an incident.",
+  must: "Reminders, plus missed-dose escalation — a follow-up nudge if a dose goes unconfirmed. A miss is an incident.",
   should:
-    "Reminders and adherence tracking. A miss is a shortfall, never escalated.",
+    "Reminders and adherence tracking, but no missed-dose escalation. A miss is a shortfall, never chased twice.",
   may: "No reminders and no misses — kept on your list and one tap away when you want it.",
 };
 

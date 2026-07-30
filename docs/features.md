@@ -1468,6 +1468,15 @@ exactly what you would be giving up ("no reminders, no escalation, no missed-dos
 safety net"). Interaction, pharmacogenomic and upper-limit warnings ignore
 obligation entirely — they fire the same way whether an item is a Must or a May.
 
+The two nutrient totals treat a **May** item differently on purpose, and in each
+case the cautious direction wins. An **upper-limit** warning is about risk, so a
+May item counts at its full amount and the warning simply says it did ("including
+as-needed items") — your obligation setting can never make an exposure look
+smaller than it is. The **"% of the RDA" adequacy** note is reassurance, so the
+share counts only what you have committed to taking, and anything from as-needed
+items is named beside it rather than folded in. The nutrient still appears either
+way; nothing goes quiet because you asked not to be nudged.
+
 If a Must or Should supplement goes untaken for long enough, Supplements & Meds
 offers a calm **"move it to May?"** suggestion with the numbers behind it, and the
 same option appears as a third button on that item's own reminder — so it reaches

@@ -238,7 +238,10 @@ test("a medication's obligation control defaults to Must and states each level's
     await expect(hint).toContainText(/follow-up nudge/i);
 
     await obligation.selectOption("should");
-    await expect(hint).toContainText(/never escalated/i);
+    // The hint names the mechanism the user is giving up, not just its absence: the
+    // confirm dialog quotes the same phrase, so a user who reads either sees the same
+    // words for the same loss.
+    await expect(hint).toContainText(/no missed-dose escalation/i);
 
     await obligation.selectOption("may");
     await expect(hint).toContainText(/no reminders and no misses/i);
