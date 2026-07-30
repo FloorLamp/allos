@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import Combobox from "@/components/Combobox";
@@ -40,6 +40,8 @@ import {
   pauseLinkNeedsConfirm,
 } from "@/lib/supplement-schedule";
 import { useConfirm } from "@/components/ConfirmDialog";
+import DraftRestoreBanner from "./DraftRestoreBanner";
+import { useFormDraft } from "./useFormDraft";
 import type {
   FormResult,
   Supplement,
@@ -139,6 +141,59 @@ export default function SupplementForm({
     }))
   );
 
+  // Local draft (#1699). The scalar fields ride in the form's own named inputs;
+  // the dose rows, the cadence and the keep-apart pairs are React state that only
+  // becomes FormData at submit time, so they go in `extra`.
+  const draftExtra = useMemo(
+    () => ({
+      name,
+      condition,
+      situation,
+      obligation,
+      pauseSituation,
+      brand,
+      doses,
+      cadence,
+      pairRows,
+    }),
+    [
+      name,
+      condition,
+      situation,
+      obligation,
+      pauseSituation,
+      brand,
+      doses,
+      cadence,
+      pairRows,
+    ]
+  );
+  type SupplementDraft = typeof draftExtra;
+  const draft = useFormDraft<SupplementDraft>({
+    formKey: "supplement",
+    recordId: s?.id ?? null,
+    formRef,
+    extra: draftExtra,
+    onRestore: (d) => {
+      setName(d.name);
+      setCondition(d.condition);
+      setSituation(d.situation);
+      setObligation(d.obligation);
+      setPauseSituation(d.pauseSituation);
+      setBrand(d.brand);
+      setDoses(d.doses);
+      setCadence(d.cadence);
+      setPairRows(d.pairRows);
+    },
+    confirmReplace: () =>
+      confirm({
+        title: "Resume the unsaved supplement?",
+        message:
+          "This replaces what you have typed here with the entry kept on this device.",
+        confirmLabel: "Resume",
+      }),
+  });
+
   const entry = CATALOG_BY_NAME.get(name.trim().toLowerCase());
 
   // Picking a catalogued supplement seeds the first dose (amount/time/food) from the
@@ -195,6 +250,9 @@ export default function SupplementForm({
       setError(result.error);
       return;
     }
+    // The record is durably saved — the local draft has no reason to exist, and a
+    // surviving one would offer to re-enter what was just written (#1699).
+    draft.clear();
     toast(s ? `${label} updated` : `${label} added`);
     if (onDone) onDone();
     else {
@@ -308,6 +366,12 @@ export default function SupplementForm({
     <form ref={formRef} action={handle} className="grid gap-4 sm:grid-cols-2">
       {s && <input type="hidden" name="id" value={s.id} />}
       <input type="hidden" name="kind" value="supplement" />
+
+      <DraftRestoreBanner
+        draft={draft}
+        noun="supplement"
+        className="sm:col-span-2"
+      />
       <input type="hidden" name="rxcui" value={rx.rxcui ?? ""} />
       <input
         type="hidden"

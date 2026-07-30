@@ -55,6 +55,8 @@ import {
   pauseLinkNeedsConfirm,
 } from "@/lib/supplement-schedule";
 import { useConfirm } from "@/components/ConfirmDialog";
+import DraftRestoreBanner from "./DraftRestoreBanner";
+import { useFormDraft } from "./useFormDraft";
 import type {
   FormResult,
   IntakeObligation,
@@ -420,6 +422,96 @@ export default function MedicationForm({
     suggested.has("foodTiming") ||
     suggested.has("timeOfDay");
 
+  // Local draft (#1699). Named inputs cover the scalar fields; the dose rows,
+  // cadence and keep-apart pairs are state that only becomes FormData at submit, so
+  // they ride in `extra` — as do the prefill bookkeeping sets, without which a
+  // restored form would re-suggest over values the user had already accepted.
+  const draftExtra = useMemo(
+    () => ({
+      name,
+      condition,
+      situation,
+      pauseSituation,
+      brand,
+      rxFlag,
+      obligation,
+      startedOn,
+      startedOnTouched,
+      endDate,
+      minIntervalHours,
+      maxDailyCount,
+      redoseNotice,
+      product,
+      formulationSlug,
+      critical,
+      doses,
+      cadence,
+      pairRows,
+      touched: [...touched],
+      suggested: [...suggested],
+    }),
+    [
+      name,
+      condition,
+      situation,
+      pauseSituation,
+      brand,
+      rxFlag,
+      obligation,
+      startedOn,
+      startedOnTouched,
+      endDate,
+      minIntervalHours,
+      maxDailyCount,
+      redoseNotice,
+      product,
+      formulationSlug,
+      critical,
+      doses,
+      cadence,
+      pairRows,
+      touched,
+      suggested,
+    ]
+  );
+  type MedicationDraft = typeof draftExtra;
+  const draft = useFormDraft<MedicationDraft>({
+    formKey: "medication",
+    recordId: s?.id ?? null,
+    formRef,
+    extra: draftExtra,
+    onRestore: (d) => {
+      setName(d.name);
+      setCondition(d.condition);
+      setSituation(d.situation);
+      setPauseSituation(d.pauseSituation);
+      setBrand(d.brand);
+      setRxFlag(d.rxFlag);
+      setObligation(d.obligation);
+      setStartedOn(d.startedOn);
+      setStartedOnTouched(d.startedOnTouched);
+      setEndDate(d.endDate);
+      setMinIntervalHours(d.minIntervalHours);
+      setMaxDailyCount(d.maxDailyCount);
+      setRedoseNotice(d.redoseNotice);
+      setProduct(d.product);
+      setFormulationSlug(d.formulationSlug);
+      setCritical(d.critical);
+      setDoses(d.doses);
+      setCadence(d.cadence);
+      setPairRows(d.pairRows);
+      setTouched(new Set(d.touched));
+      setSuggested(new Set(d.suggested));
+    },
+    confirmReplace: () =>
+      confirm({
+        title: "Resume the unsaved medication?",
+        message:
+          "This replaces what you have typed here with the entry kept on this device.",
+        confirmLabel: "Resume",
+      }),
+  });
+
   async function handle(formData: FormData) {
     setError(null);
     formData.set("doses", JSON.stringify(doses));
@@ -479,6 +571,9 @@ export default function MedicationForm({
       setError(result.error);
       return;
     }
+    // Durably saved — drop the local draft so it can never re-offer what was just
+    // written (#1699).
+    draft.clear();
     toast(s ? `${label} updated` : `${label} added`);
     if (onDone) onDone();
     else {
@@ -511,6 +606,11 @@ export default function MedicationForm({
 
   return (
     <form ref={formRef} action={handle} className="grid gap-4 sm:grid-cols-2">
+      <DraftRestoreBanner
+        draft={draft}
+        noun="medication"
+        className="sm:col-span-2"
+      />
       {s && <input type="hidden" name="id" value={s.id} />}
       <input type="hidden" name="kind" value="medication" />
       <input type="hidden" name="product" value={product} />

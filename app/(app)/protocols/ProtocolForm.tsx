@@ -25,6 +25,8 @@ import {
   type ProtocolTemplate,
 } from "@/lib/protocol-templates";
 import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
+import DraftRestoreBanner from "@/components/DraftRestoreBanner";
+import { useFormDraft } from "@/components/useFormDraft";
 
 export type ProtocolFormResult =
   | { ok: true; redirectTo?: `/protocols/${number}` }
@@ -154,6 +156,33 @@ export default function ProtocolForm({
     ]
   );
 
+  // Local draft (#1699): the named inputs (name, dates, notes, per-practice fields)
+  // ride in the form itself; the template/outcome/practice pickers are state.
+  const draftExtra = useMemo(
+    () => ({
+      templateId,
+      selectedKeys,
+      practiceSelection,
+      practiceCustom,
+      intakeItemId,
+    }),
+    [templateId, selectedKeys, practiceSelection, practiceCustom, intakeItemId]
+  );
+  type ProtocolDraft = typeof draftExtra;
+  const draft = useFormDraft<ProtocolDraft>({
+    formKey: "protocol",
+    recordId: protocol?.id ?? null,
+    formRef,
+    extra: draftExtra,
+    onRestore: (d) => {
+      setTemplateId(d.templateId);
+      setSelectedKeys(d.selectedKeys);
+      setPracticeSelection(d.practiceSelection);
+      setPracticeCustom(d.practiceCustom);
+      setIntakeItemId(d.intakeItemId);
+    },
+  });
+
   function selectTemplate(id: string) {
     const next = protocolTemplateById(id);
     const available = new Set(options.map((option) => option.key));
@@ -185,6 +214,8 @@ export default function ProtocolForm({
       setError(result.error);
       return;
     }
+    // Written — the draft must not survive to re-offer it (#1699).
+    draft.clear();
     toast(editing ? "Protocol updated" : "Protocol created");
     if (!editing && result.redirectTo) {
       // Navigate from the client after the action resolves. A server-side
@@ -212,6 +243,11 @@ export default function ProtocolForm({
       data-testid="protocol-form"
     >
       {editing && <input type="hidden" name="id" value={protocol!.id} />}
+      <DraftRestoreBanner
+        draft={draft}
+        noun="protocol"
+        className="mx-4 sm:mx-6"
+      />
       <div
         key={editing ? "editing" : templateId || "blank"}
         className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-5 sm:px-6"
