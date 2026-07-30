@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { expandTrendsContext } from "./trends-chrome";
+import { censusRevealed, expandTrendsContext } from "./trends-chrome";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 
@@ -135,6 +135,8 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     });
     await page.setViewportSize(PHONE);
     await page.goto("/trends");
+    // The census streams (#1644): wait for its reveal before the tile queries.
+    await censusRevealed(page, "body", "trends-body");
 
     const sleepTile = page.getByTestId("body-tile-sleep");
     await expect(sleepTile).toBeVisible();
@@ -158,6 +160,7 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     });
     await page.setViewportSize(PHONE);
     await page.goto("/trends?view=all");
+    await censusRevealed(page, "body", "trends-body");
 
     // Old all-chart URLs still resolve to the compact tile overview on phones,
     // where the former all-metrics source-control stack is intentionally absent.
