@@ -206,19 +206,31 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Study date").fill(recentDate());
     // Close the DateField calendar popup so it can't intercept the Add click.
     await page.keyboard.press("Escape");
-    await settledClick(
+    // Assert the SUBMIT OUTCOME, exactly as the two sibling tests do. This test
+    // used to click blind through settledClick, which resolves on any same-origin
+    // POST — including one carrying a REFUSAL. `addImagingStudy` surfaces a
+    // failure as an inline `role="alert"` and renders no row, so a refused submit
+    // was indistinguishable from a slow one: it surfaced 20 s later as a bare
+    // "element(s) not found" on the row locator, naming neither the refusal nor
+    // its reason (recurring-failure census, docs/internals/e2e-hygiene.md).
+    // Waiting for "Study saved" fails AT the submit, with the inline error in the
+    // snapshot, whenever the action does not actually succeed.
+    await submitWithToast(
       page,
-      form.getByRole("button", { name: "Add", exact: true })
+      form.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
     );
 
     // The list row shows the PET display label (modality + region — the marker
     // region alone contains "PET", so assert the full label).
     const list = page.getByTestId("imaging-study-list");
+    await expect(list).toBeVisible();
     const row = list.getByRole("row").filter({ hasText: PET_REGION });
-    // Post-submit re-render ceiling: the add action's full-page re-render can
-    // exceed the 5s default on a loaded CI shard (recurring-failure census,
-    // docs/internals/e2e-hygiene.md — two unrelated-diff CI failures at this
-    // exact assertion). Not a sleep — still fails if the row never renders.
+    // Post-submit re-render ceiling. The toast above already proved the write
+    // succeeded, so reaching this timeout now means one specific thing — the row
+    // never repainted — rather than any of "refused", "slow" or "never submitted".
+    // The ceiling is measured, not a sleep: the post-action repaint runs ~0.3 s
+    // unthrottled and ~8 s under a 25× CPU throttle.
     await expect(row).toContainText(`PET ${PET_REGION}`, { timeout: 20_000 });
 
     // The cumulative card now carries an estimated portion (the PET typical
