@@ -428,6 +428,15 @@ than one profile is in view — a single view stays exactly as it was.
 
 ## Training
 
+The **Log** tab's journal feed loads the newest window of days and pages older
+ones in on demand, but its **search and filters query the whole ledger**: typing
+a name, picking an activity type, clicking a muscle/region badge, or switching on
+"Can't be saved" re-asks the store, and the feed pages over _matches_ — so a
+session from years back shows up on the first screen of results with no "Load
+more" clicks. A **Source** filter sits alongside them, offering exactly the
+providers your own history contains (Manual, Strava, Google Health Connect,
+Document, …) labelled the same way the cards' provenance chips are.
+
 Workout history, goals, strength analysis, cardio records, sport summaries, and
 per-exercise history; the Overview tab carries a **Training watch** card of
 calm, dismissible observations over your recent training — a push/pull volume

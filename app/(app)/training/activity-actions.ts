@@ -5,7 +5,9 @@ import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
 import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
-import { buildJournalFeedPage, type JournalFeedPage } from "@/lib/journal-feed";
+import { type JournalFeedPage } from "@/lib/journal-feed";
+import { normalizeJournalFilters } from "@/lib/journal-filters";
+import { resolveJournalFeed } from "./journal-feed-resolve";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   writeActivityFold,
@@ -629,22 +631,32 @@ function parseMergeDropIds(formData: FormData): number[] {
   return [...seen];
 }
 
-// Load an older window of the Journal feed (issue #451). The Training → Log surface
-// renders only its newest page server-side; this fetches the next-older window on a
-// "Load more" tap (or when a deep link targets a day/activity below the loaded set).
-// A READ, but scoped to the SESSION's active profile — `before` is the only client
-// input and is used purely as a `date <` cursor, never a profile selector, so it can't
-// reach another profile's history (getJournalPage filters by profile_id). A malformed
-// cursor is normalized to null (start from the newest day) rather than trusted into SQL.
+// Load one window of the Journal feed (issues #451, #1634). The Training → Log
+// surface renders only its newest UNFILTERED page server-side; this fetches the
+// next-older window on a "Load more" tap (or when a deep link targets a day/activity
+// below the loaded set) — and, since #1634, page one of a FILTERED feed whenever the
+// user changes a filter, so search pages over matches across the whole ledger instead
+// of over whatever windows happen to be loaded.
+//
+// A READ, but scoped to the SESSION's active profile (or, in a household view, its
+// authorized view-set — resolveJournalFeed re-resolves the scope on every call).
+// `before` and `filters` are the only client inputs and neither selects a profile:
+// the cursor is used purely as a `date <` bound, and the filters are normalized
+// (normalizeJournalFilters) before anything reaches SQL — an unknown activity type,
+// an over-long query, or a malformed tag degrades to "no such filter" rather than
+// being trusted. A malformed cursor normalizes to null (start from the newest day).
 export async function loadJournalPage(
-  before: string | null
+  before: string | null,
+  filters?: unknown
 ): Promise<JournalFeedPage> {
-  const { login, profile } = await requireSession();
+  await requireSession();
   const cursor =
     typeof before === "string" && isRealIsoDate(before) ? before : null;
-  const units = getUnitPrefs(login.id);
-  const formatPrefs = getDisplayFormatPrefs(login.id);
-  return buildJournalFeedPage(profile.id, cursor, units, formatPrefs);
+  const feed = await resolveJournalFeed(
+    normalizeJournalFilters(filters),
+    cursor
+  );
+  return { groups: feed.groups, nextBefore: feed.cursor };
 }
 
 export async function deleteActivity(
