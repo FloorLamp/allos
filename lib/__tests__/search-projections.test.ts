@@ -117,10 +117,10 @@ describe("providerHitText", () => {
   });
 
   it("adds the distinguishing attribute ONLY when the name is ambiguous", () => {
-    const row = { ...base, type: "individual", npi: "4041234567" };
+    const row = { ...base, type: "individual", npi: "1234567893" };
     expect(providerHitText(row).subtitle).not.toContain("NPI");
     expect(providerHitText(row, { ambiguousName: true }).subtitle).toContain(
-      "NPI 4041234567"
+      "NPI 1234567893"
     );
   });
 

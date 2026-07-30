@@ -226,9 +226,9 @@ test("the entity domains added in #1595 are searchable and land on their own sur
   page,
 }) => {
   test.slow();
-  // Start on the dashboard: none of the destinations below is the current route,
-  // so every assertion is a real navigation.
-  await page.goto("/");
+  // Start on Upcoming: none of the destinations below is the current route, so
+  // every navigation below is real.
+  await page.goto("/upcoming");
 
   const input = await openCommandPalette(page);
   await input.fill(ENTITY_MARKER);
@@ -237,6 +237,11 @@ test("the entity domains added in #1595 are searchable and land on their own sur
   // One query, one hit per new domain — the groups are what the issue's ask is
   // about ("providers, imaging, dental, skin lesions, genomics, episodes,
   // protocols, practices, equipment are unsearchable").
+  //
+  // The FIRST assertion carries a longer budget: the debounced server search can
+  // outlive the default assertion window under shard contention (the same reason
+  // smoke.spec.ts waits 15s on its palette group), and waiting on the result
+  // itself keeps that patience honest — no network-quiet guessing.
   for (const label of [
     "Imaging",
     "Genomics",
@@ -248,7 +253,9 @@ test("the entity domains added in #1595 are searchable and land on their own sur
     "Practices",
     "Equipment",
   ]) {
-    await expect(results.getByText(label, { exact: true })).toBeVisible();
+    await expect(results.getByText(label, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
   }
 
   const option = (text: string) =>

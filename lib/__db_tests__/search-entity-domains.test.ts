@@ -96,7 +96,7 @@ beforeAll(() => {
     name: "Northgate Imaging Center",
     type: "organization",
     specialty: "Radiology",
-    npi: "4041110001",
+    npi: "1234567893",
     dedupKey: "searchdom-northgate",
   });
   const unseenId = newProvider({
@@ -107,13 +107,13 @@ beforeAll(() => {
   dupSmithA = newProvider({
     name: "Robin Quailfeather",
     specialty: "Dermatology",
-    npi: "4042220002",
+    npi: "9999999995",
     dedupKey: "searchdom-quail-a",
   });
   dupSmithB = newProvider({
     name: "Robin Quailfeather",
     specialty: "Dentistry",
-    npi: "4043330003",
+    npi: "1111111116",
     dedupKey: "searchdom-quail-b",
   });
 
@@ -302,8 +302,8 @@ describe("providers are searchable as entities (#1055/#1595)", () => {
     const found = hits(mine, "Quailfeather", "provider");
     expect(found).toHaveLength(2);
     const subtitles = found.map((h) => h.subtitle ?? "");
-    expect(subtitles.some((s) => s.includes("NPI 4042220002"))).toBe(true);
-    expect(subtitles.some((s) => s.includes("NPI 4043330003"))).toBe(true);
+    expect(subtitles.some((s) => s.includes("NPI 9999999995"))).toBe(true);
+    expect(subtitles.some((s) => s.includes("NPI 1111111116"))).toBe(true);
     expect(found.map((h) => h.href)).toEqual(
       expect.arrayContaining([
         `/providers/${dupSmithA}`,
