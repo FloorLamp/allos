@@ -40,7 +40,8 @@ test.describe("Care plan (#391)", () => {
     await page.goto("/records/care/overview");
     const row = page.locator("tr").filter({ hasText: "E2E orthotics fitting" });
     await expect(row).toBeVisible();
-    await row.getByRole("button", { name: "Edit" }).click();
+    await row.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
 
     // Two "Status" pickers now exist (the always-present add form + this edit
     // form); target the edit form's by its non-"new" id. Since #1676 the status is
@@ -85,7 +86,7 @@ test.describe("Care plan (#391)", () => {
       page.getByRole("heading", { name: "Health goals" })
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Add health goal" })
+      page.getByTestId("add-health-goal-panel-toggle")
     ).toBeVisible();
     // A seeded goal from the record's Goals section.
     await expect(page.getByText("HbA1c below 6.5%")).toBeVisible();

@@ -16,10 +16,8 @@ export default async function RecordsVisionPage() {
   if (!getNavRelevance(profile.id).vision) redirect("/records/specialty/skin");
   return (
     <div data-testid="records-vision">
-      <SectionSubtitle>
-        Your eyeglass and contact-lens prescriptions — per-eye power, PD, and
-        how your sphere has changed over time. Add them manually or import an
-        uploaded Rx slip.
+      <SectionSubtitle more="Prescriptions can be added manually or imported from an uploaded prescription slip.">
+        Review eyeglass and contact-lens prescriptions over time.
       </SectionSubtitle>
       <VisionSection profileId={profile.id} loginId={login.id} />
     </div>

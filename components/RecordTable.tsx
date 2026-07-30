@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import {
-  IconPencil,
-  IconTrash,
-  IconCaretUpFilled,
-  IconCaretDownFilled,
-} from "@tabler/icons-react";
+import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/ui";
 import SubjectChip from "@/components/SubjectChip";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
 import type { SubjectInfo } from "@/lib/scope";
 
@@ -50,8 +49,8 @@ export interface RecordTableMultiView<T> {
 
 // The shared Records list surface: a `card` table whose rows
 // each swap in place for an inline edit form (a `colSpan` cell rendering the
-// page's shared <XForm>), with a per-row pencil (edit) + trash (confirm → delete)
-// action cell and the shared EmptyState. Columns and the edit form are supplied by
+// page's shared <XForm>), with record CRUD in the shared overflow menu and the
+// shared EmptyState. Columns and the edit form are supplied by
 // the caller so each page keeps its own field set; RecordTable owns the shell, the
 // edit toggle, the (optional) header sorting, and the delete confirmation.
 export default function RecordTable<T extends { id: number }>({
@@ -83,6 +82,7 @@ export default function RecordTable<T extends { id: number }>({
 }) {
   const confirm = useConfirm();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [sortIndex, setSortIndex] = useState<number | null>(
     defaultSort?.index ?? null
   );
@@ -90,7 +90,7 @@ export default function RecordTable<T extends { id: number }>({
 
   // Plain-button delete (not a form action) so confirm() can open a dialog the
   // user must answer before the destructive delete runs.
-  async function handleDelete(item: T) {
+  async function handleDelete(item: T, close: () => void) {
     const opts = confirmDelete(item);
     const ok = await confirm({
       title: opts.title,
@@ -99,6 +99,7 @@ export default function RecordTable<T extends { id: number }>({
       danger: true,
     });
     if (!ok) return;
+    close();
     await onDelete(item);
   }
 
@@ -229,25 +230,38 @@ export default function RecordTable<T extends { id: number }>({
                       : true;
                     if (!canWrite) return null;
                     return (
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setEditingId(item.id)}
-                          aria-label="Edit"
-                          title="Edit record"
-                          className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
+                      <div className="flex items-center justify-end">
+                        <OverflowMenu
+                          label="Record actions"
+                          open={menuOpenId === item.id}
+                          onOpenChange={(open) =>
+                            setMenuOpenId(open ? item.id : null)
+                          }
                         >
-                          <IconPencil className="h-4 w-4" stroke={1.75} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(item)}
-                          aria-label="Delete"
-                          title="Delete record"
-                          className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
-                        >
-                          <IconTrash className="h-4 w-4" stroke={1.75} />
-                        </button>
+                          {({ close }) => (
+                            <>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setEditingId(item.id);
+                                  close();
+                                }}
+                                className={MENU_ITEM}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => handleDelete(item, close)}
+                                className={MENU_ITEM_DANGER}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </OverflowMenu>
                       </div>
                     );
                   })()}

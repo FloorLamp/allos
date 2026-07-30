@@ -54,6 +54,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     test.slow();
 
     await page.goto("/records/specialty/skin");
+    await page.getByTestId("add-skin-lesion-panel-toggle").click();
     const form = page.getByTestId("skin-lesion-form");
     await expect(form).toBeVisible();
 

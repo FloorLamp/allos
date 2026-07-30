@@ -5,6 +5,7 @@ import {
 } from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import ProcedureForm from "@/app/(app)/records/history/procedures/ProcedureForm";
 import ProcedureList from "@/app/(app)/records/history/procedures/ProcedureList";
 import { addProcedure } from "@/app/(app)/records/history/procedures/actions";
@@ -39,19 +40,24 @@ export default function ProceduresSection({
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <ProcedureList
-            items={procedures}
-            performedAt={performedAt}
-            multiView={
-              multi ? { actingProfileId: scope.actingProfileId } : undefined
-            }
-          />
-        </div>
-
-        <div className="min-w-0 space-y-4">
-          <ProcedureForm action={addProcedure} prefillName={prefillName} />
+      <div className="space-y-6">
+        <ProcedureList
+          items={procedures}
+          performedAt={performedAt}
+          multiView={
+            multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+        />
+        <div>
+          <AddEntryPanel
+            testId="add-procedure-panel"
+            panelId="add-procedure-panel-body"
+            label="Add procedure"
+            defaultOpen={!!prefillName}
+            presentation="modal"
+          >
+            <ProcedureForm action={addProcedure} prefillName={prefillName} />
+          </AddEntryPanel>
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Imported procedures come from uploaded health records (CCD
             Procedures section).

@@ -39,6 +39,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     test.slow();
 
     await page.goto("/records/specialty/vision");
+    await page.getByTestId("add-prescription-panel-toggle").click();
     const form = page.getByTestId("optical-prescription-form");
     await expect(form).toBeVisible();
 
@@ -58,7 +59,8 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
 
     // Edit it: change the OS (left eye) sphere — the second "Sphere" input — to a
     // distinctive value and confirm the row reflects it. OD stays the -6.25 marker.
-    await row.getByRole("button", { name: "Edit" }).click();
+    await row.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = list.getByTestId("optical-prescription-form");
     await editForm.getByLabel("Sphere").nth(1).fill("-3.50");
     await editForm.getByRole("button", { name: "Save", exact: true }).click();
@@ -70,7 +72,8 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     // Delete it and confirm it's gone. The confirm click MUST be scoped to the
     // dialog — the page carries a per-row Delete button for every seeded Rx too.
     const survivor = list.getByRole("row").filter({ hasText: "-6.25" });
-    await survivor.getByRole("button", { name: "Delete" }).click();
+    await survivor.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })
@@ -102,7 +105,8 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     }
 
     await page.goto("/records/specialty/vision");
-    const form = page.getByTestId("optical-prescription-form");
+    await page.getByTestId("add-prescription-panel-toggle").click();
+    let form = page.getByTestId("optical-prescription-form");
     await expect(form).toBeVisible();
 
     // One eye's four inputs render per eye row: index 0 = OD, 1 = OS.
@@ -130,16 +134,18 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
       form.getByRole("button", { name: "Add", exact: true })
     );
     await expect(page.getByText("Prescription saved").first()).toBeVisible(); // first-ok: asserts the save confirmation appears — order-agnostic presence
-    // The save resets the form AND fires router.refresh(), whose RSC apply can
-    // re-render the page mid-fill and wipe values typed in the gap. Wait for the
-    // SERVER-rendered marker of the completed refresh — the first Rx appearing in
-    // the list — before touching the form again (the helpers.ts precedent for
-    // pages with post-action refresh traffic).
+    // The save closes the add modal and fires router.refresh(). Wait for the
+    // server-rendered marker of the completed refresh before reopening the form.
     const list = page.getByTestId("optical-prescription-list");
     await expect(
       list.getByRole("row").filter({ hasText: "OD -7.25" })
     ).toHaveCount(1);
-    await expect(form.getByLabel("Sphere").first()).toHaveValue(""); // first-ok: the right-eye Sphere field reset after save — order-agnostic
+    await expect(
+      page.getByRole("dialog", { name: "Add prescription" })
+    ).toBeHidden();
+    await page.getByTestId("add-prescription-panel-toggle").click();
+    form = page.getByTestId("optical-prescription-form");
+    await expect(form.getByLabel("Sphere").first()).toHaveValue(""); // first-ok: the right-eye Sphere field starts blank after reopening — order-agnostic
 
     // Rx 2 — the SAME refraction in plus-cyl (ophthalmology) notation, dated
     // NEWER than every seeded Rx so it is the progression's last point:

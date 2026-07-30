@@ -6,6 +6,7 @@ import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import EncounterField from "@/components/EncounterField";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import {
   SKIN_LESION_STATUSES,
   BODY_REGIONS,
@@ -33,6 +34,7 @@ export default function SkinLesionForm({
   onDone?: () => void;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!record;
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +53,10 @@ export default function SkinLesionForm({
       return;
     }
     toast(editing ? "Lesion updated" : "Lesion saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      closeEntryModal?.();
+    }
     onDone?.();
   }
 
@@ -60,14 +65,9 @@ export default function SkinLesionForm({
     <form
       ref={formRef}
       action={handle}
-      className="card space-y-3"
+      className={editing ? "card space-y-3" : "space-y-3"}
       data-testid="skin-lesion-form"
     >
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add skin lesion
-        </h2>
-      )}
       {editing && <input type="hidden" name="id" value={record!.id} />}
       <div>
         <label className="label" htmlFor={`sl-label-${uid}`}>

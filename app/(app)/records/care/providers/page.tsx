@@ -10,9 +10,8 @@ export default async function RecordsProvidersPage() {
   const { profile } = await requireSession();
   return (
     <div data-testid="records-providers">
-      <SectionSubtitle>
-        Your shared registry of clinicians and organizations. Record counts are
-        for the active profile.
+      <SectionSubtitle more="Record counts reflect the active profile.">
+        Review clinicians and care organizations.
       </SectionSubtitle>
       <ProvidersSection profileId={profile.id} profileName={profile.name} />
     </div>

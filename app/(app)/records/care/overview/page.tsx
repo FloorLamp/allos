@@ -18,7 +18,7 @@ export default async function RecordsCareOverviewPage() {
   // it's person-level context, not a flat record list. Single view is byte-identical.
   const scope = await requireScope();
   return (
-    <div className="space-y-12">
+    <div className="space-y-8">
       <section data-testid="records-background">
         <SectionHeader
           id="background"
@@ -32,7 +32,7 @@ export default async function RecordsCareOverviewPage() {
         <SectionHeader
           id="family-history"
           title="Family history"
-          subtitle="Conditions affecting your relatives — hereditary risk context, coded when imported from a health record. Add entries manually or import from uploaded records (CCD Family History section)."
+          subtitle="Review conditions affecting relatives."
         />
         <FamilyHistorySection scope={scope} />
       </section>
@@ -41,7 +41,7 @@ export default async function RecordsCareOverviewPage() {
         <SectionHeader
           id="care-plan"
           title="Care plan"
-          subtitle="Planned & ordered care from your health records (Plan of Treatment / Care Plan section) — upcoming procedures, visits, tests, and orders. Add them manually or import from uploaded records."
+          subtitle="Review planned and ordered care."
         />
         <CarePlanSection scope={scope} />
       </section>
@@ -50,7 +50,7 @@ export default async function RecordsCareOverviewPage() {
         <SectionHeader
           id="health-goals"
           title="Health goals"
-          subtitle="Clinical goals & targets from your health records (Goals section) — e.g. an A1c or blood-pressure target set by a provider. (Distinct from your personal fitness Goals.)"
+          subtitle="Review clinical goals and targets."
         />
         <HealthGoalsSection scope={scope} />
       </section>

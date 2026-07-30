@@ -93,7 +93,7 @@ test.describe("Visits — single Add visit entry (#566)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/records/history/visits");
+    await page.goto("/records/history/visits?new=1");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 
@@ -119,7 +119,7 @@ test.describe("Visits — single Add visit entry (#566)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/records/history/visits");
+    await page.goto("/records/history/visits?new=1");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 

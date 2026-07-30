@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import Combobox from "@/components/Combobox";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import {
   bestIcd10Suggestion,
   icd10CodeForName,
@@ -30,7 +32,9 @@ export default function ConditionForm({
   profileId?: number;
   onDone?: () => void;
 }) {
+  const router = useRouter();
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!condition;
   const [status, setStatus] = useState(condition?.status ?? "active");
@@ -112,18 +116,19 @@ export default function ConditionForm({
       setCode("");
       setCodeSystem("");
       pickedCode.current = null;
+      closeEntryModal?.();
     }
     onDone?.();
+    router.refresh();
   }
 
   const uid = condition?.id ?? "new";
   return (
-    <form ref={formRef} action={handle} className="card space-y-3">
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add condition
-        </h2>
-      )}
+    <form
+      ref={formRef}
+      action={handle}
+      className={editing ? "card space-y-3" : "space-y-3"}
+    >
       {editing && <input type="hidden" name="id" value={condition!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />

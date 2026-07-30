@@ -6,6 +6,7 @@ import Combobox from "@/components/Combobox";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import { PICKER_NAMES, vaccineDisplayName } from "@/lib/immunization-catalog";
 import {
   IMMUNIZATION_ROUTES,
@@ -46,6 +47,7 @@ export default function ImmunizationForm({
   defaultDate: string;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!immunization;
   const [vaccine, setVaccine] = useState(
@@ -74,17 +76,17 @@ export default function ImmunizationForm({
     if (!editing) {
       formRef.current?.reset();
       setVaccine("");
+      closeEntryModal?.();
     }
     onDone?.();
   }
 
   return (
-    <form ref={formRef} action={handle} className="card space-y-3">
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add immunization
-        </h2>
-      )}
+    <form
+      ref={formRef}
+      action={handle}
+      className={editing ? "card space-y-3" : "space-y-3"}
+    >
       {editing && <input type="hidden" name="id" value={immunization!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />

@@ -64,7 +64,8 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await expect(row).toContainText("Hereditary risk");
 
     // Edit it: change the significance to pathogenic.
-    await row.getByRole("button", { name: "Edit" }).click();
+    await row.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = list.getByTestId("genomic-variant-form");
     await editForm
       .getByLabel("Clinical significance")
@@ -79,12 +80,10 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
       { timeout: 15_000 }
     );
 
-    // Delete it and confirm it's gone. The confirm click MUST be scoped to the
-    // dialog: the page also carries one per-row aria-label="Delete" button for
-    // every variant (incl. the seeded CYP2C19/BRCA1/APOE rows), so an unscoped
-    // getByRole("button", { name: "Delete" }) is a strict-mode collision.
+    // Delete it through the row's shared record-actions menu.
     const survivor = list.getByRole("row").filter({ hasText: GENE });
-    await survivor.getByRole("button", { name: "Delete" }).click();
+    await survivor.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await settledClick(
       page,
       page

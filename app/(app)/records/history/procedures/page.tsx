@@ -18,10 +18,8 @@ export default async function RecordsProceduresPage(props: {
     newParam === "1" && nameParam?.trim() ? nameParam.trim() : undefined;
   return (
     <div data-testid="records-procedures">
-      <SectionSubtitle>
-        Your procedure &amp; surgical history — coded (CPT / SNOMED) when
-        imported from a health record. Add them manually or import from uploaded
-        records (CCD Procedures section).
+      <SectionSubtitle more="Imported records may include CPT or SNOMED codes from the CCD Procedures section.">
+        Review procedures and surgical history.
       </SectionSubtitle>
       <ProceduresSection scope={scope} prefillName={prefillName} />
     </div>

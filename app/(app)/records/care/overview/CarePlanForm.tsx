@@ -1,10 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import {
   CARE_PLAN_CATEGORIES,
   CARE_PLAN_CATEGORY_LABELS,
@@ -46,7 +48,9 @@ export default function CarePlanForm({
   profileId?: number;
   onDone?: () => void;
 }) {
+  const router = useRouter();
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!item;
   const [error, setError] = useState<string | null>(null);
@@ -97,18 +101,19 @@ export default function CarePlanForm({
       setCategoryOther("");
       setStatus("");
       setStatusOther("");
+      closeEntryModal?.();
     }
     onDone?.();
+    router.refresh();
   }
 
   const uid = item?.id ?? "new";
   return (
-    <form ref={formRef} action={handle} className="card space-y-3">
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add care-plan item
-        </h2>
-      )}
+    <form
+      ref={formRef}
+      action={handle}
+      className={editing ? "card space-y-3" : "space-y-3"}
+    >
       {editing && <input type="hidden" name="id" value={item!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />

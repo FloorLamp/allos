@@ -10,10 +10,8 @@ export default async function RecordsSkinPage() {
   const { profile } = await requireSession();
   return (
     <div data-testid="records-skin">
-      <SectionSubtitle>
-        Track moles and spots over time — a body-map location, size, and your
-        ABCDE observations, with dated photos for side-by-side comparison. Flag
-        one to watch and it becomes a tracked recheck.
+      <SectionSubtitle more="Each record can include a body-map location, size, ABCDE observations, dated photos, and a tracked recheck.">
+        Track moles and spots over time.
       </SectionSubtitle>
       <SkinSection profileId={profile.id} />
     </div>

@@ -9,6 +9,7 @@ export function PageHeader({
   subtitle,
   action,
   compactBelowSm = false,
+  hideSubtitleBelowSm = false,
   actionAlign = "end",
   className = "",
 }: {
@@ -24,6 +25,9 @@ export function PageHeader({
   // most pages have nothing else naming them, and a heading-less page is a real
   // loss there. Desktop is byte-identical either way.
   compactBelowSm?: boolean;
+  // Keep the page title but drop read-once orientation copy on phones. This is
+  // useful for tabbed hubs whose navigation already supplies the local context.
+  hideSubtitleBelowSm?: boolean;
   actionAlign?: "start" | "end";
   className?: string;
 }) {
@@ -51,7 +55,7 @@ export function PageHeader({
         {subtitle && (
           <div
             className={`mt-1 text-sm text-slate-500 dark:text-slate-400 ${
-              compactBelowSm ? "hidden sm:block" : ""
+              compactBelowSm || hideSubtitleBelowSm ? "hidden sm:block" : ""
             }`}
           >
             {subtitle}

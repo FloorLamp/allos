@@ -16,10 +16,12 @@ export function SectionHeader({
   id,
   title,
   subtitle,
+  more,
 }: {
   id?: string;
   title: string;
   subtitle: string;
+  more?: React.ReactNode;
 }) {
   return (
     <div id={id} className="mb-4 scroll-mt-24">
@@ -29,15 +31,36 @@ export function SectionHeader({
       <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         {subtitle}
       </div>
+      {more ? <IntroMore>{more}</IntroMore> : null}
     </div>
   );
 }
 
 // The descriptive line for a SOLO pane (the tab strip already provides the title).
-export function SectionSubtitle({ children }: { children: React.ReactNode }) {
+export function SectionSubtitle({
+  children,
+  more,
+}: {
+  children: React.ReactNode;
+  more?: React.ReactNode;
+}) {
   return (
-    <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
-      {children}
-    </p>
+    <div className="mb-6" data-testid="records-pane-intro">
+      <p className="text-sm text-slate-500 dark:text-slate-400">{children}</p>
+      {more ? <IntroMore>{more}</IntroMore> : null}
+    </div>
+  );
+}
+
+function IntroMore({ children }: { children: React.ReactNode }) {
+  return (
+    <details className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      <summary className="cursor-pointer font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
+        More
+      </summary>
+      <div className="mt-1" data-testid="records-pane-intro-more">
+        {children}
+      </div>
+    </details>
   );
 }

@@ -1,6 +1,7 @@
 import { getFamilyHistory } from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import FamilyHistoryForm from "@/app/(app)/records/care/overview/FamilyHistoryForm";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import FamilyHistoryList from "@/app/(app)/records/care/overview/FamilyHistoryList";
 import { addFamilyHistory } from "@/app/(app)/records/care/overview/family-history-actions";
 
@@ -22,18 +23,22 @@ export default function FamilyHistorySection({
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="min-w-0 space-y-4 lg:col-span-2">
-        <FamilyHistoryList
-          items={entries}
-          multiView={
-            multi ? { actingProfileId: scope.actingProfileId } : undefined
-          }
-        />
-      </div>
-
-      <div className="min-w-0 space-y-4">
-        <FamilyHistoryForm action={addFamilyHistory} />
+    <div className="space-y-6">
+      <FamilyHistoryList
+        items={entries}
+        multiView={
+          multi ? { actingProfileId: scope.actingProfileId } : undefined
+        }
+      />
+      <div>
+        <AddEntryPanel
+          testId="add-family-history-panel"
+          panelId="add-family-history-panel-body"
+          label="Add family history"
+          presentation="modal"
+        >
+          <FamilyHistoryForm action={addFamilyHistory} />
+        </AddEntryPanel>
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
           Imported entries come from uploaded health records (CCD Family History
           section).

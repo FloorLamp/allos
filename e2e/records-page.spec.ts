@@ -194,7 +194,7 @@ test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
   await expectNoClippedContent(page);
 });
 
-test("the five specialty sub-tabs render for the seeded profile, with their forms + crisis line (#1079)", async ({
+test("the five specialty sub-tabs render with rare entry collapsed and the crisis line present (#1079, #1497)", async ({
   page,
 }) => {
   test.slow();
@@ -213,8 +213,11 @@ test("the five specialty sub-tabs render for the seeded profile, with their form
   }
 
   await expect(
-    page.getByTestId("records-vision").getByTestId("optical-prescription-form")
+    page
+      .getByTestId("records-vision")
+      .getByTestId("add-prescription-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("optical-prescription-form")).toBeHidden();
 
   await followLink(
     page,
@@ -222,8 +225,11 @@ test("the five specialty sub-tabs render for the seeded profile, with their form
     /\/records\/specialty\/dental$/
   );
   await expect(
-    page.getByTestId("records-dental").getByTestId("dental-procedure-form")
+    page
+      .getByTestId("records-dental")
+      .getByTestId("add-dental-record-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("dental-procedure-form")).toBeHidden();
 
   await followLink(
     page,
@@ -231,8 +237,9 @@ test("the five specialty sub-tabs render for the seeded profile, with their form
     /\/records\/specialty\/skin$/
   );
   await expect(
-    page.getByTestId("records-skin").getByTestId("skin-lesion-form")
+    page.getByTestId("records-skin").getByTestId("add-skin-lesion-panel-toggle")
   ).toBeVisible();
+  await expect(page.getByTestId("skin-lesion-form")).toBeHidden();
 
   // Mental health — its crisis line travels WITH the route (the safety contract is
   // content, not route, #716/#1079).

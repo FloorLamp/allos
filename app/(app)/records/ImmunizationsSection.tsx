@@ -7,6 +7,7 @@ import {
   getPickerProviders,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { getUserBirthdate, getUserSex, getStoredAge } from "@/lib/settings";
 import { getRiskFactors } from "@/lib/queries/upcoming/risk";
@@ -351,8 +352,8 @@ export default function ImmunizationsSection({
           />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="min-w-0 space-y-6 lg:col-span-2">
+        <div className="space-y-6">
+          <div className="space-y-6">
             <div className="card">
               <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
                 Immunity titers
@@ -407,7 +408,7 @@ export default function ImmunizationsSection({
               <div className="mt-3">
                 {recordedDoses.length === 0 ? (
                   <EmptyState
-                    message="No immunizations recorded yet. Add one with the form, or import a MyChart export."
+                    message="No immunizations recorded yet. Use Add immunization, or import a MyChart export."
                     action={{
                       href: dataSectionHref("import"),
                       label: "Go to Import",
@@ -428,14 +429,23 @@ export default function ImmunizationsSection({
             </details>
           </div>
 
-          <div className="min-w-0 space-y-4">
-            <ImmunizationForm action={addImmunization} defaultDate={now} />
-            <MyChartImport />
-            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-              Simplified schedule. The tracked schedule is a practical subset of
-              the CDC/ACIP recommendations and does not model risk conditions,
-              pregnancy, or shared-decision cases.
-            </p>
+          <div>
+            <AddEntryPanel
+              testId="add-immunization-panel"
+              panelId="add-immunization-panel-body"
+              label="Add immunization"
+              presentation="modal"
+            >
+              <ImmunizationForm action={addImmunization} defaultDate={now} />
+            </AddEntryPanel>
+            <div className="space-y-4">
+              <MyChartImport />
+              <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+                Simplified schedule. The tracked schedule is a practical subset
+                of the CDC/ACIP recommendations and does not model risk
+                conditions, pregnancy, or shared-decision cases.
+              </p>
+            </div>
           </div>
         </div>
       </div>

@@ -7,6 +7,7 @@ import ProviderCombobox from "@/components/ProviderCombobox";
 import Combobox from "@/components/Combobox";
 import EncounterField from "@/components/EncounterField";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import {
   ALLERGY_CRITICALITIES,
   ALLERGY_VERIFICATION_STATUSES,
@@ -66,6 +67,7 @@ export default function AllergyForm({
   onDone?: () => void;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!allergy;
   const [error, setError] = useState<string | null>(null);
@@ -117,18 +119,18 @@ export default function AllergyForm({
       formRef.current?.reset();
       setSubstance("");
       setReactions([{ ...EMPTY_ROW }]);
+      closeEntryModal?.();
     }
     onDone?.();
   }
 
   const uid = allergy?.id ?? "new";
   return (
-    <form ref={formRef} action={handle} className="card space-y-3">
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add allergy
-        </h2>
-      )}
+    <form
+      ref={formRef}
+      action={handle}
+      className={editing ? "card space-y-3" : "space-y-3"}
+    >
       {editing && <input type="hidden" name="id" value={allergy!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />

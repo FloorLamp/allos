@@ -14,10 +14,8 @@ export default async function RecordsDentalPage() {
   if (!getNavRelevance(profile.id).dental) redirect("/records/specialty/skin");
   return (
     <div data-testid="records-dental">
-      <SectionSubtitle>
-        Your dental procedures and exam findings, anchored to teeth. Add them
-        manually or import a dental record. Periodontal measurements (pocket
-        depth, bleeding) and dental X-rays live on Results.
+      <SectionSubtitle more="Add records manually or import them; periodontal measurements and dental X-rays live on Results.">
+        Review dental procedures and tooth-specific exam findings.
       </SectionSubtitle>
       <DentalSection profileId={profile.id} />
     </div>

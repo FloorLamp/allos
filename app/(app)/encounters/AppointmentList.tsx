@@ -3,8 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  IconPencil,
-  IconTrash,
   IconCheck,
   IconX,
   IconCalendarPlus,
@@ -24,6 +22,10 @@ import {
 } from "./appointment-actions";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
 import OpenInMaps from "@/components/OpenInMaps";
 import NotesText from "@/components/NotesText";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
@@ -86,6 +88,7 @@ export default function AppointmentList({
 }) {
   const fmt = useFormatPrefs();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   // The visit a follow-up is being scheduled from (prefills the create form).
   const [followUpFrom, setFollowUpFrom] = useState<Appointment | null>(null);
   // The appointment id whose preventive satisfaction has already been recorded
@@ -384,24 +387,38 @@ export default function AppointmentList({
                     </button>
                   </>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setEditingId(a.id)}
-                  aria-label="Edit"
-                  title="Edit appointment"
-                  className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
+                <OverflowMenu
+                  label="Appointment actions"
+                  open={menuOpenId === a.id}
+                  onOpenChange={(open) => setMenuOpenId(open ? a.id : null)}
                 >
-                  <IconPencil className="h-4 w-4" stroke={1.75} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(a)}
-                  aria-label="Delete"
-                  title="Delete appointment"
-                  className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
-                >
-                  <IconTrash className="h-4 w-4" stroke={1.75} />
-                </button>
+                  {({ close }) => (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setEditingId(a.id);
+                          close();
+                        }}
+                        className={MENU_ITEM}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={async () => {
+                          close();
+                          await onDelete(a);
+                        }}
+                        className={MENU_ITEM_DANGER}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </OverflowMenu>
               </div>
             </div>
           )

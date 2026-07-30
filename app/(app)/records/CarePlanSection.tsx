@@ -9,6 +9,7 @@ import { contrastTitle, contrastDetail } from "@/lib/contrast-safety";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { Notice } from "@/components/Notice";
 import CarePlanForm from "@/app/(app)/records/care/overview/CarePlanForm";
 import CarePlanList from "@/app/(app)/records/care/overview/CarePlanList";
@@ -47,33 +48,37 @@ export default function CarePlanSection({ scope }: { scope: ProfileScope }) {
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          {contrastNotes.length > 0 && (
-            <div className="space-y-2" data-testid="contrast-safety-notes">
-              {contrastNotes.map((hit) => (
-                <Notice
-                  key={hit.dedupeKey}
-                  tone="amber"
-                  icon
-                  testid={`contrast-note-${hit.dedupeKey}`}
-                  title={contrastTitle(hit)}
-                >
-                  {contrastDetail(hit)}
-                </Notice>
-              ))}
-            </div>
-          )}
-          <CarePlanList
-            items={items}
-            multiView={
-              multi ? { actingProfileId: scope.actingProfileId } : undefined
-            }
-          />
-        </div>
-
-        <div className="min-w-0 space-y-4">
-          <CarePlanForm action={addCarePlanItem} />
+      <div className="space-y-6">
+        {contrastNotes.length > 0 && (
+          <div className="space-y-2" data-testid="contrast-safety-notes">
+            {contrastNotes.map((hit) => (
+              <Notice
+                key={hit.dedupeKey}
+                tone="amber"
+                icon
+                testid={`contrast-note-${hit.dedupeKey}`}
+                title={contrastTitle(hit)}
+              >
+                {contrastDetail(hit)}
+              </Notice>
+            ))}
+          </div>
+        )}
+        <CarePlanList
+          items={items}
+          multiView={
+            multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+        />
+        <div>
+          <AddEntryPanel
+            testId="add-care-plan-panel"
+            panelId="add-care-plan-panel-body"
+            label="Add care-plan item"
+            presentation="modal"
+          >
+            <CarePlanForm action={addCarePlanItem} />
+          </AddEntryPanel>
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Imported care-plan items come from uploaded health records (Plan of
             Treatment section).

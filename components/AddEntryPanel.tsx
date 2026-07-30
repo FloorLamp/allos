@@ -1,8 +1,15 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
 import { IconChevronDown, IconPlus } from "@tabler/icons-react";
 import Collapse from "./Collapse";
+import ModalShell from "./ModalShell";
 
 // The shared RARE-CADENCE ENTRY disclosure (the #1497 rule), defined once.
 //
@@ -13,10 +20,9 @@ import Collapse from "./Collapse";
 // year, mostly by import, so their forms rendered open on every read of the Results
 // hub. #1499's audit counted fifteen forms standing on the Biomarkers tab alone.
 //
-// Behind "+ Add" the form costs one button until it is wanted. The panel stays
-// MOUNTED while collapsed (that is what lets <Collapse> animate it, and what keeps
-// a deep link's server-rendered fields intact); Collapse takes it out of the
-// accessibility tree and the tab order, so a hidden form is never a keyboard trap.
+// Behind "+ Add" the form costs one button until it is wanted. Inline panels stay
+// MOUNTED while collapsed so <Collapse> can animate them and preserve their fields;
+// modal panels mount only while their dialog is open.
 //
 // DEEP LINKS AUTO-EXPAND. `defaultOpen` is the SERVER's decision — it reads the
 // intent params that mean "you came here to add something" (`?new=1&name=…` from the
@@ -28,6 +34,15 @@ import Collapse from "./Collapse";
 //
 // `id` lands on the wrapper so an in-page anchor (`#add-result`) still finds the
 // panel whether it is open or closed.
+const AddEntryModalCloseContext = createContext<(() => void) | null>(null);
+
+// Add forms use this only after a successful save. Edit forms render outside the
+// provider and receive null, so their existing row-level onDone behavior is
+// unchanged.
+export function useAddEntryModalClose() {
+  return useContext(AddEntryModalCloseContext);
+}
+
 export default function AddEntryPanel({
   label,
   addLabel,
@@ -37,6 +52,7 @@ export default function AddEntryPanel({
   testId,
   toggleTestId,
   dense = false,
+  presentation = "inline",
   children,
 }: {
   // The heading shown when the panel is OPEN, and the fallback for the collapsed
@@ -56,10 +72,49 @@ export default function AddEntryPanel({
   // Tighter rhythm + a small-caps-weight heading, for a panel that sits INSIDE a
   // day view rather than at the foot of a page. Purely visual.
   dense?: boolean;
+  // Rare-entry forms in hub rails use a modal so opening one never pushes the
+  // list away. Inline remains available for compact, in-context disclosures.
+  presentation?: "inline" | "modal";
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const closeModal = useCallback(() => setOpen(false), []);
   const gap = dense ? "mb-5" : "mb-6";
+
+  if (presentation === "modal") {
+    return (
+      <div
+        id={id}
+        data-testid={testId}
+        data-open={open ? "true" : "false"}
+        className={gap}
+      >
+        <button
+          type="button"
+          data-testid={
+            toggleTestId ?? (testId ? `${testId}-toggle` : undefined)
+          }
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen(true)}
+          className="btn text-sm"
+        >
+          <IconPlus className="h-4 w-4" stroke={2} aria-hidden="true" />
+          {addLabel ?? label}
+        </button>
+        {open ? (
+          <ModalShell title={label} onClose={closeModal}>
+            <AddEntryModalCloseContext.Provider value={closeModal}>
+              <div id={panelId} className="mt-4">
+                {children}
+              </div>
+            </AddEntryModalCloseContext.Provider>
+          </ModalShell>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       id={id}

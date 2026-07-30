@@ -14,8 +14,8 @@ import { isRealIsoDate } from "@/lib/date";
 import { isAppointmentKind } from "@/lib/preventive-appointment";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { EmptyState } from "@/components/ui";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import AddVisitEntry from "@/app/(app)/encounters/AddVisitEntry";
-import ListRailLayout from "@/components/ListRailLayout";
 import AppointmentList from "@/app/(app)/encounters/AppointmentList";
 import EncounterList from "@/app/(app)/encounters/EncounterList";
 import { createAppointment } from "@/app/(app)/encounters/appointment-actions";
@@ -92,7 +92,8 @@ export default function VisitsSection({
       : undefined;
   // A bare ?new=1 (command palette's "Add appointment" — issue #29) focuses the
   // entry and, like every deep link here, defaults it to the appointment branch.
-  const focusNew = one(searchParams.new) != null;
+  const focusNew =
+    one(searchParams.new) != null || one(searchParams.focus) != null;
 
   // Split scheduled (future-facing, still on Upcoming) from the settled history so
   // the active list stays actionable. getAppointments returns soonest-first.
@@ -127,82 +128,45 @@ export default function VisitsSection({
               </span>
             )}
           </h3>
-          <ListRailLayout
-            listSpacing="space-y-6"
-            rail={
-              <>
-                {/* The single "Add visit" entry (issue #566): one affordance that
-                branches on tense — a future/today date books an appointment, a past
-                date logs an encounter — so the user never has to know "which form?".
-                Kept inside the Upcoming section so every existing deep link (#85
-                Book CTA, #29 command palette, calendar feed) lands here on the
-                appointment branch, exactly as before. */}
-                <AddVisitEntry
-                  createAppointment={createAppointment}
-                  addEncounter={addEncounter}
-                  defaultDate={bookPrefill ? prefillDate : now}
-                  today={now}
-                  prefill={bookPrefill}
-                  focusNew={focusNew}
+          <div className="min-w-0 space-y-6">
+            {/* No inner "Scheduled" label (#1449): the outer heading names the
+                list; the count that carries information lives with it. */}
+            <section>
+              {scheduled.length === 0 ? (
+                <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
+              ) : (
+                <AppointmentList
+                  items={scheduled}
+                  defaultDate={now}
+                  carePlanItems={openCarePlanItems}
                 />
-              </>
-            }
-          >
-            <div className="min-w-0 space-y-6">
-              {/* No inner "Scheduled" label (#1449): stacked directly under the
-                  section's own "Upcoming", two uppercase section-labels read as one
-                  duplicated pair naming the same list. The outer heading names it;
-                  the count that actually carried information moved up with it. */}
-              <section>
-                {scheduled.length === 0 ? (
-                  <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
-                ) : (
+              )}
+            </section>
+
+            {settled.length > 0 && (
+              <details className="card">
+                <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+                  Completed &amp; cancelled{" "}
+                  <span className="text-sm font-normal text-slate-400">
+                    ({settled.length})
+                  </span>
+                </summary>
+                <div className="mt-3">
                   <AppointmentList
-                    items={scheduled}
+                    items={settled}
                     defaultDate={now}
                     carePlanItems={openCarePlanItems}
                   />
-                )}
-              </section>
-
-              {settled.length > 0 && (
-                <details className="card">
-                  <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-                    Completed &amp; cancelled{" "}
-                    <span className="text-sm font-normal text-slate-400">
-                      ({settled.length})
-                    </span>
-                  </summary>
-                  <div className="mt-3">
-                    <AppointmentList
-                      items={settled}
-                      defaultDate={now}
-                      carePlanItems={openCarePlanItems}
-                    />
-                  </div>
-                </details>
-              )}
-            </div>
-          </ListRailLayout>
+                </div>
+              </details>
+            )}
+          </div>
         </section>
 
-        {/* Past — the encounters / visit-history surface. Its add form is now the
-          single "Add visit" entry above (toggle to "Already happened"), so this
-          section is history-only. */}
+        {/* Past — the encounter history follows Upcoming without an entry form
+          between the two lists. */}
         <section data-testid="visits-past">
           <h3 className="mb-3 section-label">Past</h3>
-          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-            To log a visit that already happened, use{" "}
-            <span className="font-medium text-slate-500 dark:text-slate-400">
-              Add visit
-            </span>{" "}
-            above and switch it to{" "}
-            <span className="font-medium text-slate-500 dark:text-slate-400">
-              Already happened
-            </span>
-            . Imported visits come from uploaded health records (CCD Encounters
-            section).
-          </p>
           <EncounterList
             items={encounters}
             defaultDate={now}
@@ -211,6 +175,26 @@ export default function VisitsSection({
             }
           />
         </section>
+
+        {/* Rare-cadence entry belongs after both lists. Existing add/deep-link
+          params auto-open it so command-palette and preventive-care paths still
+          land directly in the form. */}
+        <AddEntryPanel
+          testId="add-visit-panel"
+          panelId="add-visit-panel-body"
+          label="Add visit"
+          defaultOpen={focusNew || !!bookPrefill}
+          presentation="modal"
+        >
+          <AddVisitEntry
+            createAppointment={createAppointment}
+            addEncounter={addEncounter}
+            defaultDate={bookPrefill ? prefillDate : now}
+            today={now}
+            prefill={bookPrefill}
+            focusNew={focusNew}
+          />
+        </AddEntryPanel>
       </div>
     </ProviderOptionsProvider>
   );

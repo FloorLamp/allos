@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { getRecordsSpecialtyRelevance } from "@/lib/queries/nav-relevance";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import type { AppRoute } from "@/lib/hrefs";
 import AnchorRedirect from "@/components/AnchorRedirect";
 import RecordsTabs from "./RecordsTabs";
@@ -50,14 +51,15 @@ export default async function RecordsLayout({
   const { profile } = await requireSession();
   const groups = recordsGroups(getRecordsSpecialtyRelevance(profile.id));
   return (
-    <div>
+    <PageContainer width="wide" className="mx-auto">
       <AnchorRedirect map={ANCHOR_MAP} />
       <PageHeader
         title="Health record"
         subtitle="Your health record in one place — history, problems, care, and specialty records."
+        hideSubtitleBelowSm
       />
       <RecordsTabs groups={groups} />
       {children}
-    </div>
+    </PageContainer>
   );
 }

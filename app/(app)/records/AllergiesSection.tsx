@@ -10,10 +10,10 @@ import {
   type LinkedEncounterRef,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { EncounterOptionsProvider } from "@/components/EncounterOptionsContext";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
-import ListRailLayout from "@/components/ListRailLayout";
 import AllergyList from "@/app/(app)/records/problems/allergies/AllergyList";
 import { addAllergy } from "@/app/(app)/records/problems/allergies/actions";
 
@@ -72,19 +72,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
           byProfile: encountersByProfile,
         }}
       >
-        <ListRailLayout
-          listSpacing="space-y-6"
-          rail={
-            <>
-              <AllergyForm action={addAllergy} />
-              <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-                Allergen-specific IgE (RAST/ImmunoCAP) results are surfaced as
-                sensitizations when above range or class ≥ 1; total serum IgE is
-                excluded.
-              </p>
-            </>
-          }
-        >
+        <div className="space-y-6">
           <div className="card">
             <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
               Known allergies &amp; sensitizations
@@ -187,7 +175,22 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
               }
             />
           </div>
-        </ListRailLayout>
+          <div>
+            <AddEntryPanel
+              testId="add-allergy-panel"
+              panelId="add-allergy-panel-body"
+              label="Add allergy"
+              presentation="modal"
+            >
+              <AllergyForm action={addAllergy} />
+            </AddEntryPanel>
+            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+              Allergen-specific IgE (RAST/ImmunoCAP) results are surfaced as
+              sensitizations when above range or class ≥ 1; total serum IgE is
+              excluded.
+            </p>
+          </div>
+        </div>
       </EncounterOptionsProvider>
     </ProviderOptionsProvider>
   );

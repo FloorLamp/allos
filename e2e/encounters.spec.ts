@@ -84,7 +84,7 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
   }) => {
     test.slow();
 
-    await page.goto("/records/history/visits");
+    await page.goto("/records/history/visits?new=1");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 

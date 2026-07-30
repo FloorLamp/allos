@@ -16,23 +16,13 @@ export default function BackgroundSection({
 }: {
   profileId: number;
 }) {
-  // The family's ONE grid (#1449, cluster B). Background used to stack two
-  // `max-w-lg` cards in a full-width column, so on Care › Overview it hugged the
-  // left at ~40% with the right half empty while the three sections BELOW it used
-  // `lg:grid-cols-3` — three grid systems on one scroll, none of whose right edges
-  // lined up. Now it is the same 2/1 split: the wider Smoking form (it carries a
-  // two-column pack-years/quit-date block) takes the 2-col cell, Risk factors the
-  // 1-col cell, and the section's right edge matches its siblings exactly. The
-  // `max-w-lg` caps moved OFF the forms — the grid cell is the width discipline now,
-  // and a cap inside a sized cell only re-opens the dead space it was meant to fix.
+  // Care is one readable vertical flow. The old 2/1 split left a narrow risk-
+  // factors rail beside a sprawling smoking form and repeated the add-rail shape
+  // that the rest of the hub has retired.
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="min-w-0 lg:col-span-2">
-        <SmokingHistoryForm history={getSmokingHistory(profileId)} />
-      </div>
-      <div className="min-w-0">
-        <RiskFactorsForm attributes={getRiskAttributes(profileId)} />
-      </div>
+    <div className="space-y-6">
+      <SmokingHistoryForm history={getSmokingHistory(profileId)} />
+      <RiskFactorsForm attributes={getRiskAttributes(profileId)} />
     </div>
   );
 }

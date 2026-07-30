@@ -22,7 +22,7 @@ const HIV_ITEM = "upcoming-item-condition-review:name:hiv";
 // slows the happy path.
 const WAIT = 15_000;
 
-// Remove any "HIV" condition currently on the problem list (RecordTable trash →
+// Remove any "HIV" condition currently on the problem list (RecordTable menu →
 // confirm dialog). No-op when the list is clean, so it's a safe repeat-reset.
 async function removeHivCondition(page: Page): Promise<void> {
   await page.goto("/records/problems/conditions");
@@ -32,9 +32,11 @@ async function removeHivCondition(page: Page): Promise<void> {
   while ((await hivRows().count()) > 0) {
     // Open the row's confirm dialog and WAIT for it to mount before driving its
     // confirm — a raw click on a not-yet-ready dialog can miss on a slow runner.
-    const trash = hivRows().first().getByRole("button", { name: "Delete" }); // first-ok: loop deletes EVERY HIV row; first-of-remaining is order-agnostic
-    await expect(trash).toBeVisible({ timeout: WAIT });
-    await trash.click();
+    const row = hivRows().first(); // first-ok: loop deletes EVERY HIV row; first-of-remaining is order-agnostic
+    const actions = row.getByLabel("Record actions");
+    await expect(actions).toBeVisible({ timeout: WAIT });
+    await actions.click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: WAIT });
     await settledClick(

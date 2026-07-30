@@ -5,6 +5,7 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import { OPTICAL_KINDS, kindLabel } from "@/lib/optical-prescription";
 import type { OpticalPrescription, OpticalKind, FormResult } from "@/lib/types";
 
@@ -24,6 +25,7 @@ export default function OpticalPrescriptionForm({
   onDone?: () => void;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!rx;
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +48,7 @@ export default function OpticalPrescriptionForm({
     if (!editing) {
       formRef.current?.reset();
       setKind("glasses");
+      closeEntryModal?.();
     }
     onDone?.();
   }
@@ -114,14 +117,9 @@ export default function OpticalPrescriptionForm({
     <form
       ref={formRef}
       action={handle}
-      className="card space-y-3"
+      className={editing ? "card space-y-3" : "space-y-3"}
       data-testid="optical-prescription-form"
     >
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add prescription
-        </h2>
-      )}
       {editing && <input type="hidden" name="id" value={rx!.id} />}
       <div className="grid grid-cols-2 gap-3">
         <div>

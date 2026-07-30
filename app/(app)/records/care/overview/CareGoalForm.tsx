@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import type { CareGoal, FormResult } from "@/lib/types";
 
 // Shared add/edit care-goal form. Add mode: no `goal`. Edit mode: pass the row + an
@@ -22,6 +23,7 @@ export default function CareGoalForm({
   onDone?: () => void;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!goal;
   const [error, setError] = useState<string | null>(null);
@@ -44,18 +46,20 @@ export default function CareGoalForm({
       return;
     }
     toast(editing ? "Goal updated" : "Goal saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      closeEntryModal?.();
+    }
     onDone?.();
   }
 
   const uid = goal?.id ?? "new";
   return (
-    <form ref={formRef} action={handle} className="card space-y-3">
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add health goal
-        </h2>
-      )}
+    <form
+      ref={formRef}
+      action={handle}
+      className={editing ? "card space-y-3" : "space-y-3"}
+    >
       {editing && <input type="hidden" name="id" value={goal!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />
