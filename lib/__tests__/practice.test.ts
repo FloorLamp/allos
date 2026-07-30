@@ -10,6 +10,9 @@ import {
   practiceIdentity,
   samePractice,
   previousPracticeDuration,
+  validatePracticeCadence,
+  groupPracticeSpellings,
+  practiceSpellingsFor,
 } from "@/lib/practice";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 import { resolveSuppressedKeyDisplay } from "@/lib/suppression-display";
@@ -80,6 +83,40 @@ describe("practiceCadenceText", () => {
   });
 });
 
+describe("validatePracticeCadence (#1619)", () => {
+  it("accepts an ordered range or a minimum without a maximum unchanged", () => {
+    expect(validatePracticeCadence(3, 5)).toEqual({
+      ok: true,
+      floor: 3,
+      ceiling: 5,
+    });
+    expect(validatePracticeCadence(3, null)).toEqual({
+      ok: true,
+      floor: 3,
+      ceiling: null,
+    });
+  });
+
+  it("rejects reversed, equal, and out-of-range values instead of normalizing them", () => {
+    expect(validatePracticeCadence(5, 3)).toEqual({
+      ok: false,
+      reason: "maximum-order",
+    });
+    expect(validatePracticeCadence(3, 3)).toEqual({
+      ok: false,
+      reason: "maximum-order",
+    });
+    expect(validatePracticeCadence(40, null)).toEqual({
+      ok: false,
+      reason: "minimum-range",
+    });
+    expect(validatePracticeCadence(0, null)).toEqual({
+      ok: false,
+      reason: "minimum-range",
+    });
+  });
+});
+
 describe("practice identity + dedupeKey namespace (#1259)", () => {
   it("keys signals under the practice namespace", () => {
     expect(practiceSignalKey(42)).toBe("practice:42");
@@ -111,6 +148,21 @@ describe("practice identity + dedupeKey namespace (#1259)", () => {
     expect(samePractice("Sauna", "  SAUNA ")).toBe(true);
     expect(samePractice("Breathwork", "Breath work")).toBe(false);
     expect(samePractice("", "")).toBe(false);
+  });
+
+  it("groups each identity's exact stored spellings once with a bounded family", () => {
+    const grouped = groupPracticeSpellings(
+      ["Sauna", " sauna ", "SAUNA", "Meditation", "MEDITATION", "", "Sauna"],
+      2
+    );
+    expect(grouped.get("sauna")).toEqual(["Sauna", " sauna "]);
+    expect(grouped.get("meditation")).toEqual(["Meditation", "MEDITATION"]);
+    expect(practiceSpellingsFor(grouped, " SAUNA ")).toEqual([
+      "SAUNA",
+      "Sauna",
+      " sauna ",
+    ]);
+    expect(grouped.has("")).toBe(false);
   });
 
   it("prefills duration from the immediately previous session only", () => {

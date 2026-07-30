@@ -25,7 +25,7 @@ describe("undo-delete registry", () => {
     }
   });
 
-  it("entities are in dependency order (every FK ref appears earlier)", () => {
+  it("entities are in dependency order (every row/key ref appears earlier)", () => {
     for (const spec of Object.values(UNDO_KINDS)) {
       const seen = new Set<string>();
       for (const e of spec.entities) {
@@ -34,6 +34,8 @@ describe("undo-delete registry", () => {
           // root is fine; children reference an already-inserted parent).
           expect(seen.has(fk.ref) || fk.ref === e.entity).toBe(true);
         }
+        for (const keyRef of e.keyRefs ?? [])
+          expect(seen.has(keyRef.ref) || keyRef.ref === e.entity).toBe(true);
         seen.add(e.entity);
       }
     }
@@ -226,6 +228,27 @@ describe("remapRow", () => {
     );
     expect(out).toEqual({ activity_id: 77, exercise: "Back Squat" });
     expect("id" in out).toBe(false);
+  });
+
+  it("remaps an id embedded in a captured suppression key (#1621)", () => {
+    const idMaps: IdMaps = { target: new Map([[42, 91]]) };
+    expect(
+      remapRow(
+        {
+          id: 7,
+          profile_id: 2,
+          signal_key: "practice:42",
+          dismissed_at: "2026-07-29 12:00:00",
+        },
+        idMaps,
+        [],
+        [{ column: "signal_key", prefix: "practice:", ref: "target" }]
+      )
+    ).toEqual({
+      profile_id: 2,
+      signal_key: "practice:91",
+      dismissed_at: "2026-07-29 12:00:00",
+    });
   });
 
   it("leaves a far-endpoint FK (target not in this capture) untouched", () => {

@@ -2157,8 +2157,9 @@ db.prepare(
 const redLightTargetId = Number(
   db
     .prepare(
-      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, per_week_max, created_at)
-       VALUES (1, 'practice', 'Red light therapy', 3, 5, ?)`
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max, created_at)
+       VALUES (1, 'practice', 'Red light therapy', 'red light therapy', 3, 5, ?)`
     )
     .run(`${daysAgo(35)} 09:00:00`).lastInsertRowid
 );

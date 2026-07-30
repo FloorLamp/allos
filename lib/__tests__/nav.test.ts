@@ -243,12 +243,17 @@ describe("isNavLeafVisible", () => {
     const vision = { href: "/vision", relevanceKey: "vision" as const };
     const sleep = { href: "/sleep", relevanceKey: "sleep" as const };
     const progress = { href: "/progress", relevanceKey: "progress" as const };
+    const wellness = {
+      href: "/wellness",
+      relevanceKey: "wellness" as const,
+    };
     const off = {
       cycle: false,
       vision: false,
       dental: false,
       sleep: false,
       progress: false,
+      wellness: false,
     };
     expect(isNavLeafVisible(cycle, ctx({ relevance: off }))).toBe(false);
     expect(isNavLeafVisible(vision, ctx({ relevance: off }))).toBe(false);
@@ -261,6 +266,11 @@ describe("isNavLeafVisible", () => {
     expect(isNavLeafVisible(progress, ctx({ relevance: off }))).toBe(false);
     expect(
       isNavLeafVisible(progress, ctx({ relevance: { ...off, progress: true } }))
+    ).toBe(true);
+    // The #1620 Wellness gate behaves identically.
+    expect(isNavLeafVisible(wellness, ctx({ relevance: off }))).toBe(false);
+    expect(
+      isNavLeafVisible(wellness, ctx({ relevance: { ...off, wellness: true } }))
     ).toBe(true);
     // Each key gates only its own leaf.
     expect(

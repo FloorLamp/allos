@@ -108,7 +108,7 @@ function statsFor(samples: OutcomeSample[]): WindowStats {
 // Signed, adaptively-rounded number for the framing string. Small magnitudes keep
 // two decimals (CRP 0.08); larger ones one (LDL 12.3), so the shift stays legible
 // across the whole biomarker range.
-function fmtDelta(n: number): string {
+export function formatOutcomeDelta(n: number): string {
   const abs = Math.abs(n);
   const rounded = abs < 1 ? Number(n.toFixed(2)) : Number(n.toFixed(1));
   const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "±";
@@ -191,7 +191,9 @@ export function compareOutcome(
     )} prior (n=${intervention.n} during vs ${baseline.n} before).`;
   } else {
     const unitStr = unit ? ` ${unit}` : "";
-    framing = `${series.label} ${fmtDelta(meanDelta)}${unitStr} vs the ${spanLabel(
+    framing = `${series.label} ${formatOutcomeDelta(
+      meanDelta
+    )}${unitStr} vs the ${spanLabel(
       windows.spanDays
     )} prior (n=${intervention.n} during vs ${baseline.n} before).`;
   }
@@ -305,7 +307,9 @@ export function compareOutcomePooled(
     framing = `${series.label} unchanged across ${winLabel} (n=${intervention.n} during vs ${baseline.n} baseline).`;
   } else {
     const unitStr = unit ? ` ${unit}` : "";
-    framing = `${series.label} ${fmtDelta(meanDelta)}${unitStr} across ${winLabel} (n=${intervention.n} during vs ${baseline.n} baseline).`;
+    framing = `${series.label} ${formatOutcomeDelta(
+      meanDelta
+    )}${unitStr} across ${winLabel} (n=${intervention.n} during vs ${baseline.n} baseline).`;
   }
 
   return {

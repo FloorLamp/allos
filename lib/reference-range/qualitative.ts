@@ -441,15 +441,21 @@ export function qualitativeFlagResolution(
 // metric like fetal fraction (#687, `qc`). All use the optional `immunity` context
 // (the reading's name/flag/value/notes/reference).
 // Boundary: stale strictly AFTER the window (age > interval), matching the original.
-export function isBiomarkerStale(
+export type BiomarkerRetestStatus = "not-applicable" | "current" | "due";
+
+// The complete retest-clock verdict. `isBiomarkerStale` remains the boolean
+// compatibility wrapper; relevance pickers consume `current` to form a due-soon
+// bucket without accidentally treating immutable/QC/durable-immunity results as
+// merely "not due yet."
+export function biomarkerRetestStatus(
   latestDate: string | null | undefined,
   category: string | null | undefined,
   today: string,
   retestDays?: number | null,
   immunity?: ImmunityResult
-): boolean {
-  if (!latestDate) return false;
-  if (category === "genomics") return false; // genetics don't change
+): BiomarkerRetestStatus {
+  if (!latestDate) return "not-applicable";
+  if (category === "genomics") return "not-applicable"; // genetics don't change
   // The retest clock is a LAB grammar (#1076). The non-lab analyte classes never
   // carry one: immutable facts ('reference') can't change; physiologic vitals
   // ('vitals' — BP/SpO2/temperature/resting HR) are monitored, not redrawn on a
@@ -463,9 +469,9 @@ export function isBiomarkerStale(
     category === "instrument" ||
     category === "derived"
   )
-    return false;
+    return "not-applicable";
   if (immunity) {
-    if (isDurableImmunePositive(immunity)) return false; // durable immunity (#516)
+    if (isDurableImmunePositive(immunity)) return "not-applicable"; // durable immunity (#516)
     const c = classifyQualitativeResult(
       immunity.name,
       immunity.value,
@@ -475,8 +481,23 @@ export function isBiomarkerStale(
       // (#910). Callers that don't carry one fall back to name-based recognition.
       immunity.loinc
     );
-    if (c?.immutable) return false; // immutable attribute — never stale (#548 §2)
-    if (c?.qc) return false; // QC metric (fetal fraction) — never nudged (#687)
+    if (c?.immutable) return "not-applicable"; // immutable attribute — never stale (#548 §2)
+    if (c?.qc) return "not-applicable"; // QC metric (fetal fraction) — never nudged (#687)
   }
-  return daysBetween(latestDate, today) > retestIntervalDays(retestDays);
+  return daysBetween(latestDate, today) > retestIntervalDays(retestDays)
+    ? "due"
+    : "current";
+}
+
+export function isBiomarkerStale(
+  latestDate: string | null | undefined,
+  category: string | null | undefined,
+  today: string,
+  retestDays?: number | null,
+  immunity?: ImmunityResult
+): boolean {
+  return (
+    biomarkerRetestStatus(latestDate, category, today, retestDays, immunity) ===
+    "due"
+  );
 }

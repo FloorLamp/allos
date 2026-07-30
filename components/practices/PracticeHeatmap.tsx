@@ -15,14 +15,19 @@ function densityClasses(weeks: number): {
   return { cell: "h-[5px] w-[5px]", gap: "gap-px" };
 }
 
-// Compact, non-interactive protocol-window pattern (#1588). It lives inside the
-// card's detail link, so cells expose hover titles while the link remains the one
-// focus target. Long windows retain every day and scroll only after the one-year
-// density has compressed to fit a 390px viewport.
-export default function ProtocolWindowHeatmap({
+// Shared compact practice/session pattern. Protocol cards supply their bounded
+// experiment window; Wellness cards supply the same trailing calendar window for
+// every practice, including target-only and history-only cards.
+export default function PracticeHeatmap({
   data,
+  label = "Practice activity",
+  testId = "practice-heatmap",
+  className = "",
 }: {
   data: ProtocolHeatmap;
+  label?: string;
+  testId?: string;
+  className?: string;
 }) {
   const density = densityClasses(data.columns.length);
   const summary = `${data.totalSessions} ${
@@ -33,13 +38,13 @@ export default function ProtocolWindowHeatmap({
 
   return (
     <div
-      className="mt-2 min-w-0"
-      data-testid="protocol-heatmap"
+      className={`min-w-0 ${className}`}
+      data-testid={testId}
       data-start={data.start}
       data-end={data.end}
       data-visible-start={data.visibleStart}
       role="img"
-      aria-label={`Protocol activity from ${data.start} to ${data.end}: ${summary}${
+      aria-label={`${label} from ${data.start} to ${data.end}: ${summary}${
         data.truncated
           ? `. Heatmap shows the most recent ${data.columns.length} weeks from ${data.visibleStart}`
           : ""

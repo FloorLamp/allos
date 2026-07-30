@@ -71,7 +71,7 @@ export default async function BiomarkersSection({
     <section
       id="biomarkers"
       data-testid="longevity-biomarkers"
-      className="card mb-6 scroll-mt-20"
+      className="card scroll-mt-20"
     >
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">

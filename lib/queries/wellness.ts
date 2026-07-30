@@ -1,0 +1,302 @@
+// Wellness-practice read layer (#1622). It owns the finite-preimage spelling map,
+// session readers, and the page-level practice aggregate. Write cores remain in
+// lib/practice-log.ts and lib/practice-store.ts.
+
+import { db, today as profileToday } from "../db";
+import { buildPracticeHeatmap } from "../practice-heatmap";
+import type { ProtocolHeatmap } from "../protocol-heatmap";
+import {
+  groupPracticeSpellings,
+  MAX_PRACTICE_SPELLINGS_PER_IDENTITY,
+  practiceIdentity,
+  practiceSpellingsFor,
+  previousPracticeDuration,
+  samePractice,
+} from "../practice";
+import type { FrequencyTarget, PracticeLog } from "../types";
+import type { FrequencyPace } from "../goals";
+import {
+  getFrequencyTargetProgress,
+  getFrequencyTargets,
+} from "./frequency-targets";
+
+const WELLNESS_CARD_SESSION_LIMIT = 200;
+
+export {
+  groupPracticeSpellings,
+  MAX_PRACTICE_SPELLINGS_PER_IDENTITY,
+  practiceSpellingsFor,
+} from "../practice";
+
+export interface WellnessPractice {
+  identity: string;
+  name: string;
+  targetId: number | null;
+  perWeek: number | null;
+  perWeekMax: number | null;
+  countThisWeek: number;
+  met: boolean;
+  atCeiling: boolean;
+  pace: FrequencyPace;
+  sessionCount: number;
+  lastUsed: string | null;
+  previousDurationMin: number | null;
+  sessions: PracticeLog[];
+  heatmap: ProtocolHeatmap;
+}
+
+export function getPracticeSpellingsMap(
+  profileId: number
+): Map<string, string[]> {
+  const rows = db
+    .prepare(
+      `SELECT value FROM (
+         SELECT DISTINCT practice AS value FROM practice_logs
+          WHERE profile_id = ?
+         UNION
+         SELECT DISTINCT scope_value AS value FROM frequency_targets
+          WHERE profile_id = ? AND scope_kind = 'practice'
+       )
+       ORDER BY value COLLATE NOCASE, value`
+    )
+    .all(profileId, profileId) as { value: string }[];
+  return groupPracticeSpellings(rows.map((row) => row.value));
+}
+
+// Compatibility reader for callers that need only one family. Page/detail gathers
+// should resolve getPracticeSpellingsMap() once and pass practiceSpellingsFor() into
+// the per-practice readers below.
+export function getPracticeSpellings(
+  profileId: number,
+  practice: string
+): string[] {
+  return practiceSpellingsFor(getPracticeSpellingsMap(profileId), practice);
+}
+
+function inClause(values: readonly string[]): string {
+  return values.map(() => "?").join(", ");
+}
+
+function resolvedSpellings(
+  profileId: number,
+  practice: string,
+  spellings?: readonly string[]
+): readonly string[] {
+  return spellings ?? getPracticeSpellings(profileId, practice);
+}
+
+export function getPracticeDayCount(
+  profileId: number,
+  practice: string,
+  date: string,
+  spellings?: readonly string[]
+): number {
+  const values = resolvedSpellings(profileId, practice, spellings);
+  if (values.length === 0) return 0;
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM practice_logs
+        WHERE profile_id = ? AND practice IN (${inClause(values)}) AND date = ?`
+    )
+    .get(profileId, ...values, date) as { n: number };
+  return row.n;
+}
+
+export function getPracticeSessions(
+  profileId: number,
+  practice: string,
+  limit = 50,
+  window?: { start: string; end: string },
+  spellings?: readonly string[]
+): PracticeLog[] {
+  const values = resolvedSpellings(profileId, practice, spellings);
+  if (values.length === 0) return [];
+  const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 500));
+  const windowSql = window ? "AND date >= ? AND date <= ?" : "";
+  const args: Array<string | number> = [profileId, ...values];
+  if (window) args.push(window.start, window.end);
+  args.push(boundedLimit);
+  return db
+    .prepare(
+      `SELECT id, practice, date, time, duration_min, notes,
+              source, external_id, edited, created_at
+         FROM practice_logs
+        WHERE profile_id = ? AND practice IN (${inClause(values)})
+          ${windowSql}
+        ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
+        LIMIT ?`
+    )
+    .all(...args) as PracticeLog[];
+}
+
+export function getPracticeUsageInWindow(
+  profileId: number,
+  practice: string,
+  start: string,
+  end: string,
+  spellings?: readonly string[]
+): { sessions: number; lastUsed: string | null } {
+  const values = resolvedSpellings(profileId, practice, spellings);
+  if (values.length === 0) return { sessions: 0, lastUsed: null };
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS sessions, MAX(date) AS lastUsed
+         FROM practice_logs
+        WHERE profile_id = ? AND practice IN (${inClause(values)})
+          AND date >= ? AND date <= ?`
+    )
+    .get(profileId, ...values, start, end) as {
+    sessions: number;
+    lastUsed: string | null;
+  };
+}
+
+export function getPracticeDayUsageInWindow(
+  profileId: number,
+  practice: string,
+  start: string,
+  end: string,
+  spellings?: readonly string[]
+): { date: string; count: number }[] {
+  const values = resolvedSpellings(profileId, practice, spellings);
+  if (values.length === 0) return [];
+  return db
+    .prepare(
+      `SELECT date, COUNT(*) AS count
+         FROM practice_logs
+        WHERE profile_id = ? AND practice IN (${inClause(values)})
+          AND date >= ? AND date <= ?
+        GROUP BY date
+        ORDER BY date ASC`
+    )
+    .all(profileId, ...values, start, end) as {
+    date: string;
+    count: number;
+  }[];
+}
+
+export function getPracticeSession(
+  profileId: number,
+  id: number
+): PracticeLog | null {
+  return (
+    (db
+      .prepare(
+        `SELECT id, practice, date, time, duration_min, notes,
+                source, external_id, edited, created_at
+           FROM practice_logs WHERE id = ? AND profile_id = ?`
+      )
+      .get(id, profileId) as PracticeLog | undefined) ?? null
+  );
+}
+
+export function getPracticeTargets(profileId: number): FrequencyTarget[] {
+  return getFrequencyTargets(profileId)
+    .filter((target) => target.scope_kind === "practice")
+    .sort(
+      (left, right) =>
+        left.scope_value.localeCompare(right.scope_value, undefined, {
+          sensitivity: "base",
+        }) || left.id - right.id
+    )
+    .map((target) => ({ ...target }));
+}
+
+export function findPracticeTarget(
+  profileId: number,
+  name: string
+): FrequencyTarget | null {
+  const identity = practiceIdentity(name);
+  if (!identity) return null;
+  return (
+    getPracticeTargets(profileId).find(
+      (target) => practiceIdentity(target.scope_value) === identity
+    ) ?? null
+  );
+}
+
+export function getWellnessPractices(
+  profileId: number,
+  asOf = profileToday(profileId),
+  weekStart = 0
+): WellnessPractice[] {
+  const targets = getPracticeTargets(profileId);
+  const progress = new Map(
+    getFrequencyTargetProgress(profileId)
+      .filter((item) => item.target.scope_kind === "practice")
+      .map((item) => [item.target.id, item])
+  );
+  const logs = db
+    .prepare(
+      `SELECT id, practice, date, time, duration_min, notes,
+              source, external_id, edited, created_at
+         FROM practice_logs
+        WHERE profile_id = ?
+        ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC`
+    )
+    .all(profileId) as PracticeLog[];
+
+  const byIdentity = new Map<
+    string,
+    { target: FrequencyTarget | null; sessions: PracticeLog[] }
+  >();
+  for (const target of targets) {
+    const identity = practiceIdentity(target.scope_value);
+    if (!identity) continue;
+    if (!byIdentity.has(identity)) {
+      byIdentity.set(identity, { target, sessions: [] });
+    }
+  }
+  for (const session of logs) {
+    const identity = practiceIdentity(session.practice);
+    if (!identity) continue;
+    const current = byIdentity.get(identity);
+    if (current) current.sessions.push(session);
+    else byIdentity.set(identity, { target: null, sessions: [session] });
+  }
+
+  return [...byIdentity.entries()]
+    .map(([identity, item]): WellnessPractice => {
+      const targetProgress = item.target ? progress.get(item.target.id) : null;
+      const latest = item.sessions[0] ?? null;
+      const countByDate = new Map<string, number>();
+      for (const session of item.sessions) {
+        countByDate.set(session.date, (countByDate.get(session.date) ?? 0) + 1);
+      }
+      return {
+        identity,
+        name: item.target?.scope_value ?? latest?.practice ?? identity,
+        targetId: item.target?.id ?? null,
+        perWeek: item.target?.per_week ?? null,
+        perWeekMax: item.target?.per_week_max ?? null,
+        countThisWeek: targetProgress?.count ?? 0,
+        met: targetProgress?.met ?? false,
+        atCeiling: targetProgress?.atCeiling ?? false,
+        pace: targetProgress?.pace ?? "on-pace",
+        sessionCount: item.sessions.length,
+        lastUsed: latest?.date ?? null,
+        previousDurationMin: previousPracticeDuration(item.sessions),
+        sessions: item.sessions.slice(0, WELLNESS_CARD_SESSION_LIMIT),
+        heatmap: buildPracticeHeatmap(
+          [...countByDate].map(([date, count]) => ({ date, count })),
+          asOf,
+          weekStart
+        ),
+      };
+    })
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
+    );
+}
+
+export function getAllPracticeSessions(
+  profileId: number,
+  name: string,
+  limit = WELLNESS_CARD_SESSION_LIMIT
+): PracticeLog[] {
+  return getPracticeSessions(profileId, name, limit);
+}
+
+export function practiceNameMatches(a: string, b: string): boolean {
+  return samePractice(a, b);
+}

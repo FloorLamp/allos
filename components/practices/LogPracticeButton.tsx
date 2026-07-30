@@ -2,13 +2,19 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { IconCheck } from "@tabler/icons-react";
+import { IconCheck, IconClock } from "@tabler/icons-react";
+import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
 import DateField from "@/components/DateField";
+import {
+  DOSE_ACTION_BRAND,
+  DOSE_ACTION_LABEL,
+  DOSE_ACTION_NEUTRAL,
+} from "@/components/medications/dose-action-styles";
 import type { PracticeLogOutcome } from "@/lib/types";
 import { logPractice } from "@/app/(app)/wellness/actions";
 
-// One-tap "Log session" button for a wellness practice (#1259). Logs a session for
+// Shared one-tap "Log session" control for a wellness practice (#1259). Logs a session for
 // TODAY through the shared write core and answers from its typed outcome — NEVER an
 // unconditional confirm (a session log is not idempotent; multi-session days are the
 // point). Today's running count sits beside the button (the PRN widget shape) so a
@@ -32,6 +38,7 @@ export default function LogPracticeButton({
   const router = useRouter();
   const toast = useToast();
   const [pending, setPending] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [count, setCount] = useState(todayCount);
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
@@ -77,8 +84,7 @@ export default function LogPracticeButton({
       const outcome = await logPractice(fd);
       report(outcome);
       if (outcome.kind === "logged") {
-        form.reset();
-        setDuration(duration || "");
+        setDetailsOpen(false);
       }
     } catch {
       toast("Couldn't log that session. Try again.");
@@ -88,40 +94,63 @@ export default function LogPracticeButton({
   }
 
   return (
-    <div className="mt-1">
-      <div className="flex flex-wrap items-center gap-2">
+    <div
+      className="flex flex-wrap items-start justify-between gap-3"
+      data-testid="practice-log-control"
+    >
+      <div className="min-w-0">
+        <div className="section-label">Today</div>
+        <div
+          className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200"
+          data-testid="practice-today-count"
+        >
+          {count === 0
+            ? "No sessions yet"
+            : count === 1
+              ? "1 session logged"
+              : `${count} sessions logged`}
+          {atCeiling ? " · weekly maximum reached" : ""}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
           disabled={pending}
           onClick={onClick}
           data-testid="practice-log-button"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_BRAND}`}
         >
-          <IconCheck className="h-4 w-4" stroke={2} aria-hidden />
-          Log session
+          <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+          Log now
         </button>
-        <span
-          className="text-xs text-slate-500 dark:text-slate-400"
-          data-testid="practice-today-count"
-        >
-          {count === 0
-            ? "None logged today"
-            : count === 1
-              ? "1 logged today"
-              : `${count} logged today`}
-          {atCeiling ? " · that's plenty this week" : ""}
-        </span>
+        {showDetails && today && (
+          <button
+            type="button"
+            onClick={() => setDetailsOpen(true)}
+            disabled={pending}
+            className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
+            aria-label="Log with details"
+            title="Log with details"
+            data-testid="practice-log-details-trigger"
+          >
+            <IconClock className="h-4 w-4" stroke={2} aria-hidden />
+            <span className="sm:hidden">Details</span>
+            <span className="hidden sm:inline">Log with details</span>
+          </button>
+        )}
       </div>
-      {showDetails && today && (
-        <details className="mt-2" data-testid="practice-log-details">
-          <summary className="cursor-pointer text-xs font-medium text-brand-700 dark:text-brand-300">
-            Add time, duration, or notes
-          </summary>
+      {detailsOpen && today && (
+        <ModalShell
+          title={`Log ${practice}`}
+          onClose={() => setDetailsOpen(false)}
+          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+        >
           <form
             onSubmit={onDetailedSubmit}
-            className="mt-2 grid gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10 sm:grid-cols-2"
+            className="mt-4 grid gap-3 sm:grid-cols-2"
+            data-testid="practice-log-details"
           >
-            <label className="text-xs text-slate-500 dark:text-slate-400">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
               Date
               <DateField
                 name="date"
@@ -130,11 +159,11 @@ export default function LogPracticeButton({
                 required
               />
             </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
               Time
               <input type="time" name="time" className="input mt-1 w-full" />
             </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
               Duration (minutes)
               <input
                 type="number"
@@ -146,7 +175,7 @@ export default function LogPracticeButton({
                 className="input mt-1 w-full"
               />
             </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200 sm:col-span-2">
               Notes
               <textarea name="notes" rows={2} className="input mt-1 w-full" />
             </label>
@@ -156,10 +185,10 @@ export default function LogPracticeButton({
               className="btn w-fit disabled:opacity-50 sm:col-span-2"
               data-testid="practice-log-detailed-submit"
             >
-              {pending ? "Logging…" : "Log with details"}
+              {pending ? "Logging…" : "Log session"}
             </button>
           </form>
-        </details>
+        </ModalShell>
       )}
     </div>
   );

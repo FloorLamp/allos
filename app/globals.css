@@ -166,6 +166,12 @@ body::before {
   .card {
     @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-4 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 sm:p-5 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
   }
+  /* backdrop-filter makes every .card its own stacking context. Elevate every
+     card ancestor of an OPEN combobox so the listbox can clear later sibling
+     cards; raising the listbox alone cannot escape its card's stacking context. */
+  .card:has([role="combobox"][aria-expanded="true"]) {
+    @apply relative z-20;
+  }
   .input {
     @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
   }
@@ -367,6 +373,15 @@ body::before {
   }
   .metric-readings-list td[data-card="actions"] {
     @apply max-sm:order-3 max-sm:ml-0;
+  }
+  /* Practice histories sit inside an existing card, so their responsive rows are
+     compact divider-separated records rather than padded cards. The one table DOM
+     still carries the session, optional notes, and its overflow action. */
+  .practice-session-list tr {
+    @apply max-sm:p-0 max-sm:py-2;
+  }
+  .practice-session-list td[data-card="meta"] {
+    @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm max-sm:text-slate-500 max-sm:dark:text-slate-400;
   }
   /* Keep the readings row compact without shrinking the menu's effective touch
      target: the visible control occupies 32px in layout while its pseudo-element

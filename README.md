@@ -18,8 +18,8 @@ bundled datasets, and AI is optional.
 
 ## What can it track?
 
-- **Daily health:** symptoms, mood, sleep, vitals, body measurements, and
-  nutrition
+- **Daily health:** symptoms, mood, sleep, vitals, body measurements, nutrition,
+  and wellness practices
 - **Training:** strength, cardio, sports, routines, goals, and recovery context
 - **Medical history:** conditions, allergies, procedures, immunizations,
   appointments, care plans, and family history

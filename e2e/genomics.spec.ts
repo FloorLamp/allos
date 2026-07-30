@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Genomic variants CRUD on the #genomics section of /results (#709, #1042 phase 5): add a structured variant through the
@@ -46,7 +46,10 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
       .getByLabel("Clinical significance")
       .selectOption("likely-pathogenic");
     await form.getByLabel("Source lab").fill("E2E Genetics Lab");
-    await form.getByRole("button", { name: "Add", exact: true }).click();
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Add", exact: true })
+    );
     await expect(page.getByText("Variant saved")).toBeVisible();
 
     // It appears in the list with its factual identity + reported classification.
@@ -63,7 +66,10 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await editForm
       .getByLabel("Clinical significance")
       .selectOption("pathogenic");
-    await editForm.getByRole("button", { name: "Save", exact: true }).click();
+    await settledClick(
+      page,
+      editForm.getByRole("button", { name: "Save", exact: true })
+    );
     await expect(page.getByText("Variant updated")).toBeVisible();
     await expect(list.getByRole("row").filter({ hasText: GENE })).toContainText(
       "Pathogenic",
@@ -76,10 +82,12 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     // getByRole("button", { name: "Delete" }) is a strict-mode collision.
     const survivor = list.getByRole("row").filter({ hasText: GENE });
     await survivor.getByRole("button", { name: "Delete" }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
+    await settledClick(
+      page,
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Delete", exact: true })
+    );
     await expect(list.getByRole("row").filter({ hasText: GENE })).toHaveCount(
       0
     );

@@ -43,7 +43,7 @@ export default async function ProtocolsSection({
       getProtocolHeatmap(profile.id, protocol, todayStr, weekStart),
     ])
   );
-  const options = getProtocolOutcomeOptions(profile.id);
+  const options = getProtocolOutcomeOptions(profile.id, todayStr);
   // "Recovery gear" (issue #592): the picker studies a recovery device, so filter
   // the inventory to recovery + uncategorized gear (kindOf) instead of offering
   // every barbell/bike. Add mode has no linked row, so no selectedMissing fallback.
@@ -55,7 +55,7 @@ export default async function ProtocolsSection({
     <section
       id="protocols"
       data-testid="longevity-protocols"
-      className="scroll-mt-20 border-t border-black/5 pt-6 dark:border-white/5"
+      className="card scroll-mt-20"
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
@@ -64,11 +64,11 @@ export default async function ProtocolsSection({
           </span>
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              Experiments
+              Protocols
             </h2>
             <p className="mt-0.5 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-              Compare an intervention with your baseline using outcomes you
-              already track.
+              Test a change by comparing the health data you already track
+              before and during it.
             </p>
           </div>
         </div>
@@ -95,17 +95,11 @@ export default async function ProtocolsSection({
         </div>
       </div>
 
-      <div className="rounded-xl border border-black/5 bg-white/25 p-2 dark:border-white/5 dark:bg-white/[0.02]">
-        <ProtocolList
-          items={protocols}
-          heatmaps={heatmaps}
-          formatPrefs={getDisplayFormatPrefs(login.id)}
-        />
-      </div>
-      <p className="mt-2 px-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-        Results are descriptive: the shift and sample size in each window,
-        without invented certainty.
-      </p>
+      <ProtocolList
+        items={protocols}
+        heatmaps={heatmaps}
+        formatPrefs={getDisplayFormatPrefs(login.id)}
+      />
     </section>
   );
 }

@@ -28,7 +28,14 @@ export interface PaletteAction {
   // Extra search terms so "gym" finds "Log workout", "lab" finds biomarkers, etc.
   keywords: string[];
   // Icon key resolved to a Tabler icon in CommandPalette.
-  icon: "barbell" | "scale" | "heart" | "calendar" | "chart" | "camera";
+  icon:
+    | "barbell"
+    | "scale"
+    | "heart"
+    | "calendar"
+    | "chart"
+    | "camera"
+    | "sparkles";
   target: PaletteActionTarget;
 }
 
@@ -106,6 +113,22 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     ],
     icon: "camera",
     target: { kind: "navigate", href: `/progress?${FOCUS_PARAM}=1` },
+  },
+  {
+    id: "wellness-practices",
+    // Always visible because the matching sidebar leaf is relevance-gated until
+    // a first practice target or session exists (#1620).
+    label: "Wellness practices",
+    keywords: [
+      "practice",
+      "meditation",
+      "breathwork",
+      "sauna",
+      "habit",
+      "session",
+    ],
+    icon: "sparkles",
+    target: { kind: "navigate", href: `/wellness?${FOCUS_PARAM}=1` },
   },
   {
     id: "add-biomarker",
