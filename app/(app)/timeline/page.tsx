@@ -991,7 +991,11 @@ export default async function TimelinePage(props: {
                       chart. Null when nothing on the day is intraday, so an
                       ordinary day renders no empty frame. */}
                   {intraday && intraday.date === day.date && (
-                    <IntradayPanel model={intraday} formatPrefs={formatPrefs} />
+                    <IntradayPanel
+                      model={intraday}
+                      formatPrefs={formatPrefs}
+                      profileId={daySubjectId}
+                    />
                   )}
                   {day.events.map((event) => (
                     <div

@@ -108,6 +108,8 @@ surface — in a grid, every cell's neighbour is another cell.
 | a relationship between two variables             | scatter                                   | `ScatterChartCard`                                       |
 | consistency / "did I show up"                    | calendar heatmap                          | `WorkoutHeatmap`, `ActiveDaysStrip`, `AdherenceCalendar` |
 | growth against reference percentiles             | percentile bands + trajectory             | `GrowthChart`                                            |
+| ONE day, every layer, on a clock axis            | hand-drawn SVG day chart (scrub + zoom)   | `IntradayChart` (via `IntradayPanel`)                    |
+| an illness episode's temperature + doses         | hand-drawn SVG episode chart              | `illness/FeverChart`                                     |
 | _panel before/after (not built — #1445 Part 3b)_ | _slope / dumbbell_                        | —                                                        |
 | _actual vs target vs pace (not built)_           | _bullet tile_                             | —                                                        |
 | _"what's my normal range" (not built)_           | _dot strip with a median marker_          | —                                                        |
@@ -147,7 +149,7 @@ recharts tree.)
 | Axes             | no tick marks, no spine; ticks at 11px in a **text** token                                            | `chartAxisProps`         |
 | Dots             | off above 30 points; hollow (surface fill, colored stroke) where they stay                            | `chartLineDot`           |
 | Hover dot        | r ≥ 4, present even when resting dots are off                                                         | `chartActiveDot`         |
-| Label size       | **≥ 10px**, always                                                                                    | `CHART_LABEL_FONT_SIZE`  |
+| Label size       | **≥ 10px**, always (a viewBox panel's floor is computed — §6)                                         | `CHART_LABEL_FONT_SIZE`  |
 | Dashes           | a named vocabulary (annotation / reference / target / now / cursor), never a literal                  | `chartDash`              |
 | Tooltip          | one surface, one type size, one hover duration                                                        | `chartTooltipProps`      |
 | Stacked segments | 2px surface gap, so segments read as discrete quantities                                              | `chartStackSegmentProps` |
@@ -269,13 +271,88 @@ at once:
 | `lib/__tests__/chart-palette.test.ts`       | a palette edit that breaks any of the six checks, in either theme; a ramp that stops reading as a ramp                                                                |
 | `lib/__tests__/chart-colors-scan.test.ts`   | a raw hex in `app/`/`components/`; a hand-rolled same-hue `bg-*` ladder                                                                                               |
 | `lib/__tests__/chart-scaffold-scan.test.ts` | a raw `strokeDasharray="…"`; a hand-built tooltip `contentStyle={{`; a `recharts` import outside the blessed cards; a card that imports recharts but not the scaffold |
-| `lib/__tests__/micro-text-size.test.ts`     | `text-[9px]` **and** numeric `fontSize: 9`                                                                                                                            |
+| `lib/__tests__/micro-text-size.test.ts`     | `text-[9px]`, numeric `fontSize: 9`, **and** a viewBox size that _renders_ under 9px (below)                                                                          |
 | `lib/__tests__/chart-detail-href.test.ts`   | a Trends chart drawn outside `ChartCard` (a dead end); a `detailHref={null}` with no `detail-none:` justification; a registry kind the detail page can't resolve      |
+| `lib/__tests__/chart-svg.test.ts`           | the shared viewBox text math itself: the scale ratio, the computed floor, the label clamp and the row-collision rule                                                  |
 
-Hand-drawn fixed-viewBox SVG panels (`IntradayPanel`, `FeverChart`,
-`MuscleAnatomy`) are exempt from the px-denominated rules, with justification in
-each allowlist: their lengths are viewBox user units scaled by the container, so
-a px floor cannot be applied to them. They are still bound by the palette.
+### Hand-drawn fixed-viewBox panels get a COMPUTED floor, not an exemption
+
+`IntradayChart`, `illness/FeverChart` and `MuscleAnatomy` draw their own SVG with
+a fixed viewBox scaled to the container. Their lengths are user units, so a raw
+`fontSize={7}` is genuinely not 7px — and for one release that observation bought
+them a blanket exemption from the px rules. It was the wrong conclusion: the
+exemption removed the only size guard from the charts whose type size is hardest
+to reason about, and the intraday panel shipped **~3.5px** labels behind it (720
+units into a 358px phone column is a factor of 0.497). (#1518)
+
+The ratio is the whole difference, and the ratio is computable. Each panel now
+declares its scale contract — its viewBox width and the **narrowest container it
+renders into** — and the rule is:
+
+```
+fontSize × (minContainerPx ÷ viewBoxWidth) ≥ 9px
+```
+
+failing with the computed effective size ("fontSize 7 × 0.722 = 5.1px effective
+at a 520px container, floor 9px"). The better way to satisfy it is not to raise a
+literal but to stop writing one: `viewBoxFontSize({ viewBoxWidth, minContainerPx })`
+in `lib/chart-svg.ts` returns the smallest size that clears the floor, so the
+number in the source **is** the floor. All three panels take their size that way.
+
+The floor is 9, not the 10 of `CHART_LABEL_FONT_SIZE`: a recharts label is DOM
+text at a size the browser sets exactly, while a viewBox label lands wherever the
+container puts it, so 9 is the "still readable at the narrowest" bound rather than
+the design size. These panels remain bound by the palette.
+
+**A panel whose type must stay in band needs a max width too.** Scaling cuts both
+ways: the same 720-unit box that painted 3.5px labels on a phone painted ~17px
+ones in the app's 110rem shell. `IntradayChart` caps each variant's width, which
+is what keeps a computed floor from becoming a computed ceiling problem.
+
+### Label placement inside a hand-drawn plot
+
+`lib/chart-svg.ts` also owns where a label goes, because #1573 found annotation
+labels the right SIZE painting off the plot and off the viewport (a right edge at
+449px against a 390px viewport), and same-row labels stacking into a smear:
+
+- `clampLabel` elides to the plot's width first (a clip-path alone would truncate
+  mid-word and silently lie), then flips the anchor at an edge so the text paints
+  **inward**, then shifts as a last resort.
+- `placeRowLabels` lays out one baseline's worth of labels and **drops** the ones
+  that would overlap, highest priority first. Dropping, not shrinking: shrinking
+  walks back under the size floor above, and two half-legible labels answer no
+  question.
+
+`e2e/helpers.ts::expectSvgTextInsidePlot` is the browser half. The element-level
+`expectNoClippedContent` walk does not catch this — SVG `<text>` overflowing its
+own plot is invisible to a containment check on DOM boxes — so the SVG text guard
+is a separate assertion, run on the surfaces that draw hand-rolled charts.
+
+### Interactivity is a FORM decision (#1445), and here is the one justification
+
+`IntradayChart` carries a scrub + zoom layer (#1515): pointer/keyboard crosshair
+with a live-region readout, drag-to-select zoom to any window, tap-a-block to zoom
+to it, and a per-minute refinement fetched for the zoomed window only. It is
+listed here rather than sneaking in, and it holds the constraints that made the
+panel static in the first place:
+
+- **No loading box.** It is a `"use client"` component, which still renders on the
+  SERVER — the complete chart is in the first HTML byte. What it is NOT is
+  `dynamic(ssr: false)` + `ChartLoading`, which is what the recharts cards cost and
+  what a glance surface rendered on every day view cannot spend.
+- **No chart library.** The overlay is hand-written SVG over the same pure
+  projection (`lib/intraday-layout.ts`) the base draws with — one `x(minute)`, not
+  two that happen to line up.
+- **Anchors survive.** Tick and block `<a href="#…">` fragments work before
+  hydration and with JS off; the block's zoom is an `onClick` layered over the
+  anchor, so the pre-hydration behavior is the fallback by construction.
+- **Zoom is ephemeral.** No route param, no history entry: reload or back returns
+  to the full day.
+
+Per-minute data is deliberately NOT shipped for the whole day (the reason is in
+`MAX_FINE_WINDOW_MINUTES`): at 0.47 units per minute it is sub-pixel and would be
+downsampled again to draw, and nothing is hidden without it — each 5-minute point
+carries `lo`/`hi` and the panel draws that envelope as a band.
 
 **Deliberately not doing:** pixel-diff screenshot testing. The repo prefers
 stable testids over brittle pixel assertions, and every guard above fails with
