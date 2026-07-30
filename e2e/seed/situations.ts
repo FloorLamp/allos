@@ -11,6 +11,8 @@ import { setProfileSetting, getTimezone } from "../../lib/settings";
 import {
   E2E_LOGIN_CYCLE,
   CYCLE_PROFILE,
+  E2E_LOGIN_CYCLE_STALE,
+  CYCLE_STALE_PROFILE,
   E2E_LOGIN_DERIVED,
   DERIVED_SITU_PROFILE,
   DERIVED_SITU_PERIOD_ITEM,
@@ -61,6 +63,33 @@ export function seedCycleAndDerived(): void {
   seedMemberLogin(E2E_LOGIN_CYCLE, cycleProfileId, "write");
   console.log(
     `e2e: seeded cycle-log fixture — profile ${cycleProfileId} (${CYCLE_PROFILE}) (#714)`
+  );
+
+  // ── Stale open period fixture (#1682 fix a) ──────────────────────────────────
+  // A dedicated adult profile whose latest period was started 18 days ago and NEVER
+  // ended — the forgotten "Period ended" tap. Past MAX_PLAUSIBLE_PERIOD_DAYS the
+  // derivations stop claiming menstrual and the Cycle surface prompts for the real end
+  // date, with the record left exactly as stored. One earlier completed period gives the
+  // profile a history to derive against. Its own profile because CYCLE_PROFILE must have
+  // no open period; the spec is read-only here, so the stale state survives --repeat-each.
+  const staleProfileId = fixtureProfileId(CYCLE_STALE_PROFILE);
+  db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(staleProfileId);
+  const staleAnchor = today(staleProfileId);
+  db.prepare(
+    `INSERT INTO cycles (profile_id, period_start, period_end, flow)
+     VALUES (?, ?, ?, 'medium')`
+  ).run(
+    staleProfileId,
+    shiftDateStr(staleAnchor, -46),
+    shiftDateStr(staleAnchor, -42)
+  );
+  db.prepare(
+    `INSERT INTO cycles (profile_id, period_start, period_end, flow)
+     VALUES (?, ?, NULL, 'light')`
+  ).run(staleProfileId, shiftDateStr(staleAnchor, -18));
+  seedMemberLogin(E2E_LOGIN_CYCLE_STALE, staleProfileId, "write");
+  console.log(
+    `e2e: seeded stale-open-period fixture — profile ${staleProfileId} (${CYCLE_STALE_PROFILE}) (#1682)`
   );
 
   // ── Derived situations fixture (#1292 Poor sleep, #1298 Period) ───────────────

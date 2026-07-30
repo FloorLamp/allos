@@ -1215,7 +1215,38 @@ A manual menstrual-cycle log at **Medical → Cycle** (`/medical/cycles`). Log a
 period with one tap ("Period started today" / "Period ended today", acting on
 today for the active profile) or with a dated form (start, optional inclusive
 end, a light/medium/heavy flow, and a note); each recorded period lists in the
-history with its bleeding length and is editable/deletable inline. Per-day
+history with its bleeding length and is editable/deletable inline.
+
+The **quick action is for the common case; the form owns the exceptions**
+(#1681). With no period open the control shows the derived cycle state ("Day 6 ·
+Follicular") rather than an always-on start button — "Period started today" only
+returns once a plausible gap has elapsed since the last period ended, because a
+period ending and the next one starting are ~2–3 weeks apart and a tap in
+between would mint a back-to-back period that corrupts the start-to-start cycle
+lengths. In the same slot sits a one-tap **"Still bleeding"**, which reopens a
+period ended by mistake within a small recency window (it refuses an older one
+rather than silently merging two cycles). Every quick action answers from its
+write core's **typed outcome** — a tap that changes nothing says so, and never
+reports success.
+
+Cycle writes carry **plausibility guards** (#1682), all in one pure module so
+the form, the quick actions, and any future import path share them:
+
+- A period left open past a plausible maximum (~10 days) **stops resolving as
+  `menstrual`** — the forgotten "Period ended" tap no longer claims menses
+  forever through the phase, the Timeline chip, the derived Period situation, or
+  the phase-specific reference ranges. **Nothing is written**: the record stays
+  exactly as recorded and the surface prompts _"Still bleeding? Set the end
+  date."_ The app withdraws its own claim; only the user's tap edits the row.
+- A **too-long recorded period is stored, not refused** — prolonged bleeding is
+  real, and an app that can't record it can't record an emergency. It surfaces a
+  calm, dismissible coaching-tier finding ("N days of bleeding — worth
+  discussing with a clinician"), never a notification.
+- **Future dates are refused** on every path; arbitrarily old backfill stays
+  allowed, because people legitimately reconstruct history.
+- **Overlaps and a second simultaneously-open period are refused**, with the
+  conflicting period named in the message. No inferred repair — the user
+  resolves the conflict explicitly. Per-day
 **cycle symptoms** (cramps, bloating, breast tenderness, mood swings, low back
 pain) ride the SAME shipped symptom bar (#799/#815/#857) — a small `domain` tag
 (illness/cycle/general) on the symptom vocabulary leads each mount with its

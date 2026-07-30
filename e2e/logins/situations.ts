@@ -12,6 +12,15 @@
 export const E2E_LOGIN_CYCLE = "e2e_cycle";
 export const CYCLE_PROFILE = "Cycle Log (e2e)";
 
+// Cycle plausibility guards (issue #1682). A member granted its OWN dedicated adult
+// profile carrying a period left OPEN well past the plausible maximum — the "forgot to tap
+// Period ended" state, which must read as a prompt rather than as menstrual forever. Kept
+// apart from CYCLE_PROFILE precisely because that fixture must have NO open period: one
+// profile cannot be in both states, and the stale-open spec is read-only about its own
+// period (it never closes it), so it stays stable under --repeat-each. Synthetic, no PHI.
+export const E2E_LOGIN_CYCLE_STALE = "e2e_cycle_stale";
+export const CYCLE_STALE_PROFILE = "Cycle Stale Open (e2e)";
+
 // Derived situations (issues #1292/#1298). A member granted a dedicated adult FEMALE
 // (premenopausal → cycle-relevant) profile carrying a Period-keyed iron supplement and a
 // Poor-sleep-keyed magnesium, and a rough last-night sleep session so the DERIVED
