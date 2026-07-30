@@ -650,7 +650,8 @@ the parallel mechanism is correct and this exemption is why.
 # The attention doctrine
 
 Status: **shipped** · first implemented by #1505 (intake obligation); extended by
-#1668 (mood check-in) and #1670 (frequency-target right-sizing) as they land.
+#1718 (channel honesty), #1668 (mood check-in) and #1670 (frequency-target
+right-sizing) as they land.
 
 The two-tier reach policy above answers "how far does a SIGNAL travel". That
 turned out to be one question inside a larger one the codebase kept answering
@@ -845,6 +846,41 @@ day. Carrying the old exclusion across the collapse therefore lost real
 milligrams — and with them a UL warning the user needed precisely because nothing
 was nudging them any more. When a field's meaning widens, re-derive every
 predicate that read it; do not translate it literally.
+
+## 6. A message never references an affordance its channel strips
+
+Added by #1718. The obligation model decides WHETHER to contact someone; this rule
+decides whether the message that arrives is honest about what the person can do
+with it.
+
+Web Push carries only title, body and a single click-through URL — it drops
+`actions` entirely — and the Home Assistant webhook forwards content for an
+automation to present. So a builder whose copy says "tap the button below" is
+telling a push user to tap something that does not exist. Every actionable message
+must therefore take one of two roads:
+
+- **Be excluded from actionless channels.** Right when the buttons ARE the content:
+  the food nudge ("Tap what you've eaten to log a serving" — #692) and the mood
+  check-in ("One tap logs your day" — #1718) have nothing left once the buttons go,
+  so `PUSH_UNDELIVERABLE_KINDS` treats them as a no-op success rather than
+  delivering an empty instruction.
+- **Carry a `url` action and channel-neutral copy.** Right when the message has real
+  content and the buttons are a shortcut: the practice check-in and the household
+  round state what is behind/due and offer "Open …", which works everywhere. A
+  url-bearing action doubles as the push notification's click-through target
+  (`pushClickThroughUrl`), so the tap opens the exact page rather than the app root.
+
+Two corollaries, both #1718:
+
+- **A kind that dispatch can emit must be routable.** A message carrying
+  `kind: "other"` cannot be muted or routed per channel and is indistinguishable to
+  an HA automation, so it silently opts out of the matrix the settings page
+  advertises. Every dispatched kind has a registry row or an explicit
+  `NON_CONFIGURABLE_KINDS` reason (`lib/notifications/kinds.ts`), and
+  `notification-kinds.test.ts` pins the partition.
+- **The send-test is never gated.** Its whole job is proving the wiring works, so it
+  carries `kind: "test"` on every channel — a user who muted a kind must not read
+  their own mute as a broken subscription.
 
 ## Where each rule is enforced
 

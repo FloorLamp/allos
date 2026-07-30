@@ -95,10 +95,19 @@ export function renderHouseholdRoundMessage(input: {
   const memberNoun = sections.length === 1 ? "member" : "members";
   const title = `💊 Household doses — ${total} due across ${sections.length} ${memberNoun}`;
 
+  // Under the cap the round carries its confirm buttons — and, since #1718, the deep
+  // link ALONGSIDE them. Web Push and Home Assistant strip the buttons, so those
+  // copies used to arrive naming members and items with no way to confirm or even
+  // open the page; the over-cap path already degraded to exactly this link. A
+  // url-bearing action also becomes the push notification's click-through target
+  // (pushClickThroughUrl), so the push finally opens where it should.
   const actions =
     total > HOUSEHOLD_ROUND_MAX_BUTTONS
       ? overflowActions(input.base, input.householdHref)
-      : confirmActions(input.receiverProfileId, sections);
+      : [
+          ...confirmActions(input.receiverProfileId, sections),
+          ...overflowActions(input.base, input.householdHref),
+        ];
 
   return {
     title,

@@ -97,8 +97,16 @@ export function buildPushPayload(
 // mirroring the Home Assistant channel's per-kind gate (isKindEnabled). Deliberately
 // narrow: dose/refill/etc. carry real content in their body and stay push-deliverable
 // even when their tap actions are dropped.
+//
+// The MOOD check-in joins the set (#1718): it is the food nudge's exact sibling — its
+// whole content is "One tap logs your day", five face buttons Web Push strips, and no
+// url action, so the push read as an instruction to tap nothing. The rule this
+// encodes: a builder's copy must never reference an affordance the channel strips —
+// either the kind is excluded here, or it carries a url action and channel-neutral
+// copy (the practice nudge and the household round take that second road).
 const PUSH_UNDELIVERABLE_KINDS: ReadonlySet<NotificationKind> = new Set([
   "food",
+  "mood",
 ]);
 
 // Whether a message of this kind is worth delivering over Web Push. Pure so the

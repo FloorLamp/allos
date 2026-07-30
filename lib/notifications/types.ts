@@ -20,10 +20,12 @@ export type NotificationKind =
   | "preventive" // preventive-care nudge
   | "illness-care" // logged-symptom duration/trajectory care finding (#805)
   | "workout" // training/workout reminder
+  | "workout-stale" // unfinished-session nudge (#560/#1205)
   | "workout-recap" // post-workout session recap line (#924)
   | "ease-back" // one-shot post-illness ease-back re-entry note (#837)
   | "food" // food-log nudge / first-connection opt-in prompt (#682)
   | "mood" // opt-in daily wellbeing check-in (#992; auto-pauses when ignored)
+  | "practice" // pace-aware wellness-practice check-in (#1259)
   | "digest" // morning digest
   | "upcoming" // "what's due" upcoming digest
   | "weekly-recap" // weekly recap summary

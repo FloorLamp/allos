@@ -17,6 +17,7 @@ import { isSuppressed } from "../upcoming-suppress";
 import { practiceSignalKey, practiceCadenceText } from "../practice";
 import { today as todayFor } from "../db";
 import { practiceDoneCallback } from "./callback-data";
+import { PRACTICES_HREF } from "../hrefs";
 import type { NotificationAction, NotificationMessage } from "./types";
 
 // Cap the buttons so the keyboard stays tappable; the rest still reads in the body.
@@ -59,7 +60,8 @@ export function behindPractices(profileId: number): BehindPractice[] {
 // own semantics own the actual double-log guard, and the button is consumed on tap.
 export function buildPracticeReminder(
   profileId: number,
-  nonce: string = Date.now().toString(36)
+  nonce: string = Date.now().toString(36),
+  deepLinkBase = ""
 ): NotificationMessage | null {
   const behind = behindPractices(profileId);
   if (behind.length === 0) return null;
@@ -73,14 +75,26 @@ export function buildPracticeReminder(
       label: `✓ ${b.name}`,
       data: practiceDoneCallback(profileId, b.targetId, nonce),
     }));
+  // A deep link so the message works on EVERY channel (#1718). Web Push and Home
+  // Assistant strip the "✓ Done" buttons, and the old body then told those users to
+  // "tap when you've done a session" — an instruction to tap nothing. The link is the
+  // affordance that survives everywhere; the line that named the buttons is gone,
+  // because on Telegram it merely restated the adjacent `✓ Meditation` button.
+  const base = deepLinkBase.replace(/\/$/, "");
+  if (base) {
+    actions.push({
+      label: "Open practices →",
+      url: `${base}${PRACTICES_HREF}`,
+    });
+  }
 
   return {
     title: "Practice check-in",
     body:
       behind.length === 1
-        ? `You're behind on ${behind[0].name} this week (${behind[0].count}/${practiceCadenceText(behind[0].floor, behind[0].ceiling)}). Tap when you've done a session.`
-        : `A few practices are behind this week:\n${lines.join("\n")}\n\nTap when you've done a session.`,
+        ? `You're behind on ${behind[0].name} this week (${behind[0].count}/${practiceCadenceText(behind[0].floor, behind[0].ceiling)}).`
+        : `A few practices are behind this week:\n${lines.join("\n")}`,
     actions,
-    kind: "other",
+    kind: "practice",
   };
 }

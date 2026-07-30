@@ -52,6 +52,7 @@ import {
   getTimezone,
   getTelegramBotConfig,
   getAuditRetentionMonths,
+  getPublicUrl,
 } from "../lib/settings";
 import { getUpdates, telegramChannel } from "../lib/notifications/telegram";
 import {
@@ -640,17 +641,25 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // Pace-aware wellness-practice nudge (#1259): waking-window, once per profile-local
   // day, BUS-GATED coaching-tier. buildPracticeReminder returns null when nothing is
   // behind OR every behind target's `practice:<id>` Upcoming twin is dismissed/snoozed
-  // (the frozen state — no marker set, so un-dismissing resumes the lifecycle). Gated on
-  // Telegram being deliverable: the defining feature is the "Done ✓" button, and a
+  // (the frozen state — no marker set, so un-dismissing resumes the lifecycle). A
   // practice target only exists once the user created a practice protocol (that IS the
   // opt-in). NEVER safety-tier — a missed session is not a missed medication.
+  //
+  // No longer gated on Telegram (#1718): the message now carries a deep link and copy
+  // that names no affordance a channel strips, so it is honest on every channel. The
+  // old gate also failed at the both-channels case it was written for — it let a
+  // Telegram+push profile through and then dispatched a buttonless push telling the
+  // user to "tap when you've done a session".
   if (
     waking &&
-    telegramChannel.isConfigured(profile.id) &&
     getProfileSetting(profile.id, "notify_last_practice") !== date
   ) {
     try {
-      const built = buildPracticeReminder(profile.id);
+      const built = buildPracticeReminder(
+        profile.id,
+        undefined,
+        getPublicUrl()
+      );
       if (built) {
         const msg = prefixMessage(built, prefix);
         const { delivered, failed } = await send(profile.id, msg);
