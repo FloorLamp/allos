@@ -472,7 +472,7 @@ export function buildMoodFindings(profileId: number, today: string): Finding[] {
       evidence:
         "From your own daily check-ins — a subjective self-rating, not a screen " +
         "or a diagnosis.",
-      actionHref: "/trends?tab=body",
+      actionHref: "/trends#body",
       actionLabel: "View mood trend",
     },
   ];
@@ -531,7 +531,7 @@ export function buildSleepMoodBridgeFindings(
       evidence:
         "Co-occurrence in your own data — sleep and mood often move together. " +
         "Not a causal claim and not a diagnosis.",
-      actionHref: "/trends?tab=body",
+      actionHref: "/trends#body",
       actionLabel: "View trends",
     },
   ];
@@ -1009,7 +1009,7 @@ function weightAnomalyToFinding(
     evidence: a.suspectedUnitError
       ? "Possible kg/lb mix-up"
       : "Possible scale glitch",
-    actionHref: "/trends?tab=body",
+    actionHref: "/trends#body",
     actionLabel: "Review in Body metrics",
   };
 }
@@ -1116,7 +1116,7 @@ export function buildGoalPacingFindings(
         `best preserves muscle. Easing off a little protects lean mass and makes ` +
         `the loss easier to sustain.`,
       tone: "caution",
-      actionHref: "/trends?tab=body",
+      actionHref: "/trends#body",
       actionLabel: "See weight trend",
     });
   }

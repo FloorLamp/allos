@@ -180,7 +180,15 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
   // can interleave into the caller's NEXT goto and hijack it (#1323). Awaiting the switch
   // POST here drains it before the caller navigates; toContainText then confirms it landed.
   await settledClick(page, target);
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
+  // settledClick proved the switch POST completed; what remains is the
+  // revalidatePath("/", "layout") refresh re-rendering the current route before
+  // the trigger shows the new name. On a loaded runner that render can outlast
+  // the default 5s (the dashboard and the merged Trends surface are the heavy
+  // cases). A named ceiling, not a sleep — this still fails if the switch never
+  // lands.
+  await expect(page.getByTestId("user-menu-trigger")).toContainText(name, {
+    timeout: 20_000,
+  });
 }
 
 // Create a fresh profile through Settings → Family, switch the active profile to it,

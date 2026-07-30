@@ -78,9 +78,10 @@ test("a no-param load opens on 90D, with All time one tap away", async ({
     "page"
   );
 
-  // ...including across a tab switch, which rebuilds every hub link. A sentinel
-  // dropped here would silently rewind the user to 90D.
-  await followLink(page, page.getByRole("tab", { name: "Body" }), /tab=body/);
+  // ...including across a Body layout switch, which rebuilds every hub link. A
+  // sentinel dropped here would silently rewind the user to 90D. (#1644 retired the
+  // tab strip; the tiles/all toggle is now the hub link that carries the window.)
+  await followLink(page, page.getByTestId("body-view-tiles"), /view=tiles/);
   await expect(page).toHaveURL(/range=all/);
   await expect(rangePill(page, "All time")).toHaveAttribute(
     "aria-current",

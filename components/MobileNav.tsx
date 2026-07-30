@@ -186,8 +186,9 @@ export default function MobileNav({
     },
   });
 
-  // The route's primary log. `?tab=` is the app's URL-driven tab convention, so
-  // "Trends → Body" is a tab, not a route (lib/quick-log.ts owns the rule).
+  // The route's primary log. `?tab=` is still the app's URL-driven tab convention
+  // on the surfaces that have tabs, so it is passed through; lib/quick-log.ts owns
+  // which routes (and tabs) have an opinion.
   const primary = primaryQuickLog(pathname, searchParams.get("tab"));
   const PrimaryIcon = PRIMARY_ICONS[primary.icon];
 

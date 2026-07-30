@@ -614,3 +614,58 @@ export async function touchSwipe(
     await cdp.detach();
   }
 }
+
+// ── Streamed-reveal guard (#1644/#1674) ──────────────────────────────────────
+//
+// A page that streams a Suspense boundary (the Trends landing surface's body
+// census) delivers the boundary's content in a `<div hidden id="S:n">` staging
+// node at the end of `<body>`; React then MOVES it into place, on a schedule of
+// its own (a rAF, or a coalescing timeout). Until that reveal runs, a testid
+// inside the streamed content matches TWO nodes — the hidden staged copy and,
+// mid-move, the revealed one — which a strict-mode locator reports as a
+// duplicated-element bug, and on a loaded CI shard the reveal can lag SECONDS
+// behind the load event, so per-spec waits with default 5s ceilings kept losing.
+//
+// This guard closes the class at the harness level: every full-document
+// navigation (goto/reload/back/forward — client-side navigations render in
+// place and never stage) waits until no staging node remains before returning,
+// with a generous named ceiling. Installed once, on every page of every
+// context, by the `browser` fixture's newContext patch — so no spec ever calls
+// anything, and a future spec cannot forget to.
+const STREAM_REVEAL_TIMEOUT_MS = 30_000;
+
+async function settleStreamedReveal(page: Page): Promise<void> {
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll('div[hidden][id^="S:"]').length === 0,
+      undefined,
+      { timeout: STREAM_REVEAL_TIMEOUT_MS }
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // A destroyed context (an immediate follow-up navigation, a closed page, a
+    // non-HTML response) is not a stuck reveal — only a genuine timeout is.
+    if (/Timeout.*exceeded/i.test(message)) {
+      throw new Error(
+        `streamed content was still staged (hidden div[id^="S:"]) ` +
+          `${STREAM_REVEAL_TIMEOUT_MS}ms after navigation to ${page.url()} — ` +
+          `React's reveal never ran; see e2e/helpers.ts settleStreamedReveal`
+      );
+    }
+  }
+}
+
+export function installStreamRevealGuard(page: Page): void {
+  for (const method of ["goto", "reload", "goBack", "goForward"] as const) {
+    const original = page[method].bind(page) as (
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    (page as unknown as Record<string, unknown>)[method] = async (
+      ...args: unknown[]
+    ) => {
+      const result = await original(...args);
+      await settleStreamedReveal(page);
+      return result;
+    };
+  }
+}

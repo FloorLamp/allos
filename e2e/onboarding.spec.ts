@@ -238,7 +238,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
       [
         "Monitor body metrics and labs",
         /Record a starting metric/,
-        "/trends?tab=body",
+        "/trends#body",
       ],
     ] as const) {
       await chooseOutcome(label, actionName, href);
@@ -263,7 +263,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await firstValue
       .getByRole("link", { name: /Record a starting metric/ })
       .click();
-    await expect(page).toHaveURL(/\/trends\?tab=body/);
+    await expect(page).toHaveURL(/\/trends#body/);
     const returnBanner = page.getByTestId("onboarding-return-banner");
     await expect(returnBanner).toBeVisible();
 

@@ -21,17 +21,37 @@ export const NAV_PARENT_ROUTES: Readonly<Record<string, string>> = {
   "/supplies": "/medications",
 };
 
+// The longest-prefix resolution over an ARBITRARY child → parent map. Exported
+// (and taking its map as an argument) so the tiebreak can be unit-tested with a
+// NESTED pair, which the two-entry production map cannot express.
+//
+// The tiebreak compares CHILD keys — that is what "longest prefix" means. The
+// earlier form measured the incoming child against the winning PARENT string, so
+// for `/x` → `/training` and `/x/y` → `/data` a `/x/y/z` pathname asked
+// `"/x/y".length > "/training".length` (false) and kept the shorter, wrong parent.
+// Track the winning child alongside the parent instead.
+export function navParentIn(
+  map: Readonly<Record<string, string>>,
+  pathname: string
+): string | null {
+  let best: string | null = null;
+  let bestChild = "";
+  for (const [child, parent] of Object.entries(map)) {
+    if (pathname === child || pathname.startsWith(child + "/")) {
+      if (!best || child.length > bestChild.length) {
+        best = parent;
+        bestChild = child;
+      }
+    }
+  }
+  return best;
+}
+
 // The nav entry a parent-less registry route highlights, or null for every
 // ordinary route. Exported for the unit tests; `isRouteActive` is the only
 // production caller.
 export function navParentFor(pathname: string): string | null {
-  let best: string | null = null;
-  for (const [child, parent] of Object.entries(NAV_PARENT_ROUTES)) {
-    if (pathname === child || pathname.startsWith(child + "/")) {
-      if (!best || child.length > best.length) best = parent;
-    }
-  }
-  return best;
+  return navParentIn(NAV_PARENT_ROUTES, pathname);
 }
 
 // True when `href` should be treated as the active route for the current

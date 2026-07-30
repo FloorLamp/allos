@@ -37,7 +37,7 @@ test.describe("View-only access (issue #33)", () => {
     // READ works: the profile menu shows the "read-only" badge, and the profile's
     // data renders (the Trends → Body measurements form is reachable — since #1486
     // it is one combined form behind the desktop "+ Log" modal).
-    await memberPage.goto("/trends?tab=body");
+    await memberPage.goto("/trends");
     await expect(memberPage.getByTestId("read-only-badge")).toBeVisible();
     await hydratedClick(
       memberPage,
@@ -62,7 +62,7 @@ test.describe("View-only access (issue #33)", () => {
     ).toBeVisible();
     await expect(scheduledToday.getByTestId("dose-status")).toHaveCount(0);
 
-    await memberPage.goto("/trends?tab=body");
+    await memberPage.goto("/trends");
     await hydratedClick(
       memberPage,
       memberPage.getByTestId("log-measurements-toggle")
@@ -105,7 +105,7 @@ test.describe("View-only access (issue #33)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    await memberPage.goto("/trends?tab=body");
+    await memberPage.goto("/trends");
     // A write grant shows NO read-only badge.
     await expect(memberPage.getByTestId("read-only-badge")).toHaveCount(0);
 

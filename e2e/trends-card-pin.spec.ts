@@ -50,8 +50,9 @@ async function tileOrder(page: Page, ids: string[]): Promise<string[]> {
 }
 
 async function openBodyTiles(page: Page): Promise<void> {
-  await page.goto("/trends?tab=body&view=tiles");
-  await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+  await page.goto("/trends?view=tiles");
+  // The census streams in (#1644) — wait for its section to hold it before the
+  // unscoped tile queries below.
 }
 
 // Toggle the steps metric's ★ through the affordance a Body card actually offers:
@@ -140,7 +141,7 @@ test.describe("★-pinned Body card order (#1643)", () => {
       // for the drag and writes the same `saved_items` positions, which is why it is
       // the honest way to assert "Body follows the saved order" without pointer
       // physics standing in for the claim.
-      await page.goto("/trends?tab=overview");
+      await page.goto("/trends");
       await expect(page.getByTestId("saved-tiles")).toBeVisible();
       expect((await overviewTileKeys(page))[0]).toBe("metric:steps");
       await page
@@ -170,18 +171,19 @@ test.describe("★-pinned Body card order (#1643)", () => {
     }
   });
 
-  test("the tab says how its arrangement works", async ({ browser }) => {
+  test("the census says how its arrangement works", async ({ browser }) => {
     const page = await loginAs(browser, PIN);
     try {
       await openBodyTiles(page);
 
-      // The pin gesture lives on the metric page and the re-sequence on Overview, so
-      // the tab has to say so — the alternative was a second reorder surface here.
+      // The pin gesture lives on the metric page and the re-sequence in the starred
+      // grid, so the census has to say so — the alternative was a second reorder
+      // surface here. Since #1644 both live on the same page, one anchor apart.
       const hint = page.getByTestId("body-pin-hint");
       await expect(hint).toBeVisible();
       await expect(
-        hint.getByRole("link", { name: "Overview" })
-      ).toHaveAttribute("href", "/trends?tab=overview");
+        hint.getByRole("link", { name: "starred grid" })
+      ).toHaveAttribute("href", "/trends#starred");
 
       // …and the route it describes is one tap from the card itself.
       await expect(

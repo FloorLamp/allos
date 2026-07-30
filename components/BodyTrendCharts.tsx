@@ -59,21 +59,30 @@ export interface BodyChartSpec {
   // Reference LINE colour/label already ride `referenceValue`.
 }
 
-// A titled run of charts inside one stack (#1486). The merged Body tab renders TWO
-// — "Vitals" then "Composition" — and they must share ONE annotation toggle bar:
-// two bars for one decision ("show medication markers") is exactly the duplicated
-// control the merge exists to remove. Sections are the reason this component takes
-// groups at all; a single-group caller still passes plain `charts`.
-export interface BodyChartSection {
+// ONE member of the body census's flat ranked stack (#1674).
+//
+// The census used to render TITLED SECTIONS ("Vitals", "Composition") ordered as
+// wholes by their best member, with the synced-daily block below them and outside
+// the ordering entirely. That made the box structure a SECOND source of truth for
+// order, and it contradicted the first one: a clinical card rode into the everyday
+// tier inside its box (SpO₂ above steps), steps could not compete at all, and
+// #1643's "starred cards render first, contiguously, in saved order" was
+// unsatisfiable — three stars in three boxes can only move three boxes.
+//
+// So the stack is FLAT: every card is a member, ranked by id, and a promotion is
+// visible because a promoted card is simply first. A member is either a windowed
+// trend chart this component draws (so one toggle bar can fan annotations into it)
+// or a server-rendered node that is placed by the same rank (the growth-percentile
+// card, the mood chart, the synced daily charts, the 1D intraday swap at `hr-day`).
+export interface BodyStackItem {
+  /** The card id the ranker orders by — also the in-page anchor. */
   id: string;
-  heading: string;
-  description?: string;
-  charts: BodyChartSpec[];
-  // Server-rendered cards that belong to this section but aren't plain trend charts
-  // (the intraday 1D swap, the acute temperature card). Rendered AFTER the grid.
-  after?: ReactNode;
-  // Rendered when the section has no charts and no `after` content.
-  empty?: ReactNode;
+  /** A windowed trend chart, drawn here so the toggle bar reaches it. */
+  chart?: BodyChartSpec;
+  /** A pre-rendered card, placed by the same rank as any chart. */
+  node?: ReactNode;
+  /** Span both desktop columns (the intraday swap, the growth card, `hr-day`). */
+  wide?: boolean;
 }
 
 // The card's latest-value headline (#1485 B) — part of the header TAP TARGET since
@@ -96,15 +105,16 @@ function latestHeadline(chart: BodyChartSpec): string | null {
 // fans the enabled markers into each LineChartCard.
 export default function BodyTrendCharts({
   charts = [],
-  sections,
+  items,
   annotations,
   windows = [],
   singleColumn = false,
 }: {
   charts?: BodyChartSpec[];
-  // The merged Body tab's grouped form (#1486) — mutually exclusive with `charts`
-  // in practice; when present, ONE toggle bar sits above every section.
-  sections?: BodyChartSection[];
+  // The census's FLAT ranked stack (#1674) — mutually exclusive with `charts` in
+  // practice. One toggle bar sits above the whole stack, which is the #1486
+  // one-bar rule in its simplest case rather than an exception to it.
+  items?: BodyStackItem[];
   annotations: TrendAnnotation[];
   // Protocol intervention windows (issue #660), shaded across every chart via the
   // same toggle bar as the point annotations.
@@ -123,48 +133,50 @@ export default function BodyTrendCharts({
   const shown = filterAnnotationsByKind(annotations, enabled);
   const shownWindows = enabled.protocol ? windows : [];
 
+  const chartCard = (chart: BodyChartSpec) => (
+    <ChartCard
+      key={chart.key}
+      title={chart.title}
+      hideTitle={chart.hideTitle}
+      // The detail page's own chart (#1541 fix 3): its <h1> is this title and
+      // its subtitle is this headline, ~700px apart on a phone — the #1533
+      // double-render shape. Suppressed together, since the card's header row
+      // is not even a tap target there (detailHref is null).
+      headline={chart.hideTitle ? null : latestHeadline(chart)}
+      note={chart.note}
+      anchorId={chart.anchorId}
+      testid={chart.testid}
+      headerAction={chart.headerAction}
+      detailHref={chart.detailHref}
+      footer={
+        chart.projectionNote ? (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {chart.projectionNote}
+          </p>
+        ) : null
+      }
+    >
+      <LineChartCard
+        data={chart.data}
+        label={chart.title}
+        unit={chart.unit}
+        color={chart.color}
+        annotations={shown}
+        windows={shownWindows}
+        referenceValue={chart.referenceValue ?? null}
+        yDomain={chart.yDomain}
+        groupYTicks={chart.groupYTicks}
+      />
+    </ChartCard>
+  );
+
   const grid = (list: BodyChartSpec[]) => (
     <div
       className={`grid gap-6 ${
         singleColumn || list.length === 1 ? "" : "lg:grid-cols-2"
       }`}
     >
-      {list.map((chart) => (
-        <ChartCard
-          key={chart.key}
-          title={chart.title}
-          hideTitle={chart.hideTitle}
-          // The detail page's own chart (#1541 fix 3): its <h1> is this title and
-          // its subtitle is this headline, ~700px apart on a phone — the #1533
-          // double-render shape. Suppressed together, since the card's header row
-          // is not even a tap target there (detailHref is null).
-          headline={chart.hideTitle ? null : latestHeadline(chart)}
-          note={chart.note}
-          anchorId={chart.anchorId}
-          testid={chart.testid}
-          headerAction={chart.headerAction}
-          detailHref={chart.detailHref}
-          footer={
-            chart.projectionNote ? (
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                {chart.projectionNote}
-              </p>
-            ) : null
-          }
-        >
-          <LineChartCard
-            data={chart.data}
-            label={chart.title}
-            unit={chart.unit}
-            color={chart.color}
-            annotations={shown}
-            windows={shownWindows}
-            referenceValue={chart.referenceValue ?? null}
-            yDomain={chart.yDomain}
-            groupYTicks={chart.groupYTicks}
-          />
-        </ChartCard>
-      ))}
+      {list.map(chartCard)}
     </div>
   );
 
@@ -178,30 +190,27 @@ export default function BodyTrendCharts({
         />
       )}
 
-      {sections
-        ? sections.map((section) => (
-            <section
-              key={section.id}
-              id={section.id}
-              className="scroll-mt-28 space-y-4"
-              data-testid={`body-section-${section.id}`}
+      {items ? (
+        // ONE grid for the whole census (#1674): every member sits in rank order,
+        // charts and pre-rendered cards alike, so DOM order IS the ranked order
+        // and nothing can ride above its rank inside a box.
+        <div
+          className={`grid gap-6 ${singleColumn ? "" : "lg:grid-cols-2"}`}
+          data-testid="body-chart-stack"
+        >
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className={item.wide && !singleColumn ? "lg:col-span-2" : ""}
+              data-testid={`body-stack-item-${item.id}`}
             >
-              <div>
-                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                  {section.heading}
-                </h2>
-                {section.description && (
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {section.description}
-                  </p>
-                )}
-              </div>
-              {section.charts.length > 0 && grid(section.charts)}
-              {section.after}
-              {section.charts.length === 0 && !section.after && section.empty}
-            </section>
-          ))
-        : grid(charts)}
+              {item.chart ? chartCard(item.chart) : item.node}
+            </div>
+          ))}
+        </div>
+      ) : (
+        grid(charts)
+      )}
     </div>
   );
 }

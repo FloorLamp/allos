@@ -25,10 +25,12 @@ import {
 } from "./preventive-concept-map";
 
 // The vitals ENTRY surface (#1076/#1179): vitals left the biomarker surface, so a
-// self-recordable vital screening (blood pressure) deep-links to the Trends → Vitals
-// quick-add, focused on the analyte. A stable ROUTE + prefill (NOT a Trends-section
-// component internal), to stay clear of the parallel Trends overhaul (#1067).
-const VITALS_ENTRY_HREF: AppRoute = "/trends?tab=body&focus=blood-pressure";
+// self-recordable vital screening (blood pressure) deep-links to the measurements
+// quick-add in the Trends body census, focused on the analyte. A stable ROUTE +
+// prefill (NOT a Trends-section component internal). #1644 retired the `?tab=body`
+// that used to carry it — the census rides the default view now, so the `focus=`
+// param opens the form and the anchor lands the reader behind it.
+const VITALS_ENTRY_HREF: AppRoute = "/trends?focus=blood-pressure#body";
 
 // The concrete deep link for a screening, from its explicit `satisfiedBy` concept
 // (#1083) — NOT the old `canonicalBiomarkers.length` guess (which pointed the

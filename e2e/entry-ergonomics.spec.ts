@@ -46,14 +46,19 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
   await expect(preview).toContainText("84.3 kg");
 
   // Enter commits it — the success toast is the end-to-end write confirmation.
+  // The action's response carries the revalidated dashboard render, which can
+  // outlast the default 5s on a loaded runner; a named ceiling, not a sleep — the
+  // History-table assertion below re-proves the write either way.
   await input.press("Enter");
-  await expect(page.getByText("Logged weight 84.3 kg.")).toBeVisible();
+  await expect(page.getByText("Logged weight 84.3 kg.")).toBeVisible({
+    timeout: 20_000,
+  });
 
   // …and it lands in the Body tab's History table (kg, so the value shows
   // as-is). Assert against the weight cell's stable testid — rows are date-desc,
   // so today's just-logged entry is the first one — rather than free text, which
   // also matches the (visually hidden) chart axis/point labels.
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   const weightCell = page.getByTestId("body-weight-cell").first(); // first-ok: the most-recent body-weight cell (newest-first) — order-agnostic
   await expect(weightCell).toContainText("84.3");
 });

@@ -80,7 +80,7 @@ export default async function GrowthTrendsPage(props: {
     >
       <div>
         <Link
-          href="/trends?tab=body"
+          href="/trends#body"
           className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm text-brand-700 hover:bg-brand-50 hover:no-underline dark:text-brand-400 dark:hover:bg-brand-950/40"
         >
           <IconArrowLeft className="h-4 w-4" aria-hidden />

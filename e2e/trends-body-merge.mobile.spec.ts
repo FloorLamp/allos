@@ -5,7 +5,8 @@ import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// Trends → the MERGED Body tab (issue #1486). The Vitals tab retired into Body,
+// Trends → the MERGED Body census (issue #1486, a SECTION since #1644). Vitals
+// retired into Body,
 // whose sections read: Today → the two ranked chart runs → growth/history. (#1486
 // declared those runs Vitals-then-Composition; #1659 re-sequenced the base layout
 // everyday-first, so with no signal firing they now read Composition-then-Vitals —
@@ -29,87 +30,90 @@ const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 900 };
 
 async function openBody(page: Page, query = ""): Promise<void> {
-  await page.goto(`/trends?tab=body${query}`);
-  // Below `sm` the tab strip lives inside the collapsed #1485 F context bar, so
-  // asserting the lit tab means opening the bar first (a no-op at desktop width).
+  await page.goto(`/trends${query ? `?${query.replace(/^&/, "")}` : ""}#body`);
+  // Below `sm` the chip strip lives inside the collapsed #1485 F context bar, so
+  // reaching the section's chip means opening the bar first (a no-op at desktop
+  // width).
   await expandTrendsContext(page);
-  await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
 }
 
-test.describe("one tab, one ordered stack (#1486)", () => {
-  test("the tab strip carries no Vitals tab", async ({ page }) => {
+test.describe("one census, one ordered stack (#1486)", () => {
+  test("the section strip carries no Vitals destination", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await openBody(page);
     const tabs = page.getByRole("tab");
-    // Five since #1489 folded Compare into Insights (this merge took it from
-    // seven to six); the ORDER + phone fit are that issue's spec —
-    // trends-compare-fold.mobile.spec.ts. What #1486 owns here is the absence of
-    // Vitals.
-    await expect(tabs).toHaveCount(5);
-    await expect(page.getByRole("tab", { name: "Vitals" })).toHaveCount(0);
+    // Four since #1644 folded Body into Overview; the ORDER + phone fit are that
+    // issue's spec — trends-compare-fold.mobile.spec.ts. What #1486 owns here is
+    // the absence of a Vitals destination of its own.
+    await expect(tabs).toHaveCount(4);
+    await expect(
+      page.getByRole("tab", { name: "Vitals", exact: true })
+    ).toHaveCount(0);
   });
 
-  test("?tab=vitals lands on Body — the old deep link is a vocabulary mapping", async ({
+  test("a retired ?tab=vitals bookmark still shows the Body census", async ({
     page,
   }) => {
     await page.setViewportSize(PHONE);
+    // The param names nothing since #1644 (no shim, #1635) — but the census it
+    // used to select is simply on the page it lands on.
     await page.goto("/trends?tab=vitals");
     await expandTrendsContext(page);
-    await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
     await expect(page.getByTestId("trends-body")).toBeVisible();
     // No redirect layer: the URL is left exactly as the caller wrote it.
     expect(page.url()).toContain("tab=vitals");
   });
 
-  test("the sections render in one stack, Composition before Vitals", async ({
+  test("the cards render in one flat stack, composition before the clinical run", async ({
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
-    // view=all pins the classic chart stack, where the two titled sections live.
+    // view=all pins the classic chart stack — one flat ranked stack since #1674.
     await openBody(page, "&view=all&from=2000-01-01&to=2100-01-01");
 
-    const vitals = page.getByTestId("body-section-vitals");
-    const composition = page.getByTestId("body-section-body-composition");
-    await expect(vitals).toBeVisible();
-    await expect(composition).toBeVisible();
+    const stack = page.getByTestId("body-chart-stack");
+    await expect(stack).toBeVisible();
+    // The titled boxes are GONE (#1674): they were a second source of order that
+    // contradicted the ranker, so there is nothing left to assert a box order on.
+    await expect(page.getByTestId("body-section-vitals")).toHaveCount(0);
+    await expect(page.getByTestId("body-section-body-composition")).toHaveCount(
+      0
+    );
 
     // ONE stack in a decided order — the merge's actual claim. #1486 landed it
     // vitals-first, from the page narrative; #1659 re-sequenced the base layout
     // everyday-first because that order was also the TIE-BREAK, and on a tie it put
-    // the clinical block above the metrics a wearable profile checks daily. The runs
-    // rank by their best member, so Composition now leads when no signal fires. The
-    // Today strip still opens with the vitals — that narrative kept its job.
-    const compositionFirst = await page.evaluate(() => {
-      const v = document.querySelector('[data-testid="body-section-vitals"]');
-      const c = document.querySelector(
-        '[data-testid="body-section-body-composition"]'
-      );
-      if (!v || !c) return null;
-      // Node.DOCUMENT_POSITION_FOLLOWING === 4
-      return (c.compareDocumentPosition(v) & 4) !== 0;
+    // the clinical block above the metrics a wearable profile checks daily. With the
+    // boxes retired the cards themselves carry that sequence. The Today strip still
+    // opens with the vitals — that narrative kept its job.
+    const order = await page.evaluate(() => {
+      const ids = [
+        "body-chart-weight",
+        "vitals-systolic",
+        "vitals-today-strip",
+      ];
+      return ids
+        .map((id) => ({
+          id,
+          el: document.querySelector(`[data-testid="${id}"]`),
+        }))
+        .filter((e): e is { id: string; el: Element } => e.el != null)
+        .sort((a, b) =>
+          // Node.DOCUMENT_POSITION_FOLLOWING === 4
+          a.el.compareDocumentPosition(b.el) & 4 ? -1 : 1
+        )
+        .map((e) => e.id);
     });
-    expect(compositionFirst).toBe(true);
-
-    // The Today strip precedes both (it is section 1).
-    const strip = page.getByTestId("vitals-today-strip");
-    if (await strip.isVisible()) {
-      const stripFirst = await page.evaluate(() => {
-        const s = document.querySelector('[data-testid="vitals-today-strip"]');
-        const v = document.querySelector('[data-testid="body-section-vitals"]');
-        if (!s || !v) return null;
-        return (s.compareDocumentPosition(v) & 4) !== 0;
-      });
-      expect(stripFirst).toBe(true);
-    }
+    // The Today strip is the page's head (fixed anatomy, not a ranked card), then
+    // composition, then the clinical cards.
+    expect(order).toEqual([
+      "vitals-today-strip",
+      "body-chart-weight",
+      "vitals-systolic",
+    ]);
   });
 
-  test("resting HR renders exactly once, in Vitals, with its goal overlay", async ({
+  test("resting HR renders exactly once, with its goal overlay", async ({
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
@@ -119,15 +123,11 @@ test.describe("one tab, one ordered stack (#1486)", () => {
     const restingHr = page.getByTestId("vitals-resting-hr");
     await expect(restingHr).toHaveCount(1);
     await expect(restingHr).toBeVisible();
-    // It sits INSIDE the vitals section, not the composition one.
+    // It sits in the ONE flat stack, at its own ranked slot — there is no box left
+    // for it to be "inside" (#1674).
     await expect(
-      page.getByTestId("body-section-vitals").getByTestId("vitals-resting-hr")
+      page.getByTestId("body-chart-stack").getByTestId("vitals-resting-hr")
     ).toHaveCount(1);
-    await expect(
-      page
-        .getByTestId("body-section-body-composition")
-        .getByTestId("vitals-resting-hr")
-    ).toHaveCount(0);
 
     // The goal overlay came WITH it — Body's copy owned it, Vitals' did not, and
     // the merge unions the two. The seed carries a "Resting HR under 52" goal, so
@@ -192,7 +192,7 @@ test.describe("logging: desktop uses a modal, mobile uses the overlay (#1486)", 
 
     // The #1083 preventive blood-pressure deep link still lands the user in a
     // focused field — via the #1468 overlay rather than an inline form.
-    await page.goto("/trends?tab=body&focus=blood-pressure");
+    await page.goto("/trends?focus=blood-pressure");
     const sheet = page.getByTestId("quick-entry-sheet");
     await expect(sheet).toBeVisible();
     await expect(sheet.getByTestId("measurements-quick-add")).toBeVisible();
@@ -252,7 +252,7 @@ test.describe("the form is life-stage gated (#1486)", () => {
 
       // ── The same ONE component in the #1468 overlay ─────────────────────
       await child.setViewportSize(PHONE);
-      await child.goto("/trends?tab=body&focus=height");
+      await child.goto("/trends?focus=height");
       const sheetForm = child
         .getByTestId("quick-entry-sheet")
         .getByTestId("measurements-quick-add");

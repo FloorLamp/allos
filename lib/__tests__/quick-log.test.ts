@@ -30,9 +30,25 @@ describe("primaryQuickLog", () => {
   });
 
   it("promotes measurements on Trends' BODY tab only — the tab is the rule, not the route", () => {
+    // #1644: the body census moved to the DEFAULT tab, so a paramless /trends now
+    // carries the measurements form…
+    expect(primaryQuickLog("/trends").id).toBe("log-measurements");
+    expect(primaryQuickLog("/trends", "overview").id).toBe("log-measurements");
+    // …and the retired names that resolve to that same default answer the same way,
+    // without a shim of their own.
     expect(primaryQuickLog("/trends", "body").id).toBe("log-measurements");
+    expect(primaryQuickLog("/trends", "vitals").id).toBe("log-measurements");
+    // The surviving tabs are unchanged: neither is a measurements surface.
     expect(primaryQuickLog("/trends", "fitness").id).toBe(LOG_ACTIVITY_ID);
-    expect(primaryQuickLog("/trends").id).toBe(LOG_ACTIVITY_ID);
+    expect(primaryQuickLog("/trends", "nutrition").id).toBe(LOG_ACTIVITY_ID);
+    expect(primaryQuickLog("/trends", "insights").id).toBe(LOG_ACTIVITY_ID);
+    // A metric detail page is under the hub with no tab of its own, so it resolves
+    // to the default view's action.
+    expect(primaryQuickLog("/trends/metric/weight").id).toBe(
+      "log-measurements"
+    );
+    // …but a route that merely starts with the same letters is not the hub.
+    expect(primaryQuickLog("/trendsetter").id).toBe(LOG_ACTIVITY_ID);
   });
 
   it("never claims a route by bare string prefix", () => {
@@ -47,9 +63,7 @@ describe("showsActivityShortcuts", () => {
     expect(showsActivityShortcuts(primaryQuickLog("/"))).toBe(true);
     expect(showsActivityShortcuts(primaryQuickLog("/nutrition"))).toBe(false);
     expect(showsActivityShortcuts(primaryQuickLog("/medications"))).toBe(false);
-    expect(showsActivityShortcuts(primaryQuickLog("/trends", "body"))).toBe(
-      false
-    );
+    expect(showsActivityShortcuts(primaryQuickLog("/trends"))).toBe(false);
   });
 });
 

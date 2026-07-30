@@ -484,7 +484,7 @@ export default async function BodyMetricDetailPage(props: {
 function BackLink() {
   return (
     <Link
-      href="/trends?tab=body"
+      href="/trends#body"
       aria-label="Back to Body"
       className="mt-0.5 inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-1 text-sm text-brand-700 hover:bg-brand-50 hover:no-underline sm:px-2 dark:text-brand-400 dark:hover:bg-brand-950/40"
     >

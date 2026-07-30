@@ -155,7 +155,7 @@ test("a weight logged from the dashboard sheet stays put, toasts, and persists",
     await page.reload();
     expect(page.url()).toBe(dashboardUrl);
 
-    await page.goto("/trends?tab=body&view=all");
+    await page.goto("/trends?view=all");
     await expect(page.getByTestId("body-history-table")).toContainText(
       SHELL_WEIGHT_KG
     );
