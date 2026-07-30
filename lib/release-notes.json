@@ -4,6 +4,34 @@
       "date": "2026-07-30",
       "entries": [
         {
+          "pr": 1703,
+          "kind": "feature",
+          "title": "A tidier supplement shelf and medicine cabinet",
+          "body": "The supplements page puts your working list back ahead of the safety reading, with a \"More supplements\" disclosure matching Food's. The medicine cabinet got a matching pass: profile-aware links back to each item, actions tucked into a standard overflow menu, and the usual delete confirmation. Linking a shared supply now confirms it worked and no longer lets a double-tap create duplicate bottles, and same-named linked items disambiguate by kind and dose so you always know which one you're looking at.",
+          "issues": []
+        },
+        {
+          "pr": 1701,
+          "kind": "feature",
+          "title": "Upcoming stops drowning you in routine",
+          "body": "The planning page's scheduled doses now fold into one line per band — \"14 doses today · 9 taken\" — expandable to the exact rows with their confirm buttons intact, and routine interaction/gene notes roll up the same way. Safety never folds: a missed-dose escalation or an as-needed limit warning always renders individually, above the fold, and allergy conflicts keep their place at the top. The genuinely attention-worthy items stop being needles in a haystack.",
+          "issues": [1504]
+        },
+        {
+          "pr": 1698,
+          "kind": "feature",
+          "title": "File a document or log a practice without leaving where you are",
+          "body": "The quick-log sheet gains an Add document row that opens the familiar upload form in place — camera included, so photographing a paper result is one tap — and a Log practice row listing your tracked practices with this week's standing. The command palette learned both too: search for \"scan\" or \"lab report\" to file a document, or type \"log sauna\" to record a practice — a bare practice name stays a search, so you never log by accident.",
+          "issues": [1525, 1633]
+        },
+        {
+          "pr": 1697,
+          "kind": "feature",
+          "title": "Weekly, alternating-day, and taper schedules — without giving up reminders",
+          "body": "Intake items can finally say when they actually happen: weekly (methotrexate, a GLP-1 shot), alternating days, every N days, or specific weekdays. A weekly medication now reminds and escalates on its day and stays silent the other six — no more choosing between daily nagging and demoting it to no reminders at all. Off-day quick-logs still work and ask an honest confirm; adherence math counts only the days a dose was actually owed.",
+          "issues": [1602]
+        },
+        {
           "pr": 1693,
           "kind": "fix",
           "title": "Charts you can actually read on a phone — and a day chart you can touch",

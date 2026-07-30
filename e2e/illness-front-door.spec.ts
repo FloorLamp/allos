@@ -77,7 +77,12 @@ test.describe("Illness front door (#843)", () => {
     // unified card stays (mood + illness coexist, #992) but its illness branch
     // now defers to the hero.
     await page.getByTestId("feeling-sick-activate").click();
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
+    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
+    // whose full-page re-render can exceed the 5s default on a loaded shard
+    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
+    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.getByTestId("feeling-sick-activate")).toHaveCount(0);
     await expect(front.getByTestId("mood-episode-note")).toBeVisible();
     await expect(page.getByTestId("symptom-logged-count")).toHaveCount(0);
@@ -174,7 +179,12 @@ test.describe("Illness front door (#843)", () => {
     // Entry point 2 — inline on the dashboard symptom card. Open the door first.
     await page.goto("/");
     await page.getByTestId("feeling-sick-activate").click();
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
+    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
+    // whose full-page re-render can exceed the 5s default on a loaded shard
+    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
+    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
+      timeout: 20_000,
+    });
     await page.getByTestId("illness-add-medication").click();
     const inline = page.getByTestId("illness-medication-quick-add");
     await expect(inline).toBeVisible();
@@ -202,7 +212,12 @@ test.describe("Illness front door (#843)", () => {
 
     // 1) Feeling sick? — one tap opens the full card.
     await page.getByTestId("feeling-sick-activate").click();
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
+    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
+    // whose full-page re-render can exceed the 5s default on a loaded shard
+    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
+    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
+      timeout: 20_000,
+    });
 
     // 2) Two symptoms at severities. Active-first layout (#857): add from the picker
     // (logs at severity 1), then raise.
