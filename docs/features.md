@@ -1215,32 +1215,63 @@ A manual menstrual-cycle log at **Medical → Cycle** (`/medical/cycles`). Log a
 period with one tap ("Period started today" / "Period ended today", acting on
 today for the active profile) or with a dated form (start, optional inclusive
 end, a light/medium/heavy flow, and a note); each recorded period lists in the
-history with its bleeding length and is editable/deletable inline. Per-day
-**cycle symptoms** (cramps, bloating, breast tenderness, mood swings, low back
-pain) ride the SAME shipped symptom bar (#799/#815/#857) — a small `domain` tag
-(illness/cycle/general) on the symptom vocabulary leads each mount with its
-context's slugs, so the Cycle bar surfaces the menstrual symptoms first while
-every symptom stays loggable; phase membership is derived by DATE, so a symptom
-during a period during a cold belongs to both the illness episode and the cycle
-phase, correct by construction (no second symptom store). The **cycle phase**
-(menstrual/follicular/luteal) is DERIVED from the logged period history — one
-pure computation shared by the Cycle page's "current phase" card and a
-phase/period **chip on the Timeline day view** — and a **cycle-length +
-variability** read (average/shortest/longest/spread, a regular-vs-irregular
-verdict within a 7-day threshold, and a length trend chart) answers "is it
-regular / changing." Deliberately **tracking, not forecasting**: the luteal
-phase is only assigned retrospectively once the following period is logged, and
-there is **no** next-period or ovulation prediction and **no**
-fertility-awareness / basal-body-temperature features (that regulated tier is
-out of scope). It also feeds cycle-phase-aware biomarker reference ranges (the
-phase on a lab's collection date). Informational only, not medical advice or
-diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
-always keeps it visible — data wins, including for trans or unset-sex profiles —
-else it shows for a female profile that is premenopausal (explicit reproductive
-status beats the age proxy; with no status set, the #494 life-stage fallback
-shows it for adolescents and adults). An explicit postmenopausal status (absent
-data) hides it, as does an unknown sex or age. The gate is cosmetic —
-`/medical/cycles` never hard-blocks.
+history with its bleeding length and is editable/deletable inline.
+
+The **quick action is for the common case; the form owns the exceptions**
+(#1681). With no period open the control shows the derived cycle state ("Day 6 ·
+Follicular") rather than an always-on start button — "Period started today" only
+returns once a plausible gap has elapsed since the last period ended, because a
+period ending and the next one starting are ~2–3 weeks apart and a tap in
+between would mint a back-to-back period that corrupts the start-to-start cycle
+lengths. In the same slot sits a one-tap **"Still bleeding"**, which reopens a
+period ended by mistake within a small recency window (it refuses an older one
+rather than silently merging two cycles). Every quick action answers from its
+write core's **typed outcome** — a tap that changes nothing says so, and never
+reports success.
+
+Cycle writes carry **plausibility guards** (#1682), all in one pure module so
+the form, the quick actions, and any future import path share them:
+
+- A period left open past a plausible maximum (~10 days) **stops resolving as
+  `menstrual`** — the forgotten "Period ended" tap no longer claims menses
+  forever through the phase, the Timeline chip, the derived Period situation, or
+  the phase-specific reference ranges. **Nothing is written**: the record stays
+  exactly as recorded and the surface prompts _"Still bleeding? Set the end
+  date."_ The app withdraws its own claim; only the user's tap edits the row.
+- A **too-long recorded period is stored, not refused** — prolonged bleeding is
+  real, and an app that can't record it can't record an emergency. It surfaces a
+  calm, dismissible coaching-tier finding ("N days of bleeding — worth
+  discussing with a clinician"), never a notification.
+- **Future dates are refused** on every path; arbitrarily old backfill stays
+  allowed, because people legitimately reconstruct history.
+- **Overlaps and a second simultaneously-open period are refused**, with the
+  conflicting period named in the message. No inferred repair — the user
+  resolves the conflict explicitly. Per-day
+  **cycle symptoms** (cramps, bloating, breast tenderness, mood swings, low back
+  pain) ride the SAME shipped symptom bar (#799/#815/#857) — a small `domain` tag
+  (illness/cycle/general) on the symptom vocabulary leads each mount with its
+  context's slugs, so the Cycle bar surfaces the menstrual symptoms first while
+  every symptom stays loggable; phase membership is derived by DATE, so a symptom
+  during a period during a cold belongs to both the illness episode and the cycle
+  phase, correct by construction (no second symptom store). The **cycle phase**
+  (menstrual/follicular/luteal) is DERIVED from the logged period history — one
+  pure computation shared by the Cycle page's "current phase" card and a
+  phase/period **chip on the Timeline day view** — and a **cycle-length +
+  variability** read (average/shortest/longest/spread, a regular-vs-irregular
+  verdict within a 7-day threshold, and a length trend chart) answers "is it
+  regular / changing." Deliberately **tracking, not forecasting**: the luteal
+  phase is only assigned retrospectively once the following period is logged, and
+  there is **no** next-period or ovulation prediction and **no**
+  fertility-awareness / basal-body-temperature features (that regulated tier is
+  out of scope). It also feeds cycle-phase-aware biomarker reference ranges (the
+  phase on a lab's collection date). Informational only, not medical advice or
+  diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
+  always keeps it visible — data wins, including for trans or unset-sex profiles —
+  else it shows for a female profile that is premenopausal (explicit reproductive
+  status beats the age proxy; with no status set, the #494 life-stage fallback
+  shows it for adolescents and adults). An explicit postmenopausal status (absent
+  data) hides it, as does an unknown sex or age. The gate is cosmetic —
+  `/medical/cycles` never hard-blocks.
 
 ## Mental health
 

@@ -38,6 +38,15 @@ two genuinely different things across the two consumers:
 
 A null `start` is **unbounded-past** (a member since before the capped
 change-log); a null `end` is **open/ongoing** (a member from `start` onward).
+
+**A consumer may cap what "onward" means before it calls the chassis (#1682).**
+Cycles do: `lib/cycle.ts` hands `rangeContainsDate` an open period's start plus
+`MAX_PLAUSIBLE_PERIOD_DAYS − 1` as the end, so a period someone forgot to close
+stops claiming menstrual instead of covering every future day. That is a
+DERIVATION-side decision made once, in the one helper both `periodOnDate` and
+`cyclePhaseOnDate` share — the stored `period_end` is still NULL, and nothing
+writes to the row. The chassis itself is unchanged: it still answers "is `d` in
+this range", and the caller still owns which range it is asking about.
 These two conventions are NOT a bug to reconcile — they are correct for their
 domains — so the chassis makes the caller name its bound and never assumes one.
 Silently reading cycles' inclusive `period_end` as illness's exclusive
