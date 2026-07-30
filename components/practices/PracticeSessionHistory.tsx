@@ -2,32 +2,54 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
 import { useToast } from "@/components/Toast";
 import DateField from "@/components/DateField";
+import NotesText from "@/components/NotesText";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
+import {
+  formatClockValue,
+  formatDateWithYear,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 import type { PracticeLog, PracticeSessionMutationOutcome } from "@/lib/types";
-import { editPracticeSession, removePracticeSession } from "./actions";
+import {
+  editPracticeSession,
+  removePracticeSession,
+} from "@/app/(app)/wellness/actions";
 
-function sessionFacts(session: PracticeLog): string {
-  const parts = [session.date];
-  if (session.time) parts.push(session.time);
+const COLLAPSED_SESSION_COUNT = 5;
+
+function sessionFacts(session: PracticeLog, prefs: DisplayFormatPrefs): string {
+  const parts = [formatDateWithYear(session.date, prefs)];
+  if (session.time)
+    parts.push(formatClockValue(session.time, prefs.timeFormat));
   if (session.duration_min != null) parts.push(`${session.duration_min} min`);
   return parts.join(" · ");
 }
 
 export default function PracticeSessionHistory({
   sessions,
-  emptyText = "No sessions in this window.",
+  totalCount = sessions.length,
+  emptyText = "No sessions during this period.",
 }: {
   sessions: PracticeLog[];
+  totalCount?: number;
   emptyText?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
+  const formatPrefs = useFormatPrefs();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   async function submitEdit(event: FormEvent<HTMLFormElement>, id: number) {
     event.preventDefault();
@@ -58,7 +80,7 @@ export default function PracticeSessionHistory({
     const ok = await confirm({
       title: "Delete practice session?",
       message:
-        "This correction changes the practice's past adherence and protocol usage.",
+        "This removes the session from weekly progress and any linked protocol history.",
       confirmLabel: "Delete session",
       danger: true,
     });
@@ -94,12 +116,18 @@ export default function PracticeSessionHistory({
     );
   }
 
+  const visibleSessions = expanded
+    ? sessions
+    : sessions.slice(0, COLLAPSED_SESSION_COUNT);
+  const hasMore = sessions.length > COLLAPSED_SESSION_COUNT;
+  const expandLabel =
+    sessions.length === totalCount
+      ? `View all ${totalCount} sessions`
+      : `View ${sessions.length} recent sessions`;
+
   return (
-    <div
-      className="mt-3 overflow-x-auto"
-      data-testid="practice-session-history"
-    >
-      <table className="w-full min-w-[34rem] text-left text-sm">
+    <div className="mt-3" data-testid="practice-session-history">
+      <ResponsiveTable className="practice-session-list w-full text-left text-sm">
         <thead>
           <tr className="border-b border-black/10 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
             <th className="px-2 py-1.5 font-medium">Session</th>
@@ -108,14 +136,14 @@ export default function PracticeSessionHistory({
           </tr>
         </thead>
         <tbody>
-          {sessions.map((session) => (
+          {visibleSessions.map((session) => (
             <tr
               key={session.id}
               className="border-b border-black/5 align-top last:border-0 dark:border-white/5"
               data-testid={`practice-session-${session.id}`}
             >
               {editingId === session.id ? (
-                <td colSpan={3} className="px-2 py-2">
+                <Td slot="full" colSpan={3} className="px-2 py-2">
                   <form
                     onSubmit={(event) => submitEdit(event, session.id)}
                     className="grid gap-2 sm:grid-cols-2"
@@ -176,46 +204,80 @@ export default function PracticeSessionHistory({
                       </button>
                     </div>
                   </form>
-                </td>
+                </Td>
               ) : (
                 <>
-                  <td className="px-2 py-2 tabular-nums text-slate-700 dark:text-slate-200">
-                    {sessionFacts(session)}
-                  </td>
-                  <td className="max-w-sm px-2 py-2 text-slate-500 dark:text-slate-400">
-                    {session.notes || "—"}
-                  </td>
-                  <td className="px-2 py-2">
+                  <Td
+                    slot="title"
+                    className="px-2 py-2 tabular-nums text-slate-700 dark:text-slate-200"
+                  >
+                    {sessionFacts(session, formatPrefs)}
+                  </Td>
+                  <Td
+                    slot="meta"
+                    empty={!session.notes}
+                    className="max-w-sm px-2 py-2 text-slate-500 dark:text-slate-400"
+                  >
+                    {session.notes ? <NotesText notes={session.notes} /> : "—"}
+                  </Td>
+                  <Td slot="actions" className="px-2 py-2">
                     <div className="flex justify-end gap-1">
-                      <button
-                        type="button"
-                        aria-label="Edit session"
-                        title="Edit session"
-                        data-testid="practice-session-edit"
-                        onClick={() => setEditingId(session.id)}
-                        className="btn-ghost p-2"
+                      <OverflowMenu
+                        label="Session actions"
+                        open={menuOpenId === session.id}
+                        onOpenChange={(open) =>
+                          setMenuOpenId(open ? session.id : null)
+                        }
                       >
-                        <IconPencil className="h-4 w-4" stroke={1.75} />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Delete session"
-                        title="Delete session"
-                        data-testid="practice-session-delete"
-                        disabled={pendingId === session.id}
-                        onClick={() => remove(session)}
-                        className="btn-ghost p-2 text-rose-600 dark:text-rose-400"
-                      >
-                        <IconTrash className="h-4 w-4" stroke={1.75} />
-                      </button>
+                        {({ close }) => (
+                          <>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              data-testid="practice-session-edit"
+                              onClick={() => {
+                                close();
+                                setEditingId(session.id);
+                              }}
+                              className={MENU_ITEM}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              data-testid="practice-session-delete"
+                              disabled={pendingId === session.id}
+                              onClick={() => {
+                                close();
+                                void remove(session);
+                              }}
+                              className={MENU_ITEM_DANGER}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </OverflowMenu>
                     </div>
-                  </td>
+                  </Td>
                 </>
               )}
             </tr>
           ))}
         </tbody>
-      </table>
+      </ResponsiveTable>
+      {hasMore && (
+        <button
+          type="button"
+          className="mt-2 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          data-testid="practice-session-toggle"
+        >
+          {expanded ? "Show fewer sessions" : expandLabel}
+        </button>
+      )}
     </div>
   );
 }

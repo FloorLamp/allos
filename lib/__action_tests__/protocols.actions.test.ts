@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import {
   createProtocol,
   updateProtocol,
+  updateProtocolOutcomes,
   endProtocol,
   resumeProtocol,
   runProtocolAgain,
@@ -111,6 +112,73 @@ describe("createProtocol", () => {
     // The hub revalidates the Longevity page (its #protocols section, #1042
     // phase 4).
     expect(revalidate).toHaveBeenCalledWith("/longevity");
+  });
+});
+
+describe("updateProtocolOutcomes", () => {
+  it("updates and clears only the normalized outcome set", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Creatine trial",
+        start_date: "2026-05-01",
+        end_date: "2026-05-31",
+        notes: "Keep training stable",
+        situation: "Creatine loading",
+        outcome_keys: ["metric:weight"],
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+
+    const result = await updateProtocolOutcomes(
+      protocolForm({
+        id: original.id,
+        outcome_keys: [
+          "metric:resting_hr",
+          "metric:resting_hr",
+          "biomarker:Apolipoprotein B",
+          "junk",
+        ],
+      })
+    );
+    expect(result).toEqual({ ok: true });
+    expect(getProtocols(profile.id)[0]).toMatchObject({
+      name: "Creatine trial",
+      start_date: "2026-05-01",
+      end_date: "2026-05-31",
+      notes: "Keep training stable",
+      situation: "Creatine loading",
+      outcomeKeys: ["metric:resting_hr", "biomarker:Apolipoprotein B"],
+    });
+    expect(revalidate).toHaveBeenCalledWith(`/protocols/${original.id}`);
+
+    await updateProtocolOutcomes(protocolForm({ id: original.id }));
+    expect(getProtocols(profile.id)[0].outcomeKeys).toEqual([]);
+  });
+
+  it("cannot update another profile's protocol", async () => {
+    const { login, profile: owner } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Owner protocol",
+        outcome_keys: ["metric:weight"],
+      })
+    );
+    const protocol = getProtocols(owner.id)[0];
+    const other = createProfile("Other subject", login.id);
+
+    actAs(login, other);
+    expect(
+      await updateProtocolOutcomes(
+        protocolForm({
+          id: protocol.id,
+          outcome_keys: ["metric:resting_hr"],
+        })
+      )
+    ).toEqual({ ok: false, error: "Couldn't find that protocol." });
+
+    actAs(login, owner);
+    expect(getProtocols(owner.id)[0].outcomeKeys).toEqual(["metric:weight"]);
   });
 });
 

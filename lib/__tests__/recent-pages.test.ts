@@ -16,6 +16,7 @@ describe("trackedPageFor", () => {
   it("matches a top-level route exactly", () => {
     expect(trackedPageFor("/timeline")?.label).toBe("Timeline");
     expect(trackedPageFor("/")?.label).toBe("Dashboard");
+    expect(trackedPageFor("/wellness")?.label).toBe("Wellness");
   });
 
   it("attributes a child route to its section", () => {
@@ -144,5 +145,6 @@ describe("the tracked-page allowlist", () => {
     for (const page of TRACKED_PAGES) {
       expect(page.label.trim().length).toBeGreaterThan(0);
     }
+    expect(hrefs).toContain("/wellness");
   });
 });

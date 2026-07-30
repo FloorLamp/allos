@@ -13,10 +13,11 @@ import {
 } from "@/lib/queries";
 import { getEquipmentById } from "@/lib/equipment";
 import { parseScopedPractice } from "@/lib/protocol-practice";
-import { findPracticeTarget } from "@/lib/practice-store";
+import { findPracticeTarget } from "@/lib/queries/wellness";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { createLogger } from "@/lib/log";
 import { protocolReopenEligibility } from "@/lib/protocol-reopen";
+import { practiceIdentity } from "@/lib/practice";
 
 const log = createLogger("protocols");
 
@@ -171,13 +172,17 @@ function syncPracticeTarget(
     } else {
       const info = db
         .prepare(
-          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, per_week_max)
-           VALUES (?, ?, ?, ?, ?)`
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+           VALUES (?, ?, ?, ?, ?, ?)`
         )
         .run(
           profileId,
           practice.scopeKind,
           practice.scopeValue,
+          practice.scopeKind === "practice"
+            ? practiceIdentity(practice.scopeValue)
+            : null,
           practice.perWeek,
           practice.perWeekMax
         );
@@ -342,6 +347,28 @@ export async function updateProtocol(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
+export async function updateProtocolOutcomes(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that protocol.");
+  if (!getProtocol(profile.id, id))
+    return formError("Couldn't find that protocol.");
+
+  const outcomeKeys = normalizeOutcomeKeys(
+    formData.getAll("outcome_keys").map((value) => String(value))
+  );
+  db.prepare(
+    `UPDATE protocols
+        SET outcome_keys = ?
+      WHERE id = ? AND profile_id = ?`
+  ).run(JSON.stringify(outcomeKeys), id, profile.id);
+
+  revalidateProtocols(id);
+  return formOk();
+}
+
 export async function endProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
@@ -463,13 +490,16 @@ export async function runProtocolAgain(
             const info = db
               .prepare(
                 `INSERT INTO frequency_targets
-                  (profile_id, scope_kind, scope_value, per_week, per_week_max)
-                 VALUES (?, ?, ?, ?, ?)`
+                  (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+                 VALUES (?, ?, ?, ?, ?, ?)`
               )
               .run(
                 profile.id,
                 target.scope_kind,
                 target.scope_value,
+                target.scope_kind === "practice"
+                  ? practiceIdentity(target.scope_value)
+                  : null,
                 target.per_week,
                 target.per_week_max
               );

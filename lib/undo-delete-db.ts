@@ -29,6 +29,7 @@ import {
   removeImportTombstoneForRow,
   liveRowIdForCapturedRoot,
 } from "./integrations/tombstones";
+import { practiceIdentity } from "./practice";
 
 // Human-readable, NON-PHI descriptors stored in deleted_rows.label (for a possible
 // future trash view). Never the user's title/name — that stays in `payload`.
@@ -37,6 +38,8 @@ const KIND_LABELS: Record<string, string> = {
   "body-metric": "body metric",
   "biomarker-record": "biomarker record",
   "intake-item": "intake item",
+  "wellness-practice": "wellness practice",
+  "wellness-practice-history": "wellness practice history",
   // PRN administration (#851 item 11) — captured/restored by its own bespoke path
   // (deleteAdministrationLog / restoreAdministrationLog in lib/queries/intake/
   // adherence.ts), because its restore must invert a SUPPLY side effect and the ledger
@@ -80,7 +83,8 @@ export function captureDelete(
   kind: string,
   profileId: number,
   rootId: number,
-  merge?: MergeUndoContext
+  merge?: MergeUndoContext,
+  capturedChildren?: Record<string, Row[]>
 ): number | null {
   const spec = getKindSpec(kind);
   const root = spec.entities[0];
@@ -94,9 +98,11 @@ export function captureDelete(
     const rows: Record<string, Row[]> = { [root.entity]: [rootRow] };
     for (const child of spec.entities.slice(1)) {
       const binds = Array.from({ length: child.childBinds ?? 1 }, () => rootId);
-      rows[child.entity] = db
-        .prepare(`SELECT * FROM ${child.table} WHERE ${child.childWhere}`)
-        .all(...binds) as Row[];
+      rows[child.entity] =
+        capturedChildren?.[child.entity] ??
+        (db
+          .prepare(`SELECT * FROM ${child.table} WHERE ${child.childWhere}`)
+          .all(...binds) as Row[]);
     }
 
     const payload = serializePayload(kind, rows, merge);
@@ -148,6 +154,32 @@ export function captureDelete(
         `UPDATE intake_items SET source_record_id = NULL
           WHERE source_record_id = ? AND profile_id = ?`
       ).run(rootId, profileId);
+    }
+
+    // A wellness practice target can be adopted by protocols. The accepted
+    // lifecycle posture is to null those optional links (matching Stop tracking)
+    // before the target delete; the protocols survive and never hold a dangling FK.
+    if (kind === "wellness-practice") {
+      db.prepare(
+        `UPDATE protocols
+            SET frequency_target_id = NULL, owns_frequency_target = 0
+          WHERE frequency_target_id = ? AND profile_id = ?`
+      ).run(rootId, profileId);
+    }
+
+    // Convention-owned children (practice sessions and their suppression row) have
+    // no cascade FK. Delete exactly the rows captured above, under profile scope,
+    // before removing the root so capture + delete remain one atomic operation.
+    for (const child of spec.entities.slice(1)) {
+      if (!child.deleteExplicitly) continue;
+      for (const row of rows[child.entity] ?? []) {
+        const id = row.id;
+        if (typeof id !== "number") continue;
+        db.prepare(
+          `DELETE FROM ${child.table} WHERE id = ? AND profile_id = ?`
+        ).run(id, profileId);
+        writeImportTombstoneForRow(profileId, child.table, row);
+      }
     }
 
     // Delete the root; children cascade. Profile-scoped for defense in depth.
@@ -207,10 +239,10 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
         // remap onto it and a merge-undo inverts the keeper against it. With the
         // tombstone in place the resync never re-inserted, so this only fires for a
         // pre-tombstone delete; either way undo never crashes.
-        if (isRoot && typeof oldId === "number") {
+        if ((isRoot || entity.deleteExplicitly) && typeof oldId === "number") {
           const liveId = liveRowIdForCapturedRoot(
             profileId,
-            spec.ownedTable,
+            isRoot ? spec.ownedTable : entity.table,
             row
           );
           if (liveId !== null) {
@@ -218,7 +250,18 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
             continue;
           }
         }
-        const toInsert = remapRow(row, idMaps, entity.fks);
+        const toInsert = remapRow(row, idMaps, entity.fks, entity.keyRefs);
+        // A practice target captured before migration 123 has no persisted
+        // scope_identity. Rebuild it from the same domain identity before restore
+        // so legacy undo payloads satisfy the new database invariant.
+        if (
+          entity.table === "frequency_targets" &&
+          toInsert.scope_kind === "practice" &&
+          typeof toInsert.scope_value === "string" &&
+          typeof toInsert.scope_identity !== "string"
+        ) {
+          toInsert.scope_identity = practiceIdentity(toInsert.scope_value);
+        }
         // Reconcile captured FK links that point OUTSIDE this capture and may have
         // been deleted between capture and undo (#202): null a now-dangling nullable
         // link (e.g. exercise_sets.equipment_id — deleteEquipment nulls only live
@@ -284,6 +327,11 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
     const capturedRoot = payload.rows[rootEntity.entity]?.[0];
     if (capturedRoot)
       removeImportTombstoneForRow(profileId, spec.ownedTable, capturedRoot);
+    for (const entity of spec.entities.slice(1)) {
+      if (!entity.deleteExplicitly) continue;
+      for (const row of payload.rows[entity.entity] ?? [])
+        removeImportTombstoneForRow(profileId, entity.table, row);
+    }
 
     db.prepare(`DELETE FROM deleted_rows WHERE id = ? AND profile_id = ?`).run(
       undoId,

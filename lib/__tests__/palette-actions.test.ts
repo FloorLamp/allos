@@ -62,6 +62,19 @@ describe("palette create actions", () => {
     expect(repeat?.target.kind).toBe("repeat");
   });
 
+  it("keeps Wellness practices available before the relevance-gated nav appears (#1620)", () => {
+    const wellness = PALETTE_ACTIONS.find(
+      (action) => action.id === "wellness-practices"
+    );
+    expect(wellness).toMatchObject({
+      label: "Wellness practices",
+      target: { kind: "navigate", href: "/wellness?new=1" },
+    });
+    expect(matchPaletteActions("meditation").map((a) => a.id)).toContain(
+      "wellness-practices"
+    );
+  });
+
   it("has exactly one in-place activity action; the rest navigate with the focus param", () => {
     const activity = PALETTE_ACTIONS.filter(
       (a) => a.target.kind === "activity"

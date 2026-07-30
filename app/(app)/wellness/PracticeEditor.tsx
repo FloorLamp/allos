@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import Combobox from "@/components/Combobox";
 import { PRACTICE_STARTER_LIST } from "@/lib/practice";
+import { useFocusFormOnParam } from "@/components/useFocusFormOnParam";
 import { savePractice } from "./actions";
 
 export default function PracticeEditor({
@@ -14,6 +15,7 @@ export default function PracticeEditor({
   perWeekMax = null,
   compact = false,
   onDone,
+  initialFocusRef,
 }: {
   targetId?: number | null;
   name?: string;
@@ -21,12 +23,15 @@ export default function PracticeEditor({
   perWeekMax?: number | null;
   compact?: boolean;
   onDone?: () => void;
+  initialFocusRef?: RefObject<HTMLInputElement | null>;
 }) {
   const router = useRouter();
   const toast = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [practiceName, setPracticeName] = useState(name);
+  useFocusFormOnParam(formRef, "new", undefined, targetId == null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,6 +62,7 @@ export default function PracticeEditor({
 
   return (
     <form
+      ref={formRef}
       onSubmit={submit}
       className={
         compact ? "grid gap-3 sm:grid-cols-3" : "card grid gap-3 sm:grid-cols-3"
@@ -76,10 +82,11 @@ export default function PracticeEditor({
           allowFreeText
           placeholder="Sauna, meditation, red light…"
           inputClassName="mt-1 w-full"
+          inputElementRef={initialFocusRef}
         />
       </label>
       <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-        Weekly minimum
+        Minimum days
         <input
           name="per_week"
           type="number"
@@ -92,7 +99,7 @@ export default function PracticeEditor({
         />
       </label>
       <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-        Optional maximum
+        Maximum days (optional)
         <input
           name="per_week_max"
           type="number"
@@ -103,13 +110,12 @@ export default function PracticeEditor({
           className="input mt-1 w-full"
         />
       </label>
-      <div className="flex items-end gap-2">
+      <p className="text-xs leading-5 text-slate-500 sm:col-span-3 dark:text-slate-400">
+        Multiple sessions on the same day count once toward the weekly goal.
+      </p>
+      <div className="flex items-end gap-2 sm:col-span-3">
         <button type="submit" className="btn" disabled={pending}>
-          {pending
-            ? "Saving…"
-            : targetId == null
-              ? "Add practice"
-              : "Save changes"}
+          {pending ? "Saving…" : targetId == null ? "Save" : "Save changes"}
         </button>
         {onDone && (
           <button type="button" className="btn-ghost" onClick={onDone}>
@@ -118,7 +124,10 @@ export default function PracticeEditor({
         )}
       </div>
       {error && (
-        <p className="text-sm text-rose-600 dark:text-rose-400 sm:col-span-3">
+        <p
+          className="text-sm text-rose-600 dark:text-rose-400 sm:col-span-3"
+          data-testid="practice-save-error"
+        >
           {error}
         </p>
       )}

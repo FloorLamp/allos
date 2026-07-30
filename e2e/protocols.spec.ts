@@ -35,6 +35,14 @@ test.describe("protocols create → compare (issue #161)", () => {
     // outcome picker below — dismiss it before choosing outcomes.
     await page.keyboard.press("Escape");
     const outcomeSearch = form.getByLabel("Filter outcome metrics");
+    await outcomeSearch.click();
+    // The protocol picker keeps its tracked-only scope, but its empty-query
+    // biomarker order comes from the shared relevance rank (#1675). Seeded LDL
+    // is starred, so it reaches the first eight options instead of being buried
+    // in the old alphabetical biomarker tail.
+    await expect(
+      form.getByRole("button", { name: "LDL Cholesterol", exact: true })
+    ).toBeVisible();
     await outcomeSearch.fill("Body weight");
     await form.getByRole("button", { name: "Body weight" }).click();
     await outcomeSearch.fill("Resting heart rate");
@@ -49,6 +57,15 @@ test.describe("protocols create → compare (issue #161)", () => {
     await expect(detailMain.getByTestId("protocol-header")).toContainText(
       uniqueName
     );
+    await expect(
+      detailMain.getByRole("link", { name: "Back to protocols" })
+    ).toHaveAttribute("href", "/longevity#protocols");
+    await expect(
+      detailMain
+        .getByRole("heading", { name: uniqueName })
+        .locator("..")
+        .locator("..")
+    ).toHaveCSS("margin-bottom", "0px");
 
     // The comparison section renders per-outcome panels for the two chosen metrics.
     await expect(detailMain.getByTestId("protocol-compare")).toBeVisible();
@@ -59,8 +76,62 @@ test.describe("protocols create → compare (issue #161)", () => {
       detailMain.getByTestId("protocol-outcome-metric:resting_hr")
     ).toBeVisible();
 
-    // Edit opens the same wide modal as creation instead of replacing the narrow
-    // detail card inline.
+    // Outcomes are editable in place. Clearing them exposes a useful empty-state
+    // action, and that action can add one back without opening the full protocol
+    // editor or changing unrelated settings.
+    const outcomes = detailMain.getByTestId("protocol-compare");
+    await outcomes.getByRole("button", { name: "Edit outcomes" }).click();
+    const editOutcomes = outcomes.getByTestId("protocol-outcomes-form");
+    await expect(editOutcomes).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /outcomes/i })).toHaveCount(
+      0
+    );
+    await expect(
+      outcomes.getByTestId("protocol-outcome-metric:weight")
+    ).toBeVisible();
+    await outcomes.getByRole("button", { name: "Remove Body weight" }).click();
+    await outcomes
+      .getByRole("button", { name: "Remove Resting heart rate" })
+      .click();
+    await settledClick(
+      page,
+      editOutcomes.getByRole("button", { name: "Save outcomes" })
+    );
+    await expect(
+      outcomes.getByRole("button", { name: "Choose outcomes" })
+    ).toBeVisible();
+    await expect(
+      detailMain.getByTestId("protocol-outcome-metric:weight")
+    ).toHaveCount(0);
+
+    await outcomes.getByRole("button", { name: "Choose outcomes" }).click();
+    const chooseOutcomes = outcomes.getByTestId("protocol-outcomes-form");
+    await expect(chooseOutcomes).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /outcomes/i })).toHaveCount(
+      0
+    );
+    const chooseSearch = chooseOutcomes.getByLabel("Filter outcome metrics");
+    await chooseSearch.click();
+    const outcomeListbox = page.getByRole("listbox");
+    await expect(outcomeListbox).toBeVisible();
+    await expect(chooseOutcomes).toHaveCSS("z-index", "20");
+    await expect(outcomeListbox).toHaveCSS("z-index", "50");
+    await chooseSearch.fill("Body weight");
+    const weightOption = chooseOutcomes.getByRole("button", {
+      name: /^Body weight [−+±]\d/,
+    });
+    await expect(weightOption).toBeVisible();
+    await weightOption.click();
+    await settledClick(
+      page,
+      chooseOutcomes.getByRole("button", { name: "Save outcomes" })
+    );
+    await expect(
+      detailMain.getByTestId("protocol-outcome-metric:weight")
+    ).toBeVisible();
+
+    // Edit opens a bounded, sectioned modal with persistent actions instead of
+    // replacing the narrow detail card inline.
     await hydratedClick(
       page,
       detailMain.getByRole("button", { name: "More protocol actions" })
@@ -72,6 +143,27 @@ test.describe("protocols create → compare (issue #161)", () => {
     const editDialog = page.getByRole("dialog", { name: "Edit protocol" });
     await expect(editDialog).toBeVisible();
     await expect(editDialog.getByLabel("Name")).toHaveValue(uniqueName);
+    for (const section of [
+      "Details",
+      "Outcomes",
+      "What you're testing",
+      "Weekly practice",
+      "Notes",
+    ]) {
+      await expect(
+        editDialog.getByRole("heading", { name: section, exact: true })
+      ).toBeVisible();
+    }
+    await expect(editDialog.getByTestId("protocol-form-actions")).toBeVisible();
+    await expect(
+      editDialog.getByRole("button", { name: "Save", exact: true })
+    ).toBeVisible();
+    const dialogBox = await editDialog.boundingBox();
+    const viewport = page.viewportSize();
+    expect(dialogBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(dialogBox!.width).toBeLessThanOrEqual(768);
+    expect(dialogBox!.height).toBeLessThanOrEqual(viewport!.height - 64);
     await editDialog.getByRole("button", { name: "Cancel" }).click();
     await expect(editDialog).toHaveCount(0);
 
@@ -91,7 +183,7 @@ test.describe("protocols create → compare (issue #161)", () => {
         .getByRole("button", { name: "End protocol" })
     );
     await expect(detailMain.getByTestId("protocol-header")).not.toContainText(
-      "ongoing"
+      "Ongoing"
     );
 
     await hydratedClick(
@@ -103,7 +195,7 @@ test.describe("protocols create → compare (issue #161)", () => {
       page.getByRole("menu").getByRole("button", { name: "Resume" })
     );
     await expect(detailMain.getByTestId("protocol-header")).toContainText(
-      "ongoing"
+      "Ongoing"
     );
 
     // Self-clean: delete it through the app confirmation.
@@ -166,7 +258,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     const newUrl = page.url();
     expect(newUrl).not.toBe(oldUrl);
     await expect(detailMain.getByTestId("protocol-header")).toContainText(
-      "ongoing"
+      /ongoing/i
     );
 
     // The expired run remains addressable after the new run starts.

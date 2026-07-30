@@ -54,6 +54,9 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
 
   // Redirects to the detail page.
   await page.waitForURL(/\/protocols\/\d+/);
+  // Protocol detail is a narrow vertical reading flow on desktop: the practice
+  // card sits above comparison content rather than becoming a cramped sidebar.
+  await page.setViewportSize({ width: 1180, height: 900 });
   const detailMain = page.getByRole("main");
   await expect(detailMain.getByTestId("protocol-header")).toContainText(
     uniqueName
@@ -62,17 +65,39 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   // The Practice card renders the gear reference, adherence, and usage.
   const card = detailMain.getByTestId("protocol-practice-card");
   await expect(card).toBeVisible();
+  const detailBounds = await detailMain
+    .getByTestId("protocol-detail-page")
+    .boundingBox();
+  const cardBounds = await card.boundingBox();
+  const comparisonBounds = await detailMain
+    .getByTestId("protocol-comparison-column")
+    .boundingBox();
+  expect(detailBounds).not.toBeNull();
+  expect(cardBounds).not.toBeNull();
+  expect(comparisonBounds).not.toBeNull();
+  expect(detailBounds!.width).toBeLessThanOrEqual(768);
+  expect(cardBounds!.width).toBeGreaterThanOrEqual(detailBounds!.width - 1);
+  expect(comparisonBounds!.y).toBeGreaterThanOrEqual(
+    cardBounds!.y + cardBounds!.height
+  );
+  const historyBounds = await detailMain
+    .getByTestId("protocol-history-card")
+    .boundingBox();
+  expect(historyBounds).not.toBeNull();
+  expect(historyBounds!.y).toBeGreaterThanOrEqual(
+    comparisonBounds!.y + comparisonBounds!.height
+  );
 
   const gearLink = card.getByTestId("protocol-gear-link");
   await expect(gearLink).toContainText("E2E Protocol Sauna");
   await expect(gearLink).toHaveAttribute("href", /\/equipment\/\d+$/);
 
-  // Adherence reads "N / 4 Sport sessions" — the created OWNED target carries the
+  // Adherence uses the shared natural-language progress display. The created OWNED target carries the
   // per-week we entered (the create path, not a reference to a seeded target).
   const adherence = card.getByTestId("protocol-adherence");
-  await expect(adherence).toContainText("/ 4");
+  await expect(adherence).toContainText("Target 4×/week");
   await expect(adherence).toContainText("Sport");
-  await expect(card.getByTestId("protocol-usage")).toBeVisible();
+  await expect(detailMain.getByTestId("protocol-usage")).toBeVisible();
 
   // Self-clean.
   await hydratedClick(
@@ -143,21 +168,35 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   );
 
   const card = detailMain.getByTestId("protocol-practice-card");
+  await expect(card.getByTestId("protocol-wellness-link")).toHaveAttribute(
+    "href",
+    "/wellness"
+  );
+  await expect(card.getByTestId("protocol-wellness-link")).toHaveText(
+    "View practice →"
+  );
   const adherence = card.getByTestId("protocol-adherence");
-  // Starts at 0 / 3–5, labeled by the practice name.
-  await expect(adherence).toContainText("0 / 3–5");
-  await expect(adherence).toContainText(`${practiceName} sessions`);
+  // Starts at zero against the 3–5×/week target, labeled by the practice name.
+  await expect(adherence).toContainText("No days this week · Target 3–5×/week");
+  await expect(adherence).toContainText("Behind");
+  await expect(
+    card.getByRole("heading", { name: practiceName, exact: true })
+  ).toBeVisible();
 
   // One-tap log a session — the shared write core, answered from its outcome.
   await settledClick(page, card.getByTestId("practice-log-button"));
 
-  // Adherence ticks to 1 (one distinct day this week).
-  await expect(adherence).toContainText("1 / 3–5");
+  // One distinct day is recorded, but this rolling-week target still needs three
+  // days in its mature seven-day window, so its canonical pace remains Behind.
+  await expect(adherence).toContainText("1 day this week · Target 3–5×/week");
+  await expect(adherence).toContainText("Behind");
   await expect(card.getByTestId("practice-today-count")).toContainText(
-    "1 logged today"
+    "1 session logged"
   );
-  await expect(card.getByTestId("protocol-usage")).toContainText("1 session");
-  const history = card.getByTestId("practice-session-history");
+  await expect(detailMain.getByTestId("protocol-usage")).toContainText(
+    "1 session"
+  );
+  const history = detailMain.getByTestId("practice-session-history");
   await expect(history.locator("tbody tr")).toHaveCount(1);
 
   // Ending makes the protocol historical, but correction controls remain available
@@ -178,8 +217,15 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   );
   await expect(card.getByTestId("protocol-adherence")).toHaveCount(0);
   await expect(card.getByTestId("practice-log-button")).toHaveCount(0);
-  await expect(history.getByTestId("practice-session-edit")).toBeVisible();
-  await expect(history.getByTestId("practice-session-delete")).toBeVisible();
+  const historyRow = history.locator("tbody tr");
+  await historyRow.getByRole("button", { name: "Session actions" }).click();
+  await expect(
+    page.getByRole("menu").getByRole("menuitem", { name: "Edit" })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menu").getByRole("menuitem", { name: "Delete" })
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
 
   // The ended record leaves behind a full-window event heatmap. A one-year
   // protocol remains contained at the narrow acceptance viewport, and the logged
@@ -309,7 +355,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   );
   await expect(activityCard.getByTestId("protocol-adherence")).toHaveCount(0);
   await expect(activityCard.getByTestId("protocol-log-button")).toHaveCount(0);
-  await expect(activityCard.getByTestId("protocol-usage")).toBeVisible();
+  await expect(detailMain.getByTestId("protocol-usage")).toBeVisible();
   await deleteCurrentProtocol();
 
   const foodName = `E2E Food Protocol ${frozenNow().getTime()}`;

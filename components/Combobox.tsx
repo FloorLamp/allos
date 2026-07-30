@@ -35,6 +35,7 @@ export default function Combobox({
   selectOnFocus = false,
   closeStopsPropagation = false,
   inputClassName = "",
+  inputElementRef,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -70,6 +71,7 @@ export default function Combobox({
   selectOnFocus?: boolean;
   closeStopsPropagation?: boolean;
   inputClassName?: string;
+  inputElementRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -136,7 +138,10 @@ export default function Combobox({
         <IconSearch className="h-4 w-4" stroke={2} aria-hidden="true" />
       </span>
       <input
-        ref={inputRef}
+        ref={(node) => {
+          inputRef.current = node;
+          if (inputElementRef) inputElementRef.current = node;
+        }}
         id={id}
         value={value}
         name={name}

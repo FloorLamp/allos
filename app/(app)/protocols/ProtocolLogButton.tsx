@@ -3,9 +3,9 @@
 import { IconCheck } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { useQuickEntry } from "@/components/QuickEntryProvider";
+import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import type { ProtocolPractice } from "@/lib/queries/protocols";
 import { protocolLogAction } from "@/lib/protocol-log-action";
-import LogPracticeButton from "./LogPracticeButton";
 
 // One shared scope-aware protocol action (#1584), used on both the detail page
 // and dashboard. It reaches the existing activity editor, food logger, or

@@ -178,8 +178,8 @@ describe("imported wellness practices", () => {
       db
         .prepare(
           `INSERT INTO frequency_targets
-             (profile_id, scope_kind, scope_value, per_week)
-           VALUES (?, 'practice', 'Meditation', 3)`
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (?, 'practice', 'Meditation', 'meditation', 3)`
         )
         .run(profileId).lastInsertRowid
     );

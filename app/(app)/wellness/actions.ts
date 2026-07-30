@@ -10,6 +10,7 @@ import {
 } from "@/lib/practice-log";
 import {
   createWellnessPractice,
+  deleteWellnessPractice,
   untrackWellnessPractice,
   updateWellnessPractice,
 } from "@/lib/practice-store";
@@ -86,15 +87,26 @@ export async function savePractice(formData: FormData): Promise<FormResult> {
   const targetId = Number(formData.get("target_id")) || null;
   const name = String(formData.get("name") ?? "");
   const floor = Number(formData.get("per_week"));
-  const ceiling = optionalNumber(formData, "per_week_max");
+  const ceilingRaw = String(formData.get("per_week_max") ?? "").trim();
+  const ceiling = ceilingRaw ? Number(ceilingRaw) : null;
   const outcome =
     targetId == null
       ? createWellnessPractice(profile.id, name, floor, ceiling)
       : updateWellnessPractice(profile.id, targetId, name, floor, ceiling);
-  if (outcome.kind === "invalid")
-    return formError("Enter a practice name and a weekly target from 1 to 14.");
+  if (outcome.kind === "invalid") {
+    if (outcome.reason === "name") return formError("Enter a practice name.");
+    if (outcome.reason === "minimum-range")
+      return formError(
+        "The weekly minimum must be a whole number from 1 to 14."
+      );
+    if (outcome.reason === "maximum-range")
+      return formError(
+        "The weekly maximum must be a whole number from 1 to 14."
+      );
+    return formError("The weekly maximum must be greater than the minimum.");
+  }
   if (outcome.kind === "duplicate")
-    return formError("That practice already has a weekly target.");
+    return formError("A practice with that name already exists.");
   if (outcome.kind === "not-found")
     return formError("Couldn't find that practice.");
   revalidatePracticeSurfaces();
@@ -110,4 +122,19 @@ export async function untrackPractice(formData: FormData): Promise<FormResult> {
     return formError("Couldn't find that practice.");
   revalidatePracticeSurfaces();
   return formOk();
+}
+
+export async function deletePractice(
+  formData: FormData
+): Promise<{ undoId: number | null; error?: string }> {
+  const { profile } = await requireWriteAccess();
+  const targetId = Number(formData.get("target_id")) || null;
+  const practice = String(formData.get("practice") ?? "").trim();
+  if (targetId == null && !practice)
+    return { undoId: null, error: "Couldn't find that practice." };
+  const outcome = deleteWellnessPractice(profile.id, targetId, practice);
+  if (outcome.kind === "not-found")
+    return { undoId: null, error: "Couldn't find that practice." };
+  revalidatePracticeSurfaces();
+  return { undoId: outcome.undoId };
 }

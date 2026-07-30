@@ -40,6 +40,7 @@ const TOP_LEVEL_ORDER = [
   "Sleep",
   "Upcoming",
   "Household",
+  "Wellness",
   "Longevity",
   "Medical",
   "Data",

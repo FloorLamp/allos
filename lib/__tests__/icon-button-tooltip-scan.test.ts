@@ -561,7 +561,7 @@ describe("destructive icon-only buttons are recoverable without a hover", () => 
     "components/EquipmentManager.tsx",
     "app/(app)/encounters/AppointmentList.tsx",
     "app/(app)/immunizations/VaccineDoseHistory.tsx",
-    "app/(app)/wellness/PracticeSessionHistory.tsx",
+    "components/practices/PracticeSessionHistory.tsx",
     "app/(app)/trends/DeleteBodyMetricButton.tsx",
   ];
 

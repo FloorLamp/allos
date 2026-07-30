@@ -72,70 +72,73 @@ export default async function LongevityPage({
           ))}
           <Link href="#protocols" className="btn-ghost btn-sm shrink-0">
             <IconFlask2 className="h-4 w-4" aria-hidden />
-            Experiments
+            Protocols
           </Link>
         </nav>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         <BioAgeSection />
         {fitness && <FitnessSection section={fitness} />}
         {sleep && <SleepSection section={sleep} />}
         {biomarkers && <BiomarkersSection section={biomarkers} />}
-      </div>
 
-      {pillars.length === 0 && (
-        <section
-          className="card mb-6 overflow-hidden border-brand-100 dark:border-brand-950"
-          data-testid="longevity-empty"
-        >
-          <div className="flex items-start gap-3">
-            <span className="rounded-xl bg-brand-50 p-2.5 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
-              <IconActivityHeartbeat className="h-5 w-5" aria-hidden />
-            </span>
-            <div>
-              <h2 className="font-semibold text-slate-900 dark:text-slate-100">
-                Build your healthspan picture
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-                Your overview appears as data arrives. Start with any signal;
-                there is no single longevity score to chase.
-              </p>
+        {pillars.length === 0 && (
+          <section
+            className="card overflow-hidden border-brand-100 dark:border-brand-950"
+            data-testid="longevity-empty"
+          >
+            <div className="flex items-start gap-3">
+              <span className="rounded-xl bg-brand-50 p-2.5 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
+                <IconActivityHeartbeat className="h-5 w-5" aria-hidden />
+              </span>
+              <div>
+                <h2 className="font-semibold text-slate-900 dark:text-slate-100">
+                  Build your healthspan picture
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
+                  Your overview appears as data arrives. Start with any signal;
+                  there is no single longevity score to chase.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <Link
-              href="/data"
-              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
-            >
-              <IconTestPipe
-                className="h-4 w-4 shrink-0 text-brand-500"
-                aria-hidden
-              />
-              Import lab results
-            </Link>
-            <Link
-              href="/sleep"
-              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
-            >
-              <IconMoonStars
-                className="h-4 w-4 shrink-0 text-violet-500"
-                aria-hidden
-              />
-              Add sleep data
-            </Link>
-            <Link
-              href="/training?tab=fitness"
-              className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
-            >
-              <IconRun className="h-4 w-4 shrink-0 text-rose-500" aria-hidden />
-              Run a fitness check
-            </Link>
-          </div>
-        </section>
-      )}
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              <Link
+                href="/data"
+                className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
+              >
+                <IconTestPipe
+                  className="h-4 w-4 shrink-0 text-brand-500"
+                  aria-hidden
+                />
+                Import lab results
+              </Link>
+              <Link
+                href="/sleep"
+                className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
+              >
+                <IconMoonStars
+                  className="h-4 w-4 shrink-0 text-violet-500"
+                  aria-hidden
+                />
+                Add sleep data
+              </Link>
+              <Link
+                href="/training?tab=fitness"
+                className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
+              >
+                <IconRun
+                  className="h-4 w-4 shrink-0 text-rose-500"
+                  aria-hidden
+                />
+                Run a fitness check
+              </Link>
+            </div>
+          </section>
+        )}
 
-      <ProtocolsSection template={template} />
+        <ProtocolsSection template={template} />
+      </div>
     </div>
   );
 }

@@ -99,6 +99,7 @@ const ACTION_ICONS: Record<
   calendar: (p) => <IconCalendarPlus {...p} />,
   chart: (p) => <IconChartLine {...p} />,
   camera: (p) => <IconCamera {...p} />,
+  sparkles: (p) => <IconSparkles {...p} />,
 };
 
 // The palette's flat, navigable item model — quick-log preview, then create
@@ -297,10 +298,15 @@ export default function CommandPalette({
         close();
         openRepeatLast();
       } else {
-        go(action.target.href);
+        // A matching data search may already be in flight by the time an action
+        // is picked. Its Server Action response can race an App Router push and
+        // restore the palette's current route, so create-surface actions use a
+        // document navigation. Pointer and keyboard activation then share one
+        // deterministic path, and the new page naturally resets the palette.
+        window.location.assign(action.target.href);
       }
     },
-    [close, openCreate, openLive, openRepeatLast, go]
+    [close, openCreate, openLive, openRepeatLast]
   );
 
   const commitQuickLog = useCallback(

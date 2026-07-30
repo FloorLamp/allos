@@ -31,6 +31,15 @@ export interface FkSpec {
   ref: string;
 }
 
+// A captured string key that embeds another captured entity's id. The wellness
+// practice suppression row is the first tenant: `practice:<targetId>` must follow
+// the frequency target to its NEW id on restore, just as a numeric FK does.
+export interface KeyRefSpec {
+  column: string;
+  prefix: string;
+  ref: string;
+}
+
 // A captured FK column that points OUTSIDE this capture — at a row that may have
 // been deleted between the capture and the undo (#202). remapRow leaves such a
 // value verbatim (it's not in any id map), so a verbatim re-insert would violate
@@ -62,6 +71,9 @@ export interface EntitySpec {
   table: string;
   // FK columns to remap on restore. Empty for the root.
   fks: FkSpec[];
+  // String-key references to remap on restore (for example
+  // upcoming_dismissals.signal_key = `practice:<targetId>`).
+  keyRefs?: KeyRefSpec[];
   // Captured FK columns pointing OUTSIDE this capture whose target may have been
   // deleted since capture — reconciled (null/drop) on restore. Absent when none.
   externalRefs?: ExternalRefSpec[];
@@ -76,6 +88,11 @@ export interface EntitySpec {
   // captured by `id = ? AND profile_id = ?`). Static SQL — no user input.
   childWhere?: string;
   childBinds?: number;
+  // Most children disappear through an FK cascade when the root is deleted.
+  // Some side-state belongs to the root only by convention rather than an FK
+  // (practice sessions + dismissals); captureDelete explicitly removes those
+  // captured rows in the same transaction.
+  deleteExplicitly?: boolean;
 }
 
 export interface KindSpec {
@@ -450,6 +467,65 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
       },
     ],
   },
+
+  // A tracked wellness practice: deleting it for good captures the weekly target,
+  // every session in its normalized name family, and its id-keyed suppression row.
+  // Sessions/dismissals carry no FK to frequency_targets, so the action supplies the
+  // exact finite-preimage rows and captureDelete removes them explicitly.
+  "wellness-practice": {
+    kind: "wellness-practice",
+    ownedTable: "frequency_targets",
+    entities: [
+      {
+        entity: "target",
+        table: "frequency_targets",
+        fks: [],
+      },
+      {
+        entity: "sessions",
+        table: "practice_logs",
+        fks: [],
+        childWhere:
+          "profile_id = (SELECT profile_id FROM frequency_targets WHERE id = ?) AND practice = (SELECT scope_value FROM frequency_targets WHERE id = ?)",
+        childBinds: 2,
+        deleteExplicitly: true,
+      },
+      {
+        entity: "dismissals",
+        table: "upcoming_dismissals",
+        fks: [],
+        keyRefs: [{ column: "signal_key", prefix: "practice:", ref: "target" }],
+        childWhere:
+          "profile_id = (SELECT profile_id FROM frequency_targets WHERE id = ?) AND signal_key = 'practice:' || ?",
+        childBinds: 2,
+        deleteExplicitly: true,
+      },
+    ],
+  },
+
+  // A logs-only practice has no target row to root the capture on. One session is
+  // the root and the remaining same-practice sessions are explicit siblings; undo
+  // restores the same logs-only card, never inventing a weekly target.
+  "wellness-practice-history": {
+    kind: "wellness-practice-history",
+    ownedTable: "practice_logs",
+    entities: [
+      {
+        entity: "session",
+        table: "practice_logs",
+        fks: [],
+      },
+      {
+        entity: "sessions",
+        table: "practice_logs",
+        fks: [],
+        childWhere:
+          "profile_id = (SELECT profile_id FROM practice_logs WHERE id = ?) AND id != ? AND practice = (SELECT practice FROM practice_logs WHERE id = ?)",
+        childBinds: 3,
+        deleteExplicitly: true,
+      },
+    ],
+  },
 };
 
 export function getKindSpec(kind: string): KindSpec {
@@ -488,7 +564,12 @@ export type IdMaps = Record<string, Map<number, number>>;
 // whose old value was itself re-inserted in this restore (present in the ref
 // entity's id map). A null FK stays null; a value pointing OUTSIDE this capture
 // (a still-existing far endpoint) is left untouched. Pure.
-export function remapRow(row: Row, idMaps: IdMaps, fks: FkSpec[]): Row {
+export function remapRow(
+  row: Row,
+  idMaps: IdMaps,
+  fks: FkSpec[],
+  keyRefs: KeyRefSpec[] = []
+): Row {
   const out: Row = { ...row };
   delete out.id;
   for (const { column, ref } of fks) {
@@ -496,6 +577,14 @@ export function remapRow(row: Row, idMaps: IdMaps, fks: FkSpec[]): Row {
     if (v == null) continue;
     const map = idMaps[ref];
     if (map && typeof v === "number" && map.has(v)) out[column] = map.get(v);
+  }
+  for (const { column, prefix, ref } of keyRefs) {
+    const value = out[column];
+    if (typeof value !== "string" || !value.startsWith(prefix)) continue;
+    const oldId = Number(value.slice(prefix.length));
+    const map = idMaps[ref];
+    if (Number.isInteger(oldId) && map?.has(oldId))
+      out[column] = `${prefix}${map.get(oldId)}`;
   }
   return out;
 }
