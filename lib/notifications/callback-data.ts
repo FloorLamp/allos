@@ -139,7 +139,14 @@ export function resolveTapProfile(
 // repeat) — the only outcomes a "Logged ✅" acknowledgement is honest for. An
 // "already-skipped" dose is resolved, but NOT as taken (issue #280).
 export function tapLogged(outcome: DoseTakenOutcome): boolean {
-  return outcome === "logged" || outcome === "already-taken";
+  return (
+    outcome === "logged" ||
+    // A taken log WAS written on an off-cadence day (#1602) — it resolves the dose and
+    // is honestly "logged". Only the ANSWER TEXT differs, so that the tap is not
+    // acknowledged as if the dose had been due.
+    outcome === "logged-off-day" ||
+    outcome === "already-taken"
+  );
 }
 
 // True when a tap left the dose RESOLVED (taken, skipped, or an already-standing
@@ -148,6 +155,7 @@ export function tapLogged(outcome: DoseTakenOutcome): boolean {
 export function tapResolved(outcome: DoseTakenOutcome): boolean {
   return (
     outcome === "logged" ||
+    outcome === "logged-off-day" ||
     outcome === "skipped" ||
     outcome === "already-taken" ||
     outcome === "already-skipped"
@@ -161,11 +169,22 @@ export function tapResolved(outcome: DoseTakenOutcome): boolean {
 // behavior, which falsely confirmed doses of possibly-critical medications).
 // Likewise a dose meanwhile resolved as SKIPPED (issue #280): the ✅ tap wrote
 // nothing, so the answer names the status that actually stands.
-export function tapAnswerText(outcome: DoseTakenOutcome): string {
+export function tapAnswerText(
+  outcome: DoseTakenOutcome,
+  // The item's cadence phrase (`cadenceLabel`), for the off-day answer only.
+  cadence?: string | null
+): string {
   switch (outcome) {
     case "logged":
     case "already-taken": // idempotent repeat of a taken log — honest
       return "Logged ✅";
+    // Logged, but NOT on one of this item's days (#1602). A frozen reminder message can
+    // outlive the day it was built for, and a cadence makes that gap meaningful: the
+    // answer says so rather than confirming as though the dose had been owed.
+    case "logged-off-day":
+      return cadence
+        ? `Logged ✅ — note: scheduled for ${cadence}`
+        : "Logged ✅ — note: not scheduled today";
     case "already-skipped":
       return "Not logged — already marked skipped ⏭. Open the app to change it.";
     case "inactive":
@@ -186,6 +205,7 @@ export function tapSkipAnswerText(outcome: DoseTakenOutcome): string {
     case "skipped":
     case "already-skipped": // idempotent repeat of a skip — honest
       return "Skipped ⏭";
+    case "logged-off-day":
     case "already-taken":
       return "Not skipped — already logged as taken ✅. Open the app to change it.";
     case "inactive":

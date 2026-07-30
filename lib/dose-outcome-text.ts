@@ -26,11 +26,26 @@ export interface DoseOutcomeMessage {
 }
 
 export function doseConfirmMessage(
-  outcome: DoseTakenOutcome
+  outcome: DoseTakenOutcome,
+  // The item's cadence phrase ("Mondays", "Every 3 days") from `cadenceLabel`, used
+  // only by the off-day case. Optional so a caller with no cadence in hand still gets
+  // an honest — if less specific — answer rather than a bare confirmation.
+  cadence?: string | null
 ): DoseOutcomeMessage {
   switch (outcome) {
     case "logged":
       return { text: "Dose logged", tone: "success" };
+    // An off-cadence confirm (#1602). The log WAS written — you record reality — so
+    // the tone stays success; what must not happen is a bare ✓ that lets a weekly drug
+    // be taken twice in a week without a word. Naming the schedule is the whole point,
+    // so the phrase is included whenever the caller knows it.
+    case "logged-off-day":
+      return {
+        text: cadence
+          ? `Dose logged — note: scheduled for ${cadence}`
+          : "Dose logged — note: not scheduled today",
+        tone: "success",
+      };
     // An idempotent repeat of a taken log — nothing new was written, and saying
     // so is honest without being alarming.
     case "already-taken":
@@ -58,5 +73,9 @@ export function doseConfirmMessage(
 // outcomes that leave a TAKEN log standing resolve the dose; everything else
 // leaves it due, so the row stays and the list keeps telling the truth.
 export function doseResolved(outcome: DoseTakenOutcome): boolean {
-  return outcome === "logged" || outcome === "already-taken";
+  return (
+    outcome === "logged" ||
+    outcome === "logged-off-day" ||
+    outcome === "already-taken"
+  );
 }

@@ -6,6 +6,12 @@
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
 import { db, today, writeTx } from "../../db";
+import {
+  cadenceOn,
+  doseOnDay,
+  type DoseCadence,
+  type ItemCadence,
+} from "../../intake-cadence";
 import { now as clockNow, sqlNow } from "../../clock";
 import {
   shiftDateStr,
@@ -163,13 +169,24 @@ export function markDoseTaken(
     const owned = db
       .prepare(
         `SELECT d.item_id AS item_id, d.amount AS amount,
-                s.active AS active
+                d.weekdays AS weekdays, d.start_date AS start_date,
+                d.end_date AS end_date,
+                s.active AS active, s.cadence_kind AS cadence_kind,
+                s.cadence_weekdays AS cadence_weekdays,
+                s.cadence_interval_days AS cadence_interval_days,
+                s.cadence_anchor_date AS cadence_anchor_date
            FROM intake_item_doses d
            JOIN intake_items s ON s.id = d.item_id
           WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
       )
       .get(doseId, profileId) as
-      { item_id: number; amount: string | null; active: number } | undefined;
+      | ({
+          item_id: number;
+          amount: string | null;
+          active: number;
+        } & ItemCadence &
+          DoseCadence)
+      | undefined;
     if (!owned) return "stale-dose";
     // A paused/stopped item keeps its buttons in old messages; refuse the tap so
     // a lingering reminder can't silently log doses (and burn supply) for an item
@@ -229,7 +246,13 @@ export function markDoseTaken(
     // Only the taken insert above (reached once, under the write lock) decrements
     // on-hand supply, once.
     decrementSupply(profileId, owned.item_id);
-    return "logged";
+    // The log is written either way — reality is reality. What changes is the ANSWER
+    // (#1602): an off-cadence confirm reports itself so the handler can say which days
+    // the dose was meant for instead of a bare ✓. Evaluated on the LOG'S date, not
+    // today: a late tap on yesterday's reminder is judged against yesterday.
+    const onDay =
+      cadenceOn(owned, date) && doseOnDay(owned, date) ? "logged" : ("logged-off-day" as const);
+    return onDay;
   });
 }
 

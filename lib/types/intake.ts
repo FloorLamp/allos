@@ -246,6 +246,15 @@ export type DoseStatus = "taken" | "skipped";
 // button type confirm its own action against the other's log.
 export type DoseTakenOutcome =
   | "logged" // a new taken log row was written
+  // A new taken log row was written on a day this dose is NOT scheduled (issue #1602):
+  // the item's cadence or this row's own weekday/validity window excludes it. The write
+  // is IDENTICAL to "logged" — you record reality, exactly as a held item still accepts
+  // a log (#558's surfacing/ledger split) — but the ANSWER must not be a bare ✓. Every
+  // handler renders "logged — note: this is scheduled for Mondays" instead, because
+  // confirming an off-day dose silently is how a weekly drug gets taken twice in a week
+  // without anyone noticing. The existing never-confirm-unconditionally contract carries
+  // it to the row button, the Telegram callback and the offline replay for free.
+  | "logged-off-day"
   | "skipped" // a new skipped log row was written (issue #232)
   | "already-taken" // dose+date already resolved as TAKEN; nothing written
   | "already-skipped" // dose+date already resolved as SKIPPED; nothing written

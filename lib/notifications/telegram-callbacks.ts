@@ -3,6 +3,7 @@
 // get identical profile-scoping and verification.
 
 import {
+  getDoseCadenceLabel,
   markDoseTaken,
   markDoseSkipped,
   recordPreventiveDone,
@@ -126,6 +127,7 @@ import {
 import type { TelegramMessage } from "./telegram-api";
 import { resolveTelegramRecipients } from "./fan-out";
 import type { NotificationAction } from "./types";
+import type { DoseTakenOutcome } from "../types";
 export {
   handleDoseCommand,
   handleIncomingMessage,
@@ -143,6 +145,20 @@ import {
   handleSymptomPick,
   handleSymptomSeverity,
 } from "./telegram-quick-log";
+
+// The cadence phrase for an OFF-DAY confirm, or null on every other outcome (#1602).
+// Gated on the outcome so the ordinary confirm path never pays for the lookup, and
+// centralized here so both tap sites answer an off-cadence log identically.
+function offDayCadence(
+  profileId: number,
+  doseId: number,
+  outcome: DoseTakenOutcome
+): string | null {
+  return outcome === "logged-off-day"
+    ? getDoseCadenceLabel(profileId, doseId)
+    : null;
+}
+
 
 // "⏰ Remind later" on a preventive nudge snoozes the finding a week out — the item
 // isn't urgent, so a short reprieve without losing it. Refill "📦 Ordered" snoozes
@@ -478,7 +494,10 @@ async function handleEscalationTap(
     // status that actually stands — the toast and the replacement body come from
     // the same outcome so they can't disagree.
     const outcome = markDoseTaken(profileId, esc.doseId, esc.suppId, esc.date);
-    await answerCallbackQuery(cq.id, tapAnswerText(outcome));
+    await answerCallbackQuery(
+      cq.id,
+      tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome))
+    );
     await replaceMessage(cq, escalationTakeCloseText(outcome));
     return;
   }
@@ -609,7 +628,9 @@ async function handleDoseTap(
       : markDoseSkipped(profileId, tap.doseId, tap.suppId, tap.date);
   await answerCallbackQuery(
     cq.id,
-    kind === "take" ? tapAnswerText(outcome) : tapSkipAnswerText(outcome)
+    kind === "take"
+      ? tapAnswerText(outcome, offDayCadence(profileId, tap.doseId, outcome))
+      : tapSkipAnswerText(outcome)
   );
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];

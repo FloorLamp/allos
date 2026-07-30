@@ -81,6 +81,9 @@ export interface IntakeDeltas {
 
 // Only days the item was actually DUE and not deliberately skipped are occurrences —
 // "na" and "skipped" (#232) are transparent, the same definition the adherence
+// percentage and the demotion detector use. Cadence (#1602) arrives through "na":
+// a streak or lapse run therefore counts a weekly med's MONDAYS, so one missed Monday
+// breaks a streak of Mondays rather than reading as six consecutive daily misses.
 // percentage and the demotion detector use. Collapsing the strip to its occurrences
 // first is what makes an every-other-day supplement classify like a daily one: the
 // run lengths below count SCHEDULED occurrences, not calendar days.
