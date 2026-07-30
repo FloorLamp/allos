@@ -5,15 +5,21 @@ import { useRouter } from "next/navigation";
 import {
   IconAlertTriangle,
   IconArrowRight,
+  IconBandage,
   IconBarbell,
+  IconBodyScan,
   IconBolt,
+  IconBuildingHospital,
   IconCalendarEvent,
   IconCalendarPlus,
   IconCamera,
   IconChartLine,
   IconClipboardList,
   IconCornerDownLeft,
+  IconDental,
+  IconDna2,
   IconFileText,
+  IconFlask2,
   IconHeartbeat,
   IconHeartHandshake,
   IconMedicalCross,
@@ -23,7 +29,9 @@ import {
   IconSparkles,
   IconStethoscope,
   IconTarget,
+  IconTools,
   IconVaccine,
+  IconVirus,
 } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
@@ -73,6 +81,8 @@ const DOMAIN_ICONS: Record<
   (props: { className?: string }) => React.ReactNode
 > = {
   biomarker: (p) => <IconChartLine {...p} />,
+  imaging: (p) => <IconBodyScan {...p} />,
+  genomic: (p) => <IconDna2 {...p} />,
   document: (p) => <IconFileText {...p} />,
   condition: (p) => <IconStethoscope {...p} />,
   allergy: (p) => <IconAlertTriangle {...p} />,
@@ -80,8 +90,18 @@ const DOMAIN_ICONS: Record<
   immunization: (p) => <IconVaccine {...p} />,
   encounter: (p) => <IconCalendarEvent {...p} />,
   appointment: (p) => <IconCalendarPlus {...p} />,
+  // Each new domain (#1595) wears the glyph its own surface wears — the providers
+  // directory's hospital, the Illness-episodes nav virus, the protocol list's flask,
+  // the Wellness nav's sparkles — so a result reads as the page it leads to.
+  provider: (p) => <IconBuildingHospital {...p} />,
+  episode: (p) => <IconVirus {...p} />,
+  dental: (p) => <IconDental {...p} />,
+  skin: (p) => <IconBandage {...p} />,
   activity: (p) => <IconBarbell {...p} />,
   supplement: (p) => <IconPill {...p} />,
+  protocol: (p) => <IconFlask2 {...p} />,
+  practice: (p) => <IconSparkles {...p} />,
+  equipment: (p) => <IconTools {...p} />,
   "family-history": (p) => <IconHeartHandshake {...p} />,
   "care-plan": (p) => <IconClipboardList {...p} />,
   "care-goal": (p) => <IconTarget {...p} />,

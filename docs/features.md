@@ -25,6 +25,7 @@ feature. Architecture and implementation invariants live in
   [Health-record import](#health-record-import), and the
   [Emergency card](#emergency-card-offline)
 - **Household and access:** [Household](#household)
+- **Finding things:** [Global search and record Q&A](#global-search-and-record-qa)
 - **Data and reliability:** [Data hub](#data-hub),
   [Offline quick-log queue](#offline-quick-log-queue),
   [Mobile shell](#mobile-shell), [Undo delete](#undo-delete),
@@ -1561,6 +1562,44 @@ items instead of deleting them. If exactly one item remains, it can inherit the
 remaining count; several items return to untracked supply so the app never
 duplicates one physical count across multiple people. An unlinked bottle is
 retained as **No longer linked** until a user explicitly deletes it.
+
+## Global search and record Q&A
+
+**Cmd/Ctrl-K** (or the sidebar's Search button) opens one command palette over
+the **active profile's** data — never another profile you can reach. Typing
+does three things at once: it parses an inline quick log (`weight 82.5` commits a
+body-metrics entry on Enter), offers create **actions** (start a workout, add a
+result, log a practice), and runs a debounced search across every record domain.
+Arrows and Enter walk one flat list; results are grouped by domain in a fixed
+order, best match first (exact beats prefix beats substring, ties broken by
+recency).
+
+Searchable domains: **biomarkers, imaging studies, genomic results, documents,
+conditions, allergies, procedures, immunizations, visits, appointments,
+providers, illness episodes, dental records, skin lesions, activities,
+supplements and medications, protocols, wellness practices, equipment, family
+history, care plan, care goals, goals** — plus every page, so the palette
+doubles as a jump-to-page bar. A hit is named exactly as its own page names it
+("MRI Left Knee", "Composite filling · #14"), carries the attribute that tells
+near-identical rows apart (a study's date, a lesion's side and size, a
+same-named provider's NPI), and lands on the most precise destination the row
+supports — the record's own page where one exists, otherwise the list surface
+that renders it. Some domains are entity-shaped rather than row-shaped: serial
+observations of one mole are a single result, as are the spellings of one
+practice, and a provider surfaces only when your own records name them (the
+registry itself is shared, and browsing all of it is the Providers directory's
+job). A few hits carry an inline action, so you can log a dose, mark a refill,
+or complete an appointment without leaving the palette.
+
+**Ask about your records** answers a natural-language question — "when did I
+last take antibiotics?" — from those same rows and nothing else. The retrieval
+is deterministic and profile-scoped: the app picks the matching records, then the
+model may only narrate what it was handed, citing each row by number with a link.
+No matching record means an honest _Nothing found in your records_ rather than a
+guess, and with no AI configured the same retrieved rows are still listed as
+links. Retrieval matches the words your records actually contain (including the
+singular of a plural you typed), so naming the thing you are looking for works
+better than naming its category.
 
 ## Undo delete
 

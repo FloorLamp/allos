@@ -276,6 +276,14 @@ export function medicationEditHref(id: number): AppRoute {
   return `${medicationHref(id)}?action=edit` as AppRoute;
 }
 
+// An equipment registry detail page (#343) — the gear's usage history. Used as DATA
+// (a search hit's typed destination, #1595), where a bare literal cannot carry the
+// dynamic-route widening cast a `<Link href>` gets for free.
+export function equipmentHref(id: number): AppRoute {
+  const href: Route<`/equipment/${number}`> = `/equipment/${id}`;
+  return href as AppRoute;
+}
+
 // A protocol (training/care protocol) detail page.
 export function protocolHref(id: number): AppRoute {
   const href: Route<`/protocols/${number}`> = `/protocols/${id}`;
