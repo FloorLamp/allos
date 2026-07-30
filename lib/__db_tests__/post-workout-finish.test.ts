@@ -286,6 +286,28 @@ describe("recap-led finish nudge composition (#924)", () => {
     );
   });
 
+  // #1721: the finish nudge is a DISPATCH-path builder, so it never met the tick's
+  // prefixMessage — "🏋️ Post-workout — 2 doses" in a household chat named nobody.
+  it("labels the message with the profile in a multi-profile instance (#1721)", async () => {
+    const p = newProfile("Ada");
+    newProfile("Bo"); // a second data subject makes the label meaningful
+    seedPostWorkoutSupp(p);
+    const date = today(p);
+    const activityId = seedManualFinished(p, date, 20);
+    addWorkingSets(activityId, "Bench Press");
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    const payload = lastPayload(fetchMock);
+    expect(payload.title).toContain("[Ada]");
+    // Still the SAFETY-tier dose kind — attribution changes the label, nothing else.
+    expect(payload.kind).toBe("dose");
+    // The single-profile "no label at all" half lives in the pure tier
+    // (profileMessagePrefix): this file shares one in-memory DB across its cases, so
+    // the instance always holds several profiles by the time it runs.
+  });
+
   it("sends nothing when a pure-cardio-style finish has no working sets and no doses", async () => {
     const p = newProfile("RecapNoWork");
     const date = today(p);

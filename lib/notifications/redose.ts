@@ -62,7 +62,7 @@ function prnLogToken(): string {
 // pure duration, while the day count/max reset in the profile's timezone (date).
 export async function runRedoseNotices(
   profileId: number,
-  _profileName: string,
+  profileName: string,
   date: string,
   now: Date = clockNow()
 ): Promise<{ failed: boolean }> {
@@ -111,6 +111,10 @@ export async function runRedoseNotices(
 
     const msg = redoseNoticeMessage({
       name: item.name,
+      // Self-attribution (#1721): this dispatch-path builder never met the tick's
+      // prefixMessage, so a two-profile household chat could not tell whose redose
+      // window had opened. Same convention as refill/preventive/illness-care.
+      profileName,
       amount: item.amount,
       product: item.product,
       sinceHours: decision.sinceHours,

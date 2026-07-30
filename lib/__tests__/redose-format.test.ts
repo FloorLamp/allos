@@ -17,10 +17,37 @@ describe("redoseNoticeMessage", () => {
       countToday: 2,
       maxDailyCount: 4,
     });
-    expect(m.title).toBe("Redose window open — Ibuprofen");
+    expect(m.title).toBe("Redose window open: Ibuprofen");
     expect(m.body).toBe(
       "6h since Ibuprofen (4:02pm) — your minimum interval has passed · 2 of 4 today."
     );
+  });
+
+  // #1721: the notice is safety-adjacent and lands in shared household chats, where
+  // "whose ibuprofen interval passed?" must be answerable from the message itself.
+  // Same self-attribution convention as refill/preventive/illness-care.
+  it("names the subject profile in the title", () => {
+    const m = redoseNoticeMessage({
+      name: "Ibuprofen",
+      profileName: "Ada",
+      sinceHours: 6,
+      lastClock: "4:02pm",
+      countToday: 2,
+      maxDailyCount: 4,
+    });
+    expect(m.title).toBe("Redose window open: Ada — Ibuprofen");
+  });
+
+  it("leaves the title unattributed when no profile name is given", () => {
+    const m = redoseNoticeMessage({
+      name: "Ibuprofen",
+      profileName: "  ",
+      sinceHours: 6,
+      lastClock: "",
+      countToday: 1,
+      maxDailyCount: 4,
+    });
+    expect(m.title).toBe("Redose window open: Ibuprofen");
   });
 
   it("drops the clock parenthetical when unknown, never says 'you can take more'", () => {

@@ -27,7 +27,9 @@ export function countFragment(
     : `${countToday} of ${maxDailyCount} today`;
 }
 
-// The one-shot redose NOTICE message (title + body) for the fire case. `lastClock` is
+// The one-shot redose NOTICE message (title + body) for the fire case. The title
+// names the profile (#1721 — refill.ts's convention, applied to the two dispatch-path
+// builders that never had it). `lastClock` is
 // the profile-local clock time of the arming administration ("4:02pm"); empty when
 // unknown. Example: "6h since Ibuprofen (4:02pm) — your minimum interval has passed ·
 // 2 of 4 today." `sinceName` (#1027) names the med the ARMING administration belongs
@@ -35,6 +37,11 @@ export function countFragment(
 // honestly ("8h since Ibuprofen OTC") while the title keeps the notice's own item.
 export function redoseNoticeMessage(input: {
   name: string;
+  // The subject profile, named in the TITLE like every other self-attributing
+  // builder (#1721). A redose notice is safety-adjacent — "whose ibuprofen interval
+  // passed?" is not answerable from an unattributed message in a household chat.
+  // Empty (a single-profile caller that passes none) leaves the title as it was.
+  profileName?: string | null;
   amount?: string | null;
   product?: string | null;
   sinceHours: number;
@@ -51,8 +58,9 @@ export function redoseNoticeMessage(input: {
   // a sibling name.
   const medication =
     since === input.name && dose ? `${since} · ${dose}` : since;
+  const who = input.profileName?.trim() ? `${input.profileName.trim()} — ` : "";
   return {
-    title: `Redose window open — ${input.name}`,
+    title: `Redose window open: ${who}${input.name}`,
     body:
       `${hoursLabel(input.sinceHours)} since ${medication}${at} — your minimum ` +
       `interval has passed · ${countFragment(input.countToday, input.maxDailyCount)}.`,
