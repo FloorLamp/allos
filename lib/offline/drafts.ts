@@ -36,6 +36,8 @@
 // cannot surface another subject's half-typed entry, and expired after a bounded age
 // so a forgotten draft cannot resurface weeks later.
 
+import { formatRelativeTime } from "@/lib/format-date";
+
 /**
  * The forms that persist drafts. A form identity is part of the storage key, so
  * these strings are durable: renaming one orphans that form's drafts (harmless —
@@ -203,22 +205,12 @@ export function fieldMultimap(
 }
 
 /**
- * A human-facing "when" for the resume affordance: `14:32` for a draft from today,
- * else a short date + time. Formatted from the viewer's own locale clock — a draft
- * is device-local state, so the device's clock is the honest reference (unlike
- * stored records, which are read in the profile's timezone).
+ * A human-facing "when" for the resume affordance — "12 minutes ago", "just now".
+ *
+ * Relative, through the app's ONE relative-time formatter, rather than a wall clock:
+ * a draft is device-local state with no profile timezone attached, and "from 14:32"
+ * would be ambiguous the moment the device and the profile disagree about the day.
  */
 export function draftAgeLabel(savedAt: number, now: number): string {
-  const then = new Date(savedAt);
-  const time = then.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const sameDay = new Date(now).toDateString() === then.toDateString();
-  if (sameDay) return time;
-  const date = then.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-  return `${date}, ${time}`;
+  return formatRelativeTime(new Date(savedAt).toISOString(), new Date(now));
 }

@@ -113,14 +113,18 @@ function setNativeValue(
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function setNativeChecked(el: HTMLInputElement, checked: boolean) {
-  const proto = Object.getPrototypeOf(el) as object;
-  const desc = Object.getOwnPropertyDescriptor(proto, "checked");
-  if (desc?.set) desc.set.call(el, checked);
-  else el.checked = checked;
-  el.dispatchEvent(new Event("click", { bubbles: true }));
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+/**
+ * Toggle a checkbox/radio the way a user would. Deliberately `.click()` rather than
+ * a native `checked` setter: a dispatched click runs the element's own activation
+ * behavior AND fires React's onChange, so controlled and uncontrolled boxes both end
+ * up where the draft says. (Setting `checked` first and then dispatching a click
+ * would toggle it straight back.)
+ */
+function setChecked(el: HTMLInputElement, want: boolean) {
+  if (el.checked === want) return;
+  // A radio is only ever turned ON; the group's other member turns it off.
+  if (el.type === "radio" && !want) return;
+  el.click();
 }
 
 function applyFields(form: HTMLFormElement | null, fields: DraftField[]) {
@@ -143,7 +147,7 @@ function applyFields(form: HTMLFormElement | null, fields: DraftField[]) {
       // An unchecked box is ABSENT from FormData, so "not in the draft" must
       // actively uncheck — otherwise a restore could only ever turn things on.
       const want = (wanted.get(name) ?? []).includes(el.value);
-      if (el.checked !== want) setNativeChecked(el, want);
+      setChecked(el, want);
       continue;
     }
     const bucket = remaining.get(name);
@@ -198,6 +202,11 @@ export function useFormDraft<E = undefined>({
   // persisting, and a form that has moved off it is "touched" (resume would replace
   // real input).
   const initialSigRef = useRef<string | null>(null);
+  // The last snapshot THIS mount persisted. A form that re-keys mid-session (a
+  // create form whose auto-save produced a row) writes its draft under the new key
+  // and would otherwise find it a moment later and offer the user their own live
+  // input back.
+  const lastWrittenSigRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const extraRef = useRef<E | undefined>(extra);
   extraRef.current = extra;
@@ -227,6 +236,7 @@ export function useFormDraft<E = undefined>({
     )
       return;
     markUnsavedWork(k, true);
+    lastWrittenSigRef.current = sig;
     void putDraft({
       key: k,
       profileId,
@@ -257,6 +267,12 @@ export function useFormDraft<E = undefined>({
     void (async () => {
       const stored = await getDraft(key, Date.now());
       if (cancelled) return;
+      if (
+        stored &&
+        draftSig(stored.fields, stored.extra) === lastWrittenSigRef.current
+      ) {
+        return; // our own writing, not a recovered draft
+      }
       const current = snapshot();
       if (
         shouldOfferDraft({

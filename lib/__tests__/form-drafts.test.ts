@@ -221,15 +221,12 @@ describe("fieldMultimap", () => {
 });
 
 describe("draftAgeLabel", () => {
-  it("shows a time for a draft from today", () => {
-    const when = new Date(NOW);
-    when.setHours(14, 32, 0, 0);
-    expect(draftAgeLabel(when.getTime(), NOW)).toMatch(/\d{1,2}[:.]\d{2}/);
-  });
-
-  it("names the day for an older one", () => {
-    const label = draftAgeLabel(NOW - 3 * 24 * 60 * 60 * 1000, NOW);
-    expect(label).toMatch(/,/);
+  it("reads as relative time, through the app's one relative-time formatter", () => {
+    expect(draftAgeLabel(NOW - 12 * 60_000, NOW)).toBe("12 minutes ago");
+    expect(draftAgeLabel(NOW - 5_000, NOW)).toBe("just now");
+    expect(draftAgeLabel(NOW - 3 * 24 * 60 * 60 * 1000, NOW)).toBe(
+      "3 days ago"
+    );
   });
 });
 

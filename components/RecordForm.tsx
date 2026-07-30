@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import DateField from "./DateField";
 import EditLockNotice from "./EditLockNotice";
 import SubmitButton from "./SubmitButton";
@@ -9,6 +9,8 @@ import ProviderCombobox from "./ProviderCombobox";
 import { useCanonicalNames } from "./CanonicalNamesContext";
 import { useToast } from "./Toast";
 import { useFocusFormOnParam } from "./useFocusFormOnParam";
+import DraftRestoreBanner from "./DraftRestoreBanner";
+import { useFormDraft } from "./useFormDraft";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import {
   RESULT_STATUSES,
@@ -79,6 +81,24 @@ export default function RecordForm({
   // can't clear a controlled input, so the add path clears it explicitly on save.
   const [specimen, setSpecimen] = useState(record?.specimen ?? "");
 
+  // Local draft (#1699). Every field but the two controlled comboboxes is a named
+  // input, so `extra` only carries those.
+  const draftExtra = useMemo(
+    () => ({ canonical, specimen }),
+    [canonical, specimen]
+  );
+  type RecordDraft = typeof draftExtra;
+  const draft = useFormDraft<RecordDraft>({
+    formKey: "medical-record",
+    recordId: record?.id ?? null,
+    formRef,
+    extra: draftExtra,
+    onRestore: (d) => {
+      setCanonical(d.canonical);
+      setSpecimen(d.specimen);
+    },
+  });
+
   // The add form focuses itself when reached from the palette's "Add biomarker
   // record" (issue #29); the inline row editors (edit mode) opt out.
   useFocusFormOnParam(formRef, "new", undefined, mode === "add");
@@ -98,6 +118,8 @@ export default function RecordForm({
       setError(result.error);
       return;
     }
+    // Saved for real — the draft has nothing left to protect (#1699).
+    draft.clear();
     if (editing) {
       onDone?.();
     } else {
@@ -112,6 +134,11 @@ export default function RecordForm({
 
   return (
     <form ref={formRef} action={handle} className="grid gap-3 sm:grid-cols-4">
+      <DraftRestoreBanner
+        draft={draft}
+        noun="record"
+        className="sm:col-span-4"
+      />
       {editing && <input type="hidden" name="id" value={record!.id} />}
       {editing && writeProfileId != null && (
         <input type="hidden" name="profile_id" value={writeProfileId} />
