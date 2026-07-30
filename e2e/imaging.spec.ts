@@ -215,7 +215,11 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     // region alone contains "PET", so assert the full label).
     const list = page.getByTestId("imaging-study-list");
     const row = list.getByRole("row").filter({ hasText: PET_REGION });
-    await expect(row).toContainText(`PET ${PET_REGION}`);
+    // Post-submit re-render ceiling: the add action's full-page re-render can
+    // exceed the 5s default on a loaded CI shard (recurring-failure census,
+    // docs/internals/e2e-hygiene.md — two unrelated-diff CI failures at this
+    // exact assertion). Not a sleep — still fails if the row never renders.
+    await expect(row).toContainText(`PET ${PET_REGION}`, { timeout: 20_000 });
 
     // The cumulative card now carries an estimated portion (the PET typical
     // dose), and the combined figure reads as an estimate ("≈"). No exact-total

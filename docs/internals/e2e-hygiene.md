@@ -915,3 +915,14 @@ flake reports (fix e) read clean once #1159 closed the family-calendar flake,
 and the sharded CI matrix moved to `retries: 0` (see the telemetry note above).
 Keep it that way — a spec that can't hold at zero retries is a flake to fix, not
 a run to retry.
+
+## Recurring-failure census
+
+CI failures at `--retries=0` that recurred on diffs that could not have caused
+them. Two unrelated-diff occurrences of the same failure earn an entry here and
+a named-ceiling (or root-cause) fix; one occurrence is exonerated by a local
+3×-at-CI-parity pass and a retrigger.
+
+| Spec / assertion                                                 | Occurrences                                                                             | Diagnosis                                                                                                                                                                                                               | Resolution                                                                                                 |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `imaging.spec.ts` — PET row after Add (`toContainText("PET …")`) | 2026-07-29 (PR #1666, trends-only diff), 2026-07-30 (PR #1694, release-notes JSON only) | Post-submit full-page re-render exceeds the 5 s default expect timeout on a loaded shard — the same latency class measured at 4–7 s for cold Server Actions elsewhere (palette search, offline replay, dashboard save). | Named 20 s ceiling on the row assertion (this change), matching `smoke`/`palette-actions`/`offline-queue`. |
