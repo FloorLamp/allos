@@ -13,7 +13,8 @@ import {
 // The dueness matrix (situational-on × pause × PRN), pause-beats-due precedence, the
 // held grouping/count, and the visible-state formatters.
 
-const ctx = (active: string[] = []) => ({ date: "2026-03-04",
+const ctx = (active: string[] = []) => ({
+  date: "2026-03-04",
   isWorkoutDay: false,
   activeSituations: new Set(active),
 });

@@ -159,7 +159,6 @@ function offDayCadence(
     : null;
 }
 
-
 // "⏰ Remind later" on a preventive nudge snoozes the finding a week out — the item
 // isn't urgent, so a short reprieve without losing it. Refill "📦 Ordered" snoozes
 // 3 days (a reorder's typical lead time; matches the button label).

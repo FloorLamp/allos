@@ -176,7 +176,12 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
   // #558: a pre_workout dose is pending on a predicted training day, before a
   // session is logged; the logged signal is the fallback when no cadence is known.
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
-  const ctx = { date: today, isWorkoutDay, activeSituations, predictedWorkoutDay };
+  const ctx = {
+    date: today,
+    isWorkoutDay,
+    activeSituations,
+    predictedWorkoutDay,
+  };
 
   const byId = new Map(supplements.map((s) => [s.id, s]));
   const items: UpcomingItem[] = [];
@@ -254,7 +259,12 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
   const activeSituations = getEffectiveActiveSituations(profileId, today);
   const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
-  const ctx = { date: today, isWorkoutDay, activeSituations, predictedWorkoutDay };
+  const ctx = {
+    date: today,
+    isWorkoutDay,
+    activeSituations,
+    predictedWorkoutDay,
+  };
 
   const dosesByItem = new Map<number, typeof doses>();
   for (const d of doses) {

@@ -251,7 +251,9 @@ export function markDoseTaken(
     // the dose was meant for instead of a bare ✓. Evaluated on the LOG'S date, not
     // today: a late tap on yesterday's reminder is judged against yesterday.
     const onDay =
-      cadenceOn(owned, date) && doseOnDay(owned, date) ? "logged" : ("logged-off-day" as const);
+      cadenceOn(owned, date) && doseOnDay(owned, date)
+        ? "logged"
+        : ("logged-off-day" as const);
     return onDay;
   });
 }

@@ -83,10 +83,10 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
 
 describe("supplementAdherenceToday", () => {
   const ctx = {
-  date: "2026-03-04",
-  isWorkoutDay: false,
-  activeSituations: new Set<string>(),
-};
+    date: "2026-03-04",
+    isWorkoutDay: false,
+    activeSituations: new Set<string>(),
+  };
 
   it("counts due doses and how many are taken", () => {
     const doses = [
