@@ -4,6 +4,27 @@
       "date": "2026-07-30",
       "entries": [
         {
+          "pr": 1689,
+          "kind": "feature",
+          "title": "Search finally knows your whole record",
+          "body": "Global search and record Q&A now cover nine domains that were previously unsearchable: providers, imaging, genomics, dental, skin lesions, illness episodes, protocols, wellness practices, and equipment. Hits deep-link straight to the right detail page, providers only surface through your own records that name them, and asking a question can now cite any of these domains as evidence.",
+          "issues": [1595]
+        },
+        {
+          "pr": 1688,
+          "kind": "feature",
+          "title": "Skin lesions and allergies join the visit trail",
+          "body": "The last two clinical observations without a visit link now have one: a skin lesion or an allergy can be tied to the encounter where it was noted, and an allergy can also record which provider confirmed it. They join the same link, suggestion, and unlink flow every other record type uses, and imported allergy records pick up their visit automatically when the document names one. Deleting a visit never deletes the observation — the record outlives the appointment.",
+          "issues": [1526]
+        },
+        {
+          "pr": 1683,
+          "kind": "feature",
+          "title": "Trends opens on one page: your stars, then your body",
+          "body": "The Overview and Body tabs merged into a single landing surface: the trending digest up top, your starred cards in the order you arranged them, and the full body census streaming in below — now one flat ranked stack instead of titled boxes, so your stars and the everyday-first order decide what leads. Fitness, Nutrition, and Insights remain their own tabs. Old bookmarks to the Body tab land on the merged page, and the page arrives as fast as the old Overview tab did alone.",
+          "issues": [1644, 1674]
+        },
+        {
           "pr": 1686,
           "kind": "feature",
           "title": "The review inbox now tells you what to double-check",
