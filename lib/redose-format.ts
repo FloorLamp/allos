@@ -97,3 +97,59 @@ export function redoseCardLabel(
 export function redoseActionIsPrimary(status: RedoseStatus | null): boolean {
   return status == null || (status.open && !status.atMax);
 }
+
+// ---- The `/dose` quick-log list (issue #1717) -------------------------------------
+//
+// The Telegram list rendered `💊 Ibuprofen · 200 mg (2 today)` — a BARE, ITEM-ONLY
+// count — while the gather already carried the interval, the confirmed max and the
+// ingredient-family counters, and the in-app card rendered the verdict from exactly
+// those fields. The surface with the least context did the least checking: a tap could
+// pass the confirmed daily max with no warning, and a family-fed counter read "1 today"
+// where the app said "3 of 4 today across 2 items".
+//
+// One verdict formatter (#221): the list label and the card label are the SAME
+// classification, so Telegram can never be laxer than the app.
+
+// The button label for one PRN med in the `/dose` list. `prefix` disambiguates a
+// multi-profile chat; `dose` is the pre-formatted amount ("200 mg"). The verdict half
+// is `redoseCardLabel` verbatim — "Max reached · 4 of 4 today", "Next dose in ~2h · 1
+// of 4 today" — falling back to the plain count fragment when there is no window to
+// report, and to nothing at all when nothing has been logged today. countFragment's
+// discipline holds throughout: a null max renders "2 today", never "Max reached".
+export function prnQuickLogLabel(input: {
+  name: string;
+  prefix?: string;
+  dose?: string | null;
+  status: RedoseStatus | null;
+  countToday: number;
+  maxDailyCount: number | null;
+  familyMemberCount?: number;
+}): string {
+  const members = input.familyMemberCount ?? 1;
+  const head = `${input.prefix ?? ""}${input.name}${input.dose ? ` · ${input.dose}` : ""}`;
+  const verdict =
+    redoseCardLabel(input.status, members) ??
+    (input.countToday > 0
+      ? `${countFragment(input.countToday, input.maxDailyCount)}${
+          members > 1 ? ` across ${members} items` : ""
+        }`
+      : null);
+  return verdict ? `${head} — ${verdict}` : head;
+}
+
+// The Telegram toast after a `/dose` tap. The write outcome comes first (never an
+// unconditional confirm — the AdministrationOutcome contract), and a LOGGED tap then
+// states the verdict that now stands, computed from post-write state by the same
+// classification the card shows. That is what makes an at-max tap honest: the app
+// treats a redose window as guidance rather than a gate, so Telegram logs it too —
+// but it says "Max reached · 5 of 4 today" instead of a bare "Logged ✅".
+export function prnLogAnswerText(
+  base: string,
+  logged: boolean,
+  status: RedoseStatus | null,
+  familyMemberCount = 1
+): string {
+  if (!logged) return base;
+  const verdict = redoseCardLabel(status, familyMemberCount);
+  return verdict ? `${base} · ${verdict}` : base;
+}

@@ -27,12 +27,27 @@ export async function handleDoseCommand(
 
   const multi = profileIds.length > 1;
   const actions: NotificationAction[] = [];
+  // The list states the SAME redose verdict the in-app card renders (#1717) — the
+  // gather already carried the interval, the confirmed max and the ingredient-family
+  // counters, and this surface threw all of it away for a bare item-only count. The
+  // surface with the least context must not do the least checking.
+  const now = clockNow();
   for (const pid of profileIds) {
     const prefix = multi ? `${getProfileNameById(pid) ?? "Profile"}: ` : "";
     for (const m of getPrnMedicationsForQuickLog(pid)) {
-      const dose = formatMedicationDoseProduct(m.amount, m.product);
       actions.push({
-        label: `💊 ${prefix}${m.name}${dose ? ` · ${dose}` : ""}${m.count > 0 ? ` (${m.count} today)` : ""}`,
+        label: `💊 ${prnQuickLogLabel({
+          name: m.name,
+          prefix,
+          dose: formatMedicationDoseProduct(m.amount, m.product),
+          status: prnQuickLogRedoseStatus(m, now),
+          // Family-aware throughout (#1027): the count the app shows spans the
+          // ingredient family, so the list can't read "1 today" where the card says
+          // "3 of 4 today across 2 items".
+          countToday: m.familyCount,
+          maxDailyCount: m.familyMaxDailyCount ?? m.maxDailyCount,
+          familyMemberCount: m.familyMemberCount,
+        })}`,
         data: `prn:${pid}:${m.id}:${prnLogToken()}`,
       });
     }
@@ -73,7 +88,24 @@ export async function handlePrnLogTap(
   }
   const outcome = logAdministration(profileId, token.itemId);
   const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
-  await answerCallbackQuery(cq.id, administrationOutcomeText(outcome, name));
+  // The answer states the verdict that now stands (#1717), read back from POST-write
+  // state through the same classification the card shows — so an at-max tap says
+  // "Max reached · 5 of 4 today" instead of a bare "Logged ✅". The app treats a
+  // redose window as guidance rather than a gate, so Telegram logs it too; what it
+  // must not be is LAXER about saying so.
+  const logged = administrationLogged(outcome);
+  const med = logged
+    ? getPrnMedicationsForQuickLog(profileId).find((m) => m.id === token.itemId)
+    : undefined;
+  await answerCallbackQuery(
+    cq.id,
+    prnLogAnswerText(
+      administrationOutcomeText(outcome, name),
+      logged,
+      med ? prnQuickLogRedoseStatus(med, clockNow()) : null,
+      med?.familyMemberCount ?? 1
+    )
+  );
 }
 
 // A practice "Done ✓" tap (#1259): log one session NOW for the tapped target's practice,
@@ -476,7 +508,13 @@ import {
   getUserAge,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
-import { administrationOutcomeText } from "../administration-format";
+import {
+  administrationLogged,
+  administrationOutcomeText,
+} from "../administration-format";
+import { prnLogAnswerText, prnQuickLogLabel } from "../redose-format";
+import { prnQuickLogRedoseStatus } from "../prn-redose";
+import { now as clockNow } from "../clock";
 import { logSymptomCore } from "../symptom-log-write";
 import { upsertMoodLog } from "../offline/writes";
 import { getMoodOnDate } from "../queries/mood";

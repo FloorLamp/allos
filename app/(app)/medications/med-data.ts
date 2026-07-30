@@ -37,6 +37,7 @@ import {
 import { effectiveMaxDailyCount, redoseWindowStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
+import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
 import {
   administrationDayLabel,
   administrationLastDoseLabel,
@@ -501,20 +502,10 @@ export function loadMedicationsData(
       nowInstant
     );
     // Family-widened window math (#1027): the clock/count/max span the ingredient
-    // family, so an OTC sibling's dose holds this row's "Redose OK" too.
-    const redoseStatus =
-      m.minIntervalHours != null && m.familyLastGivenAt
-        ? redoseWindowStatus({
-            minIntervalHours: m.minIntervalHours,
-            maxDailyCount: effectiveMaxDailyCount(
-              m.maxDailyCount,
-              m.familyMaxDailyCount
-            ),
-            latestGivenAt: parseUtcSql(m.familyLastGivenAt),
-            countToday: m.familyCount,
-            now: nowInstant,
-          })
-        : null;
+    // family, so an OTC sibling's dose holds this row's "Redose OK" too. The gate is
+    // the shared prnQuickLogRedoseStatus (#221) — one computation across this list,
+    // the dashboard widget and the Telegram `/dose` list.
+    const redoseStatus = prnQuickLogRedoseStatus(m, nowInstant);
     const redoseLine = redoseCardLabel(redoseStatus, m.familyMemberCount);
     return {
       id: m.id,
