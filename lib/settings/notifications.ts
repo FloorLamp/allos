@@ -16,6 +16,11 @@ import {
   type FoodNudgePointer,
 } from "../notifications/food-nudge-pointer";
 import {
+  parseHouseholdRoundPointer,
+  serializeHouseholdRoundPointer,
+  type HouseholdRoundPointer,
+} from "../notifications/household-round-pointer";
+import {
   getSetting,
   setSetting,
   getProfileSetting,
@@ -325,6 +330,29 @@ export function setFoodNudgePointer(
     profileId,
     "food_nudge_last_message",
     serializeFoodNudgePointer(pointer)
+  );
+}
+
+// The pointer to the LAST household round this RECEIVER was sent (#1719) — the same
+// mechanism, for the same reason, as the food-nudge pointer above: a surviving round
+// keyboard from an earlier day would log a dose confirmation to YESTERDAY, for someone
+// else's medication. One pointer per receiver profile, overwritten on every send.
+export function getHouseholdRoundPointer(
+  profileId: number
+): HouseholdRoundPointer | null {
+  return parseHouseholdRoundPointer(
+    getProfileSetting(profileId, "household_round_last_message")
+  );
+}
+
+export function setHouseholdRoundPointer(
+  profileId: number,
+  pointer: HouseholdRoundPointer
+): void {
+  setProfileSetting(
+    profileId,
+    "household_round_last_message",
+    serializeHouseholdRoundPointer(pointer)
   );
 }
 

@@ -45,6 +45,7 @@ import {
   type HouseholdDoseCallback,
   type TakeCallback,
   OUTDATED_MESSAGE_TEXT,
+  householdStaleDateAnswerText,
   householdTapAnswerText,
   householdTapRefusalText,
   parseHouseholdDoseCallback,
@@ -58,6 +59,7 @@ import {
   foodProteinAnswerText,
   foodStaleDateAnswerText,
   foodTapDateGuard,
+  tapDateGuard,
   keyboardDoseFootprint,
   parseAllCallback,
   parseEscalationCallback,
@@ -737,6 +739,20 @@ async function handleHouseholdDoseTap(
     // keyboard alone — the button may become valid again (a re-granted member), and
     // silently consuming it would strand the caregiver with no way to confirm.
     await answerCallbackQuery(cq.id, householdTapRefusalText(access));
+    return;
+  }
+
+  // DATE GUARD (#1719), belt-and-braces with the send-time keyboard rotation. The
+  // token carries the member's SEND-TIME date, so a tap on a round that survived into
+  // the next morning would confirm a dose against YESTERDAY — for someone else's
+  // medication. Compared against the MEMBER's today, never the receiver's, because a
+  // round can legitimately span two calendar dates in a mixed-timezone household.
+  // Nothing is written and the keyboard is left alone (the same posture as an access
+  // refusal: a stale button is not a forged one).
+  if (
+    tapDateGuard(tap.date, today(tap.memberProfileId)).kind === "stale-date"
+  ) {
+    await answerCallbackQuery(cq.id, householdStaleDateAnswerText(tap.date));
     return;
   }
 

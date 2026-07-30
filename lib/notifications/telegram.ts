@@ -21,6 +21,8 @@
 
 import {
   getFoodNudgePointer,
+  getHouseholdRoundPointer,
+  setHouseholdRoundPointer,
   getLoginTelegramDisabledKinds,
   getTelegramBotConfig,
   getTimezone,
@@ -40,6 +42,7 @@ import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
 import { resolveTelegramRecipients } from "./fan-out";
 import { foodNudgePointerFromMessage } from "./food-nudge-pointer";
+import { householdRoundPointerFromMessage } from "./household-round-pointer";
 import {
   editMessageReplyMarkupRaw,
   editMessageTextRaw,
@@ -126,6 +129,14 @@ export const telegramChannel: NotificationChannel = {
       // is gated on Telegram deliverability and is overwhelmingly single-chat).
       if (msg.kind === "food" && messageId != null)
         await rotateFoodNudgePointer(profileId, chatId, messageId, msg);
+      // The HOUSEHOLD ROUND needs the identical rotation (#1719) and never had it:
+      // its confirm tokens carry each member's SEND-TIME date, so a surviving round
+      // keyboard from an earlier day logs a dose to YESTERDAY — for someone else's
+      // medication. It shares `kind: "dose"` with the ordinary slot reminder, so the
+      // round is identified by its `hh:` tokens, never by kind (which would strip a
+      // plain dose reminder's keyboard too). Same strictly-best-effort posture.
+      if (messageId != null)
+        await rotateHouseholdRoundPointer(profileId, chatId, messageId, msg);
       // A DIGEST carrying the offer tail (#1505) records its message id for the same
       // class of reason: the tail's label names the slot it opens into, so the tick
       // has to re-label it at each boundary — which needs the message to edit. Same
@@ -175,6 +186,51 @@ async function rotateFoodNudgePointer(
     // Any unexpected error (a settings write throw, etc.) stays swallowed — the send
     // succeeded and this bookkeeping must never turn a delivery into a failure.
     log.info("food nudge: pointer rotation failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+// After a household round sends, strip the PREVIOUS round's keyboard and record the
+// new message as the pointer (#1719) — the #947 mechanism, one message class over. A
+// no-op for any message that isn't a round. Best-effort throughout for the same
+// reasons as the food rotation: Telegram refuses edits on old messages, the delivery
+// already succeeded, and a bookkeeping failure must never look like a broken channel.
+async function rotateHouseholdRoundPointer(
+  profileId: number,
+  chatId: string | number,
+  messageId: number,
+  msg: NotificationMessage
+): Promise<void> {
+  const pointer = householdRoundPointerFromMessage(
+    msg,
+    chatId,
+    messageId,
+    today(profileId)
+  );
+  if (!pointer) return;
+  try {
+    const prev = getHouseholdRoundPointer(profileId);
+    if (
+      prev &&
+      !(String(prev.chatId) === String(chatId) && prev.messageId === messageId)
+    ) {
+      await editMessageReplyMarkupRaw(prev.chatId, prev.messageId, []).catch(
+        (e) => {
+          log.info(
+            "household round: previous keyboard strip failed (ignored)",
+            {
+              profile: profileId,
+              err: e instanceof Error ? e.message : String(e),
+            }
+          );
+        }
+      );
+    }
+    setHouseholdRoundPointer(profileId, pointer);
+  } catch (e) {
+    log.info("household round: pointer rotation failed (ignored)", {
       profile: profileId,
       err: e instanceof Error ? e.message : String(e),
     });

@@ -363,3 +363,24 @@ describe("stored member selection", () => {
     expect(serializeHouseholdRoundMembers([])).toBe("[]");
   });
 });
+
+// ---- Date honesty across timezones (issue #1719 §3) ----
+describe("renderHouseholdRoundMessage — mixed-timezone rounds", () => {
+  it("stamps each section with its own date when members disagree about today", () => {
+    const msg = render([
+      section({ profileId: 7, name: "Ada", date: "2026-07-28" }),
+      section({ profileId: 9, name: "Kai", date: "2026-07-29" }),
+    ])!;
+    expect(String(msg.body)).toContain("Ada — Tue 28:");
+    expect(String(msg.body)).toContain("Kai — Wed 29:");
+  });
+
+  it("leaves the common single-date round unchanged", () => {
+    const msg = render([
+      section({ profileId: 7, name: "Ada", date: "2026-07-28" }),
+      section({ profileId: 9, name: "Kai", date: "2026-07-28" }),
+    ])!;
+    expect(String(msg.body)).toContain("Ada:");
+    expect(String(msg.body)).not.toContain("Tue 28");
+  });
+});

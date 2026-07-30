@@ -329,8 +329,24 @@ only** under a new `hh:<receiver>:<member>:<dose>:<item>:<date>` kind — note t
 date is the MEMBER's own profile-local day, so a round spanning two timezones
 logs each dose against the right date. Past `HOUSEHOLD_ROUND_MAX_BUTTONS` (12)
 the keyboard degrades to a single "Open Household →" deep link (a wall of taps
-is a page, not a message). The handler re-resolves access (chat owns the
-receiver → still subscribed → grant still holds), then calls the existing
+is a page, not a message); UNDER the cap that link now rides ALONGSIDE the
+confirm buttons (#1718), because Web Push and Home Assistant strip the buttons
+and their copies used to arrive naming members and items with no way to act. **STALENESS (#1719).** Each round sends a fresh message and every previous
+round's keyboard stayed live forever, so a next-morning tap on yesterday's
+surviving round logged a dose confirmation **to yesterday** — for someone else's
+medication, in the surface built for caregivers. The food nudge has guarded
+exactly this since #947; the round had neither half. Both halves now apply:
+send-time **pointer rotation + strip** (`household_round_last_message`, the
+chokepoint's own job since only it holds the sent message id and the guarded
+edit primitive) so at most one live round keyboard exists per chat, and a
+tap-time **date guard** (`tapDateGuard`, the ONE decision the food nudge also
+reads) comparing the token's date against the MEMBER's today — a mismatch writes
+nothing and answers honestly. A round is identified by its `hh:` tokens, never
+by kind, since it shares `kind: "dose"` with the ordinary slot reminder. When a
+round's members genuinely disagree about what day it is, each section header
+carries its own date ("Ada — Tue 28"), so a caregiver can tell which "today" a
+section means. The handler re-resolves access (chat owns the receiver → still
+subscribed → grant still holds), applies the date guard, then calls the existing
 idempotent `markDoseTaken(memberProfileId, …)` and answers from its typed
 `DoseTakenOutcome`; each of the three refusals gets its own honest toast and
 writes nothing — never an unconditional ✓. Only the tapped button is consumed (a
