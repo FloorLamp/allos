@@ -77,6 +77,12 @@ import {
   type ProducedItem,
 } from "@/lib/import-browser";
 import {
+  confidenceKindLabel,
+  confidenceLabel,
+  confidenceTotal,
+  type ExtractionConfidence,
+} from "@/lib/extraction-confidence";
+import {
   parseImportReport,
   summarizeCoverage,
   groupDropsByReason,
@@ -88,6 +94,16 @@ import {
 } from "@/lib/import-report";
 
 export const dynamic = "force-dynamic";
+
+// Per-record confidence badges (#1601). Warmer as the extractor's certainty drops —
+// rose for the rows to open first, amber for "check it", and a muted chip for a row
+// the extractor rated high but that still landed in a flagged list (it can't, today,
+// but the map stays total so a vocabulary change can't render an unstyled badge).
+const CONFIDENCE_BADGE: Record<ExtractionConfidence, string> = {
+  low: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+  medium: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  high: "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300",
+};
 
 const STATUS_STYLE: Record<string, string> = {
   done: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
@@ -225,6 +241,12 @@ export default async function ImportDetailPage(props: {
   // Source-text reconciliation (AI PDF path): rows the report's own text/OCR could
   // not corroborate. A review signal, not a proven error.
   const reconciliation = report?.reconciliation ?? null;
+  // Per-record extraction confidence (#1601): the model's OWN certainty per row,
+  // already ranked lowest-first by the one pure model (at write time, and re-ranked
+  // on parse). Null for a deterministic import, a keyless extraction, and every
+  // document imported before the signal existed — the card simply doesn't render.
+  const confidence = report?.confidence ?? null;
+  const confidenceRows = confidenceTotal(confidence);
   const isTerminalIssue =
     doc.extraction_status === "failed" || doc.extraction_status === "skipped";
   const hasExtractionError = isTerminalIssue && !!doc.extraction_error;
@@ -621,6 +643,59 @@ export default async function ImportDetailPage(props: {
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {/* Extraction confidence (#1601): the rows the EXTRACTOR itself hedged on,
+            lowest first — so a 40-row import is triaged by doubt instead of top-to-bottom.
+            Ordering only: every row below was imported and is editable like any other. */}
+            {confidence && confidence.flags.length > 0 && (
+              <div className="card" data-testid="confidence-card">
+                <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+                  Check these first ({confidence.scrutiny} of {confidenceRows}{" "}
+                  rows)
+                </h2>
+                <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                  The extractor rated its own certainty per row. These are the
+                  rows it was <strong>not fully sure about</strong>, lowest
+                  confidence first — a smudged figure, an ambiguous unit, a date
+                  read from context, a hedged diagnosis. They{" "}
+                  <strong>were all imported</strong> and nothing was
+                  auto-accepted or auto-rejected: this only decides what a human
+                  looks at first.
+                </p>
+                {/* Viewport-bounded like the Dropped card: a long import can hedge on
+                dozens of rows without the card dominating the page. */}
+                <div
+                  className="max-h-[50vh] overflow-y-auto"
+                  data-testid="confidence-scroll"
+                >
+                  <ul className="text-sm text-slate-600 dark:text-slate-300">
+                    {confidence.flags.map((f, i) => (
+                      <li
+                        key={`${f.kind}-${f.label}-${i}`}
+                        data-testid="confidence-row"
+                        className="flex flex-wrap items-baseline gap-x-2 border-b border-black/5 py-1 last:border-0 dark:border-white/10"
+                      >
+                        <span className="font-medium">{f.label}</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {confidenceKindLabel(f.kind)}
+                        </span>
+                        {f.reason && (
+                          <span className="text-xs italic text-slate-500 dark:text-slate-400">
+                            {f.reason}
+                          </span>
+                        )}
+                        <span
+                          data-testid="confidence-badge"
+                          className={`ml-auto rounded px-1.5 py-0.5 text-xs ${CONFIDENCE_BADGE[f.confidence]}`}
+                        >
+                          {confidenceLabel(f.confidence)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             )}
 

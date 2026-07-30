@@ -34,6 +34,16 @@ reads in `lib/queries/integrations.ts`; pure count/window helpers in
 badge** (`reviewCount` threaded layout → `SidebarContent` → `UserMenu`) links to
 `/data?section=review`.
 
+An uploaded document's row in the "Imports" feed also carries the **extraction
+confidence** badge (`· N to check`, #1601): the count of extracted rows the
+extractor itself hedged on. The number is the `scrutiny` total
+`summarizeExtractionConfidence` already computed and stored on the document's
+`import_report`, projected by `getImportLogDocuments` (`json_valid`-guarded, so a
+garbled report degrades to no badge instead of failing the feed) and rendered
+through the one `feedItemView` shape. It is an ordering hint, never a failure:
+the produced-count detail, the failure badge, and the sync-event accounting are
+unchanged, and an in-flight or failed document never badges.
+
 **One rendering of sync history (#1212).** Per-provider sync history — the
 latest-state card + expandable recent history over `integration_sync_events`,
 with the #674 inserted/updated/unchanged split (`formatSplitLabel`) — renders in

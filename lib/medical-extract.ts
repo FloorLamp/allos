@@ -23,6 +23,7 @@ export {
 } from "./medical-extract/normalize";
 export { isSupportedFile, spreadsheetToText } from "./medical-extract/files";
 export type {
+  ExtractedConfidence,
   ExtractedPrescription,
   ExtractedResult,
   ExtractedImmunization,

@@ -82,6 +82,22 @@ banner), whether it was drawn **fasting**, and the **specimen**. The model is to
 never to infer any of the three — an unstated attribute stays null rather than
 becoming a "final", non-fasting claim the document never made.
 
+Every extracted row also carries the extractor's own **confidence** — a coarse
+`high` / `medium` / `low` plus a short reason for a non-high row (a smudged
+figure, an ambiguous unit, a date read from context, a hedged diagnosis). It is
+summarized per document and stored on the document's import report (no per-row
+column), then used to **order human review**: the import detail page opens a
+"Check these first" card listing the hedged rows lowest-confidence first, and
+the **Data → Review** feed badges the document "· N to check". Nothing is gated
+on it — no row is auto-accepted, auto-rejected, hidden, or re-weighted because
+the extractor hedged, consistent with the review-everything posture. A document
+with no signal at all (a deterministic MyChart/FHIR import, a keyless/offline
+extraction, or anything imported before the field existed) simply shows neither
+card nor badge — an absent answer is "unknown", never a synthetic "low". One
+pure module (`lib/extraction-confidence.ts`) owns the vocabulary, the ranking,
+and the "deserves a look" rule, so the card, the badge, and the stored total
+cannot disagree.
+
 ### Provider tiers (Heavy / Light) and local inference
 
 AI config lives in the database under **Settings → Server → AI providers**

@@ -65,6 +65,11 @@ export interface ImportLogDocumentRow {
   extraction_status: string;
   extraction_error: string | null;
   extracted_count: number;
+  // How many extracted rows the model itself hedged on (#1601) — the PRECOMPUTED
+  // `scrutiny` total off this document's stored import_report. 0 for every path with
+  // no confidence signal: a deterministic import, a keyless extraction, a document
+  // imported before the field existed, or a report the reader can't parse.
+  confidence_scrutiny: number;
   uploaded_at: string;
   sortTime: string;
 }
@@ -86,10 +91,22 @@ export type ImportLogRow = ImportLogDocumentRow | ImportLogJobRow;
 export function getImportLogDocuments(
   profileId: number
 ): ImportLogDocumentRow[] {
+  // The confidence badge (#1601) PROJECTS the scrutiny total that
+  // summarizeExtractionConfidence already computed and stored on the report — it never
+  // re-decides which tiers deserve a look, so the badge, the detail card, and the tests
+  // can't disagree. json_valid() keeps a truncated/garbled report from failing the whole
+  // Review feed (json_extract raises on malformed JSON), mirroring parseImportReport's
+  // own tolerance; the blob itself stays in SQLite rather than being shipped per feed
+  // row. This note stays OUTSIDE the prepared call: the profile-scoping scanner reads
+  // the statement's first argument as a bare literal.
   const rows = db
     .prepare(
       `SELECT id, filename, doc_type, source, document_date, patient_name,
-              extraction_status, extraction_error, extracted_count, uploaded_at
+              extraction_status, extraction_error, extracted_count,
+              CASE WHEN import_report IS NOT NULL AND json_valid(import_report)
+                   THEN CAST(COALESCE(json_extract(import_report, '$.confidence.scrutiny'), 0) AS INTEGER)
+                   ELSE 0 END AS confidence_scrutiny,
+              uploaded_at
          FROM medical_documents
         WHERE profile_id = ?
         ORDER BY uploaded_at DESC, id DESC`
