@@ -904,11 +904,19 @@ scores, which are re-homed to Medical → Health record → Specialty, and blood
 type, which lives in the passport), so it never offers a filter that returns
 nothing for anyone.
 
-On a phone the two cards above the index are capped so the first panel header
-stays reachable: the starred-biomarkers card shows its first three tiles behind
-a "Show all N starred" toggle, and the biological-age card folds its nine-input
-"built from" list (never its estimate caveat). Both render whole on a larger
-screen.
+**On a phone the index leads.** The trajectory-watch card keeps its place above
+it — a warning has to find you rather than be looked up — showing its headline
+("N analytes trending before a single reading crosses a line", and which) with
+its per-analyte rows one tap away. The filter bar and the panel table come next,
+then the two cards you go _to_: the starred lens and the biological-age hero,
+rendered whole, a scroll below the index rather than hidden. "+ Add result"
+stays last. Those two cards also stay capped at phone width — the starred card
+shows its first three tiles behind a "Show all N starred" toggle, and the
+biological-age card folds its nine-input "built from" list, never its estimate
+caveat.
+
+From a small-tablet width up, none of that applies: every card renders whole in
+the original order, glance first and index below it.
 
 ### Imaging studies
 

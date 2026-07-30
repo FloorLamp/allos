@@ -54,7 +54,10 @@ export default function MedicalFilters({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-4">
+    <div
+      className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-4"
+      data-testid="medical-filters"
+    >
       <RecordSearch q={q} />
 
       {/* Biomarkers browser: never offer 'prescription' — meds aren't listed
