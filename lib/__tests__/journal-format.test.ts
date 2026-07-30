@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   summarizeExercise,
   activityProvenanceLabel,
+  activityProvenanceKey,
+  activityProvenanceKeyLabel,
   type SetRow,
 } from "@/lib/journal-format";
 
@@ -280,5 +282,37 @@ describe("activityProvenanceLabel", () => {
     // The edited marker is meaningless for a manual row and never appended.
     expect(activityProvenanceLabel(null, 1)).toBe("Manual");
     expect(activityProvenanceLabel("manual", 1)).toBe("Manual");
+  });
+});
+
+// The Journal source filter's vocabulary (issue #1634). The KEY is what SQL selects
+// by and what the pure card predicate compares; the LABEL is produced by the SAME
+// activityProvenanceLabel the cards render, so a provider can never be named one way
+// on a chip and another in the filter.
+describe("activityProvenanceKey / activityProvenanceKeyLabel", () => {
+  it("collapses a manual row (null or 'manual') to one key", () => {
+    expect(activityProvenanceKey(null)).toBe("manual");
+    expect(activityProvenanceKey("manual")).toBe("manual");
+  });
+
+  it("collapses EVERY document-sourced row to a single key", () => {
+    // The point of the collapse: a distinct-scan over the raw column would offer
+    // one "Document" option per uploaded file.
+    expect(activityProvenanceKey("document:1")).toBe("document");
+    expect(activityProvenanceKey("document:998")).toBe("document");
+  });
+
+  it("keeps an integration id as its own key", () => {
+    expect(activityProvenanceKey("strava")).toBe("strava");
+    expect(activityProvenanceKey("health-connect")).toBe("health-connect");
+  });
+
+  it("labels each key through the card labeller", () => {
+    expect(activityProvenanceKeyLabel("manual")).toBe("Manual");
+    expect(activityProvenanceKeyLabel("document")).toBe("Document");
+    expect(activityProvenanceKeyLabel("strava")).toBe("Strava");
+    expect(activityProvenanceKeyLabel("health-connect")).toBe(
+      "Google Health Connect"
+    );
   });
 });
