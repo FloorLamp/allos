@@ -27,6 +27,15 @@ import {
   PRN_FAMILY_PROFILE,
   E2E_LOGIN_COVERAGE,
   SAFETY_COVERAGE_PROFILE,
+  E2E_LOGIN_UPCOMING_AGG,
+  UPCOMING_AGG_PROFILE,
+  UPCOMING_AGG_WARFARIN,
+  UPCOMING_AGG_ASPIRIN,
+  UPCOMING_AGG_NSAID,
+  UPCOMING_AGG_SSRI,
+  UPCOMING_AGG_SUPPLEMENT,
+  UPCOMING_AGG_TAKEN,
+  UPCOMING_AGG_PRN,
 } from "../fixture-logins";
 import {
   PROFILE_ID,
@@ -496,4 +505,104 @@ export function seedSharedSupplyPools(): void {
       `e2e: seeded shared-supply-pool fixture — ${E2E_LOGIN_SUPPLY} granted ${SUPPLY_PARENT_PROFILE} (${supplyParentId}) + ${SUPPLY_CHILD_PROFILE} (${supplyChildId}); bottles ${sharedBottleId}/${lowBottleId} (#1374)`
     );
   }
+}
+
+// ── Upcoming display aggregation (#1504) ──
+export function seedUpcomingAggregate(): void {
+  // A dedicated adult profile shaped like the audit's Today band, so the fold and its
+  // pinned exclusions can be asserted without touching the shared seed:
+  //   • SIX scheduled `must` doses, ONE of them already logged taken today — the fold
+  //     must state "5 doses left · 1 of 6 taken", a fraction that only reconciles if
+  //     the denominator comes from the same due evaluation as the rows.
+  //   • FOUR interacting medications (warfarin + aspirin + an NSAID + an SSRI), which
+  //     yield at least three pairwise interaction findings for the med-safety rollup.
+  //   • ONE PRN medication logged OVER its confirmed daily max — the pinned safety row
+  //     that renders individually, ABOVE the fold, in every state.
+  // Idempotent hard-clear so a reused server re-seeds cleanly. Synthetic, no PHI.
+  const aggId = fixtureProfileId(UPCOMING_AGG_PROFILE);
+  db.prepare(
+    `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(aggId);
+  db.prepare(
+    `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(aggId);
+  db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(aggId);
+  db.prepare(`DELETE FROM upcoming_dismissals WHERE profile_id = ?`).run(aggId);
+
+  const aggDay = today(aggId);
+  const scheduled = (name: string, kind: "medication" | "supplement") => {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, ?, 'daily', 'must')`
+        )
+        .run(aggId, name, kind).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 tab', 'morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    return { itemId, doseId };
+  };
+
+  for (const name of [
+    UPCOMING_AGG_WARFARIN,
+    UPCOMING_AGG_ASPIRIN,
+    UPCOMING_AGG_NSAID,
+    UPCOMING_AGG_SSRI,
+  ]) {
+    scheduled(name, "medication");
+  }
+  scheduled(UPCOMING_AGG_SUPPLEMENT, "supplement");
+  // The already-taken sixth dose: it is part of the day's schedule (the denominator)
+  // and deliberately NOT a pending row, so "1 of 6 taken" is a claim about the same
+  // set the disclosure lists.
+  const takenDose = scheduled(UPCOMING_AGG_TAKEN, "supplement");
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, status, amount)
+     VALUES (?, ?, ?, 'taken', '1 tab')`
+  ).run(takenDose.doseId, takenDose.itemId, aggDay);
+
+  // The PRN over-max safety row: confirmed max of 1, logged twice today.
+  const prnId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, active, kind, condition, obligation, max_daily_count)
+         VALUES (?, ?, 1, 'medication', 'daily', 'may', 1)`
+      )
+      .run(aggId, UPCOMING_AGG_PRN).lastInsertRowid
+  );
+  const prnDoseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '250 mg', 'anytime', 'any', 0)`
+      )
+      .run(prnId).lastInsertRowid
+  );
+  for (const backMs of [7_200_000, 3_600_000]) {
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+       VALUES (?, ?, ?, ?, 'taken')`
+    ).run(
+      prnDoseId,
+      prnId,
+      aggDay,
+      utcSqlString(new Date(clockNow().getTime() - backMs))
+    );
+  }
+
+  seedMemberLogin(E2E_LOGIN_UPCOMING_AGG, aggId, "write");
+  console.log(
+    `e2e: seeded Upcoming aggregation fixture — ${E2E_LOGIN_UPCOMING_AGG} granted ${UPCOMING_AGG_PROFILE} (${aggId}) (#1504)`
+  );
 }

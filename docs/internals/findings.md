@@ -43,6 +43,34 @@ two sets are disjoint, their union is the whole set, the rollup's count and
 widget puts its family straight back into the rollup. A new family with its own
 widget adds one registry line — it does not add another one-off filter.
 
+**The same contract governs the Upcoming page's display aggregation (#1504).**
+The planning page folds a band's scheduled `dose` rows into one disclosure, and
+its `interaction` + `pgx` rows into a second, with the count (and, for Today, the
+day's taken fraction) stated in BOTH states, no dismiss, and no persisted state —
+an aggregate is collapsed on every visit. `lib/upcoming-aggregate.ts` owns the
+decision (`planBandRender`); the page is a formatter over it.
+
+Three properties are load-bearing:
+
+- **Rendering aggregates; identity does not (#1496).** The disclosure hands the
+  SAME `UpcomingItem` objects to the SAME row renderer, so every folded row keeps
+  its `dedupeKey`, its per-item snooze/dismiss, and its `WriteTarget` — a dose
+  confirmed on another member's row still writes to that member.
+- **The safety exemption is read from the item's own policy**, exactly as the
+  hero's is: an item whose `itemSuppressionPolicy` is `"safety-ungated"` (a
+  missed-dose escalation, the crisis finding) is never folded, and neither is a
+  `prn-max` row — a count that has already been exceeded must not be summarised by
+  another count. Both render individually and lead their band.
+- **The rollup's scope is closed**: `interaction` + `pgx` only. `allergy-med`
+  keeps its rank above them (#1029) and stays an individual row, as do the
+  singular care findings. `lib/__tests__/upcoming-aggregate.test.ts` reflects over
+  the whole `UpcomingDomain` union so a new domain must choose a side.
+
+The fold is band-scoped (an overdue dose is never summarised together with a
+not-yet-due one), and it does not touch the engines, the bands,
+`compareWithinBand`, `collectUpcoming`, or the suppression bus — the digest, the
+dashboard hero and the calendar feed read the same model unchanged.
+
 **The hero's contract is ALWAYS-PRESENT, not always-full (#1413).** The care
 tier's `non-hideable hero` guarantee was refined on exactly one axis: the hero
 may **collapse** to a compact pinned line, because on a phone the full card cost

@@ -69,6 +69,7 @@ import {
   seedDrugAllergyCrosscheck,
   seedPrnCounter,
   seedSafetyCoverage,
+  seedUpcomingAggregate,
   seedSharedSupplyPools,
 } from "./seed/intake";
 import {
@@ -178,3 +179,6 @@ seedTimelineEmpty();
 // exactly where they were.
 seedSymptomVideoEpisode();
 seedReportPanes();
+// Appended after those for the same reason (#1504): a new profile plus its own intake
+// rows, so every existing fixture's row ids stay exactly where they were.
+seedUpcomingAggregate();

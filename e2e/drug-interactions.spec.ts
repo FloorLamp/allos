@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { expandUpcomingAggregates } from "./helpers";
 import Database from "better-sqlite3";
 import {
   intakeWarnings,
@@ -64,6 +65,9 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
 }) => {
   await page.goto("/upcoming");
   const main = page.getByRole("main");
+  // Interaction + PGx notes fold into one med-safety disclosure (#1504); the rows
+  // keep their own dedupeKey and their own dismiss, so open it and act per row.
+  await expandUpcomingAggregates(main, "med-safety");
 
   // The finding is keyed on the item-id pair (`interaction:<lo>-<hi>`); the seed
   // yields several interacting pairs, so select the warfarin+ibuprofen one by text

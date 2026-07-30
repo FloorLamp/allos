@@ -45,3 +45,26 @@ export const SUPPLY_CHILD_LOW_MED = "Supply Child Cetirizine (e2e)";
 // rewriting its count can never perturb the decrement case's arithmetic.
 export const SUPPLY_EDIT_BOTTLE = "Editable Shared Loratadine (e2e)";
 export const SUPPLY_PARENT_EDIT_MED = "Supply Parent Loratadine (e2e)";
+
+// #1504 — the Upcoming page's display aggregation. A DEDICATED member login granted a
+// dedicated adult profile whose Today band is deliberately shaped like the audit's:
+// six scheduled doses (one already taken, so the fold can state a real fraction),
+// several interacting medications so the interaction rollup has something to roll up,
+// and one PRN medication logged OVER its confirmed daily max — the pinned safety row
+// that must render individually, ABOVE the fold, at all times. Spec-owned end to end
+// (upcoming-aggregate.spec.ts + its mobile twin): nothing else reads this profile, so
+// the spec may exact-count its own rows, confirm a dose and dismiss a finding without
+// perturbing a neighbour. Synthetic, no PHI.
+export const E2E_LOGIN_UPCOMING_AGG = "e2e_upcoming_agg";
+export const UPCOMING_AGG_PROFILE = "Upcoming Aggregate (e2e)";
+// The four interacting medications (warfarin + aspirin + an NSAID + an SSRI), each a
+// daily `must` dose, so the profile carries both a dose run and ≥3 interaction pairs.
+export const UPCOMING_AGG_WARFARIN = "Aggregate Warfarin (e2e)";
+export const UPCOMING_AGG_ASPIRIN = "Aggregate Aspirin (e2e)";
+export const UPCOMING_AGG_NSAID = "Aggregate Ibuprofen (e2e)";
+export const UPCOMING_AGG_SSRI = "Aggregate Sertraline (e2e)";
+// A plain daily supplement, and the one dose logged taken today.
+export const UPCOMING_AGG_SUPPLEMENT = "Aggregate Vitamin D (e2e)";
+export const UPCOMING_AGG_TAKEN = "Aggregate Magnesium (e2e)";
+// The PRN medication logged over its confirmed max — the prn-max safety row.
+export const UPCOMING_AGG_PRN = "Aggregate Naproxen PRN (e2e)";
