@@ -56,9 +56,7 @@ const MAX_REASON_CHARS = 140;
 // nothing usable. Tolerant of case/whitespace and of the near-miss words a model
 // reaches for ("med", "moderate", "uncertain") — but never of a guess: an
 // unrecognized value is UNKNOWN, not a bucket we invented for it.
-export function normalizeConfidence(
-  raw: unknown
-): ExtractionConfidence | null {
+export function normalizeConfidence(raw: unknown): ExtractionConfidence | null {
   const s = strOrNull(raw)?.toLowerCase();
   if (!s) return null;
   if (s === "high" || s === "certain" || s === "confident") return "high";
@@ -185,9 +183,9 @@ export interface ConfidenceItem {
 
 // Order rows for review: lowest confidence first, unknown last, and STABLE within a
 // tier so the document's own order (the order the rows appear on the page) survives.
-export function rankByConfidence<T extends { confidence: ExtractionConfidence | null }>(
-  items: T[]
-): T[] {
+export function rankByConfidence<
+  T extends { confidence: ExtractionConfidence | null },
+>(items: T[]): T[] {
   return items
     .map((item, i) => ({ item, i }))
     .sort(

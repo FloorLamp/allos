@@ -9,6 +9,8 @@ import {
   unwrapExtractionInput,
   looksLikeExtractionInput,
 } from "@/lib/medical-extract";
+import { SYSTEM, TOOL } from "@/lib/medical-extract/prompt";
+import { EXTRACTION_CONFIDENCES } from "@/lib/extraction-confidence";
 
 // A minimal, SYNTHETIC payload in the tool schema's flat shape.
 const FLAT_PAYLOAD = {
@@ -320,5 +322,116 @@ describe("normalizePrescription (#414)", () => {
     expect(
       normalizePrescription({ sig: "x", start_date: "02/01/2024" })?.start_date
     ).toBe(null);
+  });
+});
+
+describe("per-record confidence at the extract boundary (#1601)", () => {
+  it("reads the model's certainty onto a result, tolerating its phrasing", () => {
+    const [ferritin, sodium, glucose] = normalizeResults({
+      results: [
+        {
+          category: "lab",
+          name: "Ferritin",
+          canonical_name: "Ferritin",
+          confidence: " LOW ",
+          confidence_reason: "  value partly illegible  ",
+        },
+        {
+          category: "lab",
+          name: "Sodium",
+          canonical_name: "Sodium",
+          confidence: "high",
+          // A reason on a confident row is noise and is dropped.
+          confidence_reason: "looks fine",
+        },
+        {
+          category: "lab",
+          name: "Glucose",
+          canonical_name: "Glucose",
+          // Off-vocabulary answer → unknown, never a guessed tier.
+          confidence: 0.42,
+          confidence_reason: "probably ok",
+        },
+      ],
+    });
+    expect([ferritin.confidence, ferritin.confidence_reason]).toEqual([
+      "low",
+      "value partly illegible",
+    ]);
+    expect([sodium.confidence, sodium.confidence_reason]).toEqual([
+      "high",
+      null,
+    ]);
+    expect([glucose.confidence, glucose.confidence_reason]).toEqual([
+      null,
+      null,
+    ]);
+  });
+
+  it("reads it on every clinical domain, not just labs", () => {
+    const out = normalizeClinicalDomains({
+      conditions: [
+        { name: "Asthma", confidence: "medium", confidence_reason: "hedged" },
+      ],
+      allergies: [{ substance: "Penicillin", confidence: "high" }],
+      procedures: [{ name: "Appendectomy", confidence: "low" }],
+      encounters: [
+        { date: "2024-02-01", type: "Office Visit", confidence: "medium" },
+      ],
+      family_history: [{ condition: "Diabetes", confidence: "low" }],
+      care_plan: [{ description: "Recheck A1c", confidence: "medium" }],
+      care_goals: [{ description: "A1c < 7.0%", confidence: "high" }],
+      genomic_variants: [{ gene: "CYP2C19", confidence: "low" }],
+      imaging_studies: [
+        {
+          modality: "ct",
+          impression: "No acute finding",
+          confidence: "medium",
+        },
+      ],
+      optical_prescriptions: [
+        { kind: "glasses", od_sphere: "-2.00", confidence: "low" },
+      ],
+      dental_procedures: [{ name: "Composite filling", confidence: "high" }],
+    });
+    expect(out.conditions[0].confidence).toBe("medium");
+    expect(out.conditions[0].confidence_reason).toBe("hedged");
+    expect(out.allergies[0].confidence).toBe("high");
+    expect(out.procedures[0].confidence).toBe("low");
+    expect(out.encounters[0].confidence).toBe("medium");
+    expect(out.familyHistory[0].confidence).toBe("low");
+    expect(out.carePlanItems[0].confidence).toBe("medium");
+    expect(out.careGoals[0].confidence).toBe("high");
+    expect(out.genomicVariants[0].confidence).toBe("low");
+    expect(out.imagingStudies[0].confidence).toBe("medium");
+    expect(out.opticalPrescriptions[0].confidence).toBe("low");
+    expect(out.dentalProcedures[0].confidence).toBe("high");
+  });
+});
+
+describe("extraction tool schema: confidence is asked for uniformly (#1601)", () => {
+  const props = TOOL.input_schema.properties as Record<string, any>;
+  const arrays = Object.entries(props).filter(
+    ([, v]) => v?.type === "array" && v?.items?.properties
+  );
+
+  it("asks every emitted domain for a confidence + a non-high reason", () => {
+    // Uniform on purpose: a reviewer's queue can't rank a document whose conditions
+    // carry certainty but whose labs don't.
+    expect(arrays.length).toBeGreaterThan(10);
+    for (const [name, schema] of arrays) {
+      const item = schema.items.properties;
+      expect(item.confidence, `${name}.confidence`).toBeTruthy();
+      expect(item.confidence.enum).toEqual([...EXTRACTION_CONFIDENCES, null]);
+      expect(item.confidence_reason, `${name}.confidence_reason`).toBeTruthy();
+      // Never required: an extraction that omits it must stay valid and degrade to
+      // "unknown" rather than failing the whole document.
+      expect(schema.items.required ?? []).not.toContain("confidence");
+    }
+  });
+
+  it("tells the model the signal orders review and gates nothing", () => {
+    expect(SYSTEM).toContain("confidence_reason");
+    expect(SYSTEM).toMatch(/rows a human looks at first/);
   });
 });

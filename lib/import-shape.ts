@@ -9,10 +9,7 @@ import type {
   MedicalFlag,
   Sex,
 } from "./types";
-import type {
-  ExtractedConfidence,
-  ExtractionResult,
-} from "./medical-extract";
+import type { ExtractedConfidence, ExtractionResult } from "./medical-extract";
 import type {
   ImportResult,
   ImportedProvider,
@@ -578,11 +575,7 @@ export function extractionConfidenceItems(
       item("genomic_variant", v.gene, v)
     ),
     ...(result.imagingStudies ?? []).map((s) =>
-      item(
-        "imaging_study",
-        s.body_region ?? s.modality ?? "Imaging study",
-        s
-      )
+      item("imaging_study", s.body_region ?? s.modality ?? "Imaging study", s)
     ),
     ...(result.opticalPrescriptions ?? []).map((p) =>
       item("optical_prescription", p.kind ?? "Optical prescription", p)

@@ -431,7 +431,9 @@ describe("serialize / parseImportReport", () => {
       })
     );
     expect(partial?.confidence?.scrutiny).toBe(1);
-    expect(partial?.confidence?.flags.map((f) => f.label)).toEqual(["Kept Row"]);
+    expect(partial?.confidence?.flags.map((f) => f.label)).toEqual([
+      "Kept Row",
+    ]);
   });
 });
 

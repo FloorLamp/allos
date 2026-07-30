@@ -13,7 +13,13 @@ import {
   reassignDocument,
   deleteMedicalDocument,
 } from "@/app/(app)/medical/document-actions";
-import { getReprocessSnapshot, reconcileFlags } from "@/lib/queries";
+import {
+  getImportLogDocuments,
+  getMedicalDocument,
+  getReprocessSnapshot,
+  reconcileFlags,
+} from "@/lib/queries";
+import { parseImportReport, serializeImportReport } from "@/lib/import-report";
 import {
   immunizationDismissalKey,
   immunizationCodesLosingBacking,
@@ -295,6 +301,69 @@ describe("reassignDocument", () => {
     expect(ev?.target).toBe(String(docId));
     expect(ev?.detail).toContain(String(a.id));
     expect(ev?.detail).toContain(String(b.id));
+  });
+
+  it("carries the extraction-confidence signal to the destination (#1601)", async () => {
+    // Confidence is persisted on the document's import_report, so a reassign must
+    // move it with the document: the destination's Review feed badges the rows the
+    // extractor hedged on, and the source stops claiming them.
+    const admin = createLogin({ role: "admin" });
+    const a = createProfile("CONF-SRC");
+    const b = createProfile("CONF-DEST");
+    const docId = newDocument(a.id);
+    const input = makeInput();
+    persistDocumentImport(a.id, docId, {
+      ...input,
+      meta: {
+        ...input.meta,
+        importReport: serializeImportReport({
+          drops: [],
+          coverage: [],
+          imported: 2,
+          considered: 2,
+          confidence: {
+            counts: { high: 1, medium: 1, low: 1, unknown: 0 },
+            scrutiny: 2,
+            flags: [
+              {
+                kind: "lab",
+                label: "Confidence Marker 1",
+                confidence: "low",
+                reason: "figure unclear",
+              },
+              {
+                kind: "condition",
+                label: "Sample Condition",
+                confidence: "medium",
+                reason: null,
+              },
+            ],
+          },
+        }),
+      },
+    });
+    actAs(admin, a);
+    expect(
+      getImportLogDocuments(a.id).find((d) => d.id === docId)
+        ?.confidence_scrutiny
+    ).toBe(2);
+
+    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
+    expect(res.status).toBe("done");
+
+    expect(
+      getImportLogDocuments(b.id).find((d) => d.id === docId)
+        ?.confidence_scrutiny
+    ).toBe(2);
+    expect(getImportLogDocuments(a.id).some((d) => d.id === docId)).toBe(false);
+    // The flagged rows themselves crossed intact — the detail card renders the same
+    // ranked list under the destination profile.
+    const moved = getMedicalDocument(b.id, docId)!;
+    expect(
+      parseImportReport(moved.import_report)?.confidence?.flags.map(
+        (f) => f.label
+      )
+    ).toEqual(["Confidence Marker 1", "Sample Condition"]);
   });
 
   it("moves the on-disk file into the destination profile's directory", async () => {
