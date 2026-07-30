@@ -17,9 +17,9 @@ test("protocol creation is collapsed and templates seed inside the form (#1500)"
 
   const dialog = page.getByRole("dialog", { name: "New protocol" });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveClass(/max-w-4xl/);
+  await expect(dialog).toHaveClass(/max-w-3xl/);
   const form = dialog.getByTestId("protocol-form");
-  await expect(form.getByLabel("Notes")).toHaveAttribute("rows", "5");
+  await expect(form.getByLabel("Notes")).toHaveAttribute("rows", "4");
   const picker = form.getByTestId("protocol-template-picker");
   await picker.selectOption("sun-exposure");
   await expect(form.locator('input[name="name"]')).toHaveValue(
