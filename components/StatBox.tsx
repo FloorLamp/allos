@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { goalBarClass } from "@/lib/goals";
+import type { AppRoute } from "@/lib/hrefs";
 
 // A labelled stat box used in the Cardio/Sport/Exercise detail panels: an
 // uppercase label over a bold value, with optional sub-text, link, label badge,
@@ -19,7 +20,9 @@ export function StatBox({
   sub?: ReactNode;
   subClass?: string;
   // When set, the value links to it (e.g. the journal entry of the last session).
-  href?: string;
+  // An INTERNAL app route, so it is `AppRoute` (issue #285): a consolidated-away
+  // journal route becomes a build error here rather than a shipped dead link.
+  href?: AppRoute;
   // Optional chip shown next to the label (e.g. a "PR" marker).
   badge?: ReactNode;
   // When set (0–100), renders a goal-style progress bar under the value.

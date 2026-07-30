@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { IconEmergencyBed, IconArrowLeft } from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
 import EmergencyCardView from "@/components/EmergencyCardView";
+import PageContainer from "@/components/PageContainer";
 import { readEmergencyPayloadRaw } from "@/components/emergency-offline";
 import {
   parseEmergencyPayload,
@@ -32,7 +33,7 @@ export default function OfflinePage() {
   if (showCard && card) {
     return (
       <main className="min-h-screen px-4 py-8">
-        <div className="mx-auto max-w-2xl">
+        <PageContainer width="narrow" className="mx-auto">
           <button
             type="button"
             className="btn-ghost mb-4 print:hidden"
@@ -42,7 +43,7 @@ export default function OfflinePage() {
             Back
           </button>
           <EmergencyCardView card={card} />
-        </div>
+        </PageContainer>
       </main>
     );
   }

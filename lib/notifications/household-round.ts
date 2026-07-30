@@ -32,12 +32,15 @@ import {
   type HouseholdRoundSection,
 } from "./household-round-format";
 import type { NotificationMessage } from "./types";
+import type { AppRoute } from "../hrefs";
 
 // The Household page — the destination this round reaches from, and the overflow
-// deep-link target. A plain literal rather than an AppRoute import: this module is
-// consumed by the notify tick (a plain tsx script), and the value is pinned by the
-// pure format test alongside every other piece of the message.
-const HOUSEHOLD_PATH = "/household";
+// deep-link target. Typed `AppRoute` (issue #285), like every other internal route
+// the notify tick deep-links to (SUPPLIES_HREF, episodeHref, …): the annotation is
+// erased at runtime, so the tsx tick is unaffected, but consolidating /household away
+// becomes a build error here instead of a dead button in a Telegram message. The
+// value itself is pinned by the pure format test alongside the rest of the message.
+const HOUSEHOLD_PATH: AppRoute = "/household";
 
 // The per-day dedupe marker for a receiver's round in one slot. Keyed on the
 // RECEIVER's profile + slot, exactly like `notify_last_supp_<slot>`, and stored on
