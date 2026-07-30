@@ -173,6 +173,10 @@ import {
 // set, the total, or the hero. The Upcoming page reads it separately for its
 // collapsed disclosure.
 export { offeredItems } from "./intake-safety";
+// The day's dose progress (#1504) — the denominator behind the Upcoming dose
+// aggregate's always-visible "9 of 14 taken". Re-exported, not folded into
+// collectUpcoming: it is a COUNT about the same due set, not another due item.
+export { doseDayProgress } from "./intake-safety";
 
 // Biomarker categories a retest nudge makes sense for: `lab` ONLY (#1076).
 // Vitals/scans/prescriptions aren't "labs to redraw", genomics/reference never go
