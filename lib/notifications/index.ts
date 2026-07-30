@@ -3,7 +3,11 @@
 
 import { writeTx } from "../db";
 import { createLogger } from "../log";
-import { type ChannelId, type NotificationMessage } from "./types";
+import {
+  type ChannelId,
+  type DispatchOptions,
+  type NotificationMessage,
+} from "./types";
 import { telegramChannel } from "./telegram";
 import { pushChannel } from "./push";
 import { homeAssistantChannel } from "./home-assistant";
@@ -24,6 +28,7 @@ const log = createLogger("notifications");
 // site and the callback rebuild, so a rebuilt shared-chat message can't drop the
 // "[Name] " label it was sent with (#377/#429).
 export { prefixForProfile } from "./attribution";
+export type { DispatchOptions } from "./types";
 
 // The last persisted delivery failure for the Settings surface, or null when the
 // most recent attempted send succeeded (marker cleared). Global, like the backup
@@ -92,12 +97,15 @@ export interface DispatchResult {
 
 // Send a message to every channel configured for `profileId`. One channel
 // failing never blocks the others; returns a per-channel result so the caller
-// (CLI) can set its exit code.
+// (CLI) can set its exit code. `opts` carries per-send routing a caller needs on top
+// of the profile's own channels — today only the escalation's explicit caregiver chat
+// (#1716) — so even a specially-routed safety message keeps the delivery accounting.
 export async function dispatch(
   profileId: number,
-  msg: NotificationMessage
+  msg: NotificationMessage,
+  opts?: DispatchOptions
 ): Promise<DispatchResult[]> {
-  const channels = getChannels().filter((c) => c.isConfigured(profileId));
+  const channels = getChannels().filter((c) => c.isConfigured(profileId, opts));
   if (channels.length === 0) {
     log.warn("no configured channels; nothing sent");
     return [];
@@ -105,7 +113,7 @@ export async function dispatch(
   const results = await Promise.all(
     channels.map(async (c): Promise<DispatchResult> => {
       try {
-        await c.send(profileId, msg);
+        await c.send(profileId, msg, opts);
         log.info("sent", { channel: c.id, title: msg.title });
         return { id: c.id, ok: true };
       } catch (e) {

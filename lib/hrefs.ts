@@ -284,6 +284,12 @@ export function equipmentHref(id: number): AppRoute {
   return href as AppRoute;
 }
 
+// Where wellness PRACTICES live — the same address the Upcoming `practice:<id>` item
+// and the search hit already point at. The ONE encoding of that seam (#285's
+// rule-carrying link), so the practice nudge's deep link (#1718) can't drift from the
+// item it is the push twin of.
+export const PRACTICES_HREF: AppRoute = "/wellness";
+
 // A protocol (training/care protocol) detail page.
 export function protocolHref(id: number): AppRoute {
   const href: Route<`/protocols/${number}`> = `/protocols/${id}`;

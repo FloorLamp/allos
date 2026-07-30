@@ -374,7 +374,9 @@ export function refillAnswerText(outcome: RefillTapOutcome): string {
 // The token mirrors a dose tap's shape (profile/dose/supp/date) under distinct
 // "esctake"/"escack" prefixes.
 
-export type EscalationAction = "take" | "ack";
+// ⏭ Skip joins the two original affordances (#1716): a skip is a RECORDED DELIBERATE
+// DECISION, distinct from silence, and skipped doses already end the escalation loop.
+export type EscalationAction = "take" | "ack" | "skip";
 
 export interface EscalationCallback {
   profileId: number;
@@ -384,14 +386,15 @@ export interface EscalationCallback {
   action: EscalationAction;
 }
 
-// Parse an "esctake:…" / "escack:…" token (same field layout as a dose token).
-// Malformed (wrong prefix, bad ids, missing date) → null.
+// Parse an "esctake:…" / "escskip:…" / "escack:…" token (same field layout as a dose
+// token). Malformed (wrong prefix, bad ids, missing date) → null.
 export function parseEscalationCallback(
   data: unknown
 ): EscalationCallback | null {
   if (typeof data !== "string") return null;
   let action: EscalationAction;
   if (data.startsWith("esctake:")) action = "take";
+  else if (data.startsWith("escskip:")) action = "skip";
   else if (data.startsWith("escack:")) action = "ack";
   else return null;
   const [, profStr, doseStr, suppStr, date] = data.split(":");
@@ -459,6 +462,25 @@ export function escalationTakeCloseText(outcome: DoseTakenOutcome): string {
     return "This dose was marked skipped ⏭ — check the app.";
   }
   return OUTDATED_MESSAGE_TEXT;
+}
+
+// Replacement message body after an escalation ⏭ Skip tap (#1716), per
+// markDoseSkipped's outcome. A skip that STANDS closes the escalation honestly; an
+// already-taken dose is not silently overwritten, and a stale/paused dose says so.
+// Shares the ledger — and therefore the vocabulary — with the dose reminder's own skip.
+export function escalationSkipCloseText(outcome: DoseTakenOutcome): string {
+  switch (outcome) {
+    case "skipped":
+    case "already-skipped":
+      return "Skipped ⏭ — recorded as a decision, not a miss.";
+    case "logged-off-day":
+    case "already-taken":
+      return "Already confirmed taken ✅";
+    case "inactive":
+    case "stale-dose":
+    default:
+      return OUTDATED_MESSAGE_TEXT;
+  }
 }
 
 // Replacement message body after an escalation 👍 I'm-on-it tap, per
@@ -739,18 +761,29 @@ export function parseFoodOptInCallback(
 // (the #232 never-unconditionally-confirm discipline); only a current-day tap logs.
 // A same-day tap from an older window keeps working (the date is right; only the
 // button counts on the old message are stale, which the rebuild refreshes).
-export type FoodTapDateGuard = { kind: "current-day" } | { kind: "stale-date" };
+export type TapDateGuard = { kind: "current-day" } | { kind: "stale-date" };
+export type FoodTapDateGuard = TapDateGuard;
 
-// Decide whether a food tap's token date is today in the profile's timezone. Pure so
-// the tz-midnight boundary (a 23:59 tap on yesterday's nudge vs a 00:01 tap on
-// today's) is unit-pinnable; the handler passes today(profileId).
+// Decide whether a tap's token date is still the subject's today. Pure, so the
+// tz-midnight boundary (a 23:59 tap on yesterday's message vs a 00:01 tap on today's)
+// is unit-pinnable. ONE guard for every live-keyboard surface (#221): the food nudge
+// (#947) and the household round (#1719) both mint tokens carrying a send-time date,
+// and both would otherwise write to the wrong day on a next-morning tap.
+export function tapDateGuard(
+  tokenDate: string,
+  todayDate: string
+): TapDateGuard {
+  return tokenDate === todayDate
+    ? { kind: "current-day" }
+    : { kind: "stale-date" };
+}
+
+// The food nudge's name for the shared guard; the handler passes today(profileId).
 export function foodTapDateGuard(
   tokenDate: string,
   todayDate: string
 ): FoodTapDateGuard {
-  return tokenDate === todayDate
-    ? { kind: "current-day" }
-    : { kind: "stale-date" };
+  return tapDateGuard(tokenDate, todayDate);
 }
 
 // The honest Telegram toast for a refused cross-date tap: name the stale date so the
@@ -986,6 +1019,16 @@ export function householdTapRefusalText(
     default:
       return "Not logged — this reminder is out of date. Open the app.";
   }
+}
+
+// The honest toast for a household tap refused because its token names a date that is
+// no longer the MEMBER's today (#1719). The date compared is the member's, not the
+// receiver's: a round assembled at the receiver's slot can legitimately span two
+// calendar dates in a mixed-timezone household, and each button carries its own
+// member's day. Names the stale date, and says a fresh round is coming — a caregiver
+// must not be left wondering whether the dose was recorded somewhere.
+export function householdStaleDateAnswerText(tokenDate: string): string {
+  return `Not logged — this round is from ${tokenDate}. Today's round will arrive as usual.`;
 }
 
 // The toast for a household confirm that DID reach the write, per markDoseTaken's

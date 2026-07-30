@@ -142,3 +142,151 @@ describe("temperature reply quick-log", () => {
     expect(after.c).toBe(before.c);
   });
 });
+
+// ---- `/dose` renders the safety verdicts it already fetches (issue #1717) ----
+//
+// The list used to render `💊 Ibuprofen · 200 mg (2 today)` — a bare item-only count —
+// while getPrnMedicationsForQuickLog already returned the interval, the confirmed max
+// and the ingredient-family counters, and the in-app card rendered the verdict from
+// exactly those fields. Two consequences, both pinned here: a tap could pass the
+// confirmed daily max with no warning, and the count was family-blind.
+
+// A PRN med with a confirmed 6h interval and a 4/day max. Returns its id.
+// A PRN med — `obligation = 'may'` is what makes it as-needed for the quick-log
+// gather — with a confirmed 6h interval and 4/day max unless overridden.
+function seedPrnMed(
+  profileId: number,
+  name: string,
+  opts: { interval?: number | null; max?: number | null } = {}
+): { itemId: number; doseId: number } {
+  const { interval = 6, max = 4 } = opts;
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, active, kind, condition, obligation,
+            min_interval_hours, max_daily_count, redose_notice)
+         VALUES (?, ?, 1, 'medication', 'daily', 'may', ?, ?, 0)`
+      )
+      .run(profileId, name, interval, max).lastInsertRowid
+  );
+  const doseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '200 mg', 'anytime', 'any', 0)`
+      )
+      .run(itemId).lastInsertRowid
+  );
+  return { itemId, doseId };
+}
+
+// Log one administration `hoursAgo` before now, on the profile's local date.
+function logAdminAt(
+  profileId: number,
+  med: { itemId: number; doseId: number },
+  hoursAgo: number
+): void {
+  const at = new Date(Date.now() - hoursAgo * 3_600_000)
+    .toISOString()
+    .replace("T", " ")
+    .slice(0, 19);
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+     VALUES (?, ?, ?, ?, 'taken')`
+  ).run(med.doseId, med.itemId, today(profileId), at);
+}
+
+// The labels of the buttons the last /dose send carried.
+function lastDoseLabels(): string[] {
+  const call = sendMock.mock.calls[sendMock.mock.calls.length - 1];
+  const msg = call[1] as {
+    actions?: { label: string }[];
+  };
+  return (msg.actions ?? []).map((a) => a.label);
+}
+
+describe("/dose renders its safety verdicts (#1717)", () => {
+  it("states 'Max reached' at the confirmed daily max instead of a bare count", async () => {
+    const s = seedProfile("DoseMax");
+    seedLoginTelegram(s.profileId, "5550777");
+    const med = seedPrnMed(s.profileId, "Ibuprofen");
+    for (let i = 0; i < 4; i++) logAdminAt(s.profileId, med, 5 - i * 0.5);
+    sendMock.mockClear();
+
+    await handleIncomingMessage({ chat: { id: "5550777" }, text: "/dose" });
+    const label = lastDoseLabels().find((l) => l.includes("Ibuprofen"))!;
+    expect(label).toContain("Max reached");
+    expect(label).toContain("4 of 4 today");
+  });
+
+  it("names the wait while the minimum interval is still open", async () => {
+    const s = seedProfile("DoseWait");
+    seedLoginTelegram(s.profileId, "5550778");
+    const med = seedPrnMed(s.profileId, "Naproxen");
+    logAdminAt(s.profileId, med, 4); // 4h ago against a 6h interval
+    sendMock.mockClear();
+
+    await handleIncomingMessage({ chat: { id: "5550778" }, text: "/dose" });
+    const label = lastDoseLabels().find((l) => l.includes("Naproxen"))!;
+    expect(label).toContain("Next dose in ~2h");
+    expect(label).toContain("1 of 4 today");
+  });
+
+  it("never invents a ceiling the user did not confirm", async () => {
+    const s = seedProfile("DoseNoMax");
+    seedLoginTelegram(s.profileId, "5550779");
+    const med = seedPrnMed(s.profileId, "Paracetamol", { max: null });
+    logAdminAt(s.profileId, med, 8);
+    sendMock.mockClear();
+
+    await handleIncomingMessage({ chat: { id: "5550779" }, text: "/dose" });
+    const label = lastDoseLabels().find((l) => l.includes("Paracetamol"))!;
+    expect(label).toContain("1 today");
+    expect(label).not.toContain("Max reached");
+    expect(label).not.toContain("of ");
+  });
+
+  it("counts the ingredient FAMILY, so the list can't disagree with the card (#1027)", async () => {
+    const s = seedProfile("DoseFamily");
+    seedLoginTelegram(s.profileId, "5550780");
+    // Two items sharing an ingredient family (the #1027 name-derived pair).
+    const rx = seedPrnMed(s.profileId, "Ibuprofen 800 mg");
+    const otc = seedPrnMed(s.profileId, "Ibuprofen");
+    logAdminAt(s.profileId, rx, 9);
+    logAdminAt(s.profileId, otc, 8);
+    logAdminAt(s.profileId, otc, 7);
+    sendMock.mockClear();
+
+    await handleIncomingMessage({ chat: { id: "5550780" }, text: "/dose" });
+    const label = lastDoseLabels().find((l) => l.includes("Ibuprofen 800 mg"))!;
+    // Family-wide: 3 across 2 items — the item-only count would have said "1 today".
+    expect(label).toContain("3 of 4 today across 2 items");
+  });
+
+  it("an at-max tap logs (the app treats the window as guidance) but SAYS the verdict", async () => {
+    const s = seedProfile("DoseTapMax");
+    seedLoginTelegram(s.profileId, "5550781");
+    const med = seedPrnMed(s.profileId, "Ibuprofen");
+    for (let i = 0; i < 4; i++) logAdminAt(s.profileId, med, 5 - i * 0.5);
+    answerMock.mockClear();
+
+    await handleCallbackQuery({
+      id: "cbq-max",
+      data: `prn:${s.profileId}:${med.itemId}:abcd1234`,
+      message: { message_id: 9, chat: { id: "5550781" } },
+    });
+
+    const answer = String(answerMock.mock.calls.at(-1)?.[1] ?? "");
+    expect(answer).toContain("Logged");
+    // The warning is present and the LEDGER agrees with what the answer claims.
+    expect(answer).toContain("Max reached");
+    expect(answer).toContain("5 of 4 today");
+    const { c } = db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM intake_item_logs WHERE item_id = ? AND status = 'taken'`
+      )
+      .get(med.itemId) as { c: number };
+    expect(c).toBe(5);
+  });
+});

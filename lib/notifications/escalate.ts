@@ -1,8 +1,23 @@
 // Missed-dose escalation orchestration. Gathers the critical
 // unconfirmed doses for a profile from already-scoped queries, runs the pure
-// escalationsDue decision, and sends a nudge over Telegram (to escalate_chat_id
-// when set, else the profile's own chat). Called once per hour from the notify
-// tick, independently of whether any reminder slot is due this hour.
+// escalationsDue decision, and DISPATCHES the nudge to every configured channel.
+// Called once per hour from the notify tick, independently of whether any reminder
+// slot is due this hour.
+//
+// THROUGH THE CHOKEPOINT, LIKE EVERY OTHER BUILDER (issue #1716). This used to call
+// sendTelegramMessage directly, which made the loudest safety-tier message in the app
+// the only one that (a) reached Telegram ONLY — while the settings matrix offered
+// per-channel routing for `escalation` and the Home Assistant channel advertises
+// escalation light-flashes, neither of which could structurally happen; (b) bypassed
+// dispatch()'s recordDeliveryOutcome, so a BROKEN SAFETY CHANNEL never set the
+// delivery-health marker and stayed invisible in Settings; and (c) bypassed the
+// per-login disabled-kinds gate inside telegramChannel.send. The per-item
+// `escalate_chat_id` caregiver override (#615) survives as a dispatch OPTION, so it
+// keeps its explicit routing AND gains the accounting.
+//
+// The fan-out's warn-never-block posture on a muted safety kind is unchanged: a mute
+// is the user's explicit, warned choice, and the delivery accounting is honest either
+// way.
 
 import { collectWindowDoses, getPreWorkoutSlotHour } from "./supplements";
 import { escalationMarkerKey } from "./escalation-keys";
@@ -12,13 +27,12 @@ import {
   type EscalationCandidate,
   type EscalationWindow,
 } from "./escalation";
-import { sendTelegramMessage } from "./telegram";
-import { resolveTelegramRecipients } from "./fan-out";
+import { dispatch } from "./index";
 import { getTakenDoseIds, getSkippedDoseIds } from "../queries";
 import {
   getProfileSetting,
   setProfileSetting,
-  getTelegramBotConfig,
+  getPublicUrl,
   type NotifySchedule,
 } from "../settings";
 import { createLogger } from "../log";
@@ -88,6 +102,7 @@ export async function runEscalations(
         amount: e.dose.amount,
         product: e.supp.kind === "medication" ? e.supp.product : null,
         window: w,
+        kind: e.supp.kind,
         slotHour,
         escalateAfterMin:
           e.supp.escalate_after_min ?? DEFAULT_ESCALATE_AFTER_MIN,
@@ -114,63 +129,42 @@ export async function runEscalations(
   });
   if (due.length === 0) return { failed: false };
 
-  // Delivery gate: the bot must be configured. Missed-dose escalation is SAFETY-tier
-  // and FANS OUT to every managing login's chat (issue #1072: a co-parent gets the
-  // kid's escalation — the #858 co-caregiver intent, structural instead of dependent
-  // on a shared chat id). A supplement's escalate_chat_id override, when set, targets
-  // that ONE explicit caregiver chat INSTEAD (unchanged) — an intentional per-item
-  // routing that predates the fan-out. Fan-out recipients are deduped by chat id so a
-  // shared family group never double-fires. Per-recipient send failures are folded,
-  // and the per-dose/day marker is stamped once any recipient took the message (the
-  // fire decision stays profile+dose+day — one evaluation, unchanged).
-  const { telegramBotToken } = getTelegramBotConfig();
-  if (!telegramBotToken) {
-    log.info("escalation skipped: no bot", { profile: profileId });
-    return { failed: false };
-  }
-  const fanRecipients = resolveTelegramRecipients(profileId);
+  // DELIVERY. Every configured channel, through dispatch() — so Web Push and Home
+  // Assistant finally receive the escalations their routing already promised, and a
+  // failed send folds into the delivery-health marker like any other send. The
+  // supplement's escalate_chat_id override (#615), when set, REPLACES the Telegram
+  // fan-out for that item's message (per-item caregiver routing, unchanged in effect)
+  // and rides as a dispatch option so the accounting still applies. The per-dose/day
+  // marker is stamped once ANY channel took the message (the fire decision stays
+  // profile+dose+day — one evaluation, unchanged).
+  const deepLinkBase = getPublicUrl();
 
   let failed = false;
   for (const d of due) {
     const override = (d.escalateChatId ?? "").trim();
-    // The override supersedes the fan-out (per-item caregiver routing); else fan out
-    // to every managing login's chat. Deduped so a chat that ALSO appears in the
-    // fan-out isn't double-hit when an override matches it.
-    const targets = override ? [override] : fanRecipients.map((r) => r.chatId);
-    if (targets.length === 0) {
-      log.info("escalation skipped: no target chat", {
+    const results = await dispatch(
+      profileId,
+      renderEscalationMessage(profileName, d, profileId, date, deepLinkBase),
+      override ? { telegramChatIds: [override] } : undefined
+    );
+    if (results.length === 0) {
+      // No configured channel at all — leave the marker unset so the next tick retries.
+      log.info("escalation skipped: no configured channel", {
         profile: profileId,
         dose: d.doseId,
       });
       continue;
     }
-    let anyDelivered = false;
-    for (const target of Array.from(new Set(targets))) {
-      try {
-        await sendTelegramMessage(
-          target,
-          renderEscalationMessage(profileName, d, profileId, date)
-        );
-        anyDelivered = true;
-        log.info("escalated missed dose", {
-          profile: profileId,
-          dose: d.doseId,
-          supp: d.supplementName,
-        });
-      } catch (e) {
-        failed = true;
-        log.error("escalation send failed", {
-          profile: profileId,
-          dose: d.doseId,
-          err: e instanceof Error ? e : String(e),
-        });
-      }
+    const anyDelivered = results.some((r) => r.ok);
+    if (results.some((r) => !r.ok)) failed = true;
+    if (anyDelivered) {
+      setProfileSetting(profileId, escKey(d.doseId), date);
+      log.info("escalated missed dose", {
+        profile: profileId,
+        dose: d.doseId,
+        supp: d.supplementName,
+      });
     }
-    // Mark the dose escalated for the day once ANY recipient received it (the
-    // "delivered = at least one recipient ok" semantics the dose-reminder slots use):
-    // the safety signal reached a caregiver, so it never re-nags today. A send where
-    // EVERY recipient failed leaves the marker unset so the next hour retries.
-    if (anyDelivered) setProfileSetting(profileId, escKey(d.doseId), date);
   }
   return { failed };
 }

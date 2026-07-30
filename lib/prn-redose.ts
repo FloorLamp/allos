@@ -28,6 +28,8 @@
 // administrations EXCEED the user's confirmed max_daily_count, surface a dismissible
 // care-tier finding (Upcoming + the dashboard attention hero). Registered on the
 // intake-surface dismiss guard so a dismiss silences it like any other finding.
+import { parseUtcSql } from "./date";
+
 export const PRN_MAX_PREFIX = "prn-max:";
 
 // The stable dedupe/suppression key for an over-max finding: `prn-max:<itemId>`, keyed
@@ -157,4 +159,35 @@ export function effectiveMaxDailyCount(
 ): number | null {
   const confirmed = maxes.filter((m): m is number => m != null && m > 0);
   return confirmed.length ? Math.min(...confirmed) : null;
+}
+
+// The redose window status for one PRN med as the quick-log gathers carry it —
+// the FAMILY-widened math (#1027) plus the optional-max degrade (#1458), in one
+// place. Three surfaces computed this identically by hand (the dashboard PRN
+// widget, the medications list, and — since #1717 — the Telegram `/dose` list),
+// which is how "the interval alone answers when the next dose is OK" quietly
+// became three subtly different gates. Returns null when there is no confirmed
+// interval or nothing has been administered: no window to report, so the caller
+// falls back to the plain day count and NEVER invents a ceiling.
+export function prnQuickLogRedoseStatus(
+  med: {
+    minIntervalHours: number | null;
+    maxDailyCount: number | null;
+    familyCount: number;
+    familyLastGivenAt: string | null;
+    familyMaxDailyCount: number | null;
+  },
+  now: Date
+): RedoseStatus | null {
+  if (med.minIntervalHours == null || !med.familyLastGivenAt) return null;
+  return redoseWindowStatus({
+    minIntervalHours: med.minIntervalHours,
+    maxDailyCount: effectiveMaxDailyCount(
+      med.maxDailyCount,
+      med.familyMaxDailyCount
+    ),
+    latestGivenAt: parseUtcSql(med.familyLastGivenAt),
+    countToday: med.familyCount,
+    now,
+  });
 }

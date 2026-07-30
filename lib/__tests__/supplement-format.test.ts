@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { plainBody } from "@/lib/notifications/rich-text";
 import {
   renderWindowMessage,
   intakeWindowNoun,
@@ -272,9 +273,9 @@ describe("renderWindowMessage", () => {
       }),
     ]);
     expect(msg.body).toContain("⚠️");
-    expect(msg.body.toLowerCase()).toContain("grapefruit");
+    expect(plainBody(msg.body).toLowerCase()).toContain("grapefruit");
     // The taken line (after the pending one) carries no guidance.
-    const lines = msg.body.split("\n");
+    const lines = plainBody(msg.body).split("\n");
     expect(lines[0]).toContain("⚠️");
     expect(lines[1].startsWith("✅ Simvastatin — 40 mg")).toBe(true);
     expect(lines[1]).not.toContain("⚠️");

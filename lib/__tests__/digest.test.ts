@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { plainBody } from "@/lib/notifications/rich-text";
 import {
   buildDigest,
   dedupeFlaggedByAnalyte,
@@ -346,7 +347,7 @@ describe("digest renders bounded-precision numbers (issue #1109)", () => {
     });
     expect(model).not.toBeNull();
     const msg = renderDigestMessage(model!);
-    for (const line of msg.body.split("\n")) {
+    for (const line of plainBody(msg.body).split("\n")) {
       expect(line).not.toMatch(/\d+\.\d{3,}/);
     }
     expect(msg.title).not.toMatch(/\d+\.\d{3,}/);

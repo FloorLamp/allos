@@ -8,10 +8,9 @@ import {
   administrationLastDoseLabel,
   formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
-import { effectiveMaxDailyCount, redoseWindowStatus } from "@/lib/prn-redose";
+import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
-import { parseUtcSql } from "@/lib/date";
 import type { TimeFormat } from "@/lib/format-date";
 
 // Dashboard quick-log widget for PRN (as-needed) medications (#797). The one-tap
@@ -96,23 +95,11 @@ export function QuickLogPrnContent({
   // Family-widened window math (#1027): the clock/count/max span the ingredient
   // family (an OTC ibuprofen dose holds the Rx item's "Redose OK"), with the
   // "across N items" tail marking a cross-item counter.
-  const redoseStatusFor = (m: PrnMedForQuickLog) => {
-    // The daily max is optional (#1458) — the interval alone answers "when is the
-    // next dose OK", so only it and an administration gate the line.
-    if (m.minIntervalHours == null || !m.familyLastGivenAt) {
-      return null;
-    }
-    return redoseWindowStatus({
-      minIntervalHours: m.minIntervalHours,
-      maxDailyCount: effectiveMaxDailyCount(
-        m.maxDailyCount,
-        m.familyMaxDailyCount
-      ),
-      latestGivenAt: parseUtcSql(m.familyLastGivenAt),
-      countToday: m.familyCount,
-      now,
-    });
-  };
+  // The window math is the shared prnQuickLogRedoseStatus (#221): the widget, the
+  // medications list and the Telegram `/dose` list all read one gate, so "the
+  // interval alone answers when the next dose is OK" can't drift between them.
+  const redoseStatusFor = (m: PrnMedForQuickLog) =>
+    prnQuickLogRedoseStatus(m, now);
   const visibleMeds = compact ? meds.slice(0, 3) : meds;
   const remainingMeds = compact ? meds.slice(3) : [];
   const medControl = (m: PrnMedForQuickLog) => {

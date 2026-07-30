@@ -328,6 +328,14 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
       msg.actions?.some((a) => a.data === `pdone:${pid}:${tid}:e2e0`)
     ).toBe(true);
 
+    // #1718: the nudge carries a deep link and a real, routable kind, so it is honest
+    // on Web Push and Home Assistant (which strip the "✓ Done" buttons) instead of
+    // telling those users to "tap when you've done a session".
+    const linked = buildPracticeReminder(pid, "e2e0", "https://allos.example")!;
+    expect(linked.actions?.at(-1)?.url).toBe("https://allos.example/wellness");
+    expect(linked.kind).toBe("practice");
+    expect(String(linked.body)).not.toMatch(/\btap\b/i);
+
     // Dismiss the Upcoming twin → the push is held (dismiss once, silence everywhere).
     dismissFinding(pid, `practice:${tid}`);
     expect(behindPractices(pid)).toEqual([]);

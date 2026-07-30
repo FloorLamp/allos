@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { plainBody } from "@/lib/notifications/rich-text";
 import {
   composeFinishNudge,
   recapNudgeLine,
@@ -58,7 +59,7 @@ describe("composeFinishNudge", () => {
     const line = recapNudgeLine(recap(), true);
     const msg = composeFinishNudge(line, doseMsg);
     expect(msg).not.toBeNull();
-    expect(msg!.body.startsWith("Push day done ·")).toBe(true);
+    expect(plainBody(msg!.body).startsWith("Push day done ·")).toBe(true);
     expect(msg!.body).toContain("Creatine");
     // Dose section still leads the message content after the recap line.
     expect(msg!.body).toBe(`${line}\n\n${doseMsg.body}`);
