@@ -125,6 +125,24 @@ export const RECS_ENRICH_ALLERGY_MED = "Amoxicillin 500 mg (e2e)";
 export const RECS_ENRICH_PGX_MED = "Clopidogrel (e2e)";
 export const RECS_ENRICH_PROCEDURE = "Knee arthroscopy (e2e)";
 
+// Encounter-link gaps closed (issue #1526): skin_lesions + allergies were the only
+// clinical observations with no visit link. A dedicated member login + ADULT profile
+// carrying ONE dermatology visit with a lesion AND an allergy linked to it, plus an
+// UNLINKED allergy so the absent-pillar (no visit line at all) is provable on the same
+// surface. Spec-OWNED because the spec also drives the add form's visit picker — a
+// write, which must not perturb another spec's allergy list. Repeat-safe: re-adding the
+// same substance/reaction/status collapses to one visible row through the existing
+// allergy representative rule, and the newest row (which carries the link) wins.
+export const E2E_LOGIN_LESIONALLERGY = "e2e_lesionallergy";
+export const LESIONALLERGY_PROFILE = "Lesion Allergy Visit (e2e)";
+export const LESIONALLERGY_VISIT_TYPE = "Dermatology Clinic (e2e)";
+export const LESIONALLERGY_PROVIDER = "Dr. Okafor (e2e)";
+export const LESIONALLERGY_LESION = "Left forearm mole (e2e)";
+export const LESIONALLERGY_ALLERGY = "Penicillin (e2e)";
+export const LESIONALLERGY_ALLERGY_UNLINKED = "Latex (e2e)";
+// The substance the spec records through the form's visit picker.
+export const LESIONALLERGY_ALLERGY_PICKED = "Cephalexin (e2e)";
+
 // ── Results-hub panel groups (#1499 section A) ────────────────────────────────
 // A member granted a dedicated ADULT profile whose ENTIRE lab history is a known,
 // small set of analytes spread over exactly three #1502 panels — five lipids (one

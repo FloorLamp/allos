@@ -79,6 +79,7 @@ import {
   seedDataQualityGaps,
   seedVisitLinking,
   seedRecordsEnrichment,
+  seedLesionAllergyVisitLinks,
   seedPanelGroups,
   seedPanelIndex,
 } from "./seed/medical";
@@ -152,6 +153,7 @@ seedMultiProfile();
 seedWindowAnalytics();
 seedWellDayTilt();
 seedRecordsEnrichment();
+seedLesionAllergyVisitLinks();
 seedSunOutdoor();
 seedGrantMatrix();
 seedSharedSupplyPools();
