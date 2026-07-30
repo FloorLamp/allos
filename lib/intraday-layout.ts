@@ -245,6 +245,35 @@ export function inView(geo: IntradayGeometry, minute: number): boolean {
   return minute >= geo.view.from && minute <= geo.view.to;
 }
 
+/**
+ * HR segments trimmed to the visible window.
+ *
+ * Necessary because `projectMinute` CLAMPS: without trimming, a point at 03:00
+ * inside a 08:00–08:45 zoom would paint on the left edge and the line would run
+ * flat along the frame — a measured value where there is none. A point that falls
+ * outside is dropped, and a run that ends up split by the trim becomes two
+ * segments, exactly like a wear gap.
+ */
+export function clipSegmentsToView(
+  geo: IntradayGeometry,
+  segments: readonly IntradayHrPoint[][]
+): IntradayHrPoint[][] {
+  const out: IntradayHrPoint[][] = [];
+  for (const segment of segments) {
+    let run: IntradayHrPoint[] = [];
+    for (const point of segment) {
+      if (inView(geo, point.minute)) {
+        run.push(point);
+      } else if (run.length > 0) {
+        out.push(run);
+        run = [];
+      }
+    }
+    if (run.length > 0) out.push(run);
+  }
+  return out;
+}
+
 /** A span clipped to the visible window, or null when it falls entirely outside. */
 export function clipToView(
   geo: IntradayGeometry,
@@ -478,6 +507,73 @@ export function nearestHrPoint(
     }
   }
   return best != null && bestGap <= tolerance ? best : null;
+}
+
+/**
+ * Where a bpm sits against the profile's Zone 2 band — the third field of the
+ * scrub readout (time · bpm · zone).
+ *
+ * Coarse ON PURPOSE: the model carries the Zone 2 band and nothing else, and
+ * inventing five zone edges out of one band would be a fabricated fact. Null when
+ * the profile has no resolvable max HR, so the readout drops the field rather
+ * than guessing (data-gated like every other layer).
+ */
+export function zone2Position(
+  bpm: number,
+  zone2: { low: number; high: number } | null
+): "below Zone 2" | "Zone 2" | "above Zone 2" | null {
+  if (!zone2) return null;
+  if (bpm < zone2.low) return "below Zone 2";
+  if (bpm > zone2.high) return "above Zone 2";
+  return "Zone 2";
+}
+
+// ── The per-minute window (issue #1515 D) ────────────────────────────────────
+
+/**
+ * The widest window the per-minute endpoint will serve: 6 h ⇒ ≤ 360 points.
+ *
+ * Per-minute detail is NOT shipped for the whole day, and the reason belongs in
+ * the code so a later change doesn't "improve" this into 1440 points:
+ *
+ *   1. SUB-PIXEL. The plot is ~680 user units for 1440 minutes — 0.47 units per
+ *      minute, i.e. 2–4 samples per device pixel at the rendered width. Per-minute
+ *      detail is invisible at 24-hour zoom and the client would have to downsample
+ *      it again just to draw the line.
+ *   2. NOTHING IS HIDDEN. Each 5-minute point already carries lo/hi from the
+ *      per-minute bpm_min/bpm_max and the panel draws that envelope as a band, so
+ *      a one-minute spike shows as band height. It is averaged in the line, not
+ *      erased from the chart.
+ *
+ * Per-minute earns its keep only when zoomed: 45 minutes across the same plot is
+ * ~15 units per minute, where intervals and recovery become legible. A wider zoom
+ * simply keeps the 5-minute series, which is all the pixels can resolve anyway.
+ */
+export const MAX_FINE_WINDOW_MINUTES = 360;
+
+/**
+ * The requested window, clamped to the day and to the server's cap. Null when the
+ * request names no usable window at all — the caller answers 400 rather than
+ * silently serving something else.
+ *
+ * Clamping (not rejecting) an over-wide range is deliberate: the client asks for
+ * what it is showing, and the honest server answer to "too wide" is the widest
+ * window it will serve, not an error the chart would have to special-case.
+ */
+export function clampFineWindow(
+  from: number,
+  to: number
+): { from: number; to: number } | null {
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  const start = Math.max(0, Math.min(MINUTES_IN_DAY, Math.floor(from)));
+  const end = Math.max(0, Math.min(MINUTES_IN_DAY, Math.ceil(to)));
+  if (!(end > start)) return null;
+  return { from: start, to: Math.min(end, start + MAX_FINE_WINDOW_MINUTES) };
+}
+
+/** Whether a window is narrow enough to be worth per-minute detail at all. */
+export function wantsFineDetail(view: IntradayView): boolean {
+  return view.to - view.from <= MAX_FINE_WINDOW_MINUTES;
 }
 
 /** The effective CSS size of the panel's labels at a given container width —

@@ -83,8 +83,8 @@ const RECHARTS_MODULES = new Map<string, string>([
  */
 export const VIEWBOX_SVG = new Map<string, string>([
   [
-    "components/IntradayPanel.tsx",
-    "fixed 720-unit viewBox scaled to container — lengths are user units, not px",
+    "components/IntradayChart.tsx",
+    "fixed 720/360-unit viewBox scaled to container — lengths are user units, not px",
   ],
   [
     "components/illness/FeverChart.tsx",
