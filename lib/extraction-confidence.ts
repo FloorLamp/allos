@@ -114,6 +114,29 @@ export function confidenceLabel(c: ExtractionConfidence | null): string {
   return c ? CONFIDENCE_LABELS[c] : "confidence not reported";
 }
 
+const CONFIDENCE_KIND_LABELS: Record<ConfidenceKind, string> = {
+  lab: "Lab",
+  vitals: "Vital",
+  immunization: "Immunization",
+  medication: "Medication",
+  allergy: "Allergy",
+  condition: "Condition",
+  encounter: "Visit",
+  procedure: "Procedure",
+  family_history: "Family history",
+  care_plan: "Care plan",
+  care_goal: "Care goal",
+  genomic_variant: "Genomic variant",
+  imaging_study: "Imaging",
+  optical_prescription: "Optical Rx",
+  dental_procedure: "Dental",
+};
+
+// Display label for a flagged row's domain ("Lab", "Condition", …).
+export function confidenceKindLabel(kind: ConfidenceKind): string {
+  return CONFIDENCE_KIND_LABELS[kind] ?? kind;
+}
+
 // One extraction row the model was NOT fully confident about, as persisted in the
 // import report and rendered in the review card. `label` is the row's own name (the
 // analyte, condition, substance…) — the same identity the Dropped list shows — so a
@@ -139,6 +162,16 @@ export interface ExtractionConfidenceSummary {
   scrutiny: number;
   // The scrutiny rows themselves, lowest-confidence first.
   flags: ConfidenceFlag[];
+}
+
+// How many rows the summary covers (every tier, including the rows it says nothing
+// about) — the denominator the review card frames its flagged count against.
+export function confidenceTotal(
+  summary: ExtractionConfidenceSummary | null | undefined
+): number {
+  if (!summary) return 0;
+  const c = summary.counts;
+  return c.high + c.medium + c.low + c.unknown;
 }
 
 // One extracted row as this module sees it: what kind it is, what it's called, and

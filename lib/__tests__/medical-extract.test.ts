@@ -214,6 +214,10 @@ describe("normalizeClinicalDomains", () => {
         status: "Active", // raw — enum normalization happens in import-shape
         onset_date: "2015-01-01",
         resolved_date: null, // junk date dropped to null
+        // Per-record confidence (#1601) is read for every domain; a row that states
+        // none carries "unknown", never a guessed tier.
+        confidence: null,
+        confidence_reason: null,
       },
     ]);
   });

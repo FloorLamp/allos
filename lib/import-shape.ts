@@ -9,7 +9,10 @@ import type {
   MedicalFlag,
   Sex,
 } from "./types";
-import type { ExtractionResult } from "./medical-extract";
+import type {
+  ExtractedConfidence,
+  ExtractionResult,
+} from "./medical-extract";
 import type {
   ImportResult,
   ImportedProvider,
@@ -22,6 +25,11 @@ import {
   type ImportReport,
   type ReconciliationSummary,
 } from "./import-report";
+import {
+  summarizeExtractionConfidence,
+  type ConfidenceItem,
+  type ConfidenceKind,
+} from "./extraction-confidence";
 import canonicalSeed from "./canonical-biomarkers.json";
 import { normalizeCanonicalKey } from "./canonical-name";
 import {
@@ -517,6 +525,74 @@ function providerFromName(
 // AI extraction → PersistInput. `fallbackDate` is the caller-resolved date used
 // for results without a real collected_date (document date, else today in the
 // profile's timezone); passed in so this stays pure.
+// Flatten a done extraction into the per-row confidence items the report summary is
+// built from (#1601): one item per row the model emitted, in DOCUMENT order, labelled
+// with the row's own identity (the analyte / condition / substance …) — the same
+// identity the Dropped list uses — so a flagged row can be found on the page.
+//
+// Exported for the pure tier: this is the ONE place the extraction's shapes are turned
+// into confidence items, so the detail card, the Review feed badge, and the tests all
+// rank the same list.
+export function extractionConfidenceItems(
+  result: Extract<ExtractionResult, { status: "done" }>
+): ConfidenceItem[] {
+  const item = (
+    kind: ConfidenceKind,
+    label: string,
+    row: ExtractedConfidence
+  ): ConfidenceItem => ({
+    kind,
+    label,
+    // Already normalized at the extract boundary (normalizeClinicalDomains /
+    // normalizeResults); absent on a legacy replay, which is a legitimate "unknown".
+    confidence: row.confidence ?? null,
+    reason: row.confidence_reason ?? null,
+  });
+  return [
+    ...result.results.map((r) =>
+      item(
+        r.category === "prescription"
+          ? "medication"
+          : r.category === "vitals"
+            ? "vitals"
+            : "lab",
+        r.name,
+        r
+      )
+    ),
+    ...result.immunizations.map((i) => item("immunization", i.vaccine, i)),
+    ...result.conditions.map((c) => item("condition", c.name, c)),
+    ...result.allergies.map((a) => item("allergy", a.substance, a)),
+    ...result.procedures.map((p) => item("procedure", p.name, p)),
+    ...result.encounters.map((e) => item("encounter", e.type ?? "Visit", e)),
+    ...result.familyHistory.map((f) =>
+      item(
+        "family_history",
+        f.relation ? `${f.relation}: ${f.condition}` : f.condition,
+        f
+      )
+    ),
+    ...result.carePlanItems.map((c) => item("care_plan", c.description, c)),
+    ...result.careGoals.map((g) => item("care_goal", g.description, g)),
+    ...(result.genomicVariants ?? []).map((v) =>
+      item("genomic_variant", v.gene, v)
+    ),
+    ...(result.imagingStudies ?? []).map((s) =>
+      item(
+        "imaging_study",
+        s.body_region ?? s.modality ?? "Imaging study",
+        s
+      )
+    ),
+    ...(result.opticalPrescriptions ?? []).map((p) =>
+      item("optical_prescription", p.kind ?? "Optical prescription", p)
+    ),
+    ...(result.dentalProcedures ?? []).map((d) =>
+      item("dental_procedure", d.name ?? "Dental record", d)
+    ),
+  ];
+}
+
 export function extractionToPersistInput(
   result: Extract<ExtractionResult, { status: "done" }>,
   fallbackDate: string
@@ -894,6 +970,13 @@ export function extractionToPersistInput(
     unmappedLoincs: [],
     unresolvedNames,
     reconciliation,
+    // Per-record confidence (#1601): the model's own certainty per row, summarized
+    // and ranked lowest-first for the review surfaces. Null when NO row carried one
+    // (a replay of a pre-#1601 stored extraction), so "the model was sure" stays
+    // distinguishable from "nobody asked".
+    confidence: summarizeExtractionConfidence(
+      extractionConfidenceItems(result)
+    ),
   };
 
   return {
