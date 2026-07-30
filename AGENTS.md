@@ -339,7 +339,10 @@ See `docs/internals/e2e-hygiene.md`.
 - An icon-only button carries both `aria-label` (specific accessible name) and
   `title` (short hover tooltip); `lib/__tests__/icon-button-tooltip-scan.test.ts`
   enforces it.
-- Pages that cap width use `<PageContainer>` and its named widths.
+- Pages that cap width use `<PageContainer>` and its named widths — never a
+  hand-written `mx-auto max-w-*` and never a `max-w-*` smuggled through its
+  `className`; `lib/__tests__/page-width-scan.test.ts` enforces it and reads
+  the vocabulary out of the component.
 - Responsive variants share one content component; do not maintain separate
   desktop/mobile copies of the same feature.
 - Chart colors come from `lib/chart-colors.ts`, and charts use the shared
@@ -353,6 +356,8 @@ See `docs/internals/e2e-hygiene.md`.
   `createLogger()`.
 - Internal route fields and props use `AppRoute`. Add an href helper only when
   it owns routing policy; otherwise use the typed literal.
+  `lib/__tests__/typed-route-props.test.ts` fails any `href`/`…Href` field
+  left as `string`, with an allowlist for external URLs and live pathnames.
 - A directory under `app/(app)/` implies a served route. Components and Server
   Actions for a surface live under the route that renders them (or in
   `components/` when several surfaces share them) — never under the name of a

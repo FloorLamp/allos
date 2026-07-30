@@ -26,6 +26,7 @@ import SleepLogAction from "./SleepLogAction";
 import OuraScores from "./OuraScores";
 import SleepTrendsSection from "./SleepTrendsSection";
 import SourceComparison from "../trends/SourceComparison";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,11 @@ export default async function SleepPage() {
     ouraScores.readiness != null;
 
   return (
-    <div className="mx-auto w-full max-w-6xl" data-testid="sleep-page">
+    <PageContainer
+      width="wide"
+      className="mx-auto w-full"
+      data-testid="sleep-page"
+    >
       <PageHeader
         title="Sleep"
         subtitle="Duration, timing, stages, and how sleep relates to mood."
@@ -254,6 +259,6 @@ export default async function SleepPage() {
           />
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

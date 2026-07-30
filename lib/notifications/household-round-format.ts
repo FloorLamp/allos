@@ -18,6 +18,7 @@
 // critical signal must not be softened into a convenience digest (§4 of the issue).
 
 import type { NotificationAction, NotificationMessage } from "./types";
+import type { AppRoute } from "../hrefs";
 import { householdDoseCallback } from "./callback-data";
 
 // One member's due-unconfirmed doses for the round. `name` arrives ALREADY
@@ -77,7 +78,7 @@ export function renderHouseholdRoundMessage(input: {
   receiverProfileId: number;
   sections: readonly HouseholdRoundSection[];
   base: string;
-  householdHref: string;
+  householdHref: AppRoute;
 }): NotificationMessage | null {
   const sections = input.sections.filter((s) => s.doses.length > 0);
   if (sections.length === 0) return null;
@@ -139,7 +140,7 @@ function confirmActions(
 // ONE low-risk state change; twelve-plus taps is a page, not a message).
 function overflowActions(
   base: string,
-  householdHref: string
+  householdHref: AppRoute
 ): NotificationAction[] {
   if (!base) return [];
   return [{ label: "Open Household →", url: `${base}${householdHref}` }];

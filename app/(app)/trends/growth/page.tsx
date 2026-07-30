@@ -74,8 +74,8 @@ export default async function GrowthTrendsPage(props: {
 
   return (
     <PageContainer
-      width="full"
-      className="mx-auto max-w-6xl space-y-4 md:space-y-6"
+      width="wide"
+      className="mx-auto space-y-4 md:space-y-6"
       data-testid="growth-detail-page"
     >
       <div>

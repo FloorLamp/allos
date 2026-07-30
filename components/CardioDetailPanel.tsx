@@ -12,6 +12,7 @@ import { dateStrInTz } from "@/lib/date";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import { StatBox } from "@/components/StatBox";
+import { journalActivityHref } from "@/lib/timeline-format";
 
 // Per-cardio-activity detail: records grid, a distance- (or duration-) over-time
 // trend, and the last few sessions linked to their journal entries.
@@ -97,7 +98,7 @@ export default function CardioDetailPanel({
           label="Last done"
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
-          href={`/training?tab=log#activity-${stat.lastActivityId}`}
+          href={journalActivityHref(stat.lastActivityId)}
         />
       </dl>
 
