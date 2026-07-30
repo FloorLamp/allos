@@ -16,7 +16,16 @@
  *
  * The cache name is stamped with the app version (passed as ?v=<sha> on the
  * worker's script URL by components/ServiceWorkerRegister.tsx). A deploy changes
- * the sha -> new cache name -> the activate step drops the stale caches.
+ * the sha -> new cache name.
+ *
+ * UPDATE TIMING (issue #1700). A new worker INSTALLS AND WAITS. It does not call
+ * skipWaiting on an update and it does not claim already-open clients: a page that
+ * is mid-form keeps running against the exact build it loaded, chunks and all. The
+ * page surfaces a calm "Update ready" affordance and posts SKIP_WAITING when the
+ * user taps it; users who never tap get the new build on their next cold start.
+ * The activate step therefore also RETAINS the previous generation's cache — the
+ * still-running build is serving from it — and only drops the generation before
+ * that. See lib/sw-update.ts for the page-side contract and the reasoning.
  */
 
 const SW_PARAMS = new URL(self.location.href).searchParams;
@@ -36,6 +45,17 @@ const IS_DEV = SW_PARAMS.get("dev") === "1";
 // (and its icon) are available the moment the network drops.
 const PRECACHE = [OFFLINE_URL, "/icon.svg"];
 
+// The page's tap: activate now, on request. This is the ONLY path from waiting to
+// active on an update — nothing here decides to take over on its own.
+const SKIP_WAITING_MESSAGE = "allos-skip-waiting";
+
+// Set during install when there was no predecessor worker: a FIRST install has no
+// running build to interrupt, so it may activate and claim immediately (otherwise a
+// first-time visitor gets no offline shell until their next navigation). On an
+// UPDATE this stays false and the worker waits. It is module state, so a worker
+// terminated between install and activate loses it — which fails safe: no claim.
+let firstInstall = false;
+
 self.addEventListener("install", (event) => {
   if (IS_DEV) {
     event.waitUntil(self.skipWaiting());
@@ -44,30 +64,73 @@ self.addEventListener("install", (event) => {
 
   event.waitUntil(
     (async () => {
+      firstInstall = !self.registration.active;
       const cache = await caches.open(CACHE);
       await cache.addAll(PRECACHE);
-      // Take over as soon as installed; activate() then claims open clients.
-      await self.skipWaiting();
+      // Record the generation(s) that were live when this build installed, so
+      // activate can keep the one still serving open clients instead of pulling the
+      // rug out from under them.
+      const previous = (await caches.keys()).filter(
+        (k) => k.startsWith("allos-shell-") && k !== CACHE
+      );
+      await cache.put(RETAIN_URL, new Response(JSON.stringify(previous)));
+      // NO skipWaiting on an update: the running build keeps its clients until the
+      // user asks for the new one.
+      if (firstInstall) await self.skipWaiting();
     })()
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === SKIP_WAITING_MESSAGE) {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      // Drop caches from previous versions (busts on deploy).
+      // Drop stale caches, but KEEP the generation that was active when this build
+      // installed (#1700). A tab that is still running the old build — including one
+      // that has just been told to reload and hasn't got there yet — is still
+      // fetching its chunks and its offline shell from that cache; deleting it
+      // opened a hole exactly at the worst moment. The generation before it is
+      // nobody's, and goes.
+      const retained = IS_DEV ? [] : await readRetained();
+      const keep = new Set([CACHE, ...retained]);
       const keys = await caches.keys();
       await Promise.all(
         keys
           .filter(
-            (k) => k.startsWith("allos-shell-") && (IS_DEV || k !== CACHE)
+            (k) => k.startsWith("allos-shell-") && (IS_DEV || !keep.has(k))
           )
           .map((k) => caches.delete(k))
       );
-      await self.clients.claim();
+      // Claim only on a FIRST install (see `firstInstall`). On an update the clients
+      // stay with the worker they loaded under; they move over on their own next
+      // navigation, or when the user taps the page's update affordance.
+      if (IS_DEV || firstInstall) await self.clients.claim();
     })()
   );
 });
+
+// Where a generation records the caches that were live when it installed. A
+// synthetic same-origin URL inside our own cache — never matched by
+// isCacheableAsset, so it can never be served to a page.
+const RETAIN_URL = new URL("/__allos-shell-generation", self.location.origin)
+  .href;
+
+async function readRetained() {
+  try {
+    const cache = await caches.open(CACHE);
+    const res = await cache.match(RETAIN_URL);
+    if (!res) return [];
+    const names = await res.json();
+    return Array.isArray(names) ? names : [];
+  } catch {
+    return [];
+  }
+}
 
 // True only for immutable, non-sensitive assets that are safe to cache-first.
 function isCacheableAsset(url) {
@@ -122,17 +185,14 @@ self.addEventListener("fetch", (event) => {
 const OFFLINE_SYNC_TAG = "allos-offline-replay";
 const OFFLINE_DB = "allos-offline";
 const OFFLINE_STORE = "intents";
-const OFFLINE_DB_VERSION = 1;
-
+// Opened WITHOUT a version on purpose: the page owns the schema
+// (lib/offline/idb.ts, currently v3 — intents + rejected + drafts) and a worker
+// naming a lower version would fail the open with a VersionError instead of
+// replaying. No version means "whatever exists"; a database that does not exist yet
+// has no queue to replay either way.
 function openOfflineDb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(OFFLINE_DB, OFFLINE_DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(OFFLINE_STORE)) {
-        db.createObjectStore(OFFLINE_STORE, { keyPath: "key" });
-      }
-    };
+    const req = indexedDB.open(OFFLINE_DB);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
