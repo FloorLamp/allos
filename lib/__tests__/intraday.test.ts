@@ -451,6 +451,61 @@ describe("buildIntradayModel — the tick rail", () => {
         filtered.workouts.some((w) => w.eventId === "a:9")
     ).toBe(false);
   });
+
+  // #1512 C. An AI insight is stamped by the generation JOB's created_at, so its
+  // minute describes the app, not the day. It stays in the feed below and off the
+  // chart, which is a map of the person's day.
+  it("drops an AI insight from the rail even though it carries a clock time", () => {
+    const insight: TimelineEvent = {
+      id: "insight:4",
+      date: DAY,
+      category: "insight",
+      title: "AI insight",
+      sortTime: "03:07",
+    };
+    const model = buildIntradayModel(input({ events: [...ticked, insight] }))!;
+    expect(model.ticks.map((t) => t.eventId)).toEqual([
+      "document:9",
+      "symptom:x",
+    ]);
+    expect(model.ticks.some((t) => t.category === "insight")).toBe(false);
+  });
+
+  it("is data-gated away when an insight is the only clock-timed event", () => {
+    expect(
+      buildIntradayModel(
+        input({
+          events: [
+            {
+              id: "insight:5",
+              date: DAY,
+              category: "insight",
+              title: "AI insight",
+              sortTime: "03:07",
+            },
+          ],
+        })
+      )
+    ).toBeNull();
+  });
+
+  // #1512 E. A dose is the story on a sick day, and it already has a purpose-built
+  // glyph on the illness chart. The model names the kind so both charts can draw
+  // the same mark; everything else stays a plain tick.
+  it("marks a timed medication event as a dose and everything else as an event", () => {
+    const dose: TimelineEvent = {
+      id: "medication:7",
+      date: DAY,
+      category: "medication",
+      title: "Ibuprofen 200 mg",
+      sortTime: "14:20",
+    };
+    const model = buildIntradayModel(input({ events: [...ticked, dose] }))!;
+    const byId = new Map(model.ticks.map((t) => [t.eventId, t.kind]));
+    expect(byId.get("medication:7")).toBe("dose");
+    expect(byId.get("document:9")).toBe("event");
+    expect(byId.get("symptom:x")).toBe("event");
+  });
 });
 
 describe("buildIntradayModel — the now-marker", () => {

@@ -131,6 +131,12 @@ export interface IntradayWorkoutBlock {
   clippedEnd: boolean;
 }
 
+// What the rail DRAWS for a tick. A dose gets the violet diamond on its own row,
+// the same glyph the illness FeverChart already uses for the same fact (#1512 E):
+// same information, same mark, wherever it is drawn. Everything else is a plain
+// tick colored by tone.
+export type IntradayTickKind = "dose" | "event";
+
 export interface IntradayTick {
   key: string;
   eventId: string;
@@ -140,8 +146,21 @@ export interface IntradayTick {
   minute: number;
   label: string;
   category: TimelineCategory;
+  kind: IntradayTickKind;
   tone: NonNullable<TimelineEvent["tone"]>;
 }
+
+// Categories the tick rail deliberately DROPS.
+//
+// `insight` (#1512 C): an AI insight is timestamped by the generation job's
+// `created_at` (lib/timeline.ts), so it lands on the rail at whatever minute the
+// job happened to run and clusters at whatever hour the tick fires. That minute
+// says nothing about the person's day — it plots a MACHINE event beside
+// physiological ones. The feed list below still shows the insight; the chart is a
+// map of the day, not of the app's activity. Do not "helpfully" restore it.
+const EXCLUDED_TICK_CATEGORIES: ReadonlySet<TimelineCategory> = new Set([
+  "insight",
+]);
 
 export interface IntradayModel {
   date: string;
@@ -342,14 +361,17 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   }
   workouts.sort((a, b) => a.startMinute - b.startMinute);
 
-  // The tick rail: EVERY feed event that carries a clock time and isn't already
-  // drawn as a block. Events the feed shows with a day granularity only (a weigh-in,
-  // a grouped lab panel, the day's dose roll-up) carry no clock time and therefore
-  // contribute no tick — the layer is data-gated like every other one, and the rail
-  // can never show something the list below doesn't.
+  // The tick rail: EVERY feed event that carries a clock time, isn't already drawn
+  // as a block, and isn't in EXCLUDED_TICK_CATEGORIES (see that constant — the
+  // exclusion is a decision, not an oversight). Events the feed shows with a day
+  // granularity only (a weigh-in, a grouped lab panel, the day's dose roll-up)
+  // carry no clock time and therefore contribute no tick — the layer is data-gated
+  // like every other one, and the rail can never show something the list below
+  // doesn't.
   const ticks: IntradayTick[] = [];
   for (const event of input.events) {
     if (blockEventIds.has(event.id)) continue;
+    if (EXCLUDED_TICK_CATEGORIES.has(event.category)) continue;
     const minute = clockMinute(event.sortTime);
     if (minute == null) continue;
     ticks.push({
@@ -359,6 +381,7 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
       minute,
       label: event.title,
       category: event.category,
+      kind: event.category === "medication" ? "dose" : "event",
       tone: event.tone ?? "default",
     });
   }
