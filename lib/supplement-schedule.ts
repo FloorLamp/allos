@@ -740,7 +740,7 @@ export function spreadDoseTimes(
 // to its first dose's amount on the next save, keeping that dose's id so its
 // administration history survives. `food_timing` is preserved (an NSAID stays "with
 // food"); only the schedule slot is dropped. A no-op for a non-PRN item. Pure.
-export interface CollapsibleDose {
+export interface CollapsibleDose extends DoseCadence {
   id?: number;
   amount: string | null;
   time_of_day: string | null;
@@ -759,6 +759,13 @@ export function collapsePrnDoses<T extends CollapsibleDose>(
       amount: first?.amount ?? null,
       time_of_day: null,
       food_timing: first?.food_timing ?? "any",
+      // The per-row calendar is dropped for the same reason the time slot is (#1602):
+      // a PRN item has no scheduled dueness for a weekday or a window to narrow, so
+      // keeping the fields would leave a rule that constrains nothing and would come
+      // back to life if the item ever stopped being PRN.
+      weekdays: null,
+      start_date: null,
+      end_date: null,
     },
   ];
 }

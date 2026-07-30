@@ -49,6 +49,11 @@ import {
   spreadDoseTimes,
   collapsePrnDoses,
 } from "@/lib/supplement-schedule";
+import {
+  CADENCE_KINDS,
+  normalizeWeekdays,
+  type CadenceKind,
+} from "@/lib/intake-cadence";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type {
   FoodTiming,
@@ -109,6 +114,35 @@ function fields(formData: FormData) {
     : kindEarly === "medication"
       ? "must"
       : "should";
+  // CALENDAR cadence (#1602) — orthogonal to `condition` above and to `obligation`.
+  // Each branch keeps ONLY its own fields so a user who tries weekly, picks days, then
+  // switches back to daily doesn't leave a stale weekday list that would silently
+  // re-narrow the schedule if the kind were ever changed back by another path.
+  const cadenceKindRaw = String(formData.get("cadence_kind") ?? "daily");
+  const cadenceKind: CadenceKind = CADENCE_KINDS.includes(
+    cadenceKindRaw as CadenceKind
+  )
+    ? (cadenceKindRaw as CadenceKind)
+    : "daily";
+  const cadenceWeekdays =
+    cadenceKind === "weekly"
+      ? normalizeWeekdays(
+          String(formData.get("cadence_weekdays") ?? "")
+            .split(",")
+            .map((x) => Number(x.trim()))
+            .filter((n) => Number.isInteger(n))
+        )
+      : null;
+  const cadenceIntervalRaw = Number(formData.get("cadence_interval_days"));
+  const cadenceIntervalDays =
+    cadenceKind === "interval" &&
+    Number.isInteger(cadenceIntervalRaw) &&
+    cadenceIntervalRaw >= 1
+      ? cadenceIntervalRaw
+      : null;
+  const anchorRaw = String(formData.get("cadence_anchor_date") ?? "").trim();
+  const cadenceAnchorDate =
+    cadenceKind === "interval" && isRealIsoDate(anchorRaw) ? anchorRaw : null;
   const situation = condition === "situational" ? str("situation") : null;
   // The INVERSE situational link (issue #1296) — "pause this item WHILE X is active".
   // Independent of `condition`: a plain `daily` medication can be held during
@@ -201,6 +235,10 @@ function fields(formData: FormData) {
     ? serializeRxcuiIngredients(parseRxcuiIngredients(str("rxcui_ingredients")))
     : null;
   return {
+    cadenceKind,
+    cadenceWeekdays,
+    cadenceIntervalDays,
+    cadenceAnchorDate,
     notes: str("notes"),
     brand: str("brand"),
     product: str("product"),
@@ -248,6 +286,11 @@ interface DoseInput {
   amount: string | null;
   time_of_day: string | null;
   food_timing: FoodTiming;
+  // Per-row calendar (#1602), already normalized by parseDoses: a canonical weekday
+  // CSV (or null) and an inclusive validity window.
+  weekdays: string | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 // Parse the doses JSON the form submits. Always returns at least one dose so a
@@ -265,10 +308,31 @@ function parseDoses(formData: FormData): DoseInput[] {
     amount: strOrNull(d?.amount),
     time_of_day: strOrNull(d?.time_of_day),
     food_timing: FOOD_TIMINGS.includes(d?.food_timing) ? d.food_timing : "any",
+    // Per-row calendar (#1602). normalizeWeekdays drops anything out of range and
+    // canonicalizes the order, so an equivalent re-submission stores identically and a
+    // no-op edit never looks like a change. A malformed date is dropped to null rather
+    // than stored — an unparseable window would read as "no window", and storing it
+    // would leave a value that looks like a rule but constrains nothing.
+    weekdays: normalizeWeekdays(
+      Array.isArray(d?.weekdays)
+        ? d.weekdays.map((x: unknown) => Number(x))
+        : []
+    ),
+    start_date: isRealIsoDate(d?.start_date) ? d.start_date : null,
+    end_date: isRealIsoDate(d?.end_date) ? d.end_date : null,
   }));
   return out.length
     ? out
-    : [{ amount: null, time_of_day: null, food_timing: "any" }];
+    : [
+        {
+          amount: null,
+          time_of_day: null,
+          food_timing: "any",
+          weekdays: null,
+          start_date: null,
+          end_date: null,
+        },
+      ];
 }
 
 // Stamp created_at so the adherence-pattern window starts at the dose's real birth,
@@ -278,8 +342,10 @@ function parseDoses(formData: FormData): DoseInput[] {
 // (`.slice(0, 10)`) and compares it against a `today()`-derived window.
 const insertDoseStmt = () =>
   db.prepare(
-    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
-     VALUES (?,?,?,?,?,?)`
+    `INSERT INTO intake_item_doses
+       (item_id, amount, time_of_day, food_timing, sort, created_at,
+        weekdays, start_date, end_date)
+     VALUES (?,?,?,?,?,?,?,?,?)`
   );
 
 // Insert a fresh set of doses for a supplement (used on add + accept). Must run
@@ -290,11 +356,26 @@ function insertDoses(
     amount: string | null;
     time_of_day: string | null;
     food_timing: FoodTiming;
+    // Optional so the AI-suggestion accept path — which has no calendar to offer —
+    // still type-checks and simply inserts an unrestricted row (#1602).
+    weekdays?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
   }[]
 ) {
   const ins = insertDoseStmt();
   doses.forEach((d, i) =>
-    ins.run(suppId, d.amount, d.time_of_day, d.food_timing, i, sqlNow())
+    ins.run(
+      suppId,
+      d.amount,
+      d.time_of_day,
+      d.food_timing,
+      i,
+      sqlNow(),
+      d.weekdays ?? null,
+      d.start_date ?? null,
+      d.end_date ?? null
+    )
   );
 }
 
@@ -421,8 +502,9 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
             kind, prescriber, pharmacy, rx_number, rx,
             min_interval_hours, max_daily_count, redose_notice,
             rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id,
-            created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?)`
+            created_at,
+            cadence_kind, cadence_weekdays, cadence_interval_days, cadence_anchor_date)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?,?,?,?,?)`
       )
       .run(
         name,
@@ -453,7 +535,11 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         providerId,
         indicationConditionId,
         profile.id,
-        sqlNow()
+        sqlNow(),
+        f.cadenceKind,
+        f.cadenceWeekdays,
+        f.cadenceIntervalDays,
+        f.cadenceAnchorDate
       );
     const suppId = Number(info.lastInsertRowid);
     insertDoses(suppId, doses);
@@ -614,7 +700,9 @@ export async function updateSupplement(
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?,
              min_interval_hours = ?, max_daily_count = ?, redose_notice = ?,
              rxcui = ?, rxcui_ingredients = ?, provider_id = ?,
-             indication_condition_id = ?
+             indication_condition_id = ?,
+             cadence_kind = ?, cadence_weekdays = ?,
+             cadence_interval_days = ?, cadence_anchor_date = ?
        WHERE id = ? AND profile_id = ?`
     ).run(
       name,
@@ -644,6 +732,10 @@ export async function updateSupplement(
       f.rxcuiIngredients,
       providerId,
       indicationConditionId,
+      f.cadenceKind,
+      f.cadenceWeekdays,
+      f.cadenceIntervalDays,
+      f.cadenceAnchorDate,
       id,
       profile.id
     );
@@ -676,6 +768,7 @@ export async function updateSupplement(
     const upd = db.prepare(
       `UPDATE intake_item_doses
           SET amount = ?, time_of_day = ?, food_timing = ?, sort = ?,
+              weekdays = ?, start_date = ?, end_date = ?,
               updated_at = CASE WHEN time_of_day IS NOT ? THEN ?
                                 ELSE updated_at END
         WHERE id = ? AND item_id = ? AND retired = 0`
@@ -683,11 +776,20 @@ export async function updateSupplement(
     const keptIds: number[] = [];
     doses.forEach((d, i) => {
       if (d.id) {
+        // NOTE the calendar columns are NOT part of the updated_at trigger above: a
+        // re-time restarts the adherence-pattern window, but narrowing a dose to
+        // Mondays or closing its window changes WHICH DAYS it is due, not the identity
+        // of the slot — and resetting the window would erase the very history the
+        // change is meant to be judged against. Adherence history is never rewritten
+        // by an edit (#1602 keeps that invariant by construction).
         upd.run(
           d.amount,
           d.time_of_day,
           d.food_timing,
           i,
+          d.weekdays ?? null,
+          d.start_date ?? null,
+          d.end_date ?? null,
           d.time_of_day,
           sqlNow(),
           d.id,
@@ -701,7 +803,10 @@ export async function updateSupplement(
           d.time_of_day,
           d.food_timing,
           i,
-          sqlNow()
+          sqlNow(),
+          d.weekdays ?? null,
+          d.start_date ?? null,
+          d.end_date ?? null
         );
         keptIds.push(Number(info.lastInsertRowid));
       }

@@ -13,6 +13,10 @@ import DoseRowsEditor, {
   emptyDose,
   type DoseState,
 } from "@/components/intake/DoseRowsEditor";
+import CadenceEditor, {
+  type CadenceState,
+} from "@/components/intake/CadenceEditor";
+import { parseWeekdays } from "@/lib/intake-cadence";
 import KeepApartPairsEditor, {
   type PairState,
 } from "@/components/intake/KeepApartPairsEditor";
@@ -109,9 +113,22 @@ export default function SupplementForm({
           amount: d.amount ?? "",
           time_of_day: d.time_of_day ?? "",
           food_timing: d.food_timing,
+          weekdays: [...parseWeekdays(d.weekdays)].sort((a, b) => a - b),
+          start_date: d.start_date ?? "",
+          end_date: d.end_date ?? "",
         }))
       : [emptyDose()]
   );
+
+  // Item-level calendar (#1602). Seeded from the stored row so an edit round-trips
+  // rather than silently resetting a weekly medication to daily.
+  const [cadence, setCadence] = useState<CadenceState>(() => ({
+    kind: s?.cadence_kind ?? "daily",
+    weekdays: [...parseWeekdays(s?.cadence_weekdays)].sort((a, b) => a - b),
+    intervalDays:
+      s?.cadence_interval_days != null ? String(s.cadence_interval_days) : "",
+    anchorDate: s?.cadence_anchor_date ?? "",
+  }));
 
   const others = allSupplements.filter((x) => x.id !== s?.id);
   const [pairRows, setPairRows] = useState<PairState[]>(
@@ -146,6 +163,10 @@ export default function SupplementForm({
   async function handle(formData: FormData) {
     setError(null);
     formData.set("doses", JSON.stringify(doses));
+    formData.set("cadence_kind", cadence.kind);
+    formData.set("cadence_weekdays", cadence.weekdays.join(","));
+    formData.set("cadence_interval_days", cadence.intervalDays);
+    formData.set("cadence_anchor_date", cadence.anchorDate);
     formData.set("pairs", JSON.stringify(pairRows));
     const label = name.trim() || "Supplement";
     // Consent gate (#1296): a situational hold on a mandatory-priority item silences
@@ -393,6 +414,7 @@ export default function SupplementForm({
           Held (not due) while this situation is active — you can still log it.
         </p>
       </div>
+      <CadenceEditor value={cadence} onChange={setCadence} />
       <DoseRowsEditor
         doses={doses}
         setDoses={setDoses}
