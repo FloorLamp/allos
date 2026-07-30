@@ -109,9 +109,11 @@ describe("ux census dynamic-route registry", () => {
         d.from!.length,
         `${d.pattern} has no index candidates`
       ).toBeGreaterThan(0);
+      // A candidate may carry a query (a hub's list can live on a tab), so the
+      // existence check is on the pathname.
       for (const from of d.from!)
         expect(
-          staticRoutes.has(from),
+          staticRoutes.has(from.split("?")[0]),
           `${d.pattern} follows ${from}, which is not an app/(app) route`
         ).toBe(true);
     }
@@ -129,7 +131,7 @@ describe("ux census dynamic-route registry", () => {
       // census screenshot the list instead of the detail page.
       for (const from of d.from!)
         expect(
-          d.match!.test(from),
+          d.match!.test(from.split("?")[0]),
           `${d.pattern}: match regex accepts ${from}`
         ).toBe(false);
     }

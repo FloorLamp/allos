@@ -34,7 +34,9 @@
  * @property {string} [instance]   literal: the concrete route to visit
  * @property {string} [enumSource] literal: the lib/ enum the slug belongs to
  * @property {string} [slug]       literal: the param value, pinned by the guard test
- * @property {string[]} [from]     follow: ordered index-route candidates
+ * @property {string[]} [from]     follow: ordered index-route candidates; a
+ *                                 candidate may carry a query string when the
+ *                                 list lives on a tab of a hub
  * @property {RegExp} [match]      follow: which href on that index is a detail link
  */
 
@@ -93,11 +95,14 @@ export const DYNAMIC_ROUTES = [
     match: /^\/protocols\/\d+$/,
   },
   {
-    // A processed import document. Reports is the densest list of them; the Data
-    // hub's Review feed is the fallback when no report-typed document exists.
+    // A processed import document. The Data hub's Review tab is the one feed that
+    // lists EVERY document (the hub's default Import tab does not, and Results →
+    // Reports only links the narrative reports a CCD import produces — empty on
+    // the plain seed). An index candidate may carry a query for exactly this
+    // reason: a tabbed hub's list lives on a tab.
     pattern: "/import/[id]",
     strategy: "follow",
-    from: ["/results/reports", "/data"],
+    from: ["/data?section=review", "/results/reports"],
     match: /^\/import\/\d+$/,
   },
   {
