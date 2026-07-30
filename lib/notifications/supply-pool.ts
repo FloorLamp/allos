@@ -86,7 +86,8 @@ export function renderPoolRefillMessage(
   const base = deepLinkBase.replace(/\/$/, "");
   return {
     title: `🔄 Shared supply running low: ${head}`,
-    body: `The household medicine cabinet is running low:\n${lines.join("\n")}`,
+    // The preamble restated the title and the button beneath it (#1722 item 4).
+    body: lines.join("\n"),
     actions: base
       ? [{ label: "Open the medicine cabinet", url: `${base}${SUPPLIES_HREF}` }]
       : [],

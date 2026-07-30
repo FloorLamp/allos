@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  practiceShortfallLine,
+  type BehindPractice,
+} from "@/lib/notifications/practices";
+import {
   frequencyRangeState,
   shouldNudgePractice,
   practiceCadenceText,
@@ -238,5 +242,34 @@ describe("practiceLogOutcomeText (#1633)", () => {
         "Couldn't log that session."
       );
     }
+  });
+});
+
+// ---- The copy sweep's practice items (issue #1722 item 5) ----
+describe("practice nudge copy (#1722)", () => {
+  const behind = (over: Partial<BehindPractice> = {}): BehindPractice => ({
+    targetId: 1,
+    name: "Meditation",
+    count: 2,
+    floor: 3,
+    ceiling: null,
+    ...over,
+  });
+
+  it("states a verdict and the next step, not a bare ratio", () => {
+    expect(practiceShortfallLine(behind())).toBe(
+      "Meditation — 2 of 3 this week, one more to go"
+    );
+    expect(practiceShortfallLine(behind({ count: 0 }))).toBe(
+      "Meditation — 0 of 3 this week, 3 more to go"
+    );
+  });
+
+  it("says nothing about a next step when there is nothing true to say", () => {
+    // At/over the floor the gather has already excluded the target; if one reaches
+    // the formatter anyway it states the numbers and stops.
+    expect(practiceShortfallLine(behind({ count: 3 }))).toBe(
+      "Meditation — 3 of 3 this week"
+    );
   });
 });

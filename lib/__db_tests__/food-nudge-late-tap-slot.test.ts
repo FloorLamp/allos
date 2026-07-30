@@ -191,7 +191,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     ).toBeUndefined();
 
     // The rendered button therefore carries its count again — the reported symptom.
-    expect(rebuiltFoodButtonLabel("berries")).toBe("Berries (1)");
+    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries (1)");
   });
 
   it("leaves the DAY tally alone — logging was always right, only the count disagreed", () => {
@@ -221,7 +221,7 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
         t
       )
     );
-    expect(rebuiltFoodButtonLabel("berries")).toBe("Berries (2)");
+    expect(rebuiltFoodButtonLabel("berries")).toBe("🫐 Berries (2)");
     expect(storedSlots(p.profileId, t, "berries")).toEqual([
       NUDGE_WINDOW,
       NUDGE_WINDOW,

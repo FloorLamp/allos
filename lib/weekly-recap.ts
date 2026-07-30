@@ -567,7 +567,8 @@ export function pickRecapNarrative(
 export function renderRecapMessage(
   recap: WeeklyRecap,
   profileName: string,
-  narrative?: string | null
+  narrative?: string | null,
+  deepLinkBase = ""
 ): NotificationMessage | null {
   if (recap.isEmpty || recap.lines.length === 0) return null;
   const narr = narrative?.trim();
@@ -577,10 +578,17 @@ export function renderRecapMessage(
         .map((l) => `• ${l.label}: ${l.value}${l.delta ? ` (${l.delta})` : ""}`)
         .join("\n");
   const who = profileName ? ` — ${profileName}` : "";
+  // The recap was the only builder that took no deepLinkBase and returned no actions
+  // (#1722 item 2) — a week's summary with nowhere to go and look. Every sibling
+  // carries one.
+  const base = deepLinkBase.replace(/\/$/, "");
   return {
     title: `📊 Weekly recap${who}`,
     body: `${recapRangeLabel(recap.start, recap.end)}\n${body}`,
     kind: "weekly-recap",
+    ...(base
+      ? { actions: [{ label: "Open Trends →", url: `${base}/trends` }] }
+      : {}),
   };
 }
 

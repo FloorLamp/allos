@@ -16,6 +16,8 @@
 // own today so the specs never depend on a wall-clock date.
 
 import { describe, it, expect } from "vitest";
+import { plainBody } from "@/lib/notifications/rich-text";
+import { bodyFor } from "@/lib/notifications/types";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { collectUpcoming, offeredItems } from "@/lib/queries/upcoming";
@@ -476,7 +478,12 @@ describe("#1505 — the digest's offer tail", () => {
     expect(model).not.toBeNull();
     const msg = renderDigestMessage(model!);
     expect(msg.actions?.[0]?.data).toContain("offer:");
-    // Channels that cannot expand a keyboard still learn the count.
-    expect(msg.body).toContain("1 available");
+    // A tail-ONLY digest keeps the count on every channel (#1712): with no other
+    // content there is nothing for the Telegram button to be redundant against.
+    // (This fixture has other Today content, so the count rides the per-channel
+    // body — Telegram gets the self-describing button instead.)
+    expect(plainBody(bodyFor(msg, "push"))).toContain(
+      "1 more supplement you can log any time"
+    );
   });
 });

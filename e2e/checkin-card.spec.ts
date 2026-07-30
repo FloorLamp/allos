@@ -319,8 +319,8 @@ test.describe("mood check-in auto-pause visibility (#1668)", () => {
     page,
   }) => {
     test.slow();
-    const profile = "checkinpause";
-    await createProfileViaFamily(page, profile);
+    // createProfileViaFamily uniquifies the label — use the name it actually made.
+    const profile = await createProfileViaFamily(page, "checkinpause");
     setIgnoredStreak(profile, 5); // at the auto-pause line
     await page.goto("/");
 
@@ -342,8 +342,7 @@ test.describe("mood check-in auto-pause visibility (#1668)", () => {
 
   test("a running check-in shows no paused state at all", async ({ page }) => {
     test.slow();
-    const profile = "checkinrunning";
-    await createProfileViaFamily(page, profile);
+    const profile = await createProfileViaFamily(page, "checkinrunning");
     setIgnoredStreak(profile, 0);
     await page.goto("/");
 

@@ -53,6 +53,7 @@ import {
   getWeekStart,
   getZone2WeeklyTargetMin,
   setProfileSetting,
+  getPublicUrl,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import { illnessDaysInWindow } from "../illness-episode-store";
@@ -362,7 +363,7 @@ export async function runWeeklyRecap(
     getRecentNarratives(profileId, ["week"], 5),
     recap
   );
-  const msg = renderRecapMessage(recap, profileName, narrative);
+  const msg = renderRecapMessage(recap, profileName, narrative, getPublicUrl());
   if (!msg) {
     setProfileSetting(profileId, dedupKey, date);
     log.info("weekly recap: nothing to send", { profile: profileId });

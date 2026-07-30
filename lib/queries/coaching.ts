@@ -133,7 +133,11 @@ export function getIllnessCoachingContext(
     openEpisode: openRow != null,
     lastClosed:
       lastClosed && lastClosed.ended_at != null
-        ? { episodeId: lastClosed.id, endDate: lastClosed.ended_at }
+        ? {
+            episodeId: lastClosed.id,
+            endDate: lastClosed.ended_at,
+            startDate: lastClosed.started_at,
+          }
         : null,
   };
 }

@@ -82,7 +82,7 @@ export function buildMoodCheckin(
   }
 
   return {
-    title: "How are you today?",
+    title: "🙂 How are you today?",
     // Gentle, optional, zero-pressure copy — skipping is always fine.
     body: final
       ? `One tap logs your day — or just skip this. You can add detail any time from the dashboard.\n${MOOD_CHECKIN_PAUSE_NOTICE}`

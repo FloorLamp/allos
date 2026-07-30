@@ -44,9 +44,17 @@ export function easeBackMarkerKey(episodeId: number): string {
 // callback — resuming training is a decision, not a one-tap state change).
 export function renderEaseBackMessage(
   profileName: string,
-  deepLinkBase = ""
+  deepLinkBase = "",
+  // How long the closing episode ran (#1722 item 7). The note fires ON episode close
+  // and never said how long the person was down or that nudges were held — the
+  // builder held the episode id and used it only as a marker key.
+  episodeDays?: number | null
 ): NotificationMessage {
   const rec = easeBackRecommendation();
+  const back =
+    episodeDays != null && episodeDays > 0
+      ? `Back after ${episodeDays} day${episodeDays === 1 ? "" : "s"} — `
+      : "";
   const who = profileName ? ` — ${profileName}` : "";
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] | undefined = base
@@ -54,7 +62,7 @@ export function renderEaseBackMessage(
     : undefined;
   return {
     title: `🌤️ Ease back in${who}`,
-    body: rec.detail,
+    body: `${back}${rec.detail}`,
     actions,
     kind: "ease-back",
   };
@@ -71,7 +79,7 @@ export async function runEaseBack(
   input: CoachingInput,
   date: string
 ): Promise<{ failed: boolean }> {
-  const { mode, easeBackEpisodeId } = illnessCoachingMode(
+  const { mode, easeBackEpisodeId, easeBackEpisodeDays } = illnessCoachingMode(
     input.illness,
     input.today
   );
@@ -84,7 +92,7 @@ export async function runEaseBack(
 
   const results = await dispatch(
     profileId,
-    renderEaseBackMessage(profileName, getPublicUrl())
+    renderEaseBackMessage(profileName, getPublicUrl(), easeBackEpisodeDays)
   );
   if (results.length === 0) {
     // No channel configured — leave the marker unset so it can fire once configured.

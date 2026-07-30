@@ -19,7 +19,7 @@ export async function handleDoseCommand(
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (profileIds.length === 0) {
     await sendTelegramMessage(chatId, {
-      title: "Log a PRN dose",
+      title: "💊 Log a PRN dose",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
     });
     return;
@@ -55,14 +55,14 @@ export async function handleDoseCommand(
 
   if (actions.length === 0) {
     await sendTelegramMessage(chatId, {
-      title: "Log a PRN dose",
+      title: "💊 Log a PRN dose",
       body: "No as-needed medications are set up. Add one under Medications in the app.",
     });
     return;
   }
 
   await sendTelegramMessage(chatId, {
-    title: "Log a PRN dose",
+    title: "💊 Log a PRN dose",
     body: "Tap a medication to record a dose now:",
     actions,
   });
@@ -218,7 +218,7 @@ export async function handleSymptomPick(
     row: "sev",
   }));
   await rebuildMessage(profileId, chatId, messageId, {
-    title: `Log a symptom: ${label}`,
+    title: `🤒 Log a symptom: ${label}`,
     body: "How bad is it?",
     actions,
   });
@@ -384,7 +384,7 @@ export async function handleTempReply(
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (!profileIds.includes(markedProfile)) {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: "That profile isn't linked to this chat anymore.",
     });
     return true;
@@ -393,7 +393,7 @@ export async function handleTempReply(
   const parsed = parseTempReply(message.text);
   if (!parsed) {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
     });
     return true;
@@ -408,7 +408,7 @@ export async function handleTempReply(
   );
   if (outcome.kind === "invalid") {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: outcome.error,
     });
     return true;
@@ -423,9 +423,22 @@ export async function handleTempReply(
     profileAgeMonths(markedProfile, date)
   );
   const feverNote = outcome.flag === "high" ? " — fever" : "";
+  // "Logged." duplicated the title's verb and said nothing (#1722 item 6). With no
+  // red flag the reply states the reading and offers the episode, which the red-flag
+  // and illness-care messages both already carry.
+  const base = getPublicUrl().replace(/\/$/, "");
+  const episodeId = currentEpisodeForProfile(markedProfile)?.id ?? null;
   await sendTelegramMessage(chatId, {
-    title: `Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
-    body: redFlag ?? "Logged.",
+    title: `🌡️ Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
+    body:
+      redFlag ?? `${fmtTemp(outcome.degF, parsed.unit)} recorded for today.`,
+    ...(base && episodeId != null
+      ? {
+          actions: [
+            { label: "View episode", url: `${base}${episodeHref(episodeId)}` },
+          ],
+        }
+      : {}),
   });
   return true;
 }
@@ -543,6 +556,7 @@ import {
   resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
+import { getPublicUrl } from "../settings";
 import {
   administrationLogged,
   administrationOutcomeText,
@@ -557,6 +571,7 @@ import { decideMoodKeep, moodFace, moodLabel } from "../mood";
 import { logTemperatureCore } from "../temperature-log";
 import { symptomLabel, symptomSlugs, SYMPTOMS } from "../symptoms";
 import { currentEpisodeForProfile } from "../illness-episode";
+import { episodeHref } from "../hrefs";
 import { isTaskConfigured } from "../ai-resolve";
 import { mapSymptomText } from "../symptom-text-map";
 import { profileAgeMonths } from "../settings";

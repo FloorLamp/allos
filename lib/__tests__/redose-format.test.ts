@@ -19,7 +19,7 @@ describe("redoseNoticeMessage", () => {
       countToday: 2,
       maxDailyCount: 4,
     });
-    expect(m.title).toBe("Redose window open: Ibuprofen");
+    expect(m.title).toBe("💊 Redose window open: Ibuprofen");
     expect(m.body).toBe(
       "6h since Ibuprofen (4:02pm) — your minimum interval has passed · 2 of 4 today."
     );
@@ -37,7 +37,7 @@ describe("redoseNoticeMessage", () => {
       countToday: 2,
       maxDailyCount: 4,
     });
-    expect(m.title).toBe("Redose window open: Ada — Ibuprofen");
+    expect(m.title).toBe("💊 Redose window open: Ada — Ibuprofen");
   });
 
   it("leaves the title unattributed when no profile name is given", () => {
@@ -49,7 +49,7 @@ describe("redoseNoticeMessage", () => {
       countToday: 1,
       maxDailyCount: 4,
     });
-    expect(m.title).toBe("Redose window open: Ibuprofen");
+    expect(m.title).toBe("💊 Redose window open: Ibuprofen");
   });
 
   it("drops the clock parenthetical when unknown, never says 'you can take more'", () => {
