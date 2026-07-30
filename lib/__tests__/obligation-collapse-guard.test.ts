@@ -35,7 +35,7 @@ const SCAN_DIRS = ["app", "components", "lib", "scripts", "e2e"];
 const RETIRED = ["as_needed"];
 
 // Where they are legitimately allowed to appear:
-//   • the versioned migrations — 001 created them, 092/101 insert into them, and 123
+//   • the versioned migrations — 001 created them, 092/101 insert into them, and 124
 //     is the collapse itself. All frozen or self-describing.
 //   • this guard.
 //   • nothing else. Derived `asNeeded` locals are not scanned at all — see RETIRED.
@@ -101,7 +101,7 @@ describe("the obligation collapse stays collapsed (#1505)", () => {
     expect(
       offenders,
       `#1505 collapsed as_needed into obligation. The column survives in the ` +
-        `schema ONLY so replayed pre-123 migrations still prepare — it is dead ` +
+        `schema ONLY so replayed pre-124 migrations still prepare — it is dead ` +
         `storage. Ask isPrn(item) / read item.obligation instead:\n` +
         offenders.join("\n")
     ).toEqual([]);

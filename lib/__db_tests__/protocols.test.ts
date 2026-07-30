@@ -13,6 +13,7 @@ import {
   getProtocols,
   getProtocol,
   getProtocolComparison,
+  getProtocolOutcomePickerData,
   getProtocolWindows,
   getProtocolWindowsForOutcome,
   getActiveProtocolSummaries,
@@ -166,10 +167,108 @@ describe("protocol comparison seam", () => {
     expect(o.intervention.mean).toBe(110);
     expect(o.meanDelta).toBe(-20);
     expect(o.betterness).toBe("better"); // LDL is lower_better
+
+    const picker = getProtocolOutcomePickerData(
+      profile,
+      protocol,
+      "2026-06-25",
+      "kg"
+    );
+    expect(
+      picker.options.find(
+        (option) => option.key === "biomarker:LDL Cholesterol"
+      )?.preview
+    ).toMatchObject({
+      beforeMean: 130,
+      duringMean: 110,
+      meanDelta: -20,
+      unit: "mg/dL",
+      beforeN: 1,
+      duringN: 1,
+    });
+    expect(picker.comparison.outcomes).toHaveLength(1);
+    expect(picker.comparison.outcomes[0].meanDelta).toBe(-20);
+  });
+
+  it("keeps a selected biomarker editable after its source reading is deleted", () => {
+    const profile = newProfile("Proto Historical Outcome");
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit)
+       VALUES (?, '2026-04-15', 'lab', 'Ferritin', 'Ferritin', 80, 'ng/mL')`
+    ).run(profile);
+    const id = insertProtocol(profile, {
+      name: "Historical marker",
+      start: "2026-05-01",
+      keys: ["biomarker:Ferritin"],
+    });
+    db.prepare(
+      `DELETE FROM medical_records
+        WHERE profile_id = ? AND canonical_name = 'Ferritin'`
+    ).run(profile);
+
+    const picker = getProtocolOutcomePickerData(
+      profile,
+      getProtocol(profile, id)!,
+      "2026-06-25",
+      "kg"
+    );
+    expect(picker.options.map((option) => option.key)).toContain(
+      "biomarker:Ferritin"
+    );
+    expect(picker.comparison.outcomes.map((outcome) => outcome.key)).toContain(
+      "biomarker:Ferritin"
+    );
   });
 });
 
 describe("protocol outcome options (#1586)", () => {
+  it("inherits shared biomarker relevance order within its tracked-only scope", () => {
+    const profile = newProfile("Proto Ranked Outcomes");
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit, flag)
+       VALUES (?, ?, 'lab', ?, ?, ?, ?, ?)`
+    );
+    insert.run(
+      profile,
+      "2026-01-01",
+      "Hemoglobin A1c",
+      "Hemoglobin A1c",
+      5.7,
+      "%",
+      "normal"
+    );
+    insert.run(
+      profile,
+      "2026-06-20",
+      "LDL Cholesterol",
+      "LDL Cholesterol",
+      150,
+      "mg/dL",
+      "high"
+    );
+    insert.run(
+      profile,
+      "2026-06-20",
+      "Albumin",
+      "Albumin",
+      4.4,
+      "g/dL",
+      "normal"
+    );
+
+    const biomarkerKeys = getProtocolOutcomeOptions(profile, "2026-06-25")
+      .filter((option) => option.key.startsWith("biomarker:"))
+      .map((option) => option.key);
+
+    expect(biomarkerKeys.slice(0, 3)).toEqual([
+      "biomarker:Hemoglobin A1c",
+      "biomarker:LDL Cholesterol",
+      "biomarker:Albumin",
+    ]);
+  });
+
   it("includes a computed derived index and resolves its virtual series", () => {
     const profile = newProfile("Proto Derived Outcomes");
     const insert = db.prepare(
@@ -180,7 +279,7 @@ describe("protocol outcome options (#1586)", () => {
     insert.run(profile, "Total Cholesterol", "Total Cholesterol", 210);
     insert.run(profile, "HDL Cholesterol", "HDL Cholesterol", 50);
 
-    const options = getProtocolOutcomeOptions(profile);
+    const options = getProtocolOutcomeOptions(profile, "2026-06-25");
     expect(options.map((option) => option.key)).toContain(
       "biomarker:Non-HDL Cholesterol"
     );
@@ -229,7 +328,7 @@ describe("protocol outcome options (#1586)", () => {
     );
     insert.run(profile, "2026-05-01", "PhenoAge", "PhenoAge", 44, "yrs");
 
-    const optionKeys = getProtocolOutcomeOptions(profile).map(
+    const optionKeys = getProtocolOutcomeOptions(profile, "2026-06-25").map(
       (option) => option.key
     );
     expect(optionKeys).toEqual(

@@ -262,11 +262,13 @@ describe("nav ↔ route consistency", () => {
   });
 
   it("every nav href resolves to a real App-Router page", () => {
-    const missing = navHrefs().filter((h) => !resolves(h));
+    const hrefs = navHrefs();
+    const missing = hrefs.filter((h) => !resolves(h));
     expect(
       missing,
       `nav hrefs with no matching page under app/: ${missing.join(", ")}`
     ).toEqual([]);
+    expect(hrefs).toContain("/wellness");
   });
 
   it("every internal next.config redirect destination resolves to a real page", () => {

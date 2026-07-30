@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import type { FrequencyScopeKind } from "@/lib/types";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
+import { normalizePracticeName, practiceIdentity } from "@/lib/practice";
 
 // Allowed scope_value strings per scope_kind, used to validate input.
 function isValidScope(kind: FrequencyScopeKind, value: string): boolean {
@@ -53,6 +54,8 @@ export async function createFrequencyTarget(formData: FormData) {
     if (!slug) return;
     value = slug;
   }
+  if (kind === "practice") value = normalizePracticeName(value);
+  const scopeIdentity = kind === "practice" ? practiceIdentity(value) : null;
   // Optional weekly ceiling (#1259) — a range target ("3–5×/week"). NULL keeps the
   // existing single-floor semantics for every other scope.
   const perWeekMax = parsePerWeekMax(formData.get("per_week_max"), perWeek);
@@ -65,8 +68,8 @@ export async function createFrequencyTarget(formData: FormData) {
       "DELETE FROM frequency_targets WHERE scope_kind = ? AND scope_value = ? AND id != ? AND profile_id = ?"
     ).run(kind, value, id, profile.id);
     db.prepare(
-      "UPDATE frequency_targets SET scope_kind = ?, scope_value = ?, per_week = ?, per_week_max = ? WHERE id = ? AND profile_id = ?"
-    ).run(kind, value, perWeek, perWeekMax, id, profile.id);
+      "UPDATE frequency_targets SET scope_kind = ?, scope_value = ?, scope_identity = ?, per_week = ?, per_week_max = ? WHERE id = ? AND profile_id = ?"
+    ).run(kind, value, scopeIdentity, perWeek, perWeekMax, id, profile.id);
   } else {
     // New entry: one target per (scope_kind, scope_value), so an existing scope
     // has its cadence updated instead of duplicated.
@@ -81,8 +84,8 @@ export async function createFrequencyTarget(formData: FormData) {
       ).run(perWeek, perWeekMax, existing.id, profile.id);
     } else {
       db.prepare(
-        "INSERT INTO frequency_targets (scope_kind, scope_value, per_week, per_week_max, profile_id) VALUES (?,?,?,?,?)"
-      ).run(kind, value, perWeek, perWeekMax, profile.id);
+        "INSERT INTO frequency_targets (scope_kind, scope_value, scope_identity, per_week, per_week_max, profile_id) VALUES (?,?,?,?,?,?)"
+      ).run(kind, value, scopeIdentity, perWeek, perWeekMax, profile.id);
     }
   }
   revalidatePath("/training");

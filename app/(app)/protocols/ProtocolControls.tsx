@@ -94,7 +94,7 @@ export default function ProtocolControls({
     const ok = await confirm({
       title: "End this protocol?",
       message:
-        "The current comparison window will end today. You can resume it for seven days.",
+        "Results will stop including new data after today. You can resume this protocol within seven days.",
       confirmLabel: "End protocol",
       danger: true,
     });
@@ -104,7 +104,7 @@ export default function ProtocolControls({
   async function onDelete() {
     const ok = await confirm({
       title: "Delete this protocol?",
-      message: `“${protocol.name}” and its comparison setup will be removed.`,
+      message: `“${protocol.name}” and its comparison settings will be removed. Logged activity and measurements will remain.`,
       confirmLabel: "Delete protocol",
       danger: true,
     });
@@ -147,16 +147,17 @@ export default function ProtocolControls({
         including the compact mobile size — as every other page. */}
         <PageHeader
           title={protocol.name}
+          className="!mb-0 max-sm:flex-wrap max-sm:gap-2 max-sm:[&>div:first-child]:w-full"
           subtitle={
             ongoing
-              ? `Started ${formatLongDate(protocol.start_date, formatPrefs)} · ongoing`
+              ? `Started ${formatLongDate(protocol.start_date, formatPrefs)}`
               : `${formatLongDate(protocol.start_date, formatPrefs)} – ${formatLongDate(
                   protocol.end_date!,
                   formatPrefs
                 )}`
           }
           action={
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 max-sm:ml-auto">
               {ongoing && (
                 <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                   Ongoing

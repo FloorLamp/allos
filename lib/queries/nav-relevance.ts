@@ -2,8 +2,8 @@
 // per-profile relevance bitset the app layout threads once through the shared
 // SidebarContent (both viewports for free — the #794 responsive rule). The
 // decisions themselves are pure (lib/nav-relevance.ts, unit-tested); this module
-// only reads the DB state they need. Cheap by construction — three EXISTS probes
-// plus the profile-settings attribute reads, once per layout render.
+// only reads the DB state they need. Cheap by construction — focused EXISTS
+// probes plus the profile-settings attribute reads, once per layout render.
 
 import { db } from "../db";
 import {
@@ -11,7 +11,11 @@ import {
   getUserReproductiveStatus,
   getUserSex,
 } from "../settings/profile-attrs";
-import { cycleTrackingRelevant, type NavRelevance } from "../nav-relevance";
+import {
+  cycleTrackingRelevant,
+  wellnessTrackingRelevant,
+  type NavRelevance,
+} from "../nav-relevance";
 import { isMinor } from "../life-stage";
 import { hasSleepData } from "./sleep";
 
@@ -38,6 +42,18 @@ export function getNavRelevance(profileId: number): NavRelevance {
     db
       .prepare(`SELECT 1 FROM dental_procedures WHERE profile_id = ? LIMIT 1`)
       .get(profileId) != null;
+  const hasPracticeTargets =
+    db
+      .prepare(
+        `SELECT 1 FROM frequency_targets
+         WHERE profile_id = ? AND scope_kind = 'practice'
+         LIMIT 1`
+      )
+      .get(profileId) != null;
+  const hasPracticeLogs =
+    db
+      .prepare(`SELECT 1 FROM practice_logs WHERE profile_id = ? LIMIT 1`)
+      .get(profileId) != null;
   return {
     cycle: cycleTrackingRelevant({
       hasCycleRows,
@@ -54,6 +70,11 @@ export function getNavRelevance(profileId: number): NavRelevance {
       db
         .prepare(`SELECT 1 FROM progress_photos WHERE profile_id = ? LIMIT 1`)
         .get(profileId) != null,
+    // Either half of the practice store makes its daily home relevant (#1620).
+    wellness: wellnessTrackingRelevant({
+      hasPracticeTargets,
+      hasPracticeLogs,
+    }),
   };
 }
 

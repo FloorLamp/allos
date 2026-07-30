@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 123 (issue #1505): collapse `priority` + `as_needed` into ONE
+// Migration 124 (issue #1505): collapse `priority` + `as_needed` into ONE
 // user-owned field, `obligation` — the storage half of the intake obligation model.
 //
 // WHY a rename and not an in-place widening. The old model smeared one question —
@@ -52,7 +52,7 @@ import type { Migration } from "../runner";
 // looking at a single row. A source-scan guard keeps them unreachable from
 // application code, and
 // a compatibility TRIGGER (below) translates a legacy insert's intent onto
-// `obligation`, so a replayed pre-123 migration writes what it meant rather than
+// `obligation`, so a replayed pre-124 migration writes what it meant rather than
 // landing on the column default.
 //
 // WHY A REBUILD. SQLite can rename a column in place (ALTER TABLE … RENAME COLUMN),
@@ -144,7 +144,7 @@ const CREATE = `
     -- those two shipped, immutable migrations throw on every replay regardless of
     -- whether they would have inserted anything.
     --
-    -- They are deliberately unconstrained and DEFAULT NULL: a replayed pre-123 insert
+    -- They are deliberately unconstrained and DEFAULT NULL: a replayed pre-124 insert
     -- writes into them harmlessly and its row still gets obligation column default.
     -- lib/__tests__/obligation-collapse-guard.test.ts fails the build if any
     -- non-migration source file names either one, so they cannot quietly come back.
@@ -180,7 +180,7 @@ const TRIGGER_NAMES = [
   "intake_log_snapshot_product_taken",
 ];
 
-// LEGACY-INSERT COMPATIBILITY. The vestigial columns exist so pre-123 migrations still
+// LEGACY-INSERT COMPATIBILITY. The vestigial columns exist so pre-124 migrations still
 // PREPARE; this trigger makes those inserts still MEAN what they meant. Without it a
 // replayed migration 101 (which projects a recovery placeholder as `as_needed = 1`)
 // would land a row on the `should` column default and silently turn a PRN placeholder
@@ -255,7 +255,7 @@ function rebuildIntakeItems(db: Database.Database): void {
   // does not exist yet. Recreated verbatim after the rename.
   for (const name of TRIGGER_NAMES) db.exec(`DROP TRIGGER IF EXISTS ${name};`);
 
-  const scratch = "intake_items__new123";
+  const scratch = "intake_items__new124";
   db.exec(
     CREATE.replace("CREATE TABLE intake_items (", `CREATE TABLE ${scratch} (`)
   );
@@ -331,7 +331,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 123,
-  name: "123-intake-obligation",
+  id: 124,
+  name: "124-intake-obligation",
   up,
 };

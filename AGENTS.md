@@ -251,7 +251,7 @@ former combined `/medicine` route is gone and 404s. Use `intakeHref(kind)` for
 kind-to-surface links.
 
 One user-owned field, **`obligation`** (`must`/`should`/`may`), decides push and
-adherence; it replaced both `priority` and `as_needed` in migration 123. `must`
+adherence; it replaced both `priority` and `as_needed` in migration 124. `must`
 reminds and escalates, `should` reminds and counts but never escalates, `may` has
 no dueness at all — never pushed, never missed, tracked in the ledger and always
 one tap away. `kind` decides CLINICAL identity (which safety engine, which

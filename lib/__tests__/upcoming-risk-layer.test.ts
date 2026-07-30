@@ -163,12 +163,13 @@ describe("every Upcoming due-signal builder consumes the risk/priority layer (#5
   });
 
   it("each risk-aware builder actually references a priority/modulation call in its body", () => {
-    const priorityCall = /(\w+PriorityFor|retestModulationFor)\s*\(/;
+    const priorityCall =
+      /(\w+PriorityFor|retestModulationFor|biomarkerRetestSignals)\s*\(/;
     for (const name of RISK_AWARE) {
       const body = functionBody(src, name);
       expect(
         priorityCall.test(body),
-        `${name} is marked risk-aware but does not call a *PriorityFor / retestModulationFor helper`
+        `${name} is marked risk-aware but does not call a *PriorityFor / retestModulationFor helper or delegate to the shared biomarker retest signals`
       ).toBe(true);
     }
   });

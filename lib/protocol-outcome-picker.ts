@@ -7,6 +7,7 @@ import { canonicalAliases, normalizeCanonicalKey } from "./canonical-name";
 import { tablePanelId } from "./derived-table";
 import type { PanelId } from "./biomarker-panels";
 import { fuzzyScore } from "./fuzzy";
+import { formatOutcomeDelta } from "./protocol-compare";
 
 export interface OutcomeOption {
   key: string;
@@ -14,6 +15,14 @@ export interface OutcomeOption {
   group: "Body & indices" | "Biomarkers";
   panel: PanelId | null;
   searchTerms: string[];
+  preview?: {
+    beforeMean: number;
+    duringMean: number;
+    meanDelta: number;
+    unit: string | null;
+    beforeN: number;
+    duringN: number;
+  };
 }
 
 function unique(values: readonly string[]): string[] {
@@ -59,15 +68,22 @@ export function rankProtocolOutcomeOptions(
   options: readonly OutcomeOption[],
   relevantPanels: ReadonlySet<PanelId>
 ): OutcomeOption[] {
-  if (relevantPanels.size === 0) return [...options];
   return options
     .map((option, index) => ({
       option,
       index,
+      comparable: option.preview != null,
+      changed:
+        option.preview != null &&
+        formatOutcomeDelta(option.preview.meanDelta) !== "±0",
       relevant: option.panel != null && relevantPanels.has(option.panel),
     }))
     .sort(
-      (a, b) => Number(b.relevant) - Number(a.relevant) || a.index - b.index
+      (a, b) =>
+        Number(b.changed) - Number(a.changed) ||
+        Number(b.comparable) - Number(a.comparable) ||
+        Number(b.relevant) - Number(a.relevant) ||
+        a.index - b.index
     )
     .map(({ option }) => option);
 }

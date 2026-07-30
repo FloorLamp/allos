@@ -62,6 +62,47 @@ export function samePractice(
   return left !== "" && left === practiceIdentity(b);
 }
 
+export const MAX_PRACTICE_SPELLINGS_PER_IDENTITY = 200;
+
+// Group the finite set of stored spellings by the same identity used everywhere
+// else. Exact spellings are preserved because SQL must bind the stored values.
+export function groupPracticeSpellings(
+  values: readonly string[],
+  maxPerIdentity = MAX_PRACTICE_SPELLINGS_PER_IDENTITY
+): Map<string, string[]> {
+  const cap = Math.max(1, Math.min(Math.floor(maxPerIdentity), 500));
+  const grouped = new Map<string, string[]>();
+  const seen = new Map<string, Set<string>>();
+  for (const value of values) {
+    const identity = practiceIdentity(value);
+    if (!identity) continue;
+    let spellings = grouped.get(identity);
+    if (!spellings) {
+      spellings = [];
+      grouped.set(identity, spellings);
+      seen.set(identity, new Set());
+    }
+    const identitySeen = seen.get(identity)!;
+    if (identitySeen.has(value) || spellings.length >= cap) continue;
+    identitySeen.add(value);
+    spellings.push(value);
+  }
+  return grouped;
+}
+
+export function practiceSpellingsFor(
+  spellingsByIdentity: ReadonlyMap<string, readonly string[]>,
+  practice: string
+): string[] {
+  const identity = practiceIdentity(practice);
+  if (!identity) return [];
+  const normalized = normalizePracticeName(practice);
+  const resolved = spellingsByIdentity.get(identity) ?? [];
+  return [...new Set([normalized, ...resolved])]
+    .filter(Boolean)
+    .slice(0, MAX_PRACTICE_SPELLINGS_PER_IDENTITY);
+}
+
 // The expanded log form defaults duration from the immediately previous session.
 // A prior row with no recorded duration intentionally yields no default — old null
 // rows are never treated as if a duration had been captured.
@@ -69,6 +110,32 @@ export function previousPracticeDuration(
   sessions: readonly { duration_min: number | null }[]
 ): number | null {
   return sessions[0]?.duration_min ?? null;
+}
+
+export type PracticeCadenceError =
+  "minimum-range" | "maximum-range" | "maximum-order";
+
+export type PracticeCadenceValidation =
+  | { ok: true; floor: number; ceiling: number | null }
+  | { ok: false; reason: PracticeCadenceError };
+
+// Weekly cadence is user intent, not a hint to normalize. Reject invalid bounds
+// rather than silently flooring, clamping, or discarding them.
+export function validatePracticeCadence(
+  floor: number,
+  ceiling: number | null
+): PracticeCadenceValidation {
+  if (!Number.isInteger(floor) || floor < 1 || floor > 14) {
+    return { ok: false, reason: "minimum-range" };
+  }
+  if (ceiling == null) return { ok: true, floor, ceiling: null };
+  if (!Number.isInteger(ceiling) || ceiling < 1 || ceiling > 14) {
+    return { ok: false, reason: "maximum-range" };
+  }
+  if (ceiling <= floor) {
+    return { ok: false, reason: "maximum-order" };
+  }
+  return { ok: true, floor, ceiling };
 }
 
 // The range state of a practice (or any) frequency target this week — ONE computation
@@ -125,4 +192,4 @@ export function practiceCadenceText(
 
 // Display: the calm at-ceiling reassurance, shared by the surfaces (#1259: never a red
 // state above the ceiling).
-export const PRACTICE_PLENTY_TEXT = "That's plenty this week";
+export const PRACTICE_PLENTY_TEXT = "Weekly maximum reached";

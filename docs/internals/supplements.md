@@ -281,7 +281,7 @@ the pseudo-slot XOR its bucket window. Escalation chases the pseudo-slot like a
 window.
 
 **The obligation model (#1505).** One user-owned field, `obligation`, replaced
-BOTH `priority` (mandatory/high/low) and `as_needed`. Migration 123 rebuilds
+BOTH `priority` (mandatory/high/low) and `as_needed`. Migration 124 rebuilds
 `intake_items`: `as_needed = 1 → may` (first, so a PRN item lands on may whatever
 tag it carried), then `mandatory → must`, `low → may`, everything else `should`.
 

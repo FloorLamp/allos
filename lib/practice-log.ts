@@ -8,17 +8,17 @@
 import { db, today } from "./db";
 import { writeTx } from "./db";
 import { daysBetweenDateStr, isRealIsoDate } from "./date";
-import {
-  normalizePracticeName,
-  practiceIdentity,
-  samePractice,
-} from "./practice";
+import { normalizePracticeName } from "./practice";
 import type {
-  PracticeLog,
   PracticeLogOutcome,
   PracticeSessionMutationOutcome,
 } from "./types";
 import { writeImportTombstoneForRow } from "./integrations/tombstones";
+import {
+  getPracticeDayCount,
+  getPracticeSession,
+  getPracticeSpellings,
+} from "./queries/wellness";
 
 // A far-off (forged) date can't land a misdated session row (the #614 dose-log posture);
 // a legitimate late correction within the window still logs to its own day.
@@ -45,51 +45,8 @@ function isPracticeEditDateAccepted(
   return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
 }
 
-// SQL cannot call practiceIdentity(), so resolve its finite preimage from the
-// profile's stored target/log spellings once, then bind that exact set into reads.
-// This catches legacy "Sauna" / " sauna " / "SAUNA" variants without interpolating
-// user text and keeps every underlying statement profile-scoped.
-export function getPracticeSpellings(
-  profileId: number,
-  practice: string
-): string[] {
-  const identity = practiceIdentity(practice);
-  if (!identity) return [];
-  const values = new Set<string>([normalizePracticeName(practice)]);
-  for (const row of db
-    .prepare(
-      `SELECT DISTINCT practice AS value FROM practice_logs
-        WHERE profile_id = ?
-       UNION
-       SELECT DISTINCT scope_value AS value FROM frequency_targets
-        WHERE profile_id = ? AND scope_kind = 'practice'`
-    )
-    .all(profileId, profileId) as { value: string }[]) {
-    if (practiceIdentity(row.value) === identity) values.add(row.value);
-  }
-  return [...values].filter(Boolean);
-}
-
 function inClause(values: readonly string[]): string {
   return values.map(() => "?").join(", ");
-}
-
-// Distinct sessions logged for a (practice, date). The day's RUNNING COUNT, reported by
-// the outcome so a surface can say "logged — 2nd session today" (the PRN widget shape).
-export function getPracticeDayCount(
-  profileId: number,
-  practice: string,
-  date: string
-): number {
-  const spellings = getPracticeSpellings(profileId, practice);
-  if (spellings.length === 0) return 0;
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM practice_logs
-        WHERE profile_id = ? AND practice IN (${inClause(spellings)}) AND date = ?`
-    )
-    .get(profileId, ...spellings, date) as { n: number };
-  return row.n;
 }
 
 // One-tap log a practice session. NOT idempotent — multi-session days are the point
@@ -129,94 +86,6 @@ export function logPracticeSession(
     const count = getPracticeDayCount(profileId, name, date);
     return { kind: "logged", count, date };
   });
-}
-
-// The profile's logged sessions for a practice, newest first. Used by the detail /
-// session-history surfaces (and tests). Bounded by the caller.
-export function getPracticeSessions(
-  profileId: number,
-  practice: string,
-  limit = 50,
-  window?: { start: string; end: string }
-): PracticeLog[] {
-  const spellings = getPracticeSpellings(profileId, practice);
-  if (spellings.length === 0) return [];
-  const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 500));
-  const windowSql = window ? "AND date >= ? AND date <= ?" : "";
-  const args: Array<string | number> = [profileId, ...spellings];
-  if (window) args.push(window.start, window.end);
-  args.push(boundedLimit);
-  return db
-    .prepare(
-      `SELECT id, practice, date, time, duration_min, notes,
-              source, external_id, edited, created_at
-         FROM practice_logs
-        WHERE profile_id = ? AND practice IN (${inClause(spellings)})
-          ${windowSql}
-        ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
-        LIMIT ?`
-    )
-    .all(...args) as PracticeLog[];
-}
-
-export function getPracticeUsageInWindow(
-  profileId: number,
-  practice: string,
-  start: string,
-  end: string
-): { sessions: number; lastUsed: string | null } {
-  const spellings = getPracticeSpellings(profileId, practice);
-  if (spellings.length === 0) return { sessions: 0, lastUsed: null };
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS sessions, MAX(date) AS lastUsed
-         FROM practice_logs
-        WHERE profile_id = ? AND practice IN (${inClause(spellings)})
-          AND date >= ? AND date <= ?`
-    )
-    .get(profileId, ...spellings, start, end) as {
-    sessions: number;
-    lastUsed: string | null;
-  };
-  return row;
-}
-
-export function getPracticeDayUsageInWindow(
-  profileId: number,
-  practice: string,
-  start: string,
-  end: string
-): { date: string; count: number }[] {
-  const spellings = getPracticeSpellings(profileId, practice);
-  if (spellings.length === 0) return [];
-  return db
-    .prepare(
-      `SELECT date, COUNT(*) AS count
-         FROM practice_logs
-        WHERE profile_id = ? AND practice IN (${inClause(spellings)})
-          AND date >= ? AND date <= ?
-        GROUP BY date
-        ORDER BY date ASC`
-    )
-    .all(profileId, ...spellings, start, end) as {
-    date: string;
-    count: number;
-  }[];
-}
-
-export function getPracticeSession(
-  profileId: number,
-  id: number
-): PracticeLog | null {
-  return (
-    (db
-      .prepare(
-        `SELECT id, practice, date, time, duration_min, notes,
-                source, external_id, edited, created_at
-           FROM practice_logs WHERE id = ? AND profile_id = ?`
-      )
-      .get(id, profileId) as PracticeLog | undefined) ?? null
-  );
 }
 
 export function updatePracticeSession(
@@ -314,10 +183,4 @@ export function renamePracticeSessions(
     )
     .run(next, next, profileId, ...spellings);
   return info.changes;
-}
-
-// Small exported predicate used by target-store reconciliation without importing
-// SQL details. Kept here beside the finite-preimage resolver.
-export function practiceNameMatches(a: string, b: string): boolean {
-  return samePractice(a, b);
 }

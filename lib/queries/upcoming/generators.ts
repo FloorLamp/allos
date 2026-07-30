@@ -41,7 +41,7 @@ import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";
 import {
-  isBiomarkerStale,
+  biomarkerRetestStatus,
   isBeyondRetestHorizon,
   retestIntervalDays,
   daysBetween,
@@ -327,7 +327,23 @@ function monthsApprox(days: number): number {
 // inherits its INPUTS' freshness — re-drawing Total + HDL re-derives Non-HDL — so we
 // take the newest of (the reading, its input readings) as the effective last-tested
 // date. A non-derived analyte has no inputs, so its effective date is just its own.
-function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
+interface BiomarkerRetestSignal {
+  identity: string;
+  status: "due" | "due-soon";
+  item: UpcomingItem;
+}
+
+const BIOMARKER_RETEST_SOON_DAYS = 30;
+
+// The one biomarker-retest assessment consumed by both Upcoming and relevance
+// pickers (#1675). Upcoming keeps only `due`; pickers may also rank the stable
+// 30-day `due-soon` bucket. The cadence, risk modulation, family identity,
+// derived-input freshness, one-shot gates, historical ceiling, and durable-value
+// exemptions therefore cannot drift between the two surfaces.
+const biomarkerRetestSignals = cache(function biomarkerRetestSignals(
+  profileId: number,
+  today: string
+): BiomarkerRetestSignal[] {
   const latest = getMedicalRecords(profileId, { current: true });
   // Newest reading date per family across ALL current readings — the input→derived
   // freshness lookup below reads an input analyte's family date from here.
@@ -351,7 +367,7 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
   // conditions, and the occupational/immune attributes tighten an analyte's retest
   // interval and rank it up. Gathered once per profile (request-cached).
   const riskFactors = getRiskFactors(profileId);
-  const items: UpcomingItem[] = [];
+  const signals: BiomarkerRetestSignal[] = [];
   for (const r of byFamily.values()) {
     const name = r.canonical_name?.trim() || r.name;
     // The name to LABEL this family's redraw by, and to match curated per-analyte
@@ -415,8 +431,12 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
     // reading's identity + result so isBiomarkerStale can exempt them. A negative/
     // equivocal titer keeps the (risk-modulated) clock, so the risk layer's
     // hepatitis-A tightening still bites exactly the readings that warrant followup.
-    if (
-      !isBiomarkerStale(effectiveDate, r.category, today, interval, {
+    const retestStatus = biomarkerRetestStatus(
+      effectiveDate,
+      r.category,
+      today,
+      interval,
+      {
         name,
         flag: r.flag,
         value: r.value,
@@ -426,11 +446,19 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
         // regexes miss — Epic's "ABORh Interpretation" blood type — is exempted by
         // its code instead of being nudged yearly for a value that cannot change.
         loinc: r.loinc,
-      })
+      }
+    );
+    if (retestStatus === "not-applicable") continue;
+    const stale = retestStatus === "due";
+    const dueDate = shiftDateStr(effectiveDate, interval);
+    const daysUntilDue = daysBetween(today, dueDate);
+    if (
+      !stale &&
+      (daysUntilDue < 0 || daysUntilDue > BIOMARKER_RETEST_SOON_DAYS)
     )
       continue;
     const agoMonths = monthsApprox(daysBetween(effectiveDate, today));
-    items.push({
+    const item: UpcomingItem = {
       key: biomarkerDismissalKey(name),
       domain: "biomarker",
       // The item is a retest nudge, not a flag alert — carry the verb so it reads
@@ -455,11 +483,31 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
         isFlaggedForRetest(r.flag) ? [flaggedReason(r.flag)] : []
       ),
       href: biomarkerViewHref(r.canonical_name, r.name),
-      dueDate: shiftDateStr(effectiveDate, interval),
+      dueDate,
       priority,
+    };
+    signals.push({
+      identity: biomarkerRetestIdentity(name).toLowerCase(),
+      status: stale ? "due" : "due-soon",
+      item,
     });
   }
-  return items;
+  return signals;
+});
+
+export function getBiomarkerRetestRankSignals(
+  profileId: number,
+  today: string
+): { identity: string; status: "due" | "due-soon" }[] {
+  return biomarkerRetestSignals(profileId, today).map(
+    ({ identity, status }) => ({ identity, status })
+  );
+}
+
+function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
+  return biomarkerRetestSignals(profileId, today)
+    .filter((signal) => signal.status === "due")
+    .map((signal) => signal.item);
 }
 
 // Scheduled medical visits (reuses getScheduledAppointments — only 'scheduled'
