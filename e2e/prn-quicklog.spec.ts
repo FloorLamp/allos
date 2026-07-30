@@ -110,8 +110,18 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   );
 
   // One-tap "Taken now" records a fresh administration NOW → the count rises by one.
-  // settledClick awaits the log Server-Action POST so the count assertion can't race it.
+  //
+  // settledClick is necessary but NOT sufficient on the dashboard: it resolves on any
+  // same-origin POST, and this page fires Server Actions of its own during load, so it
+  // can return before THIS log's POST has even been sent. Worse, the dashboard's route
+  // prefetching aborts and retries in-flight requests under load, which can push the
+  // log POST a second or two past the click. The action's own unambiguous completion
+  // signal is its success toast — wait for that, then read the count, so the assertion
+  // is ordered behind the write instead of behind an unrelated POST.
   await settledClick(page, item.getByTestId("prn-log-now"));
+  await expect(
+    page.getByRole("status").filter({ hasText: `Logged ${MED}` })
+  ).toBeVisible();
   await expect(label).toContainText(`${before + 1} today`);
 
   // A second immediate tap is deduplicated. Make that explicit instead of showing
@@ -145,6 +155,10 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   const newestRow = rows.first(); // first-ok: newest row this spec just logged "now" on a newest-first ledger, under CI's sequential workers=1
   await expect(newestRow).toBeVisible();
   await settledClick(page, newestRow.getByTestId("prn-administration-remove"));
+  // Order the count read behind the remove itself, for the same reason as the log above.
+  await expect(
+    page.getByRole("status").filter({ hasText: "Dose removed." })
+  ).toBeVisible();
   // Back to the seeded count (the "Dose removed." undo toast is left to expire — the
   // removal must persist for cleanup, so we do NOT click Undo).
   await expect(admin).toContainText(`${before} today`);
