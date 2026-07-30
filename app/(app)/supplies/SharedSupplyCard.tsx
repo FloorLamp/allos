@@ -3,6 +3,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import NotesText from "@/components/NotesText";
+import ProfileSwitcherChip from "@/components/ProfileSwitcherChip";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
+import { useConfirm } from "@/components/ConfirmDialog";
+import type { AppRoute } from "@/lib/hrefs";
+import type { AvatarProfile } from "@/components/Avatar";
 import { updatePoolAction, deletePoolAction } from "./actions";
 
 export interface SharedSupplyCardData {
@@ -21,7 +29,14 @@ export interface SharedSupplyCardData {
   // Linked members the VIEWER may not see by name (#1374 cross-grant visibility): the
   // count is shown, the names are not.
   hiddenMemberCount: number;
-  members: { itemId: number; label: string; canWrite: boolean }[];
+  members: {
+    itemId: number;
+    label: string;
+    canWrite: boolean;
+    href: AppRoute;
+    profile: AvatarProfile;
+    acting: boolean;
+  }[];
   canWrite: boolean;
 }
 
@@ -36,9 +51,10 @@ export default function SharedSupplyCard({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const confirm = useConfirm();
 
   const submit = (formData: FormData): void => {
     setError(null);
@@ -60,7 +76,6 @@ export default function SharedSupplyCard({
       const res = await deletePoolAction(fd);
       if (!res.ok) setError(res.error ?? "Couldn't delete.");
       else {
-        setConfirming(false);
         router.refresh();
       }
     });
@@ -74,6 +89,16 @@ export default function SharedSupplyCard({
         : `≈${pool.daysLeft} day${pool.daysLeft === 1 ? "" : "s"} left${
             pool.memberCount > 1 ? " across everyone" : ""
           }`;
+  const deleteConsequence =
+    pool.memberCount > 1
+      ? `Its ${pool.memberCount} linked items will go back to untracked supply${
+          pool.quantityOnHand != null
+            ? `; ${pool.quantityOnHand} on hand will not be copied to any of them`
+            : ""
+        }.`
+      : pool.memberCount === 1
+        ? "Its one linked item will take the remaining count back."
+        : "Nothing is linked to it.";
 
   return (
     <div className="card" data-testid="shared-supply-card">
@@ -125,14 +150,53 @@ export default function SharedSupplyCard({
             </span>
           )}
           {pool.canWrite && (
-            <button
-              type="button"
-              className="btn-secondary"
-              data-testid="shared-supply-edit"
-              onClick={() => setOpen((v) => !v)}
+            <OverflowMenu
+              label={`${pool.name} bottle actions`}
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
             >
-              {open ? "Cancel" : "Edit"}
-            </button>
+              {({ close }) => (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    data-testid="shared-supply-edit"
+                    disabled={pending}
+                    onClick={() => {
+                      setOpen(true);
+                      close();
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM_DANGER}
+                    data-testid="shared-supply-delete"
+                    disabled={pending}
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Delete bottle",
+                        message: (
+                          <>
+                            Delete “{pool.name}”? {deleteConsequence}
+                          </>
+                        ),
+                        confirmLabel: "Delete",
+                        danger: true,
+                      });
+                      if (!ok) return;
+                      close();
+                      remove();
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </OverflowMenu>
           )}
         </div>
       </div>
@@ -141,7 +205,15 @@ export default function SharedSupplyCard({
         {pool.members.length > 0 ? (
           <ul data-testid="shared-supply-members" className="space-y-1">
             {pool.members.map((m) => (
-              <li key={m.itemId}>{m.label}</li>
+              <li key={m.itemId}>
+                <ProfileSwitcherChip
+                  profile={m.profile}
+                  acting={m.acting}
+                  destination={m.href}
+                  label={m.label}
+                  testId="shared-supply-member-link"
+                />
+              </li>
             ))}
           </ul>
         ) : (
@@ -262,55 +334,23 @@ export default function SharedSupplyCard({
           <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
             <button
               type="submit"
-              className="btn-primary"
+              className="btn"
               data-testid="shared-supply-save"
               disabled={pending}
             >
               {pending ? "Saving…" : "Save"}
             </button>
-            {confirming ? (
-              <>
-                <span className="text-sm text-slate-600 dark:text-slate-300">
-                  Delete this bottle?{" "}
-                  {pool.memberCount > 1
-                    ? `Its ${pool.memberCount} linked items go back to untracked supply${
-                        pool.quantityOnHand != null
-                          ? ` — ${pool.quantityOnHand} on hand is not copied to any of them`
-                          : ""
-                      }.`
-                    : pool.memberCount === 1
-                      ? "Its one linked item takes the remaining count back."
-                      : "Nothing links to it."}
-                </span>
-                <button
-                  type="button"
-                  className="btn-danger"
-                  data-testid="shared-supply-delete-confirm"
-                  disabled={pending}
-                  onClick={remove}
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  disabled={pending}
-                  onClick={() => setConfirming(false)}
-                >
-                  Keep
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="btn-secondary"
-                data-testid="shared-supply-delete"
-                disabled={pending}
-                onClick={() => setConfirming(true)}
-              >
-                Delete bottle
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={pending}
+              onClick={() => {
+                setError(null);
+                setOpen(false);
+              }}
+            >
+              Cancel
+            </button>
           </div>
         </form>
       )}

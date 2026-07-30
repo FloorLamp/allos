@@ -66,8 +66,9 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/queries/intake/supply-pool.ts",
-    includes: "FROM intake_items WHERE supply_id = ?",
-    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so pool membership is cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), never a display read: the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering",
+    includes:
+      "FROM intake_items i LEFT JOIN intake_item_doses d ON d.item_id = i.id AND d.retired = 0 WHERE i.supply_id = ?",
+    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so membership and its child dose labels are cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), with dose amounts carried only to disambiguate actionable member labels; the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering",
   },
   {
     file: "lib/queries/intake/supply-pool.ts",

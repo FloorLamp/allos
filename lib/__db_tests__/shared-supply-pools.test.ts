@@ -170,6 +170,9 @@ describe("pooled decrement — every taker draws from ONE count", () => {
         .map((m) => m.profileId)
         .sort()
     ).toEqual([alice.profileId, bruno.profileId].sort());
+    expect(
+      poolMembers(supplyId).find((m) => m.itemId === a.itemId)?.doseAmounts
+    ).toEqual(["1 tablet"]);
     expect(poolIdsForProfiles([alice.profileId])).toContain(supplyId);
     expect(poolIdsForProfiles([bruno.profileId])).toContain(supplyId);
   });

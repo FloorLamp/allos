@@ -192,6 +192,12 @@ test.describe("chart tap-through (#1488)", () => {
       name: "Save",
       exact: true,
     });
+    const cancel = editingRow.getByRole("button", {
+      name: "Cancel",
+      exact: true,
+    });
+    await expect(save).toHaveClass(/\bbtn\b/);
+    await expect(cancel).toHaveClass(/\bbtn-ghost\b/);
     await settledClick(page, save);
     await expect(
       table.locator("tr").filter({ hasText: `${corrected} ms` })

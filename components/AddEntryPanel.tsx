@@ -80,7 +80,7 @@ export default function AddEntryPanel({
             ? `flex w-full items-center justify-between gap-2 text-left font-semibold text-slate-800 dark:text-slate-100${
                 dense ? " text-sm" : ""
               }`
-            : "btn-secondary text-sm"
+            : "btn-ghost text-sm"
         }
       >
         {open ? (

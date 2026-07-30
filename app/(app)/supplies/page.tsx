@@ -2,6 +2,8 @@ import { requireScope, stampSubjects } from "@/lib/scope";
 import { listVisiblePoolViews } from "@/lib/queries";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
+import { intakeHref, medicationHref } from "@/lib/hrefs";
+import { sharedSupplyMemberLabels } from "@/lib/shared-supply-member-labels";
 import SharedSupplyCard, {
   type SharedSupplyCardData,
 } from "./SharedSupplyCard";
@@ -31,13 +33,23 @@ export default async function SuppliesPage() {
   // never promise a bottle this page won't list.
   const pools = listVisiblePoolViews(scope.ids);
 
-  const cards: SharedSupplyCardData[] = pools.map((pool) => {
+  const visiblePools = pools.map((pool) => {
     const visible = pool.members.filter((m) => accessible.has(m.profileId));
     const stamped = stampSubjects(
       scope,
       visible.map((m) => ({ ...m, profileId: m.profileId }))
     );
-    return {
+    return { pool, visible, stamped };
+  });
+  // Disambiguate across the WHOLE cabinet, not one bottle at a time: two
+  // same-named records owned by one profile may draw from different bottles and
+  // still need distinct action labels in the page/AT link list.
+  const memberLabels = sharedSupplyMemberLabels(
+    visiblePools.flatMap(({ stamped }) => stamped)
+  );
+
+  const cards: SharedSupplyCardData[] = visiblePools.map(
+    ({ pool, visible, stamped }) => ({
       id: pool.id,
       name: pool.name,
       strength: pool.strength,
@@ -53,21 +65,39 @@ export default async function SuppliesPage() {
       hiddenMemberCount: pool.members.length - visible.length,
       members: stamped.map((m) => ({
         itemId: m.itemId,
-        label: `${m.name} · ${m.subject.name}`,
+        label: memberLabels.get(m.itemId) ?? m.name,
         canWrite: m.subject.access === "write",
+        profile: {
+          id: m.subject.profileId,
+          name: m.subject.name,
+          photo_path: m.subject.photoPath,
+          photo_version: m.subject.photoVersion,
+        },
+        acting: m.profileId === scope.actingProfileId,
+        // Match search's established item-link rule: medications have an
+        // accessible cross-profile detail page; supplements return to their
+        // kind-level Nutrition tab because no supplement-detail route exists.
+        href:
+          m.kind === "medication"
+            ? medicationHref(m.itemId)
+            : intakeHref(m.kind),
       })),
       canWrite:
         pool.members.length === 0
           ? scope.access.get(scope.actingProfileId) === "write"
           : pool.members.some((m) => scope.access.get(m.profileId) === "write"),
-    };
-  });
+    })
+  );
 
   return (
-    <PageContainer width="reading" data-testid="supplies-page">
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="supplies-page"
+    >
       <PageHeader
-        title="Medicine cabinet"
-        subtitle="Bottles the household shares. Every linked person's confirmed doses decrement one count, the days-left estimate sums everyone's use, and a low bottle raises one alert — not one per person."
+        title="Medicine Cabinet"
+        subtitle="Shared bottles with pooled counts and refill estimates."
       />
       {cards.length === 0 ? (
         <p
