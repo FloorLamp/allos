@@ -20,7 +20,12 @@ async function switchProfile(page: Page, name: string) {
     .filter({ hasText: name })
     .getByRole("button")
     .click();
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
+  // Server-truth budget (#1556): the trigger names the new profile only after
+  // setActiveProfile's Server Action + refresh round-trip; observed losing the 5s
+  // default under CI shard load at retries=0 (2026-07-31, run 30664837925).
+  await expect(page.getByTestId("user-menu-trigger")).toContainText(name, {
+    timeout: 30_000,
+  });
 }
 
 test.describe.serial("pediatric reference ranges", () => {
