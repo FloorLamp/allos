@@ -32,6 +32,9 @@ export const E2E_LOGIN_DERIVED = "e2e_derived_situ";
 export const DERIVED_SITU_PROFILE = "Derived Situations (e2e)";
 export const DERIVED_SITU_PERIOD_ITEM = "Iron Bisglycinate (e2e)";
 export const DERIVED_SITU_SLEEP_ITEM = "Magnesium Glycinate (e2e)";
+// Keyed to the built-in "High pollen" WEATHER situation (#1726) — it goes due from the
+// cached daily series alone, with no toggle anywhere.
+export const DERIVED_SITU_POLLEN_ITEM = "Quercetin Complex (e2e)";
 
 // Situation-window analytics (issue #1297). A member granted a dedicated adult profile
 // carrying a DECLARED "Travel" transition window (a past start→stop pair) with real weight

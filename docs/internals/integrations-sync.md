@@ -192,6 +192,34 @@ protocol, the DaylightChip UV badge, the overexposure care finding
 `uvOverexposureItems`) formats its result. `sun.ts` stays the offline core and
 is never replaced — its #570 offline guarantee is preserved.
 
+**The DAILY half (#1726).** The same provider gained a second grain:
+`fetchDaily` pulls the daily aggregates the weather-derived situations,
+conditions stamps, and outdoor-viability scan read — max/min temperature, mean
+sea-level pressure, precipitation, WMO code, peak UV — MERGED with the keyless
+Open-Meteo **air-quality** endpoint (US AQI + per-species pollen, reduced to the
+day's peak per FAMILY: tree/grass/weed). They land in `weather_days`
+(migration 128), global and location-keyed on `(lat, lng, date)` for exactly the
+reasons migration 098 gave for the hourly table, one grain coarser: everything
+added is a DAILY figure the provider publishes per day or that only means
+anything as a day summary, so widening the hourly table would store each 24×.
+Three properties are load-bearing:
+
+- **The two upstream halves fail INDEPENDENTLY.** A weather failure fails the
+  daily request (there is nothing left to cache); an air-quality failure returns
+  `partial` and the run still SUCCEEDS with temperature/pressure cached — the
+  pollen/AQI predicates then simply have no data and stay silent.
+- **A partial fetch must never erase a cached reading.** Because a row is
+  assembled from two endpoints, `upsertWeatherDays` COALESCEs every column: a
+  null in the incoming row leaves the stored value alone and only a real reading
+  overwrites, so a re-fetch cannot destroy data it did not ask for. A day whose
+  incoming values are all null-or-equal is therefore `unchanged`, not a
+  destructive `updated`.
+- **One run, one accounting.** Both halves' insert/update/unchanged splits merge
+  into the single `integration_sync_events` row, so the Review feed reports the
+  run rather than one of its parts. The daily window reaches
+  `WEATHER_FORECAST_DAYS` ahead (the planning surfaces need forecast), while the
+  situation predicates are handed a series ending TODAY.
+
 **Chunked ingest (#1064).** The Health Connect write path processes the parsed
 batch in bounded per-type ~1,000-record slices, each its own IMMEDIATE `writeTx`
 (`lib/integrations/health-connect-ingest.ts`), so the connection is never

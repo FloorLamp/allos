@@ -310,6 +310,18 @@ but a heads-up before you'd burn.
    burn-risk threshold). Left unset, only the "enough sun" side is shown — the
    overexposure heads-up stays silent rather than guessing.
 
+**What else it feeds.** Alongside the hourly UV series, a **daily** series is
+cached for the same spot — temperature, pressure, precipitation, air quality and
+pollen. That daily data is what powers the **weather situations** (heatwave,
+cold snap, pressure swing, high pollen, poor air quality): context that turns
+itself on when the weather qualifies, so a situational item — an antihistamine
+keyed to "High pollen", say — comes due automatically instead of waiting for you
+to remember a toggle. It also lets the app note when a medication you take
+interacts with the conditions (sun sensitivity on a bright day, heat tolerance
+during a hot spell). Pollen and air quality come from a separate Open-Meteo
+feed; if that feed is unavailable, temperature-based features keep working and
+the pollen ones simply stay quiet.
+
 **What it feeds.** Your outdoor daylight window is crossed with the UV that
 actually occurred during those hours — Open-Meteo's **free historical archive**
 backfills the UV for activities you already logged, so a past walk gets a real

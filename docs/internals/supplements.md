@@ -471,14 +471,39 @@ goes due exactly while that context holds. Two tenants today:
   scientifically contested — the no-fake-science stance); the day's reported
   symptom burden is the #1300 lever, not Period membership.
 
+- **Weather (#1726)** — five built-ins (`Heatwave`, `Cold snap`,
+  `Pressure swing`, `High pollen`, `Poor air quality`), derived from the cached
+  daily weather series for the profile's home location (`weather_days`,
+  migration 128; pure predicates in `lib/weather-situations.ts`, gather in
+  `lib/queries/weather-situations.ts`). Unlike the other two there is **no
+  declared/derived split**: weather has no self-report fallback — either the
+  cached series says the day qualified or the app claims nothing. Every predicate
+  is HYSTERETIC (enter high, exit lower) and the duration ones need consecutive
+  qualifying days, so a borderline series can't flap the context on and off; a
+  GAP in the series breaks every run (no data ⇒ no situation). The series handed
+  to the predicates ends TODAY, so the forecast tail the cache also holds can
+  never activate a situation ahead of time. **Relevance-gated** like Period, one
+  gate wider (`withWeatherSituationOptions`): a home location, plus either an
+  item already keyed to a weather situation or a recently logged symptom these
+  situations could explain. The five join the item form's PICKER when relevant —
+  never the toggle chip row, because a derived situation has nothing to toggle.
+  **The impact exception:** `situation_events` stays declared-only, but weather
+  situations still yield #1297 impact cards, because the rule's reason (a per-day
+  verdict leaves no reconstructable span) doesn't apply — a heatwave IS a run of
+  days in a cached series, recomputed identically every time, so
+  `weatherSituationWindows` derives its windows from the predicate and still
+  writes nothing.
+
 The visible state lines (`getDerivedSituationLines` →
-`poorSleepStateLine`/`periodStateLine`, basis-aware) render on the Supplements
+`poorSleepStateLine`/`periodStateLine`/`weatherSituationStateLine`, basis-aware)
+render on the Supplements
 bar (distinct "Auto" tag, non-toggleable), the #1221 check-in Context
 disclosure, and the morning digest — ONE formatter so a Telegram-first user
 isn't surprised by the extra due items (#662/#221). The item form shows a
 discovery hint when a `situational` item is keyed to Poor sleep / Period ("goes
 live automatically on rough nights / logged period days"). Deliberately out of
-scope: derived chart annotations (`situation_events` stays declared-only) and
+scope: derived chart annotations (`situation_events` stays declared-only — the
+weather impact cards read their windows from the cache, not from the log) and
 any Travel derivation (no privacy-acceptable signal — Travel stays fully
 manual).
 
