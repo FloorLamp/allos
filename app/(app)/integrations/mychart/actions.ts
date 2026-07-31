@@ -22,6 +22,7 @@ import {
   bindPortalIdentity,
   createPortal,
   deletePortal,
+  portalIdentityProfile,
   unbindPortalIdentity,
 } from "@/lib/portals";
 
@@ -83,19 +84,32 @@ export async function unbindIdentityAction(
   formData: FormData
 ): Promise<PortalActionResult> {
   const id = Number(formData.get("identity_id"));
-  const profileId = Number(formData.get("profile_id"));
   if (!Number.isInteger(id) || id <= 0) {
     return { ok: false, error: "Unknown mapping." };
   }
-  if (!Number.isInteger(profileId) || profileId <= 0) {
-    return { ok: false, error: "Unknown mapping." };
+  // THE PROFILE IS RESOLVED SERVER-SIDE, NEVER TAKEN FROM THE POST (#1747).
+  //
+  // The row id arrives from a client, and the only profile that means anything here is
+  // the one the row ACTUALLY points at. An earlier version gated on a `profile_id` field
+  // from the same FormData, which authorized nothing: a caller with legitimate write
+  // access to their own profile A could post `identity_id=<a row owned by profile B>` +
+  // `profile_id=A`, pass the gate on A, and delete B's binding. The two values were never
+  // tied together. So the owning profile is read from the row, and the gate is on THAT.
+  const owner = portalIdentityProfile(id);
+  if (owner === null) {
+    return { ok: false, error: "That mapping is already gone." };
   }
   // Removing a binding is the same class of decision as creating one — it changes where
   // this patient's future records go (namely: nowhere, refused) — so it takes the same
-  // gate on the profile the binding currently points at.
-  await requireProfileWriteAccess(profileId);
+  // gate on the profile the binding currently points at. Throws (redirect) if the caller
+  // cannot write that profile, so a forged post aborts before anything is deleted.
+  await requireProfileWriteAccess(owner);
 
-  if (!unbindPortalIdentity(id)) {
+  // Compare-and-swap on the profile that was just authorized: if a concurrent bind
+  // re-pointed the row at a different profile in between, this deletes nothing and the
+  // caller is told so, rather than removing a binding under an authorization that no
+  // longer describes it. Access-control-adjacent writes are atomic, not last-write-wins.
+  if (!unbindPortalIdentity(id, owner)) {
     return { ok: false, error: "That mapping is already gone." };
   }
   revalidatePath("/integrations/mychart");
