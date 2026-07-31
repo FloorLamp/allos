@@ -160,6 +160,10 @@ export async function POST(req: Request): Promise<Response> {
   if (!target.ok) return jsonError(target.error, 400);
 
   let profileId: number;
+  // The portal this upload was ACQUIRED from, or null for the plain human CLI path
+  // (#1748). Set only on the resolved-identity branch: a `profile=<id>` upload is a
+  // person putting a file somewhere, and NULL says exactly that.
+  let acquiredPortalId: number | null = null;
   if (target.target.kind === "profile") {
     profileId = target.target.profileId;
   } else {
@@ -184,6 +188,7 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
     profileId = resolved.profileId;
+    acquiredPortalId = resolved.portalId;
   }
 
   // 4. Authorize: demo, then reachability, then write. A member who cannot reach the
@@ -226,7 +231,9 @@ export async function POST(req: Request): Promise<Response> {
   try {
     for (const file of toIngest) {
       const maxIdBefore = maxDocumentId(profileId);
-      const docId = await ingestMedicalUpload(login.id, profileId, file);
+      const docId = await ingestMedicalUpload(login.id, profileId, file, {
+        acquiredPortalId,
+      });
       const landed = readLanded(docId, profileId);
       // The engine lands a row on every path, so a missing one means the row was
       // deleted underneath us mid-request. Report the id we were given rather than

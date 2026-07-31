@@ -266,7 +266,10 @@ Setup, under **Data → Import → MyChart (Epic portals)**:
    retiring one machine doesn't disturb the others.
 
 Documents land in **Data → Review** like any other import, with the same
-deduplication and the same size and type checks.
+deduplication and the same size and type checks. A document pushed in by the tool
+records **which portal it came from** — shown as "Acquired via …" in Review and on
+the import's detail page — so two portals serving the same patient stay tellable
+apart. A document you uploaded yourself simply says nothing there.
 
 **Why the mapping lives here and not in the tool.** If the tool decided which
 profile a patient belongs to, that decision would sit in local config on every

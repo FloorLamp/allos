@@ -14,6 +14,7 @@ import { db } from "@/lib/db";
 import { POST as UPLOAD } from "@/app/api/documents/route";
 import { POST as SYNC_REPORT } from "@/app/api/documents/sync-report/route";
 import { createApiToken } from "@/lib/api-tokens";
+import { getImportLogDocuments } from "@/lib/queries";
 import {
   bindPortalIdentity,
   createPortal,
@@ -568,5 +569,123 @@ describe("POST /api/documents/sync-report", () => {
     const rows = events(mineProfile);
     expect(rows[0].inserted).toBe(0);
     expect(rows[0].updated).toBeLessThanOrEqual(1_000_000);
+  });
+});
+
+// ── ACQUIRED-BY PROVENANCE (#1748) ───────────────────────────────────────────
+//
+// The resolved portal must reach the DOCUMENT ROW, not just the profile decision. The
+// asymmetry is the point: a portal push records where it came from, and a human upload
+// records NULL — which is not "unknown" but the positive statement "a person put this
+// here". Getting that backwards (defaulting a portal onto CLI uploads, or dropping it
+// from portal ones) is what makes two portals' overlapping records indistinguishable.
+describe("acquired-by provenance", () => {
+  function acquiredOf(profileId: number): (number | null)[] {
+    return (
+      db
+        .prepare(
+          "SELECT acquired_portal_id AS p FROM medical_documents WHERE profile_id = ? ORDER BY id"
+        )
+        .all(profileId) as { p: number | null }[]
+    ).map((r) => r.p);
+  }
+
+  it("stamps the resolved portal on a document pushed through the identity form", async () => {
+    bindPortalIdentity(portalId, "Jane Doe", mineProfile);
+    const res = await UPLOAD(
+      uploadByIdentity(memberToken, "ochsner", "Jane Doe", "prov-stored")
+    );
+    expect(res.status).toBe(200);
+    expect(acquiredOf(mineProfile)).toEqual([portalId]);
+  });
+
+  it("leaves it NULL on the plain profile form — the human CLI path", async () => {
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([pdfBytes("prov-cli")], { type: "application/pdf" }),
+      "labs.pdf"
+    );
+    const res = await UPLOAD(
+      new Request(`http://x/api/documents?profile=${mineProfile}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${memberToken}` },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(acquiredOf(mineProfile)).toEqual([null]);
+  });
+
+  it("stamps it on a REFUSED file too, so Review shows the tool pushing something unusable", async () => {
+    bindPortalIdentity(portalId, "Jane Doe", mineProfile);
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([new TextEncoder().encode("nope")], {
+        type: "application/x-msdownload",
+      }),
+      "tool.exe"
+    );
+    const res = await UPLOAD(
+      new Request("http://x/api/documents?portal=ochsner&patient=Jane%20Doe", {
+        method: "POST",
+        headers: { authorization: `Bearer ${memberToken}` },
+        body: form,
+      })
+    );
+    expect(res.status).toBe(200);
+    // A 'failed' typing row landed, and it still says where it came from.
+    const rows = db
+      .prepare(
+        "SELECT extraction_status AS s, acquired_portal_id AS p FROM medical_documents WHERE profile_id = ?"
+      )
+      .all(mineProfile) as { s: string; p: number | null }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].s).toBe("failed");
+    expect(rows[0].p).toBe(portalId);
+  });
+
+  it("surfaces the portal's display NAME in the Review feed, and nothing for a hand upload", async () => {
+    bindPortalIdentity(portalId, "Jane Doe", mineProfile);
+    await UPLOAD(
+      uploadByIdentity(memberToken, "ochsner", "Jane Doe", "prov-feed")
+    );
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([pdfBytes("prov-feed-cli")], { type: "application/pdf" }),
+      "byhand.pdf"
+    );
+    await UPLOAD(
+      new Request(`http://x/api/documents?profile=${mineProfile}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${memberToken}` },
+        body: form,
+      })
+    );
+
+    const rows = getImportLogDocuments(mineProfile);
+    const pushed = rows.find((r) => r.filename === "labs.pdf");
+    const byHand = rows.find((r) => r.filename === "byhand.pdf");
+    expect(pushed?.acquired_portal_name).toBe("Ochsner MyChart");
+    expect(byHand?.acquired_portal_name ?? null).toBeNull();
+  });
+
+  it("loses the label — and only the label — when the portal leaves the registry", async () => {
+    const temp = createPortal("prov-temp", "Temp Provenance");
+    expect(temp.ok).toBe(true);
+    if (!temp.ok) return;
+    bindPortalIdentity(temp.id, "Jane Doe", mineProfile);
+    await UPLOAD(
+      uploadByIdentity(memberToken, "prov-temp", "Jane Doe", "prov-drop")
+    );
+    expect(acquiredOf(mineProfile)).toEqual([temp.id]);
+
+    expect(deletePortal(temp.id)).toBe(true);
+    // The DOCUMENT survives; only the name of how it arrived goes, because the thing it
+    // named no longer exists.
+    expect(docCount(mineProfile)).toBe(1);
+    expect(acquiredOf(mineProfile)).toEqual([null]);
   });
 });

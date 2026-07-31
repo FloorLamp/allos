@@ -70,6 +70,11 @@ export interface ImportLogDocumentRow {
   // no confidence signal: a deterministic import, a keyless extraction, a document
   // imported before the field existed, or a report the reader can't parse.
   confidence_scrutiny: number;
+  // ACQUIRED-BY (#1748): the display name of the portal this document was pushed in
+  // from, LEFT JOINed off the registry so a rename shows up everywhere at once. NULL for
+  // every document a person uploaded — which is most of them — and the feed simply says
+  // nothing in that case rather than "acquired via: —".
+  acquired_portal_name: string | null;
   uploaded_at: string;
   sortTime: string;
 }
@@ -101,15 +106,21 @@ export function getImportLogDocuments(
   // the statement's first argument as a bare literal.
   const rows = db
     .prepare(
-      `SELECT id, filename, doc_type, source, document_date, patient_name,
-              extraction_status, extraction_error, extracted_count,
-              CASE WHEN import_report IS NOT NULL AND json_valid(import_report)
-                   THEN CAST(COALESCE(json_extract(import_report, '$.confidence.scrutiny'), 0) AS INTEGER)
+      `SELECT d.id AS id, d.filename AS filename, d.doc_type AS doc_type,
+              d.source AS source, d.document_date AS document_date,
+              d.patient_name AS patient_name,
+              d.extraction_status AS extraction_status,
+              d.extraction_error AS extraction_error,
+              d.extracted_count AS extracted_count,
+              CASE WHEN d.import_report IS NOT NULL AND json_valid(d.import_report)
+                   THEN CAST(COALESCE(json_extract(d.import_report, '$.confidence.scrutiny'), 0) AS INTEGER)
                    ELSE 0 END AS confidence_scrutiny,
-              uploaded_at
-         FROM medical_documents
-        WHERE profile_id = ?
-        ORDER BY uploaded_at DESC, id DESC`
+              p.name AS acquired_portal_name,
+              d.uploaded_at AS uploaded_at
+         FROM medical_documents d
+         LEFT JOIN portals p ON p.id = d.acquired_portal_id
+        WHERE d.profile_id = ?
+        ORDER BY d.uploaded_at DESC, d.id DESC`
     )
     .all(profileId) as Omit<ImportLogDocumentRow, "kind" | "sortTime">[];
   return rows.map((r) => ({ kind: "document", ...r, sortTime: r.uploaded_at }));

@@ -64,6 +64,17 @@ export function portalBySlug(slug: string): Portal | null {
   return (PORTAL_BY_SLUG_STMT.get(slug) as Portal | undefined) ?? null;
 }
 
+const PORTAL_BY_ID_STMT = db.prepare(
+  `SELECT id, slug, name, created_at AS createdAt FROM portals WHERE id = ?`
+);
+
+// One portal by its id — how the document detail page turns a stored
+// `acquired_portal_id` into "Acquired via Ochsner MyChart" (#1748). The registry is
+// GLOBAL (a household sees one "Ochsner MyChart"), so there is nothing to scope here.
+export function portalById(id: number): Portal | null {
+  return (PORTAL_BY_ID_STMT.get(id) as Portal | undefined) ?? null;
+}
+
 export type PortalWriteResult =
   { ok: true; id: number } | { ok: false; error: string };
 
@@ -103,14 +114,23 @@ export function createPortal(slug: string, name: string): PortalWriteResult {
   return { ok: true, id };
 }
 
-// Remove a portal. Its bindings cascade (FK ON DELETE CASCADE), and they are also cleared
-// explicitly so the teardown holds with foreign_keys off — the posture every other
-// multi-table delete in this repo uses.
+// Remove a portal. Its bindings and the acquisition links on documents both cascade
+// (FK ON DELETE CASCADE / SET NULL), and each is also cleared explicitly so the teardown
+// holds with foreign_keys off — the posture every other multi-table delete in this repo
+// uses.
+//
+// Nulling `medical_documents.acquired_portal_id` is a deliberate loss, not an oversight:
+// provenance points AT the registry entry, so removing the portal from the vocabulary
+// removes the ability to name it. The DOCUMENTS are untouched — only the label of how
+// they arrived goes, and it goes because the thing it named no longer exists.
 export function deletePortal(portalId: number): boolean {
   return writeTx((): boolean => {
     db.prepare("DELETE FROM portal_identities WHERE portal_id = ?").run(
       portalId
     );
+    db.prepare(
+      "UPDATE medical_documents SET acquired_portal_id = NULL WHERE acquired_portal_id = ?"
+    ).run(portalId);
     return (
       db.prepare("DELETE FROM portals WHERE id = ?").run(portalId).changes > 0
     );
