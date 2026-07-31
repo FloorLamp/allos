@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, settledFill } from "./helpers";
+import { followLink, hydratedClick, settledFill } from "./helpers";
 
 // API tokens on Settings → Account & security → API tokens (#1734).
 //
@@ -21,8 +21,13 @@ test.describe("API tokens (#1734)", () => {
     // registry entry reaches the rendered nav (not just the route).
     const nav = page.getByTestId("settings-subpage-nav");
     await expect(nav).toBeVisible();
-    await nav.getByRole("link", { name: "API tokens" }).click();
-    await expect(page).toHaveURL(/\/settings\/tokens$/);
+    // followLink, not a bare click: a <Link> clicked in the pre-hydration window is
+    // SWALLOWED (#500), and this click lands right after goto().
+    await followLink(
+      page,
+      nav.getByRole("link", { name: "API tokens" }),
+      /\/settings\/tokens$/
+    );
     await expect(page.getByTestId("api-token-mint")).toBeVisible();
   });
 
