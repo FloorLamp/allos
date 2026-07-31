@@ -7,7 +7,7 @@ Connect outside services under **Data → Import** so your health data syncs
 automatically. Each provider has its own setup page (linked from the Import
 tab's "Connect a device or service" card). **Google Health Connect**,
 **Strava**, **Oura Ring**, **Withings**, **Fitbit via Google Takeout**,
-**MyChart (Epic portals)**, and the keyless **Weather & UV (Open-Meteo)** source
+**Patient portals**, and the keyless **Weather & UV (Open-Meteo)** source
 are available today; **Garmin** is scaffolded as "coming soon".
 
 ## Google Health Connect
@@ -241,7 +241,7 @@ imported health records remain. Re-importing a newer export is safe because
 records deduplicate on their natural keys, and the result appears in
 **Data → Review**.
 
-## MyChart (Epic portals)
+## Patient portals
 
 The one **external-attended** integration: allos cannot run this sync itself.
 Portal sign-in needs a person — two-factor codes, and sessions that idle out in
@@ -250,20 +250,35 @@ you would, downloads the portal's own export, and pushes it in through the
 [document upload API](api-tokens.md). Allos never signs in and never holds a
 portal address.
 
-Setup, under **Data → Import → MyChart (Epic portals)**:
+It is named for the **document family**, not for one vendor: the CCD/C-CDA
+export is a regulatory requirement, so Epic MyChart, Cerner/Oracle Health,
+athenahealth and the rest all produce the same thing. MyChart is simply the
+first companion tool written against the contract.
 
-1. **Register each portal** by a short id and a display name — `ochsner`,
-   "Ochsner MyChart". A portal is recorded **by name only**. Its web address
-   lives in the companion tool's local config on your machine, and allos refuses
-   to store one anywhere, including in the display name.
-2. **Map each patient to a profile.** One portal login often covers several
-   family members through proxy access, and the portal decides what to call
-   them. You bind the label the portal shows to the profile it belongs to.
-   Labels are matched exactly as written — two labels that differ visibly are
-   two different people.
+Setup, under **Data → Import → Patient portals**:
+
+1. **Register each portal** by its display name — "Ochsner MyChart". Allos mints
+   the short id the companion tool quotes, so renaming the portal later never
+   breaks a machine's config. A portal is recorded **by name only**: its web
+   address lives in the companion tool's local config on your machine, and allos
+   refuses to store one anywhere, including in the display name. You may tag
+   which software it runs, which is only for display and for the tool to
+   sanity-check what it has been pointed at.
+2. **Name the logins, if there are several.** One portal often has more than one
+   account in a household — each parent's own — and a portal's patient list is
+   shown **per login**, so the same name can mean two different people on two
+   accounts. Give each one a nickname ("Mom", "Dad"). A nickname is all allos
+   stores: never a username, never a password. If your household has one login,
+   skip this entirely — you will never see the concept.
 3. **Mint an API token** (Settings → Account & security → API tokens) with the
    _Upload documents_ capability. Give **each computer its own token**, so
    retiring one machine doesn't disturb the others.
+4. **Run the tool.** It reports which patients that login covers, and they appear
+   on the card under **Waiting to be mapped**.
+5. **Map each patient to a profile** — one tap, using the label exactly as the
+   portal spelled it. Or **ignore** a patient whose records belong somewhere
+   else, and they stop being offered. Labels are matched exactly as written: two
+   labels that differ visibly are two different people.
 
 Documents land in **Data → Review** like any other import, with the same
 deduplication and the same size and type checks. A document pushed in by the tool
@@ -277,7 +292,13 @@ machine it runs on — and a stale copy would file one person's records under
 another. So the tool reports what the portal told it and allos resolves it,
 against a mapping you can see and correct in one place. Anything unmapped is
 **refused**, never filed under a guess: a new proxy patient appearing on the
-portal surfaces as a visible failure that you fix by adding a mapping.
+portal surfaces as something to fix, not as records on the wrong person.
+
+**Why the tool tells allos who it saw.** Predicting how a portal renders a name
+is a losing game — "SMITH, ALEX" or "Alex Smith" or "Smith, Alex Jr." — so you
+never have to. The tool reports the list verbatim at the end of every run, and
+you bind what allos was actually told. Refusals still happen for a patient who
+appears between runs; they are the safety net, not the setup path.
 
 **Why a quiet run still reports.** A run that checks the portal and finds nothing
 new pushes no documents, so it would otherwise leave no trace and "Last checked"
@@ -285,12 +306,13 @@ could never move — a healthy quiet week would look identical to a broken one. 
 tool therefore reports every run, and a nothing-new result reads as a calm
 success. Only a genuine failure raises the Review failure badge, and a failure
 leaves the previous "Last checked" standing so you can see how long it has really
-been.
+been. Each mapped patient shows its own last-checked line, because a household
+with two portals and three patients has more than one answer to that question.
 
 **Why there is no Start button.** Allos cannot make an attended sync happen, so
-the card doesn't pretend to: it is setup and status. For the same reason MyChart
-is exempt from staleness warnings — "you haven't signed in to your hospital
-portal in three days" is not a fault.
+the card doesn't pretend to: it is setup and status. For the same reason this
+integration is exempt from staleness warnings — "you haven't signed in to your
+hospital portal in three days" is not a fault.
 
 ## Weather & UV (Open-Meteo)
 

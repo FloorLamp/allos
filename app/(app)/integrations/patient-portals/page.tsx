@@ -1,43 +1,61 @@
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
-import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import {
+  accessForProfile,
+  requireSession,
+  getAccessibleProfiles,
+} from "@/lib/auth";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection } from "@/lib/integrations/connections";
 import { getLastSuccessfulSyncAt } from "@/lib/queries";
-import { listPortalIdentities, listPortals } from "@/lib/portals";
+import {
+  identitySyncStatuses,
+  listPendingIdentities,
+  listPortalAccounts,
+  listPortalIdentities,
+  listPortals,
+} from "@/lib/portals";
 import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
-import MyChartSetup from "./MyChartSetup";
+import PortalSetup from "./PortalSetup";
 
 export const dynamic = "force-dynamic";
 
-// MyChart (#1739) — the one `external-attended` integration. Allos cannot execute this
-// sync: portal sign-in needs a person (two-factor codes, sessions that idle out in
+// Patient portals (#1739) — the one `external-attended` integration. Allos cannot execute
+// this sync: portal sign-in needs a person (two-factor codes, sessions that idle out in
 // minutes), so a companion tool runs on the user's own machine and pushes results in
 // through the token-authenticated upload API.
 //
+// The integration is named for the DOCUMENT FAMILY, not for one vendor's tool: the
+// CCD/C-CDA export is a regulatory requirement, so every major portal emits it. MyChart is
+// the first tool that implements the contract.
+//
 // The page is therefore setup and status, never a "Sync now" button — offering one would
 // promise something allos cannot do. What it owns is the part allos MUST own: the portal
-// vocabulary and the patient→profile bindings, because letting the tool decide profile ids
-// would put that mapping in local config on every machine, and a stale local mapping
-// filing one person's records under another is the harm this whole design prevents.
-export default async function MyChartPage() {
+// and login vocabulary, and the patient→profile bindings, because letting the tool decide
+// profile ids would put that mapping in local config on every machine, and a stale local
+// mapping filing one person's records under another is the harm this whole design
+// prevents.
+export default async function PatientPortalsPage() {
   const { login, profile } = await requireSession();
-  const def = getIntegration("mychart")!;
-  const conn = getConnection(profile.id, "mychart");
-  const lastSync = getLastSuccessfulSyncAt(profile.id, "mychart");
+  const def = getIntegration("patient-portals")!;
+  const conn = getConnection(profile.id, "patient-portals");
+  const lastSync = getLastSuccessfulSyncAt(profile.id, "patient-portals");
 
   const portals = listPortals();
+  const accounts = listPortalAccounts();
 
   // Bindings are shown for the profiles this LOGIN can reach. The stored table is
   // instance-wide (an admin view of "which patient goes where"), so the filtering happens
   // here, at the auth boundary — a member never sees a binding onto a profile they cannot
-  // reach, and the write gate re-checks on every action regardless.
+  // reach, and the write gate re-checks on every action regardless. IGNORED bindings name
+  // no profile at all, so there is nothing to filter them by; they are household-level
+  // "do not sync this person" statements and are shown to everyone who can see the card.
   const accessible = await getAccessibleProfiles();
   const accessibleIds = new Set(accessible.map((p) => p.id));
-  const identities = listPortalIdentities().filter((i) =>
-    accessibleIds.has(i.profileId)
+  const identities = listPortalIdentities().filter(
+    (i) => i.ignored || (i.profileId !== null && accessibleIds.has(i.profileId))
   );
 
   // The same disambiguated labels the header switcher uses, so "Alex (2)" means the same
@@ -47,6 +65,24 @@ export default async function MyChartPage() {
     id: p.id,
     name: labels.get(p.id) ?? p.name,
   }));
+  // Pickers offer only what this login may WRITE: binding onto a read-only profile is
+  // refused at the gate, so offering it would be an invitation to a guaranteed error.
+  const writableProfiles = profiles.filter(
+    (p) => accessForProfile(login.id, login.role, p.id) === "write"
+  );
+
+  // Identities the acquirer reported that allos could not place. Read for any login that
+  // could actually ACT on them — write access to at least one profile, the same population
+  // the picker serves — and for admins. A pending row has no profile, so unlike a binding
+  // there is no accessible set to filter it through; showing portal-spelled patient labels
+  // to caregiver-members with write access is a deliberate, owner-approved trade so a
+  // caregiver can finish their own portal setup without an admin.
+  const canManagePending =
+    login.role === "admin" || writableProfiles.length > 0;
+  const pending = canManagePending ? listPendingIdentities() : [];
+
+  // Per-(login, patient) "Last synced" for the ACTIVE profile's runs.
+  const statuses = identitySyncStatuses(profile.id, "patient-portals");
 
   return (
     <div className="space-y-6">
@@ -71,7 +107,10 @@ export default async function MyChartPage() {
           How it works
         </h2>
         <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-600 dark:text-slate-300">
-          <li>Register each portal below, and map its patients to profiles.</li>
+          <li>
+            Register each portal below. If two people sign in to the same portal
+            with their own accounts, give each login a nickname.
+          </li>
           <li>
             Create an API token under{" "}
             <Link
@@ -86,8 +125,12 @@ export default async function MyChartPage() {
           </li>
           <li>
             Run the companion tool on your computer. It signs in the way you
-            would — you type the two-factor code — downloads the portal&rsquo;s
-            own export, and pushes it here.
+            would — you type the two-factor code — and reports which patients
+            that login covers.
+          </li>
+          <li>
+            Those patients appear here to be mapped to profiles. Map them once;
+            later runs land automatically.
           </li>
           <li>
             Documents land in{" "}
@@ -107,11 +150,16 @@ export default async function MyChartPage() {
         </p>
       </div>
 
-      <MyChartSetup
+      <PortalSetup
         portals={portals}
+        accounts={accounts}
         identities={identities}
+        pending={pending}
+        statuses={statuses}
         profiles={profiles}
+        writableProfiles={writableProfiles}
         isAdmin={login.role === "admin"}
+        canManagePending={canManagePending}
       />
 
       <div className="card">
@@ -119,7 +167,7 @@ export default async function MyChartPage() {
           Status
         </h2>
         <p
-          data-testid="mychart-status-line"
+          data-testid="portals-status-line"
           className="mt-1 text-sm text-slate-600 dark:text-slate-300"
         >
           {lastSync

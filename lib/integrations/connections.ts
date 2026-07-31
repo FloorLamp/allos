@@ -193,6 +193,16 @@ export interface SyncEventInput {
   // written by lib/integrations/raw-log.ts. Null when capture was off/failed.
   raw_ref?: string | null;
   error?: string | null;
+  // WHICH external identity this run was about (#1739): the (portal, login, patient) an
+  // attended acquirer reported. Undefined/null for every other provider — a Strava poll
+  // has no identity beyond the profile — and for a `profile=<id>` report from a human
+  // debugging with curl. It is what lets the card answer "when was THIS patient on THIS
+  // login last checked", which one per-profile connection stamp cannot.
+  identity?: {
+    portalId: number;
+    accountId: number;
+    patientLabel: string;
+  } | null;
 }
 
 // Append one integration_sync_events row (the append-only debug history the setup
@@ -214,8 +224,8 @@ export function recordSyncEvent(
         `INSERT INTO integration_sync_events
          (profile_id, provider, at, ok, window_start, window_end,
           received, written, inserted, updated, unchanged, suppressed, edited, skipped,
-          details, raw_ref, error)
-       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          details, raw_ref, error, portal_id, account_id, patient_label)
+       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -233,7 +243,10 @@ export function recordSyncEvent(
         ev.skipped ?? null,
         boundSyncDetailsJson(ev.details),
         ev.raw_ref ?? null,
-        ev.error ? ev.error.slice(0, 500) : null
+        ev.error ? ev.error.slice(0, 500) : null,
+        ev.identity?.portalId ?? null,
+        ev.identity?.accountId ?? null,
+        ev.identity?.patientLabel ?? null
       );
     // The event id lets the caller link its per-row provenance (#1333).
     return Number(info.lastInsertRowid);

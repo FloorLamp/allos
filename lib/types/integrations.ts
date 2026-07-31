@@ -44,7 +44,7 @@ export type IntegrationId =
   | "weather"
   | "calendar-feed"
   | "fitbit-takeout"
-  | "mychart";
+  | "patient-portals";
 
 // A row in the integrations registry — the Integrations page renders from these.
 export interface IntegrationDef {

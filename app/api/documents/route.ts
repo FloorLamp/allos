@@ -11,7 +11,7 @@ import {
   type UploadOutcome,
 } from "@/lib/document-upload-api";
 import { parseUploadTarget } from "@/lib/acquirer-identity";
-import { resolvePortalIdentity } from "@/lib/portals";
+import { recordPendingIdentity, resolvePortalIdentity } from "@/lib/portals";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/log";
 
@@ -54,8 +54,17 @@ import { createLogger } from "@/lib/log";
 // WHICH PROFILE. Explicit, always — but named in one of TWO ways, and exactly one per
 // request (#1739):
 //
-//   `profile=<id>`                  the human CLI, which knows its own instance's ids.
-//   `portal=<slug>&patient=<label>` an ACQUIRER, which must not know them.
+//   `profile=<id>`                                  the human CLI, which knows its own
+//                                                   instance's ids.
+//   `portal=<slug>[&account=<slug>]&patient=<label>` an ACQUIRER, which must not know
+//                                                   them.
+//
+// `account` names WHICH LOGIN of the portal, and is optional: a patient label is unique
+// per login, not per portal (two parents' proxy lists can both render "SMITH, ALEX"
+// meaning two different people), but a single-login household has nothing to say here.
+// Omitting it resolves only when the portal has exactly one login; with more than one it
+// REFUSES rather than picking, because picking would be a guess about whose records these
+// are.
 //
 // The second form exists because an external tool deciding profile ids would have to keep
 // that mapping in local config on every machine it runs on, and a stale local mapping
@@ -155,6 +164,7 @@ export async function POST(req: Request): Promise<Response> {
   const target = parseUploadTarget({
     profile: params.get("profile") ?? form.get("profile"),
     portal: params.get("portal") ?? form.get("portal"),
+    account: params.get("account") ?? form.get("account"),
     patient: params.get("patient") ?? form.get("patient"),
   });
   if (!target.ok) return jsonError(target.error, 400);
@@ -169,20 +179,34 @@ export async function POST(req: Request): Promise<Response> {
   } else {
     const resolved = resolvePortalIdentity(
       target.target.portalSlug,
+      target.target.accountSlug,
       target.target.patientLabel
     );
     if (!resolved.ok) {
+      // REMEMBER what we refused (#1739), so the card can offer the one-tap binding the
+      // refusal is supposed to become. Reachable only after authenticateApiToken
+      // succeeded, so this is never an anonymous write. It records nothing when the
+      // portal or login is itself unresolvable — allos owns those vocabularies.
+      recordPendingIdentity(
+        target.target.portalSlug,
+        target.target.accountSlug,
+        target.target.patientLabel,
+        "unmapped-upload"
+      );
+      revalidatePath("/integrations/patient-portals");
       // TYPED refusal, not a generic 400: the tool surfaces `unmapped-identity` as "this
       // patient isn't mapped yet" and the card turns it into a one-tap binding. Answered
       // with 404 because the identity genuinely does not resolve — distinct from the 403
       // a resolved-but-unauthorized identity gets below, so the two are debuggable apart
-      // WITHOUT revealing whether some other login has bound this label.
+      // WITHOUT revealing whether some other login has bound this label. Unknown,
+      // IGNORED, and ambiguous-account all answer identically: the endpoint is
+      // non-oracular about a household's choices.
       return Response.json(
         {
           ok: false,
           error: "unmapped-identity",
           detail:
-            "That portal patient is not mapped to a profile yet. Map it under Integrations → MyChart.",
+            "That portal patient is not mapped to a profile yet. Map it under Integrations → Patient portals.",
         },
         { status: 404 }
       );

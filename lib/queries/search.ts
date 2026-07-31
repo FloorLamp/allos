@@ -1122,7 +1122,7 @@ const PAGES: {
     title: "Data",
     href: "/data",
     keywords:
-      "data import export manage upload download csv paste documents labs mychart integrations health connect strava garmin devices",
+      "data import export manage upload download csv paste documents labs mychart patient portals integrations health connect strava garmin devices",
   },
   { title: "Settings", href: "/settings", keywords: "preferences" },
   // The per-group settings destinations come from the ONE settings registry (#1462)

@@ -129,6 +129,7 @@ import { migration as m127 } from "./127-api-tokens";
 import { migration as m128 } from "./128-portal-identity";
 import { migration as m129 } from "./129-weather-daily-cache";
 import { migration as m130 } from "./130-acquirer-provenance";
+import { migration as m131 } from "./131-portal-accounts";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -267,4 +268,5 @@ export const MIGRATIONS: Migration[] = [
   m128,
   m129,
   m130,
+  m131,
 ];

@@ -265,7 +265,7 @@ describe("reassignDocument", () => {
     // binding sent it to the wrong person — which is exactly when "which portal pushed
     // this?" is the question being asked. Clearing it here would destroy the audit
     // trail at the moment it matters most.
-    const portal = createPortal("reassign-portal", "Reassign Portal");
+    const portal = createPortal("Reassign Portal");
     expect(portal.ok).toBe(true);
     if (!portal.ok) return;
 

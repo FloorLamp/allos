@@ -119,12 +119,19 @@ profile, such a tool names the identity the portal showed it:
 ```bash
 curl -H "Authorization: Bearer $ALLOS_TOKEN" \
      -F file=@summary.pdf \
-     "https://allos.example/api/documents?portal=ochsner&patient=Jane%20Q.%20Doe"
+     "https://allos.example/api/documents?portal=ochsner-mychart&patient=Jane%20Q.%20Doe"
 ```
 
-Allos resolves `(portal, patient)` against the mapping you manage under **Integrations →
-MyChart**, then intersects the result with what this token may write. A mapping is never a
+Allos resolves the identity against the mapping you manage under **Integrations → Patient
+portals**, then intersects the result with what this token may write. A mapping is never a
 bypass: a binding says where records belong, not that this token may put them there.
+
+If the portal has **more than one login** in your household, add `&account=<slug>` — the
+short id allos minted for the nickname you gave that login. A patient label is unique per
+login, not per portal, so two accounts can both show "SMITH, ALEX" meaning two different
+people. Omit `account` and allos resolves it only when the portal has exactly one login;
+with more than one the request is **refused rather than guessed**, because guessing which
+person's login a run came from is how records land on the wrong profile.
 
 Exactly one form per request — a `profile` **or** a `(portal, patient)` pair. Both
 together is a `400`, because preferring one would silently ignore the destination you
@@ -139,7 +146,15 @@ stored**:
 
 That refusal is the feature. When a new person appears on a portal's proxy list, the
 upload fails visibly and becomes a one-tap mapping — it never lands on whichever profile
-seemed closest.
+seemed closest. A patient the household has explicitly **ignored** answers identically:
+the endpoint never reveals which of the two it was.
+
+Allos also **remembers what it refused**. The identity appears under **Integrations →
+Patient portals → Waiting to be mapped**, with when it was first and last seen, and maps
+to a profile in one tap — spelled exactly as the portal spelled it, so nobody has to
+retype a label they never saw. Repeated sightings update that one entry rather than
+piling up, only an authenticated request is ever recorded, and the list is bounded per
+login.
 
 ### Reporting a run
 
@@ -150,13 +165,23 @@ therefore ends every run with:
 
 ```bash
 curl -H "Authorization: Bearer $ALLOS_TOKEN" -H "Content-Type: application/json" \
-     -d '{"status":"nothing-new","portal":"ochsner","patient":"Jane Q. Doe","unchanged":4}' \
+     -d '{"status":"nothing-new","portal":"ochsner-mychart","patient":"Jane Q. Doe",
+          "unchanged":4,"identities":["Jane Q. Doe","SMITH, ALEX"]}' \
      https://allos.example/api/documents/sync-report
 ```
 
 `status` is `downloaded`, `nothing-new`, or `failed`, alongside optional `inserted`,
-`updated`, `unchanged`, `failed` counts and a `message`. It lands as an ordinary sync
-event, so Data → Review shows it like any other integration.
+`updated`, `unchanged`, `failed` counts, a `message`, and an optional `account`. It lands
+as an ordinary sync event, so Data → Review shows it like any other integration — and it
+is recorded against the identity it names, so each mapped patient gets its own
+"Last checked".
+
+**`identities` is how mapping actually happens.** Report the portal's patient list
+verbatim — exactly the strings the proxy list showed — and every one that is not already
+mapped or ignored appears on the card ready to bind. Nobody has to predict how a portal
+renders a name. The list is accepted even when the run itself failed or its own patient is
+unmapped (a first run has nothing bound yet), sanitized, de-duplicated, and capped; the
+response echoes `discovered` so a tool can say "2 new patients need mapping in allos".
 
 `nothing-new` is a **calm success**: it advances "Last checked" and keeps the connection
 looking alive. Only `failed` drives the Review failure badge — and a failure deliberately

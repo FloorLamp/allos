@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  isAccountSlug,
   isPatientLabel,
   isPortalSlug,
   isSyncReportStatus,
+  mintSlug,
   normalizePatientLabel,
+  parseDiscoveredLabels,
   parseSyncReportCounts,
   parseUploadTarget,
   rejectsAddress,
   syncReportEvent,
+  DISCOVERED_LABELS_MAX,
+  PORTAL_SLUG_MAX,
   SYNC_REPORT_STATUSES,
 } from "../acquirer-identity";
 
@@ -125,9 +130,52 @@ describe("parseUploadTarget — exactly one destination", () => {
       target: {
         kind: "identity",
         portalSlug: "ochsner",
+        // Null, not "default": which login an omitted account means is a fact about
+        // stored rows, so only the DB layer may answer it — and it refuses rather than
+        // picking when the portal has more than one.
+        accountSlug: null,
         patientLabel: "Jane Doe",
       },
     });
+  });
+
+  it("carries the optional account through when the tool names one", () => {
+    expect(
+      parseUploadTarget({
+        portal: "ochsner",
+        account: "mom",
+        patient: "SMITH, ALEX",
+      })
+    ).toEqual({
+      ok: true,
+      target: {
+        kind: "identity",
+        portalSlug: "ochsner",
+        accountSlug: "mom",
+        patientLabel: "SMITH, ALEX",
+      },
+    });
+  });
+
+  it("REFUSES a malformed account rather than ignoring it", () => {
+    // Silently dropping a named login would land the run under a different one.
+    const r = parseUploadTarget({
+      portal: "ochsner",
+      account: "Not A Slug",
+      patient: "Jane Doe",
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toContain("`account`");
+  });
+
+  it("treats an account alone as an identity attempt, not as an absent destination", () => {
+    // Otherwise a tool that sent only `account` would get "a destination is required",
+    // which is true but unhelpfully far from the real mistake.
+    const r = parseUploadTarget({ account: "mom" });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toContain("`portal`");
   });
 
   it("refuses BOTH forms together rather than picking one", () => {
@@ -247,5 +295,93 @@ describe("sync report", () => {
         null
       ).error
     ).toBe("sync failed");
+  });
+});
+
+describe("mintSlug — allos owns the key, the user owns the name", () => {
+  it("derives a stable kebab slug from a display name", () => {
+    expect(mintSlug("Ochsner MyChart")).toBe("ochsner-mychart");
+    expect(mintSlug("Baptist Health — Downtown")).toBe(
+      "baptist-health-downtown"
+    );
+    expect(mintSlug("Mom")).toBe("mom");
+  });
+
+  it("folds accents to their base letters rather than dropping them", () => {
+    expect(mintSlug("Hôpital Général")).toBe("hopital-general");
+  });
+
+  it("produces only valid slugs, or nothing at all", () => {
+    for (const name of [
+      "Ochsner MyChart",
+      "  spaced  out  ",
+      "Dad's login!",
+      "123",
+      "A".repeat(200),
+    ]) {
+      const slug = mintSlug(name);
+      expect(isPortalSlug(slug), `${name} → ${slug}`).toBe(true);
+      expect(isAccountSlug(slug)).toBe(true);
+    }
+    // No slug-able characters at all → empty, and the caller refuses rather than
+    // inventing a key.
+    expect(mintSlug("•••")).toBe("");
+    expect(mintSlug("   ")).toBe("");
+  });
+
+  it("truncates long names on a hyphen boundary, never leaving a trailing separator", () => {
+    const slug = mintSlug(
+      "Really Very Extremely Long Health System Name That Goes On"
+    );
+    expect(slug.length).toBeLessThanOrEqual(PORTAL_SLUG_MAX);
+    expect(slug.endsWith("-")).toBe(false);
+    expect(isPortalSlug(slug)).toBe(true);
+  });
+
+  it("is deterministic — the same name always mints the same slug", () => {
+    expect(mintSlug("Ochsner MyChart")).toBe(mintSlug("Ochsner MyChart"));
+  });
+
+  it("collapses two different names onto one slug, leaving disambiguation to the DB", () => {
+    // A pure function cannot know what already exists, so it does not pretend to.
+    expect(mintSlug("Baptist Health")).toBe(mintSlug("baptist   health"));
+  });
+});
+
+describe("parseDiscoveredLabels — an untrusted proxy list", () => {
+  it("keeps labels verbatim, only normalizing whitespace", () => {
+    expect(parseDiscoveredLabels(["  SMITH,   ALEX ", "Ruth O'Hara"])).toEqual([
+      "SMITH, ALEX",
+      "Ruth O'Hara",
+    ]);
+  });
+
+  it("never case-folds — a label is a key, not a search", () => {
+    expect(parseDiscoveredLabels(["Jane Doe", "JANE DOE"])).toEqual([
+      "Jane Doe",
+      "JANE DOE",
+    ]);
+  });
+
+  it("drops non-strings and empties rather than erroring the whole report", () => {
+    // A run that genuinely happened must still be recorded even if one label was junk.
+    expect(
+      parseDiscoveredLabels(["Real Person", 42, null, "", "   ", {}])
+    ).toEqual(["Real Person"]);
+  });
+
+  it("collapses exact duplicates", () => {
+    expect(parseDiscoveredLabels(["A B", "A  B", "A B"])).toEqual(["A B"]);
+  });
+
+  it("is BOUNDED, so one authenticated report cannot fill the pending list", () => {
+    const many = Array.from({ length: 500 }, (_, i) => `Patient ${i}`);
+    expect(parseDiscoveredLabels(many)).toHaveLength(DISCOVERED_LABELS_MAX);
+  });
+
+  it("treats a non-array as no list at all", () => {
+    expect(parseDiscoveredLabels(undefined)).toEqual([]);
+    expect(parseDiscoveredLabels("Jane Doe")).toEqual([]);
+    expect(parseDiscoveredLabels({ 0: "Jane Doe" })).toEqual([]);
   });
 });

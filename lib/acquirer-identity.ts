@@ -46,6 +46,45 @@ export function isPortalSlug(value: string): boolean {
   );
 }
 
+// An ACCOUNT slug — "which portal login", scoped to its portal. Same shape as a portal
+// slug and for the same reason: it is quoted in a tool's local config and in sync events,
+// so it must be stable, typeable, and structurally incapable of being an address.
+export function isAccountSlug(value: string): boolean {
+  return isPortalSlug(value);
+}
+
+// MINT a slug from a display name.
+//
+// Allos owns the slug, so the user names the thing and allos derives the key. That
+// inversion matters: a slug is what a tool's local config quotes, so it must never change
+// under the user's feet. Typing it by hand invites a household to "fix" it later and
+// silently break every device's config; deriving it once, at creation, means a later
+// RENAME changes only the display name and the key holds.
+//
+// Deliberately lossy and deterministic: lowercase, accents folded to their base letters,
+// every run of non-alphanumerics collapsed to one hyphen, hyphens trimmed, truncated to
+// the slug ceiling on a hyphen boundary. Two different names can therefore mint the same
+// slug — that is the DB layer's problem to disambiguate (it appends a counter), not this
+// function's, because a pure function cannot know what already exists.
+//
+// Returns "" when a name has no slug-able characters at all (e.g. "•••"); the caller
+// refuses rather than inventing a key.
+export function mintSlug(name: string): string {
+  const folded = name
+    .normalize("NFKD")
+    // Strip combining marks so "Hôpital Général" mints "hopital-general" rather than
+    // dropping the accented letters entirely.
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const hyphenated = folded.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (hyphenated.length <= PORTAL_SLUG_MAX) return hyphenated;
+  // Truncate on a hyphen boundary so a cut never leaves a trailing separator or half a
+  // word gluing itself to the counter the DB layer may append.
+  const cut = hyphenated.slice(0, PORTAL_SLUG_MAX);
+  const lastHyphen = cut.lastIndexOf("-");
+  return (lastHyphen > 0 ? cut.slice(0, lastHyphen) : cut).replace(/-+$/, "");
+}
+
 // Does this text look like a network address? Used to refuse a URL wherever a human can
 // type one. Broad on purpose — a scheme, a `//` authority, a bare host with a dot and a
 // plausible TLD, an IPv4 literal, or a userinfo `@` all count. False positives here cost
@@ -98,7 +137,18 @@ export function isPatientLabel(value: string): boolean {
 // the destination I named" is the failure mode this whole surface exists to prevent.
 export type UploadTarget =
   | { kind: "profile"; profileId: number }
-  | { kind: "identity"; portalSlug: string; patientLabel: string };
+  | {
+      kind: "identity";
+      portalSlug: string;
+      // WHICH LOGIN, or null when the caller omitted it. Optional on the wire on purpose:
+      // a single-login household never meets the concept, and its tool config has nothing
+      // to say here. Null does NOT mean "any account" — the DB layer resolves it against
+      // the portal's account set and REFUSES if that set makes the answer ambiguous. This
+      // module cannot make that call: it is pure, and ambiguity is a fact about stored
+      // rows.
+      accountSlug: string | null;
+      patientLabel: string;
+    };
 
 export type UploadTargetResult =
   { ok: true; target: UploadTarget } | { ok: false; error: string };
@@ -119,12 +169,14 @@ function text(raw: unknown): string {
 export function parseUploadTarget(input: {
   profile?: unknown;
   portal?: unknown;
+  account?: unknown;
   patient?: unknown;
 }): UploadTargetResult {
   const hasProfile = text(input.profile).trim() !== "";
   const portal = text(input.portal).trim();
+  const account = text(input.account).trim();
   const patient = text(input.patient);
-  const hasIdentity = portal !== "" || patient.trim() !== "";
+  const hasIdentity = portal !== "" || patient.trim() !== "" || account !== "";
 
   if (hasProfile && hasIdentity) {
     return {
@@ -149,10 +201,16 @@ export function parseUploadTarget(input: {
     return { ok: true, target: { kind: "profile", profileId } };
   }
 
-  // Identity form: BOTH halves are required. A portal with no patient cannot identify a
-  // person on a proxy-access login, and a patient with no portal is not a key at all.
+  // Identity form: `portal` and `patient` are BOTH required. A portal with no patient
+  // cannot identify a person on a proxy-access login, and a patient with no portal is not
+  // a key at all. `account` is OPTIONAL — omitting it is how a single-login household
+  // never meets the concept — but a MALFORMED one is refused rather than ignored, because
+  // silently dropping a named login is how a run lands under the wrong one.
   if (!isPortalSlug(portal)) {
     return { ok: false, error: "`portal` must be a known portal id" };
+  }
+  if (account !== "" && !isAccountSlug(account)) {
+    return { ok: false, error: "`account` must be a known account id" };
   }
   if (!isPatientLabel(patient)) {
     return { ok: false, error: "`patient` must be a non-empty patient label" };
@@ -162,9 +220,44 @@ export function parseUploadTarget(input: {
     target: {
       kind: "identity",
       portalSlug: portal,
+      accountSlug: account === "" ? null : account,
       patientLabel: normalizePatientLabel(patient),
     },
   };
+}
+
+// ── Discovered identity lists ────────────────────────────────────────────────
+
+// How many discovered labels one run report may contribute. A portal's proxy list is a
+// household, not a directory: a dozen is generous and a hundred is a bug or an attack.
+// Bounding here — at the PARSE, before anything is stored — keeps a single authenticated
+// report from filling the pending list in one shot.
+export const DISCOVERED_LABELS_MAX = 25;
+
+// Parse the `identities` array an acquirer reports at the end of a run: the proxy-patient
+// labels it actually saw on that login, VERBATIM.
+//
+// This is the routine path by which allos learns identities — the refusal path is the
+// safety net for surprises, not the setup path. So it is the one place an untrusted tool
+// writes strings that a human will later read and bind, and it is deliberately narrow:
+// non-strings are dropped, labels are whitespace-normalized (never case-folded — a label
+// is a key), anything that fails isPatientLabel is dropped, exact duplicates collapse,
+// and the result is capped. Dropping rather than erroring is right for a REPORT: a run
+// that genuinely happened must still be recorded even if one label was junk.
+export function parseDiscoveredLabels(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (typeof entry !== "string") continue;
+    const label = normalizePatientLabel(entry);
+    if (!isPatientLabel(label)) continue;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    out.push(label);
+    if (out.length >= DISCOVERED_LABELS_MAX) break;
+  }
+  return out;
 }
 
 // ── Sync report ──────────────────────────────────────────────────────────────

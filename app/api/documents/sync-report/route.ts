@@ -5,11 +5,17 @@ import { authenticateApiToken } from "@/lib/api-tokens";
 import { apiTokenRateLimitKey } from "@/lib/api-token-format";
 import {
   isSyncReportStatus,
+  parseDiscoveredLabels,
   parseSyncReportCounts,
   parseUploadTarget,
   syncReportEvent,
 } from "@/lib/acquirer-identity";
-import { resolvePortalIdentity } from "@/lib/portals";
+import {
+  recordDiscoveredIdentities,
+  recordPendingIdentity,
+  resolveAccount,
+  resolvePortalIdentity,
+} from "@/lib/portals";
 import {
   recordSync,
   recordSyncEvent,
@@ -52,8 +58,9 @@ const REPORT_RATE_LIMIT = 120;
 const REPORT_RATE_WINDOW_MS = 5 * 60 * 1000;
 
 // The provider these events land under — the registry id, so the card, the staleness
-// reader and Data → Review all find them without a special case.
-const PROVIDER = "mychart";
+// reader and Data → Review all find them without a special case. Renamed from the
+// tool-shaped "mychart" by migration 131, which moved the stored rows with it.
+const PROVIDER = "patient-portals";
 
 function jsonError(error: string, status: number): Response {
   return Response.json({ ok: false, error }, { status });
@@ -97,30 +104,72 @@ export async function POST(req: Request): Promise<Response> {
   const target = parseUploadTarget({
     profile: body.profile,
     portal: body.portal,
+    account: body.account,
     patient: body.patient,
   });
   if (!target.ok) return jsonError(target.error, 400);
 
+  // The proxy-patient list this run actually SAW on that login, verbatim (#1739). This is
+  // the routine path by which allos learns identities — the user binds labels allos was
+  // told, instead of predicting how a portal renders a name — so it is ingested even when
+  // the run's own identity is refused below, and even when the run failed. A run that
+  // signed in far enough to enumerate the proxy list and THEN broke has still taught us
+  // who is on that login. Bounded and sanitized by parseDiscoveredLabels before anything
+  // is stored.
+  const discovered = parseDiscoveredLabels(body.identities);
+
   let profileId: number;
+  let identity: {
+    portalId: number;
+    accountId: number;
+    patientLabel: string;
+  } | null = null;
   if (target.target.kind === "profile") {
     profileId = target.target.profileId;
   } else {
+    // Resolve the LOGIN first, so a discovered list can be recorded against it even when
+    // the reporting patient itself is unmapped — which is exactly the first-contact case
+    // the discovery path exists for.
+    const account = resolveAccount(
+      target.target.portalSlug,
+      target.target.accountSlug
+    );
+    if (account.ok && discovered.length > 0) {
+      recordDiscoveredIdentities(account.account, discovered);
+      revalidatePath("/integrations/patient-portals");
+    }
     const resolved = resolvePortalIdentity(
       target.target.portalSlug,
+      target.target.accountSlug,
       target.target.patientLabel
     );
     if (!resolved.ok) {
+      recordPendingIdentity(
+        target.target.portalSlug,
+        target.target.accountSlug,
+        target.target.patientLabel,
+        "unmapped-sync-report"
+      );
+      revalidatePath("/integrations/patient-portals");
+      // Unknown, IGNORED, and ambiguous-account all answer identically — the endpoint is
+      // deliberately non-oracular about a household's choices.
       return Response.json(
         {
           ok: false,
           error: "unmapped-identity",
           detail:
-            "That portal patient is not mapped to a profile yet. Map it under Integrations → MyChart.",
+            "That portal patient is not mapped to a profile yet. Map it under Integrations → Patient portals.",
+          ...(discovered.length > 0 ? { discovered: discovered.length } : {}),
         },
         { status: 404 }
       );
     }
     profileId = resolved.profileId;
+    identity = {
+      portalId: resolved.portalId,
+      accountId: resolved.accountId,
+      patientLabel: resolved.patientLabel,
+    };
   }
 
   const reachable = accessibleProfilesForLogin(login.id).some(
@@ -159,6 +208,10 @@ export async function POST(req: Request): Promise<Response> {
       unchanged: ev.unchanged,
       skipped: ev.skipped,
       error: ev.error,
+      // WHICH identity this run was about (#1739). Null for a `profile=<id>` report from
+      // a human debugging with curl, and for every other provider's events — the card
+      // shows a per-identity line only where there is an identity to show.
+      identity,
     });
     // "Last synced" on the card. Only a SUCCESSFUL run advances it — including a
     // nothing-new one, which is the whole point: a quiet check is still a check, and the
@@ -192,5 +245,13 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   revalidatePath("/data");
-  return Response.json({ ok: true, profile: profileId, status });
+  revalidatePath("/integrations/patient-portals");
+  return Response.json({
+    ok: true,
+    profile: profileId,
+    status,
+    // How many of the reported labels are newly waiting to be bound. Echoed so a tool can
+    // tell its user "3 new patients need mapping in allos" without reading the card.
+    ...(discovered.length > 0 ? { discovered: discovered.length } : {}),
+  });
 }
