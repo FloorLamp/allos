@@ -511,6 +511,15 @@ available equipment, an open illness recovery hold, recorded injuries, and
 curated condition-specific training considerations. These considerations are
 informational and cite their source; they never silently forbid an activity.
 
+Recovery is judged on a rolling per-region window, not on the calendar week.
+Weekly counts still reset with the week — that is what a weekly target means —
+but which region to train next is decided by how long ago it was actually
+trained: larger groups want a couple of days, smaller ones a day, and within
+that constraint the least-recently-trained region leads. When every region you
+train is still inside its window the day is framed as a recovery day rather than
+forced into a suggestion. A week that can no longer be met without today
+overrides the window, and says so — naming both the recent session and the pace.
+
 Routines may come from templates or be built from custom workouts. They carry
 weekly targets and a mesocycle/deload context without replacing the user's own
 exercise choices. Repeating a prior session, accepting today's recommendation,

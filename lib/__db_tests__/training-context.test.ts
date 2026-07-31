@@ -53,9 +53,10 @@ function logStrengthSets(
 describe("#838 active injury — recommendation + volume-band exclusion via the real gather", () => {
   it("excludes the injured region from the recommendation and NAMES it; legs unchanged", () => {
     const { profileId, anchor } = makeProfile("injury-active");
-    // Chest (Bench Press) + Legs (Leg Extension) history, both within the recent window.
-    logStrengthSets(profileId, anchor, -2, "Bench Press", 2);
-    logStrengthSets(profileId, anchor, -3, "Leg Extension", 2);
+    // Chest (Bench Press) + Legs (Leg Extension) history, both within the recent window
+    // and both past their #1673 recovery windows, so the injury layer is what decides.
+    logStrengthSets(profileId, anchor, -4, "Bench Press", 2);
+    logStrengthSets(profileId, anchor, -5, "Leg Extension", 2);
 
     // Baseline: chest is in the recommendation.
     const before = recommendNextWorkout(
@@ -120,7 +121,9 @@ describe("#838 recovering injury — tempered suggest-next-set via the real gath
   it("returns the region at a lighter target than an uninjured baseline", () => {
     const { profileId, anchor } = makeProfile("injury-recovering");
     // Bench Press only, with a target-rep session so suggestNextSet produces a load.
-    logStrengthSets(profileId, anchor, -2, "Bench Press", 3);
+    // Four days back, so chest is out of its #1673 recovery window and the suggestion
+    // is a strength card rather than a recovery-day reframe.
+    logStrengthSets(profileId, anchor, -4, "Bench Press", 3);
 
     const plain = recommendCoaching(gatherCoachingInput(profileId, "kg", "km"));
     const plainBench = plain.find((r) => r.title.includes("Bench Press"));
@@ -148,7 +151,7 @@ describe("#838 recovering injury — tempered suggest-next-set via the real gath
 
   it("a RESOLVED injury exerts no effect (record kept, normal coaching)", () => {
     const { profileId, anchor } = makeProfile("injury-resolved");
-    logStrengthSets(profileId, anchor, -2, "Bench Press", 2);
+    logStrengthSets(profileId, anchor, -4, "Bench Press", 2);
     const res = logInjuryCore(profileId, {
       label: "old strain",
       regions: ["Chest"],

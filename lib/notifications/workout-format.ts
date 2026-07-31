@@ -43,6 +43,12 @@ export interface WorkoutRecommendation {
     session: string;
     forcedBy: BehindTargetPace | null;
   } | null;
+  // The tight-week recovery override (#1673): today's suggestion asks for a region that
+  // is still inside its recovery window, because the week can no longer be met without
+  // it. The line states BOTH facts ("Back was Saturday — 1/2 with today left."), so the
+  // nudge never reads as having forgotten Saturday's session. Absent on every ordinary
+  // day (loose weeks yield the rest reframe instead).
+  recoveryOverride?: string | null;
 }
 
 // Render a WorkoutRecommendation as the Telegram message. Split out from the
@@ -115,6 +121,9 @@ export function formatWorkoutReminder(
   // the push read as "the app didn't notice my workout".
   const ackLine = workoutAcknowledgmentLine(rec.acknowledge ?? null);
   if (ackLine) lines.push(ackLine);
+  // Same posture one step out (#1673 decision 4): when pace overrides a region's
+  // recovery window, say what was trained and why today still counts.
+  if (rec.recoveryOverride) lines.push(rec.recoveryOverride);
   if (deloadNote) lines.push(deloadNote);
   if (rec.exercises.length)
     lines.push(`Suggested: ${rec.exercises.join(", ")}`);
