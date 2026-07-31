@@ -7,8 +7,14 @@ import type {
   FoodTiming,
   Supplement,
   SupplementCondition,
-  SupplementPriority,
+  IntakeObligation,
 } from "./types";
+import {
+  cadenceOn,
+  doseOnDay,
+  type DoseCadence,
+  type ItemCadence,
+} from "./intake-cadence";
 
 export type TimeBucket =
   "Morning" | "Midday" | "Evening" | "Before sleep" | "Anytime";
@@ -127,28 +133,47 @@ export function heldBySituation(
     : null;
 }
 
-export function isDueOn(
+// Whether this item's DAY CONDITION applies on the day `ctx` describes — the
+// workout/rest/situational half of dueness, with the pause hold applied, and
+// deliberately WITHOUT the obligation gate.
+//
+// It exists because #1505 split one question into two that share a day rule:
+//   • isDueOn      — "do I owe this today?"     (must/should; a miss can exist)
+//   • isOfferedOn  — "is this on offer today?"  (may; an access hint, never a miss)
+// A rest-day magnesium is not offered on a training day even though nothing is owed,
+// so both questions need the same condition evaluation — and it must be ONE
+// function, or the offer surfaces would slowly drift from the due surfaces.
+// The day-context every condition evaluation reads. `date` is the profile-LOCAL
+// calendar day (YYYY-MM-DD) the question is being asked about — not "now": every caller
+// already resolves it (to score a past day, to project today), and making it part of
+// the context is what lets the calendar cadence (#1602) be evaluated in the SAME gate
+// as the condition instead of as a second filter each surface has to remember.
+//
+// It is REQUIRED, deliberately. An optional date with a "no date ⇒ no cadence" fallback
+// would mean a caller that forgot it silently reverts a weekly methotrexate to nagging
+// every day — the exact harm #1602 exists to end, and invisible in review. Required
+// makes every such omission a compile error instead.
+export interface IntakeDayContext {
+  date: string;
+  isWorkoutDay: boolean;
+  activeSituations: Set<string>;
+  predictedWorkoutDay?: boolean | null;
+  postWorkoutReady?: boolean;
+}
+
+export function conditionAppliesOn(
   supp: Pick<Supplement, "condition" | "situation"> & {
-    as_needed?: number;
     pause_situation?: string | null;
   },
-  ctx: {
-    isWorkoutDay: boolean;
-    activeSituations: Set<string>;
-    // Today IS a predicted training day per the inferred cadence; null/undefined
-    // when no cadence could be inferred (fall back to the logged signal).
-    predictedWorkoutDay?: boolean | null;
-    // The logged session's end time has passed (post_workout timing). Default true.
-    postWorkoutReady?: boolean;
-  }
+  ctx: IntakeDayContext
 ): boolean {
   // Held BEATS due (issue #1296): a situational hold suppresses the item on every
   // surfacing path before any condition is evaluated — including a `daily` med and a
   // situational-ON item whose on-situation is ALSO active (on-during A, paused-during
   // B → held). The active set is the SAME one the on-condition reads, so a pause
-  // situation's active state flows in without a second lookup.
+  // situation's active state flows in without a second lookup. A hold suppresses the
+  // OFFER too: a paused item should not be one tap from being logged either.
   if (heldBySituation(supp, ctx.activeSituations)) return false;
-  if (supp.as_needed) return false;
   // "Is today a training day?" — predicted cadence when known, else logged reality.
   const trainingToday = ctx.predictedWorkoutDay ?? ctx.isWorkoutDay;
   switch (supp.condition) {
@@ -168,16 +193,115 @@ export function isDueOn(
   }
 }
 
+export function isDueOn(
+  supp: Pick<Supplement, "condition" | "situation"> &
+    ItemCadence & {
+      obligation?: IntakeObligation;
+      pause_situation?: string | null;
+    },
+  ctx: IntakeDayContext
+): boolean {
+  // A `may` item has NO DUENESS at all (#1505). This is the single short-circuit that
+  // used to be `as_needed`, widened to the obligation level that absorbed it: an item
+  // the user owes nothing on cannot be due, so it cannot be missed, cannot be counted
+  // in a fraction, and cannot be reminded. Its slot survives as an ACCESS HINT — read
+  // by isOfferedOn / slotHintCoversNow and the offer surfaces, never by this one.
+  if (supp.obligation === "may") return false;
+  // The CALENDAR gate (#1602), ANDed with the condition gate. Order is irrelevant to
+  // the result and deliberate for reading: obligation first (is anything owed at all?),
+  // then the calendar (is today one of this item's days?), then the day's context (is
+  // it the right kind of day?). A cadence can only ever remove days from a schedule the
+  // user already declared — it never creates dueness, which is why it is safe to AND it
+  // in here rather than to give it its own surface-by-surface filter.
+  if (!cadenceOn(supp, ctx.date)) return false;
+  return conditionAppliesOn(supp, ctx);
+}
+
+// Whether ONE DOSE ROW of a due item lands on this day — the item's dueness ANDed with
+// the row's own weekday subset and validity window (#1602). Every surface that iterates
+// dose rows (Upcoming, the digest, reminders, adherence denominators, the recap) calls
+// THIS rather than isDueOn + a local dose filter, so an alternating-amount pair and a
+// taper window can never mean one thing on the page and another in a reminder (#221).
+export function doseDueOn(
+  supp: Parameters<typeof isDueOn>[0],
+  dose: DoseCadence,
+  ctx: IntakeDayContext
+): boolean {
+  if (!isDueOn(supp, ctx)) return false;
+  return doseOnDay(dose, ctx.date);
+}
+
+// ---- Slot hints (issue #1505) ---------------------------------------------
+//
+// On a `may` item, `time_of_day` stops meaning "due then" and starts meaning "offer
+// it here" — an ACCESS HINT. These two pure helpers are the whole of that reading, so
+// the digest tail, the ride-along More… row and quick log can never scope differently.
+
+// The bucket a may item's dose hints at, or null when it has no hint at all. A
+// hint-less item ("Anytime", or no stored time) is the aspirin case: always on offer,
+// never scoped out of a slot.
+export function slotHintBucket(timeOfDay: string | null): TimeBucket | null {
+  const bucket = timeBucket(timeOfDay);
+  return bucket === "Anytime" ? null : bucket;
+}
+
+// Whether an item hinted at `timeOfDay` should be OFFERED at the wall-clock time
+// `nowHhmm` (profile-local).
+//
+// Evaluated AT TAP TIME, never at message-build time — that distinction is the whole
+// reason this is a function of `nowHhmm` rather than a stored field. A Telegram digest
+// is born in the morning and its keyboard may be tapped at bedtime; scoping by when
+// the MESSAGE was built would offer breakfast items at 11pm. The tick's boundary
+// refresh (which relabels the collapsed tail) exists for the same reason.
+//
+// A hint-less item is offered in EVERY slot: no hint means no opinion, and refusing to
+// show it anywhere would make "may with no slot" unreachable — the exact opposite of
+// the guaranteed-access rule.
+export function slotHintCoversNow(
+  timeOfDay: string | null,
+  nowHhmm: string
+): boolean {
+  const hint = slotHintBucket(timeOfDay);
+  if (hint === null) return true;
+  return hint === currentTimeBucket(nowHhmm);
+}
+
+// Whether a `may` item is ON OFFER today — the access-hint twin of isDueOn, and the
+// gate for every user-initiated surface: Upcoming's collapsed "available" disclosure,
+// the digest's "Log other…" tail, the ride-along More… row, quick log.
+//
+// "Offered" is NOT "due": nothing here creates an obligation, a miss, or a send. It
+// only answers whether the item is worth putting one tap away right now.
+//
+// CADENCE IS DELIBERATELY NOT A GATE HERE (#1602). On a `may` item nothing is owed on
+// any day, so a calendar rule has nothing to subtract from — and the guaranteed-access
+// rule says a `may` item is ALWAYS one tap away. Hiding a weekly `may` item on six days
+// out of seven would make an accepted demotion indistinguishable from a deletion, which
+// is the exact failure the collapse-don't-filter rule exists to prevent. So on a `may`
+// item the cadence fields are an offer HINT only: they still label the row ("Mondays")
+// via cadenceLabel, and they never remove it. The condition gate stays, because a hold
+// or a rest-day condition is a statement about TODAY rather than about a calendar.
+export function isOfferedOn(
+  supp: Pick<Supplement, "condition" | "situation"> & {
+    obligation?: IntakeObligation;
+    pause_situation?: string | null;
+  },
+  ctx: IntakeDayContext
+): boolean {
+  if (supp.obligation !== "may") return false;
+  return conditionAppliesOn(supp, ctx);
+}
+
 // The count of situational intake items currently due BECAUSE their situation is
 // active (issue #662 item 1). It reuses the SAME dueness computation the dose list
 // and Upcoming use — isDueOn's `situational` branch — so the situations-bar
 // activation acknowledgment can never disagree with the list it's acknowledging (a
-// formatter over the shared count, never a second count). Counts active, non-PRN
+// formatter over the shared count, never a second count). Counts active, non-`may`
 // situational items; a paused item (active 0) is excluded.
 export function countSituationalDue(
   supps: readonly (Pick<Supplement, "condition" | "situation"> & {
     active?: number | boolean;
-    as_needed?: number;
+    obligation?: IntakeObligation;
   })[],
   ctx: Parameters<typeof isDueOn>[1]
 ): number {
@@ -245,31 +369,43 @@ export function heldResumeAcknowledgment(
 }
 
 // Whether linking a pause situation to this item warrants a CONFIRM at link time
-// (issue #1296): a situational hold on a MEDICATION or a `mandatory`-priority item
-// will silence its reminders while the situation is active, so the form asks first
-// ("this will silence reminders for X while Y is active — sure?"). An ordinary
-// supplement paused during a fasting day needs no confirm. Pure predicate so the form
-// and any test agree on which links are consented.
+// (issue #1296): a situational hold on a MEDICATION or a `must` item will silence its
+// reminders while the situation is active, so the form asks first ("this will silence
+// reminders for X while Y is active — sure?"). An ordinary supplement paused during a
+// fasting day needs no confirm. Pure predicate so the form and any test agree on which
+// links are consented. (Kind still appears here because a pause is a CLINICAL-identity
+// question — silencing a medication is worth asking about whatever its obligation —
+// which is exactly the job #1505 left kind holding.)
 export function pauseLinkNeedsConfirm(
-  item: Pick<Supplement, "kind" | "priority">
+  item: Pick<Supplement, "kind" | "obligation">
 ): boolean {
-  return item.kind === "medication" || item.priority === "mandatory";
+  return item.kind === "medication" || item.obligation === "must";
 }
 
 // Whether an item's dose amounts count toward the DAILY Tolerable Upper Intake
 // Level (UL) / RDA sum (issue #635). The UL is a chronic *daily* threshold, so only
-// an item taken EVERY day contributes its full amount each day. A PRN (as_needed)
-// item is taken on demand — never a standing daily intake (mirroring isDueOn's PRN
-// short-circuit) — and a pre_workout / post_workout / rest_day / situational item
-// applies only on some days; counting either as a full daily dose overstates the
-// daily total and produces a standing false "above upper limit" (care-tier) alarm.
-// Conservatively, only an unconditional `daily` item contributes — the safe choice
-// for a care-tier gather where a false positive is worse than a missed occasional
-// exceedance.
+// an item taken EVERY day contributes its full amount each day: a pre_workout /
+// post_workout / rest_day / situational item applies only on some days, and counting
+// one as a full daily dose overstates the daily total and produces a standing false
+// "above upper limit" (care-tier) alarm. So the gate is the SCHEDULE, and only an
+// unconditional `daily` item contributes.
+//
+// This predicate is deliberately obligation-BLIND (#1505), and that is a correction,
+// not an omission. Pre-#1505 it also excluded `as_needed`, which was defensible
+// because `as_needed` asserted something narrow and factual: this item has no
+// standing daily intake. Obligation's `may` does NOT assert that. It says only that
+// the USER wants no expectation attached — no reminders, no misses — which is a
+// statement about pushing, not about pharmacology. A daily-scheduled item the user
+// demoted to `may` is very often still swallowed every day; carrying the old
+// exclusion across the collapse would silently drop its milligrams out of a
+// chronic-exposure total and lose a UL warning the user needs precisely because
+// nothing is nudging them about the item any more. Obligation must never shrink a
+// risk number (see the conservative-direction rule in lib/dri.ts). Callers that want
+// to distinguish committed intake from on-demand intake do so by LABELLING the
+// contribution, not by dropping it.
 export function contributesToDailyLimit(
-  item: Pick<Supplement, "condition"> & { as_needed?: number }
+  item: Pick<Supplement, "condition">
 ): boolean {
-  if (item.as_needed) return false;
   return item.condition === "daily";
 }
 
@@ -340,43 +476,99 @@ export const SUGGESTED_SITUATIONS = [
   "Poor sleep",
 ];
 
-export const PRIORITY_ORDER: Record<SupplementPriority, number> = {
-  mandatory: 0,
-  high: 1,
-  low: 2,
+// ---- Obligation semantics (issue #1505) -----------------------------------
+//
+// ONE table, three derived behaviors. Every surface that asks "do I contact about
+// this / does a miss exist / does it escalate" reads THESE, never the raw string:
+//
+//   obligation   send                    adherence                escalation
+//   ---------------------------------------------------------------------------
+//   must         remind                  counted                  yes
+//   should       remind                  counted                  never
+//   may          never                   no dueness, no misses    n/a
+//
+// The three predicates below are deliberately separate rather than one "tier" number:
+// they answer different questions and only two of the three boundaries coincide.
+// `should` reminds but never escalates, which is precisely the distinction the old
+// two-value model (`mandatory` vs `high`, both fully pushed) could not express.
+
+// Descending weight, for the within-day sort and any ordering that reads it.
+export const OBLIGATION_ORDER: Record<IntakeObligation, number> = {
+  must: 0,
+  should: 1,
+  may: 2,
 };
 
-// The NOTIFICATION priority floor (issue #1156): whether a scheduled dose of this
-// item sends dose-reminder notifications at all. A LOW-priority SUPPLEMENT is
-// "tracked, not nagged" — it stays fully visible in-app (Supplements page,
-// Upcoming, adherence strip) but is excluded from every dose-reminder send
-// (Telegram / Web Push / Home Assistant), so a shelf of nice-to-haves can't flood
-// the reminder or its button keyboard. The one hard boundary (#449/#942): the
-// floor is a CALM-tier lever only — a MEDICATION's scheduled reminder is safety
-// tier and is DELIBERATELY never priority-gated, so marking a critical med "low"
-// can never silence its safety signal (missed-dose escalation is likewise never
-// gated; see lib/notifications/escalate.ts). Priority itself stays the user's
-// static, user-owned tag (#559) — this adds a notification CONSUMER, it never
-// invents priority or changes dueness (isDueOn is untouched).
-export function doseReminderNotifies(
-  item: Pick<Supplement, "kind" | "priority">
-): boolean {
-  return !(item.kind === "supplement" && item.priority === "low");
+export const OBLIGATIONS = Object.keys(OBLIGATION_ORDER) as IntakeObligation[];
+
+export const OBLIGATION_LABELS: Record<IntakeObligation, string> = {
+  must: "Must",
+  should: "Should",
+  may: "May",
+};
+
+// The one-line explanation of what each level actually does, shown beside the
+// selector so the choice is never a bare adjective. Kept here so the form, the med
+// confirm dialog and any doc-facing surface quote the SAME consequences.
+export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
+  must: "Reminders, plus missed-dose escalation — a follow-up nudge if a dose goes unconfirmed. A miss is an incident.",
+  should:
+    "Reminders and adherence tracking, but no missed-dose escalation. A miss is a shortfall, never chased twice.",
+  may: "No reminders and no misses — kept on your list and one tap away when you want it.",
+};
+
+// THE push predicate. Whether this item may ride a SYSTEM-INITIATED surface at all:
+// dose reminders, refill nudges, the digest's Today section, Upcoming's due rows, the
+// dashboard hero. `may` means the user declared no expectation, so the system never
+// initiates about it — it stays fully reachable through USER-initiated access (the
+// Supplements page, quick log, the digest's "Log other…" tail, keyboards) exactly as
+// the surface taxonomy in docs/internals/findings.md requires.
+//
+// This is the ONE gate every push surface consults; a surface that grows its own
+// obligation check is the drift this predicate exists to prevent (#221).
+//
+// Note what is NO LONGER here: `kind`. Before #1505 this predicate had a medication
+// carve-out because kind was doing pushability's job. Kind now decides CLINICAL
+// IDENTITY (which safety engine, which surface, passport inclusion) and obligation
+// decides push, so a medication is pushed because it is `must` — its default, and one
+// it can only leave through an explicit consequence-stating confirm — not because of
+// its kind. The safety tier is unchanged and stays obligation-BLIND: missed-dose
+// escalation reads the unfiltered gather, and the interaction (#144) / PGx (#710) /
+// UL (#148) warnings fire identically for a `may` member.
+export function isPushedIntake(item: Pick<Supplement, "obligation">): boolean {
+  return item.obligation !== "may";
 }
 
-export const PRIORITY_LABELS: Record<SupplementPriority, string> = {
-  mandatory: "Mandatory",
-  high: "High",
-  low: "Low",
-};
+// Whether a MISSED occurrence exists for this item at all — the adherence half of the
+// same boundary. A `may` item has no dueness (isDueOn short-circuits), so it has no
+// misses, contributes to no fraction, and appears in the administrations ledger only.
+// Separate from isPushedIntake on purpose: they coincide today, and they are answers
+// to different questions ("do we contact?" vs "can this fail?").
+export function accruesMisses(item: Pick<Supplement, "obligation">): boolean {
+  return item.obligation !== "may";
+}
 
-export const PRIORITIES = Object.keys(PRIORITY_ORDER) as SupplementPriority[];
+// Whether an unconfirmed dose of this item may ESCALATE (the missed-dose follow-up
+// nudge). `must` only: a `should` miss is a tracked shortfall, and chasing it with a
+// second message is the over-contact this model exists to stop. The per-item
+// `critical` opt-in still applies INSIDE must — this widens nothing, it narrows the
+// eligible set.
+export function escalatesOnMiss(item: Pick<Supplement, "obligation">): boolean {
+  return item.obligation === "must";
+}
 
-// Tailwind accent for the priority badge / row accent.
-export function priorityClass(priority: SupplementPriority): string {
-  if (priority === "mandatory")
+// PRN shape (#798/#851): the amount-only dose row, the redose interval/max notice and
+// the over-max finding all key off `may`, which absorbed `as_needed`. Named for what
+// callers mean so the collapse reads as one concept rather than a magic string.
+export function isPrn(item: Pick<Supplement, "obligation">): boolean {
+  return item.obligation === "may";
+}
+
+// Tailwind accent for the obligation badge / row accent.
+export function obligationClass(obligation: IntakeObligation): string {
+  if (obligation === "must")
     return "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300";
-  if (priority === "high")
+  if (obligation === "should")
     return "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300";
   return "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400";
 }
@@ -548,7 +740,7 @@ export function spreadDoseTimes(
 // to its first dose's amount on the next save, keeping that dose's id so its
 // administration history survives. `food_timing` is preserved (an NSAID stays "with
 // food"); only the schedule slot is dropped. A no-op for a non-PRN item. Pure.
-export interface CollapsibleDose {
+export interface CollapsibleDose extends DoseCadence {
   id?: number;
   amount: string | null;
   time_of_day: string | null;
@@ -567,6 +759,13 @@ export function collapsePrnDoses<T extends CollapsibleDose>(
       amount: first?.amount ?? null,
       time_of_day: null,
       food_timing: first?.food_timing ?? "any",
+      // The per-row calendar is dropped for the same reason the time slot is (#1602):
+      // a PRN item has no scheduled dueness for a weekday or a window to narrow, so
+      // keeping the fields would leave a rule that constrains nothing and would come
+      // back to life if the item ever stopped being PRN.
+      weekdays: null,
+      start_date: null,
+      end_date: null,
     },
   ];
 }

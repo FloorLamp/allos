@@ -20,7 +20,10 @@ describe("renderPreventiveMessage", () => {
     expect(msg.title).toBe(
       "🩺 Preventive care: Ada — Colorectal cancer screening"
     );
-    expect(msg.body).toContain("Colorectal cancer screening: Due");
+    // #1722 item 3: the body no longer echoes the title's name — it carries the
+    // state, and the detail when there is one.
+    expect(msg.body).toBe("Due");
+    expect(msg.title).toContain("Colorectal cancer screening");
     expect(msg.kind).toBe("preventive");
   });
 
@@ -46,9 +49,7 @@ describe("renderPreventiveMessage", () => {
     expect(msg.title).toBe(
       "🩺 Preventive care: Colorectal cancer screening" // no profile prefix
     );
-    expect(msg.body).toContain(
-      "Colorectal cancer screening: Overdue — last done 2019"
-    );
+    expect(msg.body).toBe("Overdue — last done 2019");
   });
 
   it("carries no disclaimer boilerplate — that lives on /disclaimer now (#1049)", () => {

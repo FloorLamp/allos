@@ -14,6 +14,7 @@
 // Every value is synthetic (fake supplements, a fake bot token, no phones).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { plainBody } from "@/lib/notifications/rich-text";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -39,8 +40,8 @@ function seedDailyDose(profileId: number, name = "Vitamin D"): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, qty_per_dose)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', 1)`
+           (profile_id, name, active, kind, condition, obligation, qty_per_dose)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should', 1)`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -61,8 +62,8 @@ function seedPreWorkoutDose(profileId: number, name = "Creatine"): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, qty_per_dose)
-         VALUES (?, ?, 1, 'supplement', 'pre_workout', 'high', 1)`
+           (profile_id, name, active, kind, condition, obligation, qty_per_dose)
+         VALUES (?, ?, 1, 'supplement', 'pre_workout', 'should', 1)`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -83,8 +84,8 @@ function seedLowSupplement(profileId: number, name = "Magnesium"): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', 8, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should', 8, 1)`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -239,7 +240,7 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     // Sanity: renders to a single non-empty message.
     const msg = renderDigestMessage(model!);
     expect(msg.kind).toBe("digest");
-    expect(msg.body.length).toBeGreaterThan(0);
+    expect(plainBody(msg.body).length).toBeGreaterThan(0);
   });
 });
 

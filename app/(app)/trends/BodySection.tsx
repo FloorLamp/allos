@@ -50,12 +50,7 @@ import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
 import { ordinalPercentile } from "@/lib/growth-format";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
-import {
-  applyCardOrder,
-  bodyCardOrder,
-  growthCardLeads,
-  orderCardSections,
-} from "@/lib/trends-card-rank";
+import { applyCardOrder, bodyCardOrder } from "@/lib/trends-card-rank";
 import {
   BODY_METRIC_META,
   bodyChartScale,
@@ -95,7 +90,7 @@ import NotesText from "@/components/NotesText";
 import ScrollFade from "@/components/ScrollFade";
 import BodyTrendCharts, {
   type BodyChartSpec,
-  type BodyChartSection,
+  type BodyStackItem,
 } from "@/components/BodyTrendCharts";
 import GrowthChartsCard from "@/components/GrowthChartsCard";
 import LogMeasurementsPanel from "./LogMeasurementsPanel";
@@ -113,7 +108,7 @@ import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
 
-// The Trends hub's **Body** tab — the ONE physiology surface (issue #1486).
+// The Trends hub's **Body** census — the ONE physiology surface (issue #1486).
 //
 // Trends carried a Vitals tab and a Body tab that answered the same question about
 // the same person from the same rows: "what is my body doing". A blood pressure was
@@ -139,8 +134,11 @@ import BodyHygieneFindings from "./BodyHygieneFindings";
 // `tiles` they are sparkline tiles like every other metric, in `all` they are full
 // charts. One view-mode semantic, not two.
 //
-// `?tab=vitals` still lands here — a vocabulary mapping in lib/trends-tabs.ts, not a
-// redirect layer, so every old deep link keeps working.
+// #1644 retired the Body TAB: this census is the third part of the Trends landing
+// surface (digest → starred grid → here), reachable at `/trends#body` and streamed
+// into its own Suspense boundary so the head never waits on the ~30 reads below.
+// Nothing about the census itself changed — same skeleton, same membership gates,
+// same ★-first-then-ranked order. Fitness, Nutrition and Insights stay tabs.
 
 type Point = { date: string; value: number };
 
@@ -198,8 +196,8 @@ export default async function BodySection({
   const todayStr = today(profile.id);
   const tz = getTimezone(profile.id);
   const wu = units.weightUnit;
-  // The 1D pill's window (from == to == today). Only this tab offers that pill,
-  // because only this tab has intraday content to swap in.
+  // The 1D pill's window (from == to == today). Only the landing surface offers
+  // that pill, because only this census has intraday content to swap in.
   const intraday = isIntradayRange(range, todayStr);
 
   // ── Reads ───────────────────────────────────────────────────────────────────
@@ -627,11 +625,9 @@ export default async function BodySection({
     });
   }
 
-  // Sequence the vitals run by the tab's ONE card order (#1490). Membership is
-  // still each card's own has-data gate above — the ranker only orders what the
-  // section decided to render, so a monitored condition (hypertension → BP) or a
-  // richly-tracked series leads the run without any card appearing or vanishing.
-  const orderedVitals = applyCardOrder(vitalsCharts, cardOrder, (c) => c.key);
+  // MEMBERSHIP only: each vitals card above is present-gated on its own series.
+  // ORDER is the flat stack's job (#1674) — one ranking pass over every member,
+  // rather than a per-run sort inside a box that the boxes then re-ordered.
 
   const intradayBlock = intraday ? (
     !hasIntraday ? (
@@ -797,18 +793,14 @@ export default async function BodySection({
       color: chartSeries.amber,
     },
   };
-  // MEMBERSHIP from planBodyCharts (age decides which composition charts exist);
-  // ORDER from the tab's one ranker — for a growth-tracked profile the life-stage
-  // signal lifts height/head-circ above weight, which is the pediatric layout the
-  // plan used to encode positionally.
-  const compositionCharts: BodyChartSpec[] = stableEmptyLast(
-    applyCardOrder(
-      plan.keys.filter((k) => k !== "resting_hr").map((k) => chartByKey[k]),
-      cardOrder,
-      (c) => c.key
-    ),
-    (chart) => chart.data.every((point) => point.value == null)
-  );
+  // MEMBERSHIP from planBodyCharts (age decides which composition charts exist).
+  // ORDER is the flat stack's, like every other member (#1674) — for a
+  // growth-tracked profile the life-stage signal lifts height/head-circ above
+  // weight there, which is the pediatric layout the plan used to encode
+  // positionally.
+  const compositionCharts: BodyChartSpec[] = plan.keys
+    .filter((k) => k !== "resting_hr")
+    .map((k) => chartByKey[k]);
 
   // Pediatric growth percentiles — returns null unless the profile has a known sex +
   // birthdate and is in chart range. Age-based, so it isn't windowed by the shared
@@ -1256,75 +1248,123 @@ export default async function BodySection({
     (e) => e.id
   );
 
-  // ONE presence boolean per fixed section, shared by its menu item and render.
-  const hasVitals = vitalsCharts.length > 0 || (intraday && hasIntraday);
-  const hasComposition = compositionCharts.some((c) => c.data.length > 0);
+  // ONE presence boolean per block, shared by its menu item and its render.
   const hasMood = moodAll.length > 0;
 
-  // Does the growth-percentile card lead the whole stack? Ranked, not forked: true
-  // when `growth` outranks every card rendered inside the chart block.
-  const growthLeads = growthCardLeads(cardOrder, [
-    ...orderedVitals.map((c) => c.key),
-    ...compositionCharts.map((c) => c.key),
-  ]);
-
-  // The two titled runs of charts, sharing ONE annotation toggle bar (#1486). The
-  // RUNS are sequenced by the same card order as the cards inside them (#1490): a
-  // run leads when it holds the top-ranked card, so a live weight goal or a
-  // monitored condition actually surfaces the card it promoted instead of promoting
-  // it inside a run pinned below another. No signal firing ⇒ Vitals then
-  // Composition, exactly as before.
-  const chartSections: BodyChartSection[] = stableEmptyLast(
-    orderCardSections<BodyChartSection>(
-      [
-        {
-          id: "vitals",
-          heading: "Vitals",
-          description: intraday
-            ? "Today, minute by minute — worn heart rate and any timed blood-pressure or oxygen readings."
-            : "Blood pressure, oxygen saturation, respiratory rate, resting heart rate, HRV, and body temperature over the selected window.",
-          charts: intraday ? [] : orderedVitals,
-          after: intradayBlock,
-          empty: (
-            <EmptyState message="No vitals logged yet. Add a reading with “+ Log” above to see the trend." />
-          ),
-        },
-        {
-          id: "body-composition",
-          heading: "Composition",
-          description: "Body-composition trends over the selected window.",
-          charts: compositionCharts,
-        },
-      ],
-      cardOrder,
-      // The intraday swap empties the vitals run's `charts`; rank it by the vitals
-      // cards it WOULD hold, so a 1D window doesn't sink the section it belongs to.
-      (section) =>
-        section.id === "vitals"
-          ? orderedVitals.map((c) => c.key)
-          : section.charts.map((c) => c.key)
-    ),
-    (section) =>
-      section.after == null &&
-      section.charts.every((chart) =>
-        chart.data.every((point) => point.value == null)
-      )
+  // ── The FLAT ranked stack (#1674) ───────────────────────────────────────────
+  // The census used to render titled runs ("Vitals", "Composition") ordered as
+  // wholes by best member, with the synced-daily grid below them and outside the
+  // ordering entirely. That was a SECOND source of truth for order next to the
+  // ranker, and it contradicted the first: SpO₂ rode above steps inside the Vitals
+  // box (its everyday-tier neighbours lifted the whole box), steps could not
+  // compete at all, and #1643's contiguous starred run was unsatisfiable — three
+  // stars in three boxes move three boxes, never one run.
+  //
+  // Now every card is a MEMBER of one stack, ordered by `cardOrder` — the ★ run in
+  // saved order, then the everyday-first ranked remainder (#1659). Promotion
+  // visibility is native: a promoted card is simply first. `orderCardSections` and
+  // `growthCardLeads` retired with the boxes; the growth card is an ordinary member
+  // whose lead is the life-stage boost's job, and the 1D intraday swap is an
+  // ordinary member at `hr-day`.
+  //
+  // The page's FIXED anatomy is untouched: the Today strip stays at the head (it
+  // keeps #1486's vitals-first narrative; the stack stops inheriting it) and the
+  // source comparison + history table stay at the foot — skeleton, not cards.
+  const moodCard = (
+    <ChartCard
+      anchorId="mood"
+      testid="mood-trend"
+      title={BODY_METRIC_META.mood.title}
+      description="1–5 daily check-ins · selected date range"
+      detailHref={metricDetailHref("mood")}
+      footer={
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          A subjective self-rating from your daily check-ins — informational
+          only, never range-checked.
+        </p>
+      }
+    >
+      <LineChartCard
+        data={moodChart}
+        label={BODY_METRIC_META.mood.title}
+        color={chartSeries.amber}
+      />
+    </ChartCard>
   );
 
-  // Menu items in PAGE READING ORDER — the two chart runs in their ranked sequence,
-  // then mood, then the synced charts. Built FROM the ordered sections, so the
-  // menu can never advertise an order the page below doesn't have.
-  const sectionChipLabel: Record<string, string> = {
-    vitals: "Vitals",
-    "body-composition": BODY_METRIC_META.weight.title,
-  };
-  const jumpChips: ChartChip[] = [
-    ...chartSections
-      .filter((s) => (s.id === "vitals" ? hasVitals : hasComposition))
-      .map((s) => ({ id: s.id, label: sectionChipLabel[s.id] ?? s.heading })),
-    ...(hasMood ? [{ id: "mood", label: BODY_METRIC_META.mood.title }] : []),
-    ...orderedSynced.map((e) => ({ id: e.id, label: e.label })),
+  // Every member, before ordering. Membership is unchanged — each entry is still
+  // present-gated exactly where it was — and every chart carries its own anchor now
+  // that no section box provides one.
+  type StackMember = BodyStackItem & { label: string; empty?: boolean };
+  const stackMembers: StackMember[] = [
+    // At 1D the vitals charts swap for the intraday block, which takes `hr-day`'s
+    // rank: one placement rule for every block, so a one-day window re-shapes the
+    // stack without re-ordering it by hand.
+    ...(intraday
+      ? hasIntraday
+        ? [
+            {
+              id: "hr-day",
+              label: `${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Today`,
+              node: intradayBlock,
+              wide: true,
+            },
+          ]
+        : []
+      : vitalsCharts.map((chart) => ({
+          id: chart.key,
+          label: chart.title,
+          chart: { ...chart, anchorId: chart.anchorId ?? chart.key },
+          empty: chart.data.every((point) => point.value == null),
+        }))),
+    ...(intraday
+      ? []
+      : compositionCharts.map((chart) => ({
+          id: chart.key,
+          label: chart.title,
+          chart: { ...chart, anchorId: chart.anchorId ?? chart.key },
+          empty: chart.data.every((point) => point.value == null),
+        }))),
+    ...(growthCard
+      ? [
+          {
+            id: "growth",
+            label: "Growth percentile",
+            node: growthCard,
+            wide: true,
+          },
+        ]
+      : []),
+    ...(hasMood
+      ? [{ id: "mood", label: BODY_METRIC_META.mood.title, node: moodCard }]
+      : []),
+    ...(intraday
+      ? []
+      : syncedEntries
+          .filter((e) => e.present)
+          .map((e) => ({
+            id: e.id,
+            label: e.label,
+            node: e.node,
+            // The intraday zoom is the one synced card that has always spanned both
+            // columns; it keeps that whatever rank it lands at.
+            wide: e.id === "hr-day",
+          }))),
   ];
+
+  // The order the stack renders in, with in-window-empty charts sinking to the end
+  // (the same layout floor the composition run used to apply, now applied once).
+  const bodyStack: StackMember[] = stableEmptyLast(
+    applyCardOrder(stackMembers, cardOrder, (m) => m.id),
+    (m) => m.empty === true
+  );
+
+  // Menu items in PAGE READING ORDER, built FROM the ordered stack — so the menu
+  // can never advertise an order the stack below doesn't have.
+  const jumpChips: ChartChip[] = bodyStack.map((m) => ({
+    id: m.id,
+    label: m.label,
+  }));
 
   // ── Tiles ───────────────────────────────────────────────────────────────────
   // Each tile windows the SAME display-unit series its classic chart draws above
@@ -1470,16 +1510,19 @@ export default async function BodySection({
       {/* 1D is a real intraday lens, not a one-point daily tile grid. It becomes
           the sole reading view at every viewport so phones keep their tiles-only
           rule for ordinary ranges without losing the clock-axis charts 1D exists
-          to reveal. This is the same chart tree desktop reads, mounted once. */}
+          to reveal. This is the same stack desktop reads, mounted once — at 1D it
+          holds the intraday swap (at `hr-day`'s rank) and nothing else windowed. */}
       {intraday && (
         <div className="!mt-2" data-testid="body-intraday-view">
-          <BodyTrendCharts
-            sections={chartSections.filter(
-              (section) => section.id === "vitals"
-            )}
-            annotations={annotations}
-            windows={protocolWindows}
-          />
+          {bodyStack.length > 0 ? (
+            <BodyTrendCharts
+              items={bodyStack}
+              annotations={annotations}
+              windows={protocolWindows}
+            />
+          ) : (
+            <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
+          )}
         </div>
       )}
 
@@ -1499,21 +1542,22 @@ export default async function BodySection({
 
             {/* How the arrangement works, said once (#1643) — under the census
                 rather than above it, so it explains what the reader just scanned
-                without pushing the tab's content down. The ★ is the ONLY thing that
-                reorders this tab, and the sequence of what you pin is the Overview
-                grid's saved order, so the hint names BOTH halves and where each
-                gesture lives instead of adding a second reorder affordance here. */}
+                without pushing the census down. The ★ is the ONLY thing that
+                reorders this census, and the sequence of what you pin is the
+                starred grid's saved order — one scroll up the same page since
+                #1644 — so the hint names BOTH halves and where each gesture lives
+                instead of adding a second reorder affordance here. */}
             <p
               className="mt-3 text-xs text-slate-500 dark:text-slate-400"
               data-testid="body-pin-hint"
             >
               Star a metric on its own page — open any card — to pin it to the
-              top of this tab. Pinned cards follow your{" "}
+              top of this section. Pinned cards follow your{" "}
               <Link
-                href="/trends?tab=overview"
+                href="/trends#starred"
                 className="font-medium text-brand-700 hover:underline dark:text-brand-400"
               >
-                Overview
+                starred grid
               </Link>{" "}
               order; drag them there to re-sequence them.
             </p>
@@ -1525,69 +1569,19 @@ export default async function BodySection({
             className={`${stackContainerClass(view)} !mt-2 space-y-6`}
             data-testid="body-charts-all"
           >
-            {/* For a growth-tracked profile the percentile card is the headline, so it
-            floats above the chart sections; adults never have one. That used to be
-            planBodyCharts' `growthCardFirst` fork — it is now a CONSEQUENCE of the
-            tab's one card order (#1490): the growth card leads exactly when it
-            outranks every card inside the chart block. */}
-            {growthLeads && growthCard}
-
-            {/* 2 + 3. Vitals then Composition, under ONE annotation toggle bar. */}
-            <BodyTrendCharts
-              sections={chartSections}
-              annotations={annotations}
-              windows={protocolWindows}
-            />
-
-            {/* 4. Growth charts (minors), then the rest of the reading half. */}
-            {!growthLeads && growthCard}
-
-            {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
-              bands, no flags, no retest hooks — mood is not a lab, so a low day is a
-              data point, never an "abnormal". Hidden until a check-in exists. */}
-            {hasMood && (
-              <ChartCard
-                anchorId="mood"
-                testid="mood-trend"
-                title={BODY_METRIC_META.mood.title}
-                description="1–5 daily check-ins · selected date range"
-                detailHref={metricDetailHref("mood")}
-                footer={
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    A subjective self-rating from your daily check-ins —
-                    informational only, never range-checked.
-                  </p>
-                }
-              >
-                <LineChartCard
-                  data={moodChart}
-                  label={BODY_METRIC_META.mood.title}
-                  color={chartSeries.amber}
-                />
-              </ChartCard>
-            )}
-
-            {hasSynced && (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Synced daily metrics in the selected date range.
-                </p>
-                <div className="grid gap-6 lg:grid-cols-2">
-                  {orderedSynced.map((e, index) => (
-                    <div
-                      key={e.id}
-                      className={
-                        orderedSynced.length % 2 === 1 &&
-                        index === orderedSynced.length - 1
-                          ? "lg:col-span-2"
-                          : ""
-                      }
-                    >
-                      {e.node}
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {/* ONE flat ranked stack (#1674): the ★ run first in saved order, then
+                the everyday-first ranked remainder. No titled boxes, so nothing can
+                ride above its rank inside one — the growth card, the mood chart and
+                the synced daily charts are ordinary members placed by the same
+                order, and the annotation toggle bar above drives all of them. */}
+            {bodyStack.length > 0 ? (
+              <BodyTrendCharts
+                items={bodyStack}
+                annotations={annotations}
+                windows={protocolWindows}
+              />
+            ) : (
+              <EmptyState message="No body metrics yet. Add a reading with “+ Log” above to see the trend." />
             )}
 
             <div className="card">

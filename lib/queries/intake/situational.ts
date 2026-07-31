@@ -41,6 +41,7 @@ export function getSituationalDueCount(profileId: number): number {
     nowMinutes
   );
   return countSituationalDue(supplements, {
+    date: on,
     isWorkoutDay,
     activeSituations,
     predictedWorkoutDay,

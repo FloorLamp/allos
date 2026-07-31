@@ -12,7 +12,8 @@ import {
   RATE_WINDOW_DAYS,
   type DoseRate,
 } from "../../refill";
-import { getSupplementDoses } from "./schedule";
+import { getSupplementDoses, getSupplements } from "./schedule";
+import { cadenceDensity } from "../../intake-cadence";
 
 // Effective consumption rate (doses/day) + its basis for every item that has
 // either scheduled doses or logged history, for refill "≈N days left" math
@@ -54,7 +55,18 @@ export function getRefillRates(
   }[];
   const history = new Map(rows.map((r) => [r.sid, r]));
 
-  // Fallback rate ≈ number of scheduled dose rows per item.
+  // Fallback rate ≈ scheduled dose rows per item, SCALED BY CADENCE DENSITY (#1602).
+  // The count of rows answers "how many doses on a day it lands", not "per day": a
+  // weekly med with one dose row consumes 1/7 of a tablet per day, so 12 tablets are
+  // ≈12 weeks of supply, not ≈12 days. Without the scaling the low-supply nudge would
+  // fire on a weekly med almost immediately and then keep firing — the refill-nagging
+  // twin of the daily-reminder problem this issue exists to fix.
+  //
+  // Only the SCHEDULE fallback needs it. The history-based rate is measured from the
+  // taken log, which already contains the real cadence, so scaling it would double-count.
+  const cadenceById = new Map(
+    getSupplements(profileId).map((s) => [s.id, cadenceDensity(s)])
+  );
   const scheduleCount = new Map<number, number>();
   for (const d of getSupplementDoses(profileId)) {
     scheduleCount.set(d.item_id, (scheduleCount.get(d.item_id) ?? 0) + 1);
@@ -75,7 +87,7 @@ export function getRefillRates(
       consumptionRate(
         h?.in_window ?? 0,
         daysSinceFirstLog,
-        scheduleCount.get(id) ?? 0,
+        (scheduleCount.get(id) ?? 0) * (cadenceById.get(id) ?? 1),
         windowDays
       )
     );

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { PHONE_STARRED_TILE_CAP, splitAtPhoneCap } from "../phone-fold";
+import {
+  PHONE_STACK,
+  PHONE_STARRED_TILE_CAP,
+  splitAtPhoneCap,
+} from "../phone-fold";
 
 describe("splitAtPhoneCap (#1578)", () => {
   const items = ["a", "b", "c", "d", "e"];
@@ -32,5 +36,46 @@ describe("splitAtPhoneCap (#1578)", () => {
     // Three is the `lg:grid-cols-3` row width, so the phone cap is not an arbitrary
     // phone-only invention.
     expect(PHONE_STARRED_TILE_CAP).toBe(3);
+  });
+});
+
+// The phone reading order of Results › Biomarkers (#1647). These are class strings,
+// not a computation — so what is worth holding is the two invariants that make them
+// safe: the order is a total, gap-free ranking (no two slots can tie into an
+// ambiguous stack, no rank is skipped), and EVERY slot resets at `sm` so desktop
+// keeps rendering in DOM order. A fifth slot added without `sm:order-none` would
+// silently re-order the desktop page, which is the one thing this change promises
+// not to do.
+describe("PHONE_STACK (#1647)", () => {
+  const slots = ["warning", "index", "glance", "entry"] as const;
+
+  it("ranks the four slots 1..4 with the index above both glance cards", () => {
+    const rank = (s: (typeof slots)[number]) =>
+      Number(/(?:^|\s)order-(\d+)(?:\s|$)/.exec(PHONE_STACK[s])?.[1]);
+    const ranks = slots.map(rank);
+    expect(ranks.some(Number.isNaN)).toBe(false);
+    // Total and gap-free: exactly 1..N, each once.
+    expect([...ranks].sort()).toEqual([1, 2, 3, 4]);
+    // The point of the change: the index outranks the glance cards, and the warning
+    // outranks the index.
+    expect(rank("warning")).toBeLessThan(rank("index"));
+    expect(rank("index")).toBeLessThan(rank("glance"));
+    expect(rank("glance")).toBeLessThan(rank("entry"));
+  });
+
+  it("resets every slot at `sm`, so desktop renders in DOM order", () => {
+    for (const s of slots) expect(PHONE_STACK[s]).toContain("sm:order-none");
+  });
+
+  it("gives every slot `min-w-0` and the container no flex gap", () => {
+    // A flex item defaults to min-width:auto, which would let the wide biomarkers
+    // table push the column past a 390px viewport instead of scrolling in its own
+    // frame.
+    for (const s of slots) expect(PHONE_STACK[s]).toContain("min-w-0");
+    expect(PHONE_STACK.container).toContain("flex-col");
+    // No `gap-*`: three slots render nothing for some profiles, and a gap would draw
+    // a phantom band where an empty card would have been. The cards' own `mb-6`
+    // spaces them.
+    expect(PHONE_STACK.container).not.toMatch(/(?:^|\s)gap-/);
   });
 });

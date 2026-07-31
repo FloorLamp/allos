@@ -96,7 +96,21 @@ describe("frequentPages", () => {
 
   it("excludes the page you're standing on — including from a child route", () => {
     expect(
-      frequentPages(visits, { currentPath: "/trends?tab=body" }).map(
+      frequentPages(visits, { currentPath: "/trends/metric/weight" }).map(
+        (p) => p.href
+      )
+    ).toEqual(["/timeline", "/nutrition"]);
+  });
+
+  // A section anchor is a position on a page, not a different page (#1644): the
+  // Trends hub's own deep links carry one, so the fragment has to be cut before the
+  // match — otherwise the hub is untrackable and shortcuts point at where you are.
+  it("resolves a section-anchored path to its page", () => {
+    expect(
+      frequentPages(visits, { currentPath: "/trends#body" }).map((p) => p.href)
+    ).toEqual(["/timeline", "/nutrition"]);
+    expect(
+      frequentPages(visits, { currentPath: "/trends?range=all#insights" }).map(
         (p) => p.href
       )
     ).toEqual(["/timeline", "/nutrition"]);

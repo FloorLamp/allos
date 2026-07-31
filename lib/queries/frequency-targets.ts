@@ -70,6 +70,11 @@ export interface FrequencyTargetProgress {
   // Paced status (#748 item 3): "met" once complete, "on-pace" while keeping up with the
   // share of the week elapsed, else "behind". Computed once here so every surface agrees.
   pace: FrequencyPace;
+  // On-days remaining in the profile's week window AFTER today (0..6) — the same window
+  // `pace` is computed against, carried so a surface can ask "is this still reachable
+  // without training today?" without re-deriving the window (#221). Rolling mode's
+  // window is always the trailing 7 days, so this is 0 there: every day is the last day.
+  daysLeftInWindow: number;
 }
 
 // Distinct training days in the profile's weekly window that satisfy each target.
@@ -224,6 +229,7 @@ export function getFrequencyTargetProgress(
       met: range.met,
       atCeiling: range.atCeiling,
       pace: range.pace,
+      daysLeftInWindow: Math.max(0, 7 - elapsedDays),
     };
   });
 }

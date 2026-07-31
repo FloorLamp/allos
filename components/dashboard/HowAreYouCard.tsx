@@ -12,8 +12,9 @@ import {
   toggleSituation,
   dismissDerivedPoorSleep,
 } from "@/app/(app)/nutrition/supplement-actions";
-import { logMood } from "@/app/(app)/mood-actions";
+import { logMood, resumeMoodCheckins } from "@/app/(app)/mood-actions";
 import {
+  MOOD_CHECKIN_PAUSED_LABEL,
   MOOD_FACTORS,
   ANXIETY_CALM_LOW_LABEL,
   ANXIETY_CALM_HIGH_LABEL,
@@ -114,6 +115,7 @@ export default function HowAreYouCard({
   anxietyRelevant = false,
   symptomSlot = null,
   symptomCount = 0,
+  checkinsPaused = false,
 }: {
   // The profile-local capture date — a queued offline tap lands on THIS day.
   date: string;
@@ -122,6 +124,10 @@ export default function HowAreYouCard({
   mood: TodayMood | null;
   // Whether the acting profile has an open illness episode (the hero is up).
   activeEpisode: boolean;
+  // Whether the evening reminder is currently AUTO-PAUSED after quiet days (#1668).
+  // Derived state, never a stored flag — the card presents it and offers a one-tap
+  // resume, so the pause stops reading as "notifications broke".
+  checkinsPaused?: boolean;
   // The server-rendered PRN quick-log control (issue #1221), or null — passed ONLY on
   // a well day with active PRN meds. Rendered on the server (so lib/clock's frozen
   // clock applies) and threaded through this client boundary as an RSC node.
@@ -288,7 +294,35 @@ export default function HowAreYouCard({
 
   return (
     <div className="card" data-testid="how-are-you-card">
-      <WidgetHeader title="How are you today?" href="/trends?tab=body" />
+      <WidgetHeader title="How are you today?" href="/trends#body" />
+
+      {/* The AUTO-PAUSED reminder, made visible (#1668). The check-in itself is
+          unaffected — the card logs a mood exactly as always; what paused is the
+          evening nudge. Resuming is the same streak reset a logged mood performs.
+          Tone follows the #992/#716 contract: no guilt, no streak language. */}
+      {checkinsPaused && (
+        <div
+          data-testid="mood-checkins-paused"
+          className="mb-2 flex flex-wrap items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+        >
+          <span>{MOOD_CHECKIN_PAUSED_LABEL}</span>
+          <button
+            type="button"
+            data-testid="mood-checkins-resume"
+            className="link"
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                const res = await resumeMoodCheckins();
+                toast(res.ok ? "Daily check-ins resumed" : res.error);
+                router.refresh();
+              })
+            }
+          >
+            Resume
+          </button>
+        </div>
+      )}
 
       {/* RATE — the hero face row stays first in DOM; one tap completes the check-in,
           and "More detail" reveals Energy, the gated Calm, and a note. */}

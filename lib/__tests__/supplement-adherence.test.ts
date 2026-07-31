@@ -288,7 +288,7 @@ describe("supplementAdherenceStrip", () => {
     return {
       condition: "daily" as SupplementCondition,
       situation: null,
-      as_needed: 0,
+      obligation: "should",
       ...over,
     } as Supplement;
   }
@@ -447,7 +447,7 @@ describe("dose-lifetime clamp / the no-history boundary (#1442)", () => {
       name: "Ibuprofen (test)",
       condition: "daily" as SupplementCondition,
       situation: null,
-      as_needed: 0,
+      obligation: "should",
       created_at: createdAt,
     } as Supplement;
   }

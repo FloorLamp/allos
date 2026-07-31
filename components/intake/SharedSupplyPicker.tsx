@@ -41,9 +41,21 @@ export default function SharedSupplyPicker({
   const [choice, setChoice] = useState<string>(
     supplyId != null ? String(supplyId) : ""
   );
+  const [savedChoice, setSavedChoice] = useState<string>(
+    supplyId != null ? String(supplyId) : ""
+  );
+  const [activeSupplyName, setActiveSupplyName] = useState(supplyName);
   const [newName, setNewName] = useState(itemName);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  useEffect(() => {
+    const nextChoice = supplyId != null ? String(supplyId) : "";
+    setChoice(nextChoice);
+    setSavedChoice(nextChoice);
+    setActiveSupplyName(supplyName);
+  }, [supplyId, supplyName]);
 
   useEffect(() => {
     if (!itemId || loaded) return;
@@ -71,22 +83,56 @@ export default function SharedSupplyPicker({
 
   const apply = (): void => {
     setError(null);
+    setSuccess(null);
     start(async () => {
-      const fd = new FormData();
-      fd.set("item_id", String(itemId));
-      let res;
-      if (choice === "") {
-        res = await unlinkItemAction(fd);
-      } else if (choice === "__new__") {
-        fd.set("name", newName.trim() || itemName);
-        res = await createPoolAction(fd);
-      } else {
-        fd.set("supply_id", choice);
-        res = await linkItemAction(fd);
+      try {
+        const appliedChoice = choice;
+        const fd = new FormData();
+        fd.set("item_id", String(itemId));
+        let res;
+        if (appliedChoice === "") {
+          res = await unlinkItemAction(fd);
+        } else if (appliedChoice === "__new__") {
+          fd.set("name", newName.trim() || itemName);
+          res = await createPoolAction(fd);
+        } else {
+          fd.set("supply_id", appliedChoice);
+          res = await linkItemAction(fd);
+        }
+        if (!res.ok) {
+          setError(res.error ?? "Couldn't update the shared supply.");
+          return;
+        }
+
+        const supply = res.supply;
+        if (supply) {
+          const nextChoice = String(supply.id);
+          setOptions((current) =>
+            [
+              ...current.filter((option) => option.id !== supply.id),
+              supply,
+            ].sort((a, b) => a.name.localeCompare(b.name))
+          );
+          setChoice(nextChoice);
+          setSavedChoice(nextChoice);
+          setActiveSupplyName(supply.name);
+          setSuccess(
+            appliedChoice === "__new__"
+              ? `Created and linked “${supply.name}”.`
+              : `Linked to “${supply.name}”.`
+          );
+        } else {
+          setChoice("");
+          setSavedChoice("");
+          setActiveSupplyName(null);
+          setSuccess("Shared supply removed.");
+        }
+      } catch {
+        setError("Couldn't update the shared supply.");
       }
-      if (!res.ok) setError(res.error ?? "Couldn't update the shared supply.");
     });
   };
+  const changed = choice === "__new__" || choice !== savedChoice;
 
   return (
     <div
@@ -101,14 +147,14 @@ export default function SharedSupplyPicker({
         Shared supply
       </label>
       <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-        {supplyName
-          ? `This item draws from the shared bottle “${supplyName}”. Everyone linked to it decrements one count.`
+        {activeSupplyName
+          ? `This item draws from the shared bottle “${activeSupplyName}”. Everyone linked to it decrements one count.`
           : "Link this item to a bottle the household shares, so every taker's doses decrement one count."}
       </p>
       {/* The natural "see all bottles" exit (#1522). Only once a pool is actually
         linked: with nothing shared there is no cabinet to walk out to, and the select
         below is the way IN. The cabinet has no nav row — this is one of its doors. */}
-      {supplyName && (
+      {activeSupplyName && (
         <p className="mb-2 text-xs">
           <Link
             href={SUPPLIES_HREF}
@@ -125,7 +171,11 @@ export default function SharedSupplyPicker({
           className="input max-w-xs"
           value={choice}
           disabled={pending}
-          onChange={(e) => setChoice(e.target.value)}
+          onChange={(e) => {
+            setChoice(e.target.value);
+            setError(null);
+            setSuccess(null);
+          }}
         >
           <option value="">Not shared</option>
           {options.map((o) => (
@@ -143,14 +193,19 @@ export default function SharedSupplyPicker({
             data-testid="shared-supply-new-name"
             value={newName}
             disabled={pending}
-            onChange={(e) => setNewName(e.target.value)}
+            onChange={(e) => {
+              setNewName(e.target.value);
+              setError(null);
+              setSuccess(null);
+            }}
           />
         )}
         <button
           type="button"
-          className="btn-secondary"
+          className="btn btn-sm"
           data-testid="shared-supply-apply"
-          disabled={pending}
+          disabled={pending || !changed}
+          aria-busy={pending}
           onClick={apply}
         >
           {pending ? "Saving…" : "Apply"}
@@ -163,7 +218,21 @@ export default function SharedSupplyPicker({
         </p>
       )}
       {error && (
-        <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>
+        <p
+          role="alert"
+          className="mt-2 text-xs text-rose-600 dark:text-rose-400"
+        >
+          {error}
+        </p>
+      )}
+      {success && (
+        <p
+          role="status"
+          data-testid="shared-supply-success"
+          className="mt-2 text-xs text-emerald-700 dark:text-emerald-300"
+        >
+          {success}
+        </p>
       )}
     </div>
   );

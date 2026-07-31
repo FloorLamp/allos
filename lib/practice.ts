@@ -7,6 +7,7 @@
 // keys on the SAME computation (the "one question, one computation" rule, #221).
 
 import { frequencyPace, type FrequencyPace } from "./goals";
+import type { PracticeLogOutcome } from "./types";
 
 // The stable suppression/identity key namespace for a wellness-practice weekly target:
 // `practice:<targetId>`. The SINGLE source of truth for the key — the Upcoming practice
@@ -103,6 +104,25 @@ export function practiceSpellingsFor(
     .slice(0, MAX_PRACTICE_SPELLINGS_PER_IDENTITY);
 }
 
+// The ONE display name for a practice identity. Practice names are user-owned open
+// vocabulary and the same identity can hold several stored spellings, so which one a
+// surface shows is a decision, not a lookup: the TARGET's spelling wins (the user
+// typed it when they set the cadence), else the most recent session's spelling, else
+// the folded identity itself as a last resort. Shared by the Wellness page aggregate
+// and the search fan-out (#1595) so a practice can never be named one thing on its
+// card and another in the palette.
+export function practiceDisplayName(input: {
+  targetSpelling?: string | null;
+  latestSpelling?: string | null;
+  identity: string;
+}): string {
+  return (
+    normalizePracticeName(input.targetSpelling) ||
+    normalizePracticeName(input.latestSpelling) ||
+    input.identity
+  );
+}
+
 // The expanded log form defaults duration from the immediately previous session.
 // A prior row with no recorded duration intentionally yields no default — old null
 // rows are never treated as if a duration had been captured.
@@ -193,3 +213,19 @@ export function practiceCadenceText(
 // Display: the calm at-ceiling reassurance, shared by the surfaces (#1259: never a red
 // state above the ceiling).
 export const PRACTICE_PLENTY_TEXT = "Weekly maximum reached";
+
+// The ONE sentence a surface says after a one-tap practice log, derived from the typed
+// write outcome. A session log is NOT idempotent, so this is never an unconditional
+// confirm (the markDoseTaken contract): a fresh row reports the day's running count, and
+// anything else says plainly that nothing was written. Shared by every tap surface —
+// the Wellness card's button, the quick-entry overlay's practice row, the command
+// palette's inline quick log, and the Telegram "Done ✓" answer — so four surfaces over
+// one write core cannot drift into four wordings (#1633).
+export function practiceLogOutcomeText(outcome: PracticeLogOutcome): string {
+  if (outcome.kind === "logged") {
+    return outcome.count === 1
+      ? "Logged today's session"
+      : `Logged — ${outcome.count} sessions today`;
+  }
+  return "Couldn't log that session.";
+}

@@ -43,6 +43,13 @@ import type {
   CardioRecent,
   RoutineTargetProgress,
 } from "./coaching";
+import {
+  parkedVerdict,
+  pickIndoorAlternative,
+  type ParkReason,
+  type ToleranceEnvelope,
+} from "./weather-training";
+import type { WeatherDay } from "./weather-situations";
 
 // ---- Windows ----
 
@@ -102,6 +109,49 @@ export interface BehindTarget {
   perWeek: number;
 }
 
+// A behind target ordered for display, marked when it is the one that DROVE today's
+// suggestion (issue #1709).
+export interface OrderedBehindTarget extends BehindTarget {
+  driving: boolean;
+}
+
+// Order the "behind this week" list so it EXPLAINS the suggestion instead of sitting
+// beside it (#1709). The message used to recommend Back and then list Chest first,
+// because `behind` was flattened to opaque strings in routine-declaration order, with
+// nothing connecting the two halves and the target that actually drove the suggestion
+// — the one at 0/2 — buried mid-line.
+//
+// The driving target leads; the rest follow by DEFICIT (largest `perWeek - count` gap
+// first), ties broken by routine order for stability. Living here, beside the
+// recommendation, means the Telegram nudge, the dashboard coaching card and the
+// Training overview all format one ordered result and a future surface cannot
+// reintroduce a different order (#221).
+//
+// `driverId` is the behind target that drove the lead routine-gap item, or null when
+// the suggestion came from habit/variety rather than a behind target — in which case
+// nothing is marked and the list is pure deficit order.
+export function orderBehindTargets(
+  behind: readonly BehindTarget[],
+  driverId: number | null
+): OrderedBehindTarget[] {
+  const deficit = (t: BehindTarget) => t.perWeek - t.count;
+  return behind
+    .map((t, i) => ({
+      ...t,
+      // A driver that is somehow no longer behind can't be marked — it wouldn't be in
+      // this list at all, and a marker pointing at nothing is worse than none.
+      driving: driverId != null && t.id === driverId,
+      order: i,
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.driving) - Number(a.driving) ||
+        deficit(b) - deficit(a) ||
+        a.order - b.order
+    )
+    .map(({ order: _order, ...t }) => t);
+}
+
 export interface NextWorkoutInput {
   today: string; // profile-tz YYYY-MM-DD
   routine: RoutineTargetProgress[];
@@ -141,6 +191,13 @@ export interface NextWorkoutInput {
   // `considerations` on the result so every surface renders the same calm note. Absent /
   // empty ⇒ nothing.
   considerations?: ConditionConsideration[];
+  // Weather context (#1724). When present, OUTDOOR activities whose conditions fall
+  // outside the profile's own revealed tolerance are PARKED: excluded from the cardio
+  // pick and from variety staleness, with the reason disclosed and the mapped indoor
+  // alternative offered in their place. Absent ⇒ no gating whatsoever, so every
+  // existing caller and test keeps its prior ordering (silence over guessing — a
+  // profile with no weather data must not be re-ranked on a guess).
+  weather?: WeatherTrainingContext | null;
   // The plan-aware cardio ARM for the soonest active endurance plan (#839) — a calm
   // pre-computed one-line note ("… plan · 6 weeks to go: ~28 km this week, long run ~12 km
   // due …"). Rides ALONGSIDE the unchanged recommendation like the condition notes; the
@@ -270,6 +327,41 @@ export interface NextWorkout {
   // note, riding alongside like the considerations. Null when no active plan / during an
   // open illness episode (the gather applies the pause). Pass-through of the input.
   endurancePlanArm: EnduranceArm | null;
+  // Outdoor activities PARKED by today's conditions (#1724), each with the reason and
+  // the indoor stand-in that took its slot. NEVER a silent disappearance (the #838
+  // always-disclosed rule): every surface renders this alongside the suggestion, so the
+  // ride's absence is explained rather than mysterious. Empty when no weather context,
+  // no outdoor activity in range, or conditions are fine.
+  parked: ParkedActivity[];
+}
+
+// The weather inputs the core reads. Assembled once by the DB gather so the Telegram
+// nudge, the dashboard card and the Training overview inherit one answer (#221/#221).
+export interface WeatherTrainingContext {
+  // Today's cached conditions, or null when the day has no cached row (⇒ no gating).
+  today: WeatherDay | null;
+  // Per-activity tolerance envelopes, keyed by the FOLDED activity name — derived from
+  // the profile's OWN history, never assumed.
+  envelopes: Map<string, ToleranceEnvelope>;
+  // Whether the profile can actually do an indoor candidate (logged it, or owns the
+  // gear). The engine never invents a machine someone doesn't have.
+  canDo: (candidate: string) => boolean;
+}
+
+// One parked outdoor activity, with everything a surface needs to disclose it.
+export interface ParkedActivity {
+  activity: string;
+  reason: ParkReason;
+  // The condition value in canonical units (°C for cold/hot, mm for wet). The surface
+  // formats it in the login's units.
+  value: number | null;
+  // The indoor stand-in offered in its place, or null when the profile can do none of
+  // the mapped alternatives — the caller then falls through to its normal next-best
+  // pick, with this disclosure still rendered.
+  alternative: string | null;
+  // Whether the envelope that parked it was REVEALED from this profile's own sessions
+  // (vs the permissive fallback constants). Surfaces can be honest about which.
+  revealed: boolean;
 }
 
 // ---- Target helpers ----
@@ -338,12 +430,20 @@ function candidateRegions(
 // The least-recently-done cardio activity within the variety lookback (an
 // ancient one-off is excluded, not treated as a lapsed habit). Stable tie-break
 // by name. Null when nothing qualifies.
+// SEASONAL PARKING MUST NOT READ AS STALENESS (#1724 part 4). The variety ranker
+// favours the least-recently-done activity, which without this exclusion INVERTS the
+// desired behavior: as winter parks the bike, the ride goes stale and gets pushed
+// HARDER exactly when conditions are worst. Parked activities are excluded from
+// candidacy while parked and return naturally when the gate lifts — the comeback needs
+// no special case, just the exclusion ending.
 export function pickOldestCardio(
   cardio: CardioRecent[],
-  today: string
+  today: string,
+  parkedActivities: ReadonlySet<string> = new Set()
 ): CardioRecent | null {
   return (
     [...cardio]
+      .filter((c) => !parkedActivities.has(c.activity.trim().toLowerCase()))
       .filter((c) => within(c.lastDate, today, VARIETY_LOOKBACK_DAYS))
       .sort((a, b) =>
         a.lastDate === b.lastDate
@@ -719,6 +819,38 @@ export function sessionCreditsDay(
 // The result is surface-agnostic; lib/coaching formats it into Recommendation
 // cards (wrapping it with rest/intensity) and lib/notifications formats it into
 // the Telegram reminder. Rest/recovery is intentionally NOT decided here.
+// Which of the profile's recent cardio activities today's conditions park, each with
+// the indoor stand-in it can actually do. NO WEATHER CONTEXT ⇒ NOTHING PARKED: the
+// engine has no opinion without data, and today's pick is byte-for-byte what it was
+// before this feature existed.
+function resolveParked(
+  cardio: readonly CardioRecent[],
+  weather: WeatherTrainingContext | null
+): ParkedActivity[] {
+  if (!weather || !weather.today) return [];
+  const out: ParkedActivity[] = [];
+  const seen = new Set<string>();
+  for (const c of cardio) {
+    const key = c.activity.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const verdict = parkedVerdict(
+      c.activity,
+      weather.today,
+      weather.envelopes.get(key) ?? null
+    );
+    if (!verdict.parked || verdict.reason == null) continue;
+    out.push({
+      activity: c.activity,
+      reason: verdict.reason,
+      value: verdict.value,
+      alternative: pickIndoorAlternative(c.activity, weather.canDo),
+      revealed: verdict.revealed,
+    });
+  }
+  return out;
+}
+
 export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
   const { routine, strength, cardio, today } = input;
 
@@ -727,11 +859,21 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
   // (#666) ride ALONGSIDE unchanged. Computed once so every branch's result agrees.
   const constraints = input.injuries ?? [];
   const excluded = computeExcludedRegions(constraints);
+  // Weather parking (#1724), resolved ONCE so every branch's result agrees — and so
+  // the Telegram nudge, dashboard card and Training overview inherit the same answer
+  // (#221). The candidate set is the profile's own recent cardio: an activity it has
+  // never done cannot be parked, because there is nothing to park.
+  const parked = resolveParked(cardio, input.weather ?? null);
+  const parkedNames = new Set(
+    parked.map((p) => p.activity.trim().toLowerCase())
+  );
+
   const trainingContext = {
     excludedRegions: excludedRegionDisclosures(constraints),
     temperedRegions: [...computeTemperedRegions(constraints)],
     considerations: input.considerations ?? [],
     endurancePlanArm: input.endurancePlanArm ?? null,
+    parked,
   };
 
   // A behind region/group target fully within an excluded region is dropped from the
@@ -765,7 +907,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
               kind: "cardio",
               reason: "routine-day",
               exercise: null,
-              activity: pickOldestCardio(cardio, today),
+              activity: pickOldestCardio(cardio, today, parkedNames),
               target: null,
             }
           : {
@@ -823,7 +965,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
         kind: "cardio",
         reason: "routine-gap",
         exercise: null,
-        activity: pickOldestCardio(cardio, today),
+        activity: pickOldestCardio(cardio, today, parkedNames),
         target: toBehindTarget(behindCardio),
       });
     }
@@ -870,7 +1012,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     });
     return { items, ...base };
   }
-  const activity = pickOldestCardio(cardio, today);
+  const activity = pickOldestCardio(cardio, today, parkedNames);
   if (activity) {
     items.push({
       kind: "cardio",

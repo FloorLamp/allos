@@ -24,7 +24,7 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components", "lib"];
 const TOKENS_HOME = "components/overlay/";
 
-// The four surfaces, and what each one is for. A fifth would be added here with
+// The bottom-edge surfaces, and what each one is for. A new one is added here with
 // its layer — that is the review moment this test exists to force.
 const BOTTOM_EDGE_SURFACES = new Map<string, string>([
   [
@@ -38,6 +38,10 @@ const BOTTOM_EDGE_SURFACES = new Map<string, string>([
   [
     "components/OfflineQueueProvider.tsx",
     "LAYER 1 (pill, bottom-left) + LAYER 2 (rejected-writes panel, bottom-right)",
+  ],
+  [
+    "components/UpdateReadyBar.tsx",
+    "LAYER 1 — the deploy update offer (#1700), bottom-left, one row above the offline pill's slot so the two never overlap",
   ],
 ]);
 

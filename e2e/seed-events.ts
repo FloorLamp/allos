@@ -28,6 +28,7 @@ import { seedMergeFixtures } from "./seed/merge";
 import {
   seedImportFeed,
   seedDropReport,
+  seedExtractionConfidence,
   seedRecordsBrowser,
 } from "./seed/imports";
 import {
@@ -68,6 +69,7 @@ import {
   seedDrugAllergyCrosscheck,
   seedPrnCounter,
   seedSafetyCoverage,
+  seedUpcomingAggregate,
   seedSharedSupplyPools,
 } from "./seed/intake";
 import {
@@ -78,13 +80,15 @@ import {
   seedDataQualityGaps,
   seedVisitLinking,
   seedRecordsEnrichment,
+  seedLesionAllergyVisitLinks,
   seedPanelGroups,
   seedPanelIndex,
+  seedReportPanes,
 } from "./seed/medical";
 import { seedCoverageGaps } from "./seed/coverage-gaps";
 import { seedNutritionTrio, seedFoodSlots } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
-import { seedIllness } from "./seed/illness";
+import { seedIllness, seedSymptomVideoEpisode } from "./seed/illness";
 import { seedCycleAndDerived, seedWindowAnalytics } from "./seed/situations";
 import { seedHaConfig } from "./seed/notifications";
 import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
@@ -111,6 +115,7 @@ seedMultiSourceMetric();
 seedTrainingZones();
 seedRuleDomains();
 seedDropReport();
+seedExtractionConfidence();
 seedMedicationCards();
 seedPrnLedger();
 seedRecordsBrowser();
@@ -150,6 +155,7 @@ seedMultiProfile();
 seedWindowAnalytics();
 seedWellDayTilt();
 seedRecordsEnrichment();
+seedLesionAllergyVisitLinks();
 seedSunOutdoor();
 seedGrantMatrix();
 seedSharedSupplyPools();
@@ -168,3 +174,11 @@ seedTrainingRollup();
 seedLoadContexts();
 seedTimelineChrome();
 seedTimelineEmpty();
+// Appended LAST on purpose (#1598): both fixtures introduce profiles and rows, so
+// running them after every existing seeder leaves every other fixture's row ids
+// exactly where they were.
+seedSymptomVideoEpisode();
+seedReportPanes();
+// Appended after those for the same reason (#1504): a new profile plus its own intake
+// rows, so every existing fixture's row ids stay exactly where they were.
+seedUpcomingAggregate();

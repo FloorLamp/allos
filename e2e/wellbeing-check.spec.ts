@@ -150,7 +150,7 @@ test.describe("Daily wellbeing check (#992)", () => {
 
     // The logged series surfaces on Trends → Body (never flag-checked — the card
     // copy says so in plain words).
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     const trend = page.getByTestId("mood-trend");
     await expect(trend).toBeVisible();
     await expect(trend).toContainText("never range-checked");

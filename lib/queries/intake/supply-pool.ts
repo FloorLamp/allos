@@ -24,6 +24,8 @@ import {
   type PoolConsumer,
 } from "../../refill";
 import { getRefillRates } from "./refill";
+import { isPushedIntake } from "../../supplement-schedule";
+import type { IntakeObligation } from "../../types";
 
 // A shared bottle as stored.
 export interface SharedSupply {
@@ -45,6 +47,13 @@ export interface PoolMember {
   profileId: number;
   name: string;
   kind: "supplement" | "medication";
+  // Active dose amounts are carried for cabinet-link disambiguation. Two records
+  // may share a name; the action label must identify which one it opens.
+  doseAmounts: string[];
+  // The member item's user-owned OBLIGATION (#559 → #1505) — carried so the pooled
+  // refill signal can consult the ONE shared push predicate: a bottle whose every
+  // active member is a `may` item is tracked, never pushed.
+  obligation: IntakeObligation;
   qtyPerDose: number;
   active: boolean;
 }
@@ -84,27 +93,57 @@ export function listSharedSupplies(): SharedSupply[] {
 export function poolMembers(supplyId: number): PoolMember[] {
   const rows = db
     .prepare(
-      `SELECT id, profile_id, name, kind, qty_per_dose, active
-         FROM intake_items
-        WHERE supply_id = ?
-        ORDER BY profile_id, name, id`
+      `SELECT i.id, i.profile_id, i.name, i.kind, i.obligation, i.qty_per_dose,
+              i.active, d.amount AS dose_amount
+         FROM intake_items i
+         LEFT JOIN intake_item_doses d
+           ON d.item_id = i.id AND d.retired = 0
+        WHERE i.supply_id = ?
+        ORDER BY i.profile_id, i.name, i.id, d.sort, d.id`
     )
     .all(supplyId) as {
     id: number;
     profile_id: number;
     name: string;
     kind: "supplement" | "medication";
+    obligation: IntakeObligation;
     qty_per_dose: number;
     active: number;
+    dose_amount: string | null;
   }[];
-  return rows.map((r) => ({
-    itemId: r.id,
-    profileId: r.profile_id,
-    name: r.name,
-    kind: r.kind,
-    qtyPerDose: r.qty_per_dose,
-    active: r.active === 1,
-  }));
+  const members = new Map<number, PoolMember>();
+  for (const r of rows) {
+    let member = members.get(r.id);
+    if (!member) {
+      member = {
+        itemId: r.id,
+        profileId: r.profile_id,
+        name: r.name,
+        kind: r.kind,
+        doseAmounts: [],
+        obligation: r.obligation,
+        qtyPerDose: r.qty_per_dose,
+        active: r.active === 1,
+      };
+      members.set(r.id, member);
+    }
+    const amount = r.dose_amount?.trim();
+    if (amount && !member.doseAmounts.includes(amount))
+      member.doseAmounts.push(amount);
+  }
+  return [...members.values()];
+}
+
+// Whether a pooled bottle may ride a PUSH surface (#1505). The pool is ONE subject
+// shared across people, so it keeps pushing while ANY active member is pushable
+// under the shared `isPushedIntake` predicate — the household's warfarin bottle is
+// never silenced because someone else's link to it is a `may` item.
+// Only a bottle whose entire active membership is "tracked, never pushed" drops out
+// of the nudge; the cabinet page still shows its supply state either way.
+export function poolPushes(members: readonly PoolMember[]): boolean {
+  const active = members.filter((m) => m.active);
+  if (active.length === 0) return false;
+  return active.some((m) => isPushedIntake(m));
 }
 
 // The pooled consumption inputs for one bottle. Rates are composed PER PROFILE — the

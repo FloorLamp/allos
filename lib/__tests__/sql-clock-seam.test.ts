@@ -82,6 +82,14 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "insights.created_at — audit stamp; the row's day is its own `date` column, supplied by the caller.",
   },
+  "lib/api-tokens.ts": {
+    count: 4,
+    why: "api_tokens created_at / last_used_at / revoked_at (#1734) — credential LIFECYCLE stamps. Nothing reduces them to a calendar day: created/last-used are rendered as full UTC timestamps in the management UI, and revoked_at is read only for IS NULL (liveness), never compared to a today()-derived date.",
+  },
+  "lib/portals.ts": {
+    count: 6,
+    why: "portals.created_at, portal_accounts.created_at (x2 — the implicit login minted with a portal, and a named one added later), and portal_identities.created_at/updated_at (#1739) — registry and binding AUDIT stamps ('when was this portal registered', 'when was this patient last re-bound'). Nothing reduces them to a calendar day: the card renders them as timestamps and no query compares them to a today()-derived date. The one pair here that IS reduced to a day — pending_portal_identities.first_seen_at/last_seen_at, which the card prints as 'first seen 2026-01-02' — deliberately goes through sqlNow() instead and so does not appear in this count. The acquirer's own dated data arrives as documents, which carry their own clock-seam stamps.",
+  },
   "lib/audit.ts": {
     count: 2,
     why: "audit_events retention DELETE (ts < now - N) — a duration cutoff.",
@@ -111,8 +119,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "connection last_sync_at/updated_at/refresh_claimed_at, the sync-event feed stamp, its retention sweep, and the 1-hour error-flood guard — audit stamps, claim leases and durations.",
   },
   "lib/integrations/weather-cache.ts": {
-    count: 1,
-    why: "weather cache fetched_at — a TTL stamp.",
+    count: 2,
+    why: "weather cache fetched_at, once per grain (the hourly weather_uv_hours upsert and the daily weather_days one, #1726) — TTL/provenance stamps. Neither is ever compared to a today()-derived calendar day: the CALENDAR identity of a cached row is its own hour_ts / date column, which comes from the provider in the location's local time, not from the clock.",
   },
   "lib/medical-pipeline.ts": {
     count: 1,

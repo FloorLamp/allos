@@ -8,6 +8,13 @@ a deliberate two-tier decision, not a per-feature accident. This page holds the
 full policy and how a new engine joins a tier; the one-line rule stays in
 AGENTS.md's conventions.
 
+> **The reach policy is one half of a larger doctrine.** [The attention
+> doctrine](#the-attention-doctrine) at the end of this file generalizes it: the
+> surface taxonomy (who initiates), the contact-consent rule, which domains can
+> carry an obligation at all, the right-sizing family, and how tiers and
+> obligations correspond without being the same thing. Read that when adding a
+> new engine, a new push surface, or a new "the system noticed X" suggestion.
+
 ---
 
 **Findings reach is a two-tier policy — decide it on purpose (#449).** The #45
@@ -35,6 +42,34 @@ two sets are disjoint, their union is the whole set, the rollup's count and
 "Show N more" overflow are computed over what it renders, and hiding the home
 widget puts its family straight back into the rollup. A new family with its own
 widget adds one registry line — it does not add another one-off filter.
+
+**The same contract governs the Upcoming page's display aggregation (#1504).**
+The planning page folds a band's scheduled `dose` rows into one disclosure, and
+its `interaction` + `pgx` rows into a second, with the count (and, for Today, the
+day's taken fraction) stated in BOTH states, no dismiss, and no persisted state —
+an aggregate is collapsed on every visit. `lib/upcoming-aggregate.ts` owns the
+decision (`planBandRender`); the page is a formatter over it.
+
+Three properties are load-bearing:
+
+- **Rendering aggregates; identity does not (#1496).** The disclosure hands the
+  SAME `UpcomingItem` objects to the SAME row renderer, so every folded row keeps
+  its `dedupeKey`, its per-item snooze/dismiss, and its `WriteTarget` — a dose
+  confirmed on another member's row still writes to that member.
+- **The safety exemption is read from the item's own policy**, exactly as the
+  hero's is: an item whose `itemSuppressionPolicy` is `"safety-ungated"` (a
+  missed-dose escalation, the crisis finding) is never folded, and neither is a
+  `prn-max` row — a count that has already been exceeded must not be summarised by
+  another count. Both render individually and lead their band.
+- **The rollup's scope is closed**: `interaction` + `pgx` only. `allergy-med`
+  keeps its rank above them (#1029) and stays an individual row, as do the
+  singular care findings. `lib/__tests__/upcoming-aggregate.test.ts` reflects over
+  the whole `UpcomingDomain` union so a new domain must choose a side.
+
+The fold is band-scoped (an overdue dose is never summarised together with a
+not-yet-due one), and it does not touch the engines, the bands,
+`compareWithinBand`, `collectUpcoming`, or the suppression bus — the digest, the
+dashboard hero and the calendar feed read the same model unchanged.
 
 **The hero's contract is ALWAYS-PRESENT, not always-full (#1413).** The care
 tier's `non-hideable hero` guarantee was refined on exactly one axis: the hero
@@ -345,6 +380,50 @@ awaiting a glaucoma workup), **#705** (dental "re-eval in 3 months"), **#715**
 
 ---
 
+## Conditions compose with the stack, they don't add a nag (#1727)
+
+Status: **shipped** (photosensitizers × UV, heat-risk meds × heatwave)
+
+A curated safety engine whose trigger is the WEATHER rather than another pill
+raises the reach question sharply: the fact is care-tier (an environmental
+exposure interacting with an active medication), but the conditions recur, so a
+naive implementation would speak most days of a summer. The rules this settled
+on, stated once here because the next environmental engine will need them:
+
+- **Enrichment before emission.** When a line about the same event is ALREADY
+  firing, the med fact joins it as one clause rather than becoming a second
+  finding. A photosensitizer on a day the UV-overexposure heads-up fires enriches
+  that line and keys under the SAME dedupeKey, so one dismissal still covers the
+  day. Two findings about one afternoon is the failure mode; one richer sentence
+  is the fix.
+- **A standalone line only where the existing one is silent.** The new
+  finding exists precisely for the gap the enrichment can't cover — a strong-sun
+  day with nothing logged outdoors yet, so there is no dose to warn about and the
+  advice is still actionable. It stands down the moment the overexposure line
+  takes over. The heatwave note is the same shape and requires BOTH facts, so a
+  merely warm day is silent however many diuretics are in the stack.
+- **No new send, ever.** Both notes ride Upcoming, the hero, and the digest that
+  already fires. The composition adds no channel, which is the contact-consent
+  rule of the attention doctrine: the system may enrich what it was already
+  saying, never start saying more.
+- **Date-scoped dedupe keys.** The condition is a property of the DAY, not a
+  standing fact about the medication, so the key carries the date: a dismissal
+  silences today and a genuinely new qualifying day surfaces fresh. (Contrast
+  the ototoxic note, whose key is standing because the drug class is.)
+- **Obligation-blind (#1505, pinned) and kind-blind.** A `may` photosensitizer
+  triggers exactly like a `must` one — obligation governs whether the app
+  CONTACTS you about taking something, never whether a drug reacts to sunlight.
+  And the stack screened is supplements AND medications: St John's Wort is a
+  supplement and a documented photosensitizer.
+- **Safety gates itself; it doesn't inherit a calm surface's gate.** The
+  weather-SITUATION machinery (#1726) is relevance-gated so five context rows
+  don't appear in the life of someone with no reason to care. The safety
+  composition deliberately does NOT read through that gate: taking the medication
+  IS the reason to care, and a care-tier note must not be silenced by the
+  unrelated fact that the user never keyed a supplement to pollen.
+
+---
+
 ## Empty safety results are never affirmative all-clears (#1032)
 
 Status: **shipped** (intake safety notices + quiet footer disclosure; the
@@ -352,7 +431,7 @@ principle applies to every safety surface)
 
 The safety-logic datasets are, by explicit design, **curated high-value
 subsets** (51 interaction rules, 34 PGx entries, 6 ototoxic classes, the
-drug-allergy classes, 2 contrast entries, …). The principle, stated once here
+drug-allergy classes, 2 contrast entries, 15 weather-sensitivity classes, …). The principle, stated once here
 alongside the #449 tiers: **a safety surface must never let _absence of a
 finding_ read as an _affirmative all-clear_; when coverage is partial, say so.**
 A profile whose entire stack is off-dataset must not render identically to one
@@ -609,3 +688,309 @@ observational finding when dismissed, it would then owe a shared `dedupeKey` and
 a bus entry — but that would be a real observation riding alongside the
 proposal, registered in `RULE_FINDING_PREFIXES` like any finding. Until then,
 the parallel mechanism is correct and this exemption is why.
+
+---
+
+# The attention doctrine
+
+Status: **shipped** · first implemented by #1505 (intake obligation); extended by
+#1718 (channel honesty), #1668 (mood check-in auto-pause) and #1670
+(frequency-target right-sizing) as they land.
+
+The two-tier reach policy above answers "how far does a SIGNAL travel". That
+turned out to be one question inside a larger one the codebase kept answering
+per-feature: **when may the system take a person's attention, and what may it do
+with their own declarations?** #1505 forced the general answer out into the open,
+so it lives here rather than being re-derived in each domain.
+
+## 1. The surface taxonomy — who initiates
+
+Every surface in the app falls into exactly one of three classes. The class is
+decided by **who initiates the contact**, not by which channel it uses — Telegram
+appears in all three, and that is the point.
+
+| Class                         | Who initiates               | Examples                                                                                                  | Rule                                                                                                                 |
+| ----------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **1. System-initiated sends** | the system, unprompted      | dose reminders, missed-dose escalation, refill nudges, the morning digest, the weekly recap               | Costs the user's attention. Needs a standing reason and an obligation behind it.                                     |
+| **2. Rendered aggregates**    | the user, by opening a page | Upcoming, the dashboard hero, the #1504 count, the Household card                                         | Costs nothing until looked at, but competes for scarce space — so it ranks and folds rather than listing everything. |
+| **3. User-initiated access**  | the user, by asking         | the Supplements page, quick-log overlays, the digest's "Log other…" tail, a reminder's More… row, `/dose` | Costs nothing. Must be COMPLETE — anything the user owns has to be reachable here, or it is effectively deleted.     |
+
+Two consequences that are easy to get wrong:
+
+- **Removing something from class 1 does not mean removing it from class 3.**
+  #1505's `may` items are never pushed and always reachable. A model that only
+  had "push it" and "drop it" is what produced the incoherent middle state the
+  issue was re-specced to remove.
+- **Class 2 collapses, it does not filter.** A `may` item still appears on
+  Upcoming — inside a disclosure, labelled _available_, not _due_. Demotion is
+  then a visible MOVE rather than a disappearance, which is what makes the
+  affordance trustworthy enough to use.
+
+## 2. The contact-consent rule
+
+> The system may **reduce** contact unilaterally. It may never **increase**
+> contact, or rewrite user-owned state, without the user's consent.
+
+The asymmetry is deliberate: being contacted less is recoverable and costs
+nothing to try, while being contacted more spends something the user cannot get
+back, and a silent state rewrite destroys the ground truth every other surface
+reads. Three corollaries carry the weight in practice:
+
+**Ride-the-nag.** A suggestion may only DECORATE a send that already exists for
+its own reasons. #1505's demotion suggestion appears as a third button on the
+dose reminder the item was already generating — never as its own message.
+Corollary of the corollary: a suggestion about an item that has stopped
+generating sends has no delivery path, and that is correct, not a gap.
+
+**Ride-the-nag applied to a structural signal (#1685, owner-decided 2026-07-30).**
+A broken integration is the same shape one level up. It is not a rule-engine
+finding — it carries no `Finding`, no builder, and no bus suppression (structural
+signals are non-suppressible: you reconnect them, you don't snooze them), so it
+is deliberately NOT in `RULE_FINDING_REGISTRY`, for exactly the reason `refill:`
+and `pool-refill:` aren't — the registry's reflection guards read builder output,
+and a namespace no builder emits would fail them. Its reach question is still the
+same one: how far may it travel?
+
+The answer is **the daily digest and nothing else**. It reaches Upcoming, the
+dashboard hero and Data → Review as it always did, and it is now counted and
+NAMED in the morning digest — the one message that was already going to send.
+There is no dedicated notification and no escalation.
+
+Why it earns a push channel at all, when `condition-review`, `followup` and
+`med-monitor` are deliberately kept off it: this is the one signal whose entire
+purpose is to work while the user is NOT looking. An integration exists so data
+flows without opening the app, which makes a dead one precisely the state its
+owner is least likely to notice, and a revoked grant is unrecoverable without
+their re-consent, so waiting never fixes it. A signal that only reaches surfaces
+you must open to see inverts the feature it is reporting on. That is a reach
+argument, not a severity one — which is why it stops at decorating an existing
+send rather than earning its own.
+
+**Ride-the-nag applied to a portal SYNC REQUEST (#1757).** The same argument, one
+step further along: a portal run cannot happen without a person at a specific
+machine, so the signal's whole job is to reach that person. It is a real row
+(`portal_sync_requests`) with a real dedupe key, and unlike a broken integration
+it IS registered in `RULE_FINDING_REGISTRY` — under the `portal-sync:` prefix,
+`coaching` tier — because it rides the ordinary suppression bus and its dismiss
+must be guardable and nameable in "Snoozed & dismissed". (It is registered
+without being a rule-findings builder; the Upcoming generator emits it, so the
+`collectCoachingFindings` reflection guards never see it, exactly as the
+suppression-only poor-sleep override entry is registered.)
+
+Its reach is the strictest shape this doctrine allows:
+
+- an **Upcoming item**, dismissible;
+- **one digest line**, named rather than merely counted, on the message that was
+  already going to send;
+- and **nothing else — no dedicated send, ever.** It is also excluded from the
+  non-hideable "Needs attention" hero by `cardBandForItem`'s named domain set,
+  which is the difference between this and the broken-sync signal beside it: a
+  dead connection is a fault you must repair, while "somebody should run the
+  portal tool this week" is an ask, and an ask that cannot be dismissed is a nag.
+
+The reach argument is #1685's verbatim — an attended sync exists so records
+arrive without you thinking about it, so the state of "nobody has run it in five
+weeks" is precisely what its owner will not notice — and the severity answer is
+the opposite: portal hygiene is never a safety signal, and a request that nobody
+acts on **expires** rather than escalating.
+
+**A keyboard edit is not a send; an edit that would notify is.** Telegram's
+`editMessageReplyMarkup` changes a message the user already received and does not
+ring their phone. That is what lets #1505's offer tail stay accurate across slot
+boundaries — the tick relabels the collapsed button at each boundary, costing
+zero interruptions. The test of whether a mechanism is a "send" is whether it
+consumes attention, not whether it makes an API call.
+
+**Confirm to KEEP, never confirm to stop.** When a flow reduces contact, do it
+and say so; when a flow reduces the user's SAFETY NET, state the consequences and
+ask. #1505's medication guardrail is the second shape: a medication defaults to
+`must`, and moving it below must asks "no reminders, no escalation, no
+missed-dose safety net — continue?". It is asked on the transition only, never
+re-asked on unrelated edits, and it names what is lost rather than saying "are
+you sure?".
+
+## 3. Commitment domains vs observation domains
+
+An **obligation** only exists where the user has committed to future behavior.
+Domains that merely RECORD what happened have nothing to demote, and trying to
+give them a priority band is how a model acquires a meaningless field.
+
+| Domain                                          | Commitment? | Its `may`-equivalent state                          |
+| ----------------------------------------------- | ----------- | --------------------------------------------------- |
+| Intake (supplements, medications)               | yes         | `obligation = 'may'` — tracked, offered, never due  |
+| Wellness practices                              | yes         | logs-only: the practice exists, no pace target      |
+| Goals                                           | yes         | filed away: kept, not paced                         |
+| Food groups                                     | yes         | excluded: off the suggestion engine, still loggable |
+| Body metrics, labs, sleep, symptoms, activities | **no**      | n/a — an observation cannot be missed               |
+
+The right question when adding a domain is therefore not "what priority band does
+this get" but "**did the user promise anything?**" A no makes obligation
+inapplicable, and the domain's quiet state is simply "we still record it".
+
+## 4. The right-sizing family
+
+Several issues converge on one pattern: the system NOTICES that a commitment has
+drifted from reality and offers to shrink it. Members share four properties, and
+a new member should adopt all four rather than re-deciding them:
+
+1. **Revealed-preference detection.** The evidence is what the user actually did
+   — an adherence ledger, a completion history — never a self-report or a guess.
+2. **Suggest, never write.** Detection produces a candidate; the user's tap is
+   the change. Auto-apply is permanently out of scope (#1505), because a silent
+   write to a declared field destroys the only ground truth the system has.
+3. **Recovery clears it.** Detection is a pure function of a trailing window, so
+   resumed behavior makes the suggestion disappear on its own. No stale
+   suggestion, no dismissal bookkeeping to keep it away.
+4. **Downward only.** Suggesting LESS commitment is offering relief; suggesting
+   MORE is manufacturing obligation, which is a different risk class the system
+   does not take on. Promotion stays manual.
+
+**Window-coherence convention.** A right-sizing engine and any reporting engine
+over the same ledger must use windows that NEST strictly, so the two can never
+fire off the same evidence and contradict each other. #1505 pins
+`INTAKE_DELTA_DAYS` (14, "what changed this fortnight") strictly inside
+`DEMOTION_WINDOW_DAYS` (30, "has this been abandoned this month") with a unit
+test. #1670 follows the same convention against its own pair.
+
+## 5. Care/coaching ↔ obligation: a correspondence, not a rename
+
+The findings tiers and the obligation levels are adjacent, and it is tempting to
+collapse them. They stay separate, because they describe different things:
+
+- A **tier** describes a SIGNAL's reach — how far this particular observation may
+  travel.
+- An **obligation** describes a COMMITMENT's weight — what the user owes this
+  item.
+
+One item can carry signals of both tiers at once: a `may` supplement still
+produces care-tier interaction warnings (the safety engines are obligation-blind,
+pinned by test), while the demotion suggestion ABOUT it is coaching tier. The
+useful mapping, stated so the two vocabularies cannot drift apart silently:
+
+| Obligation | Its routine dueness signal reaches                            | Note                                                         |
+| ---------- | ------------------------------------------------------------- | ------------------------------------------------------------ |
+| `must`     | care tier — Upcoming, hero, reminder, escalation              | escalation additionally needs the per-item `critical` opt-in |
+| `should`   | care tier minus escalation — Upcoming, hero, reminder         | a miss is a tracked shortfall, never chased twice            |
+| `may`      | no push; the Upcoming disclosure + user-initiated access only | ≈ a coaching-tier signal in reach                            |
+
+The correspondence is about ROUTINE DUENESS only. A safety finding's tier is
+decided by the finding, never by the obligation of the item it names — that
+boundary is the one thing in this document that has no exceptions.
+
+### 5a. The conservative-direction rule
+
+Obligation-blindness answers whether a safety finding may FIRE. A second question
+sits behind it: when a safety-adjacent finding is computed from an aggregate, may
+obligation change the NUMBER? Sometimes yes — but only ever in the cautious
+direction, and the cautious direction is not the same for every aggregate.
+
+State the aggregate's polarity first, then apply the rule:
+
+| The number is a…                        | Obligation may never… | So a `may` item is…                               |
+| --------------------------------------- | --------------------- | ------------------------------------------------- |
+| **risk** total (bigger = worse)         | shrink it             | counted at full weight, and LABELLED as such      |
+| **reassurance** share (bigger = better) | inflate it            | excluded from the figure, and DISCLOSED beside it |
+
+Both anchors live in `lib/dri.ts` over one shared summation:
+
+- The **upper-limit (UL)** warning is a risk total. A `may` item contributes its
+  full daily amount and `ulWarningDetail` appends "including as-needed items".
+- The **RDA adequacy** note is a reassurance share. It is computed from committed
+  (`must` + `should`) intake only, and `rdaAdequacyDetail` names the on-demand
+  remainder as an aside that is explicitly outside the share.
+
+Two consequences worth stating because both were once violated:
+
+1. **The upstream gate stays obligation-blind.** `contributesToDailyLimit` filters
+   on SCHEDULE alone. Obligation is applied per question, downstream, where the
+   direction of caution is known — a single upstream filter would silently force
+   one direction on both questions.
+2. **Neither direction is allowed to make a nutrient disappear.** Excluding an
+   amount from a share is not the same as dropping the row: a nutrient the user
+   supplements is still reported, because going quiet about it is the outcome the
+   demoting user least expects and least wants.
+
+The trap this rule exists to catch is a lossy vocabulary translation. Pre-#1505
+`as_needed` asserted a FACT about the schedule ("no standing daily intake"), so
+excluding it from a daily total was sound. `may` asserts only a WISH about pushing
+("don't nudge me"), and a daily item demoted to `may` is usually still taken every
+day. Carrying the old exclusion across the collapse therefore lost real
+milligrams — and with them a UL warning the user needed precisely because nothing
+was nudging them any more. When a field's meaning widens, re-derive every
+predicate that read it; do not translate it literally.
+
+## 6. A message never references an affordance its channel strips
+
+Added by #1718. The obligation model decides WHETHER to contact someone; this rule
+decides whether the message that arrives is honest about what the person can do
+with it.
+
+Web Push carries only title, body and a single click-through URL — it drops
+`actions` entirely — and the Home Assistant webhook forwards content for an
+automation to present. So a builder whose copy says "tap the button below" is
+telling a push user to tap something that does not exist. Every actionable message
+must therefore take one of two roads:
+
+- **Be excluded from actionless channels.** Right when the buttons ARE the content:
+  the food nudge ("Tap what you've eaten to log a serving" — #692) and the mood
+  check-in ("One tap logs your day" — #1718) have nothing left once the buttons go,
+  so `PUSH_UNDELIVERABLE_KINDS` treats them as a no-op success rather than
+  delivering an empty instruction.
+- **Carry a `url` action and channel-neutral copy.** Right when the message has real
+  content and the buttons are a shortcut: the practice check-in and the household
+  round state what is behind/due and offer "Open …", which works everywhere. A
+  url-bearing action doubles as the push notification's click-through target
+  (`pushClickThroughUrl`), so the tap opens the exact page rather than the app root.
+
+Two corollaries, both #1718:
+
+- **A kind that dispatch can emit must be routable.** A message carrying
+  `kind: "other"` cannot be muted or routed per channel and is indistinguishable to
+  an HA automation, so it silently opts out of the matrix the settings page
+  advertises. Every dispatched kind has a registry row or an explicit
+  `NON_CONFIGURABLE_KINDS` reason (`lib/notifications/kinds.ts`), and
+  `notification-kinds.test.ts` pins the partition.
+- **The send-test is never gated.** Its whole job is proving the wiring works, so it
+  carries `kind: "test"` on every channel — a user who muted a kind must not read
+  their own mute as a broken subscription.
+
+## 7. Confirm-to-KEEP is the consent shape for contact REDUCTION
+
+Added by #1668. §2's contact-consent rule governs STARTING contact and CHANGING
+user-owned state. Stopping contact is the other direction, and the usual
+suggest-and-confirm shape inverts badly there.
+
+A "tap to pause these?" question is self-defeating: if ignoring it keeps the
+reminders coming, the disengaged user is nagged forever — the exact harm the
+sensitivity contract forbids; if ignoring it pauses anyway, the confirmation was
+theater. So a reduction the system is entitled to make unilaterally is
+**announced, not asked**, and the affordance offered is the opposite one: keep
+going.
+
+**Worked example — the mood check-in auto-pause (#992/#1668).** The reminder
+holds itself once `MOOD_CHECKIN_AUTOPAUSE_DAYS` sends go unanswered. The
+mechanism was already right (it writes no user-owned state: `enabled` stays
+true and the hold is derived), but the silence read as "notifications broke".
+The fix adds no sends: the check-in that would exhaust the streak — one that was
+going out anyway — carries one extra line and a **[Keep daily check-ins]**
+button. Tapping resets the streak; ignoring lets the pause proceed exactly as
+before, now as informed silence. The paused state is then visible and resumable
+in-app, still as presentation of derived state rather than a new stored flag, so
+`shouldSendMoodCheckin` remains the single decision and one streak-reset write
+serves all three entry points (a logged mood, the button, the Resume action).
+
+The tone constraint is part of the pattern: an announcement of reduced contact
+must carry no guilt and no streak language, or it becomes the pressure it exists
+to remove.
+
+## Where each rule is enforced
+
+| Rule                                                    | Enforced by                                                                                                                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Obligation decides push; kind decides clinical identity | `isPushedIntake` / `accruesMisses` / `escalatesOnMiss` (`lib/supplement-schedule.ts`)                                                                                                                   |
+| Safety engines are obligation-blind                     | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                                                                                                                  |
+| Conservative direction per aggregate (5a)               | `lib/__tests__/dri.test.ts` + `lib/__tests__/supplement-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions |
+| Suggest-never-write                                     | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                |
+| Recovery clears a suggestion                            | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                    |
+| Window nesting                                          | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                 |
+| Reach tier per finding namespace                        | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                         |

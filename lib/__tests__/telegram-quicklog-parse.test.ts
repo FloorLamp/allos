@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  foodTapDateGuard,
+  householdStaleDateAnswerText,
+  tapDateGuard,
+} from "@/lib/notifications/callback-data";
+import {
+  householdRoundPointerFromMessage,
+  isHouseholdRoundMessage,
+  parseHouseholdRoundPointer,
+  serializeHouseholdRoundPointer,
+} from "@/lib/notifications/household-round-pointer";
+import {
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
   parseTempReply,
@@ -57,5 +68,65 @@ describe("temperature reply flow parsers", () => {
   it("returns null when there's no number", () => {
     expect(parseTempReply("hello")).toBeNull();
     expect(parseTempReply("")).toBeNull();
+  });
+});
+
+// ---- The household round's live-keyboard guard (issue #1719) ----
+//
+// The round's confirm tokens carry each member's SEND-TIME date, and every previous
+// round's keyboard stays live in the chat. A next-morning tap on yesterday's surviving
+// round would log a dose confirmation to YESTERDAY — for someone else's medication, in
+// the surface built for caregivers. Two independent guards, both pinned here.
+describe("household round staleness (#1719)", () => {
+  it("one date guard serves every live-keyboard surface", () => {
+    // The food nudge (#947) and the round read the SAME pure decision, so they can't
+    // drift on what "still today" means.
+    expect(tapDateGuard("2026-07-28", "2026-07-28").kind).toBe("current-day");
+    expect(tapDateGuard("2026-07-27", "2026-07-28").kind).toBe("stale-date");
+    expect(foodTapDateGuard("2026-07-27", "2026-07-28")).toEqual(
+      tapDateGuard("2026-07-27", "2026-07-28")
+    );
+  });
+
+  it("the refusal names the stale date and promises the next round", () => {
+    const text = householdStaleDateAnswerText("2026-07-27");
+    expect(text).toContain("2026-07-27");
+    expect(text).toContain("Not logged");
+    expect(text.toLowerCase()).toContain("today's round");
+  });
+
+  it("a round is identified by its hh: tokens, never by kind", () => {
+    // The round shares kind:"dose" with the ordinary slot reminder (#1459), so kind
+    // alone would strip a plain dose reminder's keyboard too.
+    const round = {
+      title: "💊 Household doses",
+      body: "x",
+      kind: "dose" as const,
+      actions: [{ label: "✓ Ada · D3", data: "hh:1:7:100:50:2026-07-28" }],
+    };
+    const plainDose = {
+      title: "💊 Morning",
+      body: "x",
+      kind: "dose" as const,
+      actions: [{ label: "✅ D3", data: "take:1:100:50:2026-07-28" }],
+    };
+    expect(isHouseholdRoundMessage(round)).toBe(true);
+    expect(isHouseholdRoundMessage(plainDose)).toBe(false);
+    expect(
+      householdRoundPointerFromMessage(round, "555", 42, "2026-07-28")
+    ).toEqual({ chatId: "555", messageId: 42, date: "2026-07-28" });
+    expect(
+      householdRoundPointerFromMessage(plainDose, "555", 42, "2026-07-28")
+    ).toBeNull();
+  });
+
+  it("the stored pointer round-trips, and a corrupt blob degrades to null", () => {
+    const p = { chatId: 555, messageId: 42, date: "2026-07-28" };
+    expect(
+      parseHouseholdRoundPointer(serializeHouseholdRoundPointer(p))
+    ).toEqual(p);
+    expect(parseHouseholdRoundPointer("not json")).toBeNull();
+    expect(parseHouseholdRoundPointer('{"chatId":555}')).toBeNull();
+    expect(parseHouseholdRoundPointer(undefined)).toBeNull();
   });
 });

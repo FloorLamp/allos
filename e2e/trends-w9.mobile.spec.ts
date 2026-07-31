@@ -24,7 +24,11 @@ test.describe("annotation + protocol-window toggles under the new chrome (#1493 
   }) => {
     // A toggle for a kind with no markers is dead weight — the rule the per-chart
     // bar already held, kept now that the row is hoisted to a page-level slot.
-    await page.goto("/trends");
+    //
+    // Asked of NUTRITION since #1644: the Overview tab absorbed the body census, so
+    // it now has annotated charts and would answer the opposite question. The rule
+    // is unchanged; the surface with no markers moved.
+    await page.goto("/trends?tab=nutrition");
     await expandTrendsContext(page);
     await expect(page.getByTestId("trends-context-controls")).toBeVisible();
     await expect(page.getByTestId("trend-annotation-controls")).toHaveCount(0);
@@ -35,7 +39,9 @@ test.describe("the range-pill row says that it scrolls (#1485 D)", () => {
   test("carries the shared fade affordance on whichever edge has more", async ({
     page,
   }) => {
-    await page.goto("/trends?tab=body&range=all");
+    // #1644: the body census rides the default view, so the window is all this URL
+    // needs to name.
+    await page.goto("/trends?range=all");
     await expandTrendsContext(page);
     const row = page.getByTestId("trends-chip-row");
     await expect(row).toBeVisible();

@@ -137,7 +137,7 @@ export default function HouseholdRoundSettings({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              className="btn-secondary"
+              className="btn-ghost"
               onClick={runTest}
               disabled={testing || !isOn || selected.length === 0}
               data-testid="household-round-test"

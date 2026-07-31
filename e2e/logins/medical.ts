@@ -125,6 +125,24 @@ export const RECS_ENRICH_ALLERGY_MED = "Amoxicillin 500 mg (e2e)";
 export const RECS_ENRICH_PGX_MED = "Clopidogrel (e2e)";
 export const RECS_ENRICH_PROCEDURE = "Knee arthroscopy (e2e)";
 
+// Encounter-link gaps closed (issue #1526): skin_lesions + allergies were the only
+// clinical observations with no visit link. A dedicated member login + ADULT profile
+// carrying ONE dermatology visit with a lesion AND an allergy linked to it, plus an
+// UNLINKED allergy so the absent-pillar (no visit line at all) is provable on the same
+// surface. Spec-OWNED because the spec also drives the add form's visit picker — a
+// write, which must not perturb another spec's allergy list. Repeat-safe: re-adding the
+// same substance/reaction/status collapses to one visible row through the existing
+// allergy representative rule, and the newest row (which carries the link) wins.
+export const E2E_LOGIN_LESIONALLERGY = "e2e_lesionallergy";
+export const LESIONALLERGY_PROFILE = "Lesion Allergy Visit (e2e)";
+export const LESIONALLERGY_VISIT_TYPE = "Dermatology Clinic (e2e)";
+export const LESIONALLERGY_PROVIDER = "Dr. Okafor (e2e)";
+export const LESIONALLERGY_LESION = "Left forearm mole (e2e)";
+export const LESIONALLERGY_ALLERGY = "Penicillin (e2e)";
+export const LESIONALLERGY_ALLERGY_UNLINKED = "Latex (e2e)";
+// The substance the spec records through the form's visit picker.
+export const LESIONALLERGY_ALLERGY_PICKED = "Cephalexin (e2e)";
+
 // ── Results-hub panel groups (#1499 section A) ────────────────────────────────
 // A member granted a dedicated ADULT profile whose ENTIRE lab history is a known,
 // small set of analytes spread over exactly three #1502 panels — five lipids (one
@@ -161,3 +179,28 @@ export const PANEL_GROUPS_OTHER_ANALYTE = "E2E Unmapped Assay";
 // (only client-side disclosure is driven), so it is repeat-safe with no reset.
 export const E2E_LOGIN_PANELINDEX = "e2e_panelindex";
 export const PANEL_INDEX_PROFILE = "Panel Index (e2e)";
+
+// ── Results › Reports panes (#1598) ──────────────────────────────────────────
+// The Reports pane's two conditional shapes, neither of which the shared seed can
+// show: profile 1 owns narrative reports, so its pane is always populated and its
+// rows carry neither a performing provider nor a source document.
+//
+//   • REPORTS_EMPTY — a dedicated adult profile with NO `report` records at all,
+//     so /results/reports renders its EmptyState (the "import a CCD/XDM record"
+//     nudge). Read-only in its spec, so it stays repeat-safe with no reset.
+//   • REPORTS_SOURCE — a dedicated adult profile whose one narrative report is
+//     ATTRIBUTED (a performing lab) and DOCUMENT-LINKED (an imported CCD), so the
+//     card's provider line and its "View source document" link both render. Both
+//     branches are dead-lettered on profile 1. Read-only likewise.
+//
+// Isolated on purpose (#868): a report row on a shared profile changes that
+// profile's Reports pane for every neighbour spec that reads it.
+export const E2E_LOGIN_REPORTS_EMPTY = "e2e_reports_empty";
+export const REPORTS_EMPTY_PROFILE = "Reports Empty (e2e)";
+export const E2E_LOGIN_REPORTS_SOURCE = "e2e_reports_source";
+export const REPORTS_SOURCE_PROFILE = "Reports Source (e2e)";
+// The attributed report's name, performing lab, and the imported document it came
+// from — all obviously fictional (no real lab, no real accession).
+export const REPORTS_SOURCE_NAME = "Cytopathology Report (e2e)";
+export const REPORTS_SOURCE_PROVIDER = "E2E Reference Cytology Lab";
+export const REPORTS_SOURCE_DOCUMENT = "e2e-cytology-ccd.xml";

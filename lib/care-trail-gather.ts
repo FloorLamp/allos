@@ -30,7 +30,7 @@ import type { MedStopReason } from "./types";
 interface MedRow {
   id: number;
   name: string;
-  as_needed: number;
+  obligation: string;
   rx: number;
 }
 interface CourseRow {
@@ -48,7 +48,7 @@ interface CourseRow {
 function coursesForProfile(profileId: number): CareTrailCourseInput[] {
   const meds = db
     .prepare(
-      `SELECT id, name, as_needed, rx
+      `SELECT id, name, obligation, rx
          FROM intake_items
         WHERE profile_id = ? AND kind = 'medication'`
     )
@@ -97,7 +97,7 @@ function coursesForProfile(profileId: number): CareTrailCourseInput[] {
       open: c.stopped_on == null,
       stopReason: c.stop_reason,
       rx: med.rx === 1,
-      asNeeded: med.as_needed === 1,
+      asNeeded: med.obligation === "may",
       prescriberProviderId: c.provider_id,
       administrationDates: datesByItem.get(c.item_id) ?? [],
     });

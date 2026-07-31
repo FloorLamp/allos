@@ -32,8 +32,8 @@ function addScheduledMed(profileId: number, name: string): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, ?, 1, 'medication', 'daily', 'high', 0)`
+           (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should')`
       )
       .run(profileId, name).lastInsertRowid
   );

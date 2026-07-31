@@ -34,6 +34,7 @@ function progress(
     per_week_max: null,
     met: count >= perWeek,
     atCeiling: false,
+    daysLeftInWindow: 0,
     pace: count >= perWeek ? "met" : "behind",
   };
 }

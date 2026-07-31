@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import Combobox from "@/components/Combobox";
@@ -13,6 +13,10 @@ import DoseRowsEditor, {
   emptyDose,
   type DoseState,
 } from "@/components/intake/DoseRowsEditor";
+import CadenceEditor, {
+  type CadenceState,
+} from "@/components/intake/CadenceEditor";
+import { parseWeekdays } from "@/lib/intake-cadence";
 import KeepApartPairsEditor, {
   type PairState,
 } from "@/components/intake/KeepApartPairsEditor";
@@ -23,17 +27,21 @@ import { useIntakeRxcui } from "@/components/intake/useIntakeRxcui";
 import { serializeRxcuiIngredients } from "@/lib/rxnorm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
+import type { IntakeObligation } from "@/lib/types";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
   availableConditions,
   CONDITION_LABELS,
-  PRIORITIES,
-  PRIORITY_LABELS,
+  OBLIGATIONS,
+  OBLIGATION_HINTS,
+  OBLIGATION_LABELS,
   defaultFoodTiming,
   pauseLinkNeedsConfirm,
 } from "@/lib/supplement-schedule";
 import { useConfirm } from "@/components/ConfirmDialog";
+import DraftRestoreBanner from "./DraftRestoreBanner";
+import { useFormDraft } from "./useFormDraft";
 import type {
   FormResult,
   Supplement,
@@ -89,6 +97,9 @@ export default function SupplementForm({
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [situation, setSituation] = useState(s?.situation ?? "");
+  const [obligation, setObligation] = useState<IntakeObligation>(
+    s?.obligation ?? "should"
+  );
   const [pauseSituation, setPauseSituation] = useState(
     s?.pause_situation ?? ""
   );
@@ -104,9 +115,22 @@ export default function SupplementForm({
           amount: d.amount ?? "",
           time_of_day: d.time_of_day ?? "",
           food_timing: d.food_timing,
+          weekdays: [...parseWeekdays(d.weekdays)].sort((a, b) => a - b),
+          start_date: d.start_date ?? "",
+          end_date: d.end_date ?? "",
         }))
       : [emptyDose()]
   );
+
+  // Item-level calendar (#1602). Seeded from the stored row so an edit round-trips
+  // rather than silently resetting a weekly medication to daily.
+  const [cadence, setCadence] = useState<CadenceState>(() => ({
+    kind: s?.cadence_kind ?? "daily",
+    weekdays: [...parseWeekdays(s?.cadence_weekdays)].sort((a, b) => a - b),
+    intervalDays:
+      s?.cadence_interval_days != null ? String(s.cadence_interval_days) : "",
+    anchorDate: s?.cadence_anchor_date ?? "",
+  }));
 
   const others = allSupplements.filter((x) => x.id !== s?.id);
   const [pairRows, setPairRows] = useState<PairState[]>(
@@ -116,6 +140,59 @@ export default function SupplementForm({
       note: p.note ?? "",
     }))
   );
+
+  // Local draft (#1699). The scalar fields ride in the form's own named inputs;
+  // the dose rows, the cadence and the keep-apart pairs are React state that only
+  // becomes FormData at submit time, so they go in `extra`.
+  const draftExtra = useMemo(
+    () => ({
+      name,
+      condition,
+      situation,
+      obligation,
+      pauseSituation,
+      brand,
+      doses,
+      cadence,
+      pairRows,
+    }),
+    [
+      name,
+      condition,
+      situation,
+      obligation,
+      pauseSituation,
+      brand,
+      doses,
+      cadence,
+      pairRows,
+    ]
+  );
+  type SupplementDraft = typeof draftExtra;
+  const draft = useFormDraft<SupplementDraft>({
+    formKey: "supplement",
+    recordId: s?.id ?? null,
+    formRef,
+    extra: draftExtra,
+    onRestore: (d) => {
+      setName(d.name);
+      setCondition(d.condition);
+      setSituation(d.situation);
+      setObligation(d.obligation);
+      setPauseSituation(d.pauseSituation);
+      setBrand(d.brand);
+      setDoses(d.doses);
+      setCadence(d.cadence);
+      setPairRows(d.pairRows);
+    },
+    confirmReplace: () =>
+      confirm({
+        title: "Resume the unsaved supplement?",
+        message:
+          "This replaces what you have typed here with the entry kept on this device.",
+        confirmLabel: "Resume",
+      }),
+  });
 
   const entry = CATALOG_BY_NAME.get(name.trim().toLowerCase());
 
@@ -141,19 +218,19 @@ export default function SupplementForm({
   async function handle(formData: FormData) {
     setError(null);
     formData.set("doses", JSON.stringify(doses));
+    formData.set("cadence_kind", cadence.kind);
+    formData.set("cadence_weekdays", cadence.weekdays.join(","));
+    formData.set("cadence_interval_days", cadence.intervalDays);
+    formData.set("cadence_anchor_date", cadence.anchorDate);
     formData.set("pairs", JSON.stringify(pairRows));
     const label = name.trim() || "Supplement";
     // Consent gate (#1296): a situational hold on a mandatory-priority item silences
     // its reminders while the situation is active — confirm before linking it.
     const pause = pauseSituation.trim();
-    const priority = String(formData.get("priority") ?? "high");
     if (
       pause &&
       pause !== (s?.pause_situation ?? "") &&
-      pauseLinkNeedsConfirm({
-        kind: "supplement",
-        priority: priority as Supplement["priority"],
-      })
+      pauseLinkNeedsConfirm({ kind: "supplement", obligation })
     ) {
       const ok = await confirm({
         title: "Pause reminders?",
@@ -173,6 +250,9 @@ export default function SupplementForm({
       setError(result.error);
       return;
     }
+    // The record is durably saved — the local draft has no reason to exist, and a
+    // surviving one would offer to re-enter what was just written (#1699).
+    draft.clear();
     toast(s ? `${label} updated` : `${label} added`);
     if (onDone) onDone();
     else {
@@ -193,22 +273,36 @@ export default function SupplementForm({
 
   const advancedFields = (
     <>
+      {/* Obligation (#1505) — the ONE user-owned field deciding reminders, misses
+          and escalation. The hint under the selector states the consequences of the
+          CURRENT choice, because "May" is otherwise an adjective with no visible
+          meaning: the whole failure this model fixes was a level nobody could see
+          the effect of. Copy comes from the shared OBLIGATION_HINTS so the form, the
+          med confirm dialog and the docs quote one wording. */}
       <div>
-        <label className="label" htmlFor={`supp-priority-${fid}`}>
-          Priority
+        <label className="label" htmlFor={`supp-obligation-${fid}`}>
+          Obligation
         </label>
         <select
-          id={`supp-priority-${fid}`}
-          name="priority"
-          defaultValue={s?.priority ?? "high"}
+          id={`supp-obligation-${fid}`}
+          name="obligation"
+          data-testid="supp-obligation"
+          value={obligation}
+          onChange={(e) => setObligation(e.target.value as IntakeObligation)}
           className="input"
         >
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {PRIORITY_LABELS[p]}
+          {OBLIGATIONS.map((o) => (
+            <option key={o} value={o}>
+              {OBLIGATION_LABELS[o]}
             </option>
           ))}
         </select>
+        <p
+          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="supp-obligation-hint"
+        >
+          {OBLIGATION_HINTS[obligation]}
+        </p>
       </div>
 
       <div>
@@ -272,6 +366,12 @@ export default function SupplementForm({
     <form ref={formRef} action={handle} className="grid gap-4 sm:grid-cols-2">
       {s && <input type="hidden" name="id" value={s.id} />}
       <input type="hidden" name="kind" value="supplement" />
+
+      <DraftRestoreBanner
+        draft={draft}
+        noun="supplement"
+        className="sm:col-span-2"
+      />
       <input type="hidden" name="rxcui" value={rx.rxcui ?? ""} />
       <input
         type="hidden"
@@ -378,6 +478,7 @@ export default function SupplementForm({
           Held (not due) while this situation is active — you can still log it.
         </p>
       </div>
+      <CadenceEditor value={cadence} onChange={setCadence} />
       <DoseRowsEditor
         doses={doses}
         setDoses={setDoses}

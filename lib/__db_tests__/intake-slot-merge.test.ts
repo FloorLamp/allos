@@ -48,8 +48,8 @@ function seedPreWorkoutSupp(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, ?, 1, 'supplement', 'pre_workout', 'high', 0)`
+           (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'supplement', 'pre_workout', 'should')`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -69,8 +69,8 @@ function seedDaily(profileId: number, name: string, timeOfDay: string): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', 0)`
+           (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should')`
       )
       .run(profileId, name).lastInsertRowid
   );

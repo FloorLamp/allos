@@ -166,3 +166,15 @@ export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
 // episode the round3 spec drives. Synthetic, no PHI.
 export const E2E_LOGIN_SICK_PHOTO = "e2e_sick_photo";
 export const SICK_PHOTO_PROFILE = "Sick Photo Link (e2e)";
+
+// #1598 — the episode page's SYMPTOM VIDEO strip (components/illness/SymptomVideoStrip),
+// a shipped surface no browser spec had ever rendered: the only video spec drives the
+// TRAINING half of the #1224 core. A dedicated sick-solo login with an OPEN episode, so
+// the strip's upload day (`uploadDate` = the cockpit's log date = today) sits inside the
+// episode window the page gathers clips over — otherwise an attached clip would be stored
+// and then not rendered. Isolated + spec-owned: symptom-video.spec attaches and removes
+// every clip it asserts on (exact counts, delete-back-to-empty), which is only safe on a
+// profile nothing else touches, and kept apart from SICK_PHOTO so the two strips' delete-all
+// loops never contend. Its clips are synthetic container headers (lib/video/fixture.ts).
+export const E2E_LOGIN_SICK_VIDEO = "e2e_sick_video";
+export const SICK_VIDEO_PROFILE = "Sick Video (e2e)";

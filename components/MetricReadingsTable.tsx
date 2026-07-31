@@ -239,7 +239,7 @@ function ReadingRow({
           <span className="flex items-center justify-end gap-1">
             <button
               type="button"
-              className="btn-primary px-2 py-1 text-xs"
+              className="btn btn-sm"
               disabled={busy}
               onClick={() => void save()}
             >
@@ -247,7 +247,7 @@ function ReadingRow({
             </button>
             <button
               type="button"
-              className="btn px-2 py-1 text-xs"
+              className="btn-ghost btn-sm"
               disabled={busy}
               onClick={() => {
                 setValue(String(row.editValue));

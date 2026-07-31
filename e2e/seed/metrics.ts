@@ -8,6 +8,7 @@ import "../../scripts/load-env";
 import path from "node:path";
 import { db, today } from "../../lib/db";
 import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "../../lib/date";
+import { practiceIdentity } from "../../lib/practice";
 import { EDIT_LOCK_SIGNATURE } from "../edit-lock-fixture";
 import {
   E2E_LOGIN_COMPARE,
@@ -16,6 +17,8 @@ import {
   SHELL_PROFILE,
   SHELL_DOSE_ITEM,
   SHELL_DOSE_AMOUNT,
+  SHELL_PRACTICE,
+  SHELL_PRACTICE_PER_WEEK,
   E2E_LOGIN_VITALS_DAY,
   VITALS_DAY_PROFILE,
   VITALS_DAY_TEMP_TIME,
@@ -575,6 +578,22 @@ export function seedIntradayPanel(): void {
       idInstant(idToday, "19:40")
     );
 
+    // #1512 C — an AI insight ON the intraday day. It is stamped by the generation
+    // JOB's created_at, so it carries a clock time and used to land on the tick rail
+    // at whatever minute the job happened to run. It must render in the feed list
+    // BELOW and produce no tick: the chart is a map of the person's day, not of the
+    // app's activity.
+    db.prepare("DELETE FROM insights WHERE profile_id = ?").run(idId);
+    db.prepare(
+      `INSERT INTO insights (profile_id, date, summary, model, created_at)
+       VALUES (?, ?, ?, 'e2e-fixture', ?)`
+    ).run(
+      idId,
+      idToday,
+      "Synthetic fixture insight for the intraday tick-rail exclusion.",
+      idInstant(idToday, "03:07")
+    );
+
     // The data-gate day: one weigh-in, no clock time anywhere.
     db.prepare(
       "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, 74.2, 'manual')"
@@ -602,8 +621,8 @@ export function seedIntradayPanel(): void {
     ) {
       const item = db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, condition, priority, active, source)
-         VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+          `INSERT INTO intake_items (profile_id, name, condition, obligation, active, source)
+         VALUES (?, ?, 'daily', 'should', 1, 'manual')`
         )
         .run(shellId, SHELL_DOSE_ITEM);
       db.prepare(
@@ -611,8 +630,30 @@ export function seedIntradayPanel(): void {
        VALUES (?, ?, '08:00', 'any', 0)`
       ).run(Number(item.lastInsertRowid), SHELL_DOSE_AMOUNT);
     }
+    // One tracked practice, no sessions (#1633): the quick-log sheet's practice row
+    // lists what the profile TRACKS, so a frequency target alone is the whole
+    // precondition — the spec logs the session it then asserts.
+    if (
+      !db
+        .prepare(
+          `SELECT 1 FROM frequency_targets
+            WHERE profile_id = ? AND scope_kind = 'practice' AND scope_value = ?`
+        )
+        .get(shellId, SHELL_PRACTICE)
+    ) {
+      db.prepare(
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, scope_identity, per_week)
+         VALUES (?, 'practice', ?, ?, ?)`
+      ).run(
+        shellId,
+        SHELL_PRACTICE,
+        practiceIdentity(SHELL_PRACTICE),
+        SHELL_PRACTICE_PER_WEEK
+      );
+    }
     console.log(
-      `e2e: seeded mobile-shell fixture — ${E2E_LOGIN_SHELL} granted ${SHELL_PROFILE} (${shellId}), one due dose (#1416/#1468)`
+      `e2e: seeded mobile-shell fixture — ${E2E_LOGIN_SHELL} granted ${SHELL_PROFILE} (${shellId}), one due dose, one tracked practice (#1416/#1468/#1633)`
     );
   }
 }

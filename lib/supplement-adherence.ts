@@ -5,6 +5,7 @@
 
 import type { Supplement } from "./types";
 import { isDueOn } from "./supplement-schedule";
+import { doseOnDay, type DoseCadence } from "./intake-cadence";
 import { dateStrInTz, parseUtcSql } from "./date";
 
 // How many days the per-supplement adherence strip spans (the medicine page and
@@ -214,7 +215,7 @@ export function doseWindowSince(
 // window is clamped to. `created_at` is optional so a fixture (or a caller with only
 // ids) still type-checks — an absent timestamp simply means "no known lower bound",
 // the pre-#1442 behavior.
-export interface AdherenceStripDose {
+export interface AdherenceStripDose extends DoseCadence {
   id: number;
   created_at?: string | null;
 }
@@ -250,6 +251,7 @@ export function supplementAdherenceStrip(
 ): AdherenceDot[] {
   const lifetimes = doses.map((d) => ({
     id: d.id,
+    dose: d,
     since: doseWindowSince(
       supp.created_at,
       d.created_at,
@@ -261,9 +263,21 @@ export function supplementAdherenceStrip(
     // Only the doses that existed on this day can be taken or missed — so they
     // also set the day's denominator (a second dose added last week must not
     // retroactively demote every earlier fully-taken day to "partial").
-    const live = lifetimes.filter((d) => d.since == null || date >= d.since);
+    //
+    // The CALENDAR narrows the same denominator (#1602). A dose row is counted on a
+    // day only when the row itself lands there — its own weekday subset and validity
+    // window — so an alternating-amount pair contributes ONE expected dose per day
+    // rather than two, and a taper's expired window stops counting without its history
+    // being touched. This is the #430 builder-input-layer failure class: get the
+    // denominator wrong and every percentage above it is confidently wrong.
+    const live = lifetimes.filter(
+      (d) => (d.since == null || date >= d.since) && doseOnDay(d.dose, date)
+    );
     if (live.length === 0) return { date, state: "na" };
+    // "na", not "missed", on an off-cadence day: nothing was expected, so there is no
+    // follow-through to measure. A weekly med taken on its one day reads 100%, not 1/7.
     const applicable = isDueOn(supp, {
+      date,
       isWorkoutDay: workoutDays.has(date),
       activeSituations: situationsOn(date),
     });

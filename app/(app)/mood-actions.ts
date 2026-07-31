@@ -4,6 +4,12 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { today } from "@/lib/db";
 import { upsertMoodLog } from "@/lib/offline/writes";
+import { decideMoodKeep } from "@/lib/mood";
+import {
+  getMoodCheckinIgnored,
+  getProfileMoodCheckin,
+  resetMoodCheckinIgnored,
+} from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Server write path for the daily wellbeing check-in (issue #992). ONE action:
@@ -41,5 +47,31 @@ export async function logMood(formData: FormData): Promise<FormResult> {
   revalidatePath("/");
   revalidatePath("/trends");
   revalidatePath("/sleep");
+  return formOk();
+}
+
+// Resume an AUTO-PAUSED check-in (issue #1668). The pause is derived state, never a
+// stored flag — `enabled` stays true and `shouldSendMoodCheckin` remains the single
+// decision — so "resuming" is exactly the streak reset that logging a mood already
+// performs. One mechanism, three entry points: a logged mood, the final reminder's
+// "Keep daily check-ins" button, and this action.
+//
+// Typed outcome, never an unconditional confirm: the streak may already have been
+// re-armed (someone logged a mood on another device), and the check-in may have been
+// turned off since the card rendered.
+export async function resumeMoodCheckins(): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const outcome = decideMoodKeep({
+    enabled: getProfileMoodCheckin(profile.id),
+    ignoredCount: getMoodCheckinIgnored(profile.id),
+  });
+  if (outcome === "not-enabled") {
+    return formError(
+      "Check-ins are off — turn them on in Settings → Notifications."
+    );
+  }
+  if (outcome === "kept") resetMoodCheckinIgnored(profile.id);
+  revalidatePath("/");
+  revalidatePath("/settings/notifications");
   return formOk();
 }

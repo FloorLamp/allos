@@ -66,14 +66,84 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/queries/intake/supply-pool.ts",
-    includes: "FROM intake_items WHERE supply_id = ?",
-    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so pool membership is cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), never a display read: the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering",
+    includes:
+      "FROM intake_items i LEFT JOIN intake_item_doses d ON d.item_id = i.id AND d.retired = 0 WHERE i.supply_id = ?",
+    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so membership and its child dose labels are cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), with dose amounts carried only to disambiguate actionable member labels; the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering",
   },
   {
     file: "lib/queries/intake/supply-pool.ts",
     includes:
       "UPDATE intake_items SET supply_id = NULL, quantity_on_hand = ? WHERE id = ? AND profile_id = ?",
     why: "deleteSharedSupply (#1374): unlinks each member row it just read from poolMembers — the statement itself IS profile-scoped (id AND profile_id); listed only because the surrounding function's membership read is the cross-profile one above",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT pi.profile_id AS profileId, pi.portal_id AS portalId, pi.account_id AS accountId FROM portal_identities pi WHERE pi.account_id = ? AND pi.patient_label = ? AND pi.ignored = 0 AND pi.profile_id IS NOT NULL",
+    why: "resolvePortalIdentity (#1739): the ONE lookup that RESOLVES which profile to gate on; the gate is the protection, the resolved id is immediately intersected with the token's write set. Filtering by profile_id here would presuppose the answer the acquirer is asking for. An identity that resolves to a profile the pushing token cannot write is refused exactly as loudly as an unbound one",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "FROM portal_identities pi JOIN portals p ON p.id = pi.portal_id JOIN portal_accounts a ON a.id = pi.account_id",
+    why: "listPortalIdentities (#1739): the administrative 'which patient goes where' view is cross-profile BY NATURE — its whole job is to show bindings across the household so a misfiled one is visible. It carries identifiers and labels only (no health data), and the rendering surface filters to the viewer's accessible set before display. IGNORED rows carry no profile_id at all (the migration-131 CHECK), so there is nothing to filter them by",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?",
+    why: "writeBinding (#1739): re-reads the id of the row the adjacent ON CONFLICT upsert just wrote, keyed on the UNIQUE(portal_id, account_id, patient_label) index. The INSERT itself names profile_id and the caller authorized it; this reads back only the surrogate key",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT 1 FROM portal_identities WHERE account_id = ? AND patient_label = ?",
+    why: "recordPendingForAccount (#1739): asks only whether this (login, label) has ALREADY BEEN ANSWERED — bound or ignored — so an identity a run rediscovers every hour is not re-offered as pending. It is an existence probe on the external identity key; it reads no profile_id and returns no row data, and the pending table it guards carries no profile at all",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT profile_id AS profileId FROM portal_identities WHERE id = ?",
+    why: "portalIdentityProfile (#1747): the ONE lookup that RESOLVES which profile a binding points at so the unbind action can gate on THAT profile rather than on a profile id the same client post supplied — filtering by profile_id here would presuppose the answer. It reads the id→profile_id mapping and nothing else, feeds it straight to requireProfileWriteAccess, and the delete that follows IS profile-scoped (id AND profile_id, a compare-and-swap). The gate is the protection, not the filter (the app/(app)/gate-item.ts shape)",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT profile_id AS profileId, ignored FROM portal_identities WHERE id = ?",
+    why: "portalIdentityState (#1739): the same resolve-the-owner lookup as portalIdentityProfile, plus whether the row is IGNORED — an ignored binding has no profile by CHECK, so the action must be able to tell 'gone' from 'has no profile to authorize against' before choosing its gate. Reads only those two fields and immediately feeds the profile to requireProfileWriteAccess",
+  },
+  {
+    file: "lib/portals.ts",
+    includes: "DELETE FROM portal_identities WHERE id = ? AND ignored = 1",
+    why: "unignorePortalIdentity (#1739): removes an IGNORED binding, which by the migration-131 CHECK carries NO profile_id — there is literally nothing to scope by, which is why the statement scopes by `ignored = 1` instead. That predicate is the protection: this path can never touch a live binding, so it cannot become a back door around the profile gate the normal unbind takes",
+  },
+  {
+    file: "lib/portals.ts",
+    includes: "DELETE FROM portal_identities WHERE portal_id = ?",
+    why: "deletePortal (#1739): dropping a PORTAL removes every binding on it regardless of profile — that is the operation. The FK cascade would also fire; this runs explicitly so the teardown holds with foreign_keys off",
+  },
+  {
+    file: "lib/portals.ts",
+    includes: "DELETE FROM portal_identities WHERE account_id = ?",
+    why: "deletePortalAccount (#1739): dropping a portal LOGIN removes every binding keyed to it regardless of profile — the same operation one level down, and the same FK-cascade-plus-explicit-delete posture as deletePortal",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "UPDATE medical_documents SET acquired_portal_id = NULL WHERE acquired_portal_id = ?",
+    why: "deletePortal (#1748): dropping a PORTAL clears the acquired-by link on every document that names it, regardless of profile — that is the operation, exactly like the portal_identities cleanup beside it. The FK's ON DELETE SET NULL would also fire; this runs explicitly so the teardown holds with foreign_keys off. It writes ONLY the provenance column (never profile_id, never content), and the documents themselves are untouched",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "UPDATE integration_sync_events SET portal_id = NULL, account_id = NULL WHERE portal_id = ?",
+    why: "deletePortal (#1739): clears the identity stamp on every sync event that named the removed portal, across profiles — same operation and same reasoning as the document provenance null above. It writes only the two identity columns; the event history itself (counts, ok, timestamps) is untouched",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "UPDATE integration_sync_events SET account_id = NULL WHERE account_id = ?",
+    why: "deletePortalAccount (#1739): the same identity-stamp clear one level down, for a removed portal LOGIN",
   },
   {
     file: "lib/queries/medical/flags.ts",

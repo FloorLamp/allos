@@ -149,8 +149,8 @@ export function seedTodayPanel(): void {
       db
         .prepare(
           `INSERT INTO intake_items
-           (profile_id, name, condition, priority, kind, active, as_needed)
-         VALUES (?, ?, 'daily', 'low', 'medication', 1, 0)`
+           (profile_id, name, condition, obligation, kind, active)
+         VALUES (?, ?, 'daily', 'should', 'medication', 1)`
         )
         .run(PROFILE_ID, name).lastInsertRowid
     );
@@ -758,8 +758,8 @@ export function seedDailyLoop(): void {
       `DELETE FROM intake_items WHERE profile_id = ? AND name = 'Daily Loop PRN (e2e)'`
     ).run(dailyId);
     db.prepare(
-      `INSERT INTO intake_items (profile_id, kind, name, active, as_needed)
-     VALUES (?, 'medication', 'Daily Loop PRN (e2e)', 1, 1)`
+      `INSERT INTO intake_items (profile_id, kind, name, active, obligation)
+     VALUES (?, 'medication', 'Daily Loop PRN (e2e)', 1, 'may')`
     ).run(dailyId);
 
     // A custom NON-clinical situation (starts inactive) + a situational supplement keyed
@@ -785,8 +785,8 @@ export function seedDailyLoop(): void {
       db
         .prepare(
           `INSERT INTO intake_items
-           (profile_id, kind, name, condition, priority, situation, situation_id, active)
-         VALUES (?, 'supplement', 'Focus Blend (e2e)', 'situational', 'low', 'Deadline (e2e)', ?, 1)`
+           (profile_id, kind, name, condition, obligation, situation, situation_id, active)
+         VALUES (?, 'supplement', 'Focus Blend (e2e)', 'situational', 'should', 'Deadline (e2e)', ?, 1)`
         )
         .run(dailyId, dailySitId).lastInsertRowid
     );

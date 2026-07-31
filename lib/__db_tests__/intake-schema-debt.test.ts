@@ -79,8 +79,8 @@ describe("migration 011 — intake_item_pairs canonical ordering (finding #3)", 
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority)
-           VALUES (?, 'Zinc', 1, 'supplement', 'daily', 'low')`
+             (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Zinc', 1, 'supplement', 'daily', 'should')`
         )
         .run(fx.profileId).lastInsertRowid
     );
@@ -122,8 +122,8 @@ describe("migration 011 — same-profile child integrity (finding #4)", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority)
-           VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'low')`
+             (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'should')`
         )
         .run(a.profileId).lastInsertRowid
     );

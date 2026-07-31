@@ -257,6 +257,16 @@ export async function reassignDocument(
   // Without this the read-then-move raced: the in-flight persist would insert a
   // SECOND full record set under the source pointing at a document now owned by dest,
   // recreating the #201 cross-profile stranding through a race.
+  //
+  // ACQUIRED-BY PROVENANCE RIDES ALONG UNCHANGED (#1748). The UPDATE deliberately
+  // re-points profile_id ONLY: `acquired_portal_id` records how the document ARRIVED —
+  // it came off Ochsner's portal whoever it turns out to belong to — and that is a fact
+  // about its arrival, not a claim about its owner. Clearing it on reassignment would
+  // destroy exactly the audit trail the column exists for, and the single most likely
+  // reason to reassign a portal document is that the binding sent it to the wrong
+  // person: that is precisely when "which portal pushed this?" is the question being
+  // asked. `patient_name` (the label the document itself carries) is likewise untouched,
+  // and the mismatch notice already reads off it.
   let claimed = false;
   writeTx(() => {
     const res = db

@@ -5,6 +5,7 @@
 // tally labeled "Today:", and hide entirely for an infant profile (the life-stage gate). The
 // pure render/token half is covered in lib/__tests__/food-nudge.test.ts.
 
+import { plainBody } from "@/lib/notifications/rich-text";
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { setUserBirthdate } from "@/lib/settings";
@@ -35,13 +36,13 @@ describe("buildFoodNudge", () => {
       a.data?.startsWith("food:")
     );
     // First button is the heavily-logged group, carrying its MORNING-slot count (4).
-    expect(logButtons[0].label).toBe("Leafy greens (4)");
+    expect(logButtons[0].label).toBe("🥬 Leafy greens (4)");
     expect(logButtons[0].data).toBe(
       `food:${p.profileId}:Morning:${t}:leafy_greens`
     );
     // The tally line is the DAY total, labeled.
-    expect(msg!.body).toContain("✓ Today: Leafy greens ×4");
-    expect(msg!.body).toContain("Fatty fish ×1");
+    expect(plainBody(msg!.body)).toContain("✓ Today: 🥬 Leafy greens ×4");
+    expect(plainBody(msg!.body)).toContain("Fatty fish ×1");
     expect(msg!.kind).toBe("food");
   });
 
@@ -52,8 +53,9 @@ describe("buildFoodNudge", () => {
     const leafy = (msg!.actions ?? []).find((a) =>
       a.data?.endsWith(":leafy_greens")
     );
-    expect(leafy?.label).toBe("Leafy greens"); // clean at midday — no "(4)"
-    expect(msg!.body).toContain("✓ Today: Leafy greens ×4"); // day total persists
+    // Labels lead with the group's catalog glyph since #1710.
+    expect(leafy?.label).toBe("🥬 Leafy greens"); // clean at midday — no "(4)"
+    expect(plainBody(msg!.body)).toContain("✓ Today: 🥬 Leafy greens ×4"); // day total persists
   });
 
   it("hides for an infant profile (life-stage gate)", () => {

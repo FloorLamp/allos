@@ -33,17 +33,29 @@
 
 import type { AppRoute } from "./hrefs";
 import { MEDICATIONS_HREF } from "./hrefs";
+import { DEFAULT_TRENDS_TAB, parseTab } from "./trends-tabs";
 
 // Icon keys resolved to real Tabler icons in components/QuickLogSheet.tsx (the
 // registry stays pure/serializable, like PALETTE_ACTIONS).
-export type QuickLogIcon = "barbell" | "salad" | "pill" | "scale" | "heartbeat";
+export type QuickLogIcon =
+  | "barbell"
+  | "salad"
+  | "pill"
+  | "scale"
+  | "heartbeat"
+  | "sparkles"
+  | "document";
 
 // Which existing form the shared quick-entry overlay mounts (issue #1468). The
 // overlay host owns the form→component map; this stays a serializable key so the
 // registry is pure. `dose` is the today's-due-doses list whose confirm buttons
 // answer from the typed DoseTakenOutcome — the existing action, reached, never
 // re-implemented.
-export type QuickEntryForm = "food" | "measurements" | "dose";
+// `practice` is the tracked wellness practices with the SAME one-tap LogPracticeButton
+// the Wellness card carries (#1633); `document` mounts the SAME UploadForm Data → File
+// upload renders, camera input included (#1525).
+export type QuickEntryForm =
+  "food" | "measurements" | "dose" | "practice" | "document";
 
 export type QuickLogTarget =
   // Open the shared activity editor in place (the DOCK — a live workout is a
@@ -116,6 +128,28 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // the Body tab's desktop expander mounts; only the mount changes.
     target: { kind: "overlay", form: "measurements" },
   },
+  {
+    id: "log-practice",
+    label: "Log practice",
+    hint: "Sauna, meditation, or another tracked practice",
+    icon: "sparkles",
+    // One-tap practice logging, which the Telegram bot has had since #1259 while the web
+    // app made you find /wellness first (#1633). The overlay mounts the SAME
+    // LogPracticeButton the Wellness card renders over the same logPractice action — no
+    // second write path, and the sheet lists exactly the practices you track.
+    target: { kind: "overlay", form: "practice" },
+  },
+  {
+    id: "add-document",
+    label: "Add document",
+    hint: "Lab report, visit summary, or a photo of one",
+    icon: "document",
+    // The other thing people do on a phone: FILE something (#1525). The in-app twin of
+    // the #1423 share target — the same UploadForm Data → File upload renders, so the
+    // same ingest engine, size/type gates, per-profile storage and dedup apply, and the
+    // camera input (`capture="environment"`) comes along for free.
+    target: { kind: "overlay", form: "document" },
+  },
 ];
 
 export function quickLogItem(id: string): QuickLogItem {
@@ -147,10 +181,17 @@ export function primaryQuickLog(
   // while food logging is what people reach the phone for.
   if (under(pathname, "/nutrition")) return quickLogItem("log-food");
   if (under(pathname, MEDICATIONS_HREF)) return quickLogItem("log-dose");
-  // Body metrics live behind /trends?tab=body — the tab, not the route, is the
-  // thing that makes "log measurements" the obvious action. (#1486 folded the
-  // former Vitals tab in here, so the one form covers both.)
-  if (under(pathname, "/trends") && tab === "body") {
+  // Body metrics live in the Trends body census, which #1644 moved onto the DEFAULT
+  // (Overview) tab — so the rule is still a tab rule, it just names a different
+  // tab: `?tab=body` is gone, and the census now rides the view a paramless /trends
+  // shows. Resolved through parseTab so a retired `?tab=body`/`?tab=vitals` link
+  // (which lands on that same default) gets the same answer, and so a Fitness or
+  // Nutrition tab still falls through to "log activity". (#1486 folded the former
+  // Vitals tab into this census, so the one form covers both.)
+  if (
+    under(pathname, "/trends") &&
+    parseTab(tab ?? undefined) === DEFAULT_TRENDS_TAB
+  ) {
     return quickLogItem("log-measurements");
   }
   return quickLogItem(LOG_ACTIVITY_ID);

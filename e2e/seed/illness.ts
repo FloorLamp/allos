@@ -16,6 +16,8 @@ import {
   SICK_COLLAPSE_PROFILE,
   E2E_LOGIN_SICK_PHOTO,
   SICK_PHOTO_PROFILE,
+  E2E_LOGIN_SICK_VIDEO,
+  SICK_VIDEO_PROFILE,
   E2E_LOGIN_SITCOACH,
   SITCOACH_PROFILE,
   E2E_LOGIN_ILLNESS_CARE,
@@ -138,7 +140,7 @@ export function seedIllness(): void {
       // "last ibuprofen …" clause appears on the other caregiver's hero only after it.
       const has = db
         .prepare(
-          "SELECT id FROM intake_items WHERE profile_id = ? AND name = 'Ibuprofen' AND as_needed = 1"
+          "SELECT id FROM intake_items WHERE profile_id = ? AND name = 'Ibuprofen' AND obligation = 'may'"
         )
         .get(profileId) as { id: number } | undefined;
       if (!has) {
@@ -146,9 +148,8 @@ export function seedIllness(): void {
           db
             .prepare(
               `INSERT INTO intake_items
-               (profile_id, name, active, kind, condition, priority, as_needed,
-                quantity_on_hand, qty_per_dose, min_interval_hours, max_daily_count)
-             VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, 20, 1, 6, 4)`
+               (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose, min_interval_hours, max_daily_count)
+         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'may', 20, 1, 6, 4)`
             )
             .run(profileId).lastInsertRowid
         );
@@ -228,8 +229,8 @@ export function seedIllness(): void {
       db
         .prepare(
           `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, situation, situation_id)
-         VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'high', 'Illness', ?)`
+           (profile_id, name, active, kind, condition, obligation, situation, situation_id)
+         VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'should', 'Illness', ?)`
         )
         .run(sitCoachId, illnessSitId).lastInsertRowid
     );
@@ -436,8 +437,8 @@ export function seedIllness(): void {
       db
         .prepare(
           `INSERT INTO intake_items
-           (profile_id, name, kind, priority, active, as_needed, rx)
-         VALUES (?, 'Amoxicillin', 'medication', 'high', 1, 0, 1)`
+           (profile_id, name, kind, obligation, active, rx)
+         VALUES (?, 'Amoxicillin', 'medication', 'should', 1, 1)`
         )
         .run(hhChildId).lastInsertRowid
     );
@@ -538,8 +539,8 @@ export function seedIllness(): void {
     `DELETE FROM encounters WHERE profile_id = ? AND reason LIKE '%prescribed antibiotics%'`
   ).run(askRecordsId);
   db.prepare(
-    `INSERT INTO intake_items (profile_id, name, kind, condition, priority, active, source, notes)
-   VALUES (?, ?, 'medication', 'daily', 'high', 1, 'manual', 'Antibiotics course for a sinus infection')`
+    `INSERT INTO intake_items (profile_id, name, kind, condition, obligation, active, source, notes)
+         VALUES (?, ?, 'medication', 'daily', 'should', 1, 'manual', 'Antibiotics course for a sinus infection')`
   ).run(askRecordsId, ASK_RECORDS_MED);
   db.prepare(
     `INSERT INTO encounters (profile_id, date, type, reason)
@@ -594,5 +595,54 @@ export function seedIllness(): void {
   seedMemberLogin(E2E_LOGIN_PROTEIN, proteinProfileId, "write");
   console.log(
     `e2e: seeded protein quick-add fixture — profile ${proteinProfileId} (${PROTEIN_QUICKADD_PROFILE}) (#824)`
+  );
+}
+
+// ── Episode symptom-video strip (#1598) ──────────────────────────────────────
+// Appended to the seed run's TAIL on purpose: it introduces a profile and an
+// episode, and running it after every existing fixture keeps their row ids exactly
+// where they were.
+//
+// A dedicated sick-solo login whose OPEN episode gives the episode page's
+// SymptomVideoStrip a live upload day. The strip gathers clips over
+// [episode.start, today] and uploads them at the cockpit's log date (today), so an
+// OPEN episode is what makes an attached clip visible at all. Deliberately clipless:
+// symptom-video.spec attaches and deletes every clip it asserts on, so the fixture
+// always starts from the strip's EMPTY state (the branch nothing else renders).
+export function seedSymptomVideoEpisode(): void {
+  const pid = fixtureProfileId(SICK_VIDEO_PROFILE);
+  const on = today(pid);
+  const started = shiftDateStr(on, -2);
+
+  // Adult, so nothing on the episode page is age-gated.
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1988-06-15')`
+  ).run(pid);
+
+  // Exactly one OPEN episode — the spec reaches it through the care trail's single
+  // ongoing row, so a second episode would make that lookup ambiguous.
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(pid);
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+     VALUES (?, 'Illness', ?, NULL)`
+  ).run(pid, started);
+
+  // A small symptom history so the cockpit renders its normal shape (the strip sits
+  // below the timeline, which needs days to draw).
+  const seedSym = db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+     VALUES (?, ?, ?, ?, NULL)
+     ON CONFLICT (profile_id, date, symptom)
+     DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+  );
+  seedSym.run(pid, shiftDateStr(on, -1), "cough", 2);
+  seedSym.run(pid, on, "cough", 3);
+
+  // Start clipless even on a reused dev server; the spec owns every row here.
+  db.prepare("DELETE FROM symptom_videos WHERE profile_id = ?").run(pid);
+
+  seedMemberLogin(E2E_LOGIN_SICK_VIDEO, pid, "write");
+  console.log(
+    `e2e: seeded symptom-video episode fixture — profile ${pid} (${SICK_VIDEO_PROFILE}) (#1598)`
   );
 }

@@ -55,7 +55,11 @@ describe("addImagingStudy", () => {
     // Provider links are captured structurally but not populated from this form yet.
     expect(s.ordering_provider_id).toBeNull();
     expect(s.reading_provider_id).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/results");
+    // The route that RENDERS the studies list. Bare `/results` is a `redirect()`
+    // stub to `/results/biomarkers` and shows no imaging, so revalidating it left
+    // the client-side `router.refresh()` as the only thing that could repaint the
+    // list after a write.
+    expect(revalidate).toHaveBeenCalledWith("/results/imaging");
   });
 
   it("defaults an unknown modality to 'other' and a missing laterality to null", async () => {

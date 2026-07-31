@@ -32,12 +32,12 @@ describe("getIntakeSafetyContext (#661)", () => {
 
     // A medication (active) and a plain supplement (must not appear as a medication).
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-       VALUES (?, 'Warfarin', 1, 'medication', 'daily', 'high', 0)`
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Warfarin', 1, 'medication', 'daily', 'should')`
     ).run(profileId);
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-       VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'high', 0)`
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'should')`
     ).run(profileId);
 
     // An active + a resolved condition.
@@ -98,8 +98,8 @@ describe("getDietaryLimitWarnings — condition caveat (#657)", () => {
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-           VALUES (?, 'Magnesium Glycinate', 1, 'supplement', 'daily', 'high', 0)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Magnesium Glycinate', 1, 'supplement', 'daily', 'should')`
         )
         .run(profileId).lastInsertRowid
     );
@@ -123,8 +123,8 @@ describe("getDietaryLimitWarnings — condition caveat (#657)", () => {
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-           VALUES (?, 'Magnesium Glycinate', 1, 'supplement', 'daily', 'high', 0)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Magnesium Glycinate', 1, 'supplement', 'daily', 'should')`
         )
         .run(profileId).lastInsertRowid
     );
@@ -149,8 +149,8 @@ describe("getDietaryLimitWarnings — condition caveat (#657)", () => {
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-           VALUES (?, 'Magnesium Glycinate', 1, 'supplement', 'daily', 'high', 0)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Magnesium Glycinate', 1, 'supplement', 'daily', 'should')`
         )
         .run(profileId).lastInsertRowid
     );

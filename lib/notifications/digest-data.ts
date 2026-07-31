@@ -21,16 +21,18 @@ import {
   getEffectiveActiveSituations,
   getDerivedSituationLines,
 } from "../queries";
+import { getOutdoorPlans } from "../queries/weather-training";
 import { groupUpcoming } from "../upcoming";
+import { integrationToItem } from "../attention";
+import { getIntegrationAttention } from "../queries/integrations";
 import {
   mainSleepNights,
   sleepSessionDurationMinutes,
 } from "../sleep-regularity";
 import {
   countSituationalDue,
+  doseDueOn,
   heldItemsBy,
-  doseReminderNotifies,
-  isDueOn,
 } from "../supplement-schedule";
 import {
   getActiveSituations,
@@ -40,8 +42,10 @@ import {
   setProfileSetting,
   getProfileSleepDigest,
   getTimezone,
+  getPublicUrl,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
+import { getIntakeDeltaLine } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
@@ -55,6 +59,18 @@ import {
   type DigestSleep,
 } from "./digest";
 import { createLogger } from "../log";
+import { collapsedOfferAction, offerTailNeedsRefresh } from "./offer-tail";
+import { recommendWorkout } from "./recommend";
+import { digestWorkoutLine } from "./workout-format";
+import type { CoachingInput } from "../coaching";
+import { updateMessageKeyboard } from "./telegram";
+import { messageKeyboard } from "./telegram-render";
+import {
+  clearDigestTailPointer,
+  getDigestTailPointer,
+  setDigestTailPointer,
+} from "../settings";
+import { getOfferedIntakeForSlot } from "../queries/intake";
 
 const log = createLogger("notify");
 
@@ -172,7 +188,10 @@ export function gatherDigestSleep(profileId: number): DigestSleep | null {
 // so the first digest doesn't dump the entire history of flagged results.
 export function gatherDigestInput(
   profileId: number,
-  profileName: string
+  profileName: string,
+  // The tick's already-gathered coaching input (#447), so the digest's workout preview
+  // costs no second heavy per-profile scan. Omitted ⇒ recommendWorkout gathers fresh.
+  gathered?: CoachingInput
 ): DigestInput {
   const td = today(profileId);
   const yd = shiftDateStr(td, -1);
@@ -196,7 +215,8 @@ export function gatherDigestInput(
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
     return doses
       .filter((d) =>
-        isDueOn(suppById.get(d.item_id)!, {
+        doseDueOn(suppById.get(d.item_id)!, d, {
+          date,
           isWorkoutDay,
           activeSituations: situationsOn(date),
           predictedWorkoutDay: null,
@@ -220,21 +240,28 @@ export function gatherDigestInput(
       (i) => i.domain !== "visit" && i.domain !== "screening"
     );
   }
-  const todayGroups = groupUpcoming(upcoming, td);
+  // Broken syncs join the banded set (#1685) — the ONE place the digest learns about a
+  // dead integration. They are built by the SAME integrationToItem the dashboard hero and
+  // the Upcoming page render, from the SAME getIntegrationAttention list the Data → Review
+  // badge counts, so the four surfaces cannot disagree about which sources are broken or
+  // what to call them (#221). Deliberately appended AFTER `upcoming` is used for the dose
+  // headline and the situational counts below: those read the date-scheduled set and must
+  // not see a structural signal.
+  //
+  // They band as Today (no dueDate, no band override), which is the honest reading — a
+  // sync that stopped is not scheduled for a date, it is broken NOW.
+  const integrationItems =
+    getIntegrationAttention(profileId).map(integrationToItem);
+  const todayGroups = groupUpcoming([...upcoming, ...integrationItems], td);
   // The dose glance headline counts the DUE dose items collectUpcoming surfaced
-  // (bus-honored + #558) — the same items the Today section bands over. The
-  // #1156 priority floor applies to this PUSH surface: a low-priority SUPPLEMENT
-  // dose stays on the in-app surfaces (Upcoming, Supplements page) but is
-  // excluded from the digest's actionable dose count — tracked, not nagged.
-  const doseByIdForFloor = new Map(doses.map((d) => [d.id, d]));
+  // (bus-honored + #558) — the same items the Today section bands over. No local
+  // priority filter here any more (#1505): the "tracked, never pushed" exclusion now
+  // lives in collectUpcoming's doseItems, the ONE shared model this reads, so the
+  // digest count, the Upcoming rows, the aggregate and the hero can no longer
+  // disagree about which doses are pushable (#221 — one question, one computation).
   const todayDoseIds = upcoming
     .filter((i) => i.domain === "dose" && i.doseId != null)
-    .map((i) => i.doseId as number)
-    .filter((id) => {
-      const d = doseByIdForFloor.get(id);
-      const supp = d ? suppById.get(d.item_id) : undefined;
-      return supp ? doseReminderNotifies(supp) : true;
-    });
+    .map((i) => i.doseId as number);
   const doseCount = todayDoseIds.length;
 
   // Yesterday: activities, supplement adherence x/y, weight if logged.
@@ -327,13 +354,18 @@ export function gatherDigestInput(
   // user isn't surprised by the extra due items.
   const effectiveSituations = getEffectiveActiveSituations(profileId, td);
   const situationalActiveCount = countSituationalDue(active, {
+    date: td,
     isWorkoutDay: false,
     activeSituations: effectiveSituations,
   });
+  // The digest has no login context (the notify tick runs per PROFILE), so weather
+  // figures render in canonical °C — the default. A weather situation's activation is a
+  // digest LINE only: it never becomes a send of its own (#1726's no-pushes boundary).
   const derivedLines = getDerivedSituationLines(profileId, td);
   const derivedSituationLines = [
     derivedLines.poorSleep,
     derivedLines.period,
+    ...derivedLines.weather,
   ].filter((l): l is string => l != null);
 
   // Held items (#1296): active intake items currently suppressed by a pause situation,
@@ -354,8 +386,39 @@ export function gatherDigestInput(
     derivedSituationLines,
     intakeKinds,
     todayGroups,
+    // Makes the broken-sync lines' hrefs tappable (#1685); empty when no public URL is
+    // configured, in which case the lines still name the provider.
+    deepLinkBase: getPublicUrl(),
+    // Today's recommended workout as ONE line (#1712 §2), from the SAME recommendation
+    // the dedicated nudge formats. The nudge is deliberately unchanged: the digest is a
+    // 7am heads-up, the nudge is the actionable prompt with buttons later.
+    workoutPreview: digestWorkoutLine(recommendWorkout(profileId, gathered)),
+    // The outdoor-session PLAN (#1724 part 5) — the same planningLine computation the
+    // calm Upcoming item renders, as a This-week glance. It rides THIS message; no
+    // dedicated send exists or is created. Empty on a week with no scarcity to plan
+    // around, and honestly hedged past the reliable forecast horizon.
+    weatherPlanLines: getOutdoorPlans(profileId, td).map((plan) => plan.line),
     activities,
     adherence,
+    // Delta headline (#1505 part 3): WHICH pushed obligations changed state, from the
+    // ONE shared classifier every digest channel formats. Null on a quiet window —
+    // the digest doesn't invent news. The x/y fraction above stays as secondary
+    // detail; the two answer different questions and are both honest.
+    intakeDeltaLine: getIntakeDeltaLine(profileId, td),
+    // The guaranteed access tail (#1505). Scoped to the slot the digest is BUILT in;
+    // the tick re-labels it at each boundary and the expansion re-scopes at tap, so a
+    // morning-born keyboard never offers breakfast items at bedtime.
+    ...(() => {
+      const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+      const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+      return {
+        offerCount: offered.length,
+        offerTail:
+          offered.length > 0
+            ? collapsedOfferAction(profileId, td, nowHhmm, offered.length)
+            : null,
+      };
+    })(),
     weightKg: weightRow?.weight_kg ?? null,
     newFlaggedBiomarkers,
     newDocumentLabels,
@@ -372,10 +435,13 @@ export function gatherDigestInput(
 export async function runDigest(
   profileId: number,
   profileName: string,
-  date: string
+  date: string,
+  gathered?: CoachingInput
 ): Promise<{ failed: boolean }> {
   const dedupKey = "notify_last_digest";
-  const model = buildDigest(gatherDigestInput(profileId, profileName));
+  const model = buildDigest(
+    gatherDigestInput(profileId, profileName, gathered)
+  );
   if (!model) {
     // Nothing to report — mark the day done so we don't recompute every hour.
     setProfileSetting(profileId, dedupKey, date);
@@ -399,4 +465,69 @@ export async function runDigest(
     setProfileSetting(profileId, "notify_digest_last_at", now.n);
   }
   return { failed };
+}
+
+// The SILENT boundary refresh (issue #1505). Once per tick, per profile: if the
+// digest we sent today is still carrying an offer tail whose slot label has gone
+// stale, re-render the keyboard — collapsed, relabelled for the slot we are actually
+// in now.
+//
+// WHY THIS IS NOT A SEND. It is one editMessageReplyMarkup on a message the user
+// already received. Telegram does not notify on an edit, no new row appears in the
+// chat, and the phone stays silent. That distinction is the whole reason the
+// guaranteed-access tail can exist at all without violating the contact-consent rule:
+// the system is allowed to keep an affordance it already gave accurate; it is not
+// allowed to spend another interruption doing so.
+//
+// It always resets to COLLAPSED. An expanded keyboard from the previous slot is
+// listing items that are no longer on offer, so leaving it open would be worse than
+// closing it — and the collapse button exists as the manual equivalent for a user who
+// expanded it and walked away.
+//
+// Three no-ops, each deliberate: no pointer (nothing sent today, or the digest had no
+// tail), a pointer from a PREVIOUS day (day rollover strips the keyboard entirely
+// rather than relabelling a stale day's message), and a slot that hasn't turned over
+// (offerTailNeedsRefresh false → zero API calls, so the common tick costs nothing).
+export async function refreshDigestOfferTail(profileId: number): Promise<void> {
+  const pointer = getDigestTailPointer(profileId);
+  if (!pointer) return;
+  const date = today(profileId);
+  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+
+  if (pointer.date !== date) {
+    // Day rollover: yesterday's keyboard must not stay tappable, because its tokens
+    // carry yesterday's date and the expansion would refuse them anyway. Strip it and
+    // forget the pointer so this runs once, not every tick forever.
+    await updateMessageKeyboard(pointer.chatId, pointer.messageId, []).catch(
+      (e) =>
+        log.info("digest tail: rollover strip failed (ignored)", {
+          profile: profileId,
+          err: e instanceof Error ? e.message : String(e),
+        })
+    );
+    clearDigestTailPointer(profileId);
+    return;
+  }
+  if (!offerTailNeedsRefresh(pointer.renderedAt, nowHhmm)) return;
+
+  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+  const actions =
+    offered.length > 0
+      ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
+      : [];
+  try {
+    await updateMessageKeyboard(
+      pointer.chatId,
+      pointer.messageId,
+      messageKeyboard({ title: "", body: "", actions })
+    );
+    setDigestTailPointer(profileId, { ...pointer, renderedAt: nowHhmm });
+  } catch (e) {
+    // Best-effort throughout: the digest already landed, and a failed relabel is a
+    // cosmetic staleness, never a delivery failure.
+    log.info("digest tail: refresh failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
 }

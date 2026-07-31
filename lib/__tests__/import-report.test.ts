@@ -354,6 +354,25 @@ describe("serialize / parseImportReport", () => {
         total: 5,
         flags: [{ name: "Ferritin", value: "999", verdict: "value_mismatch" }],
       },
+      // Per-record extraction confidence (#1601) rides along in the same report.
+      confidence: {
+        counts: { high: 3, medium: 1, low: 1, unknown: 0 },
+        scrutiny: 2,
+        flags: [
+          {
+            kind: "lab",
+            label: "Ferritin",
+            confidence: "low",
+            reason: "value smudged",
+          },
+          {
+            kind: "condition",
+            label: "Asthma",
+            confidence: "medium",
+            reason: null,
+          },
+        ],
+      },
     };
     const json = serializeImportReport(report)!;
     expect(parseImportReport(json)).toEqual(report);
@@ -370,7 +389,51 @@ describe("serialize / parseImportReport", () => {
       unmappedLoincs: [],
       unresolvedNames: [],
       reconciliation: null,
+      // A report with no confidence key degrades to "no signal", not zeros (#1601).
+      confidence: null,
     });
+  });
+
+  it("tolerates a garbled confidence block without losing the rest of the report (#1601)", () => {
+    // A stored report whose confidence block is junk (hand-edited, truncated write,
+    // an older writer's shape): the review surfaces must still get the drops and
+    // counts, with confidence degrading to "no signal".
+    const parsed = parseImportReport(
+      JSON.stringify({
+        drops: [{ kind: "lab", label: "A", reason: "no_value" }],
+        coverage: [],
+        imported: 4,
+        considered: 5,
+        confidence: "very sure",
+      })
+    );
+    expect(parsed?.imported).toBe(4);
+    expect(parsed?.drops).toHaveLength(1);
+    expect(parsed?.confidence).toBeNull();
+
+    // A partially-usable block keeps the rows it can read, drops the ones it can't,
+    // and re-derives `scrutiny` rather than trusting a disagreeing stored total.
+    const partial = parseImportReport(
+      JSON.stringify({
+        drops: [],
+        coverage: [],
+        imported: 2,
+        considered: 2,
+        confidence: {
+          counts: { high: 1, medium: 1, low: 1, unknown: 0 },
+          scrutiny: 99,
+          flags: [
+            { kind: "lab", label: "Kept Row", confidence: "medium" },
+            { kind: "lab", confidence: "low" }, // no label → unusable
+            { kind: "lab", label: "No Tier" }, // no confidence → unusable
+          ],
+        },
+      })
+    );
+    expect(partial?.confidence?.scrutiny).toBe(1);
+    expect(partial?.confidence?.flags.map((f) => f.label)).toEqual([
+      "Kept Row",
+    ]);
   });
 });
 

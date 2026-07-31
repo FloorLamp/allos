@@ -42,7 +42,7 @@ test.describe("chart tap-through (#1488)", () => {
     // and its large header target are the desktop reading mode.
     await page.setViewportSize(DESKTOP);
     // view=all is the classic full-chart stack — the surface that was a dead end.
-    await page.goto("/trends?tab=body&view=all");
+    await page.goto("/trends?view=all");
     await expandTrendsContext(page);
 
     const chartCard = page.getByTestId("body-chart-weight");
@@ -59,7 +59,7 @@ test.describe("chart tap-through (#1488)", () => {
     const plot = chartCard.getByTestId("chart-card-plot");
     await expect(plot.locator("xpath=ancestor::a")).toHaveCount(0);
     await plot.click({ position: { x: 120, y: 60 } });
-    await expect(page).toHaveURL(/\/trends\?tab=body/);
+    await expect(page).toHaveURL(/\/trends/);
 
     // The HEADER row is the tap target.
     const header = chartCard.getByTestId("chart-card-header-link");
@@ -116,7 +116,7 @@ test.describe("chart tap-through (#1488)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(DESKTOP);
-    await page.goto("/trends?tab=body&view=tiles");
+    await page.goto("/trends?view=tiles");
 
     const card = page.getByTestId("body-tile-weight");
     await expect(card).toBeVisible();
@@ -192,6 +192,12 @@ test.describe("chart tap-through (#1488)", () => {
       name: "Save",
       exact: true,
     });
+    const cancel = editingRow.getByRole("button", {
+      name: "Cancel",
+      exact: true,
+    });
+    await expect(save).toHaveClass(/\bbtn\b/);
+    await expect(cancel).toHaveClass(/\bbtn-ghost\b/);
     await settledClick(page, save);
     await expect(
       table.locator("tr").filter({ hasText: `${corrected} ms` })
@@ -226,7 +232,7 @@ test.describe("chart tap-through (#1488)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(PHONE);
-    await page.goto("/trends?tab=body&view=all");
+    await page.goto("/trends?view=all");
 
     // Every chart card's PLOT commits to the same square below `sm`, whatever its
     // state — that is what stops a stack reflowing because one series is empty.
@@ -254,7 +260,7 @@ test.describe("chart tap-through (#1488)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(DESKTOP);
-    await page.goto("/trends?tab=body&view=all");
+    await page.goto("/trends?view=all");
 
     // The default full-size plot is h-64 (256px) from `sm` up — the pre-#1488
     // height — and is WIDER than it is tall, i.e. not the square.

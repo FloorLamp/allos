@@ -52,6 +52,9 @@ import {
   type Recap,
 } from "@/lib/session-recap";
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
+import DraftRestoreBanner from "./DraftRestoreBanner";
+import { useFormDraft } from "./useFormDraft";
+import type { PartEntry } from "@/lib/activity-form-model";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
 import IntensityPicker from "./activity-form/IntensityPicker";
@@ -639,6 +642,90 @@ export default function ActivityForm({
   });
   const { status, savedAt, createdId, savableId, hasRow, dirty } = autosave;
 
+  // --- Local draft: the net under everything the server auto-save can't hold. ---
+  //
+  // The auto-save above is the DURABLE copy, and it is the reason this form does not
+  // simply persist everything locally: once a form is savable it creates a real row
+  // and updates it. But two windows are still React-state-only, and #1699 is both of
+  // them: (a) before the form is savable at all (a titled workout with a half-typed
+  // first exercise saves nothing), and (b) between an edit and the debounce/round-trip
+  // that persists it — which is exactly the window a deploy, a crash or a tab
+  // eviction lands in. The draft covers those and nothing else: it is written on
+  // change, and dropped the moment the server copy is provably current.
+  //
+  // A LIVE session is server-persisted by design (#451: the dock rehydrates it from
+  // getActivityEditData after a reload), so the hook is INERT there — a second,
+  // local copy of a session that already survives reloads would be a competing
+  // source of truth, not a safety net.
+  const draftExtra = useMemo(
+    () => ({
+      date,
+      startTime,
+      endTime,
+      sessionDuration,
+      intensity,
+      notes,
+      estCalories,
+      estEdited,
+      title,
+      titleEdited,
+      activityEquipmentId,
+      parts,
+    }),
+    [
+      date,
+      startTime,
+      endTime,
+      sessionDuration,
+      intensity,
+      notes,
+      estCalories,
+      estEdited,
+      title,
+      titleEdited,
+      activityEquipmentId,
+      parts,
+    ]
+  );
+  type ActivityDraft = typeof draftExtra;
+  const draft = useFormDraft<ActivityDraft>({
+    formKey: "activity",
+    // Once auto-save has created the row, the draft belongs to THAT row — so a
+    // later blank create form can't restore it into a duplicate activity, and
+    // reopening the row still offers the edits that never reached the server.
+    recordId: editData?.id ?? createdId,
+    extra: draftExtra,
+    enabled: !liveMode,
+    onRestore: (d) => {
+      setDate(d.date);
+      setStartTime(d.startTime);
+      setEndTime(d.endTime);
+      setSessionDuration(d.sessionDuration);
+      setIntensity(d.intensity);
+      setNotes(d.notes);
+      setEstCalories(d.estCalories);
+      setEstEdited(d.estEdited);
+      setTitle(d.title);
+      setTitleEdited(d.titleEdited);
+      setActivityEquipmentId(d.activityEquipmentId);
+      setParts(d.parts as PartEntry[]);
+      if (d.notes || d.estCalories) setMoreDetailsOpen(true);
+    },
+    confirmReplace: () =>
+      confirm({
+        title: "Resume the unsaved workout?",
+        message:
+          "This replaces what you have typed here with the entry kept on this device.",
+        confirmLabel: "Resume",
+      }),
+  });
+  const clearDraft = draft.clear;
+  // Clear on successful save. `savedAt > 0 && !dirty` is precisely "the server has
+  // everything on screen" — the only honest moment to drop the local copy.
+  useEffect(() => {
+    if (savedAt > 0 && !dirty) clearDraft();
+  }, [savedAt, dirty, clearDraft]);
+
   // The live-mode recap (#924): computed from the SAME form parts the user just
   // logged, through the ONE pure sessionRecap (over the shipped ExerciseHistoryMap),
   // so the finish step, the finished-window dashboard card, and the Telegram recap
@@ -790,6 +877,8 @@ export default function ActivityForm({
         fd.set("profile_id", String(editData.subjectProfileId));
       // Don't let the unmount flush re-create the row we just deleted.
       autosave.markDeleted();
+      // …nor the draft offer it back on the next open.
+      draft.discard();
       // Capture-and-delete with an Undo toast (issue #30). undoable() runs the
       // action and surfaces the toast; closing the modal + refresh reflect it.
       await undoable(deleteActivity, fd, {
@@ -894,6 +983,10 @@ export default function ActivityForm({
             }}
             onClose={requestClose}
           />
+
+          {/* An unsaved entry this device kept from an interrupted session
+              (#1699). Never applied on its own — the user chooses. */}
+          <DraftRestoreBanner draft={draft} noun="workout" />
 
           {/* Live workout mode (issue #340): the in-gym control strip pinned above
           the normal form — rest timer + Finish. The form below is unchanged, so

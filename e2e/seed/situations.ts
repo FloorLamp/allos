@@ -11,10 +11,13 @@ import { setProfileSetting, getTimezone } from "../../lib/settings";
 import {
   E2E_LOGIN_CYCLE,
   CYCLE_PROFILE,
+  E2E_LOGIN_CYCLE_STALE,
+  CYCLE_STALE_PROFILE,
   E2E_LOGIN_DERIVED,
   DERIVED_SITU_PROFILE,
   DERIVED_SITU_PERIOD_ITEM,
   DERIVED_SITU_SLEEP_ITEM,
+  DERIVED_SITU_POLLEN_ITEM,
   E2E_LOGIN_SITIMPACT,
   SITUATION_IMPACT_PROFILE,
 } from "../fixture-logins";
@@ -23,6 +26,14 @@ import {
   serializeSituationEvents,
 } from "../../lib/trend-annotations";
 import { seedMemberLogin, fixtureProfileId } from "./common";
+
+// The coarse home location the derived-situations fixture's weather rows are keyed to
+// (~0.1° storage precision). Its own coordinate so the GLOBAL, location-keyed weather
+// cache can't collide with another fixture's series.
+const DERIVED_SITU_HOME = { lat: 51.5, lng: -0.1 };
+// Comfortably over POLLEN_ENTER.grass, so the situation holds without sitting on the
+// threshold the predicate's hysteresis band is about.
+const DERIVED_SITU_POLLEN_COUNT = 60;
 
 // ── Menstrual cycle log + derived situations ──
 export function seedCycleAndDerived(): void {
@@ -61,6 +72,33 @@ export function seedCycleAndDerived(): void {
   seedMemberLogin(E2E_LOGIN_CYCLE, cycleProfileId, "write");
   console.log(
     `e2e: seeded cycle-log fixture — profile ${cycleProfileId} (${CYCLE_PROFILE}) (#714)`
+  );
+
+  // ── Stale open period fixture (#1682 fix a) ──────────────────────────────────
+  // A dedicated adult profile whose latest period was started 18 days ago and NEVER
+  // ended — the forgotten "Period ended" tap. Past MAX_PLAUSIBLE_PERIOD_DAYS the
+  // derivations stop claiming menstrual and the Cycle surface prompts for the real end
+  // date, with the record left exactly as stored. One earlier completed period gives the
+  // profile a history to derive against. Its own profile because CYCLE_PROFILE must have
+  // no open period; the spec is read-only here, so the stale state survives --repeat-each.
+  const staleProfileId = fixtureProfileId(CYCLE_STALE_PROFILE);
+  db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(staleProfileId);
+  const staleAnchor = today(staleProfileId);
+  db.prepare(
+    `INSERT INTO cycles (profile_id, period_start, period_end, flow)
+     VALUES (?, ?, ?, 'medium')`
+  ).run(
+    staleProfileId,
+    shiftDateStr(staleAnchor, -46),
+    shiftDateStr(staleAnchor, -42)
+  );
+  db.prepare(
+    `INSERT INTO cycles (profile_id, period_start, period_end, flow)
+     VALUES (?, ?, NULL, 'light')`
+  ).run(staleProfileId, shiftDateStr(staleAnchor, -18));
+  seedMemberLogin(E2E_LOGIN_CYCLE_STALE, staleProfileId, "write");
+  console.log(
+    `e2e: seeded stale-open-period fixture — profile ${staleProfileId} (${CYCLE_STALE_PROFILE}) (#1682)`
   );
 
   // ── Derived situations fixture (#1292 Poor sleep, #1298 Period) ───────────────
@@ -107,14 +145,21 @@ export function seedCycleAndDerived(): void {
         )
         .run(dsId).lastInsertRowid
     );
+    const pollenSit = Number(
+      db
+        .prepare(
+          `INSERT INTO situations (profile_id, name, active) VALUES (?, 'High pollen', 0)`
+        )
+        .run(dsId).lastInsertRowid
+    );
 
     const keyedItem = (name: string, situation: string, sitId: number) => {
       const itemId = Number(
         db
           .prepare(
             `INSERT INTO intake_items
-             (profile_id, name, kind, condition, priority, situation, situation_id, active, as_needed)
-           VALUES (?, ?, 'supplement', 'situational', 'high', ?, ?, 1, 0)`
+             (profile_id, name, kind, condition, obligation, situation, situation_id, active)
+         VALUES (?, ?, 'supplement', 'situational', 'should', ?, ?, 1)`
           )
           .run(dsId, name, situation, sitId).lastInsertRowid
       );
@@ -126,6 +171,31 @@ export function seedCycleAndDerived(): void {
     };
     keyedItem(DERIVED_SITU_PERIOD_ITEM, "Period", periodSit);
     keyedItem(DERIVED_SITU_SLEEP_ITEM, "Poor sleep", sleepSit);
+    keyedItem(DERIVED_SITU_POLLEN_ITEM, "High pollen", pollenSit);
+
+    // The WEATHER derived situation (#1726). Two facts make it hold: a home location
+    // (weather features are quietly absent without one) and cached daily rows carrying
+    // a grass-pollen count over the family's entry bound. The keyed item above is also
+    // what makes weather situations RELEVANT for this profile, so nothing else is
+    // needed — and nothing is ever toggled, which is the point of a derived situation.
+    setProfileSetting(dsId, "home_lat", String(DERIVED_SITU_HOME.lat));
+    setProfileSetting(dsId, "home_lng", String(DERIVED_SITU_HOME.lng));
+    db.prepare(`DELETE FROM weather_days WHERE lat = ? AND lng = ?`).run(
+      DERIVED_SITU_HOME.lat,
+      DERIVED_SITU_HOME.lng
+    );
+    for (let i = 3; i >= 0; i--) {
+      db.prepare(
+        `INSERT INTO weather_days
+           (lat, lng, date, temp_max_c, pollen_grass, source)
+         VALUES (?, ?, ?, 18, ?, 'e2e')`
+      ).run(
+        DERIVED_SITU_HOME.lat,
+        DERIVED_SITU_HOME.lng,
+        shiftDateStr(dsToday, -i),
+        DERIVED_SITU_POLLEN_COUNT
+      );
+    }
 
     // A rough last-night sleep session (300 min = 5h < the 6h floor) so getSleepSignal
     // trips and the measured poor-sleep context is ON, plus a few good baseline nights.

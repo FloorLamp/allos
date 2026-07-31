@@ -122,6 +122,16 @@ import { migration as m120 } from "./120-lab-result-lifecycle";
 import { migration as m121 } from "./121-goal-equipment-context";
 import { migration as m122 } from "./122-records-safety-passport";
 import { migration as m123 } from "./123-practice-target-unique";
+import { migration as m124 } from "./124-intake-obligation";
+import { migration as m125 } from "./125-lesion-allergy-encounter-link";
+import { migration as m126 } from "./126-intake-cadence";
+import { migration as m127 } from "./127-api-tokens";
+import { migration as m128 } from "./128-portal-identity";
+import { migration as m129 } from "./129-weather-daily-cache";
+import { migration as m130 } from "./130-acquirer-provenance";
+import { migration as m131 } from "./131-portal-accounts";
+import { migration as m132 } from "./132-portal-run-reports";
+import { migration as m133 } from "./133-portal-sync-requests";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -253,4 +263,14 @@ export const MIGRATIONS: Migration[] = [
   m121,
   m122,
   m123,
+  m124,
+  m125,
+  m126,
+  m127,
+  m128,
+  m129,
+  m130,
+  m131,
+  m132,
+  m133,
 ];

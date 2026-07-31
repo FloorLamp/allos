@@ -19,7 +19,7 @@ export async function handleDoseCommand(
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (profileIds.length === 0) {
     await sendTelegramMessage(chatId, {
-      title: "Log a PRN dose",
+      title: "💊 Log a PRN dose",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
     });
     return;
@@ -27,12 +27,27 @@ export async function handleDoseCommand(
 
   const multi = profileIds.length > 1;
   const actions: NotificationAction[] = [];
+  // The list states the SAME redose verdict the in-app card renders (#1717) — the
+  // gather already carried the interval, the confirmed max and the ingredient-family
+  // counters, and this surface threw all of it away for a bare item-only count. The
+  // surface with the least context must not do the least checking.
+  const now = clockNow();
   for (const pid of profileIds) {
     const prefix = multi ? `${getProfileNameById(pid) ?? "Profile"}: ` : "";
     for (const m of getPrnMedicationsForQuickLog(pid)) {
-      const dose = formatMedicationDoseProduct(m.amount, m.product);
       actions.push({
-        label: `💊 ${prefix}${m.name}${dose ? ` · ${dose}` : ""}${m.count > 0 ? ` (${m.count} today)` : ""}`,
+        label: `💊 ${prnQuickLogLabel({
+          name: m.name,
+          prefix,
+          dose: formatMedicationDoseProduct(m.amount, m.product),
+          status: prnQuickLogRedoseStatus(m, now),
+          // Family-aware throughout (#1027): the count the app shows spans the
+          // ingredient family, so the list can't read "1 today" where the card says
+          // "3 of 4 today across 2 items".
+          countToday: m.familyCount,
+          maxDailyCount: m.familyMaxDailyCount ?? m.maxDailyCount,
+          familyMemberCount: m.familyMemberCount,
+        })}`,
         data: `prn:${pid}:${m.id}:${prnLogToken()}`,
       });
     }
@@ -40,14 +55,14 @@ export async function handleDoseCommand(
 
   if (actions.length === 0) {
     await sendTelegramMessage(chatId, {
-      title: "Log a PRN dose",
+      title: "💊 Log a PRN dose",
       body: "No as-needed medications are set up. Add one under Medications in the app.",
     });
     return;
   }
 
   await sendTelegramMessage(chatId, {
-    title: "Log a PRN dose",
+    title: "💊 Log a PRN dose",
     body: "Tap a medication to record a dose now:",
     actions,
   });
@@ -73,7 +88,24 @@ export async function handlePrnLogTap(
   }
   const outcome = logAdministration(profileId, token.itemId);
   const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
-  await answerCallbackQuery(cq.id, administrationOutcomeText(outcome, name));
+  // The answer states the verdict that now stands (#1717), read back from POST-write
+  // state through the same classification the card shows — so an at-max tap says
+  // "Max reached · 5 of 4 today" instead of a bare "Logged ✅". The app treats a
+  // redose window as guidance rather than a gate, so Telegram logs it too; what it
+  // must not be is LAXER about saying so.
+  const logged = administrationLogged(outcome);
+  const med = logged
+    ? getPrnMedicationsForQuickLog(profileId).find((m) => m.id === token.itemId)
+    : undefined;
+  await answerCallbackQuery(
+    cq.id,
+    prnLogAnswerText(
+      administrationOutcomeText(outcome, name),
+      logged,
+      med ? prnQuickLogRedoseStatus(med, clockNow()) : null,
+      med?.familyMemberCount ?? 1
+    )
+  );
 }
 
 // A practice "Done ✓" tap (#1259): log one session NOW for the tapped target's practice,
@@ -95,7 +127,7 @@ export async function handlePracticeDoneTap(
     return;
   }
   const outcome = logPracticeByTargetId(profileId, token.targetId);
-  await answerCallbackQuery(cq.id, practiceDoneAnswerText(outcome));
+  await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
 
   const messageId = cq.message?.message_id;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -186,7 +218,7 @@ export async function handleSymptomPick(
     row: "sev",
   }));
   await rebuildMessage(profileId, chatId, messageId, {
-    title: `Log a symptom: ${label}`,
+    title: `🤒 Log a symptom: ${label}`,
     body: "How bad is it?",
     actions,
   });
@@ -233,6 +265,38 @@ export async function handleMoodTap(
     chatId,
     messageId,
     `${moodFace(token.valence)} Logged — ${label}. Thanks for checking in.`
+  );
+}
+
+// The "Keep daily check-ins" tap (#1668). Resets the ignored streak — the SAME write a
+// logged mood performs, so one mechanism serves three entry points — and answers from
+// the typed decision, never an unconditional confirm: the streak may have been re-armed
+// already by a mood logged elsewhere, and the check-in may have been turned off since
+// the message was sent.
+export async function handleMoodKeepTap(
+  cq: TelegramCallbackQuery,
+  token: MoodKeepCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || chatId == null || messageId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = decideMoodKeep({
+    enabled: getProfileMoodCheckin(profileId),
+    ignoredCount: getMoodCheckinIgnored(profileId),
+  });
+  if (outcome === "kept") resetMoodCheckinIgnored(profileId);
+  await answerCallbackQuery(cq.id, moodKeepAnswerText(outcome));
+  await closeMessage(
+    chatId,
+    messageId,
+    replacementWithTitle(cq.message?.text, moodKeepCloseText(outcome))
   );
 }
 
@@ -320,7 +384,7 @@ export async function handleTempReply(
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (!profileIds.includes(markedProfile)) {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: "That profile isn't linked to this chat anymore.",
     });
     return true;
@@ -329,7 +393,7 @@ export async function handleTempReply(
   const parsed = parseTempReply(message.text);
   if (!parsed) {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
     });
     return true;
@@ -344,7 +408,7 @@ export async function handleTempReply(
   );
   if (outcome.kind === "invalid") {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: outcome.error,
     });
     return true;
@@ -359,9 +423,22 @@ export async function handleTempReply(
     profileAgeMonths(markedProfile, date)
   );
   const feverNote = outcome.flag === "high" ? " — fever" : "";
+  // "Logged." duplicated the title's verb and said nothing (#1722 item 6). With no
+  // red flag the reply states the reading and offers the episode, which the red-flag
+  // and illness-care messages both already carry.
+  const base = getPublicUrl().replace(/\/$/, "");
+  const episodeId = currentEpisodeForProfile(markedProfile)?.id ?? null;
   await sendTelegramMessage(chatId, {
-    title: `Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
-    body: redFlag ?? "Logged.",
+    title: `🌡️ Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
+    body:
+      redFlag ?? `${fmtTemp(outcome.degF, parsed.unit)} recorded for today.`,
+    ...(base && episodeId != null
+      ? {
+          actions: [
+            { label: "View episode", url: `${base}${episodeHref(episodeId)}` },
+          ],
+        }
+      : {}),
   });
   return true;
 }
@@ -451,6 +528,14 @@ export async function handleSymptomTextIntake(
 // handler's keyboard-rebuild discipline: only act when the message actually had
 // buttons, so an absent keyboard can't overwrite the text.
 import crypto from "node:crypto";
+import { collapsedOfferAction, expandedOfferActions } from "./offer-tail";
+import type { DemoteCallback, OfferTailCallback } from "./callback-data";
+import { demoteIntakeObligation } from "../intake-obligation-write";
+import { DEMOTION_OUTCOME_TEXT } from "../supplement-demotion";
+import { getOfferedIntakeForSlot } from "../queries/intake";
+import { messageKeyboard } from "./telegram-render";
+import { zonedDateParts } from "../date";
+
 import {
   getCustomSymptomNames,
   getDoseEscalateChatId,
@@ -460,17 +545,33 @@ import {
   logAdministration,
   logPracticeByTargetId,
 } from "../queries";
+import { practiceLogOutcomeText } from "../practice";
 import { today } from "../db";
-import { getProfilesByTelegramChatId, getUserAge } from "../settings";
+import {
+  getMoodCheckinIgnored,
+  getProfileMoodCheckin,
+  getProfilesByTelegramChatId,
+  getTimezone,
+  getUserAge,
+  resetMoodCheckinIgnored,
+} from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
-import { administrationOutcomeText } from "../administration-format";
+import { getPublicUrl } from "../settings";
+import {
+  administrationLogged,
+  administrationOutcomeText,
+} from "../administration-format";
+import { prnLogAnswerText, prnQuickLogLabel } from "../redose-format";
+import { prnQuickLogRedoseStatus } from "../prn-redose";
+import { now as clockNow } from "../clock";
 import { logSymptomCore } from "../symptom-log-write";
 import { upsertMoodLog } from "../offline/writes";
 import { getMoodOnDate } from "../queries/mood";
-import { moodFace, moodLabel } from "../mood";
+import { decideMoodKeep, moodFace, moodLabel } from "../mood";
 import { logTemperatureCore } from "../temperature-log";
 import { symptomLabel, symptomSlugs, SYMPTOMS } from "../symptoms";
 import { currentEpisodeForProfile } from "../illness-episode";
+import { episodeHref } from "../hrefs";
 import { isTaskConfigured } from "../ai-resolve";
 import { mapSymptomText } from "../symptom-text-map";
 import { profileAgeMonths } from "../settings";
@@ -480,12 +581,14 @@ import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
   parseMoodCheckinCallback,
+  parseMoodKeepCallback,
+  moodKeepAnswerText,
+  moodKeepCloseText,
   parsePrnLogCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
   parseTempReply,
   parseTempReplyMarker,
-  practiceDoneAnswerText,
   removeButton,
   replacementWithTitle,
   resolveTapProfile,
@@ -493,6 +596,7 @@ import {
   tempReplyMarker,
   OUTDATED_MESSAGE_TEXT,
   type MoodCheckinCallback,
+  type MoodKeepCallback,
   type PracticeDoneCallback,
   type PrnLogCallback,
   type SymptomPickCallback,
@@ -508,3 +612,117 @@ import {
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
 import type { NotificationAction } from "./types";
+
+// An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
+// one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.
+//
+// Nothing is sent and nothing is written — both directions are a single
+// editMessageReplyMarkup on a message that already exists. That is the mechanism
+// behind the contact-consent rule: the system may give the user more ways to reach
+// their own data without ever spending another notification on them.
+//
+// SLOT SCOPING HAPPENS HERE, at tap time, against the PROFILE-LOCAL clock — not
+// against the slot the digest was built in. A morning digest tapped at bedtime must
+// offer bedtime items; anything else would be answering a question the user asked now
+// with data from eight hours ago.
+//
+// A tap on a message from a PREVIOUS day is refused rather than silently re-scoped:
+// the keyboard belongs to that day's message, and logging "now" from it would attach
+// today's administration to yesterday's context.
+export async function handleOfferTailTap(
+  cq: TelegramCallbackQuery,
+  token: OfferTailCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || messageId == null || chatId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const date = today(profileId);
+  if (token.date !== date) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+
+  if (token.action === "collapse") {
+    await updateMessageKeyboard(
+      chatId,
+      messageId,
+      messageKeyboard({
+        title: "",
+        body: "",
+        actions: [
+          collapsedOfferAction(profileId, date, nowHhmm, offered.length),
+        ],
+      })
+    );
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+
+  if (offered.length === 0) {
+    // The slot turned over (or the items were paused) since the label was rendered.
+    // Say so plainly instead of opening an empty list.
+    await answerCallbackQuery(
+      cq.id,
+      "Nothing available in this slot right now."
+    );
+    return;
+  }
+  await updateMessageKeyboard(
+    chatId,
+    messageId,
+    messageKeyboard({
+      title: "",
+      body: "",
+      actions: expandedOfferActions(profileId, date, offered, prnLogToken),
+    })
+  );
+  await answerCallbackQuery(cq.id);
+}
+
+// A ⤓ May tap on a dose reminder (#1505 part 2): accept the demotion suggestion for
+// the named item.
+//
+// This is the ONLY obligation write the notification layer can perform, and it is a
+// downward one initiated by the user — the two properties that make it safe. It goes
+// through the SAME compare-and-swap core the in-app card uses, so the two surfaces
+// cannot diverge on outcomes, and it answers from the typed result rather than
+// confirming unconditionally: a stale button on a paused or already-may item
+// legitimately refuses.
+//
+// The tapped ROW is consumed on success — take/skip/demote all become meaningless for
+// an item that no longer has a scheduled dose — while the rest of the reminder's
+// buttons survive so the session stays usable.
+export async function handleDemoteTap(
+  cq: TelegramCallbackQuery,
+  token: DemoteCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = demoteIntakeObligation(profileId, token.itemId);
+  await answerCallbackQuery(cq.id, DEMOTION_OUTCOME_TEXT[outcome]);
+  if (outcome !== "demoted" || chatId == null || messageId == null) return;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (rows.length === 0) return;
+  await updateMessageKeyboard(
+    chatId,
+    messageId,
+    removeButton(rows, cq.data as string)
+  );
+}

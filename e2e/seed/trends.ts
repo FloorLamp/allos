@@ -483,6 +483,15 @@ export function seedRankedCardOrder(): void {
       `INSERT INTO medical_records (profile_id, date, category, name, canonical_name, value, value_num, unit, source)
        VALUES (?, ?, 'vitals', ?, ?, ?, ?, 'mmHg', 'e2e:trends-rank')`
     );
+    // Oxygen saturation, in its own unit — this is what makes these two profiles
+    // the BOTH-RICH wearable case #1674 reports: a clinical card and an everyday
+    // synced card, evenly tracked, so their relative order is pure rank. Under the
+    // retired section boxes SpO₂ rendered above steps (its box-mates lifted it and
+    // steps sat outside the ordering); flat, the everyday-first base decides.
+    const insSpo2 = db.prepare(
+      `INSERT INTO medical_records (profile_id, date, category, name, canonical_name, value, value_num, unit, source)
+       VALUES (?, ?, 'vitals', 'Oxygen Saturation', 'Oxygen Saturation', ?, ?, '%', 'e2e:trends-rank')`
+    );
     const insSample = db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
        VALUES (?, 'e2e-device', ?, ?, ?, ?, ?)`
@@ -490,11 +499,11 @@ export function seedRankedCardOrder(): void {
     db.prepare(
       `DELETE FROM metric_samples WHERE profile_id = ? AND source = 'e2e-device'`
     ).run(id);
-    for (const [ago, kg, sys, dia, hrv, steps] of [
-      [21, 84.2, 124, 79, 44, 8100],
-      [14, 83.8, 122, 78, 47, 9400],
-      [7, 83.5, 126, 80, 43, 7700],
-      [1, 83.1, 121, 77, 46, 10200],
+    for (const [ago, kg, sys, dia, hrv, steps, spo2] of [
+      [21, 84.2, 124, 79, 44, 8100, 97],
+      [14, 83.8, 122, 78, 47, 9400, 98],
+      [7, 83.5, 126, 80, 43, 7700, 96],
+      [1, 83.1, 121, 77, 46, 10200, 97],
     ] as const) {
       const day = shiftDateStr(anchor, -ago);
       insBm.run(id, day, kg);
@@ -541,6 +550,7 @@ export function seedRankedCardOrder(): void {
         String(dia),
         dia
       );
+      insSpo2.run(id, day, String(spo2), spo2);
     }
     if (withGoal) {
       db.prepare(

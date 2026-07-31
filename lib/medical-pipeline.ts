@@ -254,8 +254,15 @@ function dispatchExtraction(
 export async function ingestMedicalUpload(
   loginId: number,
   profileId: number,
-  file: File
+  file: File,
+  // ACQUIRED-BY provenance (#1748). Set only by the portal-resolved upload path; every
+  // human path (the form, the share sheet, a `profile=<id>` CLI push) leaves it undefined,
+  // and the resulting NULL is the positive statement "a person put this here". Stamped on
+  // whichever row this call lands — stored, failed, or duplicate marker — so a portal
+  // upload that was rejected for its type or size still says where it came from.
+  opts: { acquiredPortalId?: number | null } = {}
 ): Promise<number> {
+  const acquiredPortalId = opts.acquiredPortalId ?? null;
   const mime = file.type || "application/octet-stream";
   // Reject an oversized upload BEFORE buffering the whole file into memory —
   // file.size is known from the multipart headers, so we needn't read a huge body
@@ -273,7 +280,8 @@ export async function ingestMedicalUpload(
       file.name,
       mime,
       file.size,
-      `File too large (max ${Math.round(preCap / 1024 / 1024)}MB).`
+      `File too large (max ${Math.round(preCap / 1024 / 1024)}MB).`,
+      acquiredPortalId
     );
     revalidatePath("/data");
     return failedId;
@@ -288,7 +296,8 @@ export async function ingestMedicalUpload(
       file.name,
       mime,
       file.size,
-      "Unsupported file type."
+      "Unsupported file type.",
+      acquiredPortalId
     );
     revalidatePath("/data");
     return failedId;
@@ -304,7 +313,8 @@ export async function ingestMedicalUpload(
       file.name,
       mime,
       buffer.length,
-      `File too large (max ${Math.round(sizeCap / 1024 / 1024)}MB).`
+      `File too large (max ${Math.round(sizeCap / 1024 / 1024)}MB).`,
+      acquiredPortalId
     );
     revalidatePath("/data");
     return failedId;
@@ -329,7 +339,8 @@ export async function ingestMedicalUpload(
       file.name,
       mime,
       buffer.length,
-      typed.reason
+      typed.reason,
+      acquiredPortalId
     );
     revalidatePath("/data");
     return failedId;
@@ -358,8 +369,8 @@ export async function ingestMedicalUpload(
   // real clock: it is an extraction LEASE (the reaper compares it to
   // `datetime('now', '-N minutes')`), i.e. a duration, which the seam must never own.
   const insertRow = db.prepare(
-    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, uploaded_at, profile_id)
-     VALUES (?,?,?,?,?, 'processing', datetime('now'), ?, ?)`
+    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, uploaded_at, profile_id, acquired_portal_id)
+     VALUES (?,?,?,?,?, 'processing', datetime('now'), ?, ?, ?)`
   );
   const reserved = writeTx(
     (): { existing: DedupTarget } | { docId: number } => {
@@ -372,7 +383,8 @@ export async function ingestMedicalUpload(
         buffer.length,
         contentHash,
         sqlNow(),
-        profileId
+        profileId,
+        acquiredPortalId
       );
       return { docId: Number(info.lastInsertRowid) };
     }
@@ -425,7 +437,8 @@ export async function ingestMedicalUpload(
       buffer.length,
       contentHash,
       existing.filename,
-      existing.status
+      existing.status,
+      acquiredPortalId
     );
     revalidatePath("/data");
     return duplicateId;

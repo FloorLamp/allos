@@ -52,8 +52,8 @@ function addItem(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-         VALUES (?, ?, 1, 'medication', 'daily', 'high', ?, ?)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should', ?, ?)`
       )
       .run(profileId, name, quantityOnHand, qtyPerDose).lastInsertRowid
   );
@@ -170,6 +170,9 @@ describe("pooled decrement — every taker draws from ONE count", () => {
         .map((m) => m.profileId)
         .sort()
     ).toEqual([alice.profileId, bruno.profileId].sort());
+    expect(
+      poolMembers(supplyId).find((m) => m.itemId === a.itemId)?.doseAmounts
+    ).toEqual(["1 tablet"]);
     expect(poolIdsForProfiles([alice.profileId])).toContain(supplyId);
     expect(poolIdsForProfiles([bruno.profileId])).toContain(supplyId);
   });

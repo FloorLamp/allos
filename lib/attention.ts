@@ -34,6 +34,7 @@
 
 import {
   type UpcomingItem,
+  type UpcomingDomain,
   type SignalGroup,
   type UrgencyBand,
   BAND_LABELS,
@@ -54,11 +55,22 @@ import { type Reason, concatReasons, flaggedReason } from "./reasons";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 import type { IntegrationId } from "./types";
 
-// A failing/needs-reauth integration provider, reduced to what the model renders.
+// A broken integration provider, reduced to what the model renders. `kind` distinguishes
+// the two ways a provider can be broken (#1685), because they need different copy and ask
+// the user for different things:
+//   "failing" — a recorded failure / dead grant. The cause is known and the fix is
+//               consent: reconnect.
+//   "stale"   — nothing has failed, and nothing has arrived either. The connection may be
+//               perfectly authorized; all we honestly know is that it stopped, so the
+//               copy states the observation ("no data since <date>") and asks the user to
+//               check rather than claiming a cause.
+// Both carry the SAME item key, so a provider is one row on every surface no matter which
+// signal raised it, and the gather guarantees only one of the two can fire per provider.
 export interface AttentionIntegration {
   id: IntegrationId | null;
   provider: string;
   detail: string | null;
+  kind?: "failing" | "stale";
 }
 
 // A newly-flagged biomarker plus its optional risk-layer reasons (issue #656 item
@@ -127,23 +139,37 @@ export function buildFlaggedItem(
   };
 }
 
-// A failing/needs-reauth integration → a shared attention item. Structural (you
-// reconnect it, you don't snooze it), so it's non-suppressible and files under the
-// "For review" grouping alongside the import-review count.
-function integrationToItem(i: AttentionIntegration): UpcomingItem {
+// A broken integration → a shared attention item. Structural (you reconnect it, you
+// don't snooze it), so it's non-suppressible and files under the "For review" grouping
+// alongside the import-review count.
+//
+// Exported since #1685 so the morning digest can render the SAME item the two web
+// surfaces do rather than re-deriving a second description of a broken sync (#221).
+//
+// The two kinds share the key, the domain, the grouping and the href, and differ only in
+// the words: a stale connection must not be told to "Reconnect", because reconnecting is
+// a guess about a cause we have no evidence for — the honest ask is to check it.
+export function integrationToItem(i: AttentionIntegration): UpcomingItem {
   const reconnectHref = i.id ? integrationDetailHref(i.id) : null;
+  const stale = i.kind === "stale";
   return {
     key: `integration:${i.id ?? i.provider}`,
     domain: "integration",
     signalGroup: "review",
-    title: `${i.provider} sync needs attention`,
-    detail: i.detail ?? "Reconnect to resume syncing.",
+    title: stale
+      ? `${i.provider} sync has stopped`
+      : `${i.provider} sync needs attention`,
+    detail:
+      i.detail ??
+      (stale
+        ? "No recent data from this source."
+        : "Reconnect to resume syncing."),
     // Match the CTA's promise: known, connectable providers go straight to their
     // setup page. Unknown/planned providers safely fall back to Review.
     href: reconnectHref ?? dataSectionHref("review"),
     dueDate: null,
-    dueText: "Reconnect",
-    actionLabel: "Reconnect",
+    dueText: stale ? "No recent data" : "Reconnect",
+    actionLabel: stale ? "Check connection" : "Reconnect",
     suppressible: false,
   };
 }
@@ -375,6 +401,21 @@ const CARD_BAND_RANK: Record<CardBand, number> = {
   review: 2,
 };
 
+// Domains the dashboard hero deliberately never carries, whatever their date says.
+//
+// The "Needs attention" hero is care-tier: pinned, and the one surface a user cannot
+// choose not to look at. `portal-sync` (#1757) is COACHING tier by hard product contract
+// — portal hygiene is never a safety signal — so it lives on the Upcoming page and in
+// the morning digest line that page's grouping produces, and nowhere else. Without this
+// it would drift onto the hero on the single day its expiry lands on "today", which is
+// exactly the un-ignorable treatment a calm ask must never get.
+//
+// A SET, not a special case: the next calm domain that must stay off the hero adds a
+// name here rather than another branch.
+const CARD_EXCLUDED_DOMAINS: ReadonlySet<UpcomingDomain> = new Set([
+  "portal-sync",
+]);
+
 // Which card band an item belongs to, or null if the card EXCLUDES it. Signals →
 // "Needs review". A date-scheduled item is act-now only when it's overdue (→ Urgent)
 // or due today (→ Today); a this-week / later scheduled item is planning-view-only
@@ -384,6 +425,7 @@ export function cardBandForItem(
   item: UpcomingItem,
   today: string
 ): CardBand | null {
+  if (CARD_EXCLUDED_DOMAINS.has(item.domain)) return null;
   if (item.signalGroup) return "review";
   const band = bandForItem(item, today);
   if (band === "overdue") return "urgent";

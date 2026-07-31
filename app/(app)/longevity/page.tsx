@@ -16,6 +16,7 @@ import FitnessSection from "./FitnessSection";
 import SleepSection from "./SleepSection";
 import BiomarkersSection from "./BiomarkersSection";
 import ProtocolsSection from "./ProtocolsSection";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export default async function LongevityPage({
   const template = protocolTemplateById((await searchParams).template);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <PageContainer width="wide" className="mx-auto">
       <PageHeader
         title="Longevity"
         subtitle="Follow the signals that shape healthspan, then test what moves them."
@@ -139,6 +140,6 @@ export default async function LongevityPage({
 
         <ProtocolsSection template={template} />
       </div>
-    </div>
+    </PageContainer>
   );
 }

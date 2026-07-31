@@ -42,6 +42,24 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   // browser follows with GET) to /login, storing NOTHING. Nothing is served here
   // without a session; the allowlist only buys the handler the right status code.
   "/share-target",
+  // Remote document upload + its profile resolver (issues #1734/#1735). Bearer-token
+  // authenticated, never cookie authenticated: a CLI on another machine has no session.
+  // Listed for exactly the /share-target reason — middleware's anonymous branch answers
+  // with a method-PRESERVING 307, which would re-POST a multipart upload at /login (a
+  // page route that cannot accept it) instead of returning the 401 the caller can act
+  // on. The allowlist is COARSE and buys these handlers nothing but the right to answer
+  // for themselves: each calls authenticateApiToken() — which resolves the token, checks
+  // it is not revoked, and demands the `upload:documents` capability — and then composes
+  // its own explicit write gate before touching a profile. That call IS the gate.
+  "/api/documents",
+  "/api/documents/profiles",
+  // The allos-side portal/account vocabulary a tool ingests at `init` (#1759). Same
+  // family, same token, same scope, same reason for being listed as the two above.
+  "/api/documents/portals",
+  // The acquirer's end-of-run sync report (#1739). Same token, same scope, same reason
+  // for being listed: a bearer POST from a tool on the user's own machine, which has no
+  // cookie, and which the coarse middleware check would answer with a 307 at /login.
+  "/api/documents/sync-report",
 ]);
 
 export function isPublicPath(pathname: string): boolean {

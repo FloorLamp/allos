@@ -34,6 +34,16 @@ reads in `lib/queries/integrations.ts`; pure count/window helpers in
 badge** (`reviewCount` threaded layout → `SidebarContent` → `UserMenu`) links to
 `/data?section=review`.
 
+An uploaded document's row in the "Imports" feed also carries the **extraction
+confidence** badge (`· N to check`, #1601): the count of extracted rows the
+extractor itself hedged on. The number is the `scrutiny` total
+`summarizeExtractionConfidence` already computed and stored on the document's
+`import_report`, projected by `getImportLogDocuments` (`json_valid`-guarded, so a
+garbled report degrades to no badge instead of failing the feed) and rendered
+through the one `feedItemView` shape. It is an ordering hint, never a failure:
+the produced-count detail, the failure badge, and the sync-event accounting are
+unchanged, and an in-flight or failed document never badges.
+
 **One rendering of sync history (#1212).** Per-provider sync history — the
 latest-state card + expandable recent history over `integration_sync_events`,
 with the #674 inserted/updated/unchanged split (`formatSplitLabel`) — renders in
@@ -182,6 +192,60 @@ protocol, the DaylightChip UV badge, the overexposure care finding
 `uvOverexposureItems`) formats its result. `sun.ts` stays the offline core and
 is never replaced — its #570 offline guarantee is preserved.
 
+**The DAILY half (#1726).** The same provider gained a second grain:
+`fetchDaily` pulls the daily aggregates the weather-derived situations,
+conditions stamps, and outdoor-viability scan read — max/min temperature, mean
+sea-level pressure, precipitation, WMO code, peak UV — MERGED with the keyless
+Open-Meteo **air-quality** endpoint (US AQI + per-species pollen, reduced to the
+day's peak per FAMILY: tree/grass/weed). They land in `weather_days`
+(migration 129), global and location-keyed on `(lat, lng, date)` for exactly the
+reasons migration 098 gave for the hourly table, one grain coarser: everything
+added is a DAILY figure the provider publishes per day or that only means
+anything as a day summary, so widening the hourly table would store each 24×.
+Three properties are load-bearing:
+
+- **The two upstream halves fail INDEPENDENTLY.** A weather failure fails the
+  daily request (there is nothing left to cache); an air-quality failure returns
+  `partial` and the run still SUCCEEDS with temperature/pressure cached — the
+  pollen/AQI predicates then simply have no data and stay silent.
+- **A partial fetch must never erase a cached reading.** Because a row is
+  assembled from two endpoints, `upsertWeatherDays` COALESCEs every column: a
+  null in the incoming row leaves the stored value alone and only a real reading
+  overwrites, so a re-fetch cannot destroy data it did not ask for. A day whose
+  incoming values are all null-or-equal is therefore `unchanged`, not a
+  destructive `updated`.
+- **One run, one accounting.** Both halves' insert/update/unchanged splits merge
+  into the single `integration_sync_events` row, so the Review feed reports the
+  run rather than one of its parts. The daily window reaches
+  `WEATHER_FORECAST_DAYS` ahead (the planning surfaces need forecast), while the
+  situation predicates are handed a series ending TODAY.
+
+**The session-to-weather join — one join, three consumers (#1724/#1728).**
+`lib/queries/weather-training.ts` joins a profile's logged cardio/sport sessions to the
+cached daily weather of the day each happened on. That ONE result feeds the tolerance
+ENVELOPE (what conditions this person actually trains in), the journal-card conditions
+STAMP, and — through the #1726 predicates over the same series — the Timeline's
+notable-day context. It is DERIVED AT READ TIME and never written onto the activity row:
+one source of truth, no backfill problem, and a cache gap renders no stamp rather than a
+stale one. Because `weather_days` carries no `profile_id` to join on, the join is done in
+TypeScript over two reads (profile-scoped activities, global weather) rather than in SQL —
+which is also what keeps the profile-scoping guard satisfied.
+
+**Forecast-ahead planning — one computation, two surfaces (#1724 part 5).** The same
+envelope run FORWARD over the cached forecast answers "when this week should the outdoor
+session happen?". `getOutdoorPlans` produces the line; the digest's This-week glance and
+the calm Upcoming planning item both RENDER it, so they cannot disagree about which day
+to name (#221). Gating is deliberately narrow — a behind cardio target, an outdoor
+activity to plan, and SCARCE viability (`planningWorthSurfacing`) — because a plan line
+every week is filler. Two silences are load-bearing and both are pinned: a week where
+every day is viable yields nothing (the quiet-day rule), and a week where NO day is
+viable yields nothing either, because there is no session to recommend and escalating
+about weather nobody can change is what the attention doctrine forbids. Beyond
+`FORECAST_HORIZON_DAYS` the scan truncates and the copy hedges; with no cached forecast
+there is no line. **Zero new sends**: the digest line rides the morning message that
+already goes out, and the Upcoming item is a page surface, dismissible per (activity,
+week start) through the shared bus.
+
 **Chunked ingest (#1064).** The Health Connect write path processes the parsed
 batch in bounded per-type ~1,000-record slices, each its own IMMEDIATE `writeTx`
 (`lib/integrations/health-connect-ingest.ts`), so the connection is never
@@ -204,3 +268,48 @@ line — written through the one `truncatedSyncDetails()` shape in
 `lib/integrations/sync-details.ts` — and the Connected-sources card badges it
 "partial" instead of a clean green success. The marker survives the details
 char-budget bounding by construction.
+
+**Silent stop — the staleness signal (#1685).** The two existing "this provider
+needs attention" signals are both event-driven, and neither can see a connection
+that is recording nothing at all. `isAuthRefreshFailure` (#326) only flips a
+connection to `needs_reauth` on a DEFINITIVE auth failure — 429/5xx/timeouts stay
+transient on purpose, or a passing cloud hiccup would tear down a healthy
+connection — and `currentlyFailingProviders` only fires when a provider's LATEST
+recorded event is a failure. A phone exporter the OS stopped running, or a poll
+that never gets far enough to log, leaves the connection sitting at `connected`
+with a green badge, syncing nothing. The only evidence is negative.
+
+So a connected provider whose **last successful sync** is older than a
+per-provider threshold raises the SAME `integration:<id>` attention item, with
+its own copy. The derivation is pure (`lib/integrations/staleness.ts`) and the
+thresholds live beside each provider's other metadata in
+`lib/integrations/registry.ts` as `staleAfterDays` (null = exempt: a manual
+archive import has no cadence to be late against, a `planned` provider has no
+connection, and the calendar feed is outbound). It measures the **sync**, not the
+data: every polled provider records an `ok=1` event for each successful poll
+including a quiet one (`isQuietSync`), so a week between weigh-ins or a rest week
+is not staleness — which is what makes a day threshold safe to state at all.
+
+Three deliberate non-firings: an exempt provider; a provider already carrying a
+failing/needs-reauth signal (it is reported ONCE — the reauth item names the
+cause, and a staleness line naming the symptom underneath it would be noise); and
+a connection that has never synced successfully (the copy is "no data since
+&lt;date&gt;", which needs a date, and firing there would flag every
+freshly-created connection).
+
+It reaches the surfaces the same way the expired-Health-Connect signal (#607)
+does — as a synthetic issue folded into `getImportIssues`, carrying the shared
+`STALE_SYNC_EVENT_ID` sentinel — so the profile-menu badge, the Data → Review
+Issues list, the dashboard hero, the Upcoming page and the morning digest all
+read one list and cannot disagree about which sources are broken. Because the
+sentinel is shared across providers it is **not unique per row**: any list
+rendering these keys on `(provider, id)`. The signal is self-clearing: one healthy
+sync and the derivation stops firing, with no lifecycle of its own.
+
+The copy is deliberately distinct from the reauth wording. A revoked grant needs
+the user's consent again, so "Reconnect" is correct; a stale connection may be
+perfectly authorized and simply not delivering, so the item states the
+observation ("&lt;Provider&gt; sync has stopped · No data since &lt;date&gt;")
+and asks the user to check, rather than asserting a cause it has no evidence for.
+The Data → Review row makes the same distinction — "sync has stopped" instead of
+"sync failed", which would claim a failure that never happened.

@@ -11,8 +11,13 @@
 // owns the pure half: the payload shape, the actionable-dose extraction, the
 // per-kind delivery toggle, and webhook-URL validation.
 
-import type { NotificationKind, NotificationMessage } from "./types";
+import {
+  bodyFor,
+  type NotificationKind,
+  type NotificationMessage,
+} from "./types";
 import { TOGGLEABLE_NOTIFICATION_KINDS } from "./kinds";
+import { plainBody } from "./rich-text";
 
 // A shared-secret header HA can verify on the receiving side (webhook ids are
 // capability URLs, so this is belt-and-suspenders). Sent only when a secret is
@@ -45,12 +50,14 @@ export interface HomeAssistantPayload {
 }
 
 // Map a callback-token prefix that actuates a dose to the /dose action it implies.
-// `take`/`esctake` (a confirmed-taken tap) → "taken"; `skip` → "skipped". `escack`
-// (an "I'm on it" ack) resolves nothing on the dose, so it's intentionally absent.
+// `take`/`esctake` (a confirmed-taken tap) → "taken"; `skip`/`escskip` → "skipped".
+// `escack` (an "I'm on it" ack) resolves nothing on the dose, so it's intentionally
+// absent.
 const DOSE_ACTION_BY_PREFIX: Record<string, "taken" | "skipped"> = {
   take: "taken",
   skip: "skipped",
   esctake: "taken",
+  escskip: "skipped",
 };
 
 // Extract the actionable doses from a message's action tokens. The dose tokens are
@@ -98,7 +105,9 @@ export function buildHomeAssistantPayload(
   const doses = extractDoses(msg);
   return {
     title: msg.title,
-    body: msg.body,
+    // Plain text, like Web Push: an HA automation reads/speaks the body, so declared
+    // emphasis (#1720) is stripped rather than leaking markup into TTS.
+    body: plainBody(bodyFor(msg, "home-assistant")),
     kind: msg.kind ?? "other",
     profile: opts.profileName,
     profile_id: opts.profileId,

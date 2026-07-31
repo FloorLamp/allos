@@ -91,6 +91,13 @@ export const SHELL_WEIGHT_KG = "77.7";
 // quick-log-overlay.mobile.spec.ts, which clears its logs at test start.
 export const SHELL_DOSE_ITEM = "Shell Overlay Vitamin (e2e)";
 export const SHELL_DOSE_AMOUNT = "1000 IU";
+// One TRACKED wellness practice on that profile (a practice-scope frequency target,
+// 3×/week, with NO sessions), so the quick-log sheet's practice row has something real
+// to offer (#1633). Seeded target-only on purpose: the spec asserts the session IT
+// logs, never a seeded count, and clears practice_logs at test start — so
+// --repeat-each and re-runs start from the same place.
+export const SHELL_PRACTICE = "Shell Sauna (e2e)";
+export const SHELL_PRACTICE_PER_WEEK = 3;
 
 // #1466 — the Trends → Vitals tab's Today strip + 1D (intraday) view. A DEDICATED
 // member login + adult profile carrying a full BODY day: today's weight/body fat,

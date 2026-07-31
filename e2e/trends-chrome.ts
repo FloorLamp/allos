@@ -22,3 +22,11 @@ export async function expandTrendsContext(page: Page): Promise<void> {
   await hydratedClick(page, toggle);
   await expect(page.getByTestId("trends-context-controls")).toBeVisible();
 }
+
+// `censusRevealed` lived here between #1644 landing and the harness-level
+// streamed-reveal guard replacing it. The class it patched per spec — a census
+// testid matching both the hidden staged copy and the revealed one while React's
+// Suspense reveal is pending — is now closed for EVERY spec by
+// `installStreamRevealGuard` (e2e/helpers.ts), which the `browser` fixture
+// installs on every page of every context: full-document navigations return only
+// after the staging nodes are gone. Specs assert census content directly.

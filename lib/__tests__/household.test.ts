@@ -43,7 +43,7 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     active: 1,
     created_at: "2026-01-01",
     condition: "daily",
-    priority: "high",
+    obligation: "should",
     situation_id: null,
     pause_situation: null,
     pause_situation_id: null,
@@ -63,7 +63,6 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     pharmacy: null,
     rx_number: null,
     rx: 0,
-    as_needed: 0,
     min_interval_hours: null,
     max_daily_count: null,
     redose_notice: 0,
@@ -74,12 +73,20 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     provider_id: null,
     source_record_id: null,
     indication_condition_id: null,
+    cadence_kind: "daily",
+    cadence_weekdays: null,
+    cadence_interval_days: null,
+    cadence_anchor_date: null,
     ...overrides,
   };
 }
 
 describe("supplementAdherenceToday", () => {
-  const ctx = { isWorkoutDay: false, activeSituations: new Set<string>() };
+  const ctx = {
+    date: "2026-03-04",
+    isWorkoutDay: false,
+    activeSituations: new Set<string>(),
+  };
 
   it("counts due doses and how many are taken", () => {
     const doses = [
@@ -115,6 +122,7 @@ describe("supplementAdherenceToday", () => {
       [2, supp({ id: 2, condition: "rest_day" })],
     ]);
     const workoutCtx = {
+      date: "2026-03-04",
       isWorkoutDay: true,
       activeSituations: new Set<string>(),
     };
@@ -139,6 +147,7 @@ describe("supplementAdherenceToday", () => {
       due: 0,
     });
     const travel = {
+      date: "2026-03-04",
       isWorkoutDay: false,
       activeSituations: new Set(["Travel"]),
     };

@@ -24,7 +24,10 @@ import {
   countVisiblePools,
 } from "@/lib/queries";
 import { activeByKey, activeFindings } from "@/lib/findings";
-import { buildAdherencePatternFindings } from "@/lib/rule-findings";
+import {
+  buildAdherencePatternFindings,
+  buildDemotionSuggestionFindings,
+} from "@/lib/rule-findings";
 import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import {
@@ -70,18 +73,23 @@ import {
   situationActivationLine,
   mergedSituationOptions,
 } from "@/lib/situations";
-import { withPeriodOption } from "@/lib/derived-situations";
+import {
+  withPeriodOption,
+  withWeatherSituationOptions,
+} from "@/lib/derived-situations";
+import { weatherSituationsRelevant } from "@/lib/queries/weather-situations";
+import { getUnitPrefs } from "@/lib/settings";
 import {
   countSituationalDue,
-  isDueOn,
+  doseDueOn,
   isPostWorkoutReady,
   timeBucket,
   TIME_BUCKETS,
   TIME_BUCKET_LABELS,
-  PRIORITY_ORDER,
-  PRIORITY_LABELS,
+  OBLIGATION_ORDER,
+  OBLIGATION_LABELS,
   CONDITION_LABELS,
-  priorityClass,
+  obligationClass,
   workoutDaySubtitleLabel,
   heldBySituation,
   type TimeBucket,
@@ -106,6 +114,7 @@ import {
 } from "@/lib/intake-pairs";
 import SuggestionsForm from "./SuggestionsForm";
 import AdherenceFindings from "./AdherenceFindings";
+import DemotionSuggestions from "./DemotionSuggestions";
 import SupplementSchedule from "./SupplementSchedule";
 import SupplementInsightBadges from "./SupplementInsightBadges";
 import AddSupplementModal from "./AddSupplementModal";
@@ -120,6 +129,7 @@ import {
 } from "./supplement-actions";
 import { getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
+import { IconChevronDown } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
 
@@ -187,6 +197,7 @@ export default async function SupplementsTab() {
     todayStr
   );
   const ctx = {
+    date: todayStr,
     isWorkoutDay,
     activeSituations: effectiveSituations,
     predictedWorkoutDay,
@@ -195,7 +206,11 @@ export default async function SupplementsTab() {
   // The visible derived-context state lines (shared with the check-in + digest, #221)
   // and whether the poor-sleep line carries the one-tap "Not today" override (only when
   // DERIVED — a declared toggle is cleared by its chip, never the override, #1292).
-  const derivedLines = getDerivedSituationLines(profile.id, todayStr);
+  const derivedLines = getDerivedSituationLines(
+    profile.id,
+    todayStr,
+    getUnitPrefs(login.id).temperatureUnit
+  );
   const showPoorSleepOverride = derivedLines.poorSleepOverridable;
   // When fitness tracking is restricted for this profile the workout/rest-day
   // concept is meaningless, so we drop the subtitle prefix and the workout/
@@ -282,15 +297,14 @@ export default async function SupplementsTab() {
         date === todayStr
           ? ctx
           : {
+              date,
               isWorkoutDay: workoutDays.has(date),
               activeSituations: situationsOn(date),
             };
       const dueDoseIds = itemsFor(
-        (supplement) =>
-          !isMed(supplement) &&
-          !!supplement.active &&
-          isDueOn(supplement, dateContext)
+        (supplement) => !isMed(supplement) && !!supplement.active
       )
+        .filter((item) => doseDueOn(item.supplement, item.dose, dateContext))
         .filter((item) => existedOn(item, date))
         .map((item) => item.dose.id);
       return {
@@ -319,10 +333,20 @@ export default async function SupplementsTab() {
   // (e.g. "Poor sleep") holds exactly while that context is active, and a declared
   // surgery hold and a derived poor-sleep flow through the one union together.
   const isHeld = (s: Supplement) => !!heldBySituation(s, effectiveSituations);
-  const dueItems = itemsFor((s) => !isMed(s) && !!s.active && isDueOn(s, ctx));
+  // Per-ROW, not per-item (#1602): with a per-dose weekday subset or validity window,
+  // two rows of the SAME item can land differently today (warfarin's 5 mg row is due on
+  // Monday, its 2.5 mg row is not), so the due/not-scheduled split has to be made at the
+  // row level or an alternating pair would show both amounts every day.
+  const activeSupplementItems = itemsFor((s) => !isMed(s) && !!s.active);
+  const dueItems = activeSupplementItems.filter((i) =>
+    doseDueOn(i.supplement, i.dose, ctx)
+  );
   const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
-  const notScheduled = itemsFor(
-    (s) => !isMed(s) && !!s.active && !isDueOn(s, ctx) && !isHeld(s)
+  // An off-cadence row lands HERE — visible under "Not scheduled today" with its
+  // cadence named — rather than vanishing. Same discoverability contract as the Held
+  // section: an absence the user can see and explain is safe; a silent one is not.
+  const notScheduled = activeSupplementItems.filter(
+    (i) => !doseDueOn(i.supplement, i.dose, ctx) && !isHeld(i.supplement)
   );
   const paused = itemsFor((s) => !isMed(s) && !s.active);
 
@@ -347,13 +371,13 @@ export default async function SupplementsTab() {
     .map(([k]) => k);
 
   // Group due items by time bucket; within a bucket use the SHARED dose-day
-  // comparator (priority → stack → name) so this section and the Upcoming /
+  // comparator (obligation → stack → name) so this section and the Upcoming /
   // needs-attention surfaces order a dose day identically (issue #297). The
   // buckets already partition by time-of-day, so the comparator's leading bucket
-  // key is a constant within each group and the residual order is priority → …
+  // key is a constant within each group and the residual order is obligation → …
   const doseEntry = (it: Item): DoseDayEntry => ({
     timeOfDay: it.dose.time_of_day,
-    priority: it.supplement.priority,
+    obligation: it.supplement.obligation,
     stack: it.supplement.stack,
     name: it.supplement.name,
   });
@@ -404,8 +428,14 @@ export default async function SupplementsTab() {
     getNavRelevance(profile.id).cycle
   );
   // The item-form situation picker reads that same merged option set (#1177), passed
-  // through the SituationOptionsProvider below.
-  const situationOptionNames = situationChips.map((o) => o.name);
+  // through the SituationOptionsProvider below — WIDENED by the five built-in weather
+  // situations (#1726) when they're relevant for this profile, so an antihistamine can
+  // be keyed to "High pollen" and go due automatically. They join the PICKER only, never
+  // the toggle chip row: a weather situation is derived, so there is nothing to toggle.
+  const situationOptionNames = withWeatherSituationOptions(
+    situationChips,
+    weatherSituationsRelevant(profile.id, todayStr)
+  ).map((o) => o.name);
 
   // One-way condition bridge (#560 part 2): an ACTIVE acute illness/injury condition
   // suggests its matching clinical situation, so a sick user doesn't flip two toggles
@@ -424,6 +454,14 @@ export default async function SupplementsTab() {
   const suggestions = getPendingSuggestions(profile.id);
   const adherenceFindings = activeFindings(
     buildAdherencePatternFindings(profile.id, todayStr),
+    suppressions,
+    todayStr
+  );
+  // Priority demotion suggestions (#1505 part 2) — the same coaching-tier engine the
+  // dashboard rollup and the coaching tab read, filtered through the SAME suppression
+  // bus, so dismissing here silences it everywhere.
+  const demotionFindings = activeFindings(
+    buildDemotionSuggestionFindings(profile.id, todayStr),
     suppressions,
     todayStr
   );
@@ -600,15 +638,15 @@ export default async function SupplementsTab() {
     const dayItems =
       date === todayStr
         ? dueItems
-        : itemsFor(
-            (supplement) =>
-              !isMed(supplement) &&
-              !!supplement.active &&
-              isDueOn(supplement, {
+        : itemsFor((supplement) => !isMed(supplement) && !!supplement.active)
+            .filter((item) =>
+              doseDueOn(item.supplement, item.dose, {
+                date,
                 isWorkoutDay: workoutDays.has(date),
                 activeSituations: situationsOn(date),
               })
-          ).filter((item) => existedOn(item, date));
+            )
+            .filter((item) => existedOn(item, date));
     const takenCountForDay = dayItems.filter((item) =>
       takenByDose.get(item.dose.id)?.taken.has(date)
     ).length;
@@ -642,9 +680,10 @@ export default async function SupplementsTab() {
       )}
 
       {notScheduled.length > 0 && (
-        <details>
-          <summary className="cursor-pointer section-label">
-            Not scheduled today ({notScheduled.length})
+        <details data-testid="not-scheduled-section" className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750">
+            <span>More supplements ({notScheduled.length})</span>
+            <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
           </summary>
           <div className="mt-2 space-y-3">
             {notScheduled.map((item) => renderRow(item, false))}
@@ -677,7 +716,8 @@ export default async function SupplementsTab() {
         <div className="mt-4 space-y-3">
           {[...suggestions]
             .sort(
-              (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+              (a, b) =>
+                OBLIGATION_ORDER[a.obligation] - OBLIGATION_ORDER[b.obligation]
             )
             .map((suggestion) => (
               <div
@@ -694,9 +734,9 @@ export default async function SupplementsTab() {
                     </span>
                   )}
                   <span
-                    className={`badge ${priorityClass(suggestion.priority)}`}
+                    className={`badge ${obligationClass(suggestion.obligation)}`}
                   >
-                    {PRIORITY_LABELS[suggestion.priority]}
+                    {OBLIGATION_LABELS[suggestion.obligation]}
                   </span>
                   {suggestion.condition !== "daily" && (
                     <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
@@ -745,21 +785,14 @@ export default async function SupplementsTab() {
   return (
     <SituationOptionsProvider options={situationOptionNames}>
       <div>
-        {/* The medicine-cabinet door (#1522). It lives in the TAB body, not in the
-          page header's `action` slot: that slot is `hidden md:block` on TabFirstPage
-          and is shared with the Food tab, so a header door would be desktop-only AND
-          would advertise shared bottles from a page about breakfast. One component,
-          both viewports. */}
-        <div className="mb-3 flex justify-end">
-          <SharedSuppliesLink count={cabinetCount} />
-        </div>
-
         {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
           the profile's own data, NOT a manual toggle — rendered distinctly and NON-
           toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
           only the DERIVED contribution for today. The same lines appear on the
           check-in disclosure + digest. */}
-        {(derivedLines.poorSleep || derivedLines.period) && (
+        {(derivedLines.poorSleep ||
+          derivedLines.period ||
+          derivedLines.weather.length > 0) && (
           <div
             className="-mt-2 mb-4 space-y-1"
             data-testid="derived-situations"
@@ -801,6 +834,18 @@ export default async function SupplementsTab() {
                 <span>{derivedLines.period}</span>
               </div>
             )}
+            {derivedLines.weather.map((line) => (
+              <div
+                key={line}
+                className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="derived-weather"
+              >
+                <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                  Auto
+                </span>
+                <span>{line}</span>
+              </div>
+            ))}
           </div>
         )}
 
@@ -981,6 +1026,15 @@ export default async function SupplementsTab() {
           </div>
         )}
 
+        {/* Priority demotion suggestions (#1505): high/mandatory supplements that have
+          gone sustainedly untaken, offered for the `low` tag. Calm and hideable —
+          accepting is the user's own obligation write, never the system's. */}
+        {demotionFindings.length > 0 && (
+          <div className="mb-4">
+            <DemotionSuggestions findings={demotionFindings} />
+          </div>
+        )}
+
         {/* Supplement-related interaction warnings. Cross-kind findings also render on
           Medications with the same dedupeKey, so dismissing either twin silences both.
           Medication-only interaction and PGx findings stay on Medications. */}
@@ -989,9 +1043,6 @@ export default async function SupplementsTab() {
           pgxWarnings={pgxWarnings}
           coverage={safetyCoverage}
         />
-        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
-          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
-        ) : null}
 
         {supplementItems.length === 0 ? (
           <div
@@ -1020,12 +1071,15 @@ export default async function SupplementsTab() {
                 </section>
                 <section className="p-4">
                   <h2 className="mb-3 section-label">Manage</h2>
-                  <AddSupplementModal
-                    allSupplements={supplements}
-                    stackItems={stackItems}
-                    pgxVariants={pgxVariants}
-                    trainingRestricted={trainingRestricted}
-                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <AddSupplementModal
+                      allSupplements={supplements}
+                      stackItems={stackItems}
+                      pgxVariants={pgxVariants}
+                      trainingRestricted={trainingRestricted}
+                    />
+                    <SharedSuppliesLink count={cabinetCount} />
+                  </div>
                 </section>
               </div>
             </aside>
@@ -1075,10 +1129,18 @@ export default async function SupplementsTab() {
                     suggestions={suggestionPanel}
                   />
                 </section>
+                <section className="p-4">
+                  <h2 className="mb-3 section-label">Manage</h2>
+                  <SharedSuppliesLink count={cabinetCount} />
+                </section>
               </div>
             </aside>
           </div>
         )}
+
+        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
+          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
+        ) : null}
       </div>
     </SituationOptionsProvider>
   );

@@ -115,12 +115,9 @@ test.describe("preventive deep-links per class (#1083)", () => {
     await page.goto("/upcoming");
     await expect(cta).toHaveText(/Record a blood pressure reading/);
 
-    await followCta(
-      "blood_pressure",
-      /\/trends\?tab=body&focus=blood-pressure/
-    );
+    await followCta("blood_pressure", /\/trends\?focus=blood-pressure#body/);
     // Landed on the vitals ENTRY surface (NOT the biomarkers form, #1076) — since
-    // #1486 that is the merged Body tab's combined "Log measurements" form, which
+    // #1486 that is the Body census's combined "Log measurements" form, which
     // the deep link expands with systolic focused so a BP reading is one keystroke
     // away. (This project runs at desktop width, where the modal opens;
     // the phone opens the same form in the #1468 overlay — see

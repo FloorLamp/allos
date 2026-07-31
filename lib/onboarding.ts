@@ -137,7 +137,7 @@ export const ONBOARDING_FOCUS_DEFS: readonly OnboardingFocusDef[] = [
     label: "Monitor body metrics and labs",
     description: "Record a baseline metric or import a recent lab panel.",
     actionLabel: "Record a starting metric",
-    actionHref: "/trends?tab=body",
+    actionHref: "/trends#body",
   },
   {
     id: "preventive-care",

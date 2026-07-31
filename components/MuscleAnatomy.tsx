@@ -1,4 +1,5 @@
 import { muscleLabel, MUSCLE_IDS, type MuscleId } from "@/lib/lifts";
+import { viewBoxFontSize, type ViewBoxScale } from "@/lib/chart-svg";
 import {
   BODY_OUTLINE,
   MIRROR_TRANSFORM,
@@ -163,7 +164,18 @@ function renderPlan(props: MuscleAnatomyProps): Map<MuscleId, MuscleRender> {
 }
 
 const VIEW_GAP = 12; // gutter between the two bodies
-const CAPTION_H = 14; // room for the Front/Back captions
+const CAPTION_H = 16; // room for the Front/Back captions
+
+// The figure's own scale contract (issue #1518). Its lengths are viewBox USER
+// UNITS scaled to the container, so a caption's real size is
+// `fontSize × (container ÷ viewBox)` — and its narrowest render is the ~208px
+// `sm:w-52` box on the training overview, where the previous hand-picked 7 painted
+// under 7px. The size is computed from that scale rather than typed in.
+const CAPTION_SCALE: ViewBoxScale = {
+  viewBoxWidth: 2 * VIEW_W + VIEW_GAP,
+  minContainerPx: 208,
+};
+const CAPTION_SIZE = viewBoxFontSize(CAPTION_SCALE);
 
 function BodyView({
   view,
@@ -236,18 +248,18 @@ export default function MuscleAnatomy(props: MuscleAnatomyProps) {
         <>
           <text
             x={VIEW_W / 2}
-            y={VIEW_H + 10}
+            y={VIEW_H + CAPTION_SIZE + 1}
             textAnchor="middle"
-            fontSize={7}
+            fontSize={CAPTION_SIZE}
             className="fill-slate-400 dark:fill-slate-500"
           >
             Front
           </text>
           <text
             x={VIEW_W + VIEW_GAP + VIEW_W / 2}
-            y={VIEW_H + 10}
+            y={VIEW_H + CAPTION_SIZE + 1}
             textAnchor="middle"
-            fontSize={7}
+            fontSize={CAPTION_SIZE}
             className="fill-slate-400 dark:fill-slate-500"
           >
             Back

@@ -114,7 +114,7 @@ export default function TimelineDayNav({
       <Link
         href={prevHref}
         data-testid="timeline-day-prev"
-        className="btn-secondary text-xs"
+        className="btn-ghost text-xs"
       >
         <IconChevronLeft className="h-4 w-4" stroke={2} aria-hidden="true" />
         {prevLabel}
@@ -122,7 +122,7 @@ export default function TimelineDayNav({
       <Link
         href={nextHref}
         data-testid="timeline-day-next"
-        className="btn-secondary text-xs"
+        className="btn-ghost text-xs"
       >
         {nextLabel}
         <IconChevronRight className="h-4 w-4" stroke={2} aria-hidden="true" />

@@ -94,6 +94,17 @@ test.describe("shared supply pools", () => {
       const members = shared.getByTestId("shared-supply-members");
       await expect(members).toContainText(SUPPLY_PARENT_MED);
       await expect(members).toContainText(SUPPLY_CHILD_MED);
+      const parentItemLink = members.getByRole("link", {
+        name: `Open ${SUPPLY_PARENT_MED} for ${SUPPLY_PARENT_PROFILE}`,
+      });
+      await expect(parentItemLink).toHaveAttribute(
+        "href",
+        /^\/medications\/\d+$/
+      );
+      const childItemLink = members.getByRole("button", {
+        name: `Switch to ${SUPPLY_CHILD_PROFILE} and open ${SUPPLY_CHILD_MED}`,
+      });
+      await expect(childItemLink).toBeVisible();
       // Days-left says "across everyone" — the whole point of pooling.
       await expect(shared.getByTestId("shared-supply-days")).toContainText(
         "across everyone"
@@ -124,6 +135,25 @@ test.describe("shared supply pools", () => {
       await setDoseTaken(page, SUPPLY_PARENT_MED, false);
       await page.goto(CABINET);
       expect(await onHand(page, SUPPLY_SHARED_BOTTLE)).toBe(before);
+
+      // A member item owned by another profile uses the shared explicit
+      // switch-and-open chip, so its profile-owned destination cannot render
+      // against the caregiver's previous acting profile.
+      const restored = bottleCard(page, SUPPLY_SHARED_BOTTLE);
+      await settledClick(
+        page,
+        restored.getByRole("button", {
+          name: `Switch to ${SUPPLY_CHILD_PROFILE} and open ${SUPPLY_CHILD_MED}`,
+        })
+      );
+      await expect(page).toHaveURL(/\/medications\/\d+$/);
+      await expect(page.getByTestId("medication-subject-name")).toHaveText(
+        SUPPLY_CHILD_PROFILE,
+        { timeout: 15_000 }
+      );
+      await expect(page.getByTestId("medication-detail")).toContainText(
+        SUPPLY_CHILD_MED
+      );
     } finally {
       // Leave the login acting as the profile it started on.
       await switchToProfile(page, SUPPLY_PARENT_PROFILE);
@@ -166,7 +196,7 @@ test.describe("shared supply pools", () => {
   // The cabinet lost its nav row in #1522 (physical registries are reached from
   // their consumers, the /equipment pattern). These are the doors that replaced it —
   // if they regress, the surface becomes unreachable except by typing the URL.
-  test("the cabinet is reached from its consumers' headers, counted (#1522)", async ({
+  test("the cabinet is reached from its consumer surfaces, counted (#1522)", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -181,21 +211,30 @@ test.describe("shared supply pools", () => {
       // bottles this spec owns. Asserted as a PATTERN, never an exact number: other
       // specs' bottles are orphan-visible to everyone and exact-counting shared seed
       // rows is what the fixture-hygiene rule forbids.
-      await expect(medDoor).toHaveText(/\d+ shared bottles →/);
+      await expect(medDoor).toHaveText(/\d+ shared bottles/);
+      await expect(
+        medDoor.getByTestId("shared-supplies-chevron")
+      ).toBeVisible();
       // The accessible name keeps the destination's NAME even when the visible label
       // is a count, so the link never reads as an anonymous number to AT.
       await expect(medDoor).toHaveAttribute("aria-label", /Medicine cabinet/);
       await followLink(page, medDoor, new RegExp(`${CABINET}$`));
       await expect(page.getByTestId("supplies-page")).toBeVisible();
 
-      // Nutrition → Supplements: the same door, in the tab body (the header's action
-      // slot is desktop-only and shared with the Food tab).
+      // Nutrition → Supplements: the same door lives in the tab's right-hand
+      // management sidebar (the header's action slot is shared with Food).
       await page.goto("/nutrition?tab=supplements");
-      await followLink(
-        page,
-        page.getByTestId("shared-supplies-link"),
-        new RegExp(`${CABINET}$`)
-      );
+      const supplementDoor = page.getByTestId("shared-supplies-link");
+      await expect(supplementDoor).toBeVisible();
+      expect(
+        await supplementDoor.evaluate((node) => {
+          const sidebar = document.querySelector(
+            '[data-testid="supplement-sidebar"]'
+          );
+          return Boolean(sidebar?.contains(node));
+        })
+      ).toBe(true);
+      await followLink(page, supplementDoor, new RegExp(`${CABINET}$`));
 
       // Household: the cabinet is a household-scoped surface, so its door lives
       // beside History in that header.
@@ -226,13 +265,51 @@ test.describe("shared supply pools", () => {
       // Edit THIS case's own bottle through the cabinet form (explicit submit, and it
       // round-trips the loaded value for the #467 pool-level compare-and-set). Writing
       // an absolute value is idempotent, so the case repeats cleanly.
+      await expect(page.getByTestId("supplies-page")).toHaveClass(
+        /\bmx-auto\b/
+      );
       const editable = bottleCard(page, SUPPLY_EDIT_BOTTLE);
-      await settledClick(page, editable.getByTestId("shared-supply-edit"));
+      await settledClick(
+        page,
+        editable.getByRole("button", {
+          name: `${SUPPLY_EDIT_BOTTLE} bottle actions`,
+        })
+      );
+      await settledClick(page, page.getByTestId("shared-supply-edit"));
       await editable.getByTestId("shared-supply-qty-input").fill("123");
-      await settledClick(page, editable.getByTestId("shared-supply-save"));
+      const save = editable.getByTestId("shared-supply-save");
+      await expect(save).toHaveClass(/\bbtn\b/);
+      await expect(save).not.toHaveClass(/\bbtn-primary\b/);
+      await settledClick(page, save);
       await expect(async () => {
         expect(await onHand(page, SUPPLY_EDIT_BOTTLE)).toBe(123);
       }).toPass(); // topass-ok: awaits the revalidated cabinet after the explicit save
+
+      // Both actions live in the card's standard overflow. Delete opens the
+      // app-wide confirmation sheet rather than expanding bespoke controls into
+      // the edit form; cancel it so this fixture remains repeat-safe.
+      await settledClick(
+        page,
+        editable.getByRole("button", {
+          name: `${SUPPLY_EDIT_BOTTLE} bottle actions`,
+        })
+      );
+      await settledClick(page, page.getByTestId("shared-supply-delete"));
+      const dialog = page.getByTestId("confirm-dialog");
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByText("Delete bottle", { exact: true })
+      ).toBeVisible();
+      await expect(dialog).toContainText(`Delete “${SUPPLY_EDIT_BOTTLE}”?`);
+      await expect(
+        dialog.getByRole("button", { name: "Delete", exact: true })
+      ).toHaveClass(/\bbtn-danger\b/);
+      await settledClick(
+        page,
+        dialog.getByRole("button", { name: "Cancel", exact: true })
+      );
+      await expect(dialog).not.toBeVisible();
+      await expect(editable).toBeVisible();
     } finally {
       await page.context().close();
     }

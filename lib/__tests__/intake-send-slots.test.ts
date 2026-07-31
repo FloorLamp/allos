@@ -18,7 +18,13 @@ import {
   parseAllCallback,
   keyboardDoseFootprint,
 } from "../notifications/callback-data";
-import { doseReminderNotifies, type TimeBucket } from "../supplement-schedule";
+import {
+  accruesMisses,
+  escalatesOnMiss,
+  isPrn,
+  isPushedIntake,
+  type TimeBucket,
+} from "../supplement-schedule";
 import { escalationWindowPhrase } from "../notifications/escalation";
 import type { AdherenceSummary } from "../supplement-adherence";
 import type {
@@ -26,13 +32,13 @@ import type {
   SupplementCondition,
   SupplementDose,
   SupplementKind,
-  SupplementPriority,
+  IntakeObligation,
 } from "../types";
 
 function supp(
   id: number,
   name: string,
-  priority: SupplementPriority = "high",
+  obligation: IntakeObligation = "should",
   kind: SupplementKind = "supplement",
   condition: SupplementCondition = "daily"
 ): Supplement {
@@ -43,7 +49,7 @@ function supp(
     active: 1,
     created_at: "2026-07-05",
     condition,
-    priority,
+    obligation,
     brand: null,
     product: null,
     situation: null,
@@ -63,7 +69,6 @@ function supp(
     pharmacy: null,
     rx_number: null,
     rx: 0,
-    as_needed: 0,
     min_interval_hours: null,
     max_daily_count: null,
     redose_notice: 0,
@@ -74,6 +79,10 @@ function supp(
     provider_id: null,
     source_record_id: null,
     indication_condition_id: null,
+    cadence_kind: "daily",
+    cadence_weekdays: null,
+    cadence_interval_days: null,
+    cadence_anchor_date: null,
   };
 }
 
@@ -92,6 +101,9 @@ function dose(
     retired: 0,
     created_at: null,
     updated_at: null,
+    weekdays: null,
+    start_date: null,
+    end_date: null,
   };
 }
 
@@ -152,37 +164,57 @@ describe("preWorkoutSlotHour", () => {
   });
 });
 
-// ---- #1156 priority floor (pure pieces) ------------------------------------
+// ---- The shared push predicate (pure pieces, #1156 → #1505) ----------------
 
-describe("doseReminderNotifies (#1156)", () => {
-  it("excludes ONLY low-priority supplements", () => {
-    expect(doseReminderNotifies({ kind: "supplement", priority: "low" })).toBe(
-      false
-    );
-    expect(doseReminderNotifies({ kind: "supplement", priority: "high" })).toBe(
-      true
-    );
-    expect(
-      doseReminderNotifies({ kind: "supplement", priority: "mandatory" })
-    ).toBe(true);
+describe("isPushedIntake (#1505)", () => {
+  it("excludes exactly `may`, and reads obligation ALONE", () => {
+    expect(isPushedIntake({ obligation: "may" })).toBe(false);
+    expect(isPushedIntake({ obligation: "should" })).toBe(true);
+    expect(isPushedIntake({ obligation: "must" })).toBe(true);
   });
-  it("NEVER gates a medication (the safety carve-out)", () => {
-    expect(doseReminderNotifies({ kind: "medication", priority: "low" })).toBe(
-      true
-    );
+
+  it("no longer consults kind at all — a `may` MEDICATION is not pushed either", () => {
+    // The pre-#1505 predicate carved medications out because `kind` was doing
+    // pushability's job. Obligation does that now, and a medication is pushed
+    // because it defaults to `must` (and can only leave must through an explicit
+    // consequence-stating confirm) — not because of what it is.
+    expect(isPushedIntake({ obligation: "may" })).toBe(false);
+    expect(isPushedIntake({ obligation: "must" })).toBe(true);
   });
 });
 
-describe("notifiableWindowDoses (#1156)", () => {
-  it("drops low supplements, keeps low meds and mandatory/high supplements", () => {
+describe("the obligation semantics table (#1505)", () => {
+  it("send / count / escalate differ exactly where the model says they do", () => {
+    const rows: {
+      obligation: IntakeObligation;
+      pushed: boolean;
+      counts: boolean;
+      escalates: boolean;
+    }[] = [
+      { obligation: "must", pushed: true, counts: true, escalates: true },
+      { obligation: "should", pushed: true, counts: true, escalates: false },
+      { obligation: "may", pushed: false, counts: false, escalates: false },
+    ];
+    for (const r of rows) {
+      expect(isPushedIntake({ obligation: r.obligation })).toBe(r.pushed);
+      expect(accruesMisses({ obligation: r.obligation })).toBe(r.counts);
+      expect(escalatesOnMiss({ obligation: r.obligation })).toBe(r.escalates);
+      // `may` IS the PRN shape — the flag it absorbed.
+      expect(isPrn({ obligation: r.obligation })).toBe(r.obligation === "may");
+    }
+  });
+});
+
+describe("notifiableWindowDoses (#1156/#1505)", () => {
+  it("drops `may`, keeps must and should — of either kind", () => {
     const entries = [
-      entry(supp(1, "Ashwagandha", "low"), dose(11, 1, "300 mg")),
-      entry(supp(2, "Creatine", "high"), dose(12, 2, "5 g")),
+      entry(supp(1, "Ashwagandha", "may"), dose(11, 1, "300 mg")),
+      entry(supp(2, "Creatine", "should"), dose(12, 2, "5 g")),
       entry(
-        supp(3, "Levothyroxine", "low", "medication"),
+        supp(3, "Levothyroxine", "must", "medication"),
         dose(13, 3, "50 mcg")
       ),
-      entry(supp(4, "Vitamin D", "mandatory"), dose(14, 4, "1000 IU")),
+      entry(supp(4, "Vitamin D", "must"), dose(14, 4, "1000 IU")),
     ];
     expect(notifiableWindowDoses(entries).map((e) => e.supp.name)).toEqual([
       "Creatine",
@@ -191,10 +223,10 @@ describe("notifiableWindowDoses (#1156)", () => {
     ]);
   });
 
-  it("an all-low set filters to empty → the builder sends nothing (intended, not a bug)", () => {
+  it("an all-`may` slot filters to empty → the builder sends nothing (intended, not a bug)", () => {
     const entries = [
-      entry(supp(1, "Beta-Alanine", "low"), dose(11, 1, "3 g")),
-      entry(supp(2, "Citrulline", "low"), dose(12, 2, "6 g")),
+      entry(supp(1, "Beta-Alanine", "may"), dose(11, 1, "3 g")),
+      entry(supp(2, "Citrulline", "may"), dose(12, 2, "6 g")),
     ];
     expect(notifiableWindowDoses(entries)).toEqual([]);
   });
@@ -207,7 +239,7 @@ describe("renderMergedIntakeMessage", () => {
   const d1 = dose(11, 1, "1000 IU");
   const s2 = supp(2, "Magnesium");
   const d2 = dose(12, 2, "200 mg");
-  const preSupp = supp(3, "Creatine", "high", "supplement", "pre_workout");
+  const preSupp = supp(3, "Creatine", "should", "supplement", "pre_workout");
   const preDose = dose(13, 3, "5 g");
 
   it("a single slot renders EXACTLY the classic window message", () => {

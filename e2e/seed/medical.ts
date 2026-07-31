@@ -15,6 +15,13 @@ import {
   RECS_ENRICH_ALLERGY_MED,
   RECS_ENRICH_PGX_MED,
   RECS_ENRICH_PROCEDURE,
+  E2E_LOGIN_LESIONALLERGY,
+  LESIONALLERGY_PROFILE,
+  LESIONALLERGY_VISIT_TYPE,
+  LESIONALLERGY_PROVIDER,
+  LESIONALLERGY_LESION,
+  LESIONALLERGY_ALLERGY,
+  LESIONALLERGY_ALLERGY_UNLINKED,
   E2E_LOGIN_FLABS,
   FLAGGED_LAB_PROFILE,
   E2E_LOGIN_IOP,
@@ -41,6 +48,13 @@ import {
   PANEL_GROUPS_OTHER_ANALYTE,
   E2E_LOGIN_PANELINDEX,
   PANEL_INDEX_PROFILE,
+  E2E_LOGIN_REPORTS_EMPTY,
+  REPORTS_EMPTY_PROFILE,
+  E2E_LOGIN_REPORTS_SOURCE,
+  REPORTS_SOURCE_PROFILE,
+  REPORTS_SOURCE_NAME,
+  REPORTS_SOURCE_PROVIDER,
+  REPORTS_SOURCE_DOCUMENT,
 } from "../fixture-logins";
 import {
   PROFILE_ID,
@@ -448,8 +462,8 @@ export function seedDataQualityGaps(): void {
     `DELETE FROM intake_items WHERE profile_id = ? AND name = 'DQ Mystery Pill'`
   ).run(dqGappyId);
   db.prepare(
-    `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
-   VALUES (?, 'DQ Mystery Pill', 1, 'medication', 1)`
+    `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+         VALUES (?, 'DQ Mystery Pill', 1, 'medication', 'may')`
   ).run(dqGappyId);
   seedMemberLogin(E2E_LOGIN_DQ_GAPPY, dqGappyId, "write");
 
@@ -737,8 +751,8 @@ export function seedRecordsEnrichment(): void {
       Number(
         db
           .prepare(
-            `INSERT INTO intake_items (profile_id, name, kind, active, as_needed, source)
-           VALUES (?, ?, 'medication', 1, 0, 'manual')`
+            `INSERT INTO intake_items (profile_id, name, kind, active, source, obligation)
+         VALUES (?, ?, 'medication', 1, 'manual', 'should')`
           )
           .run(reId, name).lastInsertRowid
       );
@@ -785,6 +799,64 @@ export function seedRecordsEnrichment(): void {
       `e2e: seeded records-enrichment fixture — ${E2E_LOGIN_RECS_ENRICH} granted ${RECS_ENRICH_PROFILE} (${reId}) (#1354/#1355)`
     );
   }
+}
+
+// ── Lesion + allergy → visit links (#1526) ────────────────────────────────────
+export function seedLesionAllergyVisitLinks(): void {
+  // The two encounter-link gaps #1526 closed. ONE dermatology visit that produced BOTH
+  // observations — a lesion whose finding came from that appointment and an allergy
+  // documented at it — plus an UNLINKED allergy, so the same surface proves the link
+  // line AND its absent pillar (an unlinked row shows no visit line at all).
+  //
+  // Spec-OWNED (#868 fixture ownership): the spec also records an allergy through the
+  // form's visit picker, and a write on a shared profile would perturb another spec's
+  // allergy list. Repeat-safe: the seed is guarded on the linked allergy's presence, and
+  // a re-added picked allergy collapses to one visible row under the existing allergy
+  // representative rule (substance + reaction + status, newest row wins).
+  const laId = fixtureProfileId(LESIONALLERGY_PROFILE);
+  if (
+    !db
+      .prepare("SELECT 1 FROM allergies WHERE profile_id = ? AND substance = ?")
+      .get(laId, LESIONALLERGY_ALLERGY)
+  ) {
+    const provId = Number(
+      db
+        .prepare(
+          "INSERT INTO providers (name, type, dedup_key) VALUES (?, 'individual', 'dk:e2e-lesion-allergy-okafor')"
+        )
+        .run(LESIONALLERGY_PROVIDER).lastInsertRowid
+    );
+    const encId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, class_code, provider_id, source)
+           VALUES (?, '2026-04-20', ?, 'AMB', ?, 'manual')`
+        )
+        .run(laId, LESIONALLERGY_VISIT_TYPE, provId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO skin_lesions
+         (profile_id, label, body_region, body_side, status, observed_date,
+          finding, provider_id, encounter_id, source)
+       VALUES (?, ?, 'forearm', 'left', 'watch', '2026-04-20',
+               'benign-looking, recheck in 3 months', ?, ?, 'manual')`
+    ).run(laId, LESIONALLERGY_LESION, provId, encId);
+    db.prepare(
+      `INSERT INTO allergies
+         (profile_id, substance, reaction, status, verification_status,
+          onset_date, provider_id, encounter_id, source)
+       VALUES (?, ?, 'hives', 'active', 'confirmed', '2026-04-20', ?, ?, 'manual')`
+    ).run(laId, LESIONALLERGY_ALLERGY, provId, encId);
+    // The absent-pillar contrast: no visit, no provider, so no attribution line.
+    db.prepare(
+      `INSERT INTO allergies (profile_id, substance, reaction, status, source)
+       VALUES (?, ?, 'contact rash', 'active', 'manual')`
+    ).run(laId, LESIONALLERGY_ALLERGY_UNLINKED);
+  }
+  seedMemberLogin(E2E_LOGIN_LESIONALLERGY, laId, "write");
+  console.log(
+    `e2e: seeded lesion/allergy visit-link fixture — ${E2E_LOGIN_LESIONALLERGY} granted ${LESIONALLERGY_PROFILE} (${laId}) (#1526)`
+  );
 }
 
 // ── Results-hub panel groups (#1499 section A) ────────────────────────────────
@@ -1018,5 +1090,98 @@ export function seedPanelIndex(): void {
   seedMemberLogin(E2E_LOGIN_PANELINDEX, pid, "write");
   console.log(
     `e2e: seeded panel-index fixture — ${E2E_LOGIN_PANELINDEX} granted ${PANEL_INDEX_PROFILE} (${pid}) — ${draws.length * analytes.length} readings (#1581/#1578)`
+  );
+}
+
+// ── Results › Reports panes (#1598) ──────────────────────────────────────────
+// Appended to the seed run's TAIL on purpose: it introduces profiles, a provider,
+// a document and report records, and running it after every existing fixture keeps
+// their row ids exactly where they were.
+//
+// The Reports pane has two shapes the shared seed can never show. Profile 1 always
+// owns narrative reports, so its EMPTY state is unreachable there; and its seeded
+// rows carry neither a performing provider nor a source document, so the card's
+// attribution line and "View source document" link never render. One dedicated
+// profile per shape, both read-only in their spec.
+export function seedReportPanes(): void {
+  // ── The empty pane ────────────────────────────────────────────────────────
+  const emptyId = fixtureProfileId(REPORTS_EMPTY_PROFILE);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-02-20')`
+  ).run(emptyId);
+  // Assert the emptiness rather than assume it — a reused dev server may have run
+  // an earlier generation of this fixture.
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND category = 'report'`
+  ).run(emptyId);
+  seedMemberLogin(E2E_LOGIN_REPORTS_EMPTY, emptyId, "write");
+
+  // ── The attributed, document-linked pane ──────────────────────────────────
+  const sourceId = fixtureProfileId(REPORTS_SOURCE_PROFILE);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-02-20')`
+  ).run(sourceId);
+
+  // The performing lab. Providers are global (not profile-owned); the dedup key is
+  // its identity, so INSERT OR IGNORE keeps a reused server idempotent.
+  db.prepare(
+    `INSERT OR IGNORE INTO providers (name, type, dedup_key, specialty)
+     VALUES (?, 'organization', 'e2e:reports-source-lab', 'Pathology')`
+  ).run(REPORTS_SOURCE_PROVIDER);
+  const providerId = (
+    db
+      .prepare(
+        "SELECT id FROM providers WHERE dedup_key = 'e2e:reports-source-lab'"
+      )
+      .get() as { id: number }
+  ).id;
+
+  // The imported CCD the report body was recovered from. `stored_path` is empty —
+  // the spec asserts the LINK, never fetches the bytes (no fixture file on disk).
+  const existingDoc = db
+    .prepare(
+      `SELECT id FROM medical_documents WHERE profile_id = ? AND filename = ?`
+    )
+    .get(sourceId, REPORTS_SOURCE_DOCUMENT) as { id: number } | undefined;
+  const documentId =
+    existingDoc?.id ??
+    Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+              source, extraction_status, extracted_count)
+           VALUES (?, ?, '', 'application/xml', 4096, 'Health record (CCD/XDM)',
+                   'ccda', 'done', 1)`
+        )
+        .run(sourceId, REPORTS_SOURCE_DOCUMENT).lastInsertRowid
+    );
+
+  // The narrative report itself: text in `notes`, NO value — a dated document that
+  // never trends or flags. Synthetic cytology wording, no real PHI.
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND category = 'report'`
+  ).run(sourceId);
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, notes, loinc, canonical_name,
+        provider_id, document_id, source, external_id)
+     VALUES (?, ?, 'report', ?, NULL, ?, '33717-0', ?, ?, ?, 'document:e2e',
+             'e2e:report:cytology-1')`
+  ).run(
+    sourceId,
+    shiftDateStr(today(sourceId), -12),
+    REPORTS_SOURCE_NAME,
+    "Negative for intraepithelial lesion or malignancy. Adequate specimen; " +
+      "endocervical component present. No organisms identified.",
+    REPORTS_SOURCE_NAME,
+    providerId,
+    documentId
+  );
+  seedMemberLogin(E2E_LOGIN_REPORTS_SOURCE, sourceId, "write");
+
+  console.log(
+    `e2e: seeded Reports panes — empty profile ${emptyId} (${REPORTS_EMPTY_PROFILE}), ` +
+      `attributed profile ${sourceId} (${REPORTS_SOURCE_PROFILE}) doc ${documentId} (#1598)`
   );
 }

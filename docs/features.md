@@ -25,6 +25,7 @@ feature. Architecture and implementation invariants live in
   [Health-record import](#health-record-import), and the
   [Emergency card](#emergency-card-offline)
 - **Household and access:** [Household](#household)
+- **Finding things:** [Global search and record Q&A](#global-search-and-record-qa)
 - **Data and reliability:** [Data hub](#data-hub),
   [Offline quick-log queue](#offline-quick-log-queue),
   [Mobile shell](#mobile-shell), [Undo delete](#undo-delete),
@@ -294,6 +295,14 @@ sessions per day, and retain editable session history. **Stop tracking** removes
 the weekly target and its reminders without deleting logged sessions; any
 protocol using that target is explicitly unlinked.
 
+A tracked practice is one tap away from anywhere: the quick-actions menu's **Log
+practice** overlay lists each one with this week's standing, and the command
+palette commits a session from `log sauna`. Both go through the same write the
+practice card's **Log now** button uses, and both report what actually
+happened — a session log is never confirmed unconditionally. A practice you have
+stopped tracking keeps its card and history but is no longer offered by the
+quick surfaces.
+
 **Start from a template** prefills the form for a common experiment — the **Sun
 exposure** template pairs daily **outdoor daylight minutes** (intersecting your
 outdoor activities' time windows with the local daylight window from your home
@@ -346,6 +355,27 @@ and, when the last reading was out of range or non-optimal, noting that status
 so a flagged value isn't mistaken for a bare retest), goal deadlines, and
 training targets.
 
+### Routine folds, safety never does
+
+A planning page that lists every scheduled dose and every pairwise
+medication-safety note as its own full row buries the things actually worth
+noticing. So the page **folds the routine, per band**: the band's scheduled doses
+collapse into one row that always states the count and the day's progress
+("**5 doses left · 1 of 6 taken**"), and its **interaction + PGx** notes collapse
+into one "**N medication-safety notes**" row. Both are collapsed on every visit
+(nothing is remembered), one tap opens the real rows, and every row behind the
+fold is unchanged — the same **Mark taken**, the same per-item snooze/dismiss,
+the same link.
+
+The **count is never hidden**, and the **safety classes are never folded**: a
+**PRN over its confirmed daily max** and any safety-tier reminder render as
+individual rows **above** the fold, in both states. A **drug-allergy** match
+keeps its own row too — it deliberately outranks a pairwise interaction — as do
+the singular findings (a fever pattern, a screening, a pre-procedure note). A
+band with only a couple of doses does not fold at all. `may` items are not
+involved: they were never owed, so they live in the separate **"Available when
+you want them"** disclosure and count toward neither number.
+
 ### Risk-aware timing
 
 Retests, screenings, and immunizations are **risk-stratified**: your **family
@@ -397,6 +427,47 @@ _them_, never to the profile you're acting as), and names appear only while more
 than one profile is in view — a single view stays exactly as it was.
 
 ## Training
+
+The **Log** tab's journal feed loads the newest window of days and pages older
+ones in on demand, but its **search and filters query the whole ledger**: typing
+a name, picking an activity type, clicking a muscle/region badge, or switching on
+"Can't be saved" re-asks the store, and the feed pages over _matches_ — so a
+session from years back shows up on the first screen of results with no "Load
+more" clicks. A **Source** filter sits alongside them, offering exactly the
+providers your own history contains (Manual, Strava, Google Health Connect,
+Document, …) labelled the same way the cards' provenance chips are.
+
+**Weather-aware suggestions.** When the Weather & UV source is on, outdoor
+activities are quietly **parked** in conditions you don't train in — the ride
+drops out of today's suggestion, the message says why, and the indoor stand-in
+takes its slot ("Too cold for cycling (−2°C) — Stationary Bike instead"). The
+threshold is _yours_: it's derived from the conditions you've actually logged
+sessions in, so someone who rides at 3°C keeps being offered the ride and
+someone whose rides all sit above 15°C doesn't. Until there's enough history to
+tell, only genuinely hostile conditions park anything. Nothing is ever banned —
+logging the outdoor session anyway is normal, and it teaches the engine. An
+alternative is only offered if you've logged it before or own the gear;
+otherwise you get the normal next-best suggestion with the explanation intact.
+Parked activities also stop counting as "stale" while parked, so winter can't
+push a ride _harder_ precisely when the weather is worst.
+
+**Planning the week around the weather.** When a weekly cardio target is behind
+and the coming week's outdoor viability is _scarce_ — one dry day among five wet
+ones, say — the morning digest and Upcoming both note the best window: "This
+week: Saturday looks like the best window for your cycling (cycling 1/2)." It
+appears only when there's a real choice to make: a week where every day works
+says nothing, and a week where no day works says nothing either — there's no
+session to recommend, and nagging about weather nobody can change isn't the
+point. Past about five days out it hedges rather than promising you next
+Wednesday's sunshine, and with no forecast cached it stays quiet. No new
+notification is created: the line rides the morning message you already get.
+
+**Conditions on the record.** An outdoor session's journal card shows what it
+was like outside ("31°C · clear"), and Timeline days carry a short conditions
+note when the weather was notable — a heatwave, cold snap, pressure swing, high
+pollen or poor air day. It's read from the cached weather at display time and
+never written onto the workout, so a gap in the data simply shows nothing. This
+is context, not judgement: a slow run at 31°C explains itself.
 
 Workout history, goals, strength analysis, cardio records, sport summaries, and
 per-exercise history; the Overview tab carries a **Training watch** card of
@@ -511,20 +582,30 @@ default), so gating only kicks in once you've listed some gear.
 
 ## Trends
 
-Charts and analysis live in five tabs:
+Charts and analysis live in four tabs:
 
-- **Overview** is the default "what's trending" digest of saved and pinnable
-  tiles.
-- **Body** combines vitals, acute temperature, sleep and outdoor-time signals,
-  body composition, and the shared **Log measurements** form. A **Data check**
-  card catches probable weight-entry errors before they skew charts.
+- **Overview** is the landing surface, and answers "how am I doing" in one
+  scroll: the **"what's trending" digest**, then your **starred grid** — your own
+  cross-domain set of saved, drag-orderable tiles, the one curated area where
+  nothing appears unless you put it there — then the **body census**: vitals,
+  acute temperature, sleep and outdoor-time signals, body composition, and the
+  shared **Log measurements** form. A **Data check** card catches probable
+  weight-entry errors before they skew charts.
 - **Fitness** combines the workout-density heatmap, strength/cardio/sport
   progress, heart-rate-zone volume, the Zone 2 target, and polarization. Zones
   use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
   max HR; the manual max-HR override is under **Settings → Training**.
 - **Nutrition** charts macros, fiber, hydration, and related intake trends.
-- **Insights** combines comparison tools with daily analysis and
-  weekly/monthly recap narratives.
+- **Insights** combines comparison tools with daily analysis and weekly/monthly
+  recap narratives.
+
+The body census **streams in below** the digest and starred grid, so the landing
+surface paints as fast as it did when Body was its own tab. Links that used to
+target that tab now target its anchor (`/trends#body`); `?tab=body` is gone, and
+lands on the Overview surface that carries the census. The three remaining tabs
+are permanent — the deliberate asymmetry is the design: the landing surface
+answers "how am I doing", the tabs answer "how is my training or nutrition
+specifically".
 
 Biomarker tables, flags, trajectories, reference ranges, food-first context,
 fitness percentiles, and pediatric interpretation live under
@@ -532,29 +613,30 @@ fitness percentiles, and pediatric interpretation live under
 are entered through the Training **Fitness check**.
 
 The default window is the last 90 days. Every tab uses the same range model,
-saved views, and event overlays, and every overview tile opens the corresponding
+saved views, and event overlays, and every starred tile opens the corresponding
 full chart rather than maintaining a second interpretation.
 
-### Overview and Body
+### The Overview surface: starred grid and body census
 
-Overview answers two questions: **what you saved** and **what changed**. Tiles
+The starred grid answers two questions: **what you saved** and **what changed**.
+Tiles
 lead with the latest reading and its age, distinguish current value from trend,
 and can be pinned and reordered. The mobile layout uses compact cards; the
 overflow menu owns secondary controls instead of crowding the chart.
 
-Body is organized into Vitals, acute temperature, sun/outdoor time, composition,
+The census is organized into Vitals, acute temperature, sun/outdoor time, composition,
 and wellbeing. **Today** can switch dense sensor series to a 1-day intraday
 view, while longer ranges show the appropriate aggregate. Mood and other
 self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
-The star is the **one arrangement gesture** across both tabs. Starring a body
-metric — on its own page, which every Body card opens — is the same save as
-starring an Overview tile, and starred cards lead the Body tab in the order the
-Overview grid holds them, so pinned cards are re-sequenced by dragging them (or
-using their overflow arrows) on Overview. There is no second reorder surface on
-Body.
+The star is the **one arrangement gesture** across both halves of the surface —
+which is why they are one surface. Starring a body metric — on its own page, which
+every card opens — is the same save as starring a grid tile, and starred cards
+lead the census in the order the grid holds them, so pinned cards are re-sequenced
+by dragging them (or using their overflow arrows) in the grid one scroll above.
+There is no second reorder surface in the census.
 
 Everything unstarred follows a **ranked default** built from stable subject
 facts — life stage, live goals, monitored conditions, and whether a series has
@@ -854,11 +936,19 @@ scores, which are re-homed to Medical → Health record → Specialty, and blood
 type, which lives in the passport), so it never offers a filter that returns
 nothing for anyone.
 
-On a phone the two cards above the index are capped so the first panel header
-stays reachable: the starred-biomarkers card shows its first three tiles behind
-a "Show all N starred" toggle, and the biological-age card folds its nine-input
-"built from" list (never its estimate caveat). Both render whole on a larger
-screen.
+**On a phone the index leads.** The trajectory-watch card keeps its place above
+it — a warning has to find you rather than be looked up — showing its headline
+("N analytes trending before a single reading crosses a line", and which) with
+its per-analyte rows one tap away. The filter bar and the panel table come next,
+then the two cards you go _to_: the starred lens and the biological-age hero,
+rendered whole, a scroll below the index rather than hidden. "+ Add result"
+stays last. Those two cards also stay capped at phone width — the starred card
+shows its first three tiles behind a "Show all N starred" toggle, and the
+biological-age card folds its nine-input "built from" list, never its estimate
+caveat.
+
+From a small-tablet width up, none of that applies: every card renders whole in
+the original order, glance first and index below it.
 
 ### Imaging studies
 
@@ -945,7 +1035,11 @@ stable/changed/removed (a changed lesion, re-entered as watch, keeps a fresh
 recheck rather than aging out); added manually with photo upload (the primary
 path — AI extraction from a dermatology report is a deferred follow-up), photos
 ride the per-profile upload posture (sha256 dedup, profile-scoped serving) in
-their own store.
+their own store. A lesion record also names the **visit it was checked at** (a
+picker beside its provider field): the finding and recheck interval are what a
+dermatologist tells you at an appointment, so the row reads **Checked at:** that
+visit and the visit's detail lists the lesion — the same provenance chain a
+biopsy from the same appointment already had.
 
 **Scope boundary, by design:** this is a self-monitoring record for you and your
 dermatologist — it tracks and compares, it never assesses malignancy or scores
@@ -1010,7 +1104,8 @@ preventive type code (CPT 9938x/9939x → Preventive) into a coarse set
 health / Other) that every surface keys on; the stored source `type` text is
 never rewritten. Records connect to the visit they belong to: a visit's detail
 page shows a **From this visit** section (meds started, diagnoses, procedures,
-imaging, immunizations given) plus a **From this visit?** suggestion block that
+imaging, immunizations given, skin lesions checked, allergies documented) plus a
+**From this visit?** suggestion block that
 batch-links records sharing the visit's date (a matching provider reads
 _strong_; two visits on one day become a **picker**, never a guess) — and where
 a source health record carries the reference outright (a FHIR
@@ -1129,6 +1224,18 @@ severity ordering. The FHIR export carries all three
 (`criticality` / `verificationStatus` / `reaction[]`), and the document importer
 maps criticality and verification status when a document states them.
 
+An allergy also carries its **attribution** — the clinician who documented it and
+the **visit** it was recorded at, both optional and both set from the allergy
+form (a create-on-type provider picker and a visit picker). The row then reads
+**Recorded at:** that visit, deep-linked, and the visit's own detail lists the
+allergy under _From this visit_. This is the companion to verification status: a
+_confirmed_ allergy means more when you can see who confirmed it and when. An
+imported `AllergyIntolerance.encounter` sets the visit link deterministically;
+a dangling reference imports unlinked rather than wrongly linked. The link is
+provenance only — nothing gates on it, and deleting the visit or merging the
+provider away leaves the allergy intact with the link honestly cleared or
+re-pointed.
+
 ## Immunizations
 
 Record vaccines and doses, track them against the CDC schedule (due / overdue /
@@ -1157,32 +1264,63 @@ A manual menstrual-cycle log at **Medical → Cycle** (`/medical/cycles`). Log a
 period with one tap ("Period started today" / "Period ended today", acting on
 today for the active profile) or with a dated form (start, optional inclusive
 end, a light/medium/heavy flow, and a note); each recorded period lists in the
-history with its bleeding length and is editable/deletable inline. Per-day
-**cycle symptoms** (cramps, bloating, breast tenderness, mood swings, low back
-pain) ride the SAME shipped symptom bar (#799/#815/#857) — a small `domain` tag
-(illness/cycle/general) on the symptom vocabulary leads each mount with its
-context's slugs, so the Cycle bar surfaces the menstrual symptoms first while
-every symptom stays loggable; phase membership is derived by DATE, so a symptom
-during a period during a cold belongs to both the illness episode and the cycle
-phase, correct by construction (no second symptom store). The **cycle phase**
-(menstrual/follicular/luteal) is DERIVED from the logged period history — one
-pure computation shared by the Cycle page's "current phase" card and a
-phase/period **chip on the Timeline day view** — and a **cycle-length +
-variability** read (average/shortest/longest/spread, a regular-vs-irregular
-verdict within a 7-day threshold, and a length trend chart) answers "is it
-regular / changing." Deliberately **tracking, not forecasting**: the luteal
-phase is only assigned retrospectively once the following period is logged, and
-there is **no** next-period or ovulation prediction and **no**
-fertility-awareness / basal-body-temperature features (that regulated tier is
-out of scope). It also feeds cycle-phase-aware biomarker reference ranges (the
-phase on a lab's collection date). Informational only, not medical advice or
-diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
-always keeps it visible — data wins, including for trans or unset-sex profiles —
-else it shows for a female profile that is premenopausal (explicit reproductive
-status beats the age proxy; with no status set, the #494 life-stage fallback
-shows it for adolescents and adults). An explicit postmenopausal status (absent
-data) hides it, as does an unknown sex or age. The gate is cosmetic —
-`/medical/cycles` never hard-blocks.
+history with its bleeding length and is editable/deletable inline.
+
+The **quick action is for the common case; the form owns the exceptions**
+(#1681). With no period open the control shows the derived cycle state ("Day 6 ·
+Follicular") rather than an always-on start button — "Period started today" only
+returns once a plausible gap has elapsed since the last period ended, because a
+period ending and the next one starting are ~2–3 weeks apart and a tap in
+between would mint a back-to-back period that corrupts the start-to-start cycle
+lengths. In the same slot sits a one-tap **"Still bleeding"**, which reopens a
+period ended by mistake within a small recency window (it refuses an older one
+rather than silently merging two cycles). Every quick action answers from its
+write core's **typed outcome** — a tap that changes nothing says so, and never
+reports success.
+
+Cycle writes carry **plausibility guards** (#1682), all in one pure module so
+the form, the quick actions, and any future import path share them:
+
+- A period left open past a plausible maximum (~10 days) **stops resolving as
+  `menstrual`** — the forgotten "Period ended" tap no longer claims menses
+  forever through the phase, the Timeline chip, the derived Period situation, or
+  the phase-specific reference ranges. **Nothing is written**: the record stays
+  exactly as recorded and the surface prompts _"Still bleeding? Set the end
+  date."_ The app withdraws its own claim; only the user's tap edits the row.
+- A **too-long recorded period is stored, not refused** — prolonged bleeding is
+  real, and an app that can't record it can't record an emergency. It surfaces a
+  calm, dismissible coaching-tier finding ("N days of bleeding — worth
+  discussing with a clinician"), never a notification.
+- **Future dates are refused** on every path; arbitrarily old backfill stays
+  allowed, because people legitimately reconstruct history.
+- **Overlaps and a second simultaneously-open period are refused**, with the
+  conflicting period named in the message. No inferred repair — the user
+  resolves the conflict explicitly. Per-day
+  **cycle symptoms** (cramps, bloating, breast tenderness, mood swings, low back
+  pain) ride the SAME shipped symptom bar (#799/#815/#857) — a small `domain` tag
+  (illness/cycle/general) on the symptom vocabulary leads each mount with its
+  context's slugs, so the Cycle bar surfaces the menstrual symptoms first while
+  every symptom stays loggable; phase membership is derived by DATE, so a symptom
+  during a period during a cold belongs to both the illness episode and the cycle
+  phase, correct by construction (no second symptom store). The **cycle phase**
+  (menstrual/follicular/luteal) is DERIVED from the logged period history — one
+  pure computation shared by the Cycle page's "current phase" card and a
+  phase/period **chip on the Timeline day view** — and a **cycle-length +
+  variability** read (average/shortest/longest/spread, a regular-vs-irregular
+  verdict within a 7-day threshold, and a length trend chart) answers "is it
+  regular / changing." Deliberately **tracking, not forecasting**: the luteal
+  phase is only assigned retrospectively once the following period is logged, and
+  there is **no** next-period or ovulation prediction and **no**
+  fertility-awareness / basal-body-temperature features (that regulated tier is
+  out of scope). It also feeds cycle-phase-aware biomarker reference ranges (the
+  phase on a lab's collection date). Informational only, not medical advice or
+  diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
+  always keeps it visible — data wins, including for trans or unset-sex profiles —
+  else it shows for a female profile that is premenopausal (explicit reproductive
+  status beats the age proxy; with no status set, the #494 life-stage fallback
+  shows it for adolescents and adults). An explicit postmenopausal status (absent
+  data) hides it, as does an unknown sex or age. The gate is cosmetic —
+  `/medical/cycles` never hard-blocks.
 
 ## Mental health
 
@@ -1442,9 +1580,52 @@ logged), or **situational** — a lightweight, non-clinical context toggle
 (**Illness**, **Travel**, **High stress**, **Poor sleep**) you flip on the
 **Situations** bar; a situational supplement shows only while its situation is
 active, and an active **illness/injury condition** on your record suggests
-turning the matching situation on so you don't toggle it twice. Your own
-**mandatory / high / low** priority is the sort order — always your call, never
-re-ranked by the app.
+turning the matching situation on so you don't toggle it twice.
+
+Each item carries one thing you choose: its **obligation** — **Must**, **Should**,
+or **May** — and everything else follows from it.
+
+- **Must** — a miss is an incident. Reminders, plus a follow-up nudge if a dose
+  goes unconfirmed.
+- **Should** — a miss is a shortfall worth tracking. Reminders and adherence, but
+  never chased twice.
+- **May** — no expectation at all. It is never reminded and never counts as
+  missed; it stays on your list and one tap away in its usual slot. This is where
+  as-needed items live — a PRN painkiller and a magnesium you take when you feel
+  like it are the same shape, so they are the same setting.
+
+Marking something **May** does not hide it. It keeps its schedule as a _hint_ for
+where to offer it, it still shows on Supplements & Meds, and on Upcoming it moves
+into an "available when you want them" section rather than disappearing. If you
+only use the app through Telegram, the daily digest carries a **"Log other…"**
+button that opens into whatever is available right now — so a May item is always
+one tap away even though it never interrupts you.
+
+**Medications start as Must**, and moving one lower asks first, spelling out
+exactly what you would be giving up ("no reminders, no escalation, no missed-dose
+safety net"). Interaction, pharmacogenomic and upper-limit warnings ignore
+obligation entirely — they fire the same way whether an item is a Must or a May.
+
+The two nutrient totals treat a **May** item differently on purpose, and in each
+case the cautious direction wins. An **upper-limit** warning is about risk, so a
+May item counts at its full amount and the warning simply says it did ("including
+as-needed items") — your obligation setting can never make an exposure look
+smaller than it is. The **"% of the RDA" adequacy** note is reassurance, so the
+share counts only what you have committed to taking, and anything from as-needed
+items is named beside it rather than folded in. The nutrient still appears either
+way; nothing goes quiet because you asked not to be nudged.
+
+If a Must or Should supplement goes untaken for long enough, Supplements & Meds
+offers a calm **"move it to May?"** suggestion with the numbers behind it, and the
+same option appears as a third button on that item's own reminder — so it reaches
+you even if you never open the app. It is only ever a suggestion: nothing changes
+until you tap it, taking the supplement again makes it go away on its own, and the
+app never suggests moving anything _up_.
+
+Your daily digest and weekly recap lead with **what changed** rather than a bare
+fraction — "Missed: magnesium (3 days) · Resumed: vitamin D (2 days)" — covering
+only the things you have actually committed to. A quiet week says nothing at all;
+the taken/due count stays alongside as supporting detail.
 
 Supplements live under **Nutrition → Supplements**; medications have their own
 **Medications** surface. They intentionally share one intake model so dose
@@ -1490,6 +1671,51 @@ items instead of deleting them. If exactly one item remains, it can inherit the
 remaining count; several items return to untracked supply so the app never
 duplicates one physical count across multiple people. An unlinked bottle is
 retained as **No longer linked** until a user explicitly deletes it.
+
+## Global search and record Q&A
+
+**Cmd/Ctrl-K** (or the sidebar's Search button) opens one command palette over
+the **active profile's** data — never another profile you can reach. Typing
+does three things at once: it parses an inline quick log (`weight 82.5` commits a
+body-metrics entry on Enter, and `log sauna` commits a session for a practice you
+track), offers create **actions** (start a workout, add a result, add a document),
+and runs a debounced search across every record domain.
+Arrows and Enter walk one flat list; results are grouped by domain in a fixed
+order, best match first (exact beats prefix beats substring, ties broken by
+recency).
+
+Searchable domains: **biomarkers, imaging studies, genomic results, documents,
+conditions, allergies, procedures, immunizations, visits, appointments,
+providers, illness episodes, dental records, skin lesions, activities,
+supplements and medications, protocols, wellness practices, equipment, family
+history, care plan, care goals, goals** — plus every page, so the palette
+doubles as a jump-to-page bar. A hit is named exactly as its own page names it
+("MRI Left Knee", "Composite filling · #14"), carries the attribute that tells
+near-identical rows apart (a study's date, a lesion's side and size, a
+same-named provider's NPI), and lands on the most precise destination the row
+supports — the record's own page where one exists, otherwise the list surface
+that renders it. Some domains are entity-shaped rather than row-shaped: serial
+observations of one mole are a single result, as are the spellings of one
+practice, and a provider surfaces only when your own records name them (the
+registry itself is shared, and browsing all of it is the Providers directory's
+job). A few hits carry an inline action, so you can log a dose, mark a refill,
+or complete an appointment without leaving the palette.
+
+The inline quick log only recognizes practices you already track, and only
+behind a verb — `log sauna`, `did sauna` — so typing a practice name to find it
+stays a search. **Add document** answers to whichever word you have in mind
+(upload, scan, lab report, a photo of a result) and opens the same upload
+overlay the quick-actions menu opens, in place.
+
+**Ask about your records** answers a natural-language question — "when did I
+last take antibiotics?" — from those same rows and nothing else. The retrieval
+is deterministic and profile-scoped: the app picks the matching records, then the
+model may only narrate what it was handed, citing each row by number with a link.
+No matching record means an honest _Nothing found in your records_ rather than a
+guess, and with no AI configured the same retrieved rows are still listed as
+links. Retrieval matches the words your records actually contain (including the
+singular of a plural you typed), so naming the thing you are looking for works
+better than naming its category.
 
 ## Undo delete
 
@@ -1549,6 +1775,15 @@ a **Re-extract all documents** button in its header that previews the AI cost
 before running (e.g. "9 health records re-imported instantly, no AI · 5
 scans/PDFs — 5 AI extractions, 43 of 50 daily remaining"; an all–health-record
 run has no AI cost and skips the confirmation.
+
+An AI-extracted document also shows how many of its rows the extractor itself
+was unsure about — **"· N to check"** beside the produced count — and its detail
+view opens a **Check these first** card listing exactly those rows,
+lowest-confidence first with the extractor's short reason ("unit could be mg/dL
+or mmol/L"). It only decides what a human looks at first: every row is imported
+and editable either way, nothing is auto-accepted or auto-rejected, and a
+document with no such signal (a MyChart/FHIR import, or an upload extracted
+without an AI key) shows neither.
 
 ### Failures and duplicates
 
@@ -1660,9 +1895,16 @@ overlays for:
 - a dose;
 - an activity;
 - measurements including weight, body fat, blood pressure, glucose, oxygen,
-  temperature, sleep, HRV, and resting heart rate.
+  temperature, sleep, HRV, and resting heart rate;
+- a **wellness practice** — every practice you track, with this week's standing
+  and today's count, one tap from logging a session;
+- **a document** — the same upload form the Data page carries, including the
+  camera input, so a lab report or a photo of an after-visit summary can be
+  filed without leaving the page you were on.
 
-Saving closes the overlay and leaves the underlying page in place. Confirmation
+Saving closes the overlay and leaves the underlying page in place. Practice and
+food logging deliberately keep the overlay open — a session or a serving is
+rarely the only one — while an upload closes it. Confirmation
 dialogs render as bottom sheets on phones and centered dialogs on larger
 screens.
 

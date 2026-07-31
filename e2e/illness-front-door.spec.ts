@@ -77,7 +77,12 @@ test.describe("Illness front door (#843)", () => {
     // unified card stays (mood + illness coexist, #992) but its illness branch
     // now defers to the hero.
     await page.getByTestId("feeling-sick-activate").click();
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
+    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
+    // whose full-page re-render can exceed the 5s default on a loaded shard
+    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
+    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.getByTestId("feeling-sick-activate")).toHaveCount(0);
     await expect(front.getByTestId("mood-episode-note")).toBeVisible();
     await expect(page.getByTestId("symptom-logged-count")).toHaveCount(0);
@@ -174,7 +179,12 @@ test.describe("Illness front door (#843)", () => {
     // Entry point 2 — inline on the dashboard symptom card. Open the door first.
     await page.goto("/");
     await page.getByTestId("feeling-sick-activate").click();
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
+    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
+    // whose full-page re-render can exceed the 5s default on a loaded shard
+    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
+    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
+      timeout: 20_000,
+    });
     await page.getByTestId("illness-add-medication").click();
     const inline = page.getByTestId("illness-medication-quick-add");
     await expect(inline).toBeVisible();
@@ -202,7 +212,12 @@ test.describe("Illness front door (#843)", () => {
 
     // 1) Feeling sick? — one tap opens the full card.
     await page.getByTestId("feeling-sick-activate").click();
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
+    // Post-activate re-render ceiling: feeling-sick-activate fires a Server Action
+    // whose full-page re-render can exceed the 5s default on a loaded shard
+    // (recurring-failure census, docs/internals/e2e-hygiene.md). Not a sleep.
+    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
+      timeout: 20_000,
+    });
 
     // 2) Two symptoms at severities. Active-first layout (#857): add from the picker
     // (logs at severity 1), then raise.
@@ -227,7 +242,14 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("temp-quick-input").fill("102");
     await page.getByTestId("temp-quick-time").fill("07:00");
     await settledClick(page, page.getByTestId("temp-quick-save"));
-    await expect(page.getByTestId("temp-quick-entry")).toHaveCount(0);
+    // Post-save re-render ceiling (recurring-failure census, docs/internals/
+    // e2e-hygiene.md): the quick-entry panel only unmounts once the save action's
+    // full-page re-render lands, the same Server-Action latency class as the three
+    // post-activate waits above — it can outrun the 5 s default on a loaded shard.
+    // Not a sleep: this still fails if the panel never closes.
+    await expect(page.getByTestId("temp-quick-entry")).toHaveCount(0, {
+      timeout: 20_000,
+    });
 
     // 4) Quick-add ibuprofen right from the symptom card. Wait for the pick's resolver
     // prefill (#846) to COMMIT before submitting: it sets the OTC label defaults —

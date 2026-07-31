@@ -61,6 +61,8 @@ const PRIMARY_HOVER = /hover:bg-brand-700\b/;
 const DANGER_FILL = /(?<![\w:-])bg-rose-600\b/;
 const DANGER_HOVER = /hover:bg-rose-700\b/;
 const HAS_PADDING = /\bpx-/;
+const RETIRED_PRIMARY = /\bbtn-primary\b/;
+const RETIRED_SECONDARY = /\bbtn-secondary\b/;
 
 function isHandRolledButton(line: string): boolean {
   if (HAS_PADDING.test(line)) {
@@ -71,6 +73,34 @@ function isHandRolledButton(line: string): boolean {
 }
 
 describe("btn family guard (issue #794 cluster 2)", () => {
+  it("no component uses the retired btn-primary alias", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      text.split("\n").forEach((line, i) => {
+        if (RETIRED_PRIMARY.test(line)) offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(
+      offenders,
+      `Use .btn for primary actions; .btn-primary is not part of the ` +
+        `button family:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("no component uses the retired btn-secondary alias", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      text.split("\n").forEach((line, i) => {
+        if (RETIRED_SECONDARY.test(line)) offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(
+      offenders,
+      `Use .btn-ghost for secondary actions; .btn-secondary is not part of ` +
+        `the button family:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
   it("no component hand-rolls a bg-brand-600/bg-rose-600 action button", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {

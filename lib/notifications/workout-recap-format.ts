@@ -11,6 +11,7 @@
 //   • either alone still sends; both absent ⇒ no send.
 
 import type { NotificationMessage } from "./types";
+import { joinBody } from "./rich-text";
 import { formatRecapLine, type Recap } from "../session-recap";
 import { frequencyScopeLabel } from "../goals";
 
@@ -107,7 +108,12 @@ export function composeFinishNudge(
   if (!recapLine && !doseMessage) return null;
   if (doseMessage) {
     if (!recapLine) return doseMessage;
-    return { ...doseMessage, body: `${recapLine}\n\n${doseMessage.body}` };
+    // joinBody keeps a plain body plain and preserves the dose message's declared
+    // emphasis (#1720) when it has any — never stringifies runs into "[object Object]".
+    return {
+      ...doseMessage,
+      body: joinBody([recapLine, doseMessage.body], "\n\n"),
+    };
   }
   return {
     title: "🏋️ Workout complete",

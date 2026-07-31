@@ -6,6 +6,11 @@ import { db } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { setAllergyReactions } from "@/lib/allergy-write";
+import { encounterIdForProfile } from "@/lib/queries";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 import {
   ALLERGY_CRITICALITIES,
   ALLERGY_VERIFICATION_STATUSES,
@@ -90,6 +95,17 @@ export async function addAllergy(formData: FormData): Promise<FormResult> {
   const onsetRaw = String(formData.get("onset_date") ?? "").trim();
   const onset = isRealIsoDate(onsetRaw) ? onsetRaw : null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  // Attribution (#1526): the clinician who documented it, resolved through the shared
+  // GLOBAL registry via a create-on-type name, and the visit it was recorded at —
+  // validated against THIS profile, so a blank or forged id stores as "no link".
+  const providerId = resolveProviderIdByName(
+    String(formData.get("provider") ?? ""),
+    "individual"
+  );
+  const encounterId = encounterIdForProfile(
+    profile.id,
+    formData.get("encounter_id")
+  );
   // created_at from the CLOCK SEAM (sqlNow, #1534): with no explicit date this
   // stamp IS the record's Timeline day (`substr(created_at, 1, 10)` /
   // dateFromCreatedAt), compared against `today()`-derived bounds.
@@ -97,8 +113,8 @@ export async function addAllergy(formData: FormData): Promise<FormResult> {
     .prepare(
       `INSERT INTO allergies
        (substance, reaction, severity, status, criticality, verification_status,
-        onset_date, notes, source, profile_id, created_at)
-     VALUES (?,?,?,?,?,?,?,?,NULL,?,?)`
+        onset_date, notes, provider_id, encounter_id, source, profile_id, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?,?)`
     )
     .run(
       substance,
@@ -109,6 +125,8 @@ export async function addAllergy(formData: FormData): Promise<FormResult> {
       verification,
       onset,
       notes,
+      providerId,
+      encounterId,
       profile.id,
       sqlNow()
     );
@@ -144,12 +162,26 @@ export async function updateAllergy(formData: FormData): Promise<FormResult> {
   const onsetRaw = String(formData.get("onset_date") ?? "").trim();
   const onset = isRealIsoDate(onsetRaw) ? onsetRaw : null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  // Attribution (#1526). The provider resolves against what the form LOADED, so an
+  // untouched name never re-resolves (and never coins a duplicate registry row); the
+  // visit id is validated against the ROW's profile, so an edit on a member's allergy
+  // can only link that member's visits.
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
+    String(formData.get("provider") ?? ""),
+    "individual"
+  );
+  const encounterId = encounterIdForProfile(
+    profileId,
+    formData.get("encounter_id")
+  );
   const info = db
     .prepare(
       `UPDATE allergies
        SET substance = ?, reaction = ?, severity = ?, status = ?,
            criticality = ?, verification_status = ?,
-           onset_date = ?, notes = ?
+           onset_date = ?, notes = ?, provider_id = ?, encounter_id = ?
      WHERE id = ? AND profile_id = ?`
     )
     .run(
@@ -161,6 +193,8 @@ export async function updateAllergy(formData: FormData): Promise<FormResult> {
       verification,
       onset,
       notes,
+      providerId,
+      encounterId,
       id,
       profileId
     );

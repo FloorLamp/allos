@@ -13,7 +13,7 @@
 
 import { db, writeTx } from "@/lib/db";
 import { roundCoord } from "@/lib/home-location";
-import type { HourlyUvRow } from "./open-meteo";
+import type { DailyWeatherRow, HourlyUvRow } from "./open-meteo";
 import {
   classifyUpsert,
   emptyCounts,
@@ -151,5 +151,178 @@ export function getUvHoursForDay(
     shortwaveRadiation: num(r.shortwave_radiation),
     directRadiation: num(r.direct_radiation),
     diffuseRadiation: num(r.diffuse_radiation),
+  }));
+}
+
+// ---- The DAILY cache (issue #1726) ------------------------------------------------
+//
+// Same table family, same posture, one grain coarser: weather_days holds one row per
+// (coarse location, LOCAL date) with the daily aggregates the derived-situation
+// predicates, the day/session stamps, and the outdoor-viability scan read. Global and
+// location-keyed for the same reason the hourly cache is (migration 129's rationale),
+// so nothing here filters by profile_id.
+
+// A cached day as read back by the predicate/stamp layers.
+export interface CachedWeatherDay {
+  date: string;
+  tempMaxC: number | null;
+  tempMinC: number | null;
+  pressureMslHpa: number | null;
+  precipitationMm: number | null;
+  weatherCode: number | null;
+  uvIndexMax: number | null;
+  aqi: number | null;
+  pollenTree: number | null;
+  pollenGrass: number | null;
+  pollenWeed: number | null;
+}
+
+// The measurement columns, in one list, so the upsert's compare/insert and the read's
+// projection can never drift apart.
+const DAY_COLUMNS = [
+  "temp_max_c",
+  "temp_min_c",
+  "pressure_msl_hpa",
+  "precipitation_mm",
+  "weather_code",
+  "uv_index_max",
+  "aqi",
+  "pollen_tree",
+  "pollen_grass",
+  "pollen_weed",
+] as const;
+
+type DayColumn = (typeof DAY_COLUMNS)[number];
+
+// A fetched row's value for a storage column — the ONE mapping between the provider
+// shape and the table shape.
+function dayValue(r: DailyWeatherRow, column: DayColumn): number | null {
+  switch (column) {
+    case "temp_max_c":
+      return r.tempMaxC;
+    case "temp_min_c":
+      return r.tempMinC;
+    case "pressure_msl_hpa":
+      return r.pressureMslHpa;
+    case "precipitation_mm":
+      return r.precipitationMm;
+    case "weather_code":
+      return r.weatherCode;
+    case "uv_index_max":
+      return r.uvIndexMax;
+    case "aqi":
+      return r.aqi;
+    case "pollen_tree":
+      return r.pollenTree;
+    case "pollen_grass":
+      return r.pollenGrass;
+    case "pollen_weed":
+      return r.pollenWeed;
+  }
+}
+
+// Upsert the fetched daily series for a coarse location, keyed on (lat, lng, date).
+// Idempotent exactly as the hourly upsert is: same values ⇒ `unchanged`, changed value
+// ⇒ `updated`, new day ⇒ `inserted`.
+//
+// PARTIAL-FETCH SAFETY (the load-bearing difference from the hourly upsert): the row is
+// assembled from TWO independent endpoints, so a fetch that returned weather but not
+// air quality carries nulls for AQI/pollen. Writing those nulls would ERASE a
+// previously-cached pollen reading — a re-fetch destroying data it simply didn't ask
+// for. So each column is COALESCEd: a null in the incoming row leaves the stored value
+// alone, and only a real reading ever overwrites. A day whose incoming values are all
+// null-or-equal is therefore `unchanged`, not a destructive `updated`.
+//
+// As with the hourly cache there are no manually-entered rows here (provider-only,
+// derived public weather), so the never-overwrite-a-manual-edit invariant is satisfied
+// by there being no manual rows to protect.
+export function upsertWeatherDays(
+  lat: number,
+  lng: number,
+  rows: readonly DailyWeatherRow[],
+  source: string
+): UpsertCounts {
+  const la = roundCoord(lat);
+  const ln = roundCoord(lng);
+  const counts = emptyCounts();
+  if (rows.length === 0) return counts;
+
+  const sel = db.prepare(
+    `SELECT ${DAY_COLUMNS.join(", ")}
+       FROM weather_days
+      WHERE lat = ? AND lng = ? AND date = ?`
+  );
+  const ins = db.prepare(
+    `INSERT INTO weather_days (lat, lng, date, ${DAY_COLUMNS.join(", ")}, source, fetched_at)
+     VALUES (?, ?, ?, ${DAY_COLUMNS.map(() => "?").join(", ")}, ?, datetime('now'))
+     ON CONFLICT(lat, lng, date) DO UPDATE SET
+       ${DAY_COLUMNS.map((c) => `${c} = COALESCE(excluded.${c}, ${c})`).join(",\n       ")},
+       source = excluded.source,
+       fetched_at = excluded.fetched_at`
+  );
+
+  writeTx(() => {
+    for (const r of rows) {
+      const pre = sel.get(la, ln, r.date) as
+        Record<DayColumn, number | null> | undefined;
+      const hadRow = pre !== undefined;
+      // Unchanged when every incoming value is either absent (COALESCE would keep the
+      // stored one) or equal to what is stored.
+      const valuesEqual =
+        hadRow &&
+        DAY_COLUMNS.every((c) => {
+          const next = dayValue(r, c);
+          return next == null || eq(num(pre![c]), next);
+        });
+      const disposition = classifyUpsert(hadRow, valuesEqual);
+      if (disposition !== "unchanged") {
+        ins.run(
+          la,
+          ln,
+          r.date,
+          ...DAY_COLUMNS.map((c) => dayValue(r, c)),
+          source
+        );
+      }
+      tallyUpsert(counts, disposition);
+    }
+  });
+  return counts;
+}
+
+// The cached daily series for a coarse location over an INCLUSIVE local-date range,
+// ordered by date. Empty when nothing is cached (every predicate then has no data and
+// stays silent). Global read — no profile filter.
+export function getWeatherDays(
+  lat: number,
+  lng: number,
+  startDate: string,
+  endDate: string
+): CachedWeatherDay[] {
+  const la = roundCoord(lat);
+  const ln = roundCoord(lng);
+  const rows = db
+    .prepare(
+      `SELECT date, ${DAY_COLUMNS.join(", ")}
+         FROM weather_days
+        WHERE lat = ? AND lng = ? AND date >= ? AND date <= ?
+        ORDER BY date`
+    )
+    .all(la, ln, startDate, endDate) as ({ date: string } & Record<
+    DayColumn,
+    number | null
+  >)[];
+  return rows.map((r) => ({
+    date: r.date,
+    tempMaxC: num(r.temp_max_c),
+    tempMinC: num(r.temp_min_c),
+    pressureMslHpa: num(r.pressure_msl_hpa),
+    precipitationMm: num(r.precipitation_mm),
+    weatherCode: num(r.weather_code),
+    uvIndexMax: num(r.uv_index_max),
+    aqi: num(r.aqi),
+    pollenTree: num(r.pollen_tree),
+    pollenGrass: num(r.pollen_grass),
+    pollenWeed: num(r.pollen_weed),
   }));
 }

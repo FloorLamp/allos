@@ -196,7 +196,7 @@ export function isPoolVisibleTo(
 }
 
 // The label on those cabinet doors (#1522 part C). With bottles to count, the count IS
-// the useful part ("3 shared bottles →") and doubles as the discoverability cue the
+// the useful part ("3 shared bottles") and doubles as the discoverability cue the
 // cabinet never had. With none, the link keeps its NAME — "Medicine cabinet", the name
 // deliberately retained once it stopped being a nav sibling of "Medications" — so an
 // empty household still learns the surface exists rather than reading "0 shared

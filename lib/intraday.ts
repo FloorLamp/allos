@@ -143,6 +143,18 @@ export interface IntradayTick {
   tone: NonNullable<TimelineEvent["tone"]>;
 }
 
+// Categories the tick rail deliberately DROPS.
+//
+// `insight` (#1512 C): an AI insight is timestamped by the generation job's
+// `created_at` (lib/timeline.ts), so it lands on the rail at whatever minute the
+// job happened to run and clusters at whatever hour the tick fires. That minute
+// says nothing about the person's day — it plots a MACHINE event beside
+// physiological ones. The feed list below still shows the insight; the chart is a
+// map of the day, not of the app's activity. Do not "helpfully" restore it.
+const EXCLUDED_TICK_CATEGORIES: ReadonlySet<TimelineCategory> = new Set([
+  "insight",
+]);
+
 export interface IntradayModel {
   date: string;
   minutesInDay: number;
@@ -342,14 +354,17 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   }
   workouts.sort((a, b) => a.startMinute - b.startMinute);
 
-  // The tick rail: EVERY feed event that carries a clock time and isn't already
-  // drawn as a block. Events the feed shows with a day granularity only (a weigh-in,
-  // a grouped lab panel, the day's dose roll-up) carry no clock time and therefore
-  // contribute no tick — the layer is data-gated like every other one, and the rail
-  // can never show something the list below doesn't.
+  // The tick rail: EVERY feed event that carries a clock time, isn't already drawn
+  // as a block, and isn't in EXCLUDED_TICK_CATEGORIES (see that constant — the
+  // exclusion is a decision, not an oversight). Events the feed shows with a day
+  // granularity only (a weigh-in, a grouped lab panel, the day's dose roll-up)
+  // carry no clock time and therefore contribute no tick — the layer is data-gated
+  // like every other one, and the rail can never show something the list below
+  // doesn't.
   const ticks: IntradayTick[] = [];
   for (const event of input.events) {
     if (blockEventIds.has(event.id)) continue;
+    if (EXCLUDED_TICK_CATEGORIES.has(event.category)) continue;
     const minute = clockMinute(event.sortTime);
     if (minute == null) continue;
     ticks.push({

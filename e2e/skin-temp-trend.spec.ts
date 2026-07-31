@@ -22,11 +22,8 @@ test.describe("Skin temperature variation trend", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/trends?tab=body&view=all");
-      await expect(member.getByRole("tab", { name: "Body" })).toHaveAttribute(
-        "aria-selected",
-        "true"
-      );
+      await member.goto("/trends?view=all");
+      await expect(member.getByTestId("trends-section-body")).toBeVisible();
 
       const card = member.getByTestId("vitals-skin-temp");
       await expect(card).toBeVisible();
@@ -45,7 +42,7 @@ test.describe("Skin temperature variation trend", () => {
       // the DEFAULT on mobile — so a metric registered only as a chart would be
       // invisible on a phone. Assert the tile too, or the responsive pair can drift.
       await member.setViewportSize({ width: 390, height: 844 });
-      await member.goto("/trends?tab=body&view=tiles");
+      await member.goto("/trends?view=tiles");
       const tile = member.getByTestId("body-tile-skin-temp");
       await expect(tile).toBeVisible();
       await expect(tile.getByText("Skin Temp", { exact: true })).toBeVisible();
@@ -62,8 +59,8 @@ test.describe("Skin temperature variation trend", () => {
     // The default seeded profile has vitals but no skin_temp_delta_c samples — no
     // other fixture writes that metric — so the card is data-gated off while the rest
     // of the Body tab still renders.
-    await page.goto("/trends?tab=body&view=all");
-    await expect(page.getByRole("tab", { name: "Body" })).toBeVisible();
+    await page.goto("/trends?view=all");
+    await expect(page.getByTestId("trends-section-body")).toBeVisible();
     await expect(
       page.getByRole("main").getByTestId("vitals-skin-temp")
     ).toHaveCount(0);

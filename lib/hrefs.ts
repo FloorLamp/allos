@@ -217,6 +217,7 @@ const INTEGRATION_DETAIL_ROUTES: Partial<Record<IntegrationId, AppRoute>> = {
   weather: "/integrations/weather",
   "calendar-feed": "/integrations/calendar-feed",
   "fitbit-takeout": "/integrations/fitbit-takeout",
+  "patient-portals": "/integrations/patient-portals",
 };
 
 export function integrationDetailHref(id: IntegrationId): AppRoute | null {
@@ -275,6 +276,20 @@ export function medicationHref(id: number): AppRoute {
 export function medicationEditHref(id: number): AppRoute {
   return `${medicationHref(id)}?action=edit` as AppRoute;
 }
+
+// An equipment registry detail page (#343) — the gear's usage history. Used as DATA
+// (a search hit's typed destination, #1595), where a bare literal cannot carry the
+// dynamic-route widening cast a `<Link href>` gets for free.
+export function equipmentHref(id: number): AppRoute {
+  const href: Route<`/equipment/${number}`> = `/equipment/${id}`;
+  return href as AppRoute;
+}
+
+// Where wellness PRACTICES live — the same address the Upcoming `practice:<id>` item
+// and the search hit already point at. The ONE encoding of that seam (#285's
+// rule-carrying link), so the practice nudge's deep link (#1718) can't drift from the
+// item it is the push twin of.
+export const PRACTICES_HREF: AppRoute = "/wellness";
 
 // A protocol (training/care protocol) detail page.
 export function protocolHref(id: number): AppRoute {

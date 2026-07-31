@@ -1,12 +1,21 @@
-import { db } from "@/lib/db";
-import type { IntegrationSyncEvent } from "@/lib/types";
+import { db, today } from "@/lib/db";
+import type { IntegrationId, IntegrationSyncEvent } from "@/lib/types";
+import {
+  staleSyncs,
+  staleSyncDetail,
+  syncStalenessThreshold,
+  isStaleSyncEvent,
+  STALE_SYNC_EVENT_ID,
+  type SyncFreshness,
+} from "@/lib/integrations/staleness";
+import type { AttentionIntegration } from "@/lib/attention";
 import {
   currentlyFailingProviders,
   shouldShowConnectedSource,
   type ProvenanceTable,
 } from "@/lib/integrations/sync-log";
 import { timelineDayHref, biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
-import { INTEGRATIONS } from "@/lib/integrations/registry";
+import { INTEGRATIONS, getIntegration } from "@/lib/integrations/registry";
 import {
   getConnection,
   isHealthConnectTokenExpired,
@@ -150,6 +159,71 @@ function expiredHealthConnectIssue(
       "Health Connect token expired — mint a new token on Integrations → Google Health Connect and update the phone exporter.",
     created_at: conn?.updated_at ?? new Date().toISOString(),
   };
+}
+
+// The profile's CONNECTED providers reduced to the freshness facts the pure staleness
+// derivation needs (#1685). Only `connected` rows are considered: a `needs_reauth` one is
+// already represented by its own reauth signal (and by the ok:0 event that flipped it),
+// and a `disconnected` one is off on purpose. `alreadyFailing` carries the providers the
+// failure detector is currently reporting so the pure layer can enforce the
+// no-double-report rule in one place. Profile-scoped: the connection read and every
+// last-success read filter by profile_id.
+function syncFreshness(
+  profileId: number,
+  failingProviders: ReadonlySet<string>
+): SyncFreshness[] {
+  const rows = db
+    .prepare(
+      `SELECT provider FROM integration_connections
+        WHERE profile_id = ? AND status = 'connected'`
+    )
+    .all(profileId) as { provider: string }[];
+  return rows.map((r) => ({
+    provider: r.provider,
+    lastSuccessAt: getLastSuccessfulSyncAt(profileId, r.provider),
+    thresholdDays: syncStalenessThreshold(
+      getIntegration(r.provider as IntegrationId)
+    ),
+    alreadyFailing: failingProviders.has(r.provider),
+  }));
+}
+
+// Synthetic failing sync events for connections that have gone QUIET (#1685) — a
+// connection sitting at `connected` whose last successful sync is older than its
+// provider's registry threshold. Shaped as IntegrationSyncEvents for the same reason the
+// expired-token issue is: everything downstream of getImportIssues (the profile-menu
+// badge, the Data → Review count and Issues list, the attention item, and now the digest)
+// already reads that one list, so the staleness signal reaches every surface without any
+// of them growing a second source. `at` is the last successful sync — the moment the data
+// stopped — so the row sorts and reads honestly next to real events.
+function staleSyncIssues(
+  profileId: number,
+  failingProviders: ReadonlySet<string>
+): IntegrationSyncEvent[] {
+  const td = today(profileId);
+  return staleSyncs(syncFreshness(profileId, failingProviders), td).map((s) => {
+    const def = getIntegration(s.provider as IntegrationId);
+    return {
+      id: STALE_SYNC_EVENT_ID,
+      profile_id: profileId,
+      provider: s.provider,
+      at: s.since,
+      ok: 0,
+      window_start: null,
+      window_end: null,
+      received: null,
+      written: null,
+      inserted: null,
+      updated: null,
+      unchanged: null,
+      suppressed: null,
+      edited: null,
+      skipped: null,
+      raw_ref: null,
+      error: staleSyncDetail(def?.name ?? s.provider, s),
+      created_at: s.since,
+    };
+  });
 }
 
 // ── Duplicate/conflict detection + durable decisions (issue #10, Phase 2) ──────
@@ -369,7 +443,38 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
     const expired = expiredHealthConnectIssue(profileId);
     if (expired) failing.push(expired);
   }
+  // Fold in the silent-stop signal (#1685). Every provider already represented above is
+  // excluded, so a broken connection is reported ONCE: a reauth prompt names the cause,
+  // and a staleness line naming the symptom underneath it would be noise the user has to
+  // reconcile. The exclusion set is built from what this function is about to return, so
+  // it can never drift from the failure list.
+  const represented = new Set(failing.map((e) => e.provider));
+  failing.push(...staleSyncIssues(profileId, represented));
   return failing;
+}
+
+// The profile's broken providers reduced to what the shared attention model renders —
+// one entry per currently-broken provider, tagged with WHICH kind of broken it is so the
+// item can pick its copy (#1685).
+//
+// It lives here, next to getImportIssues, rather than in lib/queries/attention.ts because
+// two unrelated readers need it: the attention model (dashboard hero + Upcoming page) and
+// the morning digest gather. Keeping it in the attention module would have made
+// lib/notifications/digest-data.ts import lib/queries/attention.ts, which already imports
+// digest-data for the newly-flagged-biomarker read — a cycle. One home, no cycle, and the
+// badge/page/digest provably read the same list.
+export function getIntegrationAttention(
+  profileId: number
+): AttentionIntegration[] {
+  return getImportIssues(profileId).map((ev) => {
+    const integration = getIntegration(ev.provider as IntegrationId);
+    return {
+      id: integration?.id ?? null,
+      provider: integration?.name ?? ev.provider,
+      detail: ev.error ?? "Reconnect to resume syncing.",
+      kind: isStaleSyncEvent(ev) ? ("stale" as const) : ("failing" as const),
+    };
+  });
 }
 
 // The single most recent event (any outcome) for a provider, or null — the grid

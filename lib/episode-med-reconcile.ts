@@ -22,7 +22,7 @@ export interface EpisodeRange {
 export interface EpisodeMedInput {
   itemId: number;
   name: string;
-  asNeeded: boolean; // as_needed === 1 (PRN)
+  asNeeded: boolean; // obligation === "may" — the PRN shape (#1505)
   rx: boolean; // rx === 1 (prescription); OTC = false (#851 rx flag)
   hasOpenCourse: boolean; // currently active/open — only open meds are stop candidates
   createdOn: string; // the med's created_at DATE (YYYY-MM-DD)

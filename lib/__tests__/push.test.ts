@@ -150,11 +150,22 @@ describe("push-core: isPushDeliverableKind (#692)", () => {
     expect(isPushDeliverableKind("food")).toBe(false);
   });
 
+  // #1718: the mood check-in is the food nudge's exact sibling — its whole content is
+  // "One tap logs your day" plus five face buttons Web Push strips, and it carried no
+  // url action, so the push was an instruction to tap nothing.
+  it("declines the interaction-only mood check-in for the same reason", () => {
+    expect(isPushDeliverableKind("mood")).toBe(false);
+  });
+
   it("allows content-bearing kinds and an unset kind", () => {
     expect(isPushDeliverableKind("dose")).toBe(true);
     expect(isPushDeliverableKind("refill")).toBe(true);
     expect(isPushDeliverableKind("digest")).toBe(true);
     expect(isPushDeliverableKind(undefined)).toBe(true);
+    // The practice nudge stays deliverable BECAUSE it took the other road (#1718):
+    // it carries a url action and copy that names no affordance push strips.
+    expect(isPushDeliverableKind("practice")).toBe(true);
+    expect(isPushDeliverableKind("workout-stale")).toBe(true);
   });
 });
 

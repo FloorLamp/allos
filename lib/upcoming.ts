@@ -56,6 +56,11 @@ export function snoozeUntil(today: string, days: number): string | null {
 // their own "Flagged" / "For review" groupings rather than in the date bands.
 export type UpcomingDomain =
   | "dose"
+  // A `may` item ON OFFER today (#1505) — availability, not work. It carries no due
+  // date and no band, never counts toward the hero/aggregate headline, and renders
+  // ONLY inside Upcoming's collapsed "available" disclosure. It exists so demoting an
+  // item reads as a visible move into a quieter section rather than a disappearance.
+  | "available"
   | "prn-max"
   | "refill"
   | "dietary-limit"
@@ -74,6 +79,13 @@ export type UpcomingDomain =
   // An active ototoxic medication (#717) — a calm, cited, informational hearing-safety
   // note. Care-tier, like the interaction/PGx/dental med-safety notes.
   | "ototoxic"
+  // An active medication or supplement composed with today's CONDITIONS (#1727) — a
+  // photosensitizer on a high-UV day, a heat-risk med during a heatwave. Care-tier,
+  // like the other curated med-safety notes; informational, never prescriptive, and
+  // obligation-blind (#1505) — the sun does not care how often you take something.
+  // Distinct from `uv-exposure`, which is about a DOSE already received: this is about
+  // a property of the day and the stack together.
+  | "weather-med"
   | "appointment"
   | "visit"
   | "screening"
@@ -105,11 +117,22 @@ export type UpcomingDomain =
   | "uv-exposure"
   | "biomarker-flag"
   | "integration"
+  // An open PORTAL SYNC REQUEST (#1757): "run the portal tool on the computer with
+  // Mom's login". A date-scheduled item — its due date is the request's EXPIRY, which
+  // is the only deadline it has — and COACHING tier: calm, dismissible, on this page
+  // and in the digest line this page's grouping already produces, and deliberately
+  // never on the non-hideable "Needs attention" hero (see cardBandForItem).
+  | "portal-sync"
   | "review";
 
 // Stable within-band ordering when two items share an effective due date.
 const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   dose: 0,
+  // Availability sorts LAST of everything (#1505): it is not work, and a `may` item
+  // must never appear above something the user actually owes. In practice the
+  // Upcoming page renders these in their own disclosure, so this rank only matters if
+  // some future surface bands them together — and then last is the right answer.
+  available: 99,
   // A PRN over-max is safety-adjacent — sort it just after scheduled doses, ahead of
   // the calm informational findings (#798).
   "prn-max": 0.5,
@@ -137,6 +160,10 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // A same-day UV overexposure heads-up (#1172) — a care-tier informational note,
   // grouped with the other med-safety/care notes ahead of the scheduling domains.
   "uv-exposure": 5.7,
+  // A med × conditions note (#1727) — the same care-tier informational band, just
+  // after the UV note it composes with, so on a day both fire the dose-based warning
+  // reads first and this reads as the standing property it is.
+  "weather-med": 5.8,
   appointment: 6,
   careplan: 7,
   visit: 8,
@@ -164,8 +191,20 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // flag leads, then a broken sync, then the housekeeping review count.
   "biomarker-flag": 14,
   integration: 15,
+  // A portal sync request (#1757) sorts with the other data-plumbing signals, after a
+  // broken sync (a dead connection is a fact; a request is an ask) and before the
+  // housekeeping review count. It DOES carry a due date, so this rank only breaks ties
+  // inside its band.
+  "portal-sync": 15.5,
   review: 16,
 };
+
+// Every UpcomingDomain, at RUNTIME. Derived from DOMAIN_ORDER, which the type system
+// already forces to be exhaustive, so a newly added domain appears here the moment it
+// is given a rank. That is what lets the #1504 rollup-scope test enumerate the domains
+// and require each one to CHOOSE whether it folds — a domain can neither drift into a
+// rollup nor silently stay out of the census.
+export const UPCOMING_DOMAINS = Object.keys(DOMAIN_ORDER) as UpcomingDomain[];
 
 // The viewer's display units for measurement-carrying item strings (#1019 — the
 // display-unit policy): a WEB boundary (the Upcoming page, the dashboard hero)

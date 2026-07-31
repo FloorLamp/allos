@@ -18,6 +18,7 @@
 // critical signal must not be softened into a convenience digest (§4 of the issue).
 
 import type { NotificationAction, NotificationMessage } from "./types";
+import type { AppRoute } from "../hrefs";
 import { householdDoseCallback } from "./callback-data";
 
 // One member's due-unconfirmed doses for the round. `name` arrives ALREADY
@@ -77,16 +78,23 @@ export function renderHouseholdRoundMessage(input: {
   receiverProfileId: number;
   sections: readonly HouseholdRoundSection[];
   base: string;
-  householdHref: string;
+  householdHref: AppRoute;
 }): NotificationMessage | null {
   const sections = input.sections.filter((s) => s.doses.length > 0);
   if (sections.length === 0) return null;
 
+  // DATE HONESTY (#1719 §3). Per-member `today` means a round's sections can
+  // legitimately span two calendar dates in a mixed-timezone household — and the body
+  // never said so, leaving a caregiver unable to tell which "today" a section means.
+  // The date rides the section header ONLY when the sections actually disagree, so the
+  // overwhelmingly common single-timezone round is unchanged.
+  const spansDates = new Set(sections.map((s) => s.date)).size > 1;
   const body = sections
     .map((s) =>
-      [`${s.name}:`, ...s.doses.map((d) => `• ${householdDoseLabel(d)}`)].join(
-        "\n"
-      )
+      [
+        spansDates ? `${s.name} — ${sectionDateLabel(s.date)}:` : `${s.name}:`,
+        ...s.doses.map((d) => `• ${householdDoseLabel(d)}`),
+      ].join("\n")
     )
     .join("\n\n");
 
@@ -94,10 +102,19 @@ export function renderHouseholdRoundMessage(input: {
   const memberNoun = sections.length === 1 ? "member" : "members";
   const title = `💊 Household doses — ${total} due across ${sections.length} ${memberNoun}`;
 
+  // Under the cap the round carries its confirm buttons — and, since #1718, the deep
+  // link ALONGSIDE them. Web Push and Home Assistant strip the buttons, so those
+  // copies used to arrive naming members and items with no way to confirm or even
+  // open the page; the over-cap path already degraded to exactly this link. A
+  // url-bearing action also becomes the push notification's click-through target
+  // (pushClickThroughUrl), so the push finally opens where it should.
   const actions =
     total > HOUSEHOLD_ROUND_MAX_BUTTONS
       ? overflowActions(input.base, input.householdHref)
-      : confirmActions(input.receiverProfileId, sections);
+      : [
+          ...confirmActions(input.receiverProfileId, sections),
+          ...overflowActions(input.base, input.householdHref),
+        ];
 
   return {
     title,
@@ -105,6 +122,16 @@ export function renderHouseholdRoundMessage(input: {
     ...(actions.length > 0 ? { actions } : {}),
     kind: "dose",
   };
+}
+
+// "Tue 29" — a short weekday+day stamp for a section header, used only when a round's
+// members disagree about what day it is. Deliberately terse (the header is a label,
+// not a date field) and locale-free, so the pure formatter needs no display prefs.
+const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function sectionDateLabel(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return date;
+  return `${WEEKDAYS_SHORT[d.getUTCDay()]} ${d.getUTCDate()}`;
 }
 
 // Per-dose confirm buttons, grouped one row per MEMBER (`row` keys by profile id, so
@@ -139,7 +166,7 @@ function confirmActions(
 // ONE low-risk state change; twelve-plus taps is a page, not a message).
 function overflowActions(
   base: string,
-  householdHref: string
+  householdHref: AppRoute
 ): NotificationAction[] {
   if (!base) return [];
   return [{ label: "Open Household →", url: `${base}${householdHref}` }];

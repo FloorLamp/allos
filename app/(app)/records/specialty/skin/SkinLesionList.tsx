@@ -8,6 +8,7 @@ import NotesText from "@/components/NotesText";
 import FilterPills from "@/components/FilterPills";
 import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
+import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -22,7 +23,10 @@ import {
   SKIN_LESION_STATUSES,
   type SkinLesionStatus,
 } from "@/lib/skin-lesion";
-import type { SkinLesionFollowUpSummary } from "@/lib/queries";
+import type {
+  LinkedEncounterRef,
+  SkinLesionFollowUpSummary,
+} from "@/lib/queries";
 import type { SkinLesion } from "@/lib/types";
 import type { LesionPhotoRow } from "@/lib/skin-photo-write";
 
@@ -48,9 +52,11 @@ function StatusBadge({ status }: { status: string }) {
 function LesionRecordRow({
   record,
   followUp,
+  checkedAt,
 }: {
   record: SkinLesion;
   followUp?: SkinLesionFollowUpSummary;
+  checkedAt?: LinkedEncounterRef;
 }) {
   const fmt = useFormatPrefs();
   const [editing, setEditing] = useState(false);
@@ -113,6 +119,16 @@ function LesionRecordRow({
           className="text-xs text-slate-500 dark:text-slate-400"
         />
       ) : null}
+      {/* "Checked at: <visit>" (#1526) — the visit whose dermatologist produced this
+          record's finding, deep-linked. Absent pillar: nothing renders for an unlinked
+          observation (a self-photograph between appointments). */}
+      {checkedAt ? (
+        <RecordEncounterLink
+          label="Checked at"
+          encounter={checkedAt}
+          testid={`lesion-visit-${record.id}`}
+        />
+      ) : null}
       <RecordProvenance
         source={record.source}
         documentId={record.document_id}
@@ -151,10 +167,13 @@ export default function SkinLesionList({
   items,
   followUps = [],
   photos = [],
+  checkedAt = {},
 }: {
   items: SkinLesion[];
   followUps?: SkinLesionFollowUpSummary[];
   photos?: LesionPhotoRow[];
+  // Lesion id → the visit it was checked at (#1526), gathered once by the section.
+  checkedAt?: Record<number, LinkedEncounterRef>;
 }) {
   const [status, setStatus] = useState<SkinLesionStatus | "">("");
 
@@ -247,6 +266,7 @@ export default function SkinLesionList({
                     key={r.id}
                     record={r}
                     followUp={followUpByRecord.get(r.id)}
+                    checkedAt={checkedAt[r.id]}
                   />
                 ))}
               </div>

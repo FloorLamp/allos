@@ -11,6 +11,12 @@
 // parser nodes (lib/cda.ts, lib/fhir.ts) — that's where the reason is knowable —
 // and feeds these structures.
 
+import {
+  mergeConfidenceSummaries,
+  parseConfidenceSummary,
+  type ExtractionConfidenceSummary,
+} from "./extraction-confidence";
+
 // Why a candidate reading didn't make it into the imported set. A closed enum so
 // the UI can group + label consistently and a stored report stays stable.
 export type DropReason =
@@ -141,6 +147,15 @@ export interface ImportReport {
   // Source-text reconciliation for an AI-extracted PDF (this branch). Absent for CCD
   // reports, non-PDF sources, and reports stored before this field.
   reconciliation?: ReconciliationSummary | null;
+  // Per-record extraction confidence (#1601): how the model's own certainty split
+  // across this document's rows, plus the rows it hedged on, lowest first. THIS is
+  // where confidence is persisted — on the document's report, beside the other
+  // review signals — so no per-row schema column is involved and the signal lives
+  // and dies with the document it describes (a reassign moves it, a delete removes
+  // it, a reprocess rewrites it). Null/absent for every path with no model answer:
+  // a deterministic CCD/FHIR import, an offline/keyless extraction, and any document
+  // imported before this field existed. See lib/extraction-confidence.ts.
+  confidence?: ExtractionConfidenceSummary | null;
 }
 
 export function emptyReport(): ImportReport {
@@ -445,6 +460,9 @@ export function mergeReports(
     // present one through rather than trying to combine across documents.
     reconciliation:
       present.find((r) => r.reconciliation)?.reconciliation ?? null,
+    // Confidence DOES combine: counts add and the flag lists concatenate + re-rank,
+    // so a merged package can't silently lose one document's hedged rows.
+    confidence: mergeConfidenceSummaries(present.map((r) => r.confidence)),
   };
 }
 
@@ -497,6 +515,10 @@ export function parseImportReport(raw: string | null): ImportReport | null {
       unmappedLoincs,
       unresolvedNames,
       reconciliation,
+      // Per-record confidence (#1601). Its own tolerant parser: a legacy report has
+      // no such key, and a garbled one must degrade to "no signal" rather than break
+      // the review surfaces the rest of this report feeds.
+      confidence: parseConfidenceSummary(obj.confidence),
     };
   } catch {
     return null;

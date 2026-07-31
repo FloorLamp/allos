@@ -29,8 +29,8 @@ function item(profileId: number, name: string, qty: number | null): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-         VALUES (?, ?, 1, 'medication', 'daily', 'high', ?, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, ?, 1, 'medication', 'daily', 'should', ?, 1)`
       )
       .run(profileId, name, qty).lastInsertRowid
   );
@@ -193,6 +193,11 @@ describe("link / unlink gate on the ITEM's own profile", () => {
     expect(res.ok).toBe(true);
     const supplyId = supplyIdOf(a);
     expect(supplyId).not.toBe(null);
+    expect(res.supply).toEqual({
+      id: supplyId,
+      name: `From item ${t}`,
+      strength: null,
+    });
     // The count moved INTO the pool, one-way — the item keeps no second copy.
     expect(getSharedSupply(supplyId as number)?.quantity_on_hand).toBe(90);
     expect(itemQty(a)).toBe(null);
@@ -249,11 +254,19 @@ describe("link / unlink gate on the ITEM's own profile", () => {
     actAs(admin, p);
     const supplyId = newPool(`Unlink ${t}`, 25);
     const a = item(p.id, `Med ${t}`, 7);
-    expect(
-      (await linkItemAction(fd({ item_id: a, supply_id: supplyId }))).ok
-    ).toBe(true);
+    const linked = await linkItemAction(
+      fd({ item_id: a, supply_id: supplyId })
+    );
+    expect(linked.ok).toBe(true);
+    expect(linked.supply).toEqual({
+      id: supplyId,
+      name: `Unlink ${t}`,
+      strength: null,
+    });
     expect(itemQty(a)).toBe(null);
-    expect((await unlinkItemAction(fd({ item_id: a }))).ok).toBe(true);
+    const unlinked = await unlinkItemAction(fd({ item_id: a }));
+    expect(unlinked.ok).toBe(true);
+    expect(unlinked.supply).toBe(null);
     expect(supplyIdOf(a)).toBe(null);
     // The bottle didn't move to the item, so it stays untracked — and the pool keeps
     // its count, now orphaned rather than destroyed.

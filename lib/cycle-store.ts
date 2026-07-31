@@ -53,7 +53,9 @@ export function listCyclePeriods(profileId: number): CyclePeriod[] {
 }
 
 // The current OPEN period (period_end IS NULL), most-recently started, or null — the
-// "period ended" one-tap target and the "already logging a period" guard.
+// "period ended" one-tap target. The pure equivalent over an already-read history is
+// openPeriodIn (lib/cycle-plausibility), which the multi-check cores use so one read
+// answers every guard.
 export function getOpenPeriod(profileId: number): CyclePeriod | null {
   return (
     (db
@@ -64,23 +66,6 @@ export function getOpenPeriod(profileId: number): CyclePeriod | null {
           LIMIT 1`
       )
       .get(profileId) as CyclePeriod | undefined) ?? null
-  );
-}
-
-// The period whose recorded start EQUALS `date`, or null — dedup guard so tapping
-// "period started" twice on one day doesn't mint two rows.
-export function getPeriodStartingOn(
-  profileId: number,
-  date: string
-): CyclePeriod | null {
-  return (
-    (db
-      .prepare(
-        `SELECT ${COLS} FROM cycles
-          WHERE profile_id = ? AND period_start = ?
-          ORDER BY id DESC LIMIT 1`
-      )
-      .get(profileId, date) as CyclePeriod | undefined) ?? null
   );
 }
 

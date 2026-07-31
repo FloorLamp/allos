@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { expandUpcomingAggregates } from "./helpers";
 import Database from "better-sqlite3";
 import {
   expandIntakeWarnings,
@@ -66,8 +67,8 @@ function seed(): void {
        VALUES (1, 'CYP2D6', '*1/*1xN', 'pharmacogenomic', 'Ultrarapid metabolizer', ?)`
     ).run(LAB);
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, priority)
-       VALUES (1, ?, 1, 'medication', 'high')`
+      `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+       VALUES (1, ?, 1, 'medication', 'must')`
     ).run(ABACAVIR);
   } finally {
     db.close();
@@ -106,6 +107,9 @@ test.describe("Pharmacogenomics cross-check (#710)", () => {
   test("surfaces the PGx finding on Upcoming", async ({ page }) => {
     await page.goto("/upcoming");
     const main = page.getByRole("main");
+    // PGx notes fold into the med-safety disclosure (#1504) — open it, then assert
+    // the individual finding is intact behind it.
+    await expandUpcomingAggregates(main, "med-safety");
 
     const finding = main
       .locator('[data-testid^="upcoming-item-pgx:"]')

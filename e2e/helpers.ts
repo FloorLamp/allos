@@ -120,6 +120,49 @@ export async function centerOf(
   throw new Error("element never settled into a stable position");
 }
 
+// Open the Upcoming page's display aggregates (issue #1504).
+//
+// The planning page folds a band's scheduled doses into one disclosure, and its
+// interaction + PGx notes into another, collapsed on every visit. A spec that
+// asserts on an individual dose / interaction / PGx ROW has to open the fold
+// first — the rows are real and unchanged, they are just behind a <details>.
+//
+// Native <details>, so this needs no hydration and no server round-trip; it is
+// idempotent (an already-open disclosure is skipped) and tolerant of a page with
+// no aggregate at all, so a spec may call it unconditionally after navigating.
+// Pass a `kind` to open only that class.
+export type UpcomingAggregateKind = "dose" | "med-safety";
+
+export async function expandUpcomingAggregates(
+  scope: Page | Locator,
+  kind?: UpcomingAggregateKind
+): Promise<void> {
+  // Exact testids, never a `^=` prefix: the summary INSIDE each disclosure is
+  // `upcoming-aggregate-summary-<kind>`, which a prefix match would also select —
+  // and a <summary> has no <summary> of its own, so the loop would hang on it.
+  const kinds: UpcomingAggregateKind[] = kind ? [kind] : ["dose", "med-safety"];
+  const selector = kinds
+    .map((k) => `[data-testid="upcoming-aggregate-${k}"]`)
+    .join(", ");
+  const aggregates = scope.locator(selector);
+  const count = await aggregates.count();
+  for (let i = 0; i < count; i++) {
+    const disclosure = aggregates.nth(i);
+    const open = await disclosure.evaluate(
+      (el) => (el as HTMLDetailsElement).open
+    );
+    if (open) continue;
+    const summary = disclosure.locator("summary");
+    // Centre it before clicking. Opening one disclosure grows the page under the
+    // next one, and at phone width the mobile shell's fixed bottom bar can sit over
+    // wherever it lands — Playwright's own minimal auto-scroll then never reaches an
+    // actionable hit target. Centring clears both bars at every viewport.
+    await summary.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await summary.click();
+    await expect(disclosure).toHaveJSProperty("open", true);
+  }
+}
+
 // Mobile clipped-content guard (issue #1063). The app shell deliberately clips
 // horizontal overflow (`<main className="… overflow-x-clip">` in
 // app/(app)/layout.tsx), so broken phone-width layouts never page-scroll — they
@@ -177,6 +220,105 @@ export async function expectNoClippedContent(page: Page): Promise<void> {
     return bad.slice(0, 20);
   });
   expect(offenders, offenders.join("\n")).toEqual([]);
+}
+
+// The SVG half of the containment guard (issue #1573).
+//
+// `expectNoClippedContent` above walks DOM boxes, and that is exactly why it did
+// not catch this: an SVG `<text>` that paints past its own plot is still inside a
+// `<svg>` element whose box fits the viewport, so the element-level walk sees
+// nothing wrong. #1573 was found by measuring — an annotation label at the right
+// SIZE (10px, the #1445 floor) whose right edge landed at 449px against a 390px
+// viewport, and same-row labels stacking into a smear.
+//
+// So every rendered `<text>` inside a chart is measured against BOTH bounds that
+// matter: its own owning `<svg>` (the plot it belongs to) and the viewport. The
+// layout that keeps them inside is computed in `lib/chart-svg.ts` (clampLabel /
+// placeRowLabels); this is the browser-side proof.
+//
+// Call it after the charts are visible, at whatever viewport the case is about.
+export async function expectSvgTextInsidePlot(page: Page): Promise<void> {
+  const offenders = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const TOL = 2;
+    const bad: string[] = [];
+    for (const text of Array.from(document.querySelectorAll("svg text"))) {
+      const box = text.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue; // not rendered
+      const style = getComputedStyle(text);
+      if (style.visibility === "hidden" || style.opacity === "0") continue;
+      const owner = text.closest("svg");
+      if (!owner) continue;
+      const plot = owner.getBoundingClientRect();
+      if (plot.width === 0) continue;
+      const label = (text.textContent ?? "").trim().slice(0, 40);
+      const id =
+        owner.getAttribute("data-testid") ??
+        owner.parentElement?.getAttribute("data-testid") ??
+        owner.tagName;
+      if (box.right > plot.right + TOL || box.left < plot.left - TOL) {
+        bad.push(
+          `"${label}" paints outside its plot (${id}): ` +
+            `[${Math.round(box.left)}, ${Math.round(box.right)}] vs ` +
+            `plot [${Math.round(plot.left)}, ${Math.round(plot.right)}]`
+        );
+      }
+      if (box.right > vw + TOL || box.left < -TOL) {
+        bad.push(
+          `"${label}" paints outside the viewport (${id}): ` +
+            `right=${Math.round(box.right)} left=${Math.round(box.left)} vs ` +
+            `viewport=${vw}`
+        );
+      }
+    }
+    return bad.slice(0, 20);
+  });
+  expect(offenders, offenders.join("\n")).toEqual([]);
+}
+
+// The other half of #1573's sibling issue (#1518): a chart label at the right
+// PLACE is still unreadable at 3.5px. Asserts every rendered chart `<text>` is at
+// least `minPx` of real type — which for a scaled viewBox means measuring what the
+// browser actually painted, not the number in the source.
+export async function expectSvgTextLegible(
+  page: Page,
+  minPx = 9
+): Promise<void> {
+  const sizes = await page.evaluate(() => {
+    const out: { label: string; px: number; owner: string }[] = [];
+    for (const text of Array.from(document.querySelectorAll("svg text"))) {
+      const box = text.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      const owner = text.closest("svg");
+      if (!owner) continue;
+      const plot = owner.getBoundingClientRect();
+      const viewBox = owner.getAttribute("viewBox");
+      const units = viewBox ? Number(viewBox.split(/\s+/)[2]) : 0;
+      // A viewBox font size is in USER UNITS; what it PAINTS at is that size
+      // times the container ratio. Measure the painted size, which is the only
+      // number a reader experiences.
+      const declared = Number.parseFloat(getComputedStyle(text).fontSize);
+      const px =
+        units > 0 && plot.width > 0
+          ? (declared * plot.width) / units
+          : declared;
+      out.push({
+        label: (text.textContent ?? "").trim().slice(0, 30),
+        px: Math.round(px * 100) / 100,
+        owner: owner.getAttribute("data-testid") ?? owner.tagName,
+      });
+    }
+    return out;
+  });
+  expect(sizes.length, "the page should be drawing chart text").toBeGreaterThan(
+    0
+  );
+  const tooSmall = sizes.filter((s) => s.px < minPx);
+  expect(
+    tooSmall,
+    `chart text below ${minPx}px effective size:\n` +
+      tooSmall.map((s) => `"${s.label}" (${s.owner}) at ${s.px}px`).join("\n")
+  ).toEqual([]);
 }
 
 // Follow a Next.js <Link> reliably, retrying the click until the client router
@@ -612,5 +754,60 @@ export async function touchSwipe(
     });
   } finally {
     await cdp.detach();
+  }
+}
+
+// ── Streamed-reveal guard (#1644/#1674) ──────────────────────────────────────
+//
+// A page that streams a Suspense boundary (the Trends landing surface's body
+// census) delivers the boundary's content in a `<div hidden id="S:n">` staging
+// node at the end of `<body>`; React then MOVES it into place, on a schedule of
+// its own (a rAF, or a coalescing timeout). Until that reveal runs, a testid
+// inside the streamed content matches TWO nodes — the hidden staged copy and,
+// mid-move, the revealed one — which a strict-mode locator reports as a
+// duplicated-element bug, and on a loaded CI shard the reveal can lag SECONDS
+// behind the load event, so per-spec waits with default 5s ceilings kept losing.
+//
+// This guard closes the class at the harness level: every full-document
+// navigation (goto/reload/back/forward — client-side navigations render in
+// place and never stage) waits until no staging node remains before returning,
+// with a generous named ceiling. Installed once, on every page of every
+// context, by the `browser` fixture's newContext patch — so no spec ever calls
+// anything, and a future spec cannot forget to.
+const STREAM_REVEAL_TIMEOUT_MS = 30_000;
+
+async function settleStreamedReveal(page: Page): Promise<void> {
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll('div[hidden][id^="S:"]').length === 0,
+      undefined,
+      { timeout: STREAM_REVEAL_TIMEOUT_MS }
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // A destroyed context (an immediate follow-up navigation, a closed page, a
+    // non-HTML response) is not a stuck reveal — only a genuine timeout is.
+    if (/Timeout.*exceeded/i.test(message)) {
+      throw new Error(
+        `streamed content was still staged (hidden div[id^="S:"]) ` +
+          `${STREAM_REVEAL_TIMEOUT_MS}ms after navigation to ${page.url()} — ` +
+          `React's reveal never ran; see e2e/helpers.ts settleStreamedReveal`
+      );
+    }
+  }
+}
+
+export function installStreamRevealGuard(page: Page): void {
+  for (const method of ["goto", "reload", "goBack", "goForward"] as const) {
+    const original = page[method].bind(page) as (
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    (page as unknown as Record<string, unknown>)[method] = async (
+      ...args: unknown[]
+    ) => {
+      const result = await original(...args);
+      await settleStreamedReveal(page);
+      return result;
+    };
   }
 }

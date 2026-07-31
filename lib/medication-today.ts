@@ -12,7 +12,7 @@ import {
   timeBucket,
   TIME_BUCKETS,
 } from "./supplement-schedule";
-import type { SupplementPriority } from "./types";
+import type { IntakeObligation } from "./types";
 
 const ANYTIME_RANK = TIME_BUCKETS.indexOf("Anytime");
 
@@ -27,7 +27,7 @@ export interface TodayPanelDose {
 export interface TodayPanelMedInput {
   id: number;
   name: string;
-  priority: SupplementPriority;
+  obligation: IntakeObligation;
   stack: string | null;
   doses: TodayPanelDose[];
 }
@@ -76,7 +76,7 @@ export function buildTodayPanelModel(
       .map((d) =>
         doseSortKey({
           timeOfDay: d.timeOfDay,
-          priority: m.priority,
+          obligation: m.obligation,
           stack: m.stack,
           name: m.name,
         })
@@ -93,7 +93,7 @@ export function buildTodayPanelModel(
         sortKey ??
         doseSortKey({
           timeOfDay: null,
-          priority: m.priority,
+          obligation: m.obligation,
           stack: m.stack,
           name: m.name,
         }),

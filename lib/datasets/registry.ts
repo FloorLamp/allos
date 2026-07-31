@@ -64,6 +64,10 @@ import {
   nutrientKeyStrategy,
 } from "./nutrient-food-map";
 import { ototoxicDataset, ototoxicKeyStrategy } from "./ototoxic";
+import {
+  weatherMedSafetyDataset,
+  weatherMedKeyStrategy,
+} from "./weather-med-safety";
 import { pgxDataset, pgxGuidanceStrategy } from "./pgx";
 import { prnDefaultsDataset, prnDefaultSlugStrategy } from "./prn-defaults";
 import {
@@ -260,6 +264,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: pgxGuidanceStrategy,
+  },
+  {
+    dataset: weatherMedSafetyDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: weatherMedKeyStrategy,
   },
   {
     dataset: prnDefaultsDataset as unknown as LoadedDataset<

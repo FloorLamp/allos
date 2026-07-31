@@ -5,9 +5,10 @@ import {
   contributesToDailyLimit,
   defaultFoodTiming,
   isDueOn,
+  isOfferedOn,
   isPostWorkoutReady,
   parseDosage,
-  priorityClass,
+  obligationClass,
   spreadDoseTimes,
   timeBucket,
   TIME_BUCKET_LABELS,
@@ -76,12 +77,14 @@ describe("timeBucket", () => {
 describe("isDueOn", () => {
   const ctx = (
     over: Partial<{
+      date: "2026-03-04";
       isWorkoutDay: boolean;
       activeSituations: Set<string>;
       predictedWorkoutDay: boolean | null;
       postWorkoutReady: boolean;
     }> = {}
   ) => ({
+    date: "2026-03-04",
     isWorkoutDay: false,
     activeSituations: new Set<string>(),
     ...over,
@@ -94,9 +97,15 @@ describe("isDueOn", () => {
   it("workout-linked conditions follow the workout-day flag", () => {
     const pre = { condition: "pre_workout" as const, situation: null };
     const post = { condition: "post_workout" as const, situation: null };
-    expect(isDueOn(pre, ctx({ isWorkoutDay: true }))).toBe(true);
-    expect(isDueOn(pre, ctx({ isWorkoutDay: false }))).toBe(false);
-    expect(isDueOn(post, ctx({ isWorkoutDay: true }))).toBe(true);
+    expect(isDueOn(pre, ctx({ date: "2026-03-04", isWorkoutDay: true }))).toBe(
+      true
+    );
+    expect(isDueOn(pre, ctx({ date: "2026-03-04", isWorkoutDay: false }))).toBe(
+      false
+    );
+    expect(isDueOn(post, ctx({ date: "2026-03-04", isWorkoutDay: true }))).toBe(
+      true
+    );
   });
 
   // #558: pre_workout keys on the PREDICTED training day, so it's due before a
@@ -105,18 +114,46 @@ describe("isDueOn", () => {
   it("pre_workout is due on a predicted workout day with NO logged activity", () => {
     const pre = { condition: "pre_workout" as const, situation: null };
     expect(
-      isDueOn(pre, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+      isDueOn(
+        pre,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: false,
+          predictedWorkoutDay: true,
+        })
+      )
     ).toBe(true);
     expect(
-      isDueOn(pre, ctx({ isWorkoutDay: false, predictedWorkoutDay: false }))
+      isDueOn(
+        pre,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: false,
+          predictedWorkoutDay: false,
+        })
+      )
     ).toBe(false);
     // predictedWorkoutDay wins over the logged flag when known.
     expect(
-      isDueOn(pre, ctx({ isWorkoutDay: true, predictedWorkoutDay: false }))
+      isDueOn(
+        pre,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: true,
+          predictedWorkoutDay: false,
+        })
+      )
     ).toBe(false);
     // null → fall back to the logged flag (old behavior).
     expect(
-      isDueOn(pre, ctx({ isWorkoutDay: true, predictedWorkoutDay: null }))
+      isDueOn(
+        pre,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: true,
+          predictedWorkoutDay: null,
+        })
+      )
     ).toBe(true);
   });
 
@@ -126,22 +163,39 @@ describe("isDueOn", () => {
     const post = { condition: "post_workout" as const, situation: null };
     // A predicted workout day alone does not make it due — it needs a logged session.
     expect(
-      isDueOn(post, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+      isDueOn(
+        post,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: false,
+          predictedWorkoutDay: true,
+        })
+      )
     ).toBe(false);
     // Logged but session not over yet → not due.
     expect(
-      isDueOn(post, ctx({ isWorkoutDay: true, postWorkoutReady: false }))
+      isDueOn(
+        post,
+        ctx({ date: "2026-03-04", isWorkoutDay: true, postWorkoutReady: false })
+      )
     ).toBe(false);
     // Logged and session over → due.
     expect(
-      isDueOn(post, ctx({ isWorkoutDay: true, postWorkoutReady: true }))
+      isDueOn(
+        post,
+        ctx({ date: "2026-03-04", isWorkoutDay: true, postWorkoutReady: true })
+      )
     ).toBe(true);
   });
 
   it("rest_day is the inverse of a workout day", () => {
     const rest = { condition: "rest_day" as const, situation: null };
-    expect(isDueOn(rest, ctx({ isWorkoutDay: false }))).toBe(true);
-    expect(isDueOn(rest, ctx({ isWorkoutDay: true }))).toBe(false);
+    expect(
+      isDueOn(rest, ctx({ date: "2026-03-04", isWorkoutDay: false }))
+    ).toBe(true);
+    expect(isDueOn(rest, ctx({ date: "2026-03-04", isWorkoutDay: true }))).toBe(
+      false
+    );
   });
 
   // #558: rest_day follows the same predicted-vs-logged decision as pre_workout,
@@ -149,10 +203,24 @@ describe("isDueOn", () => {
   it("rest_day follows the predicted signal when known", () => {
     const rest = { condition: "rest_day" as const, situation: null };
     expect(
-      isDueOn(rest, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+      isDueOn(
+        rest,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: false,
+          predictedWorkoutDay: true,
+        })
+      )
     ).toBe(false);
     expect(
-      isDueOn(rest, ctx({ isWorkoutDay: true, predictedWorkoutDay: false }))
+      isDueOn(
+        rest,
+        ctx({
+          date: "2026-03-04",
+          isWorkoutDay: true,
+          predictedWorkoutDay: false,
+        })
+      )
     ).toBe(true);
   });
 
@@ -174,31 +242,92 @@ describe("isDueOn", () => {
   });
 
   it("an as-needed (PRN) medication is never scheduled-due", () => {
-    // Even a daily-condition med is never "due" for a reminder when as_needed=1,
+    // Even a daily-condition med is never "due" for a reminder when obligation='may',
     // so it generates no missed-dose escalation and can't drag adherence down.
     expect(
-      isDueOn({ condition: "daily", situation: null, as_needed: 1 }, ctx())
+      isDueOn({ condition: "daily", situation: null, obligation: "may" }, ctx())
     ).toBe(false);
-    // as_needed=0 behaves exactly as before.
+    // obligation=0 behaves exactly as before.
     expect(
-      isDueOn({ condition: "daily", situation: null, as_needed: 0 }, ctx())
+      isDueOn(
+        { condition: "daily", situation: null, obligation: "should" },
+        ctx()
+      )
     ).toBe(true);
   });
 });
 
-describe("contributesToDailyLimit (#635)", () => {
+describe("situational dueness survives the isDueOn/isOfferedOn split (#1505)", () => {
+  // The regression this pins: a situational item's dueness must still be decided by
+  // its SITUATION, with obligation deciding only whether the item is pushed at all.
+  // When the seed's situational Zinc stopped appearing in an Evening due bucket the
+  // suspicion was that splitting due/offered had broken the situation gate; it had
+  // not — the fixture had been mapped to `may` (see scripts/seed.ts). This describe
+  // is the guard that tells those two causes apart next time.
+  const ctx = (activeSituations: string[]) => ({
+    date: "2026-03-04",
+    isWorkoutDay: false,
+    activeSituations: new Set(activeSituations),
+  });
+  const situational = (obligation: "must" | "should" | "may") => ({
+    condition: "situational" as const,
+    situation: "Illness",
+    obligation,
+  });
+
+  it("a pushed situational item comes DUE while its situation is active", () => {
+    for (const obligation of ["must", "should"] as const) {
+      const item = situational(obligation);
+      expect(isDueOn(item, ctx(["Illness"]))).toBe(true);
+      expect(isOfferedOn(item, ctx(["Illness"]))).toBe(false);
+      // The situation still gates it: inactive means neither due nor offered.
+      expect(isDueOn(item, ctx([]))).toBe(false);
+      expect(isOfferedOn(item, ctx([]))).toBe(false);
+    }
+  });
+
+  it("a `may` situational item is OFFERED, never due, while its situation is active", () => {
+    const item = situational("may");
+    expect(isDueOn(item, ctx(["Illness"]))).toBe(false);
+    expect(isOfferedOn(item, ctx(["Illness"]))).toBe(true);
+    // Offered is still situation-gated — `may` does not mean "always available".
+    expect(isOfferedOn(item, ctx([]))).toBe(false);
+  });
+
+  it("due and offered are mutually exclusive at every obligation", () => {
+    for (const obligation of ["must", "should", "may"] as const) {
+      for (const situations of [["Illness"], []]) {
+        const item = situational(obligation);
+        expect(
+          isDueOn(item, ctx(situations)) && isOfferedOn(item, ctx(situations))
+        ).toBe(false);
+      }
+    }
+  });
+});
+
+describe("contributesToDailyLimit (#635, obligation-blind since #1505)", () => {
   it("counts an unconditional daily item", () => {
-    expect(contributesToDailyLimit({ condition: "daily", as_needed: 0 })).toBe(
-      true
-    );
-    // as_needed omitted defaults to not-PRN.
     expect(contributesToDailyLimit({ condition: "daily" })).toBe(true);
   });
 
-  it("excludes a PRN (as_needed) item even when daily", () => {
-    expect(contributesToDailyLimit({ condition: "daily", as_needed: 1 })).toBe(
-      false
-    );
+  it("counts a daily item at EVERY obligation, including `may`", () => {
+    // The regression this pins: `may` absorbed `as_needed`, but the two say
+    // different things. `as_needed` asserted "no standing daily intake" (a fact
+    // about the schedule); `may` says only "don't push me about this" (a fact about
+    // the user's wishes). Carrying the old exclusion across the collapse dropped a
+    // demoted-but-still-swallowed item's milligrams out of the chronic-exposure
+    // total and lost a UL warning. Obligation must never shrink a risk number.
+    //
+    // Note these go through a VARIABLE, not a fresh literal: the narrowed
+    // Pick<Supplement, "condition"> signature makes an obligation-bearing literal an
+    // excess-property error, and that type boundary IS the guarantee — the predicate
+    // cannot read obligation even by accident. The loop below asserts the observable
+    // half: obligation never changes the answer.
+    for (const obligation of ["must", "should", "may"] as const) {
+      const item = { condition: "daily" as const, obligation };
+      expect(contributesToDailyLimit(item)).toBe(true);
+    }
   });
 
   it("excludes workout/rest/situational items (not taken every day)", () => {
@@ -208,7 +337,13 @@ describe("contributesToDailyLimit (#635)", () => {
       "rest_day",
       "situational",
     ] as const) {
-      expect(contributesToDailyLimit({ condition, as_needed: 0 })).toBe(false);
+      expect(contributesToDailyLimit({ condition })).toBe(false);
+      // Still schedule-only at every obligation — `must` does not force a
+      // sometimes-item into the daily total any more than `may` removes one.
+      for (const obligation of ["must", "should", "may"] as const) {
+        const item = { condition, obligation };
+        expect(contributesToDailyLimit(item)).toBe(false);
+      }
     }
   });
 });
@@ -238,11 +373,11 @@ describe("isPostWorkoutReady", () => {
   });
 });
 
-describe("priorityClass", () => {
+describe("obligationClass", () => {
   it("returns a distinct accent per priority", () => {
-    expect(priorityClass("mandatory")).toContain("rose");
-    expect(priorityClass("high")).toContain("brand");
-    expect(priorityClass("low")).toContain("slate");
+    expect(obligationClass("must")).toContain("rose");
+    expect(obligationClass("should")).toContain("brand");
+    expect(obligationClass("may")).toContain("slate");
   });
 });
 

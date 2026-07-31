@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   IconBolt,
   IconChevronUp,
+  IconFileText,
   IconHeartbeat,
   IconMenu2,
   IconPill,
@@ -14,6 +15,7 @@ import {
   IconSalad,
   IconScale,
   IconSearch,
+  IconSparkles,
 } from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
 import SidebarContent from "@/components/SidebarContent";
@@ -83,6 +85,11 @@ const PRIMARY_ICONS: Record<QuickLogIcon, typeof IconPlus> = {
   pill: IconPill,
   scale: IconScale,
   heartbeat: IconHeartbeat,
+  // Reachable only if a future promotion rule ever names one of these rows; the map is
+  // exhaustive so adding a registry icon stays a compile error here rather than a
+  // missing glyph on the bar.
+  sparkles: IconSparkles,
+  document: IconFileText,
 };
 
 export default function MobileNav({
@@ -186,8 +193,9 @@ export default function MobileNav({
     },
   });
 
-  // The route's primary log. `?tab=` is the app's URL-driven tab convention, so
-  // "Trends → Body" is a tab, not a route (lib/quick-log.ts owns the rule).
+  // The route's primary log. `?tab=` is still the app's URL-driven tab convention
+  // on the surfaces that have tabs, so it is passed through; lib/quick-log.ts owns
+  // which routes (and tabs) have an opinion.
   const primary = primaryQuickLog(pathname, searchParams.get("tab"));
   const PrimaryIcon = PRIMARY_ICONS[primary.icon];
 

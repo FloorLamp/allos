@@ -138,7 +138,12 @@ describe("protein '+Xg' tap (#1073)", () => {
     // #221), carrying today's 30 g; a target-less tracker would get the "Protein N g today"
     // fallback instead.
     expect(lastAnswerText()).toContain("30 g protein");
-    expect(lastRebuiltText()).toMatch(/Protein today · at least 30 g/);
+    // The figure is emphasized and the status stated (#1710) — and the rendered HTML
+    // proves the emphasis is real markup around ESCAPED text, not a raw tag from a
+    // builder.
+    expect(lastRebuiltText()).toMatch(
+      /Protein · <b>at least 30 g<\/b> of ~\d+–\d+ g/
+    );
   });
 
   it("a second tap accrues the total and appends another ranking event (buttons not consumed)", async () => {

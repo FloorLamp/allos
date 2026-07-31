@@ -131,7 +131,8 @@ describe("renderHouseholdRoundMessage", () => {
         ],
       }),
     ])!;
-    const actions = msg.actions!;
+    // Three confirm buttons plus the ride-along deep link (#1718).
+    const actions = msg.actions!.filter((a) => !a.url);
     expect(actions).toHaveLength(3);
     expect(actions[0].label).toBe("✓ Ada · Vitamin D3 · 2000 IU");
     // Rows group by member, so a member's doses share a row and two members never do.
@@ -209,7 +210,33 @@ describe("renderHouseholdRoundMessage", () => {
       })
     );
     const msg = render([section({ doses })])!;
-    expect(msg.actions).toHaveLength(HOUSEHOLD_ROUND_MAX_BUTTONS);
+    expect(msg.actions!.filter((a) => !a.url)).toHaveLength(
+      HOUSEHOLD_ROUND_MAX_BUTTONS
+    );
+  });
+
+  // #1718: under the cap the round used to carry confirm buttons ONLY, so the Web
+  // Push and Home Assistant copies arrived naming members and items with no way to
+  // confirm and no way to open the page. The over-cap path already degraded to this
+  // link; the under-cap path needs it ALONGSIDE the buttons.
+  it("carries the household deep link alongside its confirm buttons", () => {
+    const msg = render([section()])!;
+    const link = msg.actions!.find((a) => a.url);
+    expect(link?.url).toBe(`${BASE}${HOUSEHOLD}`);
+    expect(link?.label).toBe("Open Household →");
+    // The confirm buttons are untouched — the link is additive.
+    expect(msg.actions!.some((a) => a.data?.startsWith("hh:"))).toBe(true);
+  });
+
+  it("omits the link when no public URL is configured, keeping the buttons", () => {
+    const msg = renderHouseholdRoundMessage({
+      receiverProfileId: 1,
+      sections: [section()],
+      base: "",
+      householdHref: HOUSEHOLD,
+    })!;
+    expect(msg.actions!.every((a) => !a.url)).toBe(true);
+    expect(msg.actions!.length).toBeGreaterThan(0);
   });
 });
 
@@ -334,5 +361,26 @@ describe("stored member selection", () => {
       parseHouseholdRoundMembers(serializeHouseholdRoundMembers([9, 7]))
     ).toEqual([7, 9]);
     expect(serializeHouseholdRoundMembers([])).toBe("[]");
+  });
+});
+
+// ---- Date honesty across timezones (issue #1719 §3) ----
+describe("renderHouseholdRoundMessage — mixed-timezone rounds", () => {
+  it("stamps each section with its own date when members disagree about today", () => {
+    const msg = render([
+      section({ profileId: 7, name: "Ada", date: "2026-07-28" }),
+      section({ profileId: 9, name: "Kai", date: "2026-07-29" }),
+    ])!;
+    expect(String(msg.body)).toContain("Ada — Tue 28:");
+    expect(String(msg.body)).toContain("Kai — Wed 29:");
+  });
+
+  it("leaves the common single-date round unchanged", () => {
+    const msg = render([
+      section({ profileId: 7, name: "Ada", date: "2026-07-28" }),
+      section({ profileId: 9, name: "Kai", date: "2026-07-28" }),
+    ])!;
+    expect(String(msg.body)).toContain("Ada:");
+    expect(String(msg.body)).not.toContain("Tue 28");
   });
 });

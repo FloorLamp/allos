@@ -27,6 +27,7 @@ import {
   sameSituation,
   type SituationOption,
 } from "./situations";
+import { WEATHER_SITUATIONS } from "./weather-situations";
 
 // The built-in derived situations, name-keyed via sameSituation (no illness_type, no
 // episodes). "Poor sleep" already ships as a SUGGESTED_SITUATION; "Period" is added to
@@ -56,6 +57,26 @@ export function withPeriodOption(
       illnessType: false,
     },
   ];
+}
+
+// Add the built-in WEATHER situations (#1726) to a merged option set when weather
+// situations are relevant for the profile — the same shape withPeriodOption uses, one
+// gate wider because there are five of them. Appended as suggestion-only options (no
+// vocabulary row, no illness_type) unless the profile already has a row of that name,
+// so a user can key an antihistamine to "High pollen" and have it go due automatically
+// instead of remembering a toggle. A profile with no weather sync (or no reason to care)
+// never sees them.
+export function withWeatherSituationOptions(
+  options: SituationOption[],
+  weatherRelevant: boolean
+): SituationOption[] {
+  if (!weatherRelevant) return options;
+  const out = [...options];
+  for (const name of WEATHER_SITUATIONS) {
+    if (out.some((o) => sameSituation(o.name, name))) continue;
+    out.push({ name, inVocabulary: false, illnessType: false });
+  }
+  return out;
 }
 
 // The date-scoped suppression key for the poor-sleep "Not today" override (#1292).

@@ -198,17 +198,73 @@ the session's end time (`isPostWorkoutReady`); the predicted signal is wired
 only into the SURFACING paths (the Supplements tab / Medications page, morning
 digest, Upcoming, dose reminder) — historical adherence strips keep the logged
 reality, and `daily` (safety-tier meds) stays unconditional. **No dynamic
-priority ENGINE for supplements (#559):** the user's `mandatory/high/low`
-(`SupplementPriority`) is a STATIC, user-owned within-day sort — never
-recomputed from context. Unlike a screening/retest priority (#517), which
+obligation ENGINE for supplements (#559 → #1505):** the user's `must/should/may`
+(`IntakeObligation`) is a STATIC, user-owned declaration — never recomputed from
+context. Unlike a screening/retest priority (#517), which
 derives a clinical judgment the user can't encode, a supplement's importance is
 the user's own explicit tag, so context only GATES dueness (`isDueOn`), it never
-INVENTS priority; the only legitimately-dynamic axis is time-urgency (a
+INVENTS obligation; the only legitimately-dynamic axis is time-urgency (a
 due-but-unconfirmed time-critical dose), and that rides the EXISTING
 dose/escalation lattice. Supplement `doseItems` is therefore a justified,
 documented exemption on the #553 risk-layer allowlist
 (`lib/__tests__/upcoming-risk-layer.test.ts`) — it is user-prioritized, not
 risk-prioritized.
+
+**Calendar cadence (#1602, migration 126).** `condition` answers "is this the
+item's KIND of day?"; the cadence answers the orthogonal "is today one of its
+days at all?" — weekly (`cadence_weekdays`, a CSV in the repo's 0=Sun … 6=Sat
+numbering, NOT ISO), every-N-days (`cadence_interval_days` +
+`cadence_anchor_date`), plus a per-dose weekday subset and an inclusive
+`start_date`/`end_date` window. The pure rules live in `lib/intake-cadence.ts`
+and are ANDed into the SAME gate as the condition: `isDueOn` consults
+`cadenceOn`, and `doseDueOn` adds the row's own `doseOnDay`. Every surface
+inherits it (#221) — nothing filters by cadence locally.
+
+Why it exists: before it, a weekly methotrexate either nagged DAILY or had to be
+demoted to `may` to shut it up, which also stripped reminders, missed-dose
+escalation and adherence tracking from exactly the narrow-therapeutic drugs that
+need them. The cadence lets the item stay `must` while the machinery says "not
+today". `#1505` guards the wrong door; this builds the right one.
+
+Invariants:
+
+- **The day context carries a REQUIRED `date`** (`IntakeDayContext`). Optional,
+  with a "no date ⇒ no cadence" fallback, would let a forgotten argument silently
+  revert a weekly med to daily nagging — invisible in review. Required makes it a
+  compile error.
+- **Cadence only SUBTRACTS days.** It never invents obligation, so it can never
+  make a `may` item due.
+- **On a `may` item cadence is a LABEL, never a gate.** Nothing is owed on any
+  day, so there is nothing to subtract from, and guaranteed access says a
+  collapsed item stays one tap away — hiding it six days in seven would make an
+  accepted demotion indistinguishable from a deletion.
+- **Every branch FAILS OPEN.** A weekly item with no weekday, or an interval with
+  no anchor, stays daily. Reminding too often is visible and correctable; a
+  silent blackout is not.
+- **Alternating amounts are two dose ROWS of one item** (warfarin 5 mg
+  Mon/Wed/Fri + 2.5 mg the rest), each keeping its own adherence history under
+  its own `dose_id`.
+- **A taper is windowed rows, and an expiring window is NOT a retire.** The row
+  stops being due; its logs read untouched. That is what keeps "editing a dose
+  never rewrites adherence history" true by construction for a mid-course change
+  — and why narrowing a dose's calendar deliberately does not bump its
+  `updated_at` (a re-time restarts the adherence-pattern window; changing which
+  days a dose lands on is not a new slot).
+- **Denominators count on-days only.** A weekly med at 1/1 is 100%, not 1/7; an
+  off-day scores `"na"`. The demotion detector and the digest delta classifier
+  inherit this for free, since both already treat a not-due day as transparent —
+  so a sparse cadence cannot read as abandonment.
+- **Refill divides by cadence density** (`cadenceDensity`), and only on the
+  SCHEDULE-based rate: 12 tablets of a weekly med are ≈12 weeks, not ≈12 days.
+  The history-based rate already observes the real cadence in the taken log.
+- **`markDoseTaken` on an off-day still LOGS**, returning `logged-off-day`. You
+  record reality (the same surfacing/ledger split a held item follows), but every
+  handler names the schedule — "Logged ✅ — note: scheduled for Mondays" —
+  because a bare check is how a weekly drug gets taken twice in one week.
+
+Deliberately out of v1: rolling intervals ("72h after the LAST application" —
+dueness as a function of log history is a feedback loop) and monthly-by-date.
+Both slot into `cadence_kind` later with no schema churn.
 
 **Medications follow-ups (#851).** A cluster of refinements to the shipped
 Medications page + split forms. **Rx / OTC (`rx` column, migration 045):** a
@@ -280,12 +336,104 @@ bucket is honored; no cadence keeps the fold-to-Morning fallback. A dose is in
 the pseudo-slot XOR its bucket window. Escalation chases the pseudo-slot like a
 window.
 
-**Notification priority floor (#1156).** `mandatory/high/low` gains a
-notification CONSUMER (never a dueness change, #559): a low-priority supplement
-is tracked in-app but excluded from every dose-reminder send; medications are
-never gated (the #449/#942 safety carve-out). A send whose only due doses are
-low-priority supplements sends nothing — intended, not a bug ("track these,
-don't notify me").
+**The obligation model (#1505).** One user-owned field, `obligation`, replaced
+BOTH `priority` (mandatory/high/low) and `as_needed`. Migration 124 rebuilds
+`intake_items`: `as_needed = 1 → may` (first, so a PRN item lands on may whatever
+tag it carried), then `mandatory → must`, `low → may`, everything else `should`.
+
+| Obligation | Meaning                       | Push                            | Adherence                                            |
+| ---------- | ----------------------------- | ------------------------------- | ---------------------------------------------------- |
+| `must`     | a miss is an incident         | remind + missed-dose escalation | counted, escalated                                   |
+| `should`   | a miss is a tracked shortfall | remind, never escalate          | counted                                              |
+| `may`      | there is no expectation       | never pushed                    | **no dueness, no misses, no fraction** — ledger only |
+
+Three predicates in `lib/supplement-schedule.ts` are the whole of the semantics —
+`isPushedIntake`, `accruesMisses`, `escalatesOnMiss` — plus `isPrn`, since `may`
+absorbed PRN wholesale (the amount-only dose shape #851, the redose notice #798,
+the over-max finding #1027 all key off it). They are deliberately separate
+functions: `should` reminds but never escalates, which the old two-value model
+could not express.
+
+**`kind` stopped deciding pushability.** It keeps clinical identity — which safety
+engine (interactions #144 / PGx #710 vs supplement ULs #148), which surface
+(`/medications` vs the supplements tab), passport inclusion, prescription/refill
+semantics — and obligation decides push. The guardrail that makes that safe:
+**medications default to `must`**, and moving one below must requires an explicit
+consequence-stating confirm at the form boundary ("no reminders, no escalation, no
+missed-dose safety net"), asked on the transition only. Demotion suggestions never
+target medications.
+
+**A slot on a `may` item survives as an ACCESS HINT.** `time_of_day` stops meaning
+"due then" and starts meaning "offer it here": `slotHintBucket` /
+`slotHintCoversNow` are that reading, and `isOfferedOn` is dueness's twin for the
+offer surfaces (both share `conditionAppliesOn`, so offers and dues can't drift on
+the day rule). Magnesium is may + a bedtime hint; aspirin is may with no hint and
+is always available.
+
+**Surfaces, derived from obligation.**
+
+- _System-initiated sends_: must → remind + escalate; should → remind; may → never.
+  An all-may slot sends nothing (pinned). Refill nudges follow the same rule, and a
+  pooled bottle nudges only while any must/should member remains (`poolPushes`).
+- _Rendered aggregates — collapsed, never removed_: `collectUpcoming`'s `doseItems`
+  is must+should only (isDueOn short-circuits `may`), and `offeredItems` gathers the
+  may items on offer today into Upcoming's collapsed **available** disclosure. The
+  hero and the #1504 count read the due list; availability is deliberately outside
+  the page total. Demotion is therefore a visible MOVE, not a disappearance.
+- _User-initiated access — always reachable_: the Supplements page and quick-log in
+  app; on Telegram the **guaranteed** path is the daily digest's slot-labelled
+  "Log other…" tail (its first inline button), which expands IN PLACE into one-tap
+  log buttons for the may items whose hint covers **now** — evaluated at TAP time,
+  never at message-build time, because a morning digest may be tapped at bedtime.
+  The tick relabels the collapsed tail at each slot boundary and strips it at day
+  rollover; both are keyboard edits, which do not notify. `buildDigest` may return
+  a **tail-only** message rather than null while may items exist, so an all-may
+  regimen keeps its access path. A slot reminder that fires anyway carries the same
+  row as a ride-along. Web Push / Home Assistant get a `+N available` text tail,
+  since neither can expand a keyboard.
+
+**Safety stays obligation-BLIND, pinned.** Missed-dose escalation reads the
+deliberately unfiltered gather (the send floor is applied at assembly, never at the
+gather), and the interaction / PGx / UL warnings fire identically for a `may`
+member. Adherence fractions re-scope to must+should for free — a `may` item has no
+occurrences, so it cannot drag an honest number down.
+
+**Two vestigial columns.** The rebuilt table keeps unread `priority` and
+`as_needed` columns because `migrate()` replays every migration unconditionally and
+migrations 092/101 hold prepared statements naming them (SQLite validates at
+prepare time). A compatibility TRIGGER translates a legacy insert's intent onto
+`obligation`, and `lib/__tests__/obligation-collapse-guard.test.ts` fails the build
+if any non-migration source names either — so the collapse cannot quietly un-collapse.
+
+**Adherence-based demotion SUGGESTIONS (#1505 part 2).** A `must`/`should`
+SUPPLEMENT taken on ≤25% of its scheduled days over 30 days (≥10 occurrences)
+becomes a demotion candidate — pure detection in `lib/supplement-demotion.ts` over
+the ONE shared item-level gather `getIntakeHistory` (`lib/intake-history.ts`), the
+same evidence the digest deltas read. It surfaces as a calm COACHING-tier finding
+under the registered `demote-obligation:` prefix on the Supplements page, and as a
+third button (**Take / Skip / ⤓ May**) on the item's own slot reminder — riding a
+send that exists for its own reasons, never generating one.
+
+The reminder button is governed **solely by detection state**: a page dismissal
+hides the card only, because for a tap-only user that button is the only escape
+hatch that ever reaches them. Accepting is the only write — `demoteIntakeObligation`
+(`lib/intake-obligation-write.ts`) is a compare-and-swap returning a typed outcome
+(`demoted` / `already-may` / `inactive` / `not-found`) that both surfaces render
+rather than assuming success. Recovery clears the candidate; demotion is
+downward-only, permanently (no promotion suggestions).
+
+**Digests report DELTAS, not a fraction (#1505 part 3).** `lib/intake-deltas.ts`
+classifies the must+should ledger into **notably missed** (a taken-streak of ≥3
+occurrences just broken) and **resumed** (taken again after a miss run of ≥2), over
+a 14-day window nested strictly inside the demotion window so the two engines can't
+fire off the same evidence (test-pinned). `intakeDeltaLine` is the ONE formatter and
+`getIntakeDeltaLine` the ONE server entry point; the Telegram morning digest, the
+weekly recap (and so the dashboard recap widget) and the Household card all render
+that single result. Quiet windows produce no line; the fraction — now over must+should
+only — demotes to secondary detail.
+
+See [the attention doctrine](findings.md#the-attention-doctrine) for the general
+rules this change is the first implementation of.
 
 **Derived situations — the pattern (#1292 Poor sleep, #1298 Period).** A
 _situation_ a `situational` item keys on (`lib/situations.ts`) can be
@@ -323,14 +471,39 @@ goes due exactly while that context holds. Two tenants today:
   scientifically contested — the no-fake-science stance); the day's reported
   symptom burden is the #1300 lever, not Period membership.
 
+- **Weather (#1726)** — five built-ins (`Heatwave`, `Cold snap`,
+  `Pressure swing`, `High pollen`, `Poor air quality`), derived from the cached
+  daily weather series for the profile's home location (`weather_days`,
+  migration 129; pure predicates in `lib/weather-situations.ts`, gather in
+  `lib/queries/weather-situations.ts`). Unlike the other two there is **no
+  declared/derived split**: weather has no self-report fallback — either the
+  cached series says the day qualified or the app claims nothing. Every predicate
+  is HYSTERETIC (enter high, exit lower) and the duration ones need consecutive
+  qualifying days, so a borderline series can't flap the context on and off; a
+  GAP in the series breaks every run (no data ⇒ no situation). The series handed
+  to the predicates ends TODAY, so the forecast tail the cache also holds can
+  never activate a situation ahead of time. **Relevance-gated** like Period, one
+  gate wider (`withWeatherSituationOptions`): a home location, plus either an
+  item already keyed to a weather situation or a recently logged symptom these
+  situations could explain. The five join the item form's PICKER when relevant —
+  never the toggle chip row, because a derived situation has nothing to toggle.
+  **The impact exception:** `situation_events` stays declared-only, but weather
+  situations still yield #1297 impact cards, because the rule's reason (a per-day
+  verdict leaves no reconstructable span) doesn't apply — a heatwave IS a run of
+  days in a cached series, recomputed identically every time, so
+  `weatherSituationWindows` derives its windows from the predicate and still
+  writes nothing.
+
 The visible state lines (`getDerivedSituationLines` →
-`poorSleepStateLine`/`periodStateLine`, basis-aware) render on the Supplements
+`poorSleepStateLine`/`periodStateLine`/`weatherSituationStateLine`, basis-aware)
+render on the Supplements
 bar (distinct "Auto" tag, non-toggleable), the #1221 check-in Context
 disclosure, and the morning digest — ONE formatter so a Telegram-first user
 isn't surprised by the extra due items (#662/#221). The item form shows a
 discovery hint when a `situational` item is keyed to Poor sleep / Period ("goes
 live automatically on rough nights / logged period days"). Deliberately out of
-scope: derived chart annotations (`situation_events` stays declared-only) and
+scope: derived chart annotations (`situation_events` stays declared-only — the
+weather impact cards read their windows from the cache, not from the log) and
 any Travel derivation (no privacy-acceptable signal — Travel stays fully
 manual).
 
@@ -505,7 +678,7 @@ subscribe their own profile to a **household dose round** — at their schedule
 slots, one Telegram message carrying the due-unconfirmed doses of the household
 members they explicitly ticked, each with an inline confirm. It changes NOTHING
 about this domain's rules and adds no second dueness engine: the round's
-per-member gather is the SAME `collectWindowDoses` + #1156 priority floor that
+per-member gather is the SAME `collectWindowDoses` + `isPushedIntake` floor that
 builds that member's own reminder (#221), evaluated in that member's own
 timezone/day, so a PRN item is absent (never scheduled-due), a taken or
 deliberately skipped dose (#232) is not "due", and a held item stays held. The

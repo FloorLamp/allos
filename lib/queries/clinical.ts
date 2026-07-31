@@ -46,11 +46,17 @@ import type {
 // unlike Conditions/Procedures/Visits which hide theirs (#134/#384). The
 // representative subquery's profile_id bind comes after the main WHERE's.
 export function getAllergies(profileId: number): Allergy[] {
+  // provider_name joins the documenting clinician for display + for the edit form's
+  // loaded value (#1526) — the same correlated-subquery shape getSkinLesions uses, so
+  // `SELECT *` keeps carrying every stored column.
   const rows = db
     .prepare(
-      `SELECT * FROM allergies
-       WHERE profile_id = ? AND id IN (${ALLERGY_REPRESENTATIVE_IDS})
-       ORDER BY (status = 'active') DESC, substance COLLATE NOCASE ASC, id DESC`
+      `SELECT *,
+              (SELECT p.name FROM providers p WHERE p.id = allergies.provider_id)
+                AS provider_name
+         FROM allergies
+        WHERE profile_id = ? AND id IN (${ALLERGY_REPRESENTATIVE_IDS})
+        ORDER BY (status = 'active') DESC, substance COLLATE NOCASE ASC, id DESC`
     )
     .all(profileId, profileId) as Allergy[];
   const byAllergy = allergyReactionRows(profileId);
@@ -104,7 +110,12 @@ function allergyReactionRows(
 
 export function getAllergy(profileId: number, id: number): Allergy | undefined {
   return db
-    .prepare("SELECT * FROM allergies WHERE id = ? AND profile_id = ?")
+    .prepare(
+      `SELECT *,
+              (SELECT p.name FROM providers p WHERE p.id = allergies.provider_id)
+                AS provider_name
+         FROM allergies WHERE id = ? AND profile_id = ?`
+    )
     .get(id, profileId) as Allergy | undefined;
 }
 
@@ -443,6 +454,7 @@ export function getSkinLesions(profileId: number): SkinLesion[] {
               provider_id,
               (SELECT p.name FROM providers p WHERE p.id = skin_lesions.provider_id)
                 AS provider_name,
+              encounter_id,
               notes, source, document_id, external_id, created_at
          FROM skin_lesions
         WHERE profile_id = ?

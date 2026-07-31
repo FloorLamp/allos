@@ -3,7 +3,7 @@ import { getHomeLocation } from "@/lib/settings";
 import { getTimezone } from "@/lib/settings";
 import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
 import { openMeteoSource, type WeatherSource } from "./open-meteo";
-import { upsertUvHours } from "./weather-cache";
+import { upsertUvHours, upsertWeatherDays } from "./weather-cache";
 import { summarizeSplit, type UpsertCounts, emptyCounts } from "./sync-log";
 
 // Pulls the hourly UV + irradiance series for a profile's HOME LOCATION from Open-Meteo
@@ -27,11 +27,23 @@ const log = createLogger("weather-sync");
 // the overlap is free.
 export const WEATHER_WINDOW_DAYS = 14;
 
+// How far AHEAD to fetch. The hourly UV window ends a day past today (enough for the
+// current local day's dose); the DAILY window reaches further because the forecast is
+// itself an input — the outdoor-viability scan (#1724) plans against the coming week.
+// Kept at the honest reliable horizon: Open-Meteo publishes 16 days, but nothing in the
+// app commits to a day beyond WEATHER_FORECAST_DAYS.
+export const WEATHER_FORECAST_DAYS = 7;
+
 export interface WeatherSyncResult {
   hours: number;
+  // Daily rows written/seen this run (the #1726 substrate).
+  days: number;
   inserted: number;
   updated: number;
   unchanged: number;
+  // Set when the daily fetch's air-quality half failed: the run still SUCCEEDED and
+  // cached temperature/pressure; pollen/AQI are simply absent for this window.
+  partial?: string;
 }
 
 function shiftDate(day: string, n: number): string {
@@ -42,6 +54,19 @@ function shiftDate(day: string, n: number): string {
 
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+// One run's two upsert halves (hourly UV + daily aggregates) as a single split, so the
+// integration_sync_events row reports ONE honest insert/update/unchanged accounting for
+// the run rather than two partial ones.
+function mergeCounts(a: UpsertCounts, b: UpsertCounts): UpsertCounts {
+  return {
+    inserted: a.inserted + b.inserted,
+    updated: a.updated + b.updated,
+    unchanged: a.unchanged + b.unchanged,
+    suppressed: a.suppressed + b.suppressed,
+    edited: a.edited + b.edited,
+  };
 }
 
 // Sync the profile's home-location UV series. Returns a summary, or { error } for a
@@ -93,19 +118,52 @@ export async function runWeatherSync(
     return { error: message };
   }
 
+  // ---- The DAILY half (#1726) ----
+  // Same window start (so a logged past day gets its conditions backfilled from the
+  // archive) but reaching WEATHER_FORECAST_DAYS ahead, because the forecast half of the
+  // series is itself an input to the planning surfaces. Its failure does NOT fail the
+  // run: the hourly UV series is already cached and the whole feature family degrades
+  // rather than breaking (the derived situations simply have no data and stay silent).
+  const dailyEnd = shiftDate(today, WEATHER_FORECAST_DAYS);
+  let dayCounts: UpsertCounts = emptyCounts();
+  let partial: string | undefined;
+  const daily = await source.fetchDaily(
+    home.lat,
+    home.lng,
+    startDate,
+    dailyEnd,
+    timezone
+  );
+  if (!daily.ok) {
+    partial =
+      daily.error ?? `daily fetch failed (${daily.status ?? "unknown"})`;
+  } else {
+    partial = daily.partial;
+    try {
+      dayCounts = upsertWeatherDays(home.lat, home.lng, daily.rows, source.id);
+    } catch (err) {
+      partial = err instanceof Error ? err.message : String(err);
+    }
+  }
+
   const total = counts.inserted + counts.updated + counts.unchanged;
+  const dayTotal = dayCounts.inserted + dayCounts.updated + dayCounts.unchanged;
   const summary: WeatherSyncResult = {
     hours: total,
-    inserted: counts.inserted,
-    updated: counts.updated,
-    unchanged: counts.unchanged,
+    days: dayTotal,
+    // The event's accounting covers BOTH halves — one sync run, one insert/update/
+    // unchanged split, per the integrations rules.
+    inserted: counts.inserted + dayCounts.inserted,
+    updated: counts.updated + dayCounts.updated,
+    unchanged: counts.unchanged + dayCounts.unchanged,
+    ...(partial ? { partial } : {}),
   };
-  recordSync(profileId, WEATHER_ID, { hours: total });
-  const tally = summarizeSplit(counts, 0);
+  recordSync(profileId, WEATHER_ID, { hours: total, days: dayTotal });
+  const tally = summarizeSplit(mergeCounts(counts, dayCounts), 0);
   recordSyncEvent(profileId, WEATHER_ID, {
     ok: true,
     windowStart: startDate,
-    windowEnd: endDate,
+    windowEnd: dailyEnd,
     received: tally.received,
     written: tally.inserted + tally.updated + tally.unchanged,
     inserted: tally.inserted,

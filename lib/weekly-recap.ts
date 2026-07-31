@@ -158,6 +158,12 @@ export interface RecapInput {
   // Supplement/medication adherence over the window, or null when nothing was
   // due. `skipped` counts deliberate skips (#232), excluded from the percentage.
   adherence: { taken: number; skipped: number; due: number } | null;
+  // The state-change HEADLINE for the pushed tier (#1505 part 3) —
+  // "Missed: Magnesium (3 days) · Resumed: Vitamin D (2 days)" — preformatted by the
+  // ONE shared `intakeDeltaLine` the morning digest and the household card also
+  // render. Null/absent on a quiet window, which is the signal to omit the row: a
+  // percentage always has a value, a delta exists only when something changed.
+  intakeDeltaLine?: string | null;
   // Body weights logged within the window, oldest-first (already sorted by the
   // gather). Used for a robust (median-endpoint) net-change trend.
   weights: RecapWeight[];
@@ -343,6 +349,17 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       label: "PRs",
       value: `${input.prLabels.length}`,
       delta: extra > 0 ? `${shown} +${extra} more` : shown,
+    });
+  }
+
+  // Intake state changes (#1505 part 3) lead the intake report: WHICH pushed
+  // obligations moved is the news, the percentage below is the supporting detail.
+  // Rendered from the preformatted shared line, never recomputed here.
+  if (input.intakeDeltaLine) {
+    lines.push({
+      key: "intake-deltas",
+      label: "Changed",
+      value: input.intakeDeltaLine,
     });
   }
 
@@ -550,7 +567,8 @@ export function pickRecapNarrative(
 export function renderRecapMessage(
   recap: WeeklyRecap,
   profileName: string,
-  narrative?: string | null
+  narrative?: string | null,
+  deepLinkBase = ""
 ): NotificationMessage | null {
   if (recap.isEmpty || recap.lines.length === 0) return null;
   const narr = narrative?.trim();
@@ -560,10 +578,17 @@ export function renderRecapMessage(
         .map((l) => `• ${l.label}: ${l.value}${l.delta ? ` (${l.delta})` : ""}`)
         .join("\n");
   const who = profileName ? ` — ${profileName}` : "";
+  // The recap was the only builder that took no deepLinkBase and returned no actions
+  // (#1722 item 2) — a week's summary with nowhere to go and look. Every sibling
+  // carries one.
+  const base = deepLinkBase.replace(/\/$/, "");
   return {
     title: `📊 Weekly recap${who}`,
     body: `${recapRangeLabel(recap.start, recap.end)}\n${body}`,
     kind: "weekly-recap",
+    ...(base
+      ? { actions: [{ label: "Open Trends →", url: `${base}/trends` }] }
+      : {}),
   };
 }
 

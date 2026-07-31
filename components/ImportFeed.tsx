@@ -122,10 +122,36 @@ function FeedRow({
             · {v.skipped} skipped
           </span>
         )}
+        {/* Extraction confidence (#1601): how many rows the extractor itself hedged
+            on, so the reviewer knows which import to open first. It orders attention
+            only — every row is imported and editable either way. */}
+        {v.scrutiny > 0 && (
+          <span
+            className="text-amber-600 dark:text-amber-400"
+            data-testid="feed-scrutiny"
+            title={`${v.scrutiny} extracted ${v.scrutiny === 1 ? "row" : "rows"} the extractor was unsure about — open this import to review them first.`}
+          >
+            {" "}
+            · {v.scrutiny} to check
+          </span>
+        )}
       </span>
       {v.meta && (
         <span className="text-sm text-slate-500 dark:text-slate-400">
           {v.meta}
+        </span>
+      )}
+      {/* Acquired-by provenance (#1748): which portal pushed this document in. Calm and
+          factual — the same tone as the format label beside it, never a warning — and
+          absent entirely for the ordinary hand-uploaded document, whose "acquired by" is
+          simply "you". It earns its place the day two portals serve overlapping records
+          for the same person. */}
+      {v.acquiredVia && (
+        <span
+          className="text-sm text-slate-500 dark:text-slate-400"
+          data-testid="feed-acquired-via"
+        >
+          Acquired via {v.acquiredVia}
         </span>
       )}
       <RelativeTime

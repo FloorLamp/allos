@@ -1,6 +1,212 @@
 {
   "days": [
     {
+      "date": "2026-07-31",
+      "entries": [
+        {
+          "pr": 1761,
+          "kind": "feature",
+          "title": "Your portal reminds the right person — and the tool learns its own config",
+          "body": "Allos now notices when a patient portal hasn't been checked in a while — or when someone just had an appointment and new results are likely waiting — and quietly asks the right person: the one whose login actually runs the portal tool, on their own Upcoming list and morning digest. A \"Request sync\" button covers the case where the person managing Allos isn't the person at the right computer. Asks expire on their own, are answered automatically by the next run (even a failed one — you went to the machine), and never escalate. And the portal tool can now fetch its own configuration from Allos — portal and login names, spelled exactly right — so a typo'd slug stops being a mystery refusal.",
+          "issues": [1757, 1759]
+        },
+        {
+          "pr": 1758,
+          "kind": "fix",
+          "title": "Portal setup gets honest about its first run",
+          "body": "The very first portal sync no longer looks like nothing happened: the status line now says \"The tool reported 3 patients — map them below to finish setup\" instead of \"No run reported yet.\" The tool can also report a portal-wide failure (a changed login page, a moved download) without inventing a patient, and the count of patients waiting to be mapped is now the number that are actually new. Plus a safety catch on mapping: the profile picker no longer preselects anyone, so a mis-click can't file a patient under whoever sorts first — and the show-once API token finally has a copy button.",
+          "issues": [1756]
+        },
+        {
+          "pr": 1753,
+          "kind": "feature",
+          "title": "Patient portals grow up: household logins, discovered patients, and a truer name",
+          "body": "The portal integration is now \"Patient portals\" — MyChart was just the first door; any portal with a standard health-record export works the same way. Households with two portal logins get accounts (\"Mom\", \"Dad\"), so two patients who share a name on different logins can never collide onto one profile. The companion tool now reports the patient list it sees, and the card turns that into waiting-to-be-mapped entries any caregiver with write access can bind — or mark ignored for patients you don't want synced. Sync status shows per portal, per login, per patient.",
+          "issues": [1739]
+        },
+        {
+          "pr": 1752,
+          "kind": "feature",
+          "title": "Documents remember which portal they came from",
+          "body": "A record uploaded through a portal now carries \"Acquired via <portal>\" in Data → Review and on the document itself. When two providers' portals disagree about an immunization, which copy came from where finally has an answer — and a hand-uploaded file says exactly that, by saying nothing.",
+          "issues": [1748]
+        },
+        {
+          "pr": 1751,
+          "kind": "fix",
+          "title": "Portal mapping deletions are now properly fenced",
+          "body": "Removing a portal patient mapping now verifies you can write to the profile the mapping actually points at — resolved on the server, never trusted from the form. A crafted request can no longer delete another profile's mapping, and a concurrent re-bind makes the delete refuse rather than proceed on stale authority.",
+          "issues": [1747]
+        },
+        {
+          "pr": 1745,
+          "kind": "feature",
+          "title": "Training that checks the forecast — without overruling you",
+          "body": "Outdoor suggestions now know the weather, and your tolerance is learned from your own history: if you ride at 3 °C, nothing parks your bike at 3 °C. In genuinely hostile conditions the suggestion swaps to a mapped indoor alternative and says exactly why — never a silent disappearance — and a parked activity no longer piles up 'staleness' pressure while it waits out the season. When good outdoor days are scarce, the morning digest and Upcoming name the week's best window for your ride. Logged outdoor sessions also carry a small conditions stamp (\"31°C · clear\"), so a slow run in the heat explains itself.",
+          "issues": [1724, 1728]
+        },
+        {
+          "pr": 1743,
+          "kind": "feature",
+          "title": "Weather becomes context: heatwaves, pollen, and med-aware sun safety",
+          "body": "Allos now caches daily weather and air quality for your home location and derives five situations from it — heatwave, cold snap, pressure swing, high pollen, poor air quality. They behave like the situations you already use: an antihistamine keyed to high pollen comes due while the pollen holds, the digest mentions the conditions, and Trends can ask whether a pressure swing explains a rough night. And if a medication in your stack makes sun or heat riskier — a photosensitizing antibiotic, a diuretic in a heatwave — the day's safety note says so, quietly, on the surfaces you already read.",
+          "issues": [1726, 1727]
+        },
+        {
+          "pr": 1742,
+          "kind": "feature",
+          "title": "Patient portals get real names — and syncs tell you whose data arrived",
+          "body": "If your health system's portal was swallowed by a merger (MyChart, we see you), Allos now keeps a registry of portals under Settings → Integrations, with each connected account mapped to the profile it feeds. Sync reports name the portal and the person, so a household with two MyChart logins can finally tell whose labs just landed. Identities Allos hasn't seen before are surfaced instead of guessed at — nothing is ever silently filed to the wrong person.",
+          "issues": [1735]
+        },
+        {
+          "pr": 1740,
+          "kind": "feature",
+          "title": "Upload documents from anywhere — tokens, an API, and a tiny CLI",
+          "body": "You can now mint API tokens under Settings → Account & security: login-tied, scoped to document upload only, shown once, and revocable per device. With one, a new authenticated endpoint accepts document uploads from outside the browser — same ingest pipeline, same per-profile dedup, honest per-file results — and a dependency-free command-line script uploads a folder of files from any machine. Name a token per device so retiring one never disturbs the others.",
+          "issues": [1734]
+        },
+        {
+          "pr": 1736,
+          "kind": "feature",
+          "title": "Nudges that read like they know you",
+          "body": "A sweep over every message the app sends. The protein line now says when you've reached your goal instead of implying a shortfall; the workout nudge leads with the exact target driving its suggestion; the daily digest previews today's recommended workout and drops its redundant tail on Telegram. A second same-day workout nudge acknowledges the session you already did, and if mood check-ins are about to auto-pause, the final reminder says so — pausing quietly unless you ask to keep them.",
+          "issues": [1722, 1710, 1709, 1712, 1672, 1668]
+        },
+        {
+          "pr": 1733,
+          "kind": "fix",
+          "title": "The safety tier stops lying",
+          "body": "Missed-dose escalations now reach every channel you configured — Web Push and Home Assistant included, not just Telegram — and a broken safety channel finally shows up in delivery health. Escalations state how long a dose has been unconfirmed and offer a one-tap Skip. The /dose command shows the same redose safety verdicts as the app, push notifications stop asking you to tap buttons they can't show, a next-morning tap on yesterday's household round is refused instead of mislogged, and shared-chat messages always name whose dose they mean.",
+          "issues": [1716, 1717, 1718, 1719, 1720, 1721]
+        }
+      ]
+    },
+    {
+      "date": "2026-07-30",
+      "entries": [
+        {
+          "pr": 1730,
+          "kind": "fix",
+          "title": "Imaging saves show up reliably — and failures say so",
+          "body": "Adding an imaging study could occasionally leave the list unchanged even though the save landed, because the page's refresh path pointed at a redirect stub. Saves now repaint the imaging list directly, and a refused submission shows its error instead of silently rendering nothing.",
+          "issues": []
+        },
+        {
+          "pr": 1729,
+          "kind": "fix",
+          "title": "Biomarkers on your phone: results first",
+          "body": "On a phone, the Biomarkers page used to open with nearly 1,900 pixels of summary cards before the first actual panel of results. The panel index now leads — visible on the first screen — with the trajectory warning keeping its headline up top and folding its details, while the starred lens and bio-age cards follow whole below. Desktop is unchanged.",
+          "issues": [1647]
+        },
+        {
+          "pr": 1715,
+          "kind": "fix",
+          "title": "Broken syncs finally speak up — and food taps count right",
+          "body": "A revoked or persistently failing integration used to sit quietly on-device while your data went stale. The morning digest now names each broken source with a link to fix it, and a connection that simply stopped syncing — recording nothing at all — raises its own attention item with per-provider staleness thresholds. Also fixed: tapping a Telegram food nudge outside its original window now counts toward the right meal, so the button's (n) tally matches what you actually logged.",
+          "issues": [1685, 1704]
+        },
+        {
+          "pr": 1711,
+          "kind": "fix",
+          "title": "Journal search now searches your whole history",
+          "body": "Searching or filtering the training log used to look only at the days already loaded on screen — a matching workout from months ago simply didn't exist as far as the page knew. Search and every filter now query your entire ledger, paging over the matches themselves, with a new source filter and a fault count that reflects your whole history. An unfiltered journal loads exactly as fast as before.",
+          "issues": [1634]
+        },
+        {
+          "pr": 1707,
+          "kind": "fix",
+          "title": "Cycle tracking stops lying to you — in both directions",
+          "body": "The \"Period started today\" quick action no longer confirms success when nothing was written — it tells you a period is already open, refuses an implausibly soon restart, and shows where you are in your cycle instead of offering the wrong button the moment a period ends. A one-tap \"Still bleeding\" reopens a just-ended period. And a forgotten \"ended\" tap no longer reads as menstrual forever: after ten days the app treats the period as probably over and asks you to set the end date — your record is never changed behind your back. New entries are checked for overlaps, future dates, and impossible ranges, with every refusal naming the conflict.",
+          "issues": [1681, 1682]
+        },
+        {
+          "pr": 1706,
+          "kind": "feature",
+          "title": "Your half-entered workout survives anything",
+          "body": "Long forms now keep a local draft as you type: reload, crash, or a deploy mid-entry, and a banner offers your unsaved work back — Resume or Discard, your choice, never applied silently, always cleared once you actually save. Drafts stay on your device only and are wiped on logout. App updates also stopped yanking pages out from under you: a new version now waits with a small \"Update ready\" note, and you reload when you're ready — it even mentions if you have unsaved work open.",
+          "issues": [1699, 1700]
+        },
+        {
+          "pr": 1703,
+          "kind": "feature",
+          "title": "A tidier supplement shelf and medicine cabinet",
+          "body": "The supplements page puts your working list back ahead of the safety reading, with a \"More supplements\" disclosure matching Food's. The medicine cabinet got a matching pass: profile-aware links back to each item, actions tucked into a standard overflow menu, and the usual delete confirmation. Linking a shared supply now confirms it worked and no longer lets a double-tap create duplicate bottles, and same-named linked items disambiguate by kind and dose so you always know which one you're looking at.",
+          "issues": []
+        },
+        {
+          "pr": 1701,
+          "kind": "feature",
+          "title": "Upcoming stops drowning you in routine",
+          "body": "The planning page's scheduled doses now fold into one line per band — \"14 doses today · 9 taken\" — expandable to the exact rows with their confirm buttons intact, and routine interaction/gene notes roll up the same way. Safety never folds: a missed-dose escalation or an as-needed limit warning always renders individually, above the fold, and allergy conflicts keep their place at the top. The genuinely attention-worthy items stop being needles in a haystack.",
+          "issues": [1504]
+        },
+        {
+          "pr": 1698,
+          "kind": "feature",
+          "title": "File a document or log a practice without leaving where you are",
+          "body": "The quick-log sheet gains an Add document row that opens the familiar upload form in place — camera included, so photographing a paper result is one tap — and a Log practice row listing your tracked practices with this week's standing. The command palette learned both too: search for \"scan\" or \"lab report\" to file a document, or type \"log sauna\" to record a practice — a bare practice name stays a search, so you never log by accident.",
+          "issues": [1525, 1633]
+        },
+        {
+          "pr": 1697,
+          "kind": "feature",
+          "title": "Weekly, alternating-day, and taper schedules — without giving up reminders",
+          "body": "Intake items can finally say when they actually happen: weekly (methotrexate, a GLP-1 shot), alternating days, every N days, or specific weekdays. A weekly medication now reminds and escalates on its day and stays silent the other six — no more choosing between daily nagging and demoting it to no reminders at all. Off-day quick-logs still work and ask an honest confirm; adherence math counts only the days a dose was actually owed.",
+          "issues": [1602]
+        },
+        {
+          "pr": 1693,
+          "kind": "fix",
+          "title": "Charts you can actually read on a phone — and a day chart you can touch",
+          "body": "Chart text now has a real minimum: labels are sized against how small the chart can actually render, so nothing shrinks below legibility (two charts were quietly under the floor and got fixed). The day-at-a-glance chart labels your wake and bed times, names its activity blocks, and drops the machine-analysis tick marks. The intraday chart gained a touch layer: scrub for an exact heart-rate reading, drag or tap to zoom, all with the keyboard supported — and annotation labels now stay inside the plot instead of smearing past its edge.",
+          "issues": [1573, 1518, 1512, 1515]
+        },
+        {
+          "pr": 1689,
+          "kind": "feature",
+          "title": "Search finally knows your whole record",
+          "body": "Global search and record Q&A now cover nine domains that were previously unsearchable: providers, imaging, genomics, dental, skin lesions, illness episodes, protocols, wellness practices, and equipment. Hits deep-link straight to the right detail page, providers only surface through your own records that name them, and asking a question can now cite any of these domains as evidence.",
+          "issues": [1595]
+        },
+        {
+          "pr": 1688,
+          "kind": "feature",
+          "title": "Skin lesions and allergies join the visit trail",
+          "body": "The last two clinical observations without a visit link now have one: a skin lesion or an allergy can be tied to the encounter where it was noted, and an allergy can also record which provider confirmed it. They join the same link, suggestion, and unlink flow every other record type uses, and imported allergy records pick up their visit automatically when the document names one. Deleting a visit never deletes the observation — the record outlives the appointment.",
+          "issues": [1526]
+        },
+        {
+          "pr": 1683,
+          "kind": "feature",
+          "title": "Trends opens on one page: your stars, then your body",
+          "body": "The Overview and Body tabs merged into a single landing surface: the trending digest up top, your starred cards in the order you arranged them, and the full body census streaming in below — now one flat ranked stack instead of titled boxes, so your stars and the everyday-first order decide what leads. Fitness, Nutrition, and Insights remain their own tabs. Old bookmarks to the Body tab land on the merged page, and the page arrives as fast as the old Overview tab did alone.",
+          "issues": [1644, 1674]
+        },
+        {
+          "pr": 1686,
+          "kind": "feature",
+          "title": "The review inbox now tells you what to double-check",
+          "body": "Document extraction now reports how sure it was about each captured row. The import detail page gains a \"Check these first\" card that ranks the least-certain rows to the top with the model's stated reason, and Data → Review badges each document with how many rows deserve a look. Nothing is blocked or hidden by this — a document extracted before this feature simply shows no badge, and a row the model was confident about behaves exactly as before.",
+          "issues": [1601]
+        },
+        {
+          "pr": 1664,
+          "kind": "feature",
+          "title": "Must, should, may: your supplements and meds now carry an honest obligation",
+          "body": "Priority levels and the separate as-needed flag collapse into one clear setting: must (missing it is an incident — reminders and escalation), should (reminded and counted, never escalated), and may (never pushed, no misses — it simply stays one tap away in its usual slot). Rarely-taken supplements get a gentle Demote offer on their own reminder, never a new notification; accepting moves them into a calm \"available\" shelf on Upcoming instead of deleting anything. Medications default to must, and lowering one spells out exactly what safety net you are giving up — while interaction, gene, and upper-limit warnings fire identically no matter the level. Daily digests now lead with what actually changed — notably missed and resumed — instead of a fraction.",
+          "issues": [1505]
+        },
+        {
+          "pr": 1678,
+          "kind": "feature",
+          "title": "Wellness practices grow up: findable, editable, and safely deletable",
+          "body": "The Wellness page now shows up in navigation, recent pages, and the command palette. Practices gained the full lifecycle they were missing: cadence rules that refuse impossible values out loud, protection against two practices silently sharing one history, session editing, a shared history/progress/heatmap view, and — at last — the choice between stop tracking (keeps your history) and permanent deletion (with undo). Protocol pages were tightened alongside, and protocol outcomes now rank by which biomarkers actually have before-and-after data to show.",
+          "issues": [1618, 1619, 1620, 1621, 1622, 1623, 1624]
+        }
+      ]
+    },
+    {
       "date": "2026-07-29",
       "entries": [
         {

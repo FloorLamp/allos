@@ -36,6 +36,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Hydration",
       "Nutrition",
     ],
+    // The phone exporter pushes on a schedule (typically hourly), so a connected
+    // Health Connect goes quiet only when the phone stops: the exporter app was
+    // killed, battery optimization suspended it, or the token was rotated. Three days
+    // tolerates a phone off for a long weekend without tolerating a dead exporter.
+    staleAfterDays: 3,
     docsUrl: "https://github.com/mcnaveen/health-connect-webhook",
   },
   {
@@ -56,6 +61,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Power",
       "Cadence",
     ],
+    // Polled by the hourly tick, which records an ok event for EVERY successful poll —
+    // including a quiet one that found no new activities (isQuietSync). So the last
+    // successful sync tracks the CONNECTION's liveness, not the user's training: a
+    // rest week is not staleness. Three days is ~72 missed polls.
+    staleAfterDays: 3,
     docsUrl: "https://developers.strava.com/",
   },
   {
@@ -76,6 +86,10 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Distance",
       "Calories",
     ],
+    // Polled hourly like Strava, and a quiet poll still records an ok event, so the
+    // same three-day reading applies: nights without the ring off the charger are not
+    // staleness, a connection that stopped answering is.
+    staleAfterDays: 3,
     docsUrl: "https://cloud.ouraring.com/personal-access-tokens",
   },
   {
@@ -97,6 +111,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Resting HR",
       "Sleep",
     ],
+    // Polled hourly, and a poll that finds no new measurement still records an ok
+    // event — so a week between weigh-ins is NOT staleness (the scale is idle, the
+    // connection is fine). Three days measures the poll, which is the thing that can
+    // silently die.
+    staleAfterDays: 3,
     docsUrl: "https://developer.withings.com/",
   },
   {
@@ -110,6 +129,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "developer program is currently paused) and a public webhook, so it's not " +
       "yet available for self-hosted use.",
     dataTypes: ["Workouts", "Steps", "Heart rate", "Sleep"],
+    // Exempt: `planned`, so there is no connection to go stale.
+    staleAfterDays: null,
     docsUrl: "https://developer.garmin.com/gc-developer-program/health-api/",
   },
   {
@@ -146,7 +167,47 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Sleep score",
       "Readiness score",
     ],
+    // Exempt by nature: a one-off archive import, not a live connection. "You have not
+    // re-imported your Takeout export in three days" is not a fault, and nagging about
+    // it would be the exact false positive that teaches a user to ignore the signal.
+    staleAfterDays: null,
     docsUrl: "https://takeout.google.com/",
+  },
+  {
+    id: "patient-portals",
+    name: "Patient portals",
+    kind: "external-attended",
+    status: "available",
+    // Named for the DOCUMENT FAMILY, not for one vendor's tool. The CCD/C-CDA export is
+    // a regulatory requirement (ONC View/Download/Transmit), so Cerner/Oracle Health,
+    // athenahealth and NextGen emit the same thing Epic MyChart does. MyChart is simply
+    // the first companion tool that implements the contract — a fact about tools, not
+    // about the integration, which is why it is named here and nowhere structural.
+    // TWO SENTENCES: what this is, and what stays on your computer (#1756). The longer
+    // version explained why allos cannot sign in for you and how proxy patients are
+    // mapped — both of which "How it works" and the mapping card below it say again, in
+    // more detail, a few centimetres further down the same page. A six-line wall at the
+    // top of a setup page is read by nobody; the mechanics belong where the mechanics are.
+    blurb:
+      "Bring in visit summaries, labs, medications and immunizations from hospital " +
+      "and clinic patient portals. A small companion tool signs in on your own " +
+      "computer and pushes what it downloads here — your portal password, and even " +
+      "the portal's web address, never leave that machine.",
+    dataTypes: [
+      "Visit summaries",
+      "Labs",
+      "Medications",
+      "Immunizations",
+      "Allergies",
+      "Conditions",
+    ],
+    // Exempt: allos cannot make this sync happen. The tool runs attended, on the user's
+    // machine, when they choose — "you have not signed in to your hospital portal in
+    // three days" is not a fault, and nagging about it would be the same false positive
+    // the Fitbit Takeout entry avoids. The card still shows per-(portal, login, patient)
+    // last-synced from the tool's own sync reports; that is reporting, not a freshness
+    // assertion.
+    staleAfterDays: null,
   },
   {
     id: "weather",
@@ -161,6 +222,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "the UV for activities you already logged. Needs only your home location " +
       "(Settings → Profile); works offline with a clear-sky estimate.",
     dataTypes: ["UV index", "Solar irradiance"],
+    // Hourly, keyless, and the only prerequisite is a home location; UV backfill is
+    // what the sun-exposure math reads, so a stopped weather sync quietly degrades a
+    // computed signal. Two days — the tightest threshold here, because nothing about
+    // this provider is bursty.
+    staleAfterDays: 2,
     docsUrl: "https://open-meteo.com/",
   },
   {
@@ -174,6 +240,9 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "automatically, so upcoming medical visits — with reminders — show up " +
       "alongside the rest of your schedule.",
     dataTypes: ["Appointments", "Reminders"],
+    // Exempt: OUTBOUND. The calendar app pulls our feed; we never sync anything in,
+    // so this provider records no sync events and has no freshness to assert.
+    staleAfterDays: null,
     docsUrl:
       "https://support.google.com/calendar/answer/37100#subscribe_by_url",
   },

@@ -3,6 +3,10 @@
 import type { MedicalCategory, MedicalFlag, Sex } from "../types";
 import type { ImportDrop } from "../import-report";
 import { strOrNull } from "../parse";
+import {
+  normalizeConfidence,
+  normalizeConfidenceReason,
+} from "../extraction-confidence";
 import { isRealIsoDate } from "../date";
 import {
   buildCanonicalIndex,
@@ -19,6 +23,7 @@ import {
 } from "../lab-result-lifecycle";
 import { canonicalBiomarkerForName } from "../datasets/canonical-biomarkers";
 import { CATEGORIES, FLAGS } from "./constants";
+import type { ExtractedConfidence } from "./types";
 import type {
   ExtractedPrescription,
   ExtractedResult,
@@ -177,6 +182,22 @@ export function normalizePrescription(
   return hasAny ? rx : null;
 }
 
+// The model's per-row certainty (#1601), coerced onto EVERY extracted record shape
+// through the one shared vocabulary (lib/extraction-confidence). Spread into each
+// record below so no domain can drift on how it reads the field. An unrecognized or
+// absent answer lands as null — "unknown", never a guessed tier — and the reason is
+// kept only for a row the model actually hedged on.
+function confidenceOf(raw: any): Required<ExtractedConfidence> {
+  const confidence = normalizeConfidence(raw?.confidence);
+  return {
+    confidence,
+    confidence_reason: normalizeConfidenceReason(
+      raw?.confidence_reason,
+      confidence
+    ),
+  };
+}
+
 export function normalizeResults(
   raw: any,
   knownCanonical: string[] = []
@@ -266,6 +287,7 @@ export function normalizeResults(
         category === "prescription"
           ? normalizePrescription(r?.prescription)
           : null,
+      ...confidenceOf(r),
     });
   }
   return out;
@@ -290,6 +312,7 @@ export function normalizeImmunizations(raw: any): ExtractedImmunization[] {
       route: strOrNull(it?.route),
       site: strOrNull(it?.site),
       reaction: strOrNull(it?.reaction),
+      ...confidenceOf(it),
     });
   }
   return out;
@@ -366,6 +389,7 @@ export function normalizeClinicalDomains(raw: any): {
       status: strOrNull(c?.status),
       onset_date: isoDateOrNull(c?.onset_date),
       resolved_date: isoDateOrNull(c?.resolved_date),
+      ...confidenceOf(c),
     });
   }
 
@@ -390,6 +414,7 @@ export function normalizeClinicalDomains(raw: any): {
       criticality: strOrNull(a?.criticality),
       verification_status: strOrNull(a?.verification_status),
       onset_date: isoDateOrNull(a?.onset_date),
+      ...confidenceOf(a),
     });
   }
 
@@ -409,6 +434,7 @@ export function normalizeClinicalDomains(raw: any): {
       code: strOrNull(p?.code),
       code_system: strOrNull(p?.code_system),
       date: isoDateOrNull(p?.date),
+      ...confidenceOf(p),
     });
   }
 
@@ -437,6 +463,7 @@ export function normalizeClinicalDomains(raw: any): {
       provider: strOrNull(e?.provider),
       location: strOrNull(e?.location),
       notes: strOrNull(e?.notes),
+      ...confidenceOf(e),
     });
   }
 
@@ -458,6 +485,7 @@ export function normalizeClinicalDomains(raw: any): {
       code_system: strOrNull(f?.code_system),
       onset_age: finiteOrNull(f?.onset_age),
       deceased: boolIntOrNull(f?.deceased),
+      ...confidenceOf(f),
     });
   }
 
@@ -479,6 +507,7 @@ export function normalizeClinicalDomains(raw: any): {
       category: strOrNull(c?.category),
       planned_date: isoDateOrNull(c?.planned_date),
       status: strOrNull(c?.status),
+      ...confidenceOf(c),
     });
   }
 
@@ -499,6 +528,7 @@ export function normalizeClinicalDomains(raw: any): {
       code_system: strOrNull(g?.code_system),
       target_date: isoDateOrNull(g?.target_date),
       status: strOrNull(g?.status),
+      ...confidenceOf(g),
     });
   }
 
@@ -529,6 +559,7 @@ export function normalizeClinicalDomains(raw: any): {
       interpretation: strOrNull(g?.interpretation),
       source_lab: strOrNull(g?.source_lab),
       report_date: isoDateOrNull(g?.report_date),
+      ...confidenceOf(g),
     });
   }
 
@@ -562,6 +593,7 @@ export function normalizeClinicalDomains(raw: any): {
       impression,
       indication: strOrNull(s?.indication),
       status: strOrNull(s?.status),
+      ...confidenceOf(s),
     });
   }
 
@@ -601,6 +633,7 @@ export function normalizeClinicalDomains(raw: any): {
       expiry_date: isoDateOrNull(p?.expiry_date),
       prescriber: strOrNull(p?.prescriber),
       notes: strOrNull(p?.notes),
+      ...confidenceOf(p),
     });
   }
 
@@ -630,6 +663,7 @@ export function normalizeClinicalDomains(raw: any): {
       finding: strOrNull(d?.finding),
       follow_up_interval_days:
         followUp != null && followUp > 0 ? Math.floor(followUp) : null,
+      ...confidenceOf(d),
     });
   }
 

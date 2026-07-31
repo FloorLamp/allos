@@ -8,6 +8,7 @@
 // in lib/__db_tests__/upcoming.scoping.test.ts.
 
 import { cache } from "../../request-cache";
+import { syncRequestItems } from "./portal-sync";
 import { shiftDateStr } from "../../date";
 import {
   signalKey,
@@ -150,6 +151,7 @@ import {
   markCarePlanItemDone,
   practiceItems,
   trainingItems,
+  outdoorPlanItems,
 } from "./plans";
 export { markCarePlanItemDone } from "./plans";
 import {
@@ -167,7 +169,17 @@ import {
   prnMaxItems,
   refillItems,
   uvOverexposureItems,
+  weatherMedItems,
 } from "./intake-safety";
+// The `may` availability gather (#1505) is re-exported rather than folded into
+// collectUpcoming on purpose: it is NOT due work, so it must never join the banded
+// set, the total, or the hero. The Upcoming page reads it separately for its
+// collapsed disclosure.
+export { offeredItems } from "./intake-safety";
+// The day's dose progress (#1504) — the denominator behind the Upcoming dose
+// aggregate's always-visible "9 of 14 taken". Re-exported, not folded into
+// collectUpcoming: it is a COUNT about the same due set, not another due item.
+export { doseDayProgress } from "./intake-safety";
 
 // Biomarker categories a retest nudge makes sense for: `lab` ONLY (#1076).
 // Vitals/scans/prescriptions aren't "labs to redraw", genomics/reference never go
@@ -584,6 +596,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...drugAllergyItems(profileId),
     ...interactionItems(profileId),
     ...uvOverexposureItems(profileId, today),
+    ...weatherMedItems(profileId, today, temperatureUnit),
     ...pgxItems(profileId),
     ...contrastItems(profileId, today),
     ...dentalSafetyItems(profileId),
@@ -597,8 +610,14 @@ const rawUpcoming = cache(function rawUpcoming(
     ...biomarkerItems(profileId, today),
     ...goalItems(profileId),
     ...trainingItems(profileId),
+    ...outdoorPlanItems(profileId),
     ...practiceItems(profileId),
     ...enduranceEventItems(profileId, today, distanceUnit),
+    // Open portal sync requests (#1757) — "run the portal tool on the computer with
+    // Mom's login". Rides this aggregation deliberately: the morning digest's Today
+    // section formats the SAME set, so the item and its digest line share one dedupe
+    // key and one dismissal (#221), and the feature needs no send of its own.
+    ...syncRequestItems(profileId, today),
   ];
 });
 

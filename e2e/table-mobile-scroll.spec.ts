@@ -8,7 +8,7 @@ test("Trends → Body stays tiles-only at phone width (#794/#1067)", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/trends?tab=body&view=all");
+  await page.goto("/trends?view=all");
 
   await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
   await expect(page.getByTestId("body-history-table")).toBeHidden();

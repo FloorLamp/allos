@@ -285,8 +285,13 @@ export async function sendTestPush(): Promise<{
   const { login } = await requireSession();
   try {
     const targeted = await sendTestPushToLogin(login.id, {
-      title: "Test notification",
+      title: "🔔 Test notification",
       body: "Web push is working ✅",
+      // Explicitly the ungated `test` kind, matching the Telegram test send (#1718).
+      // Without it the message read as "other", so a login that had turned "other"
+      // off got no test push and concluded their subscription was broken — the one
+      // send whose whole job is proving the wiring works.
+      kind: "test",
     });
     if (targeted === 0)
       return {
@@ -406,7 +411,7 @@ export async function sendTestNotification(): Promise<{
     };
   try {
     await sendTelegramMessage(telegramChatId, {
-      title: "Test notification",
+      title: "🔔 Test notification",
       body: "Notifications are working ✅",
       kind: "test",
     });

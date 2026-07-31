@@ -143,8 +143,8 @@ export function seedRuleDomains(): void {
     db
       .prepare(
         `INSERT INTO intake_items
-         (profile_id, name, condition, priority, active, source, created_at)
-       VALUES (?, ?, 'daily', 'high', 1, 'manual', ?)`
+         (profile_id, name, condition, obligation, active, source, created_at)
+         VALUES (?, ?, 'daily', 'must', 1, 'manual', ?)`
       )
       .run(PROFILE_ID, ADHERE_ITEM, adhereBorn).lastInsertRowid
   );
@@ -269,6 +269,12 @@ export function seedSuppressedCenter(): void {
     );
   }
 
+  // The stamped day's max temperature — comfortably over the #1726 heatwave ENTRY
+  // bound (32 °C), so three consecutive such days genuinely make today notable AND give
+  // the journal card an unmistakable figure. Kept above the bound rather than at it, so
+  // the fixture doesn't sit on the hysteresis edge the predicate exists to smooth.
+  const WEATHER_STAMP_TEMP_C = 34;
+
   // #1172 — the Open-Meteo weather/UV integration + two-sided UV-dose sun model. A
   // dedicated adult profile seeded so the weather spec is fully isolated from profile
   // 1: a coarse home location (New York; timezone matched so the local hour labels line
@@ -323,6 +329,81 @@ export function seedSuppressedCenter(): void {
     ] as [string, number][]) {
       insUv.run(wxLat, wxLng, `${wxToday}T${hr}:00`, uv, uv + 1, 600, 500, 100);
     }
+    // ---- Conditions stamps + notable Timeline days (#1728) ----
+    // An outdoor RIDE today (the outdoor catalog flag decides which sessions get a
+    // stamp; the walk above is deliberately not an outdoor-flagged name, so only this
+    // one is stamped) plus a cached DAILY row for its day, so the journal card renders
+    // "31°C · clear". A three-day hot spell ending today additionally makes today a
+    // NOTABLE day under the #1726 heatwave predicate, so the Timeline day header
+    // carries its conditions summary — quiet by default, notable by exception.
+    db.prepare(
+      `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, duration_min)
+     VALUES (?, ?, 'cardio', 'Cycling', '07:00', '08:00', 60)`
+    ).run(wxId, wxToday);
+    const insDay = db.prepare(
+      `INSERT INTO weather_days
+         (lat, lng, date, temp_max_c, temp_min_c, precipitation_mm, weather_code, source)
+       VALUES (?, ?, ?, ?, ?, 0, 0, 'e2e')
+       ON CONFLICT(lat, lng, date) DO NOTHING`
+    );
+    for (let back = 2; back >= 0; back--) {
+      const d = new Date(`${wxToday}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - back);
+      insDay.run(
+        wxLat,
+        wxLng,
+        d.toISOString().slice(0, 10),
+        WEATHER_STAMP_TEMP_C,
+        22
+      );
+    }
+
+    // ---- Forecast-ahead planning (#1724 part 5) ----
+    // A behind weekly CARDIO target plus a season of rides (so the tolerance envelope is
+    // REVEALED, not assumed) plus a forecast whose only dry day is two days out — the
+    // scarcity that makes the plan signal rather than filler. The week is pinned to
+    // START TODAY so the fixture always has a full six remaining on-days regardless of
+    // which weekday CI runs on; with a fixed week start the days-left count drifts and
+    // the plan would appear on a Monday and vanish on a Friday.
+    setPS.run(wxId, "week_mode", "calendar");
+    setPS.run(
+      wxId,
+      "week_start",
+      String(new Date(`${wxToday}T12:00:00Z`).getUTCDay())
+    );
+    db.prepare(
+      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+       VALUES (?, 'type', 'cardio', 2)`
+    ).run(wxId);
+    const shiftWx = (n: number): string => {
+      const d = new Date(`${wxToday}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + n);
+      return d.toISOString().slice(0, 10);
+    };
+    // A season of rides in mild-to-warm conditions.
+    [10, 12, 14, 16, 18, 20, 22, 24].forEach((t, i) => {
+      const date = shiftWx(-7 * (i + 1));
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min)
+         VALUES (?, ?, 'cardio', 'Cycling', 60)`
+      ).run(wxId, date);
+      insDay.run(wxLat, wxLng, date, t, t - 6);
+    });
+    // The week ahead: wet everywhere except day+2. (Today itself is already cached hot
+    // above, which is fine — the plan names the best FUTURE window.)
+    const insWet = db.prepare(
+      `INSERT INTO weather_days
+         (lat, lng, date, temp_max_c, temp_min_c, precipitation_mm, weather_code, source)
+       VALUES (?, ?, ?, 16, 10, ?, 61, 'e2e')
+       ON CONFLICT(lat, lng, date) DO UPDATE SET
+         temp_max_c = excluded.temp_max_c,
+         precipitation_mm = excluded.precipitation_mm`
+    );
+    for (let i = 1; i <= 6; i++) {
+      insWet.run(wxLat, wxLng, shiftWx(i), i === 2 ? 0 : 60);
+    }
+
     // Two successful weather syncs so the profile's Connected-sources card renders
     // with a latest-state line AND an expandable history (#1614): before that fix
     // Weather was excluded from getConnectedSources by kind, so the "Sync history"

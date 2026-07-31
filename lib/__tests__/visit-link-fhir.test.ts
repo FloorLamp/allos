@@ -62,6 +62,45 @@ describe("encounter-reference resolution", () => {
     ).toBe(true);
   });
 
+  it("AllergyIntolerance.encounter → the visit that documented the allergy (#1526)", () => {
+    const out = resourcesToImportResult(
+      [
+        ENCOUNTER,
+        {
+          resourceType: "AllergyIntolerance",
+          id: "allergy-1",
+          clinicalStatus: { coding: [{ code: "active" }] },
+          code: { text: "Penicillin" },
+          onsetDateTime: "2020-01-02",
+          encounter: { reference: "Encounter/visit-1" },
+        },
+      ],
+      "fhir"
+    );
+    const allergy = (out.allergies ?? []).find(
+      (a) => a.substance === "Penicillin"
+    );
+    expect(allergy?.encounter_external_id).toBe("ccda:encounter:visit-1");
+  });
+
+  it("an allergy with a DANGLING encounter reference imports unlinked", () => {
+    const out = resourcesToImportResult(
+      [
+        {
+          resourceType: "AllergyIntolerance",
+          id: "allergy-2",
+          clinicalStatus: { coding: [{ code: "active" }] },
+          code: { text: "Latex" },
+          encounter: { reference: "Encounter/does-not-exist" },
+        },
+      ],
+      "fhir"
+    );
+    const allergy = (out.allergies ?? []).find((a) => a.substance === "Latex");
+    expect(allergy).toBeDefined();
+    expect(allergy?.encounter_external_id ?? null).toBeNull();
+  });
+
   it("a DANGLING encounter reference resolves to null (never a wrong link)", () => {
     const out = resourcesToImportResult(
       [

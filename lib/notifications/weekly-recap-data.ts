@@ -30,7 +30,8 @@ import {
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { loadContextLabel } from "../lifts";
 import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
-import { isDueOn } from "../supplement-schedule";
+import { doseDueOn } from "../supplement-schedule";
+import { getIntakeDeltaLine } from "../intake-history";
 import { activityStreak, currentStreak } from "../streak";
 import {
   buildWeeklyRecap,
@@ -52,6 +53,7 @@ import {
   getWeekStart,
   getZone2WeeklyTargetMin,
   setProfileSetting,
+  getPublicUrl,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import { illnessDaysInWindow } from "../illness-episode-store";
@@ -110,7 +112,8 @@ function windowAdherence(
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
     const dueIds = doses
       .filter((dose) =>
-        isDueOn(suppById.get(dose.item_id)!, {
+        doseDueOn(suppById.get(dose.item_id)!, dose, {
+          date: d,
           isWorkoutDay,
           activeSituations: situationsOn(d),
         })
@@ -256,6 +259,10 @@ export function gatherRecapInput(
     prevEstimatedKcal,
     prLabels,
     adherence: windowAdherence(profileId, win.start, win.end),
+    // The pushed tier's state changes (#1505 part 3), from the ONE shared classifier
+    // the morning digest and the household card also read — so the recap can never
+    // report a different "what changed" than they do.
+    intakeDeltaLine: getIntakeDeltaLine(profileId, td),
     weights,
     streak: activityStreak(td, activityDates),
     strictStreak: currentStreak(td, activityDates),
@@ -356,7 +363,7 @@ export async function runWeeklyRecap(
     getRecentNarratives(profileId, ["week"], 5),
     recap
   );
-  const msg = renderRecapMessage(recap, profileName, narrative);
+  const msg = renderRecapMessage(recap, profileName, narrative, getPublicUrl());
   if (!msg) {
     setProfileSetting(profileId, dedupKey, date);
     log.info("weekly recap: nothing to send", { profile: profileId });

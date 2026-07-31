@@ -92,13 +92,10 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(PHONE);
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     // The tab strip collapses into the #1485 F context bar at phone width.
     await expandTrendsContext(page);
-    await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    await expect(page.getByTestId("trends-section-body")).toBeVisible();
 
     // The sparkline-tile grid is the default view on mobile.
     await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
@@ -137,7 +134,7 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(PHONE);
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
 
     const sleepTile = page.getByTestId("body-tile-sleep");
     await expect(sleepTile).toBeVisible();
@@ -160,7 +157,7 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(PHONE);
-    await page.goto("/trends?tab=body&view=all");
+    await page.goto("/trends?view=all");
 
     // Old all-chart URLs still resolve to the compact tile overview on phones,
     // where the former all-metrics source-control stack is intentionally absent.

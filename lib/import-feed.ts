@@ -62,6 +62,15 @@ export interface FeedDocument {
   // query fills this only for DONE documents (the sole branch that shows a count);
   // it's 0 for in-flight/failed rows and never read there.
   live_count: number;
+  // Extracted rows the model itself was NOT confident about (#1601) — the scrutiny
+  // total off this document's stored import report. Optional: a caller/fixture that
+  // predates the field, and every path with no confidence signal (deterministic
+  // import, keyless extraction, pre-#1601 document), simply has none → no badge.
+  confidence_scrutiny?: number;
+  // The display name of the portal this document was acquired from (#1748), or null for
+  // the ordinary human upload. Optional so a fixture or caller predating the column
+  // simply has none — the row then says nothing about acquisition, which is correct.
+  acquired_portal_name?: string | null;
   uploaded_at: string;
 }
 
@@ -194,11 +203,21 @@ export interface FeedItemView {
   // Sync-only extra: rows the parser dropped, rendered as an amber "· N skipped"
   // segment (0 = none).
   skipped: number;
+  // Document-only extra: extracted rows the model hedged on (#1601), rendered as an
+  // amber "· N to check" segment pointing the reviewer at the detail page's
+  // lowest-confidence-first card. 0 = no signal (or the model was sure throughout);
+  // every non-document stream is 0.
+  scrutiny: number;
   // Secondary meta: a sync's data window, or a document's detected format.
   meta: string | null;
   // Document-only: the stated patient name, for the provenance-mismatch flag. The
   // renderer decides whether it actually mismatches the active profile.
   patientName: string | null;
+  // Document-only: the portal this document was ACQUIRED from (#1748), or null when a
+  // person uploaded it. Calm and factual — it is provenance, never a warning: the whole
+  // point is telling two portals' overlapping records apart, and saying nothing at all
+  // for the ordinary hand-uploaded document.
+  acquiredVia: string | null;
 }
 
 // Map a document's normalized log status to a feed tone.
@@ -298,8 +317,10 @@ export function feedItemView(
           : "import failed",
       detailMuted: ev.ok ? muted : false,
       skipped: ev.skipped ?? 0,
+      scrutiny: 0,
       meta: formatWindow(ev.window_start, ev.window_end),
       patientName: null,
+      acquiredVia: null,
     };
   }
   if (entry.stream === "sync-quiet") {
@@ -314,8 +335,10 @@ export function feedItemView(
           : `No new data · ${entry.count} checks`,
       detailMuted: true,
       skipped: 0,
+      scrutiny: 0,
       meta: null,
       patientName: null,
+      acquiredVia: null,
     };
   }
   if (entry.stream === "document") {
@@ -329,8 +352,15 @@ export function feedItemView(
       detail,
       detailMuted: muted,
       skipped: 0,
+      // Only a DONE document can have produced rows to scrutinize; an in-flight or
+      // failed row's stale report must not badge a count next to "import failed".
+      scrutiny:
+        documentLogStatus(doc.extraction_status) === "done"
+          ? (doc.confidence_scrutiny ?? 0)
+          : 0,
       meta: documentFormatLabel(doc),
       patientName: doc.patient_name,
+      acquiredVia: doc.acquired_portal_name ?? null,
     };
   }
   const job = entry.job;
@@ -343,7 +373,9 @@ export function feedItemView(
     detail,
     detailMuted: muted,
     skipped: 0,
+    scrutiny: 0,
     meta: null,
     patientName: null,
+    acquiredVia: null,
   };
 }

@@ -7,7 +7,9 @@
 // several servings / several groups), so a rebuild after a tap keeps every button
 // and only refreshes the per-button count + the tally line.
 
-import { foodGroupBySlug, foodGroupName } from "../food-groups";
+import { foodGroupBySlug, foodGroupEmoji, foodGroupName } from "../food-groups";
+import type { ProteinNudgeLineParts } from "../protein";
+import { bold, joinBody, rich, richFrom, type MessageBody } from "./rich-text";
 import {
   DEFAULT_PROTEIN_PRESET_GRAMS,
   isProteinNudgeKey,
@@ -114,6 +116,21 @@ export function foodOptInCallbackData(
   return `foodoptin:${profileId}:${enable ? "yes" : "no"}`;
 }
 
+// The protein status line, with the FIGURE emphasized and the status stated in words
+// (#1710). Above the band reads as REACHED, never as a warning — protein overshoot
+// isn't a problem — and below the band is a neutral marker: no nag, no praise. The
+// classification itself is lib/protein's `proteinTodayStatus`, shared with every other
+// surface that states a conclusion (#221).
+function proteinBody(
+  parts: ProteinNudgeLineParts | string | null | undefined
+): MessageBody | null {
+  if (!parts) return null;
+  // No goal band ⇒ no conclusion to state, and none is invented.
+  if (typeof parts === "string") return parts;
+  const tail = parts.statusWords ? ` — ${parts.statusWords}` : "";
+  return rich`${parts.emoji} Protein · ${bold(parts.amount)} of ${parts.band}${tail}`;
+}
+
 // Two buttons per keyboard row, so six groups render as a tidy 3×2 grid.
 function rowFor(index: number): string {
   return `food${Math.floor(index / 2)}`;
@@ -126,13 +143,28 @@ function rowFor(index: number): string {
 // slot counts. Empty string when nothing's been logged yet today (the caller shows the
 // prompt instead). The reserved __protein__ key can't appear (it never lands in food_log),
 // but is filtered defensively so it can never leak into the food-serving tally (#1073).
-function tallyLine(dayServings: Map<string, number>): string {
+function tallyLine(dayServings: Map<string, number>): MessageBody | null {
   const logged = [...dayServings.entries()]
     .filter(([slug, n]) => n > 0 && !isProteinNudgeKey(slug))
-    .map(([slug, n]) => ({ name: foodGroupName(slug), n }))
+    .map(([slug, n]) => ({
+      emoji: foodGroupEmoji(slug),
+      name: foodGroupName(slug),
+      n,
+    }))
     .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
-  if (logged.length === 0) return "";
-  return `✓ Today: ${logged.map((x) => `${x.name} ×${x.n}`).join(" · ")}`;
+  if (logged.length === 0) return null;
+  // The group NAMES carry the emphasis (#1710) — one or the other, never both, since
+  // the line already wraps on a phone — and each is led by its catalog glyph, which is
+  // what makes a five-group tally scannable rather than a run-on sentence. The counts
+  // stay plain so the eye lands on WHAT was eaten first.
+  const parts: (string | ReturnType<typeof bold>)[] = ["✓ Today: "];
+  logged.forEach((x, i) => {
+    if (i > 0) parts.push(" · ");
+    if (x.emoji) parts.push(`${x.emoji} `);
+    parts.push(bold(x.name));
+    parts.push(` ×${x.n}`);
+  });
+  return richFrom(parts);
 }
 
 // Options for renderFoodNudge (the growing set of #974/#1073/#1075 knobs), so the
@@ -140,10 +172,14 @@ function tallyLine(dayServings: Map<string, number>): string {
 export interface FoodNudgeRenderOpts {
   // A configured public app URL → append a "More…" deep link to /nutrition.
   deepLinkBase?: string;
-  // Today-vs-goal protein status line (issue #974 / day-grams line #1073), pre-rendered by
-  // the gather. Null/omitted when there's no target and no logged protein, so the nudge
-  // never carries a bare "0 g" nag. Rendered on its own line, distinct from the tally.
-  proteinLine?: string | null;
+  // Today-vs-goal protein status (issue #974 / day-grams line #1073), gathered as PARTS
+  // (#1710) so the classification is decided once in lib/protein and only the emphasis
+  // is decided here. Null/omitted when there's no target and no logged protein, so the
+  // nudge never carries a bare "0 g" nag. Rendered on its own line, distinct from the
+  // tally.
+  // A plain string is the no-target case (#1073): grams logged but no band to compare
+  // against, so it states the figure and claims NOTHING about a goal.
+  proteinLine?: ProteinNudgeLineParts | string | null;
   // How many ranked buttons to show (#1075 progressive expansion). Defaults to
   // FOOD_NUDGE_BUTTON_COUNT so every existing send starts compact; "Show more" bumps it.
   visibleCount?: number;
@@ -203,8 +239,12 @@ export function renderFoodNudge(
     const g = foodGroupBySlug(key);
     if (!g) return; // a retired/unknown slug can't render a button (belt; rankedKeys are catalog)
     const n = slotServings.get(key) ?? 0;
+    // The catalog glyph leads the label (#1710) — the same vocabulary the tally and the
+    // web food bar use, which is what makes the 3×2 grid readable at a glance.
+    const emoji = foodGroupEmoji(key);
+    const name = emoji ? `${emoji} ${g.name}` : g.name;
     actions.push({
-      label: n > 0 ? `${g.name} (${n})` : g.name,
+      label: n > 0 ? `${name} (${n})` : name,
       data: foodLogCallbackData(profileId, window, date, key),
       row: rowFor(i),
     });
@@ -230,10 +270,17 @@ export function renderFoodNudge(
   }
 
   const tally = tallyLine(dayServings);
-  const lines = ["Tap what you've eaten to log a serving."];
-  if (tally) lines.push(tally);
-  if (opts.proteinLine) lines.push(opts.proteinLine);
-  const body = lines.join("\n");
+  // The prompt falls away once anything is logged (#1710): with a tally present, "Tap
+  // what you've eaten to log a serving" is redundant chrome on a small screen — the
+  // buttons are right there, and the tally is the information.
+  const body = joinBody(
+    [
+      tally ? null : "Tap what you've eaten to log a serving.",
+      tally,
+      proteinBody(opts.proteinLine),
+    ],
+    "\n"
+  );
 
   return { title: `🍽️ ${window} food log`, body, actions, kind: "food" };
 }

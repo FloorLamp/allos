@@ -3,6 +3,7 @@
 // get identical profile-scoping and verification.
 
 import {
+  getDoseCadenceLabel,
   markDoseTaken,
   markDoseSkipped,
   recordPreventiveDone,
@@ -44,11 +45,13 @@ import {
   type HouseholdDoseCallback,
   type TakeCallback,
   OUTDATED_MESSAGE_TEXT,
+  householdStaleDateAnswerText,
   householdTapAnswerText,
   householdTapRefusalText,
   parseHouseholdDoseCallback,
   escalationAckAnswerText,
   escalationAckCloseText,
+  escalationSkipCloseText,
   escalationTakeCloseText,
   foodLogAnswerText,
   foodOptInAnswerText,
@@ -56,6 +59,7 @@ import {
   foodProteinAnswerText,
   foodStaleDateAnswerText,
   foodTapDateGuard,
+  tapDateGuard,
   keyboardDoseFootprint,
   parseAllCallback,
   parseEscalationCallback,
@@ -65,12 +69,14 @@ import {
   parseFoodProteinCallback,
   parsePreventiveCallback,
   parsePrnLogCallback,
+  parseOfferTailCallback,
+  parseDemoteCallback,
   parsePracticeDoneCallback,
-  practiceDoneAnswerText,
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
   parseMoodCheckinCallback,
+  parseMoodKeepCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
   parseTempReply,
@@ -124,6 +130,7 @@ import {
 import type { TelegramMessage } from "./telegram-api";
 import { resolveTelegramRecipients } from "./fan-out";
 import type { NotificationAction } from "./types";
+import type { DoseTakenOutcome } from "../types";
 export {
   handleDoseCommand,
   handleIncomingMessage,
@@ -134,11 +141,27 @@ export {
 } from "./telegram-quick-log";
 import {
   handleMoodTap,
+  handleMoodKeepTap,
   handlePracticeDoneTap,
   handlePrnLogTap,
+  handleOfferTailTap,
+  handleDemoteTap,
   handleSymptomPick,
   handleSymptomSeverity,
 } from "./telegram-quick-log";
+
+// The cadence phrase for an OFF-DAY confirm, or null on every other outcome (#1602).
+// Gated on the outcome so the ordinary confirm path never pays for the lookup, and
+// centralized here so both tap sites answer an off-cadence log identically.
+function offDayCadence(
+  profileId: number,
+  doseId: number,
+  outcome: DoseTakenOutcome
+): string | null {
+  return outcome === "logged-off-day"
+    ? getDoseCadenceLabel(profileId, doseId)
+    : null;
+}
 
 // "⏰ Remind later" on a preventive nudge snoozes the finding a week out — the item
 // isn't urgent, so a short reprieve without losing it. Refill "📦 Ordered" snoozes
@@ -237,6 +260,24 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // ⤓ May (#1505 part 2): accept the demotion suggestion riding this reminder. The
+  // one obligation write the notification layer can make — user-initiated, downward,
+  // and through the same compare-and-swap core the in-app card uses.
+  const demote = parseDemoteCallback(cq.data);
+  if (demote) {
+    await handleDemoteTap(cq, demote);
+    return;
+  }
+
+  // The digest's offer tail (#1505): expand/collapse the "Log other…" button in
+  // place. Checked BEFORE the prn: log tokens because the expanded keyboard is made
+  // of those, and a tail tap must never be mistaken for a log.
+  const offerTail = parseOfferTailCallback(cq.data);
+  if (offerTail) {
+    await handleOfferTailTap(cq, offerTail);
+    return;
+  }
+
   // PRN administration logging (#797): a "💊 <med>" button from the /dose command
   // logs one as-needed administration NOW.
   const prn = parsePrnLogCallback(cq.data);
@@ -261,6 +302,14 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // "Keep daily check-ins" (#1668): the confirm-to-KEEP affordance the final reminder
+  // carries before the auto-pause takes effect.
+  const moodKeep = parseMoodKeepCallback(cq.data);
+  if (moodKeep) {
+    await handleMoodKeepTap(cq, moodKeep);
+    return;
+  }
+
   // Symptom quick-log (#859 item 5): a "<symptom>" button opens a severity picker;
   // a severity button logs the symptom-day.
   const symPick = parseSymptomPickCallback(cq.data);
@@ -274,8 +323,9 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // Unknown/malformed token: ack so the client stops the spinner, do nothing.
-  await answerCallbackQuery(cq.id);
+  // Unknown/malformed token — a button from a message whose token shape has since
+  // been retired. Nothing is written, so answer honestly rather than silently (#1716).
+  await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
 }
 
 // A per-render nonce carried in a PRN log button's callback_data — the "dedup
@@ -366,7 +416,7 @@ async function handlePreventiveTap(
       ? resolveTapProfile(pv, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const outcome = applyPreventiveTap(profileId, pv);
@@ -405,7 +455,7 @@ async function handleRefillTap(
       ? resolveTapProfile(rf, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const outcome = applyRefillTap(profileId, rf);
@@ -429,7 +479,7 @@ async function handleEscalationTap(
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   // The chats authorized to act on this escalation: every chat the escalation could
@@ -445,7 +495,24 @@ async function handleEscalationTap(
   ];
   const profileId = resolveEscalationTap(esc, String(chatId), authorizedChats);
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+
+  if (esc.action === "skip") {
+    // ⏭ Skip → markDoseSkipped, the SAME write the dose reminder's skip performs, so
+    // the ledger cannot tell the two apart (#1716). A skip is a decision: it ends the
+    // escalation loop through the existing skippedDoseIds gate rather than needing a
+    // marker of its own. Never an unconditional confirm — an already-taken or stale
+    // dose is answered by the status that actually stands.
+    const outcome = markDoseSkipped(
+      profileId,
+      esc.doseId,
+      esc.suppId,
+      esc.date
+    );
+    await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome));
+    await replaceMessage(cq, escalationSkipCloseText(outcome));
     return;
   }
 
@@ -456,7 +523,10 @@ async function handleEscalationTap(
     // status that actually stands — the toast and the replacement body come from
     // the same outcome so they can't disagree.
     const outcome = markDoseTaken(profileId, esc.doseId, esc.suppId, esc.date);
-    await answerCallbackQuery(cq.id, tapAnswerText(outcome));
+    await answerCallbackQuery(
+      cq.id,
+      tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome))
+    );
     await replaceMessage(cq, escalationTakeCloseText(outcome));
     return;
   }
@@ -570,9 +640,12 @@ async function handleDoseTap(
       : null;
   if (profileId == null) {
     // A chat that maps to no configured profile (or a token minted for a
-    // profile that doesn't share this chat): ack to stop Telegram retrying,
-    // then do nothing.
-    await answerCallbackQuery(cq.id);
+    // profile that doesn't share this chat): write nothing and SAY SO (#1716). A
+    // silent ack stops the spinner and reads as success — on the safety tier that
+    // means a caregiver believing a critical dose is confirmed when nothing was
+    // logged. Every refusal answers the same honest text the seven sibling handlers
+    // already used.
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
 
@@ -587,7 +660,9 @@ async function handleDoseTap(
       : markDoseSkipped(profileId, tap.doseId, tap.suppId, tap.date);
   await answerCallbackQuery(
     cq.id,
-    kind === "take" ? tapAnswerText(outcome) : tapSkipAnswerText(outcome)
+    kind === "take"
+      ? tapAnswerText(outcome, offDayCadence(profileId, tap.doseId, outcome))
+      : tapSkipAnswerText(outcome)
   );
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -665,7 +740,7 @@ async function handleHouseholdDoseTap(
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const access = resolveHouseholdTapAccess(String(chatId), tap);
@@ -674,6 +749,20 @@ async function handleHouseholdDoseTap(
     // keyboard alone — the button may become valid again (a re-granted member), and
     // silently consuming it would strand the caregiver with no way to confirm.
     await answerCallbackQuery(cq.id, householdTapRefusalText(access));
+    return;
+  }
+
+  // DATE GUARD (#1719), belt-and-braces with the send-time keyboard rotation. The
+  // token carries the member's SEND-TIME date, so a tap on a round that survived into
+  // the next morning would confirm a dose against YESTERDAY — for someone else's
+  // medication. Compared against the MEMBER's today, never the receiver's, because a
+  // round can legitimately span two calendar dates in a mixed-timezone household.
+  // Nothing is written and the keyboard is left alone (the same posture as an access
+  // refusal: a stale button is not a forged one).
+  if (
+    tapDateGuard(tap.date, today(tap.memberProfileId)).kind === "stale-date"
+  ) {
+    await answerCallbackQuery(cq.id, householdStaleDateAnswerText(tap.date));
     return;
   }
 
@@ -735,7 +824,7 @@ async function handleAllTaken(
       ? resolveTapProfile(all, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
 
@@ -825,7 +914,7 @@ async function handleFoodLog(
       ? resolveTapProfile(food, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   // Belt-and-suspenders cross-date guard (#947): a stale keyboard from a previous day
@@ -838,7 +927,23 @@ async function handleFoodLog(
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(food.date));
     return;
   }
-  const outcome = logFoodServingCore(profileId, food.group, food.date);
+  // Pass the NUDGE'S OWN window as the explicit meal slot (#1704). The callback token
+  // asserts the window the user is logging for — it was baked in at send time — so the
+  // explicit slot is MORE honest than one derived from the tap instant: a 21:30 tap on
+  // the dinner nudge really was dinner. Omitting it stored meal_slot = null, so
+  // foodEventWindow re-derived the window from WHEN the tap landed; a tap past the
+  // nudge's slot boundary then bucketed into the later window while the rebuild asked
+  // for `food.window`, and the button's "(n)" suffix rendered 0 even though the serving
+  // logged correctly (it still showed in the day tally). With the slot carried
+  // explicitly the count matches the button pressed, and the #950 ranking + #1016
+  // counts stay consistent because both read the same foodEventWindow derivation.
+  const outcome = logFoodServingCore(
+    profileId,
+    food.group,
+    food.date,
+    undefined,
+    food.window
+  );
   await answerCallbackQuery(cq.id, foodLogAnswerText(outcome, food.group));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -877,14 +982,24 @@ async function handleFoodProtein(
       ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   if (foodTapDateGuard(token.date, today(profileId)).kind === "stale-date") {
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(token.date));
     return;
   }
-  const outcome = addProteinGramsCore(profileId, token.date, token.grams);
+  // The protein sibling of the #1704 omission. Its button carries the SAME #1016
+  // slot-scoped "(n)" suffix (#1379), read from the __protein__ ledger row, so a tap
+  // outside the nudge's window derived a later slot and lost the count exactly like a
+  // food-group tap. The token's window is the asserted one, so pass it explicitly.
+  const outcome = addProteinGramsCore(
+    profileId,
+    token.date,
+    token.grams,
+    undefined,
+    token.window
+  );
   await answerCallbackQuery(cq.id, foodProteinAnswerText(outcome, token.grams));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -922,7 +1037,7 @@ async function handleFoodMore(
     messageId == null ||
     rows.length === 0
   ) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const current = countVisibleFoodButtons(rows);
@@ -951,7 +1066,7 @@ async function handleFoodOptIn(
       ? resolveTapProfile(opt, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   setProfileFoodTelegram(profileId, opt.enable);

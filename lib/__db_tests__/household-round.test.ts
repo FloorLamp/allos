@@ -55,7 +55,14 @@ import {
 } from "@/lib/notifications/household-round-access";
 import { householdDoseCallback } from "@/lib/notifications/callback-data";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
-import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
+import {
+  answerCallbackQuery,
+  editMessageReplyMarkupRaw,
+  sendMessageRaw,
+} from "@/lib/notifications/telegram-api";
+import { telegramChannel } from "@/lib/notifications/telegram";
+import { getHouseholdRoundPointer } from "@/lib/settings";
+import { shiftDateStr } from "@/lib/date";
 
 // Reserved-range synthetic chat ids (never dialable).
 const CAREGIVER_CHAT = "5550101";
@@ -122,10 +129,10 @@ function addDailyDose(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'high', ?)`
+           (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'supplement', 'daily', ?)`
       )
-      .run(profileId, name, opts.asNeeded ? 1 : 0).lastInsertRowid
+      .run(profileId, name, opts.asNeeded ? "may" : "should").lastInsertRowid
   );
   const doseId = Number(
     db
@@ -456,6 +463,86 @@ describe("resolveHouseholdTapAccess + the tap handler (#1459 §3)", () => {
     await handleCallbackQuery(tapQuery(s.token, CAREGIVER_CHAT));
     expect(logsFor(s.dose.doseId)).toBe(0);
     expect(vi.mocked(answerCallbackQuery).mock.calls[0][1]).not.toContain("✅");
+  });
+
+  // ---- Staleness (#1719): the round's two guards, end to end ----
+
+  it("a tap carrying YESTERDAY's date writes nothing and says why", async () => {
+    const s = setup("TapStaleDate");
+    const stale = householdDoseCallback({
+      receiverProfileId: s.receiver,
+      memberProfileId: s.ada,
+      doseId: s.dose.doseId,
+      itemId: s.dose.itemId,
+      date: shiftDateStr(today(s.ada), -1),
+    });
+    await handleCallbackQuery(tapQuery(stale, CAREGIVER_CHAT));
+    // The pre-#1719 behavior logged this confirmation TO YESTERDAY, for someone
+    // else's medication.
+    expect(logsFor(s.dose.doseId)).toBe(0);
+    const answer = String(vi.mocked(answerCallbackQuery).mock.calls[0][1]);
+    expect(answer).toContain("Not logged");
+    expect(answer).toContain(shiftDateStr(today(s.ada), -1));
+  });
+
+  it("a same-day tap from an older round still logs — the date is what matters", async () => {
+    const s = setup("TapSameDayOldRound");
+    // A round sent earlier today, tapped now: the token's date is still the member's
+    // today, so the guard passes (the food rule, mirrored — #947).
+    await handleCallbackQuery(tapQuery(s.token, CAREGIVER_CHAT));
+    expect(logsFor(s.dose.doseId)).toBe(1);
+  });
+
+  it("sending a new round strips the PREVIOUS round's keyboard", async () => {
+    const s = setup("RoundRotate");
+    vi.mocked(sendMessageRaw).mockClear();
+    vi.mocked(editMessageReplyMarkupRaw).mockClear();
+    vi.mocked(sendMessageRaw).mockResolvedValue(4242);
+
+    const round = buildHouseholdRound(s.receiver, ["Morning"])!;
+    await telegramChannel.send(s.receiver, round);
+    // First round: nothing to strip, but the pointer is recorded.
+    expect(vi.mocked(editMessageReplyMarkupRaw)).not.toHaveBeenCalled();
+    expect(getHouseholdRoundPointer(s.receiver)?.messageId).toBe(4242);
+
+    vi.mocked(sendMessageRaw).mockResolvedValue(4243);
+    await telegramChannel.send(s.receiver, round);
+    // The second round closes the first one's still-live keyboard, so at most ONE
+    // live round keyboard exists per chat.
+    expect(vi.mocked(editMessageReplyMarkupRaw)).toHaveBeenCalledWith(
+      expect.anything(),
+      4242,
+      []
+    );
+    expect(getHouseholdRoundPointer(s.receiver)?.messageId).toBe(4243);
+  });
+
+  it("an ordinary dose reminder neither records nor strips a round pointer", async () => {
+    const s = setup("RoundNotPlainDose");
+    vi.mocked(sendMessageRaw).mockResolvedValue(5000);
+    await telegramChannel.send(
+      s.receiver,
+      buildHouseholdRound(s.receiver, ["Morning"])!
+    );
+    const pointer = getHouseholdRoundPointer(s.receiver);
+
+    vi.mocked(editMessageReplyMarkupRaw).mockClear();
+    vi.mocked(sendMessageRaw).mockResolvedValue(5001);
+    await telegramChannel.send(s.receiver, {
+      title: "💊 Morning",
+      body: "Iron · 65 mg",
+      kind: "dose",
+      actions: [
+        {
+          label: "✅ Iron",
+          data: `take:${s.receiver}:1:1:${today(s.receiver)}`,
+        },
+      ],
+    });
+    // The round shares kind:"dose", so identity comes from the `hh:` tokens — a plain
+    // reminder must not steal the pointer or strip the round's live keyboard.
+    expect(vi.mocked(editMessageReplyMarkupRaw)).not.toHaveBeenCalled();
+    expect(getHouseholdRoundPointer(s.receiver)).toEqual(pointer);
   });
 
   it("a forged dose id belonging to ANOTHER profile writes nothing", async () => {

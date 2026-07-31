@@ -13,6 +13,7 @@ import {
   IconBarbell,
   IconSparkles,
   IconClipboardList,
+  IconPlugConnected,
   IconPlugConnectedX,
   IconInbox,
   IconArrowBackUp,
@@ -33,6 +34,9 @@ import { today } from "@/lib/db";
 import {
   collectMultiProfileAttention,
   collectMultiProfileSuppressed,
+  collectMultiProfileOffered,
+  collectMultiProfileDoseProgress,
+  type ProfiledOfferedItem,
   type ProfiledSuppressedEntry,
 } from "@/lib/queries";
 import { type MemberSection, type AttentionPageGroup } from "@/lib/attention";
@@ -56,6 +60,15 @@ import {
   upcomingDueText,
   type UpcomingDomain,
 } from "@/lib/upcoming";
+import {
+  aggregateLabel,
+  bandShowsDoseProgress,
+  planBandRender,
+  sumDoseProgress,
+  EMPTY_DOSE_PROGRESS,
+  type AggregateKind,
+  type DoseDayProgress,
+} from "@/lib/upcoming-aggregate";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Avatar from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
@@ -82,6 +95,7 @@ export const dynamic = "force-dynamic";
 // domains plus the unified model's "something's off" signals (issue #524).
 const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   dose: IconPill,
+  available: IconPill,
   "prn-max": IconPill,
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
@@ -94,6 +108,9 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "dental-safety": IconAlertTriangle,
   ototoxic: IconAlertTriangle,
   "uv-exposure": IconSun,
+  // A med × conditions safety note (#1727) — the same alert glyph the other curated
+  // med-safety notes carry; the sun icon belongs to the dose-based UV finding.
+  "weather-med": IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,
   screening: IconMicroscope,
@@ -109,6 +126,9 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "mental-health": IconStethoscope,
   "biomarker-flag": IconFlask,
   integration: IconPlugConnectedX,
+  // An open portal sync request (#1757) — the same plug family as a broken sync, but
+  // connected: nothing is wrong, a person just needs to run the tool.
+  "portal-sync": IconPlugConnected,
   review: IconInbox,
 };
 
@@ -155,6 +175,15 @@ export default async function UpcomingPage(props: {
   const model = collectMultiProfileAttention(viewIds, units);
   const total = model.total;
   const suppressed = collectMultiProfileSuppressed(viewIds, units);
+  // `may` items on offer today (#1505) — availability, deliberately NOT folded into
+  // `total`. The headline count answers "what do I owe"; folding an offer into it
+  // would recreate the exact inflation this model removes.
+  const offered = collectMultiProfileOffered(viewIds);
+  // Today's dose progress per in-view member (#1504) — the denominator the collapsed
+  // dose aggregate prints so the fold states how much of the day is already done,
+  // not just how many rows it hid. `may` items are in neither number: they were
+  // never owed, and they live in their own disclosure above.
+  const doseProgressByProfile = collectMultiProfileDoseProgress(viewIds);
 
   // Per-member "today" for correct relative due-text on each merged row, and the
   // per-item subject identity (#534) resolved ONCE through the shared stampSubjects
@@ -233,6 +262,12 @@ export default async function UpcomingPage(props: {
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              // By-person: the member's OWN progress, so the fraction describes the
+              // rows in THIS section rather than the whole household.
+              doseProgress={
+                doseProgressByProfile.get(section.profileId) ??
+                EMPTY_DOSE_PROGRESS
+              }
             />
           ))}
         </div>
@@ -249,6 +284,9 @@ export default async function UpcomingPage(props: {
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              // Interleaved: the band merges every in-view member, so its fraction
+              // sums the same members.
+              doseProgress={sumDoseProgress(doseProgressByProfile.values())}
             />
           ))}
           {multi && model.emptyMemberIds.length > 0 && (
@@ -259,6 +297,8 @@ export default async function UpcomingPage(props: {
           )}
         </div>
       )}
+
+      {offered.length > 0 && <AvailableSection items={offered} />}
 
       {suppressed.length > 0 && (
         <SuppressedSection
@@ -301,6 +341,7 @@ function GroupSection({
   multi,
   actingProfileId,
   subjectByProfile,
+  doseProgress,
 }: {
   group: AttentionPageGroup;
   idAnchor?: boolean;
@@ -310,7 +351,28 @@ function GroupSection({
   multi: boolean;
   actingProfileId: number;
   subjectByProfile: Map<number, SubjectInfo>;
+  // The dose progress this presentation's band may print (#1504) — the sum over the
+  // in-view members for the merged band, one member's own for a by-person section.
+  doseProgress: DoseDayProgress;
 }) {
+  // The band's render plan (#1504): safety rows first and individual, then the
+  // band's own comparator order with each fold class replaced by one disclosure at
+  // the position of its first row. Purely presentational — every node below still
+  // renders the SAME item objects through the SAME <Row>.
+  const nodes = planBandRender(group.items as ProfiledUpcomingItem[]);
+  const progress = bandShowsDoseProgress(group.kind) ? doseProgress : null;
+  const renderRow = (item: ProfiledUpcomingItem) => (
+    <Row
+      key={`${item.profileId}:${item.key}`}
+      item={item}
+      now={nowByProfile.get(item.profileId) ?? now}
+      tone={GROUP_TONE[group.kind]}
+      multi={multi}
+      chipRow={chipRows === true}
+      actingProfileId={actingProfileId}
+      subject={multi ? (subjectByProfile.get(item.profileId) ?? null) : null}
+    />
+  );
   return (
     <section id={idAnchor ? group.kind : undefined}>
       <h2
@@ -322,22 +384,83 @@ function GroupSection({
         </span>
       </h2>
       <div className="card space-y-1 p-2">
-        {(group.items as ProfiledUpcomingItem[]).map((item) => (
-          <Row
-            key={`${item.profileId}:${item.key}`}
-            item={item}
-            now={nowByProfile.get(item.profileId) ?? now}
-            tone={GROUP_TONE[group.kind]}
-            multi={multi}
-            chipRow={chipRows === true}
-            actingProfileId={actingProfileId}
-            subject={
-              multi ? (subjectByProfile.get(item.profileId) ?? null) : null
-            }
-          />
-        ))}
+        {nodes.map((node) =>
+          node.node === "item" ? (
+            renderRow(node.item)
+          ) : (
+            <AggregateDisclosure
+              key={`aggregate:${group.kind}:${node.kind}`}
+              kind={node.kind}
+              band={group.kind}
+              count={node.items.length}
+              progress={node.kind === "dose" ? progress : null}
+              tone={GROUP_TONE[group.kind]}
+            >
+              {node.items.map(renderRow)}
+            </AggregateDisclosure>
+          )
+        )}
       </div>
     </section>
+  );
+}
+
+// One folded class inside a band (issue #1504) — the ALWAYS-PRESENT compaction.
+//
+// A plain <details>, so it works pre-hydration and holds NO persisted state: it is
+// collapsed on every visit by design (stateless — two visits, two people, and the
+// digest all see the same page). The summary carries the count unconditionally, so
+// the cost of not expanding is always priced; there is no dismiss and no path that
+// hides presence.
+//
+// The children are the ordinary rows, unchanged — confirm buttons, per-item
+// snooze/dismiss and their `dedupeKey`s, and each row's own WriteTarget all survive
+// the fold, because folding is a rendering decision and identity is not (#1496).
+function AggregateDisclosure({
+  kind,
+  band,
+  count,
+  progress,
+  tone,
+  children,
+}: {
+  kind: AggregateKind;
+  band: PageGroupKind;
+  count: number;
+  progress: DoseDayProgress | null;
+  tone: string;
+  children: React.ReactNode;
+}) {
+  const Icon = kind === "dose" ? IconPill : IconAlertTriangle;
+  return (
+    <details
+      data-testid={`upcoming-aggregate-${kind}`}
+      data-band={band}
+      className="group rounded-lg"
+    >
+      <summary
+        data-testid={`upcoming-aggregate-summary-${kind}`}
+        className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+      >
+        <Icon
+          className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+          stroke={1.75}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate font-medium text-slate-800 dark:text-slate-100">
+          {aggregateLabel(kind, count, progress)}
+        </span>
+        <span
+          className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
+        >
+          <span className="group-open:hidden">Show</span>
+          <span className="hidden group-open:inline">Hide</span>
+        </span>
+      </summary>
+      <div className="mt-1 space-y-1 border-l-2 border-black/5 pl-2 dark:border-white/10">
+        {children}
+      </div>
+    </details>
   );
 }
 
@@ -353,6 +476,7 @@ function MemberBlock({
   multi,
   actingProfileId,
   subjectByProfile,
+  doseProgress,
 }: {
   section: MemberSection;
   subject: SubjectInfo | null;
@@ -361,6 +485,7 @@ function MemberBlock({
   multi: boolean;
   actingProfileId: number;
   subjectByProfile: Map<number, SubjectInfo>;
+  doseProgress: DoseDayProgress;
 }) {
   const name = subject?.name ?? `Profile ${section.profileId}`;
   return (
@@ -400,6 +525,7 @@ function MemberBlock({
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              doseProgress={doseProgress}
             />
           ))}
         </div>
@@ -614,6 +740,51 @@ function SubjectChip({ subject }: { subject: SubjectInfo }) {
 // findings-suppression bus (issue #1151), now cross-profile (#1096): each row's
 // Restore targets the ITEM's own profile (profile_id threaded), never the acting
 // one.
+// The COLLAPSED "available" disclosure (issue #1505). A `may` item has no obligation,
+// so it is not work — but removing it outright would make an accepted demotion look
+// like a deletion, and would hide the one place a tap-only user browses. So it
+// collapses instead: closed by default, counted on the summary, one tap from its
+// item. The shape follows the Snoozed & dismissed disclosure directly below it, which
+// is the same "present but not pressing" idea.
+//
+// Deliberately NOT banded, NOT dated, and NOT part of the page total.
+function AvailableSection({ items }: { items: ProfiledOfferedItem[] }) {
+  return (
+    <details className="mt-8" data-testid="available-section">
+      <summary className="cursor-pointer section-label">
+        Available when you want them{" "}
+        <span className="text-slate-500 dark:text-slate-400">
+          ({items.length})
+        </span>
+      </summary>
+      <div className="card mt-2 space-y-1 p-2">
+        {items.map((item) => (
+          <Link
+            key={`${item.profileId}:${item.key}`}
+            href={item.href ?? "/medications"}
+            data-testid="available-row"
+            className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-ink-750"
+          >
+            <IconPill
+              className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+              stroke={1.75}
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium text-slate-600 dark:text-slate-300">
+                {item.title}
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {item.dueText ?? "Available"}
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function SuppressedSection({
   items,
   multi,

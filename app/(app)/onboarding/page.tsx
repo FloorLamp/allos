@@ -44,6 +44,7 @@ import FocusChoices from "./FocusChoices";
 import AgeInputs from "./AgeInputs";
 import ProfilePathChoices from "./ProfilePathChoices";
 import RoutineStarter from "./RoutineStarter";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -257,7 +258,7 @@ export default async function OnboardingPage({
   );
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <PageContainer width="flow" className="mx-auto">
       <OnboardingProgress step={activeStep} unlockedStep={unlockedStep} />
       {activeStep === 1 ? (
         <div className="mb-6">
@@ -674,6 +675,6 @@ export default async function OnboardingPage({
           </section>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

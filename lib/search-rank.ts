@@ -9,6 +9,8 @@ import type { AppRoute } from "./hrefs";
 
 export type SearchDomain =
   | "biomarker"
+  | "imaging"
+  | "genomic"
   | "document"
   | "condition"
   | "allergy"
@@ -16,8 +18,15 @@ export type SearchDomain =
   | "immunization"
   | "encounter"
   | "appointment"
+  | "provider"
+  | "episode"
+  | "dental"
+  | "skin"
   | "activity"
   | "supplement"
+  | "protocol"
+  | "practice"
+  | "equipment"
   | "family-history"
   | "care-plan"
   | "care-goal"
@@ -72,8 +81,17 @@ export interface SearchGroup {
 // The order result groups appear in the palette (mirrors the issue's list).
 // The clinical passport domains (#19) are grouped with the medical domains they
 // live beside in the nav, keeping biomarker first and goal/page last.
+//
+// The second-generation ENTITY domains (#1595) slot in beside the surface each one
+// shares: imaging/genomics join biomarkers under Results; providers close the
+// history/visit run they were previously only a label on; illness episodes, dental,
+// and skin follow as the remaining record surfaces; protocols, practices, and
+// equipment sit with the training/lifestyle rows. The RELATIVE order of the original
+// domains is unchanged, so an existing reader's muscle memory survives.
 export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
   "biomarker",
+  "imaging",
+  "genomic",
   "document",
   "condition",
   "allergy",
@@ -81,8 +99,15 @@ export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
   "immunization",
   "encounter",
   "appointment",
+  "provider",
+  "episode",
+  "dental",
+  "skin",
   "activity",
   "supplement",
+  "protocol",
+  "practice",
+  "equipment",
   "family-history",
   "care-plan",
   "care-goal",
@@ -92,6 +117,8 @@ export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
 
 export const SEARCH_DOMAIN_LABELS: Record<SearchDomain, string> = {
   biomarker: "Biomarkers",
+  imaging: "Imaging",
+  genomic: "Genomics",
   document: "Documents",
   condition: "Conditions",
   allergy: "Allergies",
@@ -99,8 +126,15 @@ export const SEARCH_DOMAIN_LABELS: Record<SearchDomain, string> = {
   immunization: "Immunizations",
   encounter: "Visits",
   appointment: "Appointments",
+  provider: "Providers",
+  episode: "Illness Episodes",
+  dental: "Dental",
+  skin: "Skin",
   activity: "Activities",
   supplement: "Supplements",
+  protocol: "Protocols",
+  practice: "Practices",
+  equipment: "Equipment",
   "family-history": "Family History",
   "care-plan": "Care Plan",
   "care-goal": "Care Goals",

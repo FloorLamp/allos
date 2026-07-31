@@ -40,6 +40,7 @@ import {
 } from "@/lib/grants";
 import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { removeFromOffsiteMirror } from "@/lib/backup";
+import { deleteApiTokensForLogin } from "@/lib/api-tokens";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
 import { photoDomainRoot } from "@/lib/photo/store";
@@ -745,6 +746,10 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
     // cascade via the FK, but delete explicitly so this holds even if foreign_keys
     // is ever off (the sibling deletes above).
     db.prepare("DELETE FROM login_auth_tokens WHERE login_id = ?").run(id);
+    // API tokens (issue #1734) die with their login for the same reason and in the
+    // same posture: the FK is ON DELETE CASCADE, but this runs explicitly so the
+    // teardown holds even if foreign_keys is off, like the siblings above.
+    deleteApiTokensForLogin(id);
     db.prepare("DELETE FROM logins WHERE id = ?").run(id);
   });
   recordAudit({

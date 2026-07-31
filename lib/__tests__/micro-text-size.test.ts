@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  MIN_LABEL_PX,
+  MOBILE_CHART_CONTENT_PX,
+  effectiveFontPx,
+  scanScaledFontSizes,
+  type ViewBoxScale,
+} from "@/lib/chart-svg";
+import { INTRADAY_VARIANTS } from "@/lib/intraday-layout";
 
 // Static guard for arbitrary micro text sizes (issue #794 cluster 5). The app had
 // ~23 `text-[10px]` / `text-[11px]` / `text-[0.65rem]` / `text-[0.7rem]` one-offs
@@ -52,24 +60,54 @@ const MIN_NUMERIC_FONT_SIZE = 10;
 const NUMERIC_FONT_SIZE =
   /(?<![\w-])fontSize\s*(?:=\s*\{|:)\s*([0-9]+(?:\.[0-9]+)?)/g;
 
-// Files whose font sizes are in viewBox USER UNITS, not CSS pixels. These panels
-// hand-draw an SVG with a fixed viewBox scaled to the container, so `fontSize={7}`
-// in a 320-unit box rendered 640px wide paints at 14px — the number on the page
-// is not the number in the source, and a px floor cannot be applied to it.
-const VIEWBOX_SVG_ALLOWLIST = new Map<string, string>([
-  [
-    "components/IntradayPanel.tsx",
-    "fixed 720-unit viewBox scaled to container width — user units, not px",
-  ],
-  [
-    "components/illness/FeverChart.tsx",
-    "fixed 320-unit viewBox scaled to container width — user units, not px",
-  ],
-  [
-    "components/MuscleAnatomy.tsx",
-    "anatomy figure drawn in its own viewBox coordinate space — user units, not px",
-  ],
-]);
+// ── the third blind spot: the viewBox EXEMPTION itself (issue #1518) ────────
+//
+// Files whose font sizes are in viewBox USER UNITS, not CSS pixels, used to be
+// exempt from the rule above OUTRIGHT. The premise was right — a `fontSize={7}` in
+// a 720-unit box is not 7px — but the conclusion removed the only guard on exactly
+// the charts whose type size is hardest to reason about, and the intraday panel
+// shipped ~3.5px labels behind it: 720 units scaled into a 358px phone column is a
+// factor of 0.497, and 7 × 0.497 = 3.5.
+//
+// The ratio is the whole difference, and the ratio is COMPUTABLE. So each panel
+// declares its scale contract — its viewBox width and the narrowest container it
+// renders into — and the floor becomes
+//
+//     fontSize × (minContainerPx ÷ viewBoxWidth) ≥ MIN_LABEL_PX
+//
+// A panel satisfies it either by raising its sizes or, better, by taking them from
+// `viewBoxFontSize()` so the number in the source IS the floor (which is what
+// IntradayChart, FeverChart and MuscleAnatomy now do — none of them carries a
+// numeric fontSize literal any more, and this scan therefore has nothing to flag
+// unless someone types one back in).
+interface ViewBoxPanel extends ViewBoxScale {
+  rel: string;
+  why: string;
+}
+
+const VIEWBOX_PANELS: ViewBoxPanel[] = [
+  {
+    rel: "components/IntradayChart.tsx",
+    // The WIDE variant is the worse of the two scales; the compact variant's box
+    // is closer to its container. Both come from INTRADAY_VARIANTS, cross-checked
+    // against this declaration below so the two cannot drift apart.
+    viewBoxWidth: INTRADAY_VARIANTS.wide.viewBoxWidth,
+    minContainerPx: INTRADAY_VARIANTS.wide.minContainerPx,
+    why: "Timeline day chart — geometry from lib/intraday-layout.ts (#1512 F)",
+  },
+  {
+    rel: "components/illness/FeverChart.tsx",
+    viewBoxWidth: 320,
+    minContainerPx: MOBILE_CHART_CONTENT_PX,
+    why: "illness episode chart — fills the mobile content column",
+  },
+  {
+    rel: "components/MuscleAnatomy.tsx",
+    viewBoxWidth: 212,
+    minContainerPx: 208,
+    why: "anatomy figure — narrowest render is the sm:w-52 training-overview box",
+  },
+];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -119,9 +157,10 @@ describe("micro text-size guard (issue #794 cluster 5)", () => {
   });
 
   it("no chart sets a sub-10 numeric fontSize — chart type size comes from the scaffold", () => {
+    const registered = new Set(VIEWBOX_PANELS.map((p) => p.rel));
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {
-      if (VIEWBOX_SVG_ALLOWLIST.has(rel)) continue;
+      if (registered.has(rel)) continue;
       text.split("\n").forEach((line, i) => {
         for (const m of line.matchAll(NUMERIC_FONT_SIZE)) {
           if (Number(m[1]) < MIN_NUMERIC_FONT_SIZE) {
@@ -140,23 +179,60 @@ describe("micro text-size guard (issue #794 cluster 5)", () => {
     ).toEqual([]);
   });
 
-  it("every viewBox-SVG exemption still exists and still draws its own viewBox (no stale entries)", () => {
-    const stale: string[] = [];
-    for (const rel of VIEWBOX_SVG_ALLOWLIST.keys()) {
-      const abs = path.join(REPO, rel);
-      if (!fs.existsSync(abs)) {
-        stale.push(rel);
-        continue;
+  // The #1518 rule itself: a registered panel's font sizes are measured at its own
+  // scale, not waved through.
+  it("every fixed-viewBox panel's labels clear the floor at its narrowest container", () => {
+    const offenders: string[] = [];
+    for (const panel of VIEWBOX_PANELS) {
+      const abs = path.join(REPO, panel.rel);
+      if (!fs.existsSync(abs)) continue; // reported by the staleness check below
+      const scan = scanScaledFontSizes(fs.readFileSync(abs, "utf8"), panel);
+      for (const hit of scan) {
+        offenders.push(
+          `${panel.rel}:${hit.line} — fontSize ${hit.fontSize} × ` +
+            `${(panel.minContainerPx / panel.viewBoxWidth).toFixed(3)} = ` +
+            `${hit.effectivePx.toFixed(1)}px effective at a ` +
+            `${panel.minContainerPx}px container, floor ${MIN_LABEL_PX}px`
+        );
       }
-      const text = fs.readFileSync(abs, "utf8");
-      if (!/viewBox=/.test(text) || !NUMERIC_FONT_SIZE.test(text))
-        stale.push(rel);
-      NUMERIC_FONT_SIZE.lastIndex = 0;
+    }
+    expect(
+      offenders,
+      `A viewBox font size is NOT a px size: it paints at ` +
+        `fontSize × (container ÷ viewBox). Take the size from ` +
+        `viewBoxFontSize({ viewBoxWidth, minContainerPx }) in lib/chart-svg.ts ` +
+        `so the source number IS the floor, or raise it past the computed ` +
+        `effective size below:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("the intraday declaration matches the shipped variant geometry", () => {
+    // The panel's scale lives in lib/intraday-layout.ts, so the registry above
+    // reads it rather than restating it — and every variant, not only the one the
+    // registry measures, has to clear the floor.
+    const entry = VIEWBOX_PANELS.find(
+      (p) => p.rel === "components/IntradayChart.tsx"
+    )!;
+    expect(entry.viewBoxWidth).toBe(INTRADAY_VARIANTS.wide.viewBoxWidth);
+    for (const spec of Object.values(INTRADAY_VARIANTS)) {
+      expect(
+        effectiveFontPx(spec.labelSize, spec),
+        `${spec.variant} labels at a ${spec.minContainerPx}px container`
+      ).toBeGreaterThanOrEqual(MIN_LABEL_PX);
+    }
+  });
+
+  it("every fixed-viewBox panel still exists and still draws its own viewBox (no stale entries)", () => {
+    const stale: string[] = [];
+    for (const panel of VIEWBOX_PANELS) {
+      const abs = path.join(REPO, panel.rel);
+      if (!fs.existsSync(abs) || !/viewBox=/.test(fs.readFileSync(abs, "utf8")))
+        stale.push(panel.rel);
     }
     expect(
       stale,
-      `These VIEWBOX_SVG_ALLOWLIST entries no longer hand-draw a viewBox SVG ` +
-        `with numeric font sizes and should be removed:\n${stale.join("\n")}`
+      `These VIEWBOX_PANELS entries no longer hand-draw a viewBox SVG and ` +
+        `should be removed:\n${stale.join("\n")}`
     ).toEqual([]);
   });
 

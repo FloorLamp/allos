@@ -45,6 +45,8 @@ import {
   type ConditionConsideration,
 } from "../condition-training-considerations";
 import { getReportedBurden } from "./reported-burden";
+import { canDoIndoorActivity, getToleranceEnvelopes } from "./weather-training";
+import { getWeatherDay } from "./weather-situations";
 
 // How many recent nights / days to average for a recovery baseline. Long enough
 // to be a stable personal norm, short enough to reflect the current block.
@@ -133,7 +135,11 @@ export function getIllnessCoachingContext(
     openEpisode: openRow != null,
     lastClosed:
       lastClosed && lastClosed.ended_at != null
-        ? { episodeId: lastClosed.id, endDate: lastClosed.ended_at }
+        ? {
+            episodeId: lastClosed.id,
+            endDate: lastClosed.ended_at,
+            startDate: lastClosed.started_at,
+          }
         : null,
   };
 }
@@ -168,6 +174,16 @@ export function gatherCoachingInput(
     // Plan-aware cardio arm (#839): the soonest active endurance plan's calm note, with the
     // illness pause (#837) applied here so an open episode holds the nagging note.
     endurancePlanArm: getEnduranceArm(profileId, todayStr, illness.openEpisode),
+    // Weather context (#1724) — today's conditions plus the tolerance envelopes derived
+    // from THIS profile's own logged sessions. Threaded through the ONE gather so the
+    // Telegram nudge, the dashboard card and the Training overview park the same
+    // activity and disclose the same reason (#221). A profile with no home location or
+    // no cached day yields a null `today`, and the core then does no gating at all.
+    weather: {
+      today: getWeatherDay(profileId, todayStr),
+      envelopes: getToleranceEnvelopes(profileId, todayStr),
+      canDo: (candidate: string) => canDoIndoorActivity(profileId, candidate),
+    },
     routine: getFrequencyTargetProgress(profileId),
     strength: getStrengthByExercise(profileId),
     cardio: getCardioByActivity(profileId, distanceUnit),

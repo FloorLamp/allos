@@ -57,6 +57,31 @@ export const LUTEAL_PHASE_DAYS = 14;
 // diagnosis.
 export const CYCLE_REGULARITY_VARIATION_DAYS = 7;
 
+// The plausibility ceiling on an OPEN period's menstrual CLAIM (issue #1682 fix a). A
+// typical period is 3–7 days; an unended one that has run past this many days is far more
+// likely a forgotten "Period ended" tap than 3 weeks of bleeding. Past it the record is
+// left EXACTLY as stored — nothing is written, nothing is closed — but the derivations
+// stop ASSERTING `menstrual`, because that claim is no longer supported by the data
+// (contact-consent: the system may withdraw a claim it makes, never rewrite what the user
+// declared). The Cycle surface prompts for the real end date instead; the one-tap "Still
+// bleeding" (#1681) and the dated form are the two ways to make it true again.
+export const MAX_PLAUSIBLE_PERIOD_DAYS = 10;
+
+// The shortest plausible gap, in days, between the END of one period and the START of the
+// next — the offer condition for the one-tap "Period started today" (issue #1681 bug 2).
+// A period ending and the next one starting are ~2–3 weeks apart, so a start tapped days
+// after an end is almost always a mis-tap that would mint a back-to-back period and
+// corrupt cycleLengths (which measures start-to-start). Below this gap the quick action is
+// not offered and the write core refuses it; the dated history form still records the
+// genuine exception, which is the right surface for one.
+export const MIN_PLAUSIBLE_PERIOD_GAP_DAYS = 10;
+
+// Bleeding days at or above which a RECORDED (ended) period is worth mentioning: typical
+// is 3–7 days, so 8+ is clinically notable (issue #1682 fix b). Prolonged bleeding is real
+// and important, so it is STORED as entered and never refused — only observed, calmly,
+// through the coaching-tier finding in lib/cycle-observation.ts.
+export const PROLONGED_PERIOD_DAYS = 8;
+
 // How many recent completed cycles feed the "regular / changing" read by default.
 export const CYCLE_STATS_WINDOW = 12;
 
@@ -70,17 +95,41 @@ function sortByStart(periods: CyclePeriod[]): CyclePeriod[] {
   );
 }
 
+// The last day an OPEN (unended) period's menstrual claim can honestly cover: its start
+// plus MAX_PLAUSIBLE_PERIOD_DAYS − 1, since the start day is day 1 (issue #1682 fix a).
+export function openPeriodClaimEnd(periodStart: string): string {
+  return shiftDateStr(periodStart, MAX_PLAUSIBLE_PERIOD_DAYS - 1);
+}
+
 // A recorded period as the chassis's DateRange (issue #943). The cycle domain's declared
 // end-bound is INCLUSIVE — `period_end` is the last bleeding day — so bleeding-day
 // membership is `rangeContainsDate(periodRange(p), date, INCLUSIVE_END)`.
+//
+// An OPEN period (null `period_end`) no longer means "onward forever" (#1682 fix a): its
+// claim is CAPPED at openPeriodClaimEnd, so a forgotten "Period ended" tap stops reading
+// as menstrual instead of poisoning every derived read (the #718 phase-specific reference
+// ranges, the Timeline day chip, the derived Period situation) indefinitely. This is the
+// ONE place the cap is applied, so periodOnDate and cyclePhaseOnDate can never disagree
+// about which days a period covers.
 function periodRange(p: CyclePeriod) {
-  return { start: p.period_start, end: p.period_end };
+  return {
+    start: p.period_start,
+    end: p.period_end ?? openPeriodClaimEnd(p.period_start),
+  };
+}
+
+// Whether an OPEN period has outrun the plausible maximum as of `date` — the "probably
+// forgot to tap Period ended" state (#1682 fix a). The row is untouched and still open;
+// only its menstrual claim has lapsed, which is what the Cycle surface prompts about.
+export function isStaleOpenPeriod(p: CyclePeriod, date: string): boolean {
+  return p.period_end == null && date > openPeriodClaimEnd(p.period_start);
 }
 
 // The recorded period that COVERS `date` as a menstrual (bleeding) day, or null. A period
 // covers a date when the date is on/after its start and on/before its inclusive end; an
-// ongoing period (null end) covers every day from its start onward. Used for the period
-// marker + flow on the Timeline/Cycle surfaces.
+// ongoing period (null end) covers its first MAX_PLAUSIBLE_PERIOD_DAYS days and then stops
+// claiming coverage (#1682 — see periodRange). Used for the period marker + flow on the
+// Timeline/Cycle surfaces.
 export function periodOnDate(
   periods: CyclePeriod[],
   date: string
@@ -104,7 +153,10 @@ export function periodOnDate(
 //
 // Derivation (retrospective, non-predictive):
 //   • menstrual — `date` falls within a recorded period (start..inclusive end, or an
-//     ongoing period from its start onward).
+//     ongoing period within its plausible MAX_PLAUSIBLE_PERIOD_DAYS window). Past that
+//     window an unended period stops claiming menstrual and the date derives exactly as it
+//     would with no open claim — follicular, or luteal once a next period is logged
+//     (#1682 fix a: withdraw the claim, never rewrite the record).
 //   • For a date AFTER a period's end, inside a COMPLETED cycle (a following period is
 //     logged): luteal if within LUTEAL_PHASE_DAYS before the next period's start, else
 //     follicular. This uses the ACTUAL next period — no forecast.
@@ -128,8 +180,8 @@ export function cyclePhaseOnDate(
   const next = sorted[idx + 1] ?? null;
 
   // Menstrual — within the recorded period's inclusive [start, end] window (`idx`
-  // already guarantees period_start ≤ date). An ongoing period (null end) covers every
-  // day from its start onward — only ever the latest cycle.
+  // already guarantees period_start ≤ date). An ongoing period (null end) covers its
+  // plausible window only — only ever the latest cycle.
   if (rangeContainsDate(periodRange(p), date, INCLUSIVE_END))
     return "menstrual";
 

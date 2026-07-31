@@ -187,10 +187,12 @@ export function persistExtractedMedications(
     const info = ctx.insMed.run(
       med.name,
       med.sig, // directions kept as the row's notes (may be null)
+      // Obligation (#1505): the sig's as-needed reading IS the `may` shape; anything
+      // scheduled lands on the medication default, `must`.
+      med.asNeeded ? "may" : "must",
       med.prescriber,
       med.pharmacy,
       med.rxNumber,
-      med.asNeeded ? 1 : 0,
       // document_id — traces the row back to its source document for the delete-set.
       docId,
       providerId,

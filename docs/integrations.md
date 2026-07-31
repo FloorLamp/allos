@@ -6,9 +6,9 @@ from the README (#597)
 Connect outside services under **Data → Import** so your health data syncs
 automatically. Each provider has its own setup page (linked from the Import
 tab's "Connect a device or service" card). **Google Health Connect**,
-**Strava**, **Oura Ring**, **Withings**, **Fitbit via Google Takeout**, and the
-keyless **Weather & UV (Open-Meteo)** source are available today; **Garmin** is
-scaffolded as "coming soon".
+**Strava**, **Oura Ring**, **Withings**, **Fitbit via Google Takeout**,
+**Patient portals**, and the keyless **Weather & UV (Open-Meteo)** source
+are available today; **Garmin** is scaffolded as "coming soon".
 
 ## Google Health Connect
 
@@ -241,6 +241,123 @@ imported health records remain. Re-importing a newer export is safe because
 records deduplicate on their natural keys, and the result appears in
 **Data → Review**.
 
+## Patient portals
+
+The one **external-attended** integration: allos cannot run this sync itself.
+Portal sign-in needs a person — two-factor codes, and sessions that idle out in
+minutes — so a small companion tool runs on your own computer, signs in the way
+you would, downloads the portal's own export, and pushes it in through the
+[document upload API](api-tokens.md). Allos never signs in and never holds a
+portal address.
+
+It is named for the **document family**, not for one vendor: the CCD/C-CDA
+export is a regulatory requirement, so Epic MyChart, Cerner/Oracle Health,
+athenahealth and the rest all produce the same thing. MyChart is simply the
+first companion tool written against the contract.
+
+Setup, under **Data → Import → Patient portals**:
+
+1. **Register each portal** by its display name — "Ochsner MyChart". Allos mints
+   the short id the companion tool quotes, so renaming the portal later never
+   breaks a machine's config. A portal is recorded **by name only**: its web
+   address lives in the companion tool's local config on your machine, and allos
+   refuses to store one anywhere, including in the display name. You may tag
+   which software it runs, which is only for display and for the tool to
+   sanity-check what it has been pointed at.
+2. **Name the logins, if there are several.** One portal often has more than one
+   account in a household — each parent's own — and a portal's patient list is
+   shown **per login**, so the same name can mean two different people on two
+   accounts. Give each one a nickname ("Mom", "Dad"). A nickname is all allos
+   stores: never a username, never a password. If your household has one login,
+   skip this entirely — you will never see the concept.
+3. **Mint an API token** (Settings → Account & security → API tokens) with the
+   _Upload documents_ capability. Give **each computer its own token**, so
+   retiring one machine doesn't disturb the others.
+4. **Run the tool.** It reports which patients that login covers, and they appear
+   on the card under **Waiting to be mapped**.
+5. **Map each patient to a profile** — one tap, using the label exactly as the
+   portal spelled it. Or **ignore** a patient whose records belong somewhere
+   else, and they stop being offered. Labels are matched exactly as written: two
+   labels that differ visibly are two different people.
+
+Documents land in **Data → Review** like any other import, with the same
+deduplication and the same size and type checks. A document pushed in by the tool
+records **which portal it came from** — shown as "Acquired via …" in Review and on
+the import's detail page — so two portals serving the same patient stay tellable
+apart. A document you uploaded yourself simply says nothing there.
+
+**Why the mapping lives here and not in the tool.** If the tool decided which
+profile a patient belongs to, that decision would sit in local config on every
+machine it runs on — and a stale copy would file one person's records under
+another. So the tool reports what the portal told it and allos resolves it,
+against a mapping you can see and correct in one place. Anything unmapped is
+**refused**, never filed under a guess: a new proxy patient appearing on the
+portal surfaces as something to fix, not as records on the wrong person.
+
+**Why the tool tells allos who it saw.** Predicting how a portal renders a name
+is a losing game — "SMITH, ALEX" or "Alex Smith" or "Smith, Alex Jr." — so you
+never have to. The tool reports the list verbatim at the end of every run, and
+you bind what allos was actually told. Refusals still happen for a patient who
+appears between runs; they are the safety net, not the setup path.
+
+**Why a quiet run still reports.** A run that checks the portal and finds nothing
+new pushes no documents, so it would otherwise leave no trace and "Last checked"
+could never move — a healthy quiet week would look identical to a broken one. The
+tool therefore reports every run, and a nothing-new result reads as a calm
+success. A failure leaves the previous "Last checked" standing so you can see how
+long it has really been. Each mapped patient shows its own last-checked line,
+because a household with two portals and three patients has more than one answer
+to that question.
+
+**The first run, and a portal that breaks before it reaches anyone.** Two kinds
+of run belong to a portal login rather than to a person: the very first one,
+whose own patient is not mapped yet, and a failure that happens before any
+patient is reached ("the portal's login page changed"). Neither can be filed
+under a profile, and neither is guessed onto one — but both now leave a trace,
+and the card's **Status** line says what happened: _"The tool reported 3 patients
+on Ochsner MyChart — map them below to finish setup"_, or the tool's own failure
+message. A failure that names a mapped patient still raises that profile's
+**Review** failure badge as before; a portal-level one cannot, because it has no
+profile to raise it for, and shows on this card instead.
+
+**Why there is no Start button.** Allos cannot make an attended sync happen, so
+the card doesn't pretend to: it is setup and status. For the same reason this
+integration is exempt from the ordinary **staleness warning** — "you haven't
+signed in to your hospital portal in three days" is not a fault, and the
+broken-sync signal every other integration raises would be describing a failure
+that has not happened.
+
+**Asking a person, which is a different thing.** What allos _can_ do is remember
+that a run is due and tell whoever runs it — the hard part of stale records is
+remembering, not the double-click. Three things raise a **sync request**:
+
+- **Staleness** — a portal login whose last successful check is more than a
+  month old.
+- **After a visit** — a mapped profile's appointment has just passed, which is
+  the moment new records actually appear on a portal, and the most useful nudge
+  this feature can send.
+- **Asking** — the card's **Request sync** button, for when the person who
+  manages allos is not the person whose laptop holds the login.
+
+A request is **never a schedule**: nothing is promised to run at a time, and the
+row carries only the portal and login short ids — never an address. It
+**expires** after a week rather than sitting there forever, and it **answers
+itself**: the next reported run for that login clears it, including a failed one
+(the person went to the machine; whether the run then worked is what the Status
+line is for). The companion tool never learns requests exist — there is nothing
+new on the wire and nothing to acknowledge.
+
+**Who hears about it, and how loudly.** The reminder goes to the login whose
+token actually reports runs for that portal login — your phone about your portal
+— falling back to the people with write access to the mapped patients when no
+token has reported yet. It reaches exactly two places: an **Upcoming** item and
+one line in the morning digest that already sends. It is dismissible, and
+dismissing it silences both. There is **no dedicated notification, ever**, and it
+never appears on the dashboard's "Needs attention" panel: portal hygiene is not a
+safety signal. A login with no mapped patients raises nothing at all — there
+would be nobody to reach, and finishing setup is what the card itself is asking
+for.
+
 ## Weather & UV (Open-Meteo)
 
 Unlike the device integrations, this one has **no account and no API key** — it
@@ -261,6 +378,18 @@ but a heads-up before you'd burn.
    **Settings → Health profile** to switch on the **overexposure** side (the
    burn-risk threshold). Left unset, only the "enough sun" side is shown — the
    overexposure heads-up stays silent rather than guessing.
+
+**What else it feeds.** Alongside the hourly UV series, a **daily** series is
+cached for the same spot — temperature, pressure, precipitation, air quality and
+pollen. That daily data is what powers the **weather situations** (heatwave,
+cold snap, pressure swing, high pollen, poor air quality): context that turns
+itself on when the weather qualifies, so a situational item — an antihistamine
+keyed to "High pollen", say — comes due automatically instead of waiting for you
+to remember a toggle. It also lets the app note when a medication you take
+interacts with the conditions (sun sensitivity on a bright day, heat tolerance
+during a hot spell). Pollen and air quality come from a separate Open-Meteo
+feed; if that feed is unavailable, temperature-based features keep working and
+the pollen ones simply stay quiet.
 
 **What it feeds.** Your outdoor daylight window is crossed with the UV that
 actually occurred during those hours — Open-Meteo's **free historical archive**

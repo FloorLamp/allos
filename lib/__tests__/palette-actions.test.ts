@@ -4,6 +4,7 @@ import {
   matchPaletteActions,
   FOCUS_PARAM,
 } from "@/lib/palette-actions";
+import { quickLogItem } from "@/lib/quick-log";
 
 describe("palette create actions", () => {
   it("returns every action for an empty query", () => {
@@ -37,7 +38,11 @@ describe("palette create actions", () => {
     expect(matchPaletteActions("gym").map((a) => a.id)).toEqual([
       "log-workout",
     ]);
+    // "lab" is genuinely two intentions — a structured biomarker record and the PDF
+    // that reported it — and a SEARCH surface should offer both rather than pick for
+    // the user (#1506/#1525). Registry order decides which is listed first.
     expect(matchPaletteActions("LAB").map((a) => a.id)).toEqual([
+      "add-document",
       "add-biomarker",
     ]);
     expect(matchPaletteActions("doctor").map((a) => a.id)).toEqual([
@@ -85,5 +90,30 @@ describe("palette create actions", () => {
         expect(a.target.href).toContain(`${FOCUS_PARAM}=`);
       }
     }
+  });
+
+  it("reaches the ONE document overlay by every word for it (#1525)", () => {
+    // The browse surface (the sheet) carries one row; the search surface carries as
+    // many verbs as people actually type — all resolving to the SAME overlay form, so
+    // neither surface owns a form of its own.
+    for (const query of [
+      "upload",
+      "scan",
+      "document",
+      "lab report",
+      "pdf",
+      "photo of a result",
+      "after-visit summary",
+    ]) {
+      expect(
+        matchPaletteActions(query).map((a) => a.id),
+        query
+      ).toContain("add-document");
+    }
+    const doc = PALETTE_ACTIONS.find((a) => a.id === "add-document");
+    expect(doc?.target).toEqual({ kind: "overlay", form: "document" });
+    // The same target the quick-log registry's row carries — one encoding of "open
+    // this form", not one per surface.
+    expect(doc?.target).toEqual(quickLogItem("add-document").target);
   });
 });

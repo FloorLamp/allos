@@ -51,6 +51,7 @@ import { householdPresenceChip } from "@/lib/workout-presence";
 import { formatRelativeDate } from "@/lib/format-date";
 import { PageHeader, EmptyState } from "@/components/ui";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
+import { getIntakeDeltaLine } from "@/lib/intake-history";
 import HouseholdCard, {
   type HouseholdCardData,
 } from "@/components/HouseholdCard";
@@ -97,6 +98,7 @@ export default async function HouseholdPage() {
       getSupplementDoses(pid),
       activeSuppById,
       {
+        date: day,
         isWorkoutDay: getActivitiesByDate(pid, day).length > 0,
         activeSituations: new Set(getActiveSituations(pid)),
       },
@@ -162,6 +164,11 @@ export default async function HouseholdPage() {
       rollup,
       today: day,
       adherence,
+      // The pushed tier's state changes (#1505 part 3) — the SAME shared line the
+      // morning digest and the weekly recap render, so a caregiver reading the
+      // household card and the Telegram digest sees one story. Null on a quiet
+      // window: the card then shows the x/y fraction alone, as before.
+      intakeDeltaLine: getIntakeDeltaLine(pid, day),
       lastActivity: recent
         ? { title: recent.title, when: formatRelativeDate(recent.date, day) }
         : null,

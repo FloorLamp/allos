@@ -102,8 +102,8 @@ describe("buildAdherencePatternFindings — dose lifetime window (#430)", () => 
     const trapItem = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-           VALUES (?, 'Trap Magnesium', 1, 'supplement', 'daily', 'high', 0, ?)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, 'Trap Magnesium', 1, 'supplement', 'daily', 'should', ?)`
         )
         .run(profileId, itemCreated).lastInsertRowid
     );
@@ -122,8 +122,8 @@ describe("buildAdherencePatternFindings — dose lifetime window (#430)", () => 
     const ctrlItem = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-           VALUES (?, 'Control Zinc', 1, 'supplement', 'daily', 'high', 0, ?)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, 'Control Zinc', 1, 'supplement', 'daily', 'should', ?)`
         )
         .run(profileId, longAgo).lastInsertRowid
     );
@@ -563,8 +563,8 @@ describe("episode-anchored dedupe keys (#436)", () => {
     const item = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-           VALUES (?, 'Episode Zinc', 1, 'supplement', 'daily', 'high', 0, ?)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, 'Episode Zinc', 1, 'supplement', 'daily', 'should', ?)`
         )
         .run(profileId, longAgo).lastInsertRowid
     );
@@ -756,8 +756,8 @@ describe("buildFoodHabitFindings (#580)", () => {
     const { profileId, anchor } = makeProfile("food-habit-warfarin");
     // Active warfarin medication in the stack.
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
-       VALUES (?, 'Warfarin', 1, 'medication', 'daily', 'high', 0)`
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Warfarin', 1, 'medication', 'daily', 'should')`
     ).run(profileId);
     addFoodTarget(profileId, "leafy_greens", 5);
     logServing(profileId, "leafy_greens", anchor); // 1 of 5 → behind
@@ -790,8 +790,8 @@ describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
     const item = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-           VALUES (?, 'Ref Magnesium', 1, 'supplement', 'daily', 'high', 0, ?)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, 'Ref Magnesium', 1, 'supplement', 'daily', 'should', ?)`
         )
         .run(profileId, longAgo).lastInsertRowid
     );
@@ -920,8 +920,8 @@ describe("collectCoachingFindings — the #449 unified rollup", () => {
     const item = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-           VALUES (?, 'Rollup Magnesium', 1, 'supplement', 'daily', 'high', 0, ?)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, 'Rollup Magnesium', 1, 'supplement', 'daily', 'should', ?)`
         )
         .run(profileId, longAgo).lastInsertRowid
     );

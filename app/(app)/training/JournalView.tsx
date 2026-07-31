@@ -19,7 +19,7 @@ import type {
 } from "@/lib/queries";
 import type { UnitPrefs } from "@/lib/settings";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
-import { exerciseHistoryKey, regionForExercise } from "@/lib/lifts";
+import { exerciseHistoryKey } from "@/lib/lifts";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import MobileDetailPage from "@/components/MobileDetailPage";
@@ -39,6 +39,14 @@ import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatm
 import type { JournalCardData, DayGroup } from "@/lib/journal-card";
 import { appendDayGroups, reconcileJournalPaging } from "@/lib/journal-card";
 import { journalFitnessSurfacesVisible } from "@/lib/journal-multi-view";
+import {
+  EMPTY_JOURNAL_FILTERS,
+  filterJournalGroups,
+  journalFiltersActive,
+  journalFiltersKey,
+  type JournalFilters,
+} from "@/lib/journal-filters";
+import type { JournalSourceOption } from "./journal-feed-resolve";
 export type { JournalCardData, DayGroup };
 
 // The Journal's per-list multi-view context (issue #1330). Present ONLY when more
@@ -85,9 +93,16 @@ const TYPE_FILTERS: { value: "all" | ActivityType; label: string }[] = [
 
 const JOURNAL_DESKTOP_QUERY = "(min-width: 1280px)";
 
+// How long a filter change settles before the store is asked for page one of the
+// filtered feed (issue #1634). One round-trip per typing pause rather than one per
+// keystroke; the pure client refinement covers the gap, so the feed never stalls.
+const FILTER_FETCH_DEBOUNCE_MS = 200;
+
 export default function JournalView({
   groups: initialGroups,
   initialCursor = null,
+  sourceOptions = [],
+  faultCount = 0,
   exerciseStats,
   cardioStats,
   sportStats,
@@ -110,6 +125,14 @@ export default function JournalView({
   // Cursor (oldest-date-of-first-page) for fetching the next-older page, or null when
   // the first page already covers the whole history.
   initialCursor?: string | null;
+  // The provenance keys actually present in the ledger, labelled server-side
+  // (issue #1634). Fewer than two options means there is nothing to choose between,
+  // and the control doesn't render.
+  sourceOptions?: JournalSourceOption[];
+  // Rows the editor can't re-save as-is, counted over the WHOLE ledger server-side
+  // (issue #1634) — not over the loaded pages, which both under-reported the badge
+  // and hid the toggle when page one happened to be clean.
+  faultCount?: number;
   exerciseStats: ExerciseStat[];
   cardioStats: CardioStat[];
   sportStats: SportStat[];
@@ -249,83 +272,147 @@ export default function JournalView({
     return () => registerDock(null);
   }, [registerDock, isDesktop]);
 
-  const [typeFilter, setTypeFilter] = useState<"all" | ActivityType>("all");
-  const [query, setQuery] = useState("");
-  // Show only rows the editor can't re-save as-is (imports, legacy data). The
-  // toggle only exists while such rows do — see `faultCount` below.
-  const [faultOnly, setFaultOnly] = useState(false);
-  // Filter the feed to a muscle/region by clicking a badge in the detail panel.
-  const [tagFilter, setTagFilter] = useState<{
-    kind: "muscle" | "region";
-    value: string;
-  } | null>(null);
+  // ---- Filters (issue #1634) ----
+  // ONE filter object rather than four independent useStates: it is the unit that
+  // travels to the server (loadJournalPage), the unit the pure predicate consumes,
+  // and the unit whose identity decides whether an in-flight response is still the
+  // one the user is looking at.
+  const [filters, setFilters] = useState<JournalFilters>(EMPTY_JOURNAL_FILTERS);
   const [visibleDays, setVisibleDays] = useState(14);
   const [detail, setDetail] = useState<Detail>(null);
 
-  // How many rows across the whole feed can't be saved as-is. Drives both the
-  // toggle's visibility and its badge.
-  const faultCount = useMemo(
-    () => groups.reduce((n, g) => n + g.cards.filter((c) => c.fault).length, 0),
-    [groups]
-  );
   // Derive rather than reset via an effect: when the last faulty row is fixed
   // the toggle vanishes (faultCount → 0), and the filter must stop applying in
   // the same render — an effect would leave one frame where the feed filters to
   // an empty list before the reset lands.
-  const faultOnlyActive = faultOnly && faultCount > 0;
+  const activeFilters = useMemo<JournalFilters>(
+    () =>
+      filters.faultOnly && faultCount === 0
+        ? { ...filters, faultOnly: false }
+        : filters,
+    [filters, faultCount]
+  );
+  const filtersActive = journalFiltersActive(activeFilters);
+  const filtersKey = journalFiltersKey(activeFilters);
+  const activeFiltersRef = useRef(activeFilters);
+  activeFiltersRef.current = activeFilters;
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return groups
-      .map((g) => ({
-        ...g,
-        cards: g.cards.filter((c) => {
-          if (faultOnlyActive && !c.fault) return false;
-          if (typeFilter !== "all" && c.activity.type !== typeFilter)
-            return false;
-          if (
-            tagFilter &&
-            !c.parts.some(
-              (p) =>
-                p.kind === "strength" &&
-                (tagFilter.kind === "muscle"
-                  ? p.muscle === tagFilter.value
-                  : regionForExercise(p.name) === tagFilter.value)
-            )
-          )
-            return false;
-          if (!q) return true;
-          if (c.activity.title.toLowerCase().includes(q)) return true;
-          return c.parts.some((p) => p.name.toLowerCase().includes(q));
-        }),
-      }))
-      .filter((g) => g.cards.length > 0);
-  }, [groups, typeFilter, query, tagFilter, faultOnlyActive]);
+  // ---- Server-side filtered paging (issue #1634) ----
+  // Before this, all four filters ran client-side over the LOADED pages, so a match
+  // in an unfetched window silently did not exist and the component had to admit it
+  // ("Only loaded activities are searched"). Now a filter change asks the STORE for
+  // page one of the filtered feed: the query layer picks the days that contain a
+  // match anywhere in the ledger, and this page's cursor pages over MATCHES. The
+  // client predicate below still runs — over a complete day set it is exact — so
+  // typing refines instantly while the round-trip is in flight, and the server's
+  // answer is what settles.
+  const [filteredFeed, setFilteredFeed] = useState<{
+    key: string;
+    groups: DayGroup[];
+    cursor: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!filtersActive) {
+      setFilteredFeed(null);
+      return;
+    }
+    let cancelled = false;
+    // Debounced so a typed query issues one round-trip per pause, not one per
+    // keystroke; the client refinement covers the gap so the feed never feels stuck.
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await loadJournalPage(null, activeFiltersRef.current);
+          if (cancelled) return;
+          setFilteredFeed({
+            key: filtersKey,
+            groups: res.groups,
+            cursor: res.nextBefore,
+          });
+        } catch {
+          // A failed fetch leaves the client refinement (and its pending line) in
+          // place; the next filter change or auto-save retries.
+        }
+      })();
+    }, FILTER_FETCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // initialGroups: the server refreshes the first page on every auto-save, and a
+    // filtered feed must pick those edits up too rather than showing a stale window.
+  }, [filtersKey, filtersActive, initialGroups]);
+
+  // A new ACTIVE filter set starts at the top of its own result list. Deliberately
+  // not on the clearing transition: the deep-link handler clears every filter and
+  // then widens the window to reach its target, and a reset firing on that same key
+  // change would clobber the width it just asked for — the target would never render
+  // and the scroll would never land.
+  useEffect(() => {
+    if (filtersActive) setVisibleDays(14);
+  }, [filtersKey, filtersActive]);
+
+  // The server's answer for THE filters currently on screen, or null while none has
+  // arrived yet (first fetch, or a newer filter set in flight). Only a key match
+  // counts — a late response for an older query must never overwrite a newer one.
+  const serverFiltered =
+    filtersActive && filteredFeed?.key === filtersKey ? filteredFeed : null;
+  // Under a settled filter the feed IS the server's filtered window; otherwise it is
+  // the unfiltered incremental chain, byte-identical to the pre-#1634 fast path.
+  const baseGroups = serverFiltered ? serverFiltered.groups : groups;
+  // The pure predicate — the same one the server-side day scan is a superset of.
+  // A filtered page ships every row of a matching day (the merge picker needs them),
+  // so this is what narrows a day to its matching cards.
+  const filtered = useMemo(
+    () => filterJournalGroups(baseGroups, activeFilters),
+    [baseGroups, activeFilters]
+  );
 
   const shown = filtered.slice(0, visibleDays);
 
   // "Load more" pages the feed (issue #451): first reveal any already-loaded days
-  // beyond the client window, then fetch the next-older window from the server.
+  // beyond the client window, then fetch the next-older window from the server —
+  // the next-older MATCHING window when a filter is on (#1634).
   const hasMoreLoaded = filtered.length > visibleDays;
-  const canFetchMore = cursor != null;
-  const filtersActive =
-    query.trim() !== "" ||
-    typeFilter !== "all" ||
-    tagFilter != null ||
-    faultOnlyActive;
+  // While a filter is active but the store's answer has not arrived, there is no
+  // honest cursor to offer: the unfiltered chain's cursor would page in an unrelated
+  // older window. Withhold the pager for that beat rather than page the wrong set.
+  const activeCursor = serverFiltered
+    ? serverFiltered.cursor
+    : filtersActive
+      ? null
+      : cursor;
+  const canFetchMore = activeCursor != null;
   async function handleLoadMore() {
     if (hasMoreLoaded) {
       setVisibleDays((v) => v + 14);
       return;
     }
-    if (canFetchMore && !loadingMore) {
-      setLoadingMore(true);
-      try {
+    if (activeCursor == null || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      if (serverFiltered) {
+        const key = serverFiltered.key;
+        const res = await loadJournalPage(
+          activeCursor,
+          activeFiltersRef.current
+        );
+        setFilteredFeed((prev) =>
+          prev && prev.key === key
+            ? {
+                key,
+                groups: appendDayGroups(prev.groups, res.groups),
+                cursor: res.nextBefore,
+              }
+            : prev
+        );
+      } else {
         await fetchNextPage();
-        setVisibleDays((v) => v + 14);
-      } finally {
-        setLoadingMore(false);
       }
+      setVisibleDays((v) => v + 14);
+    } finally {
+      setLoadingMore(false);
     }
   }
   const loadMoreButton = (
@@ -339,11 +426,16 @@ export default function JournalView({
       {loadingMore ? "Loading…" : "Load more"}
     </button>
   );
-  // Honest search scope (issue #451): filters/search run over LOADED activities only,
-  // so when older windows remain unfetched we say so rather than silently capping.
-  const searchScopeNote = filtersActive && canFetchMore && (
-    <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-      Only loaded activities are searched — load older days to widen the search.
+  // The #451 "only loaded activities are searched" note is GONE (#1634): whatever the
+  // feed shows under a filter is now the store's answer over the whole ledger. What
+  // remains is a plain pending line for the window where the request is in flight and
+  // the visible list is still the instant client refinement.
+  const searchPendingNote = filtersActive && serverFiltered == null && (
+    <p
+      data-testid="journal-search-pending"
+      className="text-center text-xs text-slate-500 dark:text-slate-400"
+    >
+      Searching your full history…
     </p>
   );
 
@@ -376,7 +468,7 @@ export default function JournalView({
         setCount: number;
       }[]
     >();
-    for (const g of groups) {
+    for (const g of baseGroups) {
       for (const c of g.cards) {
         const key = mergeGroupKey(g.date, c);
         const arr = m.get(key) ?? [];
@@ -391,7 +483,7 @@ export default function JournalView({
       }
     }
     return m;
-  }, [groups, mergeGroupKey]);
+  }, [baseGroups, mergeGroupKey]);
 
   // Workout-history deep links can target a day or specific activity. A
   // day older than the visible window (or hidden by a filter) wouldn't be in the
@@ -452,12 +544,11 @@ export default function JournalView({
       }
       const idx = gs.findIndex((g) => g.date === targetDate);
       if (idx < 0) return;
-      setTypeFilter("all");
-      setQuery("");
-      setTagFilter(null);
-      // Clear the fault filter too, else navigating to a non-fault day/activity
-      // would leave the target filtered out and the scroll would never land.
-      setFaultOnly(false);
+      // Clear EVERY filter (including source and fault), else navigating to a day
+      // or activity the filter excludes would leave the target filtered out and the
+      // scroll would never land. Clearing also drops the server-filtered feed, so
+      // the jump resolves against the unfiltered chain the loop above paged.
+      setFilters(EMPTY_JOURNAL_FILTERS);
       // +8 so a few days render past the target and it can scroll near the top
       // rather than sticking to the bottom as the last rendered day.
       setVisibleDays((v) => Math.max(v, idx + 9));
@@ -568,7 +659,9 @@ export default function JournalView({
       goals={goals}
       goalProgress={goalProgress}
       recent={recentByExercise[exerciseHistoryKey(selectedStat.exercise)]}
-      onFilterTag={(kind, value) => setTagFilter({ kind, value })}
+      onFilterTag={(kind, value) =>
+        setFilters((f) => ({ ...f, tag: { kind, value } }))
+      }
       headerRight={closeDetailButton}
       sex={sex}
     />
@@ -709,15 +802,17 @@ export default function JournalView({
             />
             <input
               type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={filters.query}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, query: e.target.value }))
+              }
               placeholder="Search activities or exercises…"
               className="input appearance-none bg-white pr-10 pl-9 [&::-webkit-search-cancel-button]:appearance-none dark:bg-ink-900"
             />
-            {query && (
+            {filters.query && (
               <button
                 type="button"
-                onClick={() => setQuery("")}
+                onClick={() => setFilters((f) => ({ ...f, query: "" }))}
                 aria-label="Clear search"
                 title="Clear search"
                 className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
@@ -733,12 +828,17 @@ export default function JournalView({
               className="inline-flex overflow-hidden rounded-lg border border-black/10 bg-white divide-x divide-black/10 dark:border-white/10 dark:bg-ink-900 dark:divide-white/10"
             >
               {TYPE_FILTERS.map((f) => {
-                const active = typeFilter === f.value;
+                const active = (activeFilters.type ?? "all") === f.value;
                 return (
                   <button
                     key={f.value}
                     type="button"
-                    onClick={() => setTypeFilter(f.value)}
+                    onClick={() =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        type: f.value === "all" ? null : f.value,
+                      }))
+                    }
                     aria-pressed={active}
                     className={`px-3 py-1.5 text-sm font-medium transition ${
                       active
@@ -751,16 +851,47 @@ export default function JournalView({
                 );
               })}
             </div>
+            {/* Source (issue #1634): the providers this ledger ACTUALLY contains,
+              labelled by the same activityProvenanceLabel the cards render, so the
+              filter and the chip can't name one provider two ways. Filtering happens
+              in SQL by provenance key, so it reaches every window — not just the
+              loaded ones. Hidden when there is nothing to choose between. */}
+            {sourceOptions.length > 1 && (
+              <select
+                aria-label="Source"
+                data-testid="journal-source-filter"
+                value={activeFilters.source ?? ""}
+                onChange={(e) =>
+                  setFilters((f) => ({
+                    ...f,
+                    source: e.target.value === "" ? null : e.target.value,
+                  }))
+                }
+                className="input h-auto w-auto py-1.5 text-sm"
+              >
+                <option value="">Any source</option>
+                {sourceOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            )}
             {/* Only shown while some row can't be saved as-is; disappears once the
-              last one is fixed (faultCount → 0, which also clears the toggle). */}
+              last one is fixed (faultCount → 0, which also clears the toggle). The
+              count is the WHOLE ledger's (#1634), so a faulty row in an unfetched
+              window still surfaces the toggle that can reach it. */}
             {faultCount > 0 && (
               <button
                 type="button"
-                onClick={() => setFaultOnly((v) => !v)}
-                aria-pressed={faultOnly}
+                onClick={() =>
+                  setFilters((f) => ({ ...f, faultOnly: !f.faultOnly }))
+                }
+                aria-pressed={activeFilters.faultOnly}
+                data-testid="journal-fault-filter"
                 title="Show only rows that can't be saved as-is"
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
-                  faultOnly
+                  activeFilters.faultOnly
                     ? "border-rose-500 bg-rose-500 text-white"
                     : "border-rose-300 bg-white text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:bg-ink-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
                 }`}
@@ -769,7 +900,7 @@ export default function JournalView({
                 Can’t be saved
                 <span
                   className={`rounded-full px-1.5 text-xs tabular-nums ${
-                    faultOnly
+                    activeFilters.faultOnly
                       ? "bg-white/25"
                       : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
                   }`}
@@ -778,20 +909,15 @@ export default function JournalView({
                 </span>
               </button>
             )}
-            {tagFilter && (
+            {activeFilters.tag && (
               <span className="inline-flex items-center rounded-full border border-brand-300 bg-brand-50 px-3 py-1 text-sm font-medium text-brand-700 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300">
-                {tagFilter.value}
+                {activeFilters.tag.value}
               </span>
             )}
             {filtersActive && (
               <button
                 type="button"
-                onClick={() => {
-                  setQuery("");
-                  setTypeFilter("all");
-                  setFaultOnly(false);
-                  setTagFilter(null);
-                }}
+                onClick={() => setFilters(EMPTY_JOURNAL_FILTERS)}
                 className="inline-flex items-center gap-1 px-1 py-1 text-sm font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
               >
                 <IconX className="h-3.5 w-3.5" />
@@ -819,14 +945,15 @@ export default function JournalView({
             <EmptyState message="No activities logged yet. Log your first workout to start building your training history." />
           ) : shown.length === 0 ? (
             <div className="space-y-3">
-              <EmptyState message="No activities match your filters." />
-              {/* The match may still be in an unloaded older window — offer to widen
-                  the search rather than declaring "none" over a bounded set (#451). */}
-              {canFetchMore && (
-                <>
-                  {searchScopeNote}
-                  {loadMoreButton}
-                </>
+              {/* "None" is now a claim about the WHOLE ledger (#1634), not about the
+                  loaded windows — the store selected the matching days, so there is
+                  nothing left to widen to. Which is exactly why it must not be said
+                  EARLY: until the store has answered, the visible list is only the
+                  client refinement over the loaded window, and an empty one there
+                  means "not found yet", not "not in your history". So the pending
+                  line REPLACES the verdict rather than sitting under it. */}
+              {searchPendingNote || (
+                <EmptyState message="No activities match your filters." />
               )}
             </div>
           ) : (
@@ -918,7 +1045,10 @@ export default function JournalView({
                               : undefined
                           }
                           onFilterTag={(kind, value) =>
-                            setTagFilter({ kind, value })
+                            setFilters((f) => ({
+                              ...f,
+                              tag: { kind, value },
+                            }))
                           }
                         />
                       );
@@ -926,7 +1056,7 @@ export default function JournalView({
                   </div>
                 </section>
               ))}
-              {searchScopeNote}
+              {searchPendingNote}
               {(hasMoreLoaded || canFetchMore) && loadMoreButton}
             </div>
           )}

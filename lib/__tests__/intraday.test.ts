@@ -451,6 +451,43 @@ describe("buildIntradayModel — the tick rail", () => {
         filtered.workouts.some((w) => w.eventId === "a:9")
     ).toBe(false);
   });
+
+  // #1512 C. An AI insight is stamped by the generation JOB's created_at, so its
+  // minute describes the app, not the day. It stays in the feed below and off the
+  // chart, which is a map of the person's day.
+  it("drops an AI insight from the rail even though it carries a clock time", () => {
+    const insight: TimelineEvent = {
+      id: "insight:4",
+      date: DAY,
+      category: "insight",
+      title: "AI insight",
+      sortTime: "03:07",
+    };
+    const model = buildIntradayModel(input({ events: [...ticked, insight] }))!;
+    expect(model.ticks.map((t) => t.eventId)).toEqual([
+      "document:9",
+      "symptom:x",
+    ]);
+    expect(model.ticks.some((t) => t.category === "insight")).toBe(false);
+  });
+
+  it("is data-gated away when an insight is the only clock-timed event", () => {
+    expect(
+      buildIntradayModel(
+        input({
+          events: [
+            {
+              id: "insight:5",
+              date: DAY,
+              category: "insight",
+              title: "AI insight",
+              sortTime: "03:07",
+            },
+          ],
+        })
+      )
+    ).toBeNull();
+  });
 });
 
 describe("buildIntradayModel — the now-marker", () => {

@@ -11,9 +11,17 @@ It covers training, body metrics, nutrition, supplements and medications, a
 medical passport, Timeline, Trends, Upcoming, notifications, imports, and
 optional Claude-powered analysis.
 
-The live Trends tabs are **Overview, Body, Fitness, Nutrition, and Insights**.
-Labs, imaging, and genomics live under Medical → Results, not a Trends
-Biomarkers tab.
+The live Trends tabs are **Overview, Fitness, Nutrition, and Insights** — four
+since #1644 merged the Body tab into Overview, and permanent by owner ruling
+(there is no all-tabs endpoint; a fifth merge needs a new decision). The Overview
+landing surface is a trending digest, then the cross-domain **starred grid** (the
+only curated area — nothing renders there unconditionally), then the **body
+census**, which streams under its own `Suspense` boundary so the head never waits
+on it. `lib/trends-tabs.ts` owns the tab set; `lib/trends-sections.ts` owns the
+landing surface's two anchors. A body deep link is `trendsSectionHref("body")` →
+`/trends#body`; `?tab=body` is retired with no shim (it falls through to the
+default view, which renders that census). Labs, imaging, and genomics live under
+Medical → Results, not a Trends tab.
 
 ### Logins and profiles are different
 
@@ -250,16 +258,27 @@ at `/nutrition?tab=supplements`; medications render at `/medications`. The
 former combined `/medicine` route is gone and 404s. Use `intakeHref(kind)` for
 kind-to-surface links.
 
+One user-owned field, **`obligation`** (`must`/`should`/`may`), decides push and
+adherence; it replaced both `priority` and `as_needed` in migration 124. `must`
+reminds and escalates, `should` reminds and counts but never escalates, `may` has
+no dueness at all — never pushed, never missed, tracked in the ledger and always
+one tap away. `kind` decides CLINICAL identity (which safety engine, which
+surface, passport inclusion), not pushability; medications default to `must` and
+moving one lower needs an explicit consequence-stating confirm.
+
 Important invariants:
 
-- PRN medication is never scheduled-due.
+- A `may` item is never scheduled-due (it absorbed PRN).
 - Editing a dose must not rewrite adherence history.
 - A removed dose with logs is retired rather than deleted.
 - Confirming a dose snapshots the amount onto the log.
 - `markDoseTaken` may refuse retired doses or paused items; callers render its
   typed outcome.
-- User priority is static and user-owned; context gates dueness but does not
-  invent priority.
+- Obligation is declared only, forever: context gates dueness but never invents
+  obligation, and nothing writes the field without a user action. The demotion
+  engine detects and SUGGESTS; the user's tap is the write.
+- A `may` item is COLLAPSED on aggregates, never filtered out — removing it would
+  make an accepted demotion indistinguishable from a deletion.
 
 See `docs/internals/supplements.md`.
 
@@ -295,6 +314,8 @@ server, and freezes the run's clock. Specs import `test` and `expect` from
 Use stable test IDs and the settled interaction helpers in `e2e/helpers.ts`.
 Do not add `waitForTimeout`, `networkidle`, or an unmarked `.first()` on a shared
 surface. A test owns its fixture data and must not exact-count shared seed rows.
+Do not write redundant assertions or defensive assert checks for conditions
+already proven by types or prior control flow.
 See `docs/internals/e2e-hygiene.md`.
 
 ## Implementation conventions
@@ -320,7 +341,10 @@ See `docs/internals/e2e-hygiene.md`.
 - An icon-only button carries both `aria-label` (specific accessible name) and
   `title` (short hover tooltip); `lib/__tests__/icon-button-tooltip-scan.test.ts`
   enforces it.
-- Pages that cap width use `<PageContainer>` and its named widths.
+- Pages that cap width use `<PageContainer>` and its named widths — never a
+  hand-written `mx-auto max-w-*` and never a `max-w-*` smuggled through its
+  `className`; `lib/__tests__/page-width-scan.test.ts` enforces it and reads
+  the vocabulary out of the component.
 - Responsive variants share one content component; do not maintain separate
   desktop/mobile copies of the same feature.
 - Chart colors come from `lib/chart-colors.ts`, and charts use the shared
@@ -334,6 +358,8 @@ See `docs/internals/e2e-hygiene.md`.
   `createLogger()`.
 - Internal route fields and props use `AppRoute`. Add an href helper only when
   it owns routing policy; otherwise use the typed literal.
+  `lib/__tests__/typed-route-props.test.ts` fails any `href`/`…Href` field
+  left as `string`, with an allowlist for external URLs and live pathnames.
 - A directory under `app/(app)/` implies a served route. Components and Server
   Actions for a surface live under the route that renders them (or in
   `components/` when several surfaces share them) — never under the name of a
@@ -363,7 +389,12 @@ See `docs/internals/e2e-hygiene.md`.
   include the attribute that actually distinguishes otherwise identical choices.
 - Findings have an explicit reach policy: care findings may reach Upcoming,
   attention surfaces, and notifications; coaching findings stay in calm,
-  hideable surfaces. See `docs/internals/findings.md`.
+  hideable surfaces. See `docs/internals/findings.md` — which also holds the **attention doctrine**:
+  the surface taxonomy (system-initiated sends / rendered aggregates /
+  user-initiated access), the contact-consent rule (the system may reduce contact
+  unilaterally, never increase it or rewrite user-owned state), which domains can
+  carry an obligation at all, and the right-sizing family every "the system
+  noticed X" suggestion belongs to.
 
 ## Repository hygiene
 

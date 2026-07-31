@@ -472,7 +472,7 @@ describe("#1281 migration 101 recovers a blank-name unpaired prescription non-lo
     // A placeholder-named medication was created WITH a course (never silently dropped).
     const med = db
       .prepare(
-        `SELECT id, name, kind, as_needed, import_key FROM intake_items
+        `SELECT id, name, kind, obligation, import_key FROM intake_items
           WHERE profile_id = ? AND kind = 'medication' AND document_id = ?`
       )
       .get(profileId, doc) as
@@ -480,13 +480,15 @@ describe("#1281 migration 101 recovers a blank-name unpaired prescription non-lo
           id: number;
           name: string;
           kind: string;
-          as_needed: number;
+          obligation: string;
           import_key: string | null;
         }
       | undefined;
     expect(med).toBeDefined();
     expect(med!.name).toBe("Unnamed medication");
-    expect(med!.as_needed).toBe(1);
+    // Migration 101 projects the recovery placeholder as a PRN row, which the #1505
+    // collapse maps onto `may` — the same arm the migration's own CASE takes.
+    expect(med!.obligation).toBe("may");
     expect(
       (
         db

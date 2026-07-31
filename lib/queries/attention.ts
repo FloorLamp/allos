@@ -43,28 +43,19 @@ import {
 import {
   collectUpcoming,
   collectSuppressedUpcoming,
+  doseDayProgress,
   getFindingSuppressions,
+  offeredItems,
 } from "./upcoming";
+import type { DoseDayProgress } from "../upcoming-aggregate";
+import { isItemHiddenBySuppression } from "../upcoming-suppress";
 import {
   domainForRichKey,
   resolveSuppressedKeyDisplay,
   ORPHAN_SUPPRESSION_LABEL,
   type SuppressionDomain,
 } from "../suppression-display";
-import { getImportIssues, getReviewPairCount } from "./integrations";
-
-// The failing/needs-reauth providers reduced to what the model renders (one entry
-// per currently-broken provider).
-function integrationAttention(profileId: number): AttentionIntegration[] {
-  return getImportIssues(profileId).map((ev) => {
-    const integration = getIntegration(ev.provider as IntegrationId);
-    return {
-      id: integration?.id ?? null,
-      provider: integration?.name ?? ev.provider,
-      detail: ev.error ?? "Reconnect to resume syncing.",
-    };
-  });
-}
+import { getIntegrationAttention, getReviewPairCount } from "./integrations";
 
 // The stable flagged-biomarker window (issue #283): a result flagged in the last N
 // days needs attention, regardless of whether/when a Telegram digest went out. The
@@ -131,7 +122,7 @@ export function collectAttentionModel(
   return buildAttentionModel({
     upcoming: collectUpcoming(profileId, today, units),
     flaggedBiomarkers,
-    integrations: integrationAttention(profileId),
+    integrations: getIntegrationAttention(profileId),
     reviewCount: getReviewPairCount(profileId),
     today,
   });
@@ -326,5 +317,49 @@ export function collectMultiProfileSuppressed(
       out.push({ ...e, profileId: pid });
     }
   }
+  return out;
+}
+
+// ---- The "available" disclosure (issue #1505) ------------------------------
+
+// A `may` item on offer today, stamped with the profile it belongs to. Same
+// per-member loop as collectMultiProfileSuppressed: each member's offer set is
+// evaluated in ITS OWN today, never a shared clock (#1096).
+export type ProfiledOfferedItem = UpcomingItem & { profileId: number };
+
+// Every in-view profile's `may` items on offer today, bus-filtered so a declined
+// offer stays declined. These are AVAILABILITY, not work: the Upcoming page renders
+// them behind a collapsed disclosure, they carry no band or due date, and they are
+// deliberately NOT part of `total` — the headline count answers "what do I owe", and
+// folding availability into it would recreate the exact inflation #1505 removes.
+export function collectMultiProfileOffered(
+  viewIds: readonly number[]
+): ProfiledOfferedItem[] {
+  const out: ProfiledOfferedItem[] = [];
+  for (const pid of viewIds) {
+    const map = getFindingSuppressions(pid);
+    const now = today(pid);
+    for (const item of offeredItems(pid, now)) {
+      if (isItemHiddenBySuppression(item, map.get(item.key), now)) continue;
+      out.push({ ...item, profileId: pid });
+    }
+  }
+  return out;
+}
+
+// ---- The dose aggregate's progress fraction (issue #1504) -------------------
+
+// Each in-view member's dose progress for TODAY, keyed by profile — the denominator
+// behind the collapsed dose aggregate's "9 of 14 taken". Same per-member loop as the
+// collectors above: each member's day is evaluated in ITS OWN today (#1096), never a
+// shared clock, so a member whose timezone has not rolled over still reports the day
+// they are actually in. The page sums the map for the interleaved band and reads one
+// entry for a by-person section, so each presentation prints a fraction over exactly
+// the rows it is showing.
+export function collectMultiProfileDoseProgress(
+  viewIds: readonly number[]
+): Map<number, DoseDayProgress> {
+  const out = new Map<number, DoseDayProgress>();
+  for (const pid of viewIds) out.set(pid, doseDayProgress(pid, today(pid)));
   return out;
 }

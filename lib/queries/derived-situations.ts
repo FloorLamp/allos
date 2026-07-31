@@ -35,6 +35,15 @@ import {
   type RoughNightVerdict,
   type PeriodVerdict,
 } from "../derived-situations";
+import {
+  weatherSituationFigure,
+  weatherSituationStateLine,
+  WEATHER_SITUATIONS,
+  type WeatherSituationState,
+} from "../weather-situations";
+import { resolveWeatherSituations } from "./weather-situations";
+import type { TemperatureUnit } from "../settings";
+import type { IntakeObligation } from "../types";
 
 // Whether a declared-situation NAME set contains a given built-in (name-keyed, #560).
 function declared(active: readonly string[], name: string): boolean {
@@ -47,6 +56,12 @@ export interface DerivedSituations {
   // The period verdict (logged menses day OR declared fallback). #1298. Null when cycle
   // tracking isn't relevant for the profile (the built-in Period situation never shows).
   period: PeriodVerdict | null;
+  // The weather situations holding today (#1726) — heatwave, cold snap, pressure swing,
+  // high pollen, poor air quality. Empty when the profile has no home location, isn't
+  // weather-relevant, or nothing qualifies. There is no declared/derived split here:
+  // unlike sleep and period, weather has no self-report fallback — either the cached
+  // series says the day qualified or the app has nothing to claim.
+  weather: WeatherSituationState[];
   // The DERIVED situation names to union into the active set (only those turned on by
   // derivation, i.e. NOT already declared — a declared toggle is already in the set).
   derivedNames: Set<string>;
@@ -84,6 +99,13 @@ export function resolveDerivedSituations(
       })
     : null;
 
+  // ---- Weather (#1726) ----
+  // Gated on weather relevance (a home location plus either a weather-keyed item or a
+  // symptom these situations explain), then decided purely by the cached daily series
+  // ending TODAY — never on the forecast tail, so a situation cannot activate on
+  // weather that has not happened. No data ⇒ no situation.
+  const weather = resolveWeatherSituations(profileId, date).active;
+
   // Only the names turned on by DERIVATION (not already declared) need adding — a
   // declared toggle is already in getActiveSituations.
   const derivedNames = new Set<string>();
@@ -91,17 +113,22 @@ export function resolveDerivedSituations(
     derivedNames.add(BUILTIN_POOR_SLEEP_SITUATION);
   if (period?.on && period.basis === "logged")
     derivedNames.add(BUILTIN_PERIOD_SITUATION);
+  for (const w of weather) derivedNames.add(w.name);
 
-  return { poorSleep, period, derivedNames };
+  return { poorSleep, period, weather, derivedNames };
 }
 
-// The number of active, non-PRN situational items keyed to `situation` (name-keyed,
-// #560) — the count the state line acknowledges. When the derived context is on, these
-// are exactly the items that just went due (isDueOn's situational branch).
+// The number of active situational items keyed to `situation` (name-keyed, #560) that
+// can actually GO DUE — the count the state line acknowledges. When the derived
+// context is on, these are exactly the items isDueOn's situational branch surfaces.
+//
+// `may` items are excluded because they have no dueness at all (#1505): saying "1 item
+// active" about something that was never going to come due would be acknowledging
+// nothing. They remain reachable through the offer surfaces.
 function keyedItemCount(
   supps: readonly {
     active?: number | boolean;
-    as_needed?: number;
+    obligation?: IntakeObligation;
     condition?: string;
     situation?: string | null;
   }[],
@@ -110,7 +137,7 @@ function keyedItemCount(
   return supps.filter(
     (s) =>
       (s.active ?? true) &&
-      !s.as_needed &&
+      s.obligation !== "may" &&
       s.condition === "situational" &&
       s.situation != null &&
       sameSituation(s.situation, situation)
@@ -127,26 +154,55 @@ export interface DerivedSituationLines {
   // is cleared by its chip). Folded in here so a consumer resolves ONCE (the dashboard
   // hot path, #221) instead of re-running the sleep/cycle reads for a separate lookup.
   poorSleepOverridable: boolean;
+  // One acknowledgment per ACTIVE weather situation with keyed items (#1726), in the
+  // stable predicate order. Empty on a quiet day, for a non-weather-relevant profile, or
+  // when nothing is keyed to the situation that holds — the same "nothing to
+  // acknowledge" rule the other two follow.
+  weather: string[];
 }
 
 // The visible state lines for the derived contexts — the ONE computation the Supplements
 // bar, the #1221 check-in Context disclosure, and the morning digest all format over, so
 // a Telegram-first user sees the same acknowledgment as the page (#662/#221). Basis-aware
 // via the pure formatters; null where the context is off or has no keyed items to surface.
-// CHEAP EARLY-OUT: a profile with NO situational item keyed to Poor sleep / Period has
-// nothing to surface, so we skip the sleep/cycle/suppression reads entirely — the common
-// case, keeping the dashboard render this feeds free of derived-context I/O.
+// CHEAP EARLY-OUT: a profile with NO situational item keyed to Poor sleep / Period / a
+// weather situation has nothing to surface, so we skip the sleep/cycle/suppression/
+// weather reads entirely — the common case, keeping the dashboard render this feeds free
+// of derived-context I/O.
+//
+// `temperatureUnit` is the LOGIN's display preference (units belong to the login, not
+// the profile), passed in by the caller that has one; it only affects how a heatwave /
+// cold-snap figure READS, never whether the situation holds. Defaults to canonical °C
+// for the profile-only callers (the notify tick has no login context).
 export function getDerivedSituationLines(
   profileId: number,
-  date: string
+  date: string,
+  temperatureUnit: TemperatureUnit = "C"
 ): DerivedSituationLines {
   const supps = getSupplements(profileId);
   const poorSleepItems = keyedItemCount(supps, BUILTIN_POOR_SLEEP_SITUATION);
   const periodItems = keyedItemCount(supps, BUILTIN_PERIOD_SITUATION);
-  if (poorSleepItems === 0 && periodItems === 0) {
-    return { poorSleep: null, period: null, poorSleepOverridable: false };
+  const anyWeatherKeyed = WEATHER_SITUATIONS.some(
+    (name) => keyedItemCount(supps, name) > 0
+  );
+  if (poorSleepItems === 0 && periodItems === 0 && !anyWeatherKeyed) {
+    return {
+      poorSleep: null,
+      period: null,
+      poorSleepOverridable: false,
+      weather: [],
+    };
   }
   const d = resolveDerivedSituations(profileId, date);
+  const weather: string[] = [];
+  for (const state of d.weather) {
+    const line = weatherSituationStateLine({
+      state,
+      figure: weatherSituationFigure(state, temperatureUnit),
+      itemCount: keyedItemCount(supps, state.name),
+    });
+    if (line) weather.push(line);
+  }
   return {
     poorSleep:
       poorSleepItems > 0
@@ -158,6 +214,7 @@ export function getDerivedSituationLines(
         : null,
     poorSleepOverridable:
       poorSleepItems > 0 && d.poorSleep.on && d.poorSleep.basis === "measured",
+    weather,
   };
 }
 

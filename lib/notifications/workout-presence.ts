@@ -47,9 +47,11 @@ import {
   type ReminderWindow,
   type WindowDose,
 } from "./supplement-format";
-import { PRIORITY_ORDER } from "../supplement-schedule";
+import { OBLIGATION_ORDER } from "../supplement-schedule";
 import { dispatch } from "./index";
+import { prefixForProfile } from "./attribution";
 import { workoutFinishCallback } from "./callback-data";
+import { prefixMessage } from "./types";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
@@ -99,7 +101,8 @@ export function renderPostWorkoutFinishMessage(
     .filter((e) => !e.taken && !e.skipped)
     .sort(
       (a, b) =>
-        PRIORITY_ORDER[a.supp.priority] - PRIORITY_ORDER[b.supp.priority] ||
+        OBLIGATION_ORDER[a.supp.obligation] -
+          OBLIGATION_ORDER[b.supp.obligation] ||
         a.supp.name.localeCompare(b.supp.name)
     );
   if (pending.length === 0) return null;
@@ -111,7 +114,7 @@ export function renderPostWorkoutFinishMessage(
           ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
           : e.dose.amount;
       const amt = dose ? ` — ${dose}` : "";
-      const mark = e.supp.priority === "mandatory" ? "🔴 " : "• ";
+      const mark = e.supp.obligation === "must" ? "🔴 " : "• ";
       return `${mark}${e.supp.name}${amt}`;
     })
     .join("\n");
@@ -226,7 +229,16 @@ export async function runPostWorkoutForActivity(
   const msg = composeFinishNudge(leadLine, doseMsg);
   if (!msg) return { failed: false }; // nothing to send — don't burn the one-shot
 
-  const results = await dispatch(profileId, msg);
+  // ATTRIBUTION (#1721). "🏋️ Post-workout — 2 doses" / "🏋️ Workout complete" name
+  // nobody, and this is a dispatch-path builder, so it never met the tick's
+  // prefixMessage. In a shared household chat a post-workout DOSE list is
+  // unattributable. prefixForProfile is the one derivation (#377/#429) — it labels
+  // only when the instance tracks more than one profile, so a single-profile
+  // instance is unchanged.
+  const results = await dispatch(
+    profileId,
+    prefixMessage(msg, prefixForProfile(profileId))
+  );
   if (results.length === 0) return { failed: false }; // no channel — fire later
   const delivered = results.some((r) => r.ok);
   const failed = results.some((r) => !r.ok);

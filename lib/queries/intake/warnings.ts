@@ -39,6 +39,12 @@ import {
   type OtotoxicMedInput,
 } from "../../ototoxic";
 import {
+  crossCheckWeatherMeds,
+  type WeatherMedHit,
+  type WeatherMedInput,
+} from "../../weather-med-safety";
+import type { WeatherExposure } from "../../datasets/weather-med-safety";
+import {
   buildMedMonitoring,
   type MedMonitoringHit,
   type MonitoredMedInput,
@@ -69,7 +75,7 @@ import { getIntakeSafetyContext } from "./safety";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import { activeByKey } from "../../findings";
 import { getFindingSuppressions } from "../upcoming/suppressions";
-import { contributesToDailyLimit } from "../../supplement-schedule";
+import { contributesToDailyLimit, isPrn } from "../../supplement-schedule";
 import { getSupplements, getSupplementDoses } from "./schedule";
 
 // ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
@@ -140,17 +146,24 @@ function stackDriContext(
     arr.push(d.amount);
     dosesBySupp.set(d.item_id, arr);
   }
-  // Only items taken EVERY day contribute to the DAILY UL/RDA totals (#635): a PRN
-  // item is on-demand and a workout/rest/situational item applies only on some
-  // days, so summing either as a full daily dose was a standing false "above upper
-  // limit" care-tier alarm. The pure contributesToDailyLimit mirrors isDueOn's PRN
-  // short-circuit; the item's active flag is still gated downstream in the DRI math.
+  // Only items on an EVERY-DAY schedule contribute to the DAILY UL/RDA totals (#635):
+  // a workout/rest/situational item applies only on some days, so summing it as a full
+  // daily dose was a standing false "above upper limit" care-tier alarm. That gate is
+  // the SCHEDULE and is obligation-blind (#1505).
+  //
+  // Obligation is TAGGED here, not filtered: an on-demand (`may`) item is passed
+  // through marked `optional`, and lib/dri.ts applies it per question in the
+  // conservative direction — full weight in the UL risk total (labelled), excluded
+  // from the RDA reassurance share (disclosed as an aside). Filtering here would force
+  // one direction on both questions, which is how the UL under-counted before.
+  // The item's active flag is still gated downstream in the DRI math.
   const items: StackItem[] = supplements
     .filter((s) => contributesToDailyLimit(s))
     .map((s) => ({
       name: s.name,
       active: !!s.active,
       doseAmounts: dosesBySupp.get(s.id) ?? [],
+      optional: isPrn(s),
     }));
 
   const birthdate = getUserBirthdate(profileId);
@@ -517,4 +530,38 @@ export function getMedMonitoringItems(
   }
 
   return buildMedMonitoring(inputs, labDatesByFamily, todayStr);
+}
+
+// Medication/supplement × WEATHER cross-check (issue #1727): the profile's ACTIVE
+// intake stack matched against the curated photosensitizing / heat-risk attribute
+// lists. The SAME pure crossCheckWeatherMeds the enriched UV line, the standalone calm
+// note, and the digest all format over ("one question, one computation").
+//
+// KIND-BLIND, deliberately — and this is the one place it diverges from the ototoxic /
+// PGx gathers, which read getIntakeSafetyContext().medications (kind = 'medication').
+// Sunlight and heat act on what is in the body, not on which surface of the app it was
+// entered from: St John's Wort is a supplement AND a documented photosensitizer, so the
+// stack here is every ACTIVE intake item of either kind.
+//
+// OBLIGATION-BLIND (#1505, pinned): no filter on obligation. A `may` photosensitizer is
+// still a photosensitizer on a day it is taken; obligation governs whether the app
+// contacts you, never whether a drug reacts to sunlight.
+//
+// Profile-scoped through getSupplements (profile_id-filtered); no new SQL, so the
+// scoping guard is unaffected. Informational, never prescriptive; absence of a flag is
+// not clearance.
+export function getWeatherMedWarnings(
+  profileId: number,
+  exposure: WeatherExposure
+): WeatherMedHit[] {
+  const items: WeatherMedInput[] = getSupplements(profileId)
+    .filter((s) => s.active)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      rxcui: s.rxcui,
+      rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
+    }));
+  if (items.length === 0) return [];
+  return crossCheckWeatherMeds(items, exposure);
 }

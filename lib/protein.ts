@@ -385,15 +385,59 @@ export interface ProteinToday {
   weeklyAverageGrams: number | null;
 }
 
-// The Telegram food-nudge protein status line (issue #974). Rendered from the SAME
-// ProteinToday the gauge uses (a third formatter, never a second engine, #221). A floor
-// basis (anything but a measured tracked reading) reads "at least N g" per the #767 floor
-// copy discipline; a tracked reading states the figure directly. e.g.
-// "Protein today · at least 55 g of ~130–180 g".
-export function proteinTodayNudgeLine(t: ProteinToday): string {
+// ---- Today's protein STATUS (issues #974 / #1710) ----
+//
+// Whether today's protein has reached the goal band. ONE derivation (#221) — the
+// nudge line and any web surface that states a conclusion read this, so they can
+// never disagree about "reached".
+//
+// Above the band reads as REACHED, never as a warning: protein overshoot isn't a
+// problem, and the app must not invent a ceiling it doesn't have.
+export type ProteinTodayStatus = "reached" | "below";
+
+export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
+  return t.todayGrams >= t.target.gramsLow ? "reached" : "below";
+}
+
+// The pieces of the food-nudge protein line, so one surface can render it plain and
+// another can emphasize the figure without either re-deriving the conclusion (#1710).
+// A floor basis (anything but a measured tracked reading) keeps "at least N g" per the
+// #767 floor-copy discipline; a tracked reading states the figure directly.
+//
+// The STATUS WORDS are in the text, not carried by the emoji alone, so the meaning
+// survives screen readers and notification previews that strip emoji.
+export interface ProteinNudgeLineParts {
+  emoji: string;
+  // "at least 107 g" (floor basis) or "107 g" (a tracked reading).
+  amount: string;
+  // "~80–105 g" — the goal band.
+  band: string;
+  status: ProteinTodayStatus;
+  // The trailing clause, or null when there is nothing true to add (the below-band
+  // case is deliberately NEUTRAL: a marker, no nag, no praise).
+  statusWords: string | null;
+}
+
+export function proteinTodayNudgeParts(t: ProteinToday): ProteinNudgeLineParts {
   const grams = Math.round(t.todayGrams);
   const isFloor = t.todayIntake ? t.todayIntake.basis !== "tracked" : true;
-  const amt = isFloor ? `at least ${grams} g` : `${grams} g`;
-  const band = `~${g(t.target.gramsLow)}–${g(t.target.gramsHigh)} g`;
-  return `Protein today · ${amt} of ${band}`;
+  const status = proteinTodayStatus(t);
+  return {
+    emoji: status === "reached" ? "🎯" : "🍗",
+    amount: isFloor ? `at least ${grams} g` : `${grams} g`,
+    band: `~${g(t.target.gramsLow)}–${g(t.target.gramsHigh)} g`,
+    status,
+    statusWords: status === "reached" ? "goal reached" : null,
+  };
+}
+
+// The Telegram food-nudge protein status line (issue #974) as PLAIN text — the same
+// parts, joined. Rendered from the SAME ProteinToday the gauge uses (a third
+// formatter, never a second engine, #221). Before #1710 it read "at least 107 g of
+// ~80–105 g" with NO status: 107 g is above the band — the goal is reached — but the
+// phrasing read like a shortfall, hiding its own conclusion.
+export function proteinTodayNudgeLine(t: ProteinToday): string {
+  const p = proteinTodayNudgeParts(t);
+  const tail = p.statusWords ? ` — ${p.statusWords}` : "";
+  return `${p.emoji} Protein · ${p.amount} of ${p.band}${tail}`;
 }

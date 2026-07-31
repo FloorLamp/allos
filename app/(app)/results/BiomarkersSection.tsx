@@ -30,6 +30,7 @@ import {
 } from "@/lib/medical-categories";
 import { parsePanelId } from "@/lib/biomarker-panels";
 import { reachablePanelIds } from "@/lib/biomarker-panel-reach";
+import { PHONE_STACK } from "@/lib/phone-fold";
 
 // The query params the Biomarkers section consumes — the former /biomarkers index
 // page's searchParams, unchanged (#1042 phase 5 moved the content, not the
@@ -170,82 +171,102 @@ function SingleBiomarkersView({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <CanonicalNamesProvider names={canonicalOptions}>
-        <div>
-          {/* Order (#1499 section D): the CURATED GLANCE first — the pinned analytes
-          you chose, then what is moving, then the aging index — and the panel-group
-          index below it. Starred leads because it is the only part the reader
-          authored; the trajectory rollup follows as one capped card. */}
-          <StarredBiomarkers />
+        {/* DOM order is the unchanged #1499 section D order — the CURATED GLANCE
+        first (the pinned analytes you chose, then what is moving, then the aging
+        index), the panel-group index below it — and from `sm` up that is also what
+        renders, because every slot's order resets there. Below `sm` the slots are
+        re-ordered so the INDEX leads (#1647); the reasoning, and why caps alone
+        could not get there, is in lib/phone-fold's PHONE_STACK. */}
+        <div className={PHONE_STACK.container} data-testid="biomarkers-stack">
+          <div className={PHONE_STACK.glance}>
+            {/* Starred leads on desktop because it is the only part the reader
+            authored. On a phone it is a surface you go TO, so it sits below the
+            index — still whole, still one scroll, never behind a tap. */}
+            <StarredBiomarkers />
+          </div>
 
           {/* Forward-looking trajectory rules (#41), the ONE thing #1164 moved from the
           deleted Trends → Biomarkers tab: a "what's changing" area that warns BEFORE a
           single-value flag catches a range crossing. A full-history standing read, so
-          it ignores the browser's filters. Renders nothing when no trajectory fires. */}
-          <TrajectoryFindings />
+          it ignores the browser's filters. Renders nothing when no trajectory fires.
+          It KEEPS its place above the index on a phone — it is the one card here that
+          has to find the reader rather than be looked up — and pays for it by folding
+          its rows at that width (#1647). */}
+          <div className={PHONE_STACK.warning}>
+            <TrajectoryFindings />
+          </div>
 
           {/* Biological-age hero (#209): the derived PhenoAge index (#157) surfaced as a
           headline "how am I aging" result, pinned above the analyte table. Adult-
           gated; renders nothing for child profiles. The derived table row remains. */}
-          <BioAgeHero />
+          <div className={PHONE_STACK.glance}>
+            <BioAgeHero />
+          </div>
 
-          {/* The facet offers the taxonomy intersected with what this browser's
-          category scope can actually surface (#1581 section D) — a STATIC
-          derivation, so its contents stay stable while filters change. */}
-          <MedicalFilters
-            category={active}
-            panel={panel}
-            panels={reachablePanelIds()}
-            range={range}
-            q={q}
-            current={current}
-          />
+          <div className={PHONE_STACK.index}>
+            {/* The facet offers the taxonomy intersected with what this browser's
+            category scope can actually surface (#1581 section D) — a STATIC
+            derivation, so its contents stay stable while filters change. It travels
+            WITH the table across the phone re-order: a control that filters a list
+            has to stay attached to the list it filters. */}
+            <MedicalFilters
+              category={active}
+              panel={panel}
+              panels={reachablePanelIds()}
+              range={range}
+              q={q}
+              current={current}
+            />
 
-          {records.length === 0 ? (
-            <EmptyState
-              message={
-                active || panel || range || q || current
-                  ? "No records match these filters."
-                  : "No records yet. Import documents from the Data page (Data → Import), or add one below."
-              }
-            />
-          ) : (
-            <BiomarkersTable
-              records={records}
-              now={now}
-              filters={{
-                category: active,
-                panel,
-                range,
-                q,
-                sort,
-                dir,
-                current,
-              }}
-            />
-          )}
+            {records.length === 0 ? (
+              <EmptyState
+                message={
+                  active || panel || range || q || current
+                    ? "No records match these filters."
+                    : "No records yet. Import documents from the Data page (Data → Import), or add one below."
+                }
+              />
+            ) : (
+              <BiomarkersTable
+                records={records}
+                now={now}
+                filters={{
+                  category: active,
+                  panel,
+                  range,
+                  q,
+                  sort,
+                  dir,
+                  current,
+                }}
+              />
+            )}
+          </div>
 
           {/* Entry behind "+ Add result" (#1499 section C — the #1497 rare-cadence
           rule). Lab readings arrive a few times a year, mostly by import; a standing
           form charged every read of the hub for it. `#add-result` stays on the
           wrapper so the palette / medication-monitoring deep links still land here,
           and they auto-expand it. */}
-          <AddEntryPanel
-            id="add-result"
-            testId="add-result-panel"
-            panelId="add-result-panel-body"
-            label="Add medical record"
-            addLabel="Add result"
-            defaultOpen={entryPanelOpen(searchParams)}
-          >
-            <RecordForm
-              mode="add"
-              action={addRecord}
-              categories={BIOMARKER_CATEGORIES}
-              defaultDate={now}
-              defaultCategory={active ?? "lab"}
-              defaultName={searchParams.name?.trim() || undefined}
-            />
-          </AddEntryPanel>
+          <div className={PHONE_STACK.entry}>
+            <AddEntryPanel
+              id="add-result"
+              testId="add-result-panel"
+              panelId="add-result-panel-body"
+              label="Add medical record"
+              addLabel="Add result"
+              defaultOpen={entryPanelOpen(searchParams)}
+            >
+              <RecordForm
+                mode="add"
+                action={addRecord}
+                categories={BIOMARKER_CATEGORIES}
+                defaultDate={now}
+                defaultCategory={active ?? "lab"}
+                defaultName={searchParams.name?.trim() || undefined}
+              />
+            </AddEntryPanel>
+          </div>
         </div>
       </CanonicalNamesProvider>
     </ProviderOptionsProvider>
@@ -314,79 +335,93 @@ function MultiBiomarkersView({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <CanonicalNamesProvider names={canonicalOptions}>
-        <div>
+        {/* The same four phone slots as single view (#1647) — a caregiver on a phone
+        reads the index first for the same reason, and one member's stars must not
+        push it further down than another's. N starred cards share ONE glance slot, so
+        their relative order (and the whole card list's position) is unchanged. */}
+        <div className={PHONE_STACK.container} data-testid="biomarkers-stack">
           {/* Starred lens is per profile — one labeled card per member (each renders
           nothing when that member has no stars). Ordered ahead of the trajectory
           rollup and the bio-age hero, matching single view (#1499 section D). */}
-          {scope.profiles
-            .filter((p) => ids.includes(p.id))
-            .map((p) => (
-              <StarredBiomarkers
-                key={p.id}
-                profileId={p.id}
-                subjectLabel={p.name}
-              />
-            ))}
+          <div className={PHONE_STACK.glance}>
+            {scope.profiles
+              .filter((p) => ids.includes(p.id))
+              .map((p) => (
+                <StarredBiomarkers
+                  key={p.id}
+                  profileId={p.id}
+                  subjectLabel={p.name}
+                />
+              ))}
+          </div>
 
           {/* Personal "you" surfaces stay acting-only in multi-view. */}
-          <TrajectoryFindings />
-          <BioAgeHero />
+          <div className={PHONE_STACK.warning}>
+            <TrajectoryFindings />
+          </div>
+          <div className={PHONE_STACK.glance}>
+            <BioAgeHero />
+          </div>
 
-          {/* The facet offers the taxonomy intersected with what this browser's
-          category scope can actually surface (#1581 section D) — a STATIC
-          derivation, so its contents stay stable while filters change. */}
-          <MedicalFilters
-            category={active}
-            panel={panel}
-            panels={reachablePanelIds()}
-            range={range}
-            q={q}
-            current={current}
-          />
+          <div className={PHONE_STACK.index}>
+            {/* The facet offers the taxonomy intersected with what this browser's
+            category scope can actually surface (#1581 section D) — a STATIC
+            derivation, so its contents stay stable while filters change. */}
+            <MedicalFilters
+              category={active}
+              panel={panel}
+              panels={reachablePanelIds()}
+              range={range}
+              q={q}
+              current={current}
+            />
 
-          {records.length === 0 ? (
-            <EmptyState
-              message={
-                active || panel || range || q || current
-                  ? "No records match these filters."
-                  : "No records yet for these profiles. Import documents from the Data page (Data → Import), or add one below."
-              }
-            />
-          ) : (
-            <BiomarkersTable
-              records={rows}
-              now={now}
-              multiView={{ actingProfileId: scope.actingProfileId }}
-              filters={{
-                category: active,
-                panel,
-                range,
-                q,
-                sort,
-                dir,
-                current,
-              }}
-            />
-          )}
+            {records.length === 0 ? (
+              <EmptyState
+                message={
+                  active || panel || range || q || current
+                    ? "No records match these filters."
+                    : "No records yet for these profiles. Import documents from the Data page (Data → Import), or add one below."
+                }
+              />
+            ) : (
+              <BiomarkersTable
+                records={rows}
+                now={now}
+                multiView={{ actingProfileId: scope.actingProfileId }}
+                filters={{
+                  category: active,
+                  panel,
+                  range,
+                  q,
+                  sort,
+                  dir,
+                  current,
+                }}
+              />
+            )}
+          </div>
 
           {/* Entry behind "+ Add result" (#1499 section C), acting-scoped as before. */}
-          <AddEntryPanel
-            id="add-result"
-            testId="add-result-panel"
-            panelId="add-result-panel-body"
-            label="Add medical record"
-            addLabel="Add result"
-            defaultOpen={entryPanelOpen(searchParams)}
-          >
-            <RecordForm
-              mode="add"
-              action={addRecord}
-              categories={BIOMARKER_CATEGORIES}
-              defaultDate={now}
-              defaultCategory={active ?? "lab"}
-              defaultName={searchParams.name?.trim() || undefined}
-            />
-          </AddEntryPanel>
+          <div className={PHONE_STACK.entry}>
+            <AddEntryPanel
+              id="add-result"
+              testId="add-result-panel"
+              panelId="add-result-panel-body"
+              label="Add medical record"
+              addLabel="Add result"
+              defaultOpen={entryPanelOpen(searchParams)}
+            >
+              <RecordForm
+                mode="add"
+                action={addRecord}
+                categories={BIOMARKER_CATEGORIES}
+                defaultDate={now}
+                defaultCategory={active ?? "lab"}
+                defaultName={searchParams.name?.trim() || undefined}
+              />
+            </AddEntryPanel>
+          </div>
         </div>
       </CanonicalNamesProvider>
     </ProviderOptionsProvider>

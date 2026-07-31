@@ -206,7 +206,7 @@ export async function updateEpisodeDoseAction(
     .prepare(
       `SELECT l.date FROM intake_item_logs l
          JOIN intake_items i ON i.id = l.item_id
-        WHERE l.id = ? AND i.profile_id = ? AND i.as_needed = 1
+        WHERE l.id = ? AND i.profile_id = ? AND i.obligation = 'may'
           AND l.status = 'taken'`
     )
     .get(id, profileId) as { date: string } | undefined;
@@ -281,7 +281,7 @@ export async function deleteEpisodeDoseAction(
           .prepare(
             `SELECT l.date FROM intake_item_logs l
              JOIN intake_items i ON i.id = l.item_id
-            WHERE l.id = ? AND i.profile_id = ? AND i.as_needed = 1
+            WHERE l.id = ? AND i.profile_id = ? AND i.obligation = 'may'
               AND l.status = 'taken'`
           )
           .get(id, profileId) as { date: string } | undefined)

@@ -18,6 +18,7 @@ import { db, writeTx } from "./db";
 import { now as clockNow } from "./clock";
 import { setProfileSetting } from "./settings";
 import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
+import { type FoodSlot } from "./food-slot";
 
 // The per-profile settings key holding the most recent add amount, so the quick-add
 // pre-fills the last scoop size. A settings-tier value (not profile-owned data), so
@@ -60,7 +61,15 @@ export function addProteinGramsCore(
   // slots the profile logs protein. Defaults to NOW — logged_at is the TAP time, never
   // backfilled (ranking predicts the next tap), the same discipline as logFoodServingCore.
   // Injectable so tests can seed a specific slot; production passes the default.
-  loggedAt: string = clockNow().toISOString()
+  loggedAt: string = clockNow().toISOString(),
+  // The explicit consumed WINDOW for the ranking/count event (#1704), mirroring
+  // logFoodServingCore's `mealSlot`. Supplied by a caller that already ASSERTS the
+  // window — the Telegram nudge's callback token, which baked its slot in at send
+  // time — so a late tap on the evening nudge counts for Evening rather than for
+  // whichever slot the tap instant happens to fall in. The web quick-add omits it:
+  // it logs "now" with no asserted window, where the tap-derived slot IS the honest
+  // answer. Never overrides `loggedAt`, which stays the audit/tap time.
+  mealSlot?: FoodSlot
 ): ProteinAddOutcome {
   if (!validGrams(grams)) return { kind: "invalid" };
   return writeTx(() => {
@@ -77,9 +86,10 @@ export function addProteinGramsCore(
     // reserved-key discipline (lib/protein-nudge.ts) keeps __protein__ out of the food_log
     // day counter and every food-GROUP path, so it never becomes a serving.
     db.prepare(
-      `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
-       VALUES (?, ?, ?, ?)`
-    ).run(profileId, PROTEIN_NUDGE_KEY, date, loggedAt);
+      `INSERT INTO food_log_events
+         (profile_id, group_key, date, logged_at, meal_slot)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(profileId, PROTEIN_NUDGE_KEY, date, loggedAt, mealSlot ?? null);
     const row = db
       .prepare(
         `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`

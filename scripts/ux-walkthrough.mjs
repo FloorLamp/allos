@@ -18,13 +18,16 @@
 //   node scripts/ux-walkthrough.mjs onboarding invite pages workflows
 //
 // Or let the harness own the server lifecycle (scratch DB, boot, poll-ready,
-// teardown; UX_SEED=1 seeds first for a data-rich census):
+// teardown; UX_SEED=1 seeds first for a data-rich census, UX_SEED=thin seeds and
+// then trims observations to the last ~7 days — the week-old-phone shape):
 //
 //   node scripts/ux-walkthrough.mjs --serve onboarding pages
 //
 // Journeys: `onboarding` (fresh-install wizard, admin), `invite` (email invite →
-// set-password → member first sign-in), `pages` (screenshot every static
-// app/(app) route at desktop AND mobile widths — the visual census), `workflows`
+// set-password → member first sign-in), `pages` (screenshot every
+// app/(app) route at desktop AND mobile widths — the visual census; dynamic
+// `[param]` routes census one representative instance each, see
+// scripts/ux-census-routes.mjs), `workflows`
 // (quick-log starter set: search, activity, check-in, food, weight, medication),
 // `live` (live workout mode: start → set → finish → verify), `dismiss` (dismiss
 // a finding, verify it stays dismissed across reload), `dose` (confirm a dose,
@@ -62,6 +65,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
+import { DYNAMIC_ROUTES, routeSlug } from "./ux-census-routes.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -135,6 +139,11 @@ figcaption{font-size:12px;color:#555;padding-top:6px;word-break:break-all}</styl
 // #1510-pinned value (h1-scale ≥ 20px computed; flood = ≥4 sibling .card
 // elements sharing a 24-char text prefix; firstData selector list fixed).
 const metricsRows = [];
+// Dynamic patterns the census could NOT reach this run (#1544) — an unregistered
+// pattern, or a `follow` whose index rendered no detail link (a genuinely empty
+// table on the fresh/thin shapes). Reported in audit.md so the gap is visible
+// rather than looking like a route that simply doesn't exist.
+const unresolvedDynamic = [];
 function pageProbe() {
   const top = (el) =>
     el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : null;
@@ -158,9 +167,22 @@ function pageProbe() {
     }
     for (const n of counts.values()) if (n >= 4) floods++;
   }
+  // Render health (#1544): a detail page that threw renders app/(app)/error.tsx
+  // and a missing/inaccessible id renders app/(app)/not-found.tsx — both INSIDE
+  // the app shell, so a screenshot of one looks like a plausible page. Detect
+  // them by their own markers so the census can say so out loud. Still a
+  // measurement, not an assertion: it lands in metrics.json + audit.md.
+  const renderFault = document.querySelector('[data-testid="app-not-found"]')
+    ? "not-found"
+    : [...document.querySelectorAll("h1")].some(
+          (h) => (h.textContent || "").trim() === "Something went wrong"
+        )
+      ? "error-boundary"
+      : null;
   return {
     height: document.documentElement.scrollHeight,
     firstData: top(firstData),
+    renderFault,
     tables: document.querySelectorAll("table").length,
     forms: document.querySelectorAll("form").length,
     menus: document.querySelectorAll(
@@ -225,7 +247,7 @@ function writeAuditArtifacts(baselineDir) {
     );
     out.push("taps.json");
   }
-  if (!out.length) return;
+  if (!out.length && !unresolvedDynamic.length) return;
 
   const mobile = metricsRows.filter((r) => r.viewport === "mobile");
   const rank = (key, n = 10) =>
@@ -235,6 +257,26 @@ function writeAuditArtifacts(baselineDir) {
       .slice(0, n);
   const row = (r, key) => `| ${r.route} | ${r[key]} |`;
   const lines = ["# Mobile audit report", ""];
+  // Render health first (#1544) — a route that rendered the error boundary or the
+  // 404 boundary produced numbers, but they measure a broken page, so say so
+  // before any ranking a reader might otherwise trust.
+  const faulted = metricsRows.filter((r) => r.renderFault);
+  if (faulted.length) {
+    lines.push("## Render faults (page did not render its own content)", "");
+    lines.push("| route | viewport | fault | resolved |", "|---|---|---|---|");
+    for (const r of faulted)
+      lines.push(
+        `| ${r.route} | ${r.viewport} | ${r.renderFault} | ${r.resolved ?? ""} |`
+      );
+    lines.push("");
+  }
+  if (unresolvedDynamic.length) {
+    lines.push("## Unreached dynamic routes (census blind spots)", "");
+    lines.push("| route | why |", "|---|---|");
+    for (const u of unresolvedDynamic)
+      lines.push(`| ${u.pattern} | ${u.why} |`);
+    lines.push("");
+  }
   if (mobile.length) {
     lines.push("## Worst first-data offsets (px, mobile)", "");
     lines.push("| route | firstData |", "|---|---|");
@@ -593,10 +635,67 @@ async function inviteJourney(browser) {
 }
 
 // ---------------------------------------------------------------------------
-// Journey: every static page, desktop + mobile. Routes are enumerated from the
-// filesystem (app/(app)/**/page.tsx, dynamic [param] segments skipped), so the
-// census stays current as pages are added. Redirect routes screenshot their
-// target — that's fine, the point is "what does a user see at every URL".
+// Dynamic-route resolution (#1544). Each `[param]` pattern gets ONE instance,
+// from scripts/ux-census-routes.mjs: a literal slug off a static enum, or the
+// first detail link found on an index route (which also proves index → detail).
+// Every failure is recorded LOUDLY in unresolvedDynamic — a route is never
+// silently dropped from the manifest.
+async function resolveDynamicRoutes(page, patterns) {
+  const resolved = new Map();
+  for (const pattern of patterns) {
+    const entry = DYNAMIC_ROUTES.find((d) => d.pattern === pattern);
+    if (!entry) {
+      const why = "no DYNAMIC_ROUTES entry in scripts/ux-census-routes.mjs";
+      log(`BLIND SPOT: ${pattern} — ${why}; NOT censused`);
+      unresolvedDynamic.push({ pattern, why });
+      continue;
+    }
+    if (entry.strategy === "literal") {
+      resolved.set(pattern, {
+        target: entry.instance,
+        via: `literal (${entry.enumSource})`,
+      });
+      continue;
+    }
+    let hit = null;
+    for (const from of entry.from) {
+      try {
+        await page.goto(`${BASE}${from}`);
+        await page.waitForTimeout(1500);
+        const hrefs = await page.$$eval("a[href]", (as) =>
+          as.map((a) => a.getAttribute("href"))
+        );
+        const found = hrefs.find(
+          (h) => h && entry.match.test(h.split(/[?#]/)[0])
+        );
+        if (found) {
+          hit = { target: found.split("#")[0], via: `first link on ${from}` };
+          break;
+        }
+        log(`  ${pattern}: no matching detail link on ${from}`);
+      } catch (err) {
+        log(
+          `  ${pattern}: index ${from} failed — ${err.message.split("\n")[0]}`
+        );
+      }
+    }
+    if (hit) resolved.set(pattern, hit);
+    else {
+      const why = `no detail link on ${entry.from.join(" / ")} (empty table on this data shape?)`;
+      log(`BLIND SPOT: ${pattern} — ${why}; NOT censused`);
+      unresolvedDynamic.push({ pattern, why });
+    }
+  }
+  return resolved;
+}
+
+// ---------------------------------------------------------------------------
+// Journey: every page, desktop + mobile. Routes are enumerated from the
+// filesystem (app/(app)/**/page.tsx), so the census stays current as pages are
+// added. Dynamic `[param]` segments are resolved to one representative instance
+// each through DYNAMIC_ROUTES (#1544) instead of being skipped — detail pages
+// are exactly where density problems concentrate. Redirect routes screenshot
+// their target — that's fine, the point is "what does a user see at every URL".
 async function pagesJourney(browser) {
   const appDir = path.join(process.cwd(), "app", "(app)");
   const routes = [];
@@ -606,27 +705,34 @@ async function pagesJourney(browser) {
         if (e.name === "page.tsx") routes.push(route || "/");
         continue;
       }
-      if (e.name.startsWith("[")) continue; // dynamic — needs an id, skip
       walk(path.join(dir, e.name), `${route}/${e.name}`);
     }
   };
   walk(appDir, "");
   // UX_ROUTES: comma-separated route prefixes to census a SUBSET (e.g.
   // "/trends,/upcoming" to audit one hub, or to keep a run tractable on a
-  // pathologically slow dev filesystem). Unset = every static route.
+  // pathologically slow dev filesystem). Unset = every route.
   const only = (process.env.UX_ROUTES || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const picked = only.length
-    ? routes.filter((r) => only.some((p) => r === p || r.startsWith(p)))
-    : routes;
+  const keep = (r) =>
+    !only.length || only.some((p) => r === p || r.startsWith(p));
+  const picked = routes.filter((r) => !r.includes("[")).filter(keep);
+  const dynamicPatterns = routes.filter((r) => r.includes("[")).filter(keep);
+  const staticTotal = routes.filter((r) => !r.includes("[")).length;
   if (only.length)
     log(
-      `pages census: ${picked.length} of ${routes.length} static routes (UX_ROUTES=${only.join(",")})`
+      `pages census: ${picked.length} of ${staticTotal} static routes + ${dynamicPatterns.length} dynamic (UX_ROUTES=${only.join(",")})`
     );
-  else log(`pages census: ${picked.length} static routes`);
+  else
+    log(
+      `pages census: ${picked.length} static routes + ${dynamicPatterns.length} dynamic patterns`
+    );
 
+  // Resolved once (in the first authenticated viewport) and reused for the
+  // second, so the follow-the-index cost is paid a single time per run.
+  let dynamicTargets = null;
   const state = path.join(SHOTS, "admin-state.json");
   for (const [tag, viewport] of [
     ["desktop", { width: 1280, height: 900 }],
@@ -657,15 +763,36 @@ async function pagesJourney(browser) {
       await ctx.close();
       continue;
     }
-    for (const route of picked.sort()) {
-      const slug = route === "/" ? "home" : route.slice(1).replace(/\//g, "-");
+    if (!dynamicTargets) {
+      dynamicTargets = await resolveDynamicRoutes(page, dynamicPatterns);
+      for (const [pattern, r] of dynamicTargets)
+        log(`resolved ${pattern} → ${r.target} (${r.via})`);
+    }
+    // Static routes census themselves; a dynamic pattern censuses its resolved
+    // instance but is KEYED by the pattern — ids differ run to run, and both the
+    // shot filenames and the `--baseline` metrics diff need a stable key.
+    const visits = [
+      ...picked.map((route) => ({ route, target: route })),
+      ...[...dynamicTargets].map(([route, r]) => ({ route, target: r.target })),
+    ].sort((a, b) => a.route.localeCompare(b.route));
+    for (const { route, target } of visits) {
+      const slug = routeSlug(route);
       try {
-        await page.goto(`${BASE}${route}`);
+        await page.goto(`${BASE}${target}`);
         await page.waitForTimeout(1200);
         await shot(page, `page-${tag}-${slug}`);
         // #1510 Part 1: the metrics probe rides the census visit it already made.
         const m = await page.evaluate(pageProbe);
-        metricsRows.push({ route, viewport: tag, ...m });
+        metricsRows.push({
+          route,
+          ...(target === route ? {} : { resolved: target }),
+          viewport: tag,
+          ...m,
+        });
+        if (m.renderFault)
+          log(
+            `RENDER FAULT ${route} (${tag}) at ${target}: ${m.renderFault} — the shot is a boundary, not the page`
+          );
       } catch (err) {
         log(`FAILED to shoot ${route} (${tag}): ${err.message.split("\n")[0]}`);
       }
@@ -1438,7 +1565,7 @@ const picked = args.filter(
 if (!picked.length) {
   console.error(
     `usage: node scripts/ux-walkthrough.mjs [--serve] [--baseline <prior shots dir>] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
---serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first) and tears it down after.
+--serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first, UX_SEED=thin seeds then trims to the last ~7 days) and tears it down after.
 --baseline diffs a prior run's metrics.json/taps.json (pages/workflows journeys write them) into audit.md.`
   );
   process.exit(1);
@@ -1458,7 +1585,11 @@ if (serve) {
     EMAIL_TEST_CAPTURE: MAIL_FILE,
     PORT: port,
   };
-  if (process.env.UX_SEED === "1") {
+  // Census data shapes: unset = fresh DB (empty states), `1` = the full seed
+  // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
+  // days (#1544) — the week-old-phone shape where trailing 7/30/90-day windows
+  // coincide, which neither pole reproduces.
+  if (process.env.UX_SEED === "1" || process.env.UX_SEED === "thin") {
     log("seeding scratch DB…");
     const r = spawnSync("npx", ["tsx", "scripts/seed.ts"], {
       env,
@@ -1466,6 +1597,17 @@ if (serve) {
     });
     if (r.status !== 0)
       log("WARNING: seed exited non-zero — continuing unseeded");
+    if (process.env.UX_SEED === "thin") {
+      log("thinning scratch DB to the last ~7 days…");
+      const t = spawnSync("npx", ["tsx", "scripts/ux-thin-data.ts"], {
+        env,
+        stdio: "inherit",
+      });
+      if (t.status !== 0)
+        log(
+          "WARNING: thin trim exited non-zero — this run is the FULL seed shape, not thin"
+        );
+    }
   }
   log(`starting dev server on :${port} (db: ${dbPath})…`);
   server = spawn("npm", ["run", "dev"], {
