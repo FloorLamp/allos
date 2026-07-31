@@ -650,8 +650,8 @@ the parallel mechanism is correct and this exemption is why.
 # The attention doctrine
 
 Status: **shipped** · first implemented by #1505 (intake obligation); extended by
-#1718 (channel honesty), #1668 (mood check-in) and #1670 (frequency-target
-right-sizing) as they land.
+#1718 (channel honesty), #1668 (mood check-in auto-pause) and #1670
+(frequency-target right-sizing) as they land.
 
 The two-tier reach policy above answers "how far does a SIGNAL travel". That
 turned out to be one question inside a larger one the codebase kept answering
@@ -881,6 +881,35 @@ Two corollaries, both #1718:
 - **The send-test is never gated.** Its whole job is proving the wiring works, so it
   carries `kind: "test"` on every channel — a user who muted a kind must not read
   their own mute as a broken subscription.
+
+## 7. Confirm-to-KEEP is the consent shape for contact REDUCTION
+
+Added by #1668. §2's contact-consent rule governs STARTING contact and CHANGING
+user-owned state. Stopping contact is the other direction, and the usual
+suggest-and-confirm shape inverts badly there.
+
+A "tap to pause these?" question is self-defeating: if ignoring it keeps the
+reminders coming, the disengaged user is nagged forever — the exact harm the
+sensitivity contract forbids; if ignoring it pauses anyway, the confirmation was
+theater. So a reduction the system is entitled to make unilaterally is
+**announced, not asked**, and the affordance offered is the opposite one: keep
+going.
+
+**Worked example — the mood check-in auto-pause (#992/#1668).** The reminder
+holds itself once `MOOD_CHECKIN_AUTOPAUSE_DAYS` sends go unanswered. The
+mechanism was already right (it writes no user-owned state: `enabled` stays
+true and the hold is derived), but the silence read as "notifications broke".
+The fix adds no sends: the check-in that would exhaust the streak — one that was
+going out anyway — carries one extra line and a **[Keep daily check-ins]**
+button. Tapping resets the streak; ignoring lets the pause proceed exactly as
+before, now as informed silence. The paused state is then visible and resumable
+in-app, still as presentation of derived state rather than a new stored flag, so
+`shouldSendMoodCheckin` remains the single decision and one streak-reset write
+serves all three entry points (a logged mood, the button, the Resume action).
+
+The tone constraint is part of the pattern: an announcement of reduced contact
+must carry no guilt and no streak language, or it becomes the pressure it exists
+to remove.
 
 ## Where each rule is enforced
 

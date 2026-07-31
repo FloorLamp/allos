@@ -15,7 +15,9 @@ import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { offerTextTail } from "./offer-tail";
+import { joinBody } from "./rich-text";
 import { sriPresentation } from "../sleep-regularity";
+import { sleepVerdictPhrase } from "../sleep-summary";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -145,6 +147,10 @@ export interface DigestInput {
   // How many may items that tail covers, for the plain-text channels that cannot
   // render an expandable keyboard (Web Push, Home Assistant).
   offerCount?: number;
+  // Today's recommended workout, preformatted by the SAME formatter the dedicated
+  // nudge uses (#1712 §2 / #221). Null when there's no recommendation — no routine, a
+  // restricted profile, or the presence gates hold.
+  workoutPreview?: string | null;
 }
 
 export interface DigestSection {
@@ -155,6 +161,9 @@ export interface DigestSection {
 export interface DigestModel {
   title: string;
   sections: DigestSection[];
+  // The offer count, carried so renderDigestMessage can put the TEXT tail on the
+  // channels that need it and nowhere else (#1712).
+  offerCount?: number;
   // Carried through assembly so renderDigestMessage can attach it as the message's
   // FIRST inline button — first because it is the one affordance that is always
   // correct to offer, regardless of what else the day held.
@@ -241,6 +250,14 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   for (const line of input.derivedSituationLines ?? []) {
     todayLines.push(`🌙 ${line}`);
   }
+  // Today's recommended workout (#1712 §2) — a heads-up at 7am, formatted from the
+  // SAME recommendation the dedicated nudge builds later (no second engine, no second
+  // gather). The nudge is unchanged and remains the actionable prompt with its
+  // buttons; the two agree because they format one computation. Rest / on-track /
+  // deload states reframe the line exactly as they reframe the nudge, so this is never
+  // a blind push.
+  if (input.workoutPreview) todayLines.push(input.workoutPreview);
+
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
   // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
   // the per-band counts (the glance line above already summarizes them) so a day of
@@ -265,14 +282,6 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       todayLines.push(`🔌 ${s.title}${detail}${link}`);
     }
   }
-  // The "+N available" TEXT tail (#1505). Rendered into the body — not only as a
-  // button — because Web Push and Home Assistant cannot edit a message in place and
-  // so cannot carry the expandable keyboard. They get the honest count instead of a
-  // button that could never expand. On Telegram the line and the button coexist and
-  // read as label + control, which is why this is one message rather than a
-  // channel-forked pair.
-  const availableLine = offerTextTail(input.offerCount ?? 0);
-  if (availableLine) todayLines.push(`➕ ${availableLine}`);
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });
 
   // Yesterday: what happened.
@@ -319,10 +328,20 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     if (s.remMin != null && s.remMin > 0)
       stages.push(`REM ${fmtSleepDuration(s.remMin)}`);
     const stageNote = stages.length ? ` · ${stages.join(", ")}` : "";
+    // STATE THE VERDICT, don't just print two numbers (#1712). The comparison the
+    // reader was left to do is carried in words plus a direction marker, from the same
+    // baseline the line already read. Below-baseline reads neutrally — the digest is
+    // calm-tier, and #1292's poor-sleep acknowledgment owns that case. With no baseline
+    // the line states the figure alone.
+    const verdict = sleepVerdictPhrase(
+      s.lastNightMin,
+      s.baselineMin,
+      fmtSleepDuration
+    );
     sleepLines.push(
-      `😴 Last night: ${fmtSleepDuration(s.lastNightMin)} (typical ~${fmtSleepDuration(
-        s.baselineMin
-      )})${stageNote}`
+      `😴 Last night: ${fmtSleepDuration(s.lastNightMin)}${
+        verdict ? ` ${verdict}` : ""
+      }${stageNote}`
     );
     // A same-day nap on its own line — kept apart from the overnight total.
     if (s.napMin != null && s.napMin > 0) {
@@ -354,19 +373,29 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // their own list. So a tail-only message is legitimate: no sections, one button.
   // It is not a new send either — the digest already had permission to arrive today.
   if (sections.length === 0 && !input.offerTail) return null;
-  // A tail-only digest still needs a body: an empty message reads as a bug.
+  // A tail-only digest still needs a body: an empty message reads as a bug. The
+  // count rides the sentence here on EVERY channel — with no other content there is
+  // nothing for the Telegram button to be redundant against, and a bare "Nothing
+  // scheduled." beside a "Log other…" button would under-describe what is on offer.
   if (sections.length === 0) {
+    const offered = input.offerCount ?? 0;
     sections.push({
       heading: "Today",
       lines: [
         "✅ Nothing scheduled." +
-          (availableLine ? ` ➕ ${availableLine}.` : ""),
+          (offered > 0 ? ` ➕ ${offerTextTail(offered)}.` : ""),
       ],
     });
+    return {
+      title: `☀️ Morning digest — ${input.profileName}`,
+      sections,
+      offerTail: input.offerTail ?? null,
+    };
   }
   return {
     title: `☀️ Morning digest — ${input.profileName}`,
     sections,
+    offerCount: input.offerCount ?? 0,
     offerTail: input.offerTail ?? null,
   };
 }
@@ -378,12 +407,28 @@ export function renderDigestMessage(model: DigestModel): NotificationMessage {
   const body = model.sections
     .map((s) => [s.heading, ...s.lines.map((l) => `• ${l}`)].join("\n"))
     .join("\n\n");
+  // The offer tail's TEXT line goes ONLY to the channels that cannot render its
+  // control (#1712). On Telegram the button IS the line — it names the slot and the
+  // count — so a body line there duplicated the control beside it and, when the tail
+  // was expanded, claimed "+3 available" while the keyboard already listed all three.
+  const availableLine = offerTextTail(model.offerCount ?? 0);
+  const textTailBody = availableLine
+    ? joinBody([body, `➕ ${availableLine}`], "\n\n")
+    : null;
   // The offer tail is the message's ONLY action and deliberately its first (and
   // only) row: a digest carries no other buttons, so "first" is trivially satisfied
   // today and stays honest if the digest ever grows more.
   return {
     title: model.title,
     body,
+    ...(textTailBody
+      ? {
+          bodyByChannel: {
+            push: textTailBody,
+            "home-assistant": textTailBody,
+          },
+        }
+      : {}),
     kind: "digest",
     ...(model.offerTail ? { actions: [model.offerTail] } : {}),
   };

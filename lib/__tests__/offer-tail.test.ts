@@ -139,10 +139,12 @@ describe("the expanded tail", () => {
 });
 
 describe("offerTextTail (the channels that cannot expand)", () => {
-  it("states the count, singular and plural, and says nothing at zero", () => {
+  // #1712: "+3 available when you want them" never said available WHAT. The line
+  // names the noun now, and exists only for the channels with no button to carry it.
+  it("names the noun, handles singular/plural, and says nothing at zero", () => {
     expect(offerTextTail(0)).toBeNull();
-    expect(offerTextTail(1)).toBe("+1 available when you want it");
-    expect(offerTextTail(3)).toBe("+3 available when you want them");
+    expect(offerTextTail(1)).toBe("1 more supplement you can log any time");
+    expect(offerTextTail(3)).toBe("3 more supplements you can log any time");
   });
 });
 

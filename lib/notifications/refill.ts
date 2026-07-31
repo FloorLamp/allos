@@ -66,9 +66,12 @@ export function renderRefillMessage(
   const who = profileName ? `${profileName} — ` : "";
   const head =
     items.length === 1 ? items[0].name : `${items.length} items running low`;
+  // "≈5 days left" gains its meaning (#1722 item 4): five days is only news against
+  // the threshold that decided to send this. The prose preamble is gone — it restated
+  // the title and the CTA that are already on screen.
   const lines = items.map(
     (it) =>
-      `• ${it.name}: ≈${it.daysLeft} day${it.daysLeft === 1 ? "" : "s"} left`
+      `• ${it.name}: ≈${it.daysLeft} day${it.daysLeft === 1 ? "" : "s"} left (below your ${DEFAULT_LOW_SUPPLY_DAYS}-day threshold)`
   );
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] = items.flatMap((it) => {
@@ -91,7 +94,7 @@ export function renderRefillMessage(
   });
   return {
     title: `🔄 Refill due: ${who}${head}`,
-    body: `Running low on supply — time to reorder:\n${lines.join("\n")}`,
+    body: lines.join("\n"),
     actions,
     kind: "refill",
   };

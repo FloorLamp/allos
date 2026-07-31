@@ -6,6 +6,7 @@
 // profile per hourly tick from scripts/notify.ts, next to the refill/digest runs.
 
 import { db, today, writeTx } from "./db";
+import { getPublicUrl } from "./settings";
 import { shiftDateStr } from "./date";
 import {
   getActivityDates,
@@ -132,7 +133,8 @@ export function recordMilestones(
 // framing. Returns null when there's nothing to announce.
 export function renderMilestoneMessage(
   profileName: string,
-  milestones: Milestone[]
+  milestones: Milestone[],
+  deepLinkBase = ""
 ): NotificationMessage | null {
   if (milestones.length === 0) return null;
   const who = profileName ? ` — ${profileName}` : "";
@@ -140,8 +142,28 @@ export function renderMilestoneMessage(
     milestones.length === 1
       ? milestones[0].title
       : `${milestones.length} milestones reached`;
-  const body = milestones.map((m) => `• ${m.title}`).join("\n");
-  return { title: `🏁 Milestone${who}: ${head}`, body, kind: "milestone" };
+  // RENDER THE DETAIL (#1722 item 1). The body restated the title verbatim while
+  // `Milestone.detail` — the warm, contextual line computed in lib/milestones.ts and
+  // PERSISTED to the milestones table ("You've logged 100 workouts. Consistency is the
+  // point — nice going.") — was never shown. A single milestone leads with its detail;
+  // several keep the title as the label and hang the detail off it.
+  const body = milestones
+    .map((m) => {
+      const detail = m.detail?.trim();
+      if (milestones.length === 1) return detail || m.title;
+      return detail ? `• ${m.title} — ${detail}` : `• ${m.title}`;
+    })
+    .join("\n");
+  const base = deepLinkBase.replace(/\/$/, "");
+  return {
+    title: `🏁 Milestone${who}: ${head}`,
+    body,
+    kind: "milestone",
+    // Milestones always land on the Timeline, so that is where "see it" goes.
+    ...(base
+      ? { actions: [{ label: "Open Timeline →", url: `${base}/timeline` }] }
+      : {}),
+  };
 }
 
 // Detect + record + (optionally) announce this profile's milestones. Recording
@@ -170,7 +192,7 @@ export async function runMilestones(
     return { failed: false, fired: detected.length };
   }
 
-  const msg = renderMilestoneMessage(profileName, detected);
+  const msg = renderMilestoneMessage(profileName, detected, getPublicUrl());
   if (!msg) return { failed: false, fired: detected.length };
   const results = await dispatch(profileId, msg);
   const failed = results.some((r) => !r.ok);

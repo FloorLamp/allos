@@ -99,6 +99,8 @@ import {
 import { rankNowCards, NOW_CARD_IDS } from "@/lib/now-strip";
 import { getNotifySchedule } from "@/lib/settings/notifications";
 import { getIllnessHeroUi } from "@/lib/settings";
+import { getMoodCheckinIgnored, getProfileMoodCheckin } from "@/lib/settings";
+import { isMoodCheckinPaused } from "@/lib/mood";
 import { onboardingNeedsSetup } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import { PageHeader } from "@/components/ui";
@@ -947,6 +949,12 @@ export default async function Dashboard() {
                 : null
             }
             activeEpisode={activeSick}
+            // The evening reminder's auto-pause, surfaced (#1668) — derived from the
+            // same ignored streak shouldSendMoodCheckin reads, never a stored flag.
+            checkinsPaused={isMoodCheckinPaused({
+              enabled: getProfileMoodCheckin(profile.id),
+              ignoredCount: getMoodCheckinIgnored(profile.id),
+            })}
             medsSlot={
               checkinPrnMeds.length > 0 ? (
                 <QuickLogPrnContent

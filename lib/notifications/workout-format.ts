@@ -4,12 +4,23 @@
 // ./recommend (recommendWorkout); ./workouts wires the two together.
 
 import { suggestTitle, type MuscleRegion } from "../lifts";
+import { frequencyScopeLabel } from "../goals";
+import {
+  workoutAcknowledgmentLine,
+  type BehindTargetPace,
+} from "../effort-class";
+import type { OrderedBehindTarget } from "../workout-recommendation";
 import type { NotificationAction, NotificationMessage } from "./types";
+import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
 
 export interface WorkoutRecommendation {
   focus: MuscleRegion[];
   exercises: string[];
-  behind: string[]; // behind-target labels, for message context
+  // The behind weekly targets, ALREADY ordered and marked by the pure core (#1709):
+  // the target that drove today's suggestion leads, the rest follow by deficit. Kept
+  // structured to here so the formatter can relate the list to the recommendation —
+  // flattening it upstream is exactly what disconnected the two halves.
+  behind: OrderedBehindTarget[];
   // Recovery/celebration awareness carried from the unified coaching engine (#221),
   // so the reminder can note a rest day or an on-track week instead of blindly
   // pushing a workout. Null when the top-line recommendation isn't rest/on-track.
@@ -25,6 +36,13 @@ export interface WorkoutRecommendation {
   // firing (it isn't suppressed) but SOFTENS: it names the deload so a lighter
   // session reads as on-plan, not as falling behind. Absent / false ⇒ no note.
   deloadWeek?: boolean;
+  // The same-day acknowledgment (#1672): what was already trained today, and the pace
+  // fact that justifies pushing anyway. Present ONLY when the nudge is firing on a
+  // trained day — on every other day the message is unchanged.
+  acknowledge?: {
+    session: string;
+    forcedBy: BehindTargetPace | null;
+  } | null;
 }
 
 // Render a WorkoutRecommendation as the Telegram message. Split out from the
@@ -92,13 +110,17 @@ export function formatWorkoutReminder(
   }
 
   const lines: string[] = [];
+  // LEAD WITH WHAT THEY DID (#1672, the workout-presence copy standard): when the nudge
+  // fires on a day that already saw a session, the message opens with it. Without this
+  // the push read as "the app didn't notice my workout".
+  const ackLine = workoutAcknowledgmentLine(rec.acknowledge ?? null);
+  if (ackLine) lines.push(ackLine);
   if (deloadNote) lines.push(deloadNote);
   if (rec.exercises.length)
     lines.push(`Suggested: ${rec.exercises.join(", ")}`);
   else if (rec.focus.length) lines.push(`Focus: ${rec.focus.join(", ")}`);
   if (rec.onTrack) lines.push(rec.onTrack.detail);
-  if (rec.behind.length)
-    lines.push(`Behind this week: ${rec.behind.join(", ")}`);
+  const behindLine = behindThisWeekLine(rec.behind);
 
   return {
     title: rec.onTrack
@@ -106,8 +128,55 @@ export function formatWorkoutReminder(
       : focusLabel
         ? `🏋️ Today's workout — ${focusLabel}`
         : "🏋️ Today's workout",
-    body: lines.join("\n"),
+    body: joinBody([lines.join("\n"), behindLine], "\n"),
     kind: "workout",
     ...(guideActions.length ? { actions: guideActions } : {}),
   };
+}
+
+// The marker on the target that drove today's suggestion (#1709). BOTH forms, by
+// owner decision: the `← today` suffix always (it renders identically on every channel
+// and reads naturally in-app) plus bold where markup is supported, degrading cleanly to
+// the suffix alone on Web Push / Home Assistant.
+export const BEHIND_DRIVER_SUFFIX = " ← today";
+
+// "Back 0/2 ← today, Chest 1/2, Lower body 1/2, Cardio 1/2" — the list in the order the
+// core decided, with the driving target marked. Null when nothing is behind.
+export function behindThisWeekLine(
+  behind: readonly OrderedBehindTarget[]
+): MessageBody | null {
+  if (behind.length === 0) return null;
+  const parts: (string | ReturnType<typeof bold>)[] = ["Behind this week: "];
+  behind.forEach((t, i) => {
+    if (i > 0) parts.push(", ");
+    const label = `${frequencyScopeLabel(t.scopeKind, t.scopeValue)} ${t.count}/${t.perWeek}`;
+    parts.push(t.driving ? bold(`${label}${BEHIND_DRIVER_SUFFIX}`) : label);
+  });
+  return richFrom(parts);
+}
+
+// The digest's ONE-LINE workout preview (#1712 §2). Formatted from the SAME
+// WorkoutRecommendation the dedicated nudge renders, so a 7am heads-up and the
+// actionable prompt later cannot disagree — they format one computation (#221).
+//
+// Rest and on-track states REFRAME the line exactly as they reframe the nudge (never a
+// blind "train today" on a rest day), and a recommendation with nothing to say yields
+// null so the digest simply omits the line.
+export function digestWorkoutLine(
+  rec: WorkoutRecommendation | null
+): string | null {
+  if (!rec) return null;
+  if (rec.rest) return `🛌 Today: ${rec.rest.title}`;
+  if (rec.onTrack) return `✅ Today: ${rec.onTrack.title}`;
+  // suggestTitle falls back to a generic "Strength session" for an empty focus, which
+  // is fine for the nudge's TITLE but would put a contentless line in the digest — so
+  // the preview asks for a real focus or a resolved routine day before naming one.
+  const head =
+    rec.sessionLabel ?? (rec.focus.length ? suggestTitle(rec.focus) : null);
+  const exercises = rec.exercises.slice(0, 3).join(", ");
+  if (!head && !exercises) return null;
+  const deload = rec.deloadWeek ? " (deload week)" : "";
+  return exercises
+    ? `🏋️ Today: ${head ? `${head} — ` : ""}${exercises}${deload}`
+    : `🏋️ Today: ${head}${deload}`;
 }

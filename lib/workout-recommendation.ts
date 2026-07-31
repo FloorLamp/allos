@@ -102,6 +102,49 @@ export interface BehindTarget {
   perWeek: number;
 }
 
+// A behind target ordered for display, marked when it is the one that DROVE today's
+// suggestion (issue #1709).
+export interface OrderedBehindTarget extends BehindTarget {
+  driving: boolean;
+}
+
+// Order the "behind this week" list so it EXPLAINS the suggestion instead of sitting
+// beside it (#1709). The message used to recommend Back and then list Chest first,
+// because `behind` was flattened to opaque strings in routine-declaration order, with
+// nothing connecting the two halves and the target that actually drove the suggestion
+// — the one at 0/2 — buried mid-line.
+//
+// The driving target leads; the rest follow by DEFICIT (largest `perWeek - count` gap
+// first), ties broken by routine order for stability. Living here, beside the
+// recommendation, means the Telegram nudge, the dashboard coaching card and the
+// Training overview all format one ordered result and a future surface cannot
+// reintroduce a different order (#221).
+//
+// `driverId` is the behind target that drove the lead routine-gap item, or null when
+// the suggestion came from habit/variety rather than a behind target — in which case
+// nothing is marked and the list is pure deficit order.
+export function orderBehindTargets(
+  behind: readonly BehindTarget[],
+  driverId: number | null
+): OrderedBehindTarget[] {
+  const deficit = (t: BehindTarget) => t.perWeek - t.count;
+  return behind
+    .map((t, i) => ({
+      ...t,
+      // A driver that is somehow no longer behind can't be marked — it wouldn't be in
+      // this list at all, and a marker pointing at nothing is worse than none.
+      driving: driverId != null && t.id === driverId,
+      order: i,
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.driving) - Number(a.driving) ||
+        deficit(b) - deficit(a) ||
+        a.order - b.order
+    )
+    .map(({ order: _order, ...t }) => t);
+}
+
 export interface NextWorkoutInput {
   today: string; // profile-tz YYYY-MM-DD
   routine: RoutineTargetProgress[];

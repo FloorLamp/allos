@@ -60,7 +60,7 @@ export function redoseNoticeMessage(input: {
     since === input.name && dose ? `${since} · ${dose}` : since;
   const who = input.profileName?.trim() ? `${input.profileName.trim()} — ` : "";
   return {
-    title: `Redose window open: ${who}${input.name}`,
+    title: `💊 Redose window open: ${who}${input.name}`,
     body:
       `${hoursLabel(input.sinceHours)} since ${medication}${at} — your minimum ` +
       `interval has passed · ${countFragment(input.countToday, input.maxDailyCount)}.`,

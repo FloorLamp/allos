@@ -2,7 +2,11 @@
 // web-push import, no network — so this stays in the "pure logic" test tier
 // (lib/__tests__/push.test.ts). The DB + web-push wiring lives in ./push.ts.
 
-import type { NotificationKind, NotificationMessage } from "./types";
+import {
+  bodyFor,
+  type NotificationKind,
+  type NotificationMessage,
+} from "./types";
 import { plainBody } from "./rich-text";
 
 // Where a tapped push notification opens. Deep links carry NO detail beyond the
@@ -82,7 +86,7 @@ export function buildPushPayload(
   // Web Push carries PLAIN text: builder-declared emphasis (#1720) is stripped here,
   // never forked — the words (including the status words that carry the meaning) are
   // identical to the Telegram copy, only the markup is gone.
-  const plain = plainBody(msg.body);
+  const plain = plainBody(bodyFor(msg, "push"));
   const body =
     plain.length > MAX_BODY ? `${plain.slice(0, MAX_BODY - 1)}…` : plain;
   const payload: PushPayload = { title: msg.title, body, url };

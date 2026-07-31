@@ -5,7 +5,7 @@
 // (telegram-api.sendMessageRaw) and the callback rebuild (telegram.rebuildMessage)
 // render through — making escaping genuinely unbypassable rather than re-derivable.
 
-import type { NotificationMessage } from "./types";
+import { bodyFor, type NotificationMessage } from "./types";
 import { bodySpans, type MessageBody, type RichSpan } from "./rich-text";
 
 // A button carries EITHER a callback token (`callback_data`) or a deep-link
@@ -59,7 +59,7 @@ export function renderBodyHtml(body: MessageBody): string {
 // Render a NotificationMessage to the HTML text Telegram sends/edits — shared by
 // the initial send and the callback rebuild so both look identical.
 export function renderMessageHtml(msg: NotificationMessage): string {
-  return `<b>${esc(msg.title)}</b>\n${renderBodyHtml(msg.body)}`;
+  return `<b>${esc(msg.title)}</b>\n${renderBodyHtml(bodyFor(msg, "telegram"))}`;
 }
 
 // One button per row keeps long labels readable, EXCEPT that consecutive actions

@@ -19,7 +19,7 @@ export async function handleDoseCommand(
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (profileIds.length === 0) {
     await sendTelegramMessage(chatId, {
-      title: "Log a PRN dose",
+      title: "💊 Log a PRN dose",
       body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
     });
     return;
@@ -55,14 +55,14 @@ export async function handleDoseCommand(
 
   if (actions.length === 0) {
     await sendTelegramMessage(chatId, {
-      title: "Log a PRN dose",
+      title: "💊 Log a PRN dose",
       body: "No as-needed medications are set up. Add one under Medications in the app.",
     });
     return;
   }
 
   await sendTelegramMessage(chatId, {
-    title: "Log a PRN dose",
+    title: "💊 Log a PRN dose",
     body: "Tap a medication to record a dose now:",
     actions,
   });
@@ -218,7 +218,7 @@ export async function handleSymptomPick(
     row: "sev",
   }));
   await rebuildMessage(profileId, chatId, messageId, {
-    title: `Log a symptom: ${label}`,
+    title: `🤒 Log a symptom: ${label}`,
     body: "How bad is it?",
     actions,
   });
@@ -265,6 +265,38 @@ export async function handleMoodTap(
     chatId,
     messageId,
     `${moodFace(token.valence)} Logged — ${label}. Thanks for checking in.`
+  );
+}
+
+// The "Keep daily check-ins" tap (#1668). Resets the ignored streak — the SAME write a
+// logged mood performs, so one mechanism serves three entry points — and answers from
+// the typed decision, never an unconditional confirm: the streak may have been re-armed
+// already by a mood logged elsewhere, and the check-in may have been turned off since
+// the message was sent.
+export async function handleMoodKeepTap(
+  cq: TelegramCallbackQuery,
+  token: MoodKeepCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || chatId == null || messageId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = decideMoodKeep({
+    enabled: getProfileMoodCheckin(profileId),
+    ignoredCount: getMoodCheckinIgnored(profileId),
+  });
+  if (outcome === "kept") resetMoodCheckinIgnored(profileId);
+  await answerCallbackQuery(cq.id, moodKeepAnswerText(outcome));
+  await closeMessage(
+    chatId,
+    messageId,
+    replacementWithTitle(cq.message?.text, moodKeepCloseText(outcome))
   );
 }
 
@@ -352,7 +384,7 @@ export async function handleTempReply(
   const profileIds = getProfilesByTelegramChatId(String(chatId));
   if (!profileIds.includes(markedProfile)) {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: "That profile isn't linked to this chat anymore.",
     });
     return true;
@@ -361,7 +393,7 @@ export async function handleTempReply(
   const parsed = parseTempReply(message.text);
   if (!parsed) {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
     });
     return true;
@@ -376,7 +408,7 @@ export async function handleTempReply(
   );
   if (outcome.kind === "invalid") {
     await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
+      title: "🌡️ Temperature not logged",
       body: outcome.error,
     });
     return true;
@@ -391,9 +423,22 @@ export async function handleTempReply(
     profileAgeMonths(markedProfile, date)
   );
   const feverNote = outcome.flag === "high" ? " — fever" : "";
+  // "Logged." duplicated the title's verb and said nothing (#1722 item 6). With no
+  // red flag the reply states the reading and offers the episode, which the red-flag
+  // and illness-care messages both already carry.
+  const base = getPublicUrl().replace(/\/$/, "");
+  const episodeId = currentEpisodeForProfile(markedProfile)?.id ?? null;
   await sendTelegramMessage(chatId, {
-    title: `Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
-    body: redFlag ?? "Logged.",
+    title: `🌡️ Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
+    body:
+      redFlag ?? `${fmtTemp(outcome.degF, parsed.unit)} recorded for today.`,
+    ...(base && episodeId != null
+      ? {
+          actions: [
+            { label: "View episode", url: `${base}${episodeHref(episodeId)}` },
+          ],
+        }
+      : {}),
   });
   return true;
 }
@@ -503,11 +548,15 @@ import {
 import { practiceLogOutcomeText } from "../practice";
 import { today } from "../db";
 import {
+  getMoodCheckinIgnored,
+  getProfileMoodCheckin,
   getProfilesByTelegramChatId,
   getTimezone,
   getUserAge,
+  resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
+import { getPublicUrl } from "../settings";
 import {
   administrationLogged,
   administrationOutcomeText,
@@ -518,10 +567,11 @@ import { now as clockNow } from "../clock";
 import { logSymptomCore } from "../symptom-log-write";
 import { upsertMoodLog } from "../offline/writes";
 import { getMoodOnDate } from "../queries/mood";
-import { moodFace, moodLabel } from "../mood";
+import { decideMoodKeep, moodFace, moodLabel } from "../mood";
 import { logTemperatureCore } from "../temperature-log";
 import { symptomLabel, symptomSlugs, SYMPTOMS } from "../symptoms";
 import { currentEpisodeForProfile } from "../illness-episode";
+import { episodeHref } from "../hrefs";
 import { isTaskConfigured } from "../ai-resolve";
 import { mapSymptomText } from "../symptom-text-map";
 import { profileAgeMonths } from "../settings";
@@ -531,6 +581,9 @@ import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import {
   parseMoodCheckinCallback,
+  parseMoodKeepCallback,
+  moodKeepAnswerText,
+  moodKeepCloseText,
   parsePrnLogCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
@@ -543,6 +596,7 @@ import {
   tempReplyMarker,
   OUTDATED_MESSAGE_TEXT,
   type MoodCheckinCallback,
+  type MoodKeepCallback,
   type PracticeDoneCallback,
   type PrnLogCallback,
   type SymptomPickCallback,

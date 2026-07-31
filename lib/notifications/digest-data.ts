@@ -59,6 +59,9 @@ import {
 } from "./digest";
 import { createLogger } from "../log";
 import { collapsedOfferAction, offerTailNeedsRefresh } from "./offer-tail";
+import { recommendWorkout } from "./recommend";
+import { digestWorkoutLine } from "./workout-format";
+import type { CoachingInput } from "../coaching";
 import { updateMessageKeyboard } from "./telegram";
 import { messageKeyboard } from "./telegram-render";
 import {
@@ -184,7 +187,10 @@ export function gatherDigestSleep(profileId: number): DigestSleep | null {
 // so the first digest doesn't dump the entire history of flagged results.
 export function gatherDigestInput(
   profileId: number,
-  profileName: string
+  profileName: string,
+  // The tick's already-gathered coaching input (#447), so the digest's workout preview
+  // costs no second heavy per-profile scan. Omitted ⇒ recommendWorkout gathers fresh.
+  gathered?: CoachingInput
 ): DigestInput {
   const td = today(profileId);
   const yd = shiftDateStr(td, -1);
@@ -378,6 +384,10 @@ export function gatherDigestInput(
     // Makes the broken-sync lines' hrefs tappable (#1685); empty when no public URL is
     // configured, in which case the lines still name the provider.
     deepLinkBase: getPublicUrl(),
+    // Today's recommended workout as ONE line (#1712 §2), from the SAME recommendation
+    // the dedicated nudge formats. The nudge is deliberately unchanged: the digest is a
+    // 7am heads-up, the nudge is the actionable prompt with buttons later.
+    workoutPreview: digestWorkoutLine(recommendWorkout(profileId, gathered)),
     activities,
     adherence,
     // Delta headline (#1505 part 3): WHICH pushed obligations changed state, from the
@@ -415,10 +425,13 @@ export function gatherDigestInput(
 export async function runDigest(
   profileId: number,
   profileName: string,
-  date: string
+  date: string,
+  gathered?: CoachingInput
 ): Promise<{ failed: boolean }> {
   const dedupKey = "notify_last_digest";
-  const model = buildDigest(gatherDigestInput(profileId, profileName));
+  const model = buildDigest(
+    gatherDigestInput(profileId, profileName, gathered)
+  );
   if (!model) {
     // Nothing to report — mark the day done so we don't recompute every hour.
     setProfileSetting(profileId, dedupKey, date);
