@@ -4,6 +4,13 @@
       "date": "2026-07-31",
       "entries": [
         {
+          "pr": 1740,
+          "kind": "feature",
+          "title": "Upload documents from anywhere — tokens, an API, and a tiny CLI",
+          "body": "You can now mint API tokens under Settings → Account & security: login-tied, scoped to document upload only, shown once, and revocable per device. With one, a new authenticated endpoint accepts document uploads from outside the browser — same ingest pipeline, same per-profile dedup, honest per-file results — and a dependency-free command-line script uploads a folder of files from any machine. Name a token per device so retiring one never disturbs the others.",
+          "issues": [1734]
+        },
+        {
           "pr": 1736,
           "kind": "feature",
           "title": "Nudges that read like they know you",
