@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  FALLBACK_MAX_PRECIP_MM,
   FALLBACK_MIN_TEMP_C,
   FORECAST_HORIZON_DAYS,
   MIN_REVEALED_SESSIONS,
@@ -161,6 +162,53 @@ describe("tolerance revealed from the profile's own history (#1724)", () => {
     ];
     expect(deriveEnvelope("Cycling", mixed).revealed).toBe(false);
     expect(deriveEnvelope("Hiking", mixed).revealed).toBe(true);
+  });
+
+  it("the rain cyclist's REVEALED wet bound beats the fallback", () => {
+    // The precipitation half of the same revealed-tolerance rule (#1724): someone who
+    // regularly rides in heavy rain has shown a wet bound well above the assumed one,
+    // so the derived quantile — not FALLBACK_MAX_PRECIP_MM — is what a day is judged
+    // against. Without this the engine would park a downpour rider on a day they have
+    // demonstrably ridden through.
+    const rainy: SessionWeather[] = [0, 2, 4, 8, 12, 16, 20, 25].map(
+      (mm, i) => ({
+        date: shiftDateStr(TODAY, -(i + 1)),
+        activity: "Cycling",
+        tempMaxC: 12,
+        precipitationMm: mm,
+        weatherCode: null,
+      })
+    );
+    const env = deriveEnvelope("Cycling", rainy);
+    expect(env.revealed).toBe(true);
+    expect(env.maxPrecipitationMm).toBeGreaterThan(FALLBACK_MAX_PRECIP_MM);
+    expect(env.maxPrecipitationMm).toBe(20);
+
+    // A 22 mm day is far past the FALLBACK bound (which would park it) and inside this
+    // person's own demonstrated range plus its margin, so it is NOT parked.
+    const wetDay = day(TODAY, { tempMaxC: 12, precipitationMm: 22 });
+    expect(
+      parkedVerdict("Cycling", wetDay, fallbackEnvelope("Cycling"))
+    ).toMatchObject({ parked: true, reason: "wet" });
+    expect(parkedVerdict("Cycling", wetDay, env).parked).toBe(false);
+    // Past the revealed bound plus its margin, the rain cyclist is parked too.
+    expect(
+      parkedVerdict(
+        "Cycling",
+        day(TODAY, { tempMaxC: 12, precipitationMm: 40 }),
+        env
+      )
+    ).toMatchObject({ parked: true, reason: "wet", revealed: true });
+  });
+
+  it("keeps the fallback wet bound when the revealed one would be LOWER", () => {
+    // Bucketing only ever widens (Math.max against the fallback): a dry-weather
+    // profile's near-zero rain history must not narrow the bound into parking a
+    // drizzle the engine has no evidence about.
+    const dry = sessions("Cycling", [16, 18, 19, 20, 22, 23, 25, 27], 0);
+    expect(deriveEnvelope("Cycling", dry).maxPrecipitationMm).toBe(
+      FALLBACK_MAX_PRECIP_MM
+    );
   });
 
   it("parks on heat and on rain too, not just cold", () => {

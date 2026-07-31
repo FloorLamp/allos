@@ -44,7 +44,6 @@ import { protocolPracticeLabel } from "../protocol-practice";
 import { protocolHref, type AppRoute } from "../hrefs";
 import {
   getPracticeDayCount,
-  getPracticeDayUsageInWindow,
   getPracticeSpellingsMap,
   practiceSpellingsFor,
 } from "./wellness";
@@ -257,28 +256,22 @@ type ProtocolUsageScope =
     }
   | { kind: "none" };
 
-// Resolve the protocol intervention once. Both the scalar summary and per-day
-// heatmap consume this seam, so a new scope cannot land on one without the other.
-function protocolUsageScope(
-  profileId: number,
-  protocol: Protocol
+// Resolve the protocol intervention once, from its ALREADY-LOADED frequency target
+// (null when it links none, or the link dangles). Pure, so the one-protocol and the
+// batched gather below cannot disagree about what a protocol measures.
+function usageScopeFor(
+  protocol: Protocol,
+  target: { scope_kind: string; scope_value: string } | null
 ): ProtocolUsageScope {
   let activityType: string | null = null;
-  if (protocol.frequency_target_id != null) {
-    const t = db
-      .prepare(
-        `SELECT scope_kind, scope_value FROM frequency_targets
-          WHERE id = ? AND profile_id = ?`
-      )
-      .get(protocol.frequency_target_id, profileId) as
-      { scope_kind: string; scope_value: string } | undefined;
-    if (t?.scope_kind === "practice") {
-      return { kind: "practice", value: t.scope_value };
+  if (target) {
+    if (target.scope_kind === "practice") {
+      return { kind: "practice", value: target.scope_value };
     }
-    if (t?.scope_kind === "food_group") {
-      return { kind: "food_group", value: t.scope_value };
+    if (target.scope_kind === "food_group") {
+      return { kind: "food_group", value: target.scope_value };
     }
-    if (t?.scope_kind === "type") activityType = t.scope_value;
+    if (target.scope_kind === "type") activityType = target.scope_value;
   }
 
   if (protocol.equipment_id != null || activityType != null) {
@@ -291,64 +284,266 @@ function protocolUsageScope(
   return { kind: "none" };
 }
 
+// The frequency targets a set of protocols link, in ONE profile-scoped read.
+function protocolTargetsById(
+  profileId: number,
+  protocols: readonly Protocol[]
+): Map<number, { scope_kind: string; scope_value: string }> {
+  const ids = [
+    ...new Set(
+      protocols
+        .map((p) => p.frequency_target_id)
+        .filter((id): id is number => id != null)
+    ),
+  ];
+  const out = new Map<number, { scope_kind: string; scope_value: string }>();
+  if (ids.length === 0) return out;
+  const rows = db
+    .prepare(
+      `SELECT id, scope_kind, scope_value FROM frequency_targets
+        WHERE profile_id = ? AND id IN (${ids.map(() => "?").join(",")})`
+    )
+    .all(profileId, ...ids) as {
+    id: number;
+    scope_kind: string;
+    scope_value: string;
+  }[];
+  for (const row of rows) {
+    out.set(row.id, {
+      scope_kind: row.scope_kind,
+      scope_value: row.scope_value,
+    });
+  }
+  return out;
+}
+
+function tallyByDate(
+  into: Map<number, Map<string, number>>,
+  protocolId: number,
+  date: string,
+  count: number
+): void {
+  let days = into.get(protocolId);
+  if (!days) {
+    days = new Map<string, number>();
+    into.set(protocolId, days);
+  }
+  days.set(date, (days.get(date) ?? 0) + count);
+}
+
+// Usage-during-window for MANY protocols, in a bounded number of queries (#1655).
+//
+// The per-protocol shape issued its own scope lookup plus its own grouped ledger
+// query, so /longevity's protocol list cost two queries per protocol the profile had
+// EVER created — a page that gets slower purely as a function of how long someone has
+// used the feature, recomputing windows that closed years ago. This reads each ledger
+// ONCE over the union of the windows and slices per protocol in JS, the same shape
+// getWellnessPractices already uses for its per-practice heatmaps.
+//
+// The single-protocol reader below delegates here, so there is exactly one definition
+// of what a protocol's daily usage is.
+export function getProtocolUsageByDayMap(
+  profileId: number,
+  protocols: readonly Protocol[],
+  today: string,
+  practiceSpellingsByProtocol?: ReadonlyMap<number, readonly string[]>
+): Map<number, ProtocolDayUsage[]> {
+  const out = new Map<number, ProtocolDayUsage[]>();
+  if (protocols.length === 0) return out;
+
+  const targets = protocolTargetsById(profileId, protocols);
+  const scoped = protocols.map((protocol) => ({
+    protocol,
+    start: protocol.start_date,
+    end: protocol.end_date ?? today,
+    scope: usageScopeFor(
+      protocol,
+      protocol.frequency_target_id != null
+        ? (targets.get(protocol.frequency_target_id) ?? null)
+        : null
+    ),
+  }));
+
+  // date → count, per protocol; emitted sorted at the end.
+  const tallies = new Map<number, Map<string, number>>();
+  const spanOf = (rows: typeof scoped) => ({
+    start: rows.reduce(
+      (min, r) => (r.start < min ? r.start : min),
+      rows[0].start
+    ),
+    end: rows.reduce((max, r) => (r.end > max ? r.end : max), rows[0].end),
+  });
+
+  // ---- practice_logs -------------------------------------------------------------
+  const practices = scoped.filter((r) => r.scope.kind === "practice");
+  if (practices.length > 0) {
+    const spellingsMap = getPracticeSpellingsMap(profileId);
+    const perProtocol = new Map<number, Set<string>>();
+    const all = new Set<string>();
+    for (const row of practices) {
+      const value = (row.scope as { kind: "practice"; value: string }).value;
+      const spellings =
+        practiceSpellingsByProtocol?.get(row.protocol.id) ??
+        practiceSpellingsFor(spellingsMap, value);
+      perProtocol.set(row.protocol.id, new Set(spellings));
+      for (const s of spellings) all.add(s);
+    }
+    if (all.size > 0) {
+      const values = [...all];
+      const span = spanOf(practices);
+      const rows = db
+        .prepare(
+          `SELECT date, practice, COUNT(*) AS count
+             FROM practice_logs
+            WHERE profile_id = ? AND practice IN (${values
+              .map(() => "?")
+              .join(",")})
+              AND date >= ? AND date <= ?
+            GROUP BY date, practice`
+        )
+        .all(profileId, ...values, span.start, span.end) as {
+        date: string;
+        practice: string;
+        count: number;
+      }[];
+      for (const row of practices) {
+        const mine = perProtocol.get(row.protocol.id)!;
+        for (const r of rows) {
+          if (r.date < row.start || r.date > row.end) continue;
+          if (!mine.has(r.practice)) continue;
+          tallyByDate(tallies, row.protocol.id, r.date, r.count);
+        }
+      }
+    }
+  }
+
+  // ---- food_log ------------------------------------------------------------------
+  const foods = scoped.filter((r) => r.scope.kind === "food_group");
+  if (foods.length > 0) {
+    const keys = [
+      ...new Set(
+        foods.map(
+          (r) => (r.scope as { kind: "food_group"; value: string }).value
+        )
+      ),
+    ];
+    const span = spanOf(foods);
+    const rows = db
+      .prepare(
+        `SELECT date, group_key, CAST(SUM(servings) AS INTEGER) AS count
+           FROM food_log
+          WHERE profile_id = ? AND date >= ? AND date <= ?
+            AND group_key IN (${keys.map(() => "?").join(",")}) AND servings > 0
+          GROUP BY date, group_key`
+      )
+      .all(profileId, span.start, span.end, ...keys) as {
+      date: string;
+      group_key: string;
+      count: number;
+    }[];
+    for (const row of foods) {
+      const key = (row.scope as { kind: "food_group"; value: string }).value;
+      for (const r of rows) {
+        if (r.group_key !== key) continue;
+        if (r.date < row.start || r.date > row.end) continue;
+        tallyByDate(tallies, row.protocol.id, r.date, r.count);
+      }
+    }
+  }
+
+  // ---- activities ----------------------------------------------------------------
+  const acts = scoped.filter((r) => r.scope.kind === "activity");
+  if (acts.length > 0) {
+    const span = spanOf(acts);
+    const scopes = acts.map(
+      (r) =>
+        r.scope as {
+          kind: "activity";
+          equipmentId: number | null;
+          activityType: string | null;
+        }
+    );
+    // The union of the lanes any of these protocols measures, so the one grouped read
+    // still narrows to the rows a protocol could match rather than the whole ledger.
+    const equipIds = [
+      ...new Set(
+        scopes
+          .map((s) => s.equipmentId)
+          .filter((id): id is number => id != null)
+      ),
+    ];
+    const types = [
+      ...new Set(
+        scopes.map((s) => s.activityType).filter((t): t is string => t != null)
+      ),
+    ];
+    const lanes = [
+      ...(equipIds.length > 0
+        ? [`equipment_id IN (${equipIds.map(() => "?").join(",")})`]
+        : []),
+      ...(types.length > 0
+        ? [`type IN (${types.map(() => "?").join(",")})`]
+        : []),
+    ].join(" OR ");
+    const rows = db
+      .prepare(
+        `SELECT date, equipment_id, type, COUNT(*) AS count FROM activities
+          WHERE profile_id = ? AND date >= ? AND date <= ? AND (${lanes})
+          GROUP BY date, equipment_id, type`
+      )
+      .all(profileId, span.start, span.end, ...equipIds, ...types) as {
+      date: string;
+      equipment_id: number | null;
+      type: string;
+      count: number;
+    }[];
+    for (const row of acts) {
+      const scope = row.scope as {
+        kind: "activity";
+        equipmentId: number | null;
+        activityType: string | null;
+      };
+      for (const r of rows) {
+        if (r.date < row.start || r.date > row.end) continue;
+        const matches =
+          (scope.equipmentId != null && r.equipment_id === scope.equipmentId) ||
+          (scope.activityType != null && r.type === scope.activityType);
+        if (!matches) continue;
+        tallyByDate(tallies, row.protocol.id, r.date, r.count);
+      }
+    }
+  }
+
+  for (const row of scoped) {
+    const days = tallies.get(row.protocol.id);
+    out.set(
+      row.protocol.id,
+      days
+        ? [...days]
+            .map(([date, count]) => ({ date, count }))
+            .sort((a, b) => (a.date < b.date ? -1 : 1))
+        : []
+    );
+  }
+  return out;
+}
+
 export function getProtocolUsageByDay(
   profileId: number,
   protocol: Protocol,
   today: string,
   practiceSpellings?: readonly string[]
 ): ProtocolDayUsage[] {
-  const end = protocol.end_date ?? today;
-  const scope = protocolUsageScope(profileId, protocol);
-
-  if (scope.kind === "practice") {
-    return getPracticeDayUsageInWindow(
+  return (
+    getProtocolUsageByDayMap(
       profileId,
-      scope.value,
-      protocol.start_date,
-      end,
+      [protocol],
+      today,
       practiceSpellings
-    );
-  }
-
-  if (scope.kind === "food_group") {
-    return db
-      .prepare(
-        `SELECT date, CAST(SUM(servings) AS INTEGER) AS count
-           FROM food_log
-          WHERE profile_id = ? AND date >= ? AND date <= ?
-            AND group_key = ? AND servings > 0` +
-          " GROUP BY date ORDER BY date ASC"
-      )
-      .all(
-        profileId,
-        protocol.start_date,
-        end,
-        scope.value
-      ) as ProtocolDayUsage[];
-  }
-
-  if (scope.kind === "none") return [];
-
-  return db
-    .prepare(
-      `SELECT date, COUNT(*) AS count FROM activities
-        WHERE profile_id = ? AND date >= ? AND date <= ?
-          AND (
-            (? IS NOT NULL AND equipment_id = ?)
-            OR (? IS NOT NULL AND type = ?)
-          )
-        GROUP BY date
-        ORDER BY date ASC`
-    )
-    .all(
-      profileId,
-      protocol.start_date,
-      end,
-      scope.equipmentId,
-      scope.equipmentId,
-      scope.activityType,
-      scope.activityType
-    ) as ProtocolDayUsage[];
+        ? new Map([[protocol.id, practiceSpellings]])
+        : undefined
+    ).get(protocol.id) ?? []
+  );
 }
 
 export function getProtocolUsage(
@@ -375,12 +570,33 @@ export function getProtocolHeatmap(
   today: string,
   weekStart = 0
 ): ProtocolHeatmap {
-  const end = protocol.end_date ?? today;
-  return buildProtocolHeatmap(
-    getProtocolUsageByDay(profileId, protocol, today),
-    protocol.start_date,
-    end,
-    weekStart
+  return getProtocolHeatmaps(profileId, [protocol], today, weekStart)[
+    protocol.id
+  ];
+}
+
+// Every listed protocol's heatmap, keyed by protocol id (#1655). The protocol list
+// renders a heatmap per row — including for long-ended experiments, whose window is
+// exactly what makes them worth looking at — so the list gathers here rather than
+// asking per row: one bounded gather over the ledgers, not two queries per protocol
+// the profile has ever created.
+export function getProtocolHeatmaps(
+  profileId: number,
+  protocols: readonly Protocol[],
+  today: string,
+  weekStart = 0
+): Record<number, ProtocolHeatmap> {
+  const usage = getProtocolUsageByDayMap(profileId, protocols, today);
+  return Object.fromEntries(
+    protocols.map((protocol) => [
+      protocol.id,
+      buildProtocolHeatmap(
+        usage.get(protocol.id) ?? [],
+        protocol.start_date,
+        protocol.end_date ?? today,
+        weekStart
+      ),
+    ])
   );
 }
 

@@ -178,6 +178,19 @@ describe("standalone photosensitizer note (#1727)", () => {
     ).toBeNull();
   });
 
+  it("fires AT the threshold — the boundary is inclusive", () => {
+    // HIGH_UV_INDEX is the top of the "moderate" band, i.e. the first index at which
+    // public guidance recommends protection, so the day it is exactly reached is a
+    // high-UV day. Pinning the boundary keeps a later `>` from silently costing a day.
+    expect(
+      decidePhotosensitizerNote(DATE, {
+        peakUvIndex: HIGH_UV_INDEX,
+        hits,
+        overexposureFiring: false,
+      })
+    ).not.toBeNull();
+  });
+
   it("stays silent with no UV data (silence over guessing)", () => {
     expect(
       decidePhotosensitizerNote(DATE, {

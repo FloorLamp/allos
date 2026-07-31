@@ -110,6 +110,8 @@ export default async function OverviewSection() {
   const strength = getStrengthByExercise(profile.id);
   // PRs read the LOAD-CONTEXT grouping (#1610) so no record blends two machines;
   // the card labels each row with its implement (#1610 forbids unlabeled splits).
+  // Both groupings fold the SAME cached all-history scan (#1654) — asking for the
+  // second one costs a regrouping, never a second read.
   const strengthPrs = recentPRs(
     getStrengthByExercise(profile.id, true),
     todayStr,
