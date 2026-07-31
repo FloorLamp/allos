@@ -196,6 +196,10 @@ export async function POST(req: Request): Promise<Response> {
       status,
       message,
       discovered: newlyWaiting,
+      // WHO ran the tool (#1757). Recorded on every reporting path so a sync-request
+      // nudge can reach the login that actually operates this portal login, instead of
+      // broadcasting to everyone who manages a mapped profile.
+      reportedByLoginId: login.id,
     });
     revalidatePath("/integrations/patient-portals");
     return Response.json({
@@ -257,6 +261,7 @@ export async function POST(req: Request): Promise<Response> {
           status,
           message,
           discovered: newlyWaiting,
+          reportedByLoginId: login.id,
         });
       }
       revalidatePath("/integrations/patient-portals");
@@ -340,6 +345,7 @@ export async function POST(req: Request): Promise<Response> {
         status,
         message,
         discovered: newlyWaiting,
+        reportedByLoginId: login.id,
       });
     }
   } catch (err) {

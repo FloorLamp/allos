@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildToolConfig,
   isAccountSlug,
   isPatientLabel,
   isPortalSlug,
@@ -470,5 +471,106 @@ describe("parseDiscoveredLabels — an untrusted proxy list", () => {
     expect(parseDiscoveredLabels(undefined)).toEqual([]);
     expect(parseDiscoveredLabels("Jane Doe")).toEqual([]);
     expect(parseDiscoveredLabels({ 0: "Jane Doe" })).toEqual([]);
+  });
+});
+
+describe("buildToolConfig (#1759) — the tool-config payload", () => {
+  const portals = [
+    {
+      id: 1,
+      slug: "ochsner-mychart",
+      name: "Ochsner MyChart",
+      software: "mychart",
+    },
+    { id: 2, slug: "baptist-health", name: "Baptist Health", software: null },
+  ];
+  const accounts = [
+    { portalId: 1, slug: "mom", name: "Mom", implicit: false },
+    { portalId: 1, slug: "default", name: "Default login", implicit: true },
+    { portalId: 1, slug: "dad", name: "Dad", implicit: false },
+    { portalId: 2, slug: "default", name: "Default login", implicit: true },
+  ];
+
+  it("groups accounts under their portal, implicit first then by name", () => {
+    expect(buildToolConfig(portals, accounts)).toEqual([
+      {
+        slug: "ochsner-mychart",
+        name: "Ochsner MyChart",
+        software: "mychart",
+        accounts: [
+          { slug: "default", name: "Default login", implicit: true },
+          { slug: "dad", name: "Dad", implicit: false },
+          { slug: "mom", name: "Mom", implicit: false },
+        ],
+      },
+      {
+        slug: "baptist-health",
+        name: "Baptist Health",
+        software: null,
+        accounts: [{ slug: "default", name: "Default login", implicit: true }],
+      },
+    ]);
+  });
+
+  it("carries `implicit` so a tool derives the omitted-account rule at CONFIG time", () => {
+    const built = buildToolConfig(portals, accounts);
+    // One account, and it is implicit → `account` may be omitted on the wire.
+    expect(built[1].accounts).toHaveLength(1);
+    expect(built[1].accounts[0].implicit).toBe(true);
+    // Three accounts → the tool must name one, and can say so before the first run
+    // instead of meeting a refusal.
+    expect(built[0].accounts.length).toBeGreaterThan(1);
+  });
+
+  it("picks fields rather than spreading rows, so a new column cannot leak", () => {
+    const built = buildToolConfig(
+      [
+        {
+          id: 1,
+          slug: "s",
+          name: "n",
+          software: null,
+          // Fields a future migration might add to the row shape.
+          ...({ createdAt: "2026-01-01", secretNote: "no" } as object),
+        },
+      ],
+      [
+        {
+          portalId: 1,
+          slug: "default",
+          name: "Default login",
+          implicit: true,
+          ...({ id: 7, createdAt: "2026-01-01" } as object),
+        },
+      ]
+    );
+    expect(Object.keys(built[0]).sort()).toEqual([
+      "accounts",
+      "name",
+      "slug",
+      "software",
+    ]);
+    expect(Object.keys(built[0].accounts[0]).sort()).toEqual([
+      "implicit",
+      "name",
+      "slug",
+    ]);
+  });
+
+  it("gives a portal with no accounts an empty list rather than dropping it", () => {
+    expect(buildToolConfig(portals, [])).toEqual([
+      {
+        slug: "ochsner-mychart",
+        name: "Ochsner MyChart",
+        software: "mychart",
+        accounts: [],
+      },
+      {
+        slug: "baptist-health",
+        name: "Baptist Health",
+        software: null,
+        accounts: [],
+      },
+    ]);
   });
 });

@@ -130,5 +130,6 @@
   "129-weather-daily-cache.ts": "77f4f8e8367b366401596de3de938ea656a7dcde934bf66a4a6dd34f82a5f204",
   "130-acquirer-provenance.ts": "3797fe0f99a92135f7d6e78beb1c65067cfc21457667b69cc7197bc7bab4288e",
   "131-portal-accounts.ts": "474246896b4be0843a68f70050ae0ced9a6f23a3eaf5f61cbe1a84226d201441",
-  "132-portal-run-reports.ts": "debfa95f77d2c16d9f6d39ceb6d91237086b3373d9fbc9e57da4afba919b0868"
+  "132-portal-run-reports.ts": "debfa95f77d2c16d9f6d39ceb6d91237086b3373d9fbc9e57da4afba919b0868",
+  "133-portal-sync-requests.ts": "3d599f574d6415110da1bfb59a3707523680eb8a6ae5cbe167ce369091e1bb52"
 }

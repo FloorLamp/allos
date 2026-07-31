@@ -47,6 +47,14 @@ const ALLOWLIST: Record<string, string> = {
     "It carries no date and no band, renders only inside Upcoming's collapsed " +
     "disclosure, and is excluded from the page total and the hero; ranking an " +
     "offer would be ranking something the user owes nothing on",
+  syncRequestItems:
+    "an open portal SYNC REQUEST (#1757) — an ask addressed to a PERSON " +
+    '("run the portal tool on the computer with Mom\'s login"), not a due ' +
+    "signal about the profile's health. Its only ordering axis is the request's " +
+    "own expiry, and its salience is the REASON that raised it (manual > " +
+    "post-visit > staleness), which the supersession rule already resolves to one " +
+    "row per portal login. Risk-ranking portal hygiene would imply a clinical " +
+    "urgency this coaching-tier signal deliberately never claims",
   refillItems: "supply run-out math — not a risk-ranked due signal",
   poolRefillItems:
     "shared supply pool run-out math (#1374) — the pooled twin of refillItems, " +

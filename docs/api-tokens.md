@@ -238,10 +238,81 @@ It lists only the **writable** ones — a read-only grant would only produce a `
 later — and the names are exactly the ones this login already sees in its own profile
 switcher, disambiguated the same way. Nothing else is disclosed.
 
+### Finding the portal and account slugs
+
+The portal and login slugs are **allos-minted vocabulary**. Rather than transcribing them
+into local config by hand — where a typo becomes an `unmapped-identity` refusal that is
+deliberately indistinguishable from every other cause — a tool **ingests** them:
+
+```bash
+curl -H "Authorization: Bearer $ALLOS_TOKEN" \
+     https://allos.example/api/documents/portals
+```
+
+```json
+{
+  "ok": true,
+  "portals": [
+    {
+      "slug": "ochsner-mychart",
+      "name": "Ochsner MyChart",
+      "software": "mychart",
+      "accounts": [
+        { "slug": "default", "name": "Default login", "implicit": true },
+        { "slug": "mom", "name": "Mom", "implicit": false }
+      ]
+    },
+    {
+      "slug": "baptist-health",
+      "name": "Baptist Health",
+      "software": null,
+      "accounts": [
+        { "slug": "default", "name": "Default login", "implicit": true }
+      ]
+    }
+  ]
+}
+```
+
+- **Slugs and names only — never an address.** There is nothing in this payload that
+  could aim a tool anywhere; allos has no address column to disclose. The tool still
+  binds `slug → URL` locally and pins it on first use. This only guarantees the slug half
+  of that binding is spelled the way allos spells it.
+- **`implicit`** lets a tool derive the omitted-account rule for itself: exactly one
+  account (the implicit one) means it may omit `account` on the wire; more than one means
+  it must name one. It can say so at _config_ time instead of discovering it as a refusal
+  at _run_ time.
+- **`software`** lets it sanity-check what it has been pointed at before the first
+  sign-in.
+- **No patient labels.** Mapped, pending and ignored bindings are all absent — the tool
+  discovers patients from the portal itself, and which patients a household mapped or
+  declined is household information this token never reveals.
+
+Same `upload:documents` scope: knowing where you may push is part of the push capability.
+The visibility gate mirrors the card's — a login with write access to at least one profile
+— so a read-only-everywhere caregiver token gets a `403`.
+
+**`tool init` recipe.** Fetch the list, write the slugs into local config, and prompt only
+for what allos genuinely does not know:
+
+```bash
+curl -sS -H "Authorization: Bearer $ALLOS_TOKEN" \
+     https://allos.example/api/documents/portals \
+  | jq -r '.portals[] | "\(.slug)\t\([.accounts[].slug] | join(","))"'
+# ochsner-mychart   default,mom
+# baptist-health    default
+```
+
+For each portal: ask the operator for the URL, and — when the portal has more than one
+account — which account slug _this machine's_ login is. Re-running `init` picks up newly
+added portals and logins; nothing else about the household changes hands.
+
 ### Rate limits
 
-Both endpoints are rate-limited per token (uploads: 60 requests per 5 minutes). Over the
-budget you get a `429` with a `Retry-After` header.
+Every endpoint is rate-limited per token (uploads: 60 requests per 5 minutes; the two
+config reads and the sync report: 120 per 5 minutes, each in its own budget so a chatty
+`init` cannot consume the upload allowance). Over the budget you get a `429` with a
+`Retry-After` header.
 
 ## The command-line tool
 

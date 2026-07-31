@@ -151,6 +151,13 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     part(t, 0)
       ? `Poor-sleep context off — ${part(t, 0)}`
       : "Poor-sleep context off",
+  // A portal sync request (#1757), keyed `portal-sync:<portal>/<account>:<day>`. The
+  // portal slug is the only nameable part — the account is a household nickname and the
+  // day is the ask's anchor — so the label names the portal and leaves it there.
+  "portal-sync:": (t) => {
+    const portal = titleize(part(t, 0).split("/")[0].replace(/[_-]/g, " "));
+    return portal ? `Portal sync request — ${portal}` : "Portal sync request";
+  },
   "illness-care:": () => "Illness care reminder",
   "temp-red-flag:": () => "Temperature red flag",
   "condition-review:": () => "Condition suggestion",

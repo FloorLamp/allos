@@ -46,6 +46,7 @@ import {
   unbindPortalIdentity,
   unignorePortalIdentity,
 } from "@/lib/portals";
+import { requestSync } from "@/lib/portal-requests";
 
 export type PortalActionResult = { ok: true } | { ok: false; error: string };
 
@@ -327,5 +328,49 @@ export async function dismissPendingIdentityAction(
     return { ok: false, error: "That pending patient is already handled." };
   }
   revalidatePath(CARD);
+  return { ok: true };
+}
+
+// ── Sync requests (#1757) ────────────────────────────────────────────────────
+
+// "Request sync" on the card — the MANUAL creator, for when the person who manages allos
+// is not the person whose laptop holds the portal login.
+//
+// GATE: requireAnyProfileWriteAccess, the same one the pending list takes. A request
+// names a portal LOGIN and no profile, so there is no target for
+// requireProfileWriteAccess and the session's ACTIVE profile is unrelated to it. The
+// honest minimum is the population the card already serves — a login that holds write
+// somewhere, i.e. someone who could act on the records a run would bring in.
+//
+// The core is auth-blind (lib/portal-requests.ts) and returns a TYPED outcome this
+// renders rather than confirming unconditionally: an already-open request of equal or
+// greater salience is a no-op, and a portal login with no mapped patients is refused —
+// a nudge there would have no Upcoming to live on and nobody to reach.
+export async function requestSyncAction(
+  formData: FormData
+): Promise<PortalActionResult> {
+  await requireAnyProfileWriteAccess();
+  const accountId = Number(formData.get("account_id"));
+  if (!Number.isInteger(accountId) || accountId <= 0) {
+    return { ok: false, error: "Unknown portal login." };
+  }
+  const out = requestSync(accountId, "manual");
+  if (!out.ok) {
+    return {
+      ok: false,
+      error:
+        out.error === "no-mapped-patients"
+          ? "Map at least one patient on this login first — otherwise the reminder has nobody to reach."
+          : "Unknown portal login.",
+    };
+  }
+  if (!out.created) {
+    return {
+      ok: false,
+      error: "A sync is already requested for this login.",
+    };
+  }
+  revalidatePath(CARD);
+  revalidatePath("/upcoming");
   return { ok: true };
 }

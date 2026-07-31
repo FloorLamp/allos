@@ -16,6 +16,7 @@ import {
   ignorePendingIdentityAction,
   removeAccountAction,
   removePortalAction,
+  requestSyncAction,
   unbindIdentityAction,
 } from "./actions";
 
@@ -43,6 +44,14 @@ export interface ProfileChoice {
   name: string;
 }
 
+// One portal login's open sync request, as the card renders it (#1757). The LINE is
+// formatted server-side by the ONE shared formatter (lib/sync-requests.ts), so the card,
+// the Upcoming item and the digest line cannot word the same ask three ways.
+export interface SyncRequestView {
+  accountId: number;
+  line: string;
+}
+
 // "Last synced" for one (login, patient), computed server-side from sync events.
 export interface IdentityStatusView {
   accountId: number;
@@ -61,6 +70,7 @@ export default function PortalSetup({
   identities,
   pending,
   statuses,
+  syncRequests,
   profiles,
   writableProfiles,
   isAdmin,
@@ -73,6 +83,8 @@ export default function PortalSetup({
   // refused at upload time (#1739). Empty for a login that could not act on them.
   pending: PendingIdentity[];
   statuses: IdentityStatusView[];
+  // The OPEN sync requests, one per portal login at most (#1757).
+  syncRequests: SyncRequestView[];
   // Every profile this login can REACH — for rendering a binding's target name.
   profiles: ProfileChoice[];
   // The profiles this login may WRITE — the only ones a picker may offer, since binding
@@ -136,6 +148,9 @@ export default function PortalSetup({
     profiles.find((p) => p.id === id)?.name ?? `Profile ${id}`;
   const accountsOf = (portalId: number) =>
     accounts.filter((a) => a.portalId === portalId);
+  const requestFor = (accountId: number) =>
+    syncRequests.find((r) => r.accountId === accountId) ?? null;
+  const portalOf = (portalId: number) => portals.find((p) => p.id === portalId);
   const statusFor = (accountId: number, label: string) =>
     statuses.find(
       (s) => s.accountId === accountId && s.patientLabel === label
@@ -339,6 +354,67 @@ export default function PortalSetup({
             username or a password, which stay in the companion tool on the
             machine that uses them.
           </p>
+        </div>
+      )}
+
+      {/* SYNC REQUESTS (#1757). Allos cannot run a portal sync — the whole premise of
+          this integration — so the card has no "Sync now". What it CAN do is ask the
+          person whose machine holds the login, which is a different promise and is
+          worded as one: "Request sync" raises a request, and a request is never a
+          schedule. The household sees the open ask here, with the same expiry the nudge
+          quotes, so the card and the notification describe one state. */}
+      {canManagePending && accounts.length > 0 && (
+        <div className="card space-y-3" data-testid="portal-sync-requests">
+          <div>
+            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+              Ask someone to run a sync
+            </h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Allos cannot sign in to a portal for you — a run needs a person at
+              the computer that holds the login. Requesting one puts a calm
+              reminder in front of whoever usually runs it. It expires on its
+              own if nobody gets to it, and the next reported run clears it.
+            </p>
+          </div>
+          <ul className="space-y-1">
+            {accounts.map((a) => {
+              const open = requestFor(a.id);
+              const portal = portalOf(a.portalId);
+              return (
+                <li
+                  key={a.id}
+                  data-testid="sync-request-row"
+                  className="flex items-center justify-between gap-3 text-sm"
+                >
+                  <span className="text-slate-700 dark:text-slate-200">
+                    {portal?.name ?? "Portal"}
+                    {showsAccount(a.portalId) ? ` (${a.name})` : ""}
+                    {open ? (
+                      <span
+                        className="ml-2 text-xs text-brand-700 dark:text-brand-300"
+                        data-testid="sync-request-open"
+                      >
+                        {open.line}
+                      </span>
+                    ) : null}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-ghost shrink-0 text-xs"
+                    disabled={busy || open != null}
+                    data-testid="sync-request-ask"
+                    onClick={() => {
+                      const fd = new FormData();
+                      fd.set("account_id", String(a.id));
+                      run(fd, requestSyncAction, "Sync requested.");
+                    }}
+                  >
+                    Request sync
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

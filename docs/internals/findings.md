@@ -766,6 +766,34 @@ you must open to see inverts the feature it is reporting on. That is a reach
 argument, not a severity one — which is why it stops at decorating an existing
 send rather than earning its own.
 
+**Ride-the-nag applied to a portal SYNC REQUEST (#1757).** The same argument, one
+step further along: a portal run cannot happen without a person at a specific
+machine, so the signal's whole job is to reach that person. It is a real row
+(`portal_sync_requests`) with a real dedupe key, and unlike a broken integration
+it IS registered in `RULE_FINDING_REGISTRY` — under the `portal-sync:` prefix,
+`coaching` tier — because it rides the ordinary suppression bus and its dismiss
+must be guardable and nameable in "Snoozed & dismissed". (It is registered
+without being a rule-findings builder; the Upcoming generator emits it, so the
+`collectCoachingFindings` reflection guards never see it, exactly as the
+suppression-only poor-sleep override entry is registered.)
+
+Its reach is the strictest shape this doctrine allows:
+
+- an **Upcoming item**, dismissible;
+- **one digest line**, named rather than merely counted, on the message that was
+  already going to send;
+- and **nothing else — no dedicated send, ever.** It is also excluded from the
+  non-hideable "Needs attention" hero by `cardBandForItem`'s named domain set,
+  which is the difference between this and the broken-sync signal beside it: a
+  dead connection is a fault you must repair, while "somebody should run the
+  portal tool this week" is an ask, and an ask that cannot be dismissed is a nag.
+
+The reach argument is #1685's verbatim — an attended sync exists so records
+arrive without you thinking about it, so the state of "nobody has run it in five
+weeks" is precisely what its owner will not notice — and the severity answer is
+the opposite: portal hygiene is never a safety signal, and a request that nobody
+acts on **expires** rather than escalating.
+
 **A keyboard edit is not a send; an edit that would notify is.** Telegram's
 `editMessageReplyMarkup` changes a message the user already received and does not
 ring their phone. That is what lets #1505's offer tail stay accurate across slot

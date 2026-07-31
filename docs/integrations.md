@@ -322,8 +322,41 @@ profile to raise it for, and shows on this card instead.
 
 **Why there is no Start button.** Allos cannot make an attended sync happen, so
 the card doesn't pretend to: it is setup and status. For the same reason this
-integration is exempt from staleness warnings — "you haven't signed in to your
-hospital portal in three days" is not a fault.
+integration is exempt from the ordinary **staleness warning** — "you haven't
+signed in to your hospital portal in three days" is not a fault, and the
+broken-sync signal every other integration raises would be describing a failure
+that has not happened.
+
+**Asking a person, which is a different thing.** What allos _can_ do is remember
+that a run is due and tell whoever runs it — the hard part of stale records is
+remembering, not the double-click. Three things raise a **sync request**:
+
+- **Staleness** — a portal login whose last successful check is more than a
+  month old.
+- **After a visit** — a mapped profile's appointment has just passed, which is
+  the moment new records actually appear on a portal, and the most useful nudge
+  this feature can send.
+- **Asking** — the card's **Request sync** button, for when the person who
+  manages allos is not the person whose laptop holds the login.
+
+A request is **never a schedule**: nothing is promised to run at a time, and the
+row carries only the portal and login short ids — never an address. It
+**expires** after a week rather than sitting there forever, and it **answers
+itself**: the next reported run for that login clears it, including a failed one
+(the person went to the machine; whether the run then worked is what the Status
+line is for). The companion tool never learns requests exist — there is nothing
+new on the wire and nothing to acknowledge.
+
+**Who hears about it, and how loudly.** The reminder goes to the login whose
+token actually reports runs for that portal login — your phone about your portal
+— falling back to the people with write access to the mapped patients when no
+token has reported yet. It reaches exactly two places: an **Upcoming** item and
+one line in the morning digest that already sends. It is dismissible, and
+dismissing it silences both. There is **no dedicated notification, ever**, and it
+never appears on the dashboard's "Needs attention" panel: portal hygiene is not a
+safety signal. A login with no mapped patients raises nothing at all — there
+would be nobody to reach, and finishing setup is what the card itself is asking
+for.
 
 ## Weather & UV (Open-Meteo)
 

@@ -79,6 +79,11 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   // A broken sync (#1685). The ONLY signal-group domain that IS in DOMAIN_SEQ, so it is
   // the only one this digest counts. See the sequence below for why it earns that.
   integration: "sync issue",
+  // An open portal sync request (#1757). In DOMAIN_SEQ, and named below, for the same
+  // reason a broken sync is: a portal run needs a person at a machine, so a nudge that
+  // reaches only the surfaces you have to open to see is a nudge to someone who is
+  // already looking. It rides the digest that already sends and adds no send of its own.
+  "portal-sync": "portal check",
   review: "review item",
 };
 
@@ -96,6 +101,7 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
 const DOMAIN_SEQ: UpcomingDomain[] = [
   "dose",
   "integration",
+  "portal-sync",
   "prn-max",
   "refill",
   "dietary-limit",
@@ -127,12 +133,12 @@ export interface DigestHighlight {
   reason: string;
 }
 
-// One broken-sync line for the digest (#1685), lifted from the SAME UpcomingItem the
-// hero and the Upcoming page render — never a second description of a broken sync.
-// A bare per-band count ("1 sync issue") cannot be acted on: you need to know WHICH
-// source stopped and where to fix it. So the count line stays the glance, and this names
-// the provider and carries its href — the same relationship the #656 "why" highlights
-// have with the counts they sit under.
+// One NAMED data-plumbing line for the digest (#1685, extended by #1757), lifted from the
+// SAME UpcomingItem the hero and the Upcoming page render — never a second description of
+// the same fact. A bare per-band count ("1 sync issue", "1 portal check") cannot be acted
+// on: you need to know WHICH source stopped, or WHICH portal wants a run, and where to go.
+// So the count line stays the glance, and this names the subject and carries its href —
+// the same relationship the #656 "why" highlights have with the counts they sit under.
 export interface DigestSyncIssue {
   title: string;
   detail: string | null;
@@ -189,14 +195,23 @@ export function digestHighlights(groups: BandGroup[]): DigestHighlight[] {
   return out;
 }
 
-// The banded set's broken-sync items, in band order (#1685). Reads the items straight
-// off the model — title, detail and href as the shared builder already decided them — so
-// the digest can never word a broken sync differently from the hero.
+// The domains that get a NAMED line rather than only a count. Both are data-plumbing
+// facts whose whole point is that they happen without you opening the app, so a count
+// alone would send the reader back to the surface the signal exists to save them from.
+const NAMED_LINE_DOMAINS: readonly UpcomingDomain[] = [
+  "integration",
+  "portal-sync",
+];
+
+// The banded set's named data-plumbing items, in band order (#1685/#1757). Reads the
+// items straight off the model — title, detail and href as the shared builder already
+// decided them — so the digest can never word a broken sync, or a portal request,
+// differently from the page.
 export function digestSyncIssues(groups: BandGroup[]): DigestSyncIssue[] {
   const out: DigestSyncIssue[] = [];
   for (const g of groups) {
     for (const item of g.items) {
-      if (item.domain !== "integration") continue;
+      if (!NAMED_LINE_DOMAINS.includes(item.domain)) continue;
       out.push({
         title: item.title,
         detail: item.detail ?? null,
