@@ -83,3 +83,38 @@ test("picking a condition from the catalog applies its ICD-10-CM code (#1676)", 
   await expect(page.locator("#cond-code-new")).toHaveValue("");
   await expect(page.locator("#cond-codesys-new")).toHaveValue("");
 });
+
+// The same ruling, on the other surface that runs this picker beside these fields.
+// Family history has no confirm-to-apply chip of its own, so before #1676 a
+// family-history row could only ever get a code by hand; a pick now supplies it.
+test("picking a family-history condition applies its ICD-10-CM code too (#1676)", async ({
+  page,
+}) => {
+  await page.goto("/records/care/overview");
+
+  // Scope to the Family history section: the stacked Care › Overview pane renders
+  // several forms, and "Condition" is not unique across the page.
+  const section = page.getByTestId("records-family-history");
+  const conditionField = section.getByLabel("Condition", { exact: true });
+  await expect(conditionField).toBeVisible();
+  await expect(page.locator("#fh-code-new")).toHaveValue("");
+
+  await settledFill(page, conditionField, "type 2 diabetes");
+  await page
+    .getByRole("listbox")
+    .getByRole("button", {
+      name: "Type 2 diabetes mellitus without complications",
+    })
+    .click();
+
+  await expect(conditionField).toHaveValue(
+    "Type 2 diabetes mellitus without complications"
+  );
+  await expect(page.locator("#fh-code-new")).toHaveValue("E11.9");
+  await expect(page.locator("#fh-codesys-new")).toHaveValue("ICD-10-CM");
+
+  // Same retract discipline: the code follows the concept it was picked for.
+  await settledFill(page, conditionField, "Something else entirely");
+  await expect(page.locator("#fh-code-new")).toHaveValue("");
+  await expect(page.locator("#fh-codesys-new")).toHaveValue("");
+});
