@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import { bestIcd10Suggestion, ICD10_SYSTEM } from "@/lib/icd10";
+import Combobox from "@/components/Combobox";
+import {
+  bestIcd10Suggestion,
+  icd10CodeForName,
+  icd10SearchTerms,
+  ICD10_CONDITION_NAMES,
+  ICD10_SYSTEM,
+} from "@/lib/icd10";
 import type { Condition, FormResult } from "@/lib/types";
 
 // Shared add/edit condition form. Add mode: no `condition`. Edit mode: pass the
@@ -95,14 +102,27 @@ export default function ConditionForm({
         <label className="label" htmlFor={`cond-name-${uid}`}>
           Condition
         </label>
-        <input
+        {/* The curated ICD-10-CM NAMES (#1676). suggestIcd10() has always ranked
+            over them, but only the resulting CODE reached the UI — the names
+            themselves were invisible, so a typed one-off spelling never became the
+            catalog entry the code chip and lib/condition-codes' recognizers want.
+            Synonyms ride along as hidden search terms, so "high blood pressure"
+            still finds "Essential (primary) hypertension"; free text still saves. */}
+        <Combobox
           id={`cond-name-${uid}`}
           name="name"
-          className="input"
+          ariaLabel="Condition"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={setName}
+          options={[...ICD10_CONDITION_NAMES]}
+          searchTermsFor={icd10SearchTerms}
+          badgeFor={(option) => (
+            <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+              {icd10CodeForName(option)}
+            </span>
+          )}
+          allowFreeText
           placeholder="e.g. Asthma, Type 2 diabetes"
-          required
         />
         {suggestion && (
           <div

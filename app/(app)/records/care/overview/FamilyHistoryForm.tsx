@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import SubmitButton from "@/components/SubmitButton";
 import Combobox from "@/components/Combobox";
 import { useToast } from "@/components/Toast";
+import {
+  icd10CodeForName,
+  icd10SearchTerms,
+  ICD10_CONDITION_NAMES,
+} from "@/lib/icd10";
 import type { FamilyHistory, FormResult } from "@/lib/types";
 
 // Common relatives, offered as a pick-or-type Combobox (allowFreeText).
@@ -49,6 +54,10 @@ export default function FamilyHistoryForm({
   // Relation is a controlled Combobox (#1177) — form.reset() can't clear it, so the
   // add path clears this state explicitly on a successful save.
   const [relation, setRelation] = useState(entry?.relation ?? "");
+  // Condition draws on the SAME curated ICD-10-CM vocabulary the conditions form
+  // does (#1676) — lib/condition-codes' recognizers read family-history names too,
+  // and this field previously offered no suggestion at all.
+  const [condition, setCondition] = useState(entry?.condition ?? "");
 
   async function handle(formData: FormData) {
     setError(null);
@@ -71,6 +80,7 @@ export default function FamilyHistoryForm({
     if (!editing) {
       formRef.current?.reset();
       setRelation("");
+      setCondition("");
     }
     onDone?.();
     router.refresh();
@@ -107,13 +117,21 @@ export default function FamilyHistoryForm({
         <label className="label" htmlFor={`fh-condition-${uid}`}>
           Condition
         </label>
-        <input
+        <Combobox
           id={`fh-condition-${uid}`}
           name="condition"
-          className="input"
-          defaultValue={entry?.condition ?? ""}
+          ariaLabel="Condition"
+          value={condition}
+          onChange={setCondition}
+          options={[...ICD10_CONDITION_NAMES]}
+          searchTermsFor={icd10SearchTerms}
+          badgeFor={(option) => (
+            <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+              {icd10CodeForName(option)}
+            </span>
+          )}
+          allowFreeText
           placeholder="e.g. Type 2 diabetes, Breast cancer"
-          required
         />
       </div>
       <div className="grid grid-cols-2 gap-3">

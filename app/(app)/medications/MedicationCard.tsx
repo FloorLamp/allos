@@ -52,6 +52,7 @@ import RxOtcBadge from "@/components/RxOtcBadge";
 import ProviderName from "@/components/ProviderName";
 import FoodGuidance from "@/components/FoodGuidance";
 import NotesText from "@/components/NotesText";
+import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import OverflowMenu, {
@@ -76,6 +77,12 @@ import {
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { isPrn } from "@/lib/supplement-schedule";
+import { symptomLabelOptions } from "@/lib/symptoms";
+
+// A side effect is described in the SAME human vocabulary a symptom is (#1676), so
+// both fields offer the curated symptom labels instead of inviting a fresh spelling
+// of "Nausea". Free text still saves — a drug reaction outside the catalog is real.
+const SIDE_EFFECT_OPTIONS = symptomLabelOptions();
 
 // One medication, rendered as a card carrying its whole lifecycle: the
 // current dose check-offs, its course history (start/stop dates + reasons), the
@@ -205,6 +212,10 @@ export default function MedicationCard({
   const [historyMenuId, setHistoryMenuId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [sideEffectMenuId, setSideEffectMenuId] = useState<number | null>(null);
+  // The two side-effect fields are controlled comboboxes (#1676); their forms don't
+  // reset() on submit, so each clears its own state when its panel closes.
+  const [stopEffect, setStopEffect] = useState("");
+  const [newEffect, setNewEffect] = useState("");
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   const formatPrefs = useFormatPrefs();
@@ -588,6 +599,7 @@ export default function MedicationCard({
               const result = await stopMedication(fd);
               if (result.ok) {
                 setStopping(false);
+                setStopEffect("");
                 closeInitialAction();
               }
             }}
@@ -637,11 +649,16 @@ export default function MedicationCard({
                 <label className="label" htmlFor={`stop-effect-${s.id}`}>
                   Side effect <span className="font-normal">(optional)</span>
                 </label>
-                <input
+                <Combobox
                   id={`stop-effect-${s.id}`}
                   name="effect"
+                  ariaLabel="Side effect"
+                  value={stopEffect}
+                  onChange={setStopEffect}
+                  options={SIDE_EFFECT_OPTIONS}
+                  allowFreeText
                   placeholder="e.g. Nausea"
-                  className="input text-sm"
+                  inputClassName="text-sm"
                 />
               </div>
               <div>
@@ -674,6 +691,7 @@ export default function MedicationCard({
                 type="button"
                 onClick={() => {
                   setStopping(false);
+                  setStopEffect("");
                   closeInitialAction();
                 }}
                 className="btn-ghost btn-sm"
@@ -995,7 +1013,10 @@ export default function MedicationCard({
               {canWrite ? (
                 <button
                   type="button"
-                  onClick={() => setAddingEffect((v) => !v)}
+                  onClick={() => {
+                    setAddingEffect((v) => !v);
+                    setNewEffect("");
+                  }}
                   className="btn-ghost btn-sm"
                 >
                   {addingEffect ? "Cancel" : "Add side effect"}
@@ -1008,7 +1029,10 @@ export default function MedicationCard({
                 action={async (fd) => {
                   await addSideEffect(fd);
                 }}
-                onSubmit={() => setAddingEffect(false)}
+                onSubmit={() => {
+                  setAddingEffect(false);
+                  setNewEffect("");
+                }}
                 className="mb-3 space-y-3 rounded-lg border border-black/10 p-3 dark:border-white/10"
               >
                 <input type="hidden" name="id" value={s.id} />
@@ -1019,12 +1043,16 @@ export default function MedicationCard({
                   <label className="label" htmlFor={`side-effect-${s.id}`}>
                     Side effect
                   </label>
-                  <input
+                  <Combobox
                     id={`side-effect-${s.id}`}
                     name="effect"
-                    required
+                    ariaLabel="Side effect"
+                    value={newEffect}
+                    onChange={setNewEffect}
+                    options={SIDE_EFFECT_OPTIONS}
+                    allowFreeText
                     placeholder="e.g. Nausea"
-                    className="input text-sm"
+                    inputClassName="text-sm"
                   />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">

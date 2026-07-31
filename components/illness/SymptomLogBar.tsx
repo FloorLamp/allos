@@ -15,7 +15,9 @@ import {
   symptomBySlug,
   SYMPTOM_SEVERITY_LEVELS,
   MAX_SYMPTOM_SEVERITY,
+  symptomLabelOptions,
 } from "@/lib/symptoms";
+import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
@@ -53,6 +55,10 @@ import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 // it offers a suggest-only "Mark as illness" bridge.
 
 type Row = { key: string; label: string; icon?: string };
+
+// The curated symptom labels, built once (catalog order — the picker shows the first
+// eight on an empty query).
+const SYMPTOM_LABEL_OPTIONS = symptomLabelOptions();
 
 export default function SymptomLogBar({
   date,
@@ -460,8 +466,8 @@ export default function SymptomLogBar({
     startTransition(() => router.refresh());
   }
 
-  function addCustom() {
-    const key = resolveSymptomKey(customDraft);
+  function addCustom(name: string = customDraft) {
+    const key = resolveSymptomKey(name);
     setCustomDraft("");
     if (!key) return;
     // One add path (#857): a typed name logs at severity 1, becoming a logged row.
@@ -731,14 +737,24 @@ export default function SymptomLogBar({
               addCustom();
             }}
           >
-            <input
-              data-testid="symptom-custom-input"
-              value={customDraft}
-              onChange={(e) => setCustomDraft(e.target.value)}
-              placeholder="Add another symptom…"
-              maxLength={80}
-              className="input h-8 flex-1 text-sm"
-            />
+            {/* The curated labels (#1676). resolveSymptomKey() already collapses an
+                EXACT label onto its catalog slug, but a near-miss ("Head ache")
+                minted a custom key sitting next to the curated `headache`; offering
+                the vocabulary turns those near-misses into exact matches. Free text
+                still logs — a custom symptom is a first-class one. */}
+            <div className="flex-1" data-testid="symptom-custom-input">
+              <Combobox
+                ariaLabel="Add another symptom"
+                value={customDraft}
+                onChange={setCustomDraft}
+                onPick={(v) => addCustom(v)}
+                options={SYMPTOM_LABEL_OPTIONS}
+                allowFreeText
+                closeStopsPropagation
+                placeholder="Add another symptom…"
+                inputClassName="h-8 text-sm"
+              />
+            </div>
             <button
               type="submit"
               data-testid="symptom-custom-add"
