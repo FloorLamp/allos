@@ -4,6 +4,13 @@
       "date": "2026-07-31",
       "entries": [
         {
+          "pr": 1742,
+          "kind": "feature",
+          "title": "Patient portals get real names — and syncs tell you whose data arrived",
+          "body": "If your health system's portal was swallowed by a merger (MyChart, we see you), Allos now keeps a registry of portals under Settings → Integrations, with each connected account mapped to the profile it feeds. Sync reports name the portal and the person, so a household with two MyChart logins can finally tell whose labs just landed. Identities Allos hasn't seen before are surfaced instead of guessed at — nothing is ever silently filed to the wrong person.",
+          "issues": [1735]
+        },
+        {
           "pr": 1740,
           "kind": "feature",
           "title": "Upload documents from anywhere — tokens, an API, and a tiny CLI",
