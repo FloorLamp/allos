@@ -263,6 +263,51 @@ describe("protocol restart lifecycle", () => {
     expect(getActiveSituations(profile.id)).toContain("Sauna block");
   });
 
+  // #1652: the row write and the situation reactivation are ONE transition. Force
+  // the situation half to fail and the resume must not survive on its own — a
+  // protocol reading "Ongoing" with its situational supplements off is a state the
+  // user cannot see or self-correct (an active protocol is no longer resumable).
+  // The failure is injected with a temp trigger rather than a module mock so the
+  // real write path, and the real transaction boundary, are what gets tested.
+  it("rolls the whole resume back when reactivating the situation fails", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Cold block",
+        start_date: "2026-05-01",
+        situation: "Cold block",
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+    await endProtocol(protocolForm({ id: original.id }));
+    const endedOn = getProtocols(profile.id)[0].end_date;
+    expect(endedOn).not.toBeNull();
+
+    db.exec(
+      `CREATE TEMP TRIGGER block_activate BEFORE UPDATE ON situations
+         WHEN NEW.active = 1
+         BEGIN SELECT RAISE(ABORT, 'situation activation refused'); END`
+    );
+    try {
+      await expect(
+        resumeProtocol(protocolForm({ id: original.id }))
+      ).rejects.toThrow(/situation activation refused/);
+    } finally {
+      db.exec("DROP TRIGGER block_activate");
+    }
+
+    // Both halves are back where they started.
+    expect(getProtocols(profile.id)[0].end_date).toBe(endedOn);
+    expect(getActiveSituations(profile.id)).not.toContain("Cold block");
+
+    // …and the protocol is still resumable, so the retry succeeds intact.
+    expect(await resumeProtocol(protocolForm({ id: original.id }))).toEqual({
+      ok: true,
+    });
+    expect(getProtocols(profile.id)[0].end_date).toBeNull();
+    expect(getActiveSituations(profile.id)).toContain("Cold block");
+  });
+
   it("starts an expired protocol as a new run and preserves its history", async () => {
     const { profile } = seedActor();
     await createProtocol(
