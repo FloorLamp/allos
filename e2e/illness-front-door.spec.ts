@@ -242,7 +242,14 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("temp-quick-input").fill("102");
     await page.getByTestId("temp-quick-time").fill("07:00");
     await settledClick(page, page.getByTestId("temp-quick-save"));
-    await expect(page.getByTestId("temp-quick-entry")).toHaveCount(0);
+    // Post-save re-render ceiling (recurring-failure census, docs/internals/
+    // e2e-hygiene.md): the quick-entry panel only unmounts once the save action's
+    // full-page re-render lands, the same Server-Action latency class as the three
+    // post-activate waits above — it can outrun the 5 s default on a loaded shard.
+    // Not a sleep: this still fails if the panel never closes.
+    await expect(page.getByTestId("temp-quick-entry")).toHaveCount(0, {
+      timeout: 20_000,
+    });
 
     // 4) Quick-add ibuprofen right from the symptom card. Wait for the pick's resolver
     // prefill (#846) to COMMIT before submitting: it sets the OTC label defaults —
