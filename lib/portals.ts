@@ -186,11 +186,45 @@ export function bindPortalIdentity(
   return { ok: true, id };
 }
 
-// Remove a binding. Scoped by id; the caller authorizes.
-export function unbindPortalIdentity(identityId: number): boolean {
+// Which profile a binding currently points at, or null if there is no such row.
+//
+// This is the second lookup in this module that RESOLVES a profile rather than filtering
+// by one, and for the same reason as resolvePortalIdentity: the caller is asking "who
+// owns this row so I can gate on them", and a `profile_id = ?` filter would presuppose
+// the answer. A caller that already knew the owner would not need to ask.
+//
+// It exists because the surrogate row id arrives from a CLIENT (issue #1747): a form post
+// naming a binding id must be authorized against the profile that binding ACTUALLY points
+// at, never against a profile id the same post supplied. Reads the id→profile_id mapping
+// and nothing else.
+export function portalIdentityProfile(identityId: number): number | null {
+  const row = db
+    .prepare(
+      "SELECT profile_id AS profileId FROM portal_identities WHERE id = ?"
+    )
+    .get(identityId) as { profileId: number } | undefined;
+  return row?.profileId ?? null;
+}
+
+// Remove a binding, scoped by BOTH its id and the profile it points at.
+//
+// The profile filter is not belt-and-braces decoration; it is the COMPARE-AND-SWAP that
+// makes this an atomic access-control transition (#1747). The caller resolves the owning
+// profile with portalIdentityProfile() and authorizes against it, so between that read
+// and this delete the binding could have been RE-POINTED at another profile by a
+// concurrent bind — in which case this statement matches nothing and returns false, and
+// the caller reports a typed refusal, rather than deleting a binding it authorized
+// against a profile the row no longer names.
+//
+// The caller authorizes; this core stays auth-blind (house rule).
+export function unbindPortalIdentity(
+  identityId: number,
+  profileId: number
+): boolean {
   return (
-    db.prepare("DELETE FROM portal_identities WHERE id = ?").run(identityId)
-      .changes > 0
+    db
+      .prepare("DELETE FROM portal_identities WHERE id = ? AND profile_id = ?")
+      .run(identityId, profileId).changes > 0
   );
 }
 

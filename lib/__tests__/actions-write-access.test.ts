@@ -130,7 +130,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   {
     file: "app/(app)/integrations/mychart/actions.ts",
     fn: "unbindIdentityAction",
-    why: "cross-profile write (#1739): removing a binding changes where that patient's future records go (namely nowhere — they are refused), the same class of decision as creating one, so it takes the same requireProfileWriteAccess gate on the profile the binding currently points at",
+    why: "cross-profile write (#1739): removing a binding changes where that patient's future records go (namely nowhere — they are refused), the same class of decision as creating one, so it takes the same requireProfileWriteAccess gate on the profile the binding currently points at. That profile is RESOLVED FROM THE ROW server-side, never read from the post (#1747): gating on a client-supplied profile id authorized nothing, because nothing tied it to the binding actually being deleted",
     gate: "requireProfileWriteAccess",
   },
   {

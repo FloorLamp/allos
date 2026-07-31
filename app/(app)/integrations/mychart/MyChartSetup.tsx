@@ -215,9 +215,11 @@ export default function MyChartSetup({
                   disabled={pending}
                   data-testid="mychart-identity-remove"
                   onClick={() => {
+                    // The row id only. The action resolves which profile this binding
+                    // points at server-side and gates on that (#1747) — a profile id
+                    // sent from here would authorize nothing.
                     const fd = new FormData();
                     fd.set("identity_id", String(i.id));
-                    fd.set("profile_id", String(i.profileId));
                     run(fd, unbindIdentityAction, "Mapping removed.");
                   }}
                 >

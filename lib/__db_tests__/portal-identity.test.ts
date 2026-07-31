@@ -225,11 +225,18 @@ describe("identity bindings", () => {
     expect(bindPortalIdentity(999999, "Jane Doe", mineProfile).ok).toBe(false);
   });
 
-  it("unbinds", () => {
+  it("unbinds, and only for the profile the binding actually points at (#1747)", () => {
     const b = bindPortalIdentity(portalId, "Jane Doe", mineProfile);
     expect(b.ok).toBe(true);
     if (!b.ok) return;
-    expect(unbindPortalIdentity(b.id)).toBe(true);
+
+    // The delete is scoped to (id, profile_id): naming the right row under the WRONG
+    // profile deletes nothing. That is what makes it a compare-and-swap rather than a
+    // delete-by-surrogate-id an unrelated authorization could ride.
+    expect(unbindPortalIdentity(b.id, strangersProfile)).toBe(false);
+    expect(resolvePortalIdentity("ochsner", "Jane Doe").ok).toBe(true);
+
+    expect(unbindPortalIdentity(b.id, mineProfile)).toBe(true);
     expect(resolvePortalIdentity("ochsner", "Jane Doe").ok).toBe(false);
   });
 
