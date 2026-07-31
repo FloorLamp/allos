@@ -454,6 +454,49 @@ export function getCurrentFlaggedBiomarkers(
     .all(...args) as CurrentFlaggedReading[];
 }
 
+// The VITALS twin of getCurrentFlaggedBiomarkers (#1713). Same DEDUP+LATEST machinery,
+// same flag denylist, same dual (import cursor + collection date) window — the ONE
+// difference is `category = 'vitals'` instead of `'lab'`.
+//
+// WHY A SEPARATE FUNCTION rather than a category parameter. #1076 scoped the flagged
+// LAB read to `category = 'lab'` on purpose: it is the care-tier hero + digest source,
+// and a fever or a high BP belongs to its own domain engine, not to the general
+// "flagged results" list. That decision stands. This read exists for the RECENT-CHANGES
+// collector only, which reports what changed rather than raising a care finding, and it
+// is what makes #1713's central observation fixable: "a blood-pressure spike, low SpO₂
+// logged yesterday is invisible" precisely because the digest's only flagged source is
+// lab-scoped.
+//
+// The sensitivity boundary is preserved by the category, not by a keyword list:
+// `'instrument'` (PHQ-9, AUDIT-C — #716/#998) is NOT read here, so a depression or
+// alcohol score can never leak into a recent-changes line.
+export function getCurrentFlaggedVitals(
+  profileId: number,
+  since?: string
+): CurrentFlaggedReading[] {
+  const args: (string | number)[] = [profileId, profileId, profileId];
+  let windowClause = "";
+  if (since != null) {
+    windowClause = "AND created_at > ? AND date >= date(?)";
+    args.push(since, since);
+  }
+  return db
+    .prepare(
+      `WITH ${DEDUP_IDS_CTE},
+            ${LATEST_IDS_CTE}
+       SELECT COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
+              NULLIF(TRIM(canonical_name), '') AS canonicalName,
+              value, flag, date
+         FROM medical_records
+        WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+          AND category = 'vitals'
+          AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')
+          ${windowClause}
+        ORDER BY date DESC, id ASC`
+    )
+    .all(...args) as CurrentFlaggedReading[];
+}
+
 // The CURRENT qualitative (value_num IS NULL) lab/biomarker readings — one per
 // biomarker family, newest-first — with the name/value/notes/reference/loinc the
 // shared classifier (#549) reads. Feeds the condition-suggestion builder (#685):

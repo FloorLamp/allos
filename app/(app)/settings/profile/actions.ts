@@ -39,6 +39,8 @@ import {
   setFreeDays,
   setMaxHrOverride,
   setZone2WeeklyTargetMin,
+  setStepsDailyTarget,
+  STEPS_TARGET_MAX,
   setRecommendationCadence,
   setMentalHealthShareFull,
   setProfileCrisisResourcesOverride,
@@ -270,6 +272,19 @@ export async function saveTrainingZones(formData: FormData) {
     const min = Number(targetRaw);
     if (Number.isFinite(min) && min >= 0 && min <= 5000) {
       setZone2WeeklyTargetMin(profile.id, Math.round(min));
+    }
+  }
+
+  // The DECLARED daily step target (#1723 part 2). Blank or 0 CLEARS it — a
+  // first-class state, not an error: obligation is declared only, so the absence of a
+  // number must be expressible. Out-of-band input is ignored rather than stored.
+  const stepsRaw = String(formData.get("steps_daily_target") ?? "").trim();
+  if (stepsRaw === "") {
+    setStepsDailyTarget(profile.id, null);
+  } else {
+    const steps = Number(stepsRaw);
+    if (Number.isFinite(steps) && steps >= 0 && steps <= STEPS_TARGET_MAX) {
+      setStepsDailyTarget(profile.id, steps === 0 ? null : steps);
     }
   }
 

@@ -112,7 +112,8 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     route: "/settings/training",
     tier: "profile",
     adminOnly: false,
-    summary: "Heart-rate zones and the weekly zone-2 target.",
+    summary:
+      "Heart-rate zones, the weekly zone-2 target, and your daily step target.",
     relevance: "training",
   },
   {

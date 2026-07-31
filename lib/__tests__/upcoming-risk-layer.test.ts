@@ -55,6 +55,12 @@ const ALLOWLIST: Record<string, string> = {
     "post-visit > staleness), which the supersession rule already resolves to one " +
     "row per portal login. Risk-ranking portal hygiene would imply a clinical " +
     "urgency this coaching-tier signal deliberately never claims",
+  stepsPaceItems:
+    "the daily-step afternoon observation (#1723) — a comparison against the user's " +
+    "OWN declared daily target, `should`-tier by construction (counted, never " +
+    "escalated). Risk-ranking it would let the system decide how much a movement gap " +
+    "matters, which is exactly the obligation the user declared and the engine must " +
+    "not recompute (#559)",
   refillItems: "supply run-out math — not a risk-ranked due signal",
   poolRefillItems:
     "shared supply pool run-out math (#1374) — the pooled twin of refillItems, " +

@@ -536,6 +536,57 @@ key); the `upcoming` NotificationKind is retained in the type union /
 `parseDisabledKinds` for back-compat but is no longer a toggleable matrix row —
 the single `digest` kind governs the merged message.
 
+**What CHANGED, not just what is due (#1713).** The **New** section is no longer
+just "flagged biomarkers + documents". It also renders the lines the shared
+**recent-changes collector** produces at a **24-hour** window:
+`collectRecentChanges(profileId, { sinceDays: 1 })`
+(`lib/queries/recent-changes.ts` over the pure `lib/recent-changes.ts`). That is
+the SAME collector the Household member card reads at 7 days (#1463) — one
+definition of "what changed", two windows, so the card and the message can never
+drift. The collector composes existing per-profile readers only (no new
+cross-profile SQL), ranks through `lib/rank-core.ts` under a **floor** that a
+flagged lab and an out-of-range vital both hold, caps the lines and says
+`+N more` rather than spilling. The digest passes `exclude: ["labs"]` because
+the two fields above already report newly-flagged **lab** results from the
+digest's own send cursor — the same `getCurrentFlaggedBiomarkers` computation at
+a different window.
+
+This is what finally lets four things reach the message: **out-of-range vitals**
+(a BP spike, a low SpO₂ — invisible before because the flagged read is
+`category = 'lab'` by #1076's deliberate decision; `getCurrentFlaggedVitals` is
+its vitals twin, read only by the collector, with `'instrument'` still excluded
+so a PHQ-9 can never leak), the **daily check-in** (value plus a shift against
+the subject's own recent average — never a judgment, never a streak, per the
+#992/#716 contract), **symptoms**, and **overnight data arrival**. Sync
+STALENESS is deliberately NOT re-derived in the collector: #1685 already owns it
+end to end and already renders it in this same message's Today section.
+**A quiet 24h produces no section at all** — the digest does not manufacture news.
+
+**Light and movement lines (#1723).** Two more Today/Yesterday lines, both
+riding this message — **no send is created by either**:
+
+- a **weather-aware light-exposure line** rendered from the already-synced
+  weather/UV cache, gated by the named predicate `favorableLightConditions`
+  (`lib/light-exposure.ts`: clear/partly-clear, effectively dry, a real daylight
+  window, and UV inside a usable band — a scorching day belongs to the #1172
+  overexposure engine, not to encouragement) plus a **relevance** gate
+  (`lightExposureRelevant`: the profile tracks a light/outdoor practice, or its
+  sun surface is live). It STATES A WINDOW ("UV moderate until 4pm — good window
+  for light exposure") and never issues an instruction with a deadline. It
+  composes the tracked practice's pace from the shared `frequencyPace` result
+  when that practice is behind.
+- the **daily step target** (`lib/steps-target.ts`), a value the user declares in
+  Settings → Training and which is stored in `profile_settings`
+  (`steps_daily_target`) — `frequency_targets` are weekly-SESSION shaped and
+  cannot carry a daily sum, so no schema was added. The digest states yesterday's
+  verdict against it (#1712's pattern) and restates the target this morning only
+  when the trailing 7-day average sits below it. Later in the day, when the count
+  is well behind by `STEPS_AFTERNOON_HOUR` in the profile's timezone,
+  `stepsPaceItems` adds ONE calm Upcoming row (`steps-pace:<date>`) — which is
+  how it reaches the surfaces that already fire, without a dedicated step nudge.
+  Stale step data goes **silent** rather than guessing: a late Health Connect
+  batch must never manufacture a "behind".
+
 **Delayed completion dispatch + no-finish fallback (#1154 §B).**
 `runPostWorkoutFinish` delegates to the shared per-activity core
 `runPostWorkoutForActivity`; the live Finish / retroactive save (`saveActivity`)
