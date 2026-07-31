@@ -183,15 +183,16 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // athenahealth and NextGen emit the same thing Epic MyChart does. MyChart is simply
     // the first companion tool that implements the contract — a fact about tools, not
     // about the integration, which is why it is named here and nowhere structural.
+    // TWO SENTENCES: what this is, and what stays on your computer (#1756). The longer
+    // version explained why allos cannot sign in for you and how proxy patients are
+    // mapped — both of which "How it works" and the mapping card below it say again, in
+    // more detail, a few centimetres further down the same page. A six-line wall at the
+    // top of a setup page is read by nobody; the mechanics belong where the mechanics are.
     blurb:
       "Bring in visit summaries, labs, medications and immunizations from hospital " +
-      "and clinic patient portals. Portal sign-in needs a person — two-factor codes, " +
-      "and sessions that time out in minutes — so allos cannot log in for you. Instead " +
-      "a small companion tool runs on your own computer, signs in the way you would, " +
-      "downloads the portal's own export, and pushes it here through an API token. One " +
-      "portal login often covers several family members through proxy access, so you " +
-      "tell allos which patient on which login belongs to which profile; anything " +
-      "unrecognized is refused rather than filed under a guess.",
+      "and clinic patient portals. A small companion tool signs in on your own " +
+      "computer and pushes what it downloads here — your portal password, and even " +
+      "the portal's web address, never leave that machine.",
     dataTypes: [
       "Visit summaries",
       "Labs",

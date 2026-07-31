@@ -7,14 +7,16 @@ import {
   isSyncReportStatus,
   parseDiscoveredLabels,
   parseSyncReportCounts,
-  parseUploadTarget,
+  parseSyncReportTarget,
   syncReportEvent,
 } from "@/lib/acquirer-identity";
 import {
   recordDiscoveredIdentities,
   recordPendingIdentity,
+  recordPortalRunReport,
   resolveAccount,
   resolvePortalIdentity,
+  type PortalAccount,
 } from "@/lib/portals";
 import {
   recordSync,
@@ -47,6 +49,23 @@ import { createLogger } from "@/lib/log";
 // while a human debugging with curl may name a `profile`. A resolved identity is
 // intersected with the token's write set here too — the binding says where a run belongs,
 // never that this token may write there.
+//
+// TWO RUNS HAVE NO PROFILE, and both used to vanish (#1756):
+//
+//   FIRST CONTACT. The first run's own patient is not bound yet, so its report is
+//   refused. The refusal is right — nothing may be filed under a guess — but recording
+//   NOTHING left the card claiming "No run reported yet." directly under its promise that
+//   every run is reported.
+//
+//   A PORTAL-LEVEL FAILURE. `{"status":"failed","portal":…}` with no patient: the login
+//   page changed, the Document Center moved. Pre-patient, portal-wide, and previously
+//   expressible only by fabricating a patient label.
+//
+// Both now leave an ACCOUNT-LEVEL run report (lib/portals.ts, migration 132) — one row
+// per portal login holding the last run it reported. That is a different store from
+// `integration_sync_events` on purpose: every reader of that table is profile-scoped by
+// construction, so a profile-less row there would be invisible while breaking the
+// invariant that a profile-owned row has a profile.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -101,7 +120,13 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const target = parseUploadTarget({
+  // The destination contract. Identical to an upload's, with ONE addition: a `failed`
+  // run may name a portal alone, because the likely failure mode is PRE-PATIENT (the
+  // login page changed, the Document Center moved) and inventing a patient label to
+  // report it would put a lie in the one table whose job is honest patient labels. Every
+  // other status still demands a full target — "I checked and found nothing" is a claim
+  // about a patient's records and is meaningless without one.
+  const target = parseSyncReportTarget(status, {
     profile: body.profile,
     portal: body.portal,
     account: body.account,
@@ -118,12 +143,80 @@ export async function POST(req: Request): Promise<Response> {
   // is stored.
   const discovered = parseDiscoveredLabels(body.identities);
 
+  const counts = parseSyncReportCounts({
+    inserted: body.inserted,
+    updated: body.updated,
+    unchanged: body.unchanged,
+    failed: body.failed,
+  });
+  const message =
+    typeof body.message === "string" && body.message.trim()
+      ? body.message.trim().slice(0, 500)
+      : null;
+  const ev = syncReportEvent(status, counts, message);
+
+  // How many of the reported labels are NEWLY waiting to be bound — what
+  // recordDiscoveredIdentities returns, never the length of the reported list. A tool
+  // reporting the same three patients every hour taught allos nothing after the first
+  // run, and the honest answer to "how many new patients need mapping" is then zero. One
+  // number, quoted identically by the response, the stored run report, and the card.
+  let newlyWaiting = 0;
+
+  // ── A `failed` run that never reached a patient ──
+  //
+  // It resolves a real portal LOGIN and stops there. There is no profile to gate on and
+  // none to invent, so this path records an ACCOUNT-LEVEL run report and nothing else:
+  // no sync event, no connection stamp. The Patient portals card renders it; Data →
+  // Review's failure badge is profile-scoped and cannot, which is stated where the card
+  // decides its line (lib/portal-status.ts).
+  if (target.target.kind === "portal") {
+    const account = resolveAccount(
+      target.target.portalSlug,
+      target.target.accountSlug
+    );
+    if (!account.ok) {
+      // The same typed, non-oracular refusal an unmapped patient gets: an unknown
+      // portal, an unknown login, and an omitted login on a multi-login portal are
+      // indistinguishable from out here.
+      return Response.json(
+        {
+          ok: false,
+          error: "unmapped-identity",
+          detail:
+            "That portal login is not set up in allos. Register the portal — and name the login if the portal has more than one — under Integrations → Patient portals.",
+        },
+        { status: 404 }
+      );
+    }
+    if (discovered.length > 0) {
+      newlyWaiting = recordDiscoveredIdentities(account.account, discovered);
+    }
+    recordPortalRunReport(account.account, {
+      ok: false,
+      status,
+      message,
+      discovered: newlyWaiting,
+    });
+    revalidatePath("/integrations/patient-portals");
+    return Response.json({
+      ok: true,
+      portal: target.target.portalSlug,
+      account: account.account.slug,
+      status,
+      ...(newlyWaiting > 0 ? { discovered: newlyWaiting } : {}),
+    });
+  }
+
   let profileId: number;
   let identity: {
     portalId: number;
     accountId: number;
     patientLabel: string;
   } | null = null;
+  // The LOGIN this run came from, once resolved — what the account-level run report is
+  // keyed to. Null for a `profile=<id>` report from a human debugging with curl, which
+  // names no portal at all.
+  let reportAccount: PortalAccount | null = null;
   if (target.target.kind === "profile") {
     profileId = target.target.profileId;
   } else {
@@ -134,9 +227,12 @@ export async function POST(req: Request): Promise<Response> {
       target.target.portalSlug,
       target.target.accountSlug
     );
-    if (account.ok && discovered.length > 0) {
-      recordDiscoveredIdentities(account.account, discovered);
-      revalidatePath("/integrations/patient-portals");
+    if (account.ok) {
+      reportAccount = account.account;
+      if (discovered.length > 0) {
+        newlyWaiting = recordDiscoveredIdentities(account.account, discovered);
+        revalidatePath("/integrations/patient-portals");
+      }
     }
     const resolved = resolvePortalIdentity(
       target.target.portalSlug,
@@ -150,6 +246,19 @@ export async function POST(req: Request): Promise<Response> {
         target.target.patientLabel,
         "unmapped-sync-report"
       );
+      // FIRST CONTACT (#1756). The run authenticated and resolved a real portal login;
+      // only the patient binding is missing. Refusing it silently left the card saying
+      // "No run reported yet." underneath its own promise that every run is reported, at
+      // the exact moment a household is deciding whether to trust this. The refusal
+      // still stands — nothing is filed under a guess — but the run leaves a trace.
+      if (reportAccount) {
+        recordPortalRunReport(reportAccount, {
+          ok: ev.ok,
+          status,
+          message,
+          discovered: newlyWaiting,
+        });
+      }
       revalidatePath("/integrations/patient-portals");
       // Unknown, IGNORED, and ambiguous-account all answer identically — the endpoint is
       // deliberately non-oracular about a household's choices.
@@ -159,7 +268,7 @@ export async function POST(req: Request): Promise<Response> {
           error: "unmapped-identity",
           detail:
             "That portal patient is not mapped to a profile yet. Map it under Integrations → Patient portals.",
-          ...(discovered.length > 0 ? { discovered: discovered.length } : {}),
+          ...(newlyWaiting > 0 ? { discovered: newlyWaiting } : {}),
         },
         { status: 404 }
       );
@@ -182,18 +291,6 @@ export async function POST(req: Request): Promise<Response> {
   ) {
     return jsonError("no write access to that profile", 403);
   }
-
-  const counts = parseSyncReportCounts({
-    inserted: body.inserted,
-    updated: body.updated,
-    unchanged: body.unchanged,
-    failed: body.failed,
-  });
-  const message =
-    typeof body.message === "string" && body.message.trim()
-      ? body.message.trim().slice(0, 500)
-      : null;
-  const ev = syncReportEvent(status, counts, message);
 
   try {
     // The append-only event history: this is what Data → Review reads and what the
@@ -233,6 +330,18 @@ export async function POST(req: Request): Promise<Response> {
         unchanged: ev.unchanged,
       });
     }
+    // The ACCOUNT-LEVEL trace (#1756), written for a resolved run too so the card's
+    // "this login last reported…" is a fact about the login rather than about whichever
+    // profile happens to be active. Deliberately AFTER the write gate: a token that may
+    // not write the resolved profile is refused above and stamps nothing.
+    if (reportAccount) {
+      recordPortalRunReport(reportAccount, {
+        ok: ev.ok,
+        status,
+        message,
+        discovered: newlyWaiting,
+      });
+    }
   } catch (err) {
     // Identifiers only — never the token, never a portal address (there isn't one).
     log.error("sync report failed to record", {
@@ -250,8 +359,10 @@ export async function POST(req: Request): Promise<Response> {
     ok: true,
     profile: profileId,
     status,
-    // How many of the reported labels are newly waiting to be bound. Echoed so a tool can
-    // tell its user "3 new patients need mapping in allos" without reading the card.
-    ...(discovered.length > 0 ? { discovered: discovered.length } : {}),
+    // How many of the reported labels are NEWLY waiting to be bound. Echoed so a tool can
+    // tell its user "3 new patients need mapping in allos" without reading the card —
+    // which is only true if the number counts what is NEW. A steady-state run reporting
+    // the same three patients forever taught allos nothing, so the field is absent.
+    ...(newlyWaiting > 0 ? { discovered: newlyWaiting } : {}),
   });
 }

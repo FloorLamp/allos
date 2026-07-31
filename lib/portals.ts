@@ -7,6 +7,7 @@ import {
   normalizePatientLabel,
   rejectsAddress,
   PORTAL_NAME_MAX,
+  type SyncReportStatus,
 } from "./acquirer-identity";
 
 // The portal registry, the ACCOUNT registry, and the
@@ -230,6 +231,9 @@ export function deletePortal(portalId: number): boolean {
     db.prepare("DELETE FROM pending_portal_identities WHERE portal_id = ?").run(
       portalId
     );
+    db.prepare("DELETE FROM portal_run_reports WHERE portal_id = ?").run(
+      portalId
+    );
     db.prepare("DELETE FROM portal_accounts WHERE portal_id = ?").run(portalId);
     db.prepare(
       "UPDATE medical_documents SET acquired_portal_id = NULL WHERE acquired_portal_id = ?"
@@ -342,6 +346,9 @@ export function deletePortalAccount(accountId: number): boolean {
     db.prepare(
       "DELETE FROM pending_portal_identities WHERE account_id = ?"
     ).run(accountId);
+    db.prepare("DELETE FROM portal_run_reports WHERE account_id = ?").run(
+      accountId
+    );
     db.prepare(
       "UPDATE integration_sync_events SET account_id = NULL WHERE account_id = ?"
     ).run(accountId);
@@ -828,6 +835,125 @@ export function dismissPendingIdentity(id: number): boolean {
   return (
     db.prepare("DELETE FROM pending_portal_identities WHERE id = ?").run(id)
       .changes > 0
+  );
+}
+
+// ── Account-level run reports (#1756) ────────────────────────────────────────
+//
+// WHERE A RUN THAT HAS NO PROFILE LEAVES ITS TRACE.
+//
+// A run that names a BOUND patient belongs to a profile, and its trace is an ordinary
+// `integration_sync_events` row — the profile's Review, its failure badge and its "Last
+// checked" all read that, and nothing here duplicates it.
+//
+// Two real runs have no profile at all:
+//
+//   FIRST CONTACT — the first run enumerates the proxy list and reports it, but its own
+//   patient is not bound yet, so the report is refused. Before this table nothing at all
+//   recorded that the run happened, and the card said "No run reported yet." directly
+//   under its own promise that every run is reported.
+//
+//   A PORTAL-LEVEL FAILURE — "the login page changed". A fact about the LOGIN, before any
+//   patient is reached, which previously had to be smuggled in behind a fabricated
+//   patient label.
+//
+// ONE ROW PER LOGIN, by primary key: this is "the last run this login reported", so an
+// authenticated tool reporting every five minutes forever rewrites one row per login it
+// can already name. Bounded by construction — no retention sweep to own, and no way to
+// grow the table by reporting. See migration 132 for the full argument.
+//
+// It carries NO profile_id and cannot: not being placeable on a profile is what puts a
+// run here. Not profile-owned, not in OWNED_TABLES.
+
+export interface PortalRunReport {
+  portalId: number;
+  portalSlug: string;
+  portalName: string;
+  accountId: number;
+  accountSlug: string;
+  accountName: string;
+  accountImplicit: boolean;
+  at: string;
+  ok: boolean;
+  status: SyncReportStatus;
+  // The tool's own failure line, or null. Free text from an authenticated but untrusted
+  // tool — rendered as text, never as markup.
+  message: string | null;
+  // NEWLY-WAITING identities this run contributed (what recordDiscoveredIdentities
+  // returns), never the length of the reported list. The card and the response the tool
+  // gets therefore quote the same number.
+  discovered: number;
+}
+
+// Record the run one LOGIN just reported, replacing that login's previous report.
+//
+// The caller MUST have authenticated first, exactly like recordPendingForAccount: this is
+// the other table an authenticated tool can write without naming a profile, and the same
+// property — no anonymous path — is what keeps it honest.
+export function recordPortalRunReport(
+  account: PortalAccount,
+  input: {
+    ok: boolean;
+    status: SyncReportStatus;
+    message: string | null;
+    discovered: number;
+  }
+): void {
+  // The clock SEAM (sqlNow, #1534), not datetime('now'): the card reduces this to a
+  // calendar day, so it must read the same clock every other day-shaped value reads.
+  const now = sqlNow();
+  db.prepare(
+    `INSERT INTO portal_run_reports
+       (account_id, portal_id, at, ok, status, message, discovered)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(account_id)
+     DO UPDATE SET portal_id = excluded.portal_id,
+                   at = excluded.at,
+                   ok = excluded.ok,
+                   status = excluded.status,
+                   message = excluded.message,
+                   discovered = excluded.discovered`
+  ).run(
+    account.id,
+    account.portalId,
+    now,
+    input.ok ? 1 : 0,
+    input.status,
+    input.message ? input.message.slice(0, 500) : null,
+    Math.max(0, Math.round(input.discovered))
+  );
+}
+
+const LIST_RUN_REPORTS_STMT = db.prepare(
+  `SELECT r.portal_id AS portalId, p.slug AS portalSlug, p.name AS portalName,
+          r.account_id AS accountId, a.slug AS accountSlug, a.name AS accountName,
+          a.implicit AS accountImplicit, r.at AS at, r.ok AS ok,
+          r.status AS status, r.message AS message, r.discovered AS discovered
+     FROM portal_run_reports r
+     JOIN portals p ON p.id = r.portal_id
+     JOIN portal_accounts a ON a.id = r.account_id
+    ORDER BY r.at DESC, r.account_id DESC`
+);
+
+// Every login's last reported run, newest first. Cross-profile by nature — a run report
+// is about a portal login, not about a person — and it carries no health data, only the
+// registry names the card already shows.
+export function listPortalRunReports(): PortalRunReport[] {
+  return (LIST_RUN_REPORTS_STMT.all() as Record<string, unknown>[]).map(
+    (row) => ({
+      portalId: row.portalId as number,
+      portalSlug: row.portalSlug as string,
+      portalName: row.portalName as string,
+      accountId: row.accountId as number,
+      accountSlug: row.accountSlug as string,
+      accountName: row.accountName as string,
+      accountImplicit: (row.accountImplicit as number) === 1,
+      at: row.at as string,
+      ok: (row.ok as number) === 1,
+      status: row.status as SyncReportStatus,
+      message: (row.message as string | null) ?? null,
+      discovered: row.discovered as number,
+    })
   );
 }
 

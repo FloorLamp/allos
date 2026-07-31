@@ -8,6 +8,7 @@ import {
   type ApiTokenScope,
 } from "@/lib/api-token-format";
 import type { ApiTokenSummary } from "@/lib/api-tokens";
+import { CopyButton } from "@/components/TokenRow";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatTimestamp } from "@/lib/format-date";
 import { createApiTokenAction, revokeApiTokenAction } from "./token-actions";
@@ -156,9 +157,16 @@ export default function ApiTokensSettings({
               Copy “{minted.name}” now — this is the only time it is shown.
               Allos stores only a hash of it, so it cannot be shown again.
             </p>
-            <code className="block break-all rounded bg-black/5 p-2 font-mono text-sm dark:bg-white/5">
-              {minted.token}
-            </code>
+            {/* COPY, not select-and-drag (#1756). This is the one string in the app
+                that must be transcribed exactly and is shown exactly once — a missed
+                character means minting again. The shared CopyButton is the same
+                affordance every other token and feed URL already offers. */}
+            <div className="flex min-w-0 items-start gap-2">
+              <code className="block min-w-0 flex-1 break-all rounded bg-black/5 p-2 font-mono text-sm dark:bg-white/5">
+                {minted.token}
+              </code>
+              <CopyButton value={minted.token} testid="api-token-copy" />
+            </div>
             <button
               type="button"
               onClick={() => setMinted(null)}

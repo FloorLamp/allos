@@ -278,6 +278,74 @@ export function isSyncReportStatus(value: string): value is SyncReportStatus {
   return (SYNC_REPORT_STATUSES as readonly string[]).includes(value);
 }
 
+// ── The sync-report target contract ──────────────────────────────────────────
+
+// A run report names one MORE destination than an upload does.
+//
+// An upload always has a patient: it is carrying that person's document, so "which
+// patient" is not optional information. A run report does not always have one. The
+// likely failure mode of an attended acquirer is PRE-PATIENT — the portal's login page
+// changed, the Document Center moved — and that is a fact about the LOGIN, true of every
+// patient on it and of none in particular. Before this, saying "the portal is down"
+// required inventing a patient label, which is a lie stored in the one table whose whole
+// job is to keep patient labels honest.
+//
+// So a `failed` report may name a portal alone. NOTHING ELSE MAY: `downloaded` and
+// `nothing-new` are claims ABOUT A PATIENT'S RECORDS ("I checked Jane and found nothing")
+// and are meaningless without one, so they keep requiring a full target and keep the
+// exact same refusal text they always had.
+//
+// `account` stays optional in exactly the sense it is optional everywhere else: the DB
+// layer's omitted-account rule resolves it when the portal has one login and REFUSES when
+// it has more. A portal-level failure does not get a softer version of that rule — a
+// household with two logins must still say which one broke, because "one of your two
+// logins is failing" is not an actionable sentence.
+export type SyncReportTarget =
+  | UploadTarget
+  // A `failed` run that never reached a patient. Resolved to a login by the DB layer's
+  // resolveAccount, exactly like the identity form's account component.
+  | { kind: "portal"; portalSlug: string; accountSlug: string | null };
+
+export type SyncReportTargetResult =
+  { ok: true; target: SyncReportTarget } | { ok: false; error: string };
+
+export function parseSyncReportTarget(
+  status: SyncReportStatus,
+  input: {
+    profile?: unknown;
+    portal?: unknown;
+    account?: unknown;
+    patient?: unknown;
+  }
+): SyncReportTargetResult {
+  const portal = text(input.portal).trim();
+  const account = text(input.account).trim();
+  const portalOnly =
+    status === "failed" &&
+    text(input.profile).trim() === "" &&
+    portal !== "" &&
+    normalizePatientLabel(text(input.patient)) === "";
+
+  if (!portalOnly) return parseUploadTarget(input);
+
+  // Same validation the identity form applies to the same two fields — a portal-only
+  // failure is a narrower target, not a laxer one.
+  if (!isPortalSlug(portal)) {
+    return { ok: false, error: "`portal` must be a known portal id" };
+  }
+  if (account !== "" && !isAccountSlug(account)) {
+    return { ok: false, error: "`account` must be a known account id" };
+  }
+  return {
+    ok: true,
+    target: {
+      kind: "portal",
+      portalSlug: portal,
+      accountSlug: account === "" ? null : account,
+    },
+  };
+}
+
 export interface SyncReportCounts {
   inserted: number;
   updated: number;
