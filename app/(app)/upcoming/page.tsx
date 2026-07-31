@@ -13,6 +13,7 @@ import {
   IconBarbell,
   IconSparkles,
   IconClipboardList,
+  IconPlugConnected,
   IconPlugConnectedX,
   IconInbox,
   IconArrowBackUp,
@@ -125,6 +126,9 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "mental-health": IconStethoscope,
   "biomarker-flag": IconFlask,
   integration: IconPlugConnectedX,
+  // An open portal sync request (#1757) — the same plug family as a broken sync, but
+  // connected: nothing is wrong, a person just needs to run the tool.
+  "portal-sync": IconPlugConnected,
   review: IconInbox,
 };
 

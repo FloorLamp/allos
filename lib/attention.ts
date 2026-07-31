@@ -34,6 +34,7 @@
 
 import {
   type UpcomingItem,
+  type UpcomingDomain,
   type SignalGroup,
   type UrgencyBand,
   BAND_LABELS,
@@ -400,6 +401,21 @@ const CARD_BAND_RANK: Record<CardBand, number> = {
   review: 2,
 };
 
+// Domains the dashboard hero deliberately never carries, whatever their date says.
+//
+// The "Needs attention" hero is care-tier: pinned, and the one surface a user cannot
+// choose not to look at. `portal-sync` (#1757) is COACHING tier by hard product contract
+// — portal hygiene is never a safety signal — so it lives on the Upcoming page and in
+// the morning digest line that page's grouping produces, and nowhere else. Without this
+// it would drift onto the hero on the single day its expiry lands on "today", which is
+// exactly the un-ignorable treatment a calm ask must never get.
+//
+// A SET, not a special case: the next calm domain that must stay off the hero adds a
+// name here rather than another branch.
+const CARD_EXCLUDED_DOMAINS: ReadonlySet<UpcomingDomain> = new Set([
+  "portal-sync",
+]);
+
 // Which card band an item belongs to, or null if the card EXCLUDES it. Signals →
 // "Needs review". A date-scheduled item is act-now only when it's overdue (→ Urgent)
 // or due today (→ Today); a this-week / later scheduled item is planning-view-only
@@ -409,6 +425,7 @@ export function cardBandForItem(
   item: UpcomingItem,
   today: string
 ): CardBand | null {
+  if (CARD_EXCLUDED_DOMAINS.has(item.domain)) return null;
   if (item.signalGroup) return "review";
   const band = bandForItem(item, today);
   if (band === "overdue") return "urgent";

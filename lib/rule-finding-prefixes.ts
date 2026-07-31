@@ -48,6 +48,7 @@ import { MED_DUP_PREFIX } from "./medication-family";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
 import { CYCLE_BLEEDING_PREFIX } from "./cycle-observation";
 import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
+import { SYNC_REQUEST_PREFIX } from "./sync-requests";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -257,6 +258,27 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: CYCLE_BLEEDING_PREFIX,
     tier: "coaching",
     builder: "buildCycleBleedingFindings",
+    reasons: [],
+  },
+  {
+    // Portal SYNC REQUESTS (#1757): "run the portal tool on the computer with Mom's
+    // login". COACHING tier, and the constraint is the point — portal hygiene is never a
+    // safety signal, so this gets NO dedicated send, EVER. Its whole reach is an
+    // Upcoming item plus the digest line that item already produces (the ride-the-nag
+    // corollary #1685 established for a broken sync: reaching only surfaces you must
+    // open to see inverts the purpose of a feature whose job is to run without you).
+    //
+    // It is also deliberately kept off the non-hideable "Needs attention" hero, by
+    // cardBandForItem's coaching exclusion — the one property that would make a calm
+    // ask un-ignorable.
+    //
+    // NOT a rule-findings builder: the item is emitted by the Upcoming generator
+    // `syncRequestItems`, so the collectCoachingFindings reflection guards never see it.
+    // It is registered here because the KEY must be guardable and its tier declared —
+    // the same reason the suppression-only poor-sleep override is.
+    prefix: SYNC_REQUEST_PREFIX,
+    tier: "coaching",
+    builder: "syncRequestItems (Upcoming generator, lib/queries/upcoming)",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

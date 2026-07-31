@@ -117,6 +117,12 @@ export type UpcomingDomain =
   | "uv-exposure"
   | "biomarker-flag"
   | "integration"
+  // An open PORTAL SYNC REQUEST (#1757): "run the portal tool on the computer with
+  // Mom's login". A date-scheduled item — its due date is the request's EXPIRY, which
+  // is the only deadline it has — and COACHING tier: calm, dismissible, on this page
+  // and in the digest line this page's grouping already produces, and deliberately
+  // never on the non-hideable "Needs attention" hero (see cardBandForItem).
+  | "portal-sync"
   | "review";
 
 // Stable within-band ordering when two items share an effective due date.
@@ -185,6 +191,11 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // flag leads, then a broken sync, then the housekeeping review count.
   "biomarker-flag": 14,
   integration: 15,
+  // A portal sync request (#1757) sorts with the other data-plumbing signals, after a
+  // broken sync (a dead connection is a fact; a request is an ask) and before the
+  // housekeeping review count. It DOES carry a due date, so this rank only breaks ties
+  // inside its band.
+  "portal-sync": 15.5,
   review: 16,
 };
 
