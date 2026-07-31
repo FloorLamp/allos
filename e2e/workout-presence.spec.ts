@@ -138,7 +138,12 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   await expect(page.getByText("Activity deleted.")).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+  // The dock unmount rides the SAME delete + refresh the toast above was budgeted
+  // for — a 5s default here was the budget asymmetry #1556 called out as a latent
+  // member, and it fired (2026-07-31, run 30663146216). One operation, one budget.
+  await expect(page.getByTestId("workout-dock")).toHaveCount(0, {
+    timeout: 30_000,
+  });
   // And on a FRESH server render, which is the only thing that proves the row is
   // really gone rather than merely un-rendered.
   await page.goto("/");

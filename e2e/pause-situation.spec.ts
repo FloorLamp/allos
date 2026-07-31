@@ -36,7 +36,16 @@ test("a pause link holds the item while its situation is active, then resumes", 
 
   // ── Activate the situation → the item is HELD ───────────────────────────────
   await settledClick(page, chip);
-  await expect(chip).toHaveAttribute("aria-pressed", "true");
+  // Server-truth budget (#1556): the chip's aria-pressed flips only after the
+  // situation toggle's Server Action + RSC refresh round-trip, and this is the
+  // dashboard — a bystander-POST surface where settledClick can resolve early
+  // (see the caveat in e2e/helpers.ts). Twice observed losing the 5s default
+  // under CI shard load at retries=0 (2026-07-31, runs 30663070912 and
+  // 30664837925); the button sits disabled while the transition is pending, so
+  // the wide window waits on the real commit and masks nothing.
+  await expect(chip).toHaveAttribute("aria-pressed", "true", {
+    timeout: 30_000,
+  });
 
   await page.goto("/nutrition?tab=supplements");
   const heldSection = page.getByTestId("held-section");
