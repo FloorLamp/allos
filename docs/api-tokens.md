@@ -37,6 +37,12 @@ separate scopes you opt into per token, and an old token will never silently gai
 1. Go to **Settings → Account & security → API tokens**.
 2. Give it a name that says where it will live — `laptop CLI`, `home server cron`. The
    name is only for you; it is how you decide which one to revoke later.
+
+   **Mint one token per device**, rather than sharing a single token across machines.
+   Revocation is per token, so a per-device token is what lets you retire one laptop —
+   or one machine you no longer trust — without interrupting every other client you have
+   set up.
+
 3. Choose the capability and press **Create token**.
 
 The token is then shown **once**:
