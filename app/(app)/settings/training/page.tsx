@@ -1,6 +1,7 @@
 import {
   getUserAge,
   getMaxHrOverride,
+  getStepsDailyTarget,
   getZone2WeeklyTargetMin,
 } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
@@ -37,6 +38,7 @@ export default async function TrainingSettingsPage() {
             maxHrOverride={getMaxHrOverride(profile.id)}
             zone2Target={getZone2WeeklyTargetMin(profile.id)}
             estimatedMaxHr={age != null ? estimateMaxHr(age) : null}
+            stepsTarget={getStepsDailyTarget(profile.id)}
           />
         )}
       </PageContainer>

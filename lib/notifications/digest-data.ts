@@ -22,6 +22,9 @@ import {
   getDerivedSituationLines,
 } from "../queries";
 import { getOutdoorPlans } from "../queries/weather-training";
+import { collectRecentChanges } from "../queries/recent-changes";
+import { getLightExposureLine } from "../queries/light-exposure";
+import { getStepsDigestLines } from "../queries/steps-target";
 import { groupUpcoming } from "../upcoming";
 import { integrationToItem } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
@@ -376,6 +379,9 @@ export function gatherDigestInput(
   // holding situation and counts the holds.
   const held = heldItemsBy(active, effectiveSituations);
 
+  // Steps against the declared daily target (#1723 part 2) — one gather, two lines.
+  const stepsLines = getStepsDigestLines(profileId, td);
+
   return {
     profileName,
     openEpisodeLine,
@@ -398,6 +404,12 @@ export function gatherDigestInput(
     // dedicated send exists or is created. Empty on a week with no scarcity to plan
     // around, and honestly hedged past the reliable forecast horizon.
     weatherPlanLines: getOutdoorPlans(profileId, td).map((plan) => plan.line),
+    // The weather-aware light window (#1723 part 1) — rendered from the already-synced
+    // weather/UV cache, gated by the named favorable-conditions predicate. Null on a
+    // rainy day, a day with no cached forecast, and for a profile that neither tracks a
+    // light practice nor has a live sun surface. Rides this message; no send is created.
+    lightExposureLine: getLightExposureLine(profileId, td),
+    stepsTodayLine: stepsLines.today,
     activities,
     adherence,
     // Delta headline (#1505 part 3): WHICH pushed obligations changed state, from the
@@ -420,8 +432,25 @@ export function gatherDigestInput(
       };
     })(),
     weightKg: weightRow?.weight_kg ?? null,
+    // Steps (#1723 part 2): yesterday's verdict against the declared daily target, and
+    // the Today target line when the trailing average makes it informative. Both null
+    // for a profile that has declared no target — the resting state.
+    stepsLine: stepsLines.yesterday,
     newFlaggedBiomarkers,
     newDocumentLabels,
+    // What else changed in the last 24 hours (#1713), from the ONE shared collector the
+    // Household member card reads at 7 days. `labs` is EXCLUDED because the two fields
+    // above already report newly-flagged lab results from the digest's own send cursor
+    // — the same getCurrentFlaggedBiomarkers computation at a different window — and
+    // collecting them here too would double-report one finding rather than add one.
+    // Everything the digest was structurally blind to (out-of-range vitals, mood,
+    // symptoms, overnight arrival) comes through here.
+    recentChangeLines: collectRecentChanges(profileId, {
+      sinceDays: 1,
+      today: td,
+      exclude: ["labs"],
+      overflowLabel: "since yesterday",
+    }).lines,
     // Last night's sleep (issue #1117) — null unless the opt-in is on and the data
     // is fresh; buildDigest renders a Sleep section only when present.
     sleep: gatherDigestSleep(profileId),
