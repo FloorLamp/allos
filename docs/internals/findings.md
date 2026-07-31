@@ -983,6 +983,40 @@ The tone constraint is part of the pattern: an announcement of reduced contact
 must carry no guilt and no streak language, or it becomes the pressure it exists
 to remove.
 
+## 8. A preference filter never overrides a safety floor
+
+Added by #1714. §2 permits the system to REDUCE contact unilaterally and §7 gives
+reduction its consent shape. This rule bounds what the USER's own reduction can
+reach.
+
+A per-category preference — the morning digest's ⚙️ Tune demotion is the first —
+is a statement about ROUTINE lines: "stop telling me about this by default". It is
+never a statement about the safety-adjacent class, and the code must make that
+structural rather than a matter of ordering. Two properties carry it:
+
+1. **The floor predicate implies the notable predicate.** In
+   `applyRecentChangeDemotion`, `flagged` implies notable, so a flagged lab or an
+   out-of-range vital survives every preference no matter which category it belongs
+   to. There is no filter ordering that can hide one, because there is no filter
+   that accepts one.
+2. **A category whose every line is floor class is not tunable at all.** `labs`
+   carries no routine line, so offering its toggle would be a control that provably
+   changes nothing — a lie about what the user is deciding. The tunable set is
+   derived from the collector's own list minus that case, so a new category cannot
+   silently become untunable either.
+
+The corollary on the message side: the guaranteed-access core (#1505's
+minimal-digest rule, the offer tail, the Today obligations) is the MESSAGE's job,
+not a category, and therefore not demotable. Demoting everything makes the message
+short; it can never make it vanish.
+
+The predicate a demotion checks is always the classification the surface ALREADY
+computes (`sleepVerdict` for a night, the mood shift against the subject's own
+average, a severe symptom-day). A preference filter that minted its OWN threshold
+would be a second definition of "notable" — the #221 drift these rules exist to
+prevent, and a place where a user's display choice could quietly change what counts
+as clinically interesting.
+
 ## Where each rule is enforced
 
 | Rule                                                    | Enforced by                                                                                                                                                                                             |
@@ -991,6 +1025,7 @@ to remove.
 | Safety engines are obligation-blind                     | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                                                                                                                  |
 | Conservative direction per aggregate (5a)               | `lib/__tests__/dri.test.ts` + `lib/__tests__/supplement-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions |
 | Suggest-never-write                                     | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                |
+| Preference filters never override safety floors (8)     | `flagged` ⇒ notable in `applyRecentChangeDemotion`; `labs` absent from `DIGEST_TUNABLE_CATEGORIES`; `lib/__tests__/digest-tune.test.ts` + `lib/__db_tests__/digest-tune.test.ts`                        |
 | Recovery clears a suggestion                            | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                    |
 | Window nesting                                          | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                 |
 | Reach tier per finding namespace                        | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                         |

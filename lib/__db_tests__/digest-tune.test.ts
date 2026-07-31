@@ -110,7 +110,9 @@ function lastKeyboard(): { text?: string; callback_data?: string }[][] {
 }
 
 function lastKeyboardLabels(): string[] {
-  return lastKeyboard().flat().map((b) => b.text ?? "");
+  return lastKeyboard()
+    .flat()
+    .map((b) => b.text ?? "");
 }
 
 describe("digest demotion storage — login-scoped (#1714)", () => {
@@ -249,9 +251,7 @@ describe("the demoted digest (#1714)", () => {
     expect(digestTunableCategories(noisy, today(noisy))).toEqual(["mood"]);
 
     const model = buildDigest(gatherDigestInput(noisy, "Noisy Nell"));
-    expect(model?.tuneTail?.data).toBe(
-      tuneExpandToken(noisy, today(noisy))
-    );
+    expect(model?.tuneTail?.data).toBe(tuneExpandToken(noisy, today(noisy)));
   });
 });
 
@@ -305,11 +305,7 @@ describe("the ⚙️ Tune keyboard on Telegram (#1714)", () => {
 
     editKeyboardMock.mockClear();
     await handleCallbackQuery(tuneCq(chat, tuneExpandToken(pid, td)));
-    expect(lastKeyboardLabels()).toEqual([
-      "🔔 Check-in",
-      "🔕 Sleep",
-      "▲ Done",
-    ]);
+    expect(lastKeyboardLabels()).toEqual(["🔔 Check-in", "🔕 Sleep", "▲ Done"]);
   });
 
   it("a tap on YESTERDAY's digest is refused, and writes nothing", async () => {

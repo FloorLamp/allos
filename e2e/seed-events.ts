@@ -90,7 +90,7 @@ import { seedNutritionTrio, seedFoodSlots } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
 import { seedIllness, seedSymptomVideoEpisode } from "./seed/illness";
 import { seedCycleAndDerived, seedWindowAnalytics } from "./seed/situations";
-import { seedHaConfig } from "./seed/notifications";
+import { seedDigestTune, seedHaConfig } from "./seed/notifications";
 import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
 import {
   seedBodyMobile,
@@ -144,6 +144,7 @@ seedDrugAllergyCrosscheck();
 seedPrnCounter();
 seedSafetyCoverage();
 seedHaConfig();
+seedDigestTune();
 seedDataQualityGaps();
 seedVisitLinking();
 seedToasterIsolation();

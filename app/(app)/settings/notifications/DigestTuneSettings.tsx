@@ -51,10 +51,10 @@ export default function DigestTuneSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Turn a category down to <strong>notable only</strong>: routine lines stop,
-        and anything the category itself calls notable still comes through. This
-        never hides a flagged result or an out-of-range vital — those are always
-        shown. The same toggles ride the digest itself as{" "}
+        Turn a category down to <strong>notable only</strong>: routine lines
+        stop, and anything the category itself calls notable still comes
+        through. This never hides a flagged result or an out-of-range vital —
+        those are always shown. The same toggles ride the digest itself as{" "}
         <span className="whitespace-nowrap">⚙️ Tune</span>.
       </p>
       <ul className="space-y-2" data-testid="digest-tune-list">

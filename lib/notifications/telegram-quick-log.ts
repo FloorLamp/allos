@@ -749,7 +749,6 @@ export async function handleDemoteTap(
   );
 }
 
-
 // The ⚙️ Tune tap (#1714): per-category digest demotion, driven from the message that
 // annoyed you rather than a settings page you visit later (#1505's Take/Skip/Demote
 // precedent).
