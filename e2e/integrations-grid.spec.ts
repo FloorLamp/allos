@@ -48,3 +48,16 @@ test("every available registry provider renders as a connectable card in the Imp
     );
   }
 });
+
+// `/integrations` is the visible PARENT of every provider's setup route, so it gets
+// typed and truncated — and it used to 404 with the grid one click away (#1756). It is
+// not a page; it forwards to where the grid actually lives.
+test("the bare /integrations path lands on the Import grid instead of a 404", async ({
+  page,
+}) => {
+  await page.goto("/integrations");
+  await expect(page).toHaveURL(/\/data\?section=import/);
+  await expect(
+    page.getByRole("main").getByRole("link", { name: /Patient portals/ })
+  ).toBeVisible();
+});

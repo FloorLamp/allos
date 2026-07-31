@@ -106,11 +106,17 @@ export default function PortalSetup({
   // Which profile each pending row is about to be mapped onto. Per row, because two
   // reported patients on one login are usually two different people — a single shared
   // select would quietly carry the previous choice onto the next person.
+  //
+  // UNSET UNTIL CHOSEN (#1756). It used to default to the first writable profile, which
+  // put "file this patient under whoever sorts first" one click away — the exact misfiling
+  // this whole surface exists to prevent, and the one mistake nothing downstream can
+  // catch. So the picker opens on a placeholder and Map stays disabled until a human has
+  // actually said who this is.
   const [pendingProfile, setPendingProfile] = useState<Record<number, number>>(
     {}
   );
-  const chosenFor = (pendingId: number) =>
-    pendingProfile[pendingId] ?? writableProfiles[0]?.id ?? 0;
+  const chosenFor = (pendingId: number): number | "" =>
+    pendingProfile[pendingId] ?? "";
 
   function run(
     fd: FormData,
@@ -206,9 +212,24 @@ export default function PortalSetup({
                       >
                         <span className="text-slate-600 dark:text-slate-300">
                           {a.name} <code className="ml-1">{a.slug}</code>
+                          {/* THE IMPLICIT LOGIN'S PARENTHETICAL IS CONDITIONAL (#1756).
+                              "Used when the tool names no login" is true only while this
+                              is the portal's ONLY login. The moment a second one exists,
+                              resolveAccount REFUSES an account-less request rather than
+                              falling back to this row — correct, per the omitted-account
+                              rule — so the old copy asserted a fallback that no longer
+                              happens, precisely when a household most needs to understand
+                              why its tool started erroring. The row itself stays: once
+                              there are two logins this one is a real, nameable login that
+                              can carry bindings, and hiding it would hide them. */}
                           {a.implicit ? (
-                            <span className="ml-1 text-slate-400">
-                              (used when the tool names no login)
+                            <span
+                              className="ml-1 text-slate-400"
+                              data-testid="portal-account-implicit-note"
+                            >
+                              {accountsOf(a.portalId).length > 1
+                                ? "(the tool must name a login)"
+                                : "(used when the tool names no login)"}
                             </span>
                           ) : null}
                         </span>
@@ -332,11 +353,15 @@ export default function PortalSetup({
             <h2 className="font-semibold text-slate-800 dark:text-slate-100">
               Waiting to be mapped
             </h2>
+            {/* All three buttons are named here, because "Ignore" and "Not now" look
+                alike and mean opposite things — one is a durable "never sync this
+                person", the other only clears the prompt. */}
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               The tool reported these patients and allos has not been told who
               they are, so nothing has been filed for them. Map one to a profile
-              and the next run lands normally — or ignore a patient whose
-              records belong somewhere else.
+              and the next run lands normally; ignore a patient whose records
+              belong somewhere else; or choose Not now to clear the prompt until
+              the tool reports them again.
             </p>
           </div>
 
@@ -373,6 +398,10 @@ export default function PortalSetup({
                         className="input"
                         data-testid="pending-profile"
                       >
+                        {/* No preselection: a misfiled patient is the harm this card
+                            exists to prevent, so the choice must be made, not merely
+                            left alone. */}
+                        <option value="">Choose profile…</option>
                         {writableProfiles.map((pr) => (
                           <option key={pr.id} value={pr.id}>
                             {pr.name}
@@ -382,15 +411,17 @@ export default function PortalSetup({
                       <button
                         type="button"
                         className="btn shrink-0 text-sm"
-                        disabled={busy}
+                        disabled={busy || chosenFor(p.id) === ""}
                         data-testid="pending-map"
                         onClick={() => {
+                          const chosen = chosenFor(p.id);
+                          if (chosen === "") return;
                           // The label is NOT sent — the action reads it off the
                           // pending row, so what gets bound is exactly what was
                           // reported, character for character.
                           const fd = new FormData();
                           fd.set("pending_id", String(p.id));
-                          fd.set("profile_id", String(chosenFor(p.id)));
+                          fd.set("profile_id", String(chosen));
                           run(fd, bindPendingIdentityAction, "Patient mapped.");
                         }}
                       >
@@ -439,8 +470,10 @@ export default function PortalSetup({
 
       <div className="card space-y-3" data-testid="portal-identities">
         <div>
+          {/* "Mapped patients", not "Who is who" (#1756): it and "Waiting to be mapped"
+              are the same noun in its two states, so they should read as a pair. */}
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-            Who is who
+            Mapped patients
           </h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             One portal login often covers several people. Map each patient

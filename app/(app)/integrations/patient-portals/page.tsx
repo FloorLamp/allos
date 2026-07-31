@@ -15,8 +15,10 @@ import {
   listPendingIdentities,
   listPortalAccounts,
   listPortalIdentities,
+  listPortalRunReports,
   listPortals,
 } from "@/lib/portals";
+import { portalStatusLine } from "@/lib/portal-status";
 import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import PortalSetup from "./PortalSetup";
 
@@ -83,6 +85,20 @@ export default async function PatientPortalsPage() {
 
   // Per-(login, patient) "Last synced" for the ACTIVE profile's runs.
   const statuses = identitySyncStatuses(profile.id, "patient-portals");
+
+  // The Status sentence (#1756). ONE pure function decides it, because the card used to
+  // answer "has anything happened?" two ways at once: "No run reported yet." above a list
+  // of patients a run had just reported. The account-level run reports are what make the
+  // first-contact and portal-level-failure cases visible at all — a run with no bound
+  // patient has no profile, so no profile-scoped sync event exists to read.
+  const statusLine = portalStatusLine({
+    lastSuccessAt: lastSync,
+    connected: conn !== undefined,
+    reports: listPortalRunReports(),
+    // The same list the card renders, so the sentence never points at a card the viewer
+    // cannot see.
+    pending,
+  });
 
   return (
     <div className="space-y-6">
@@ -168,13 +184,14 @@ export default async function PatientPortalsPage() {
         </h2>
         <p
           data-testid="portals-status-line"
-          className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+          data-tone={statusLine.tone}
+          className={
+            statusLine.tone === "attention"
+              ? "mt-1 text-sm text-amber-700 dark:text-amber-300"
+              : "mt-1 text-sm text-slate-600 dark:text-slate-300"
+          }
         >
-          {lastSync
-            ? `Last checked ${lastSync}.`
-            : conn
-              ? "Set up, but no run reported yet."
-              : "No run reported yet."}
+          {statusLine.text}
         </p>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           A run that finds nothing new still counts as a check — the tool

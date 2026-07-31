@@ -8,6 +8,7 @@ import {
   normalizePatientLabel,
   parseDiscoveredLabels,
   parseSyncReportCounts,
+  parseSyncReportTarget,
   parseUploadTarget,
   rejectsAddress,
   syncReportEvent,
@@ -295,6 +296,92 @@ describe("sync report", () => {
         null
       ).error
     ).toBe("sync failed");
+  });
+});
+
+// A `failed` run report may name a PORTAL ALONE (#1756). Nothing else may: the reason a
+// portal-only target exists is that the likely failure is PRE-PATIENT, and a claim about
+// a patient's records is meaningless without a patient.
+describe("parseSyncReportTarget — the one extra destination a failure may name", () => {
+  const portalOnly = { portal: "ochsner-mychart" };
+
+  it("accepts a portal-only FAILED report", () => {
+    const r = parseSyncReportTarget("failed", portalOnly);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.target).toEqual({
+      kind: "portal",
+      portalSlug: "ochsner-mychart",
+      accountSlug: null,
+    });
+  });
+
+  it("carries an explicitly named login through", () => {
+    const r = parseSyncReportTarget("failed", {
+      portal: "ochsner-mychart",
+      account: "mom",
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.target).toEqual({
+      kind: "portal",
+      portalSlug: "ochsner-mychart",
+      accountSlug: "mom",
+    });
+  });
+
+  it("still DEMANDS a patient for every non-failed status, with the same words", () => {
+    // The refusal text is unchanged, so a tool that was relying on it keeps working.
+    for (const status of ["downloaded", "nothing-new"] as const) {
+      const r = parseSyncReportTarget(status, portalOnly);
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toBe("`patient` must be a non-empty patient label");
+    }
+  });
+
+  it("still demands SOME destination, even for a failure", () => {
+    const r = parseSyncReportTarget("failed", {});
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(/a destination is required/);
+  });
+
+  it("validates the portal-only fields exactly as the identity form does", () => {
+    // A narrower target, not a laxer one — the no-address invariant still applies.
+    expect(
+      parseSyncReportTarget("failed", { portal: "https://evil.example/login" })
+        .ok
+    ).toBe(false);
+    expect(
+      parseSyncReportTarget("failed", {
+        portal: "ochsner-mychart",
+        account: "NOT A SLUG",
+      }).ok
+    ).toBe(false);
+  });
+
+  it("leaves the identity and profile forms untouched", () => {
+    const identity = parseSyncReportTarget("failed", {
+      portal: "ochsner-mychart",
+      patient: "Jane Doe",
+    });
+    expect(identity.ok && identity.target.kind).toBe("identity");
+    const profile = parseSyncReportTarget("failed", { profile: "7" });
+    expect(profile.ok && profile.target.kind).toBe("profile");
+    // A whitespace-only patient is not a patient, so this is still portal-only…
+    const blank = parseSyncReportTarget("failed", {
+      portal: "ochsner-mychart",
+      patient: "   ",
+    });
+    expect(blank.ok && blank.target.kind).toBe("portal");
+    // …but a portal plus a profile is still the contradiction it always was.
+    expect(
+      parseSyncReportTarget("failed", {
+        portal: "ochsner-mychart",
+        profile: "7",
+      }).ok
+    ).toBe(false);
   });
 });
 

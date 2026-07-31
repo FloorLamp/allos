@@ -304,10 +304,21 @@ appears between runs; they are the safety net, not the setup path.
 new pushes no documents, so it would otherwise leave no trace and "Last checked"
 could never move — a healthy quiet week would look identical to a broken one. The
 tool therefore reports every run, and a nothing-new result reads as a calm
-success. Only a genuine failure raises the Review failure badge, and a failure
-leaves the previous "Last checked" standing so you can see how long it has really
-been. Each mapped patient shows its own last-checked line, because a household
-with two portals and three patients has more than one answer to that question.
+success. A failure leaves the previous "Last checked" standing so you can see how
+long it has really been. Each mapped patient shows its own last-checked line,
+because a household with two portals and three patients has more than one answer
+to that question.
+
+**The first run, and a portal that breaks before it reaches anyone.** Two kinds
+of run belong to a portal login rather than to a person: the very first one,
+whose own patient is not mapped yet, and a failure that happens before any
+patient is reached ("the portal's login page changed"). Neither can be filed
+under a profile, and neither is guessed onto one — but both now leave a trace,
+and the card's **Status** line says what happened: _"The tool reported 3 patients
+on Ochsner MyChart — map them below to finish setup"_, or the tool's own failure
+message. A failure that names a mapped patient still raises that profile's
+**Review** failure badge as before; a portal-level one cannot, because it has no
+profile to raise it for, and shows on this card instead.
 
 **Why there is no Start button.** Allos cannot make an attended sync happen, so
 the card doesn't pretend to: it is setup and status. For the same reason this

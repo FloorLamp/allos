@@ -12,11 +12,19 @@ import { IconCopy, IconCheck, IconEye, IconEyeOff } from "@tabler/icons-react";
 // WRAPS (`break-all`) instead of scrolling: the value stays fully visible and
 // the buttons stay reachable no matter how narrow the viewport or how long a
 // production hostname gets.
-export function CopyButton({ value }: { value: string }) {
+export function CopyButton({
+  value,
+  testid,
+}: {
+  value: string;
+  testid?: string;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
+      data-testid={testid}
+      title="Copy to clipboard"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);

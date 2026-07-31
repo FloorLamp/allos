@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, settledFill } from "./helpers";
+import { hydratedClick, settledFill, settledSelect } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // The Patient portals card's setup flow (#1739): register a portal, map a patient to a
@@ -171,6 +171,45 @@ test.describe("Patient portals setup (#1739)", () => {
     // A run that found nothing is still a check — the card must not read as broken.
     await expect(page.getByTestId("portals-status-line")).toBeVisible();
   });
+
+  // THE IMPLICIT LOGIN'S PARENTHETICAL IS CONDITIONAL (#1756). "Used when the tool names
+  // no login" is true only while it is the portal's ONLY login: once a second exists,
+  // resolveAccount REFUSES an account-less request rather than falling back to it. The
+  // copy asserted a fallback that had stopped happening, exactly when a household most
+  // needs to understand why its tool started erroring.
+  test("the default login's note changes when a second login appears", async ({
+    page,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Implicit Copy ${stamp}`;
+
+    await page.goto("/integrations/patient-portals");
+    await settledFill(page, page.getByTestId("portal-name"), portal);
+    await hydratedClick(page, page.getByTestId("portal-add"));
+    await expect(page.getByTestId("portals-status")).toHaveText(
+      "Portal added."
+    );
+
+    const portalRow = page
+      .getByTestId("portal-row")
+      .filter({ hasText: portal })
+      .first(); // first-ok: the name is unique to this test, so this is spec-owned data
+    const note = portalRow.getByTestId("portal-account-implicit-note");
+    await expect(note).toHaveText("(used when the tool names no login)");
+
+    // A second login, and the promise of a fallback stops being true.
+    await page.getByTestId("account-portal").selectOption({ label: portal });
+    await settledFill(page, page.getByTestId("account-name"), "Mom");
+    await hydratedClick(page, page.getByTestId("account-add"));
+    await expect(page.getByTestId("portals-status")).toHaveText("Login added.");
+    await expect(note).toHaveText("(the tool must name a login)");
+
+    await hydratedClick(page, portalRow.getByTestId("portal-remove"));
+    await expect(page.getByTestId("portals-status")).toHaveText(
+      "Portal removed."
+    );
+  });
 });
 
 // DISCOVERED / REFUSED IDENTITIES (#1739). The tool reports the proxy patients it saw, so
@@ -256,7 +295,24 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     await expect(pendingRow).toContainText("2026-01-02");
     await expect(pendingRow).toContainText("seen 2×");
 
-    // One tap maps it onto the selected profile.
+    // NOTHING IS PRESELECTED (#1756). The picker used to open on the first writable
+    // profile, so "file this patient under whoever sorts first" was one click away —
+    // the exact misfiling this card exists to prevent, and the one mistake nothing
+    // downstream can catch. So Map is dead until a human has actually said who this is.
+    const picker = pendingRow.getByTestId("pending-profile");
+    await expect(picker).toHaveValue("");
+    await expect(pendingRow.getByTestId("pending-map")).toBeDisabled();
+
+    // Choose a real profile — whichever the picker offers first after the placeholder.
+    const profileValue = await picker
+      .locator("option")
+      .nth(1)
+      .getAttribute("value");
+    expect(profileValue).toBeTruthy();
+    await settledSelect(page, picker, profileValue!);
+    await expect(pendingRow.getByTestId("pending-map")).toBeEnabled();
+
+    // One tap maps it onto the chosen profile.
     await hydratedClick(page, pendingRow.getByTestId("pending-map"));
     await expect(page.getByTestId("portals-status")).toHaveText(
       "Patient mapped."
@@ -352,6 +408,33 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     await expect(
       page.getByTestId("portal-identity-row").filter({ hasText: label })
     ).toHaveCount(0);
+
+    await removePortal(page, portal);
+  });
+
+  // FIRST CONTACT (#1756). The card promises "the tool reports every run, so a quiet week
+  // reads as healthy rather than broken" — and then said "No run reported yet." directly
+  // above a list of patients a run had just reported, because that run's own patient was
+  // unmapped and its report was refused. Status must not contradict the card it sits on.
+  test("Status names what the run reported instead of claiming nothing happened", async ({
+    page,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `First Contact ${stamp}`;
+    const label = `First Patient ${stamp}`;
+
+    await addPortal(page, portal);
+    const line = page.getByTestId("portals-status-line");
+    // Nothing has happened yet, and the card says exactly that.
+    await expect(line).toHaveText("No run reported yet.");
+
+    plantPending(portal, label, "discovered");
+    await page.reload();
+    // Now it names the portal the tool reported on, and the action that finishes setup.
+    await expect(line).toHaveAttribute("data-tone", "attention");
+    await expect(line).toContainText(portal);
+    await expect(line).toContainText("finish setup");
 
     await removePortal(page, portal);
   });
