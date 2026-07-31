@@ -158,7 +158,7 @@ the services you want:
 - [Integrations and health record imports](docs/integrations.md)
 - [Notifications](docs/notifications.md)
 - [Home Assistant notification recipes](docs/home-assistant-notifications.md)
-- [API tokens for command-line access](docs/api-tokens.md)
+- [API tokens, the document-upload API, and the upload CLI](docs/api-tokens.md)
 - [Outbound email](#outbound-email)
 - [Public read-only demo mode](docs/demo.md)
 

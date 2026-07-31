@@ -42,6 +42,17 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   // browser follows with GET) to /login, storing NOTHING. Nothing is served here
   // without a session; the allowlist only buys the handler the right status code.
   "/share-target",
+  // Remote document upload + its profile resolver (issues #1734/#1735). Bearer-token
+  // authenticated, never cookie authenticated: a CLI on another machine has no session.
+  // Listed for exactly the /share-target reason — middleware's anonymous branch answers
+  // with a method-PRESERVING 307, which would re-POST a multipart upload at /login (a
+  // page route that cannot accept it) instead of returning the 401 the caller can act
+  // on. The allowlist is COARSE and buys these handlers nothing but the right to answer
+  // for themselves: each calls authenticateApiToken() — which resolves the token, checks
+  // it is not revoked, and demands the `upload:documents` capability — and then composes
+  // its own explicit write gate before touching a profile. That call IS the gate.
+  "/api/documents",
+  "/api/documents/profiles",
 ]);
 
 export function isPublicPath(pathname: string): boolean {
