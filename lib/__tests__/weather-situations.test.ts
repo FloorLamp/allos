@@ -301,7 +301,10 @@ describe("pollen + air-quality predicates (#1726)", () => {
     // Two families high at once is ONE High-pollen state carrying both names, never two
     // duplicate states — and the figure names the first family in the canonical order.
     const days = series("2026-05-01", [
-      { pollenGrass: POLLEN_ENTER.grass + 5, pollenWeed: POLLEN_ENTER.weed + 5 },
+      {
+        pollenGrass: POLLEN_ENTER.grass + 5,
+        pollenWeed: POLLEN_ENTER.weed + 5,
+      },
     ]);
     const states = evaluateWeatherSituations(days, "2026-05-01");
     const pollenStates = states.filter(
