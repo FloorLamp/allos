@@ -8,6 +8,7 @@ import { classifyPolarization, type PolarizedSplit } from "../training-zones";
 import { measureRoughNight } from "../derived-situations";
 import {
   recommendNextWorkout,
+  recoveryOverrideLine,
   routineLoadingCadence,
   type ActiveRoutineInput,
   type DatedExercise,
@@ -709,8 +710,52 @@ export const ACKNOWLEDGED_REST_ID = "rest-acknowledged";
 
 // Whether a recommendation is a LIVE rest nudge the user can still acknowledge with
 // "Training anyway" (#1150) — a rest rec that isn't already the acknowledgment card.
+// The stable id of the ALL-FRESH recovery reframe (#1673 decision 3). Distinct from the
+// under-recovery nudge ids because it is a SCHEDULING fact, not a physiological signal:
+// nothing about sleep, resting HR or accumulated load fired — every region the profile
+// trains is simply still inside its recovery window, so today's slot has nothing to
+// suggest and says so calmly. It therefore neither opens a rest EPISODE (nothing is
+// persisting to count days of) nor offers "Training anyway" (there is no signal to
+// acknowledge — the windows reopen on their own).
+export const ALL_FRESH_REST_ID = "rest-all-fresh";
+
+// Whether a rest recommendation reflects a physiological under-recovery SIGNAL — the
+// rest recs the episode marker (#44 3b) counts and the "Training anyway" action (#1150)
+// can acknowledge. False for the all-fresh scheduling reframe.
+export function isRecoverySignalRest(rec: Recommendation): boolean {
+  return rec.kind === "rest" && rec.id !== ALL_FRESH_REST_ID;
+}
+
+// Whether a recommendation is a LIVE rest nudge the user can still acknowledge with
+// "Training anyway" (#1150) — a rest rec that isn't already the acknowledgment card.
 export function canAcknowledgeRest(rec: Recommendation): boolean {
-  return rec.kind === "rest" && rec.id !== ACKNOWLEDGED_REST_ID;
+  return isRecoverySignalRest(rec) && rec.id !== ACKNOWLEDGED_REST_ID;
+}
+
+// The all-fresh recovery reframe, or null when at least one candidate region is out of
+// its window (#1673 decision 3). The window is a physiological CONSTRAINT, not a soft
+// penalty — so the slot does not force a pick, and normal recommendations resume the
+// moment a window opens. Every surface inherits it: the dashboard card, the Training
+// overview, and the Telegram nudge all read the rest slot.
+export function allFreshRestRec(nw: NextWorkout): Recommendation | null {
+  const { resting, allFresh } = nw.recovery;
+  if (!allFresh || resting.length === 0) return null;
+  const list = resting.map((r) => r.region).join(", ");
+  // How long until the FIRST window reopens — the day normal suggestions resume.
+  const opensIn = Math.min(
+    ...resting.map((r) => Math.max(1, r.windowDays - r.daysSince + 1))
+  );
+  return {
+    id: ALL_FRESH_REST_ID,
+    kind: "rest",
+    title: "Recovery day",
+    detail: `Everything you're training is still fresh — ${list} ${
+      resting.length === 1 ? "is" : "are"
+    } inside the recovery window. Take today easy; the next session opens up in ${opensIn} ${
+      opensIn === 1 ? "day" : "days"
+    }.`,
+    tone: "neutral",
+  };
 }
 
 // Sentence-case the first letter (the `also` phrases lead lowercase — "slept …",
@@ -971,20 +1016,28 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
   }
 
   // Build the training-side recommendations (cardio gap, strength gap, on-track,
-  // or a habit-based/setup fallback).
-  const training = trainingRecommendations(input, wu);
+  // or a habit-based/setup fallback) from ONE run of the unified core, which also
+  // reports how the recovery windows shaped today's focus (#1673).
+  const nw = recommendNextWorkout(input);
+  const training = trainingRecommendations(nw, input.today, wu);
 
   // A hard-heavy intensity distribution is context, not a top-line alert: it rides
   // along as a trailing secondary note (classifyPolarization is the gate).
   const intensity = intensityRecommendation(input.intensity);
 
   const ranked: Recommendation[] = [];
-  if (rest) {
-    // Episode continuity (#44 3b) / "Training anyway" acknowledgment (#1150), both
-    // day-scoped transforms in front of the raw nudge — see restCard. Continuity is
-    // derived purely from the persisted marker + today, so it's robust even if the
-    // marker hasn't been advanced yet today (the notify tick owns the write).
-    ranked.push(restCard(input, th, rest));
+  // The rest slot: a physiological under-recovery signal when one fires, otherwise the
+  // ALL-FRESH scheduling reframe (#1673 decision 3) on a day where every candidate
+  // region is still inside its recovery window. A real signal always outranks it.
+  const restSlot = rest
+    ? // Episode continuity (#44 3b) / "Training anyway" acknowledgment (#1150), both
+      // day-scoped transforms in front of the raw nudge — see restCard. Continuity is
+      // derived purely from the persisted marker + today, so it's robust even if the
+      // marker hasn't been advanced yet today (the notify tick owns the write).
+      restCard(input, th, rest)
+    : allFreshRestRec(nw);
+  if (restSlot) {
+    ranked.push(restSlot);
     // Keep the "what to do once recovered" nudge as secondary context, but drop
     // a redundant on-track note (rest already implies rest is fine).
     for (const r of training) if (r.kind !== "ontrack") ranked.push(r);
@@ -1002,13 +1055,11 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
 // Recommendation card. The Telegram reminder formats the same core result, so the
 // two surfaces can no longer disagree.
 function trainingRecommendations(
-  input: CoachingInput,
+  nw: NextWorkout,
+  today: string,
   wu: WeightUnit
 ): Recommendation[] {
-  const nw = recommendNextWorkout(input);
-  const recs = nw.items.map((item) =>
-    formatWorkoutItem(item, nw, input.today, wu)
-  );
+  const recs = nw.items.map((item) => formatWorkoutItem(item, nw, today, wu));
   // Calm context notes (#666/#838) ride on the TOP training rec so the dashboard widget
   // and Telegram render the same disclosure/consideration text the Training overview does
   // (one computation, #221). Attached only to the lead card to avoid duplication.
@@ -1022,6 +1073,12 @@ function trainingRecommendations(
 // condition consideration notes (#666). Pure formatter over the model's data.
 export function contextNotes(nw: NextWorkout): string[] {
   const notes: string[] = [];
+  // The tight-week recovery override (#1673): when pace beats a region's recovery
+  // window, the suggestion must NAME the recent session and the pace fact rather than
+  // reading as if the app forgot what was trained two days ago. Leads the notes — it is
+  // the one that explains the recommendation itself.
+  if (nw.recovery.override)
+    notes.push(recoveryOverrideLine(nw.recovery.override));
   for (const d of nw.excludedRegions)
     notes.push(`Avoiding ${excludedRegionLabel(d)}`);
   for (const c of nw.considerations) notes.push(c.note);

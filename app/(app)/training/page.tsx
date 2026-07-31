@@ -70,11 +70,13 @@ export default async function TrainingPage(props: {
       testId="training-page"
       // A stable, ungated door to the equipment registry (#592) — gear lives
       // conceptually under training, but /equipment has no top-level nav item.
+      // Reachable on a phone too since #1661; the vertical padding is what makes
+      // it a real tap target there (it costs desktop nothing, the row is taller).
       action={
         <Link
           href="/equipment"
           data-testid="training-equipment-link"
-          className="shrink-0 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="inline-flex shrink-0 items-center py-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
           Equipment
         </Link>

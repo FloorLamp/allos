@@ -12,6 +12,7 @@ import { illnessCoachingMode, recommendCoaching } from "../coaching";
 import {
   orderBehindTargets,
   recommendNextWorkout,
+  recoveryOverrideLine,
 } from "../workout-recommendation";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
@@ -173,5 +174,10 @@ export function recommendWorkout(
     // already saw a training session. Formatted from this same gathered computation, so
     // the dashboard/coaching surfaces reading the equivalent state agree.
     acknowledge: deferral.acknowledge,
+    // The tight-week recovery override (#1673): the same pure line the dashboard and
+    // Training overview render as a context note, so all three state the same two facts.
+    recoveryOverride: nw.recovery.override
+      ? recoveryOverrideLine(nw.recovery.override)
+      : null,
   };
 }
