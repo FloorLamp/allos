@@ -13,7 +13,6 @@ import { isValidTimezone, resolveTimezone } from "../timezone";
 // Type-only import so lib/settings ↔ lib/dashboard-widgets stays a compile-time
 // edge (no runtime cycle: dashboard-widgets imports nothing back from settings).
 import type { DashboardLayout } from "../dashboard-widgets";
-import { parseViews, serializeViews, type TrendView } from "../trend-views";
 import {
   getSetting,
   getProfileSetting,
@@ -211,21 +210,11 @@ export function setFreeDays(profileId: number, days: number[]): void {
 // `saved_items` table (migration 113 deletes the settings rows); the save store's
 // reads/writes are lib/queries/saved.ts, not a settings tier.
 
-// Saved views — named snapshots of the Trends hub state
-// (range + tab + compare pair), stored as a JSON array in profile_settings
-// (key "trend_views"). The list math (add/rename/
-// delete/normalize) lives in the pure lib/trend-views; this tier only
-// (de)serializes it. Reads defensively — a malformed blob yields an empty list.
-export function getTrendViews(profileId: number): TrendView[] {
-  return parseViews(getProfileSetting(profileId, "trend_views"));
-}
-
-export function setTrendViews(
-  profileId: number,
-  views: readonly TrendView[]
-): void {
-  setProfileSetting(profileId, "trend_views", serializeViews(views));
-}
+// The `trend_views` accessors lived here until #1653. They (de)serialized the
+// Trends hub's named URL-state snapshots, whose Views strip the Trends overhaul
+// deleted; with no surface left to read or write them, the accessors, their pure
+// list math (lib/trend-views.ts) and the three Server Actions on top went together.
+// Existing "trend_views" profile_settings rows are inert — nothing reads the key.
 
 // The retired `trends_card_order` accessors lived here until #1643. #1490 shipped a
 // per-profile, per-tab card ARRANGEMENT blob as the override half of the ranked

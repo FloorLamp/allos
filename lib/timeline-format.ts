@@ -382,7 +382,7 @@ export function defaultTrendsRange(todayStr: string): DateRange {
 //
 //   1. `?range=all` — an explicit all-time window. Params always win.
 //   2. Either bound set — an explicit window (a shared/bookmarked ?from/?to link,
-//      a saved view, a quick-range pill). Used verbatim; a partial window keeps
+//      a quick-range pill). Used verbatim; a partial window keeps
 //      its open side open, exactly as before.
 //   3. Neither — the no-param default, 90D.
 //

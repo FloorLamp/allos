@@ -6,11 +6,10 @@ import {
   parseTab,
   trendsTabStrip,
 } from "@/lib/trends-tabs";
-import { viewToQuery } from "@/lib/trend-views";
 
 // #1489: Compare retires into Insights (as a section of the hub's "derived views"
 // tab) — a vocabulary mapping, not a redirect, which is what keeps every old
-// `?tab=compare` deep link (and every stored saved view) alive.
+// `?tab=compare` deep link alive.
 //
 // #1644 retires **Body** into the Overview landing surface and takes the opposite
 // route on purpose: `?tab=body` and the older `?tab=vitals` get NO alias, because
@@ -53,7 +52,7 @@ describe("parseTab", () => {
 // The compare params are read off the URL independently of the tab name, so an old
 // deep link's comparison survives the alias untouched — no redirect layer strips
 // them, and nothing has to re-encode them. Pinned end-to-end over the URL a legacy
-// link (or a stored saved view) actually carries.
+// link actually carries.
 describe("a retired ?tab=compare link carries its comparison (#1489)", () => {
   it("resolves to insights with cmpA/cmpB/cmpn intact", () => {
     const sp = new URLSearchParams(
@@ -62,26 +61,6 @@ describe("a retired ?tab=compare link carries its comparison (#1489)", () => {
     expect(parseTab(sp.get("tab") ?? undefined)).toBe("insights");
     expect(sp.get("cmpA")).toBe("metric:weight");
     expect(sp.get("cmpB")).toBe("metric:resting_hr");
-    expect(sp.get("cmpn")).toBe("1");
-  });
-
-  it("resolves a SAVED VIEW that stored the retired tab name", () => {
-    // trend_views rows serialize the hub's URL state verbatim, so a view saved on
-    // the old Compare tab still says tab=compare. viewToQuery re-emits it and
-    // parseTab lands it on Insights with the pair still selected.
-    const qs = viewToQuery({
-      tab: "compare",
-      cmpA: "metric:weight",
-      cmpB: "metric:volume",
-      cmpn: true,
-      from: "2026-01-01",
-      to: "2026-02-01",
-    });
-    const sp = new URLSearchParams(qs);
-    expect(sp.get("tab")).toBe("compare");
-    expect(parseTab(sp.get("tab") ?? undefined)).toBe("insights");
-    expect(sp.get("cmpA")).toBe("metric:weight");
-    expect(sp.get("cmpB")).toBe("metric:volume");
     expect(sp.get("cmpn")).toBe("1");
   });
 });

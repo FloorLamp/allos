@@ -612,9 +612,11 @@ fitness percentiles, and pediatric interpretation live under
 **Medical → Results → Biomarkers**, not in Trends. Functional-fitness readings
 are entered through the Training **Fitness check**.
 
-The default window is the last 90 days. Every tab uses the same range model,
-saved views, and event overlays, and every starred tile opens the corresponding
-full chart rather than maintaining a second interpretation.
+The default window is the last 90 days. Every tab uses the same range model and
+event overlays, and every starred tile opens the corresponding full chart rather
+than maintaining a second interpretation. A hub configuration is carried by the
+URL — the range, tab, and compare params are shareable and bookmarkable — not by
+a stored view list.
 
 ### The Overview surface: starred grid and body census
 
@@ -681,8 +683,7 @@ cover instead of falling back.
 
 Event overlays shade medication, appointment, situation, and protocol windows.
 **Situation impact** compares values during and outside a selected situation as
-an observational difference, not a causal result. **Save current** stores the
-active tab, range, selected metrics, and overlays for the login.
+an observational difference, not a causal result.
 
 Insights can add optional AI narration to the deterministic charts. The chart,
 units, source selection, and flags remain authoritative when AI is unavailable.
