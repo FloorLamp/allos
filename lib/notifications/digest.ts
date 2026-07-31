@@ -115,6 +115,10 @@ export interface DigestInput {
   // Telegram-first user isn't surprised by the extra due items (#662/#221). Each is a
   // ready-to-render string; empty ⇒ no derived context is on / no keyed items.
   derivedSituationLines?: string[];
+  // The outdoor-session planning line(s) (#1724 part 5) — the SAME planningLine result
+  // the calm Upcoming planning item renders, so the glance and the planning surface can
+  // never disagree (#221). Empty ⇒ no plan is worth surfacing this week.
+  weatherPlanLines?: string[];
   // Yesterday
   activities: DigestActivity[];
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
@@ -257,6 +261,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // deload states reframe the line exactly as they reframe the nudge, so this is never
   // a blind push.
   if (input.workoutPreview) todayLines.push(input.workoutPreview);
+
+  // The outdoor-session plan (#1724 part 5): "This week: Saturday looks like the best
+  // window for your cycling (cycling 1/2)." Rides THIS message — there is no dedicated
+  // planning send and this creates none. Its own optional input field (like
+  // workoutPreview above) so the per-category demotion control, when it lands, has one
+  // category to switch off without touching the rest of the section.
+  for (const line of input.weatherPlanLines ?? []) {
+    todayLines.push(`\u{1F6B4} ${line}`);
+  }
 
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
   // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from

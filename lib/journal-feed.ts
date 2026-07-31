@@ -33,6 +33,7 @@ import {
 } from "./format-date";
 import { today as todayFn, yesterday as yesterdayFn } from "./db";
 import { getProfileZoneModel } from "./queries/zones";
+import { getWeatherDaysForProfile } from "./queries/weather-situations";
 
 // Days per page. Matches the client's 14-day reveal increment so a "Load more" click
 // fetches roughly one screen of older history at a time.
@@ -100,6 +101,28 @@ export function buildJournalFeedPage(
     weightKg: w.weight_kg,
   }));
 
+  // The conditions stamps (#1728): the cached daily weather for the days this page's
+  // activities fall on, read ONCE for the page's date span rather than per card. The
+  // cache is global and location-keyed, so a profile with no home location simply gets
+  // an empty map and no card is stamped.
+  const pageDates = page.activities.map((a) => a.date).sort();
+  const weatherByDate = new Map<
+    string,
+    { tempMaxC: number | null; weatherCode: number | null }
+  >();
+  if (pageDates.length > 0) {
+    for (const d of getWeatherDaysForProfile(
+      profileId,
+      pageDates[0],
+      pageDates[pageDates.length - 1]
+    )) {
+      weatherByDate.set(d.date, {
+        tempMaxC: d.tempMaxC,
+        weatherCode: d.weatherCode,
+      });
+    }
+  }
+
   const groups = buildJournalCards({
     activities: page.activities,
     sets,
@@ -114,6 +137,7 @@ export function buildJournalFeedPage(
     activeCalories,
     zoneModel: getProfileZoneModel(profileId),
     activityVideos,
+    weatherByDate,
   });
 
   return { groups, nextBefore: page.nextBefore };

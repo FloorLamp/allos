@@ -66,6 +66,12 @@
       "hard": 9.8
     },
     {
+      "name": "Open Water Swim",
+      "easy": 6,
+      "moderate": 8.8,
+      "hard": 10.3
+    },
+    {
       "name": "Rowing",
       "easy": 4.8,
       "moderate": 7,

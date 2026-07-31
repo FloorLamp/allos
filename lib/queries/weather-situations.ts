@@ -240,3 +240,16 @@ export function getWeatherDay(
   const [row] = getWeatherDays(home.lat, home.lng, date, date);
   return row ?? null;
 }
+
+// The cached daily series for a profile's home location over an inclusive date range —
+// the #1728 display read (journal stamps, Timeline day context). Empty without a home
+// location, so those surfaces quietly render nothing.
+export function getWeatherDaysForProfile(
+  profileId: number,
+  startDate: string,
+  endDate: string
+): WeatherDay[] {
+  const home = getHomeLocation(profileId);
+  if (!home) return [];
+  return getWeatherDays(home.lat, home.lng, startDate, endDate);
+}

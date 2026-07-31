@@ -29,6 +29,8 @@ import { storedActivityFault } from "./activity-validate";
 import { pickFoldValues } from "./import-review/conflicts";
 import { formatLongDate } from "./format-date";
 import { fmtDistance, fmtSpeed } from "./units";
+import { conditionsStamp } from "./weather-training";
+import { fmtAmbientTemp } from "./weather-situations";
 import {
   activityCalorieDisplay,
   nearestBodyweightKg,
@@ -222,6 +224,15 @@ export interface BuildJournalCardsInput {
   // activityId -> its form-check video clips (#1224), for the card's "Form check"
   // strip. Optional (defaults to none) so pure-test call sites need no clip data.
   activityVideos?: Map<number, ActivityVideoRow[]>;
+  // date -> the cached daily weather for the profile's home location (#1728). Used to
+  // stamp an OUTDOOR session with the conditions it happened in ("31°C · clear"),
+  // DERIVED AT READ TIME and never written onto the activity row: one source of truth,
+  // no backfill problem, and a cache gap simply renders no stamp. Optional (defaults to
+  // none) so every existing call site renders byte-identically.
+  weatherByDate?: Map<
+    string,
+    { tempMaxC: number | null; weatherCode: number | null }
+  >;
 }
 
 // Compact, unit-aware values for the richer per-activity metrics carried by pull
@@ -314,6 +325,7 @@ export function buildJournalCards({
   activeCalories,
   zoneModel,
   activityVideos,
+  weatherByDate,
 }: BuildJournalCardsInput): DayGroup[] {
   const wu = units.weightUnit;
   const timeFormat: TimeFormat = formatPrefs.timeFormat;
@@ -470,6 +482,21 @@ export function buildJournalCards({
       })),
     };
 
+    // The conditions stamp (#1728): what it was like outside during this session, for
+    // an OUTDOOR activity with cached weather on its day. Display only — it explains
+    // variance ("a slow run at 31°C explains itself") and gates nothing. Null (so the
+    // metrics row is byte-identical to before) for an indoor activity, an unrecognized
+    // one, or a day the cache never covered.
+    const weatherOnDay = weatherByDate?.get(a.date);
+    const stamp = conditionsStamp({
+      activity: a.title,
+      tempLabel: fmtAmbientTemp(
+        weatherOnDay?.tempMaxC ?? null,
+        units.temperatureUnit
+      ),
+      weatherCode: weatherOnDay?.weatherCode ?? null,
+    });
+
     const card: JournalCardData = {
       activity: editData,
       timeText: activityTimeText(a.start_time, a.end_time, timeFormat),
@@ -484,7 +511,9 @@ export function buildJournalCards({
       // the same explicit "≈" MET estimate manual activities use whenever a
       // duration + nearby bodyweight make that possible.
       calorieText: formatActivityCalories(calorieDisplay),
-      metrics: activityMetrics(a, units.distanceUnit),
+      metrics: stamp
+        ? [stamp, ...activityMetrics(a, units.distanceUnit)]
+        : activityMetrics(a, units.distanceUnit),
       gear:
         a.equipment_id != null
           ? (equipmentNames.get(a.equipment_id) ?? null)
