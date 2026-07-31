@@ -217,6 +217,7 @@ const INTEGRATION_DETAIL_ROUTES: Partial<Record<IntegrationId, AppRoute>> = {
   weather: "/integrations/weather",
   "calendar-feed": "/integrations/calendar-feed",
   "fitbit-takeout": "/integrations/fitbit-takeout",
+  mychart: "/integrations/mychart",
 };
 
 export function integrationDetailHref(id: IntegrationId): AppRoute | null {

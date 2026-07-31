@@ -122,6 +122,18 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "requireLoginWriteAccess",
   },
   {
+    file: "app/(app)/integrations/mychart/actions.ts",
+    fn: "bindIdentityAction",
+    why: "cross-profile write (#1739): binds a portal patient label to a TARGET profile, which is not necessarily the session's active one — binding grandma's portal patient to grandma's profile from your own session is the normal case, so requireWriteAccess() (which checks only the ACTIVE profile) is the wrong gate. It calls requireProfileWriteAccess(profileId) instead: the #31 cross-profile guard, which refuses in demo mode, asserts the caller can REACH the target, and asserts WRITE on it — strictly stronger here than the active-profile check",
+    gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/mychart/actions.ts",
+    fn: "unbindIdentityAction",
+    why: "cross-profile write (#1739): removing a binding changes where that patient's future records go (namely nowhere — they are refused), the same class of decision as creating one, so it takes the same requireProfileWriteAccess gate on the profile the binding currently points at",
+    gate: "requireProfileWriteAccess",
+  },
+  {
     file: "app/(app)/settings/token-actions.ts",
     fn: "createApiTokenAction",
     why: "login-scoped (#1734): mints an API token on the caller's OWN login — a way to PRESENT that login, not profile-owned data, and it grants no access the login doesn't already have (every bearer route re-derives profile reach through accessForProfile at request time). requireWriteAccess() would be the wrong gate twice: it checks the ACTIVE profile, and it would refuse a read-only caregiver their own credentials. Demo-gated so the shared public demo login can't mint a credential that outlives the visit",

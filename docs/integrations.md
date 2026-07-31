@@ -6,9 +6,9 @@ from the README (#597)
 Connect outside services under **Data → Import** so your health data syncs
 automatically. Each provider has its own setup page (linked from the Import
 tab's "Connect a device or service" card). **Google Health Connect**,
-**Strava**, **Oura Ring**, **Withings**, **Fitbit via Google Takeout**, and the
-keyless **Weather & UV (Open-Meteo)** source are available today; **Garmin** is
-scaffolded as "coming soon".
+**Strava**, **Oura Ring**, **Withings**, **Fitbit via Google Takeout**,
+**MyChart (Epic portals)**, and the keyless **Weather & UV (Open-Meteo)** source
+are available today; **Garmin** is scaffolded as "coming soon".
 
 ## Google Health Connect
 
@@ -240,6 +240,54 @@ The archive is streamed to the server and deleted after processing; only the
 imported health records remain. Re-importing a newer export is safe because
 records deduplicate on their natural keys, and the result appears in
 **Data → Review**.
+
+## MyChart (Epic portals)
+
+The one **external-attended** integration: allos cannot run this sync itself.
+Portal sign-in needs a person — two-factor codes, and sessions that idle out in
+minutes — so a small companion tool runs on your own computer, signs in the way
+you would, downloads the portal's own export, and pushes it in through the
+[document upload API](api-tokens.md). Allos never signs in and never holds a
+portal address.
+
+Setup, under **Data → Import → MyChart (Epic portals)**:
+
+1. **Register each portal** by a short id and a display name — `ochsner`,
+   "Ochsner MyChart". A portal is recorded **by name only**. Its web address
+   lives in the companion tool's local config on your machine, and allos refuses
+   to store one anywhere, including in the display name.
+2. **Map each patient to a profile.** One portal login often covers several
+   family members through proxy access, and the portal decides what to call
+   them. You bind the label the portal shows to the profile it belongs to.
+   Labels are matched exactly as written — two labels that differ visibly are
+   two different people.
+3. **Mint an API token** (Settings → Account & security → API tokens) with the
+   _Upload documents_ capability. Give **each computer its own token**, so
+   retiring one machine doesn't disturb the others.
+
+Documents land in **Data → Review** like any other import, with the same
+deduplication and the same size and type checks.
+
+**Why the mapping lives here and not in the tool.** If the tool decided which
+profile a patient belongs to, that decision would sit in local config on every
+machine it runs on — and a stale copy would file one person's records under
+another. So the tool reports what the portal told it and allos resolves it,
+against a mapping you can see and correct in one place. Anything unmapped is
+**refused**, never filed under a guess: a new proxy patient appearing on the
+portal surfaces as a visible failure that you fix by adding a mapping.
+
+**Why a quiet run still reports.** A run that checks the portal and finds nothing
+new pushes no documents, so it would otherwise leave no trace and "Last checked"
+could never move — a healthy quiet week would look identical to a broken one. The
+tool therefore reports every run, and a nothing-new result reads as a calm
+success. Only a genuine failure raises the Review failure badge, and a failure
+leaves the previous "Last checked" standing so you can see how long it has really
+been.
+
+**Why there is no Start button.** Allos cannot make an attended sync happen, so
+the card doesn't pretend to: it is setup and status. For the same reason MyChart
+is exempt from staleness warnings — "you haven't signed in to your hospital
+portal in three days" is not a fault.
 
 ## Weather & UV (Open-Meteo)
 

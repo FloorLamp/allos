@@ -72,6 +72,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "integration sync audit log — operational, not a health record",
   },
   {
+    table: "portal_identities",
+    why: "portal↔patient routing configuration (#1739) — it records HOW records arrive (which label on which portal maps to this profile), never anything a clinician wrote. Deliberately not portable: it is keyed on a `portals` row that is global to this instance and on a label defined by an external portal's proxy list, so it is meaningless on another instance, and the documents it routed export in full via medical_documents. Same class as integration_connections/integration_sync_events, which sit directly above.",
+  },
+  {
     table: "profile_share_links",
     why: "hashed share-link tokens — secrets, meaningless off this instance",
   },
