@@ -82,6 +82,10 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "insights.created_at — audit stamp; the row's day is its own `date` column, supplied by the caller.",
   },
+  "lib/api-tokens.ts": {
+    count: 4,
+    why: "api_tokens created_at / last_used_at / revoked_at (#1734) — credential LIFECYCLE stamps. Nothing reduces them to a calendar day: created/last-used are rendered as full UTC timestamps in the management UI, and revoked_at is read only for IS NULL (liveness), never compared to a today()-derived date.",
+  },
   "lib/audit.ts": {
     count: 2,
     why: "audit_events retention DELETE (ts < now - N) — a duration cutoff.",

@@ -165,7 +165,7 @@ export default function ApiTokensSettings({
               className="btn-ghost text-sm"
               data-testid="api-token-secret-dismiss"
             >
-              I've saved it
+              I&rsquo;ve saved it
             </button>
           </div>
         )}
