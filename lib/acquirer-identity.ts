@@ -415,3 +415,87 @@ export function syncReportEvent(
     error: status === "failed" ? (message ?? "sync failed") : null,
   };
 }
+
+// ── The tool-config payload (issue #1759) ────────────────────────────────────
+//
+// The portal and account slugs are ALLOS-MINTED vocabulary, and until this the tool
+// operator hand-typed them into local config. A typo'd slug does not fail loudly — it
+// produces a non-oracular `unmapped-identity` refusal deliberately indistinguishable
+// from every other cause, which is correct security posture and miserable debugging. So
+// the tool INGESTS the vocabulary instead of transcribing it.
+//
+// WHAT THIS SHAPE MAY CARRY, exhaustively: slug, name, software, and the accounts'
+// slug/name/implicit. That list is the disclosure boundary, and it is enforced HERE, in
+// one pure builder, rather than at the route — a field added to `Portal` or
+// `PortalAccount` cannot leak by being spread into a response.
+//
+//   NO ADDRESS, ANYWHERE. "allos never stores, transmits, or accepts an address" holds
+//   untouched: there is nothing in this payload that could aim a tool anywhere. The tool
+//   still binds `slug → URL` locally, TOFU-pinned; this only guarantees the slug half of
+//   that binding is spelled the way allos spells it. (allos has no address to leak — no
+//   column exists — so this is a shape guarantee, not a redaction.)
+//
+//   NO PATIENT LABELS. Mapped, pending and ignored bindings are all absent. The tool
+//   discovers patients from the portal itself; which patients a household mapped or
+//   DECLINED is household information the non-oracular refusal already refuses to reveal
+//   to whoever holds the token.
+//
+// `implicit` is included so a tool can derive the omitted-account rule for itself —
+// exactly one account (the implicit one) means it may omit `account` on the wire; more
+// than one means it must name one — and can say so at CONFIG time instead of discovering
+// it as a refusal at RUN time. `software` lets it sanity-check what it has been pointed
+// at before the first sign-in, which is what #1753's tag is for.
+
+export interface ToolConfigAccount {
+  slug: string;
+  name: string;
+  implicit: boolean;
+}
+
+export interface ToolConfigPortal {
+  slug: string;
+  name: string;
+  software: string | null;
+  accounts: ToolConfigAccount[];
+}
+
+// Build the wire shape from the registries. Pure: it takes the rows and picks fields,
+// so the DB reader stays in lib/portals.ts and the disclosure boundary stays testable
+// without a database. Portal order is the caller's (the registry's name order); accounts
+// are ordered implicit-first, then by name, so `tool init` writes a stable config file
+// and the omitted-account default reads first.
+export function buildToolConfig(
+  portals: readonly {
+    id: number;
+    slug: string;
+    name: string;
+    software: string | null;
+  }[],
+  accounts: readonly {
+    portalId: number;
+    slug: string;
+    name: string;
+    implicit: boolean;
+  }[]
+): ToolConfigPortal[] {
+  const byPortal = new Map<number, ToolConfigAccount[]>();
+  for (const a of accounts) {
+    const list = byPortal.get(a.portalId);
+    const entry = { slug: a.slug, name: a.name, implicit: a.implicit };
+    if (list) list.push(entry);
+    else byPortal.set(a.portalId, [entry]);
+  }
+  return portals.map((p) => {
+    const list = (byPortal.get(p.id) ?? []).slice();
+    list.sort(
+      (a, b) =>
+        Number(b.implicit) - Number(a.implicit) || a.name.localeCompare(b.name)
+    );
+    return {
+      slug: p.slug,
+      name: p.name,
+      software: p.software,
+      accounts: list,
+    };
+  });
+}
