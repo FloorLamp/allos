@@ -26,8 +26,8 @@ test("manual condition entry suggests an ICD-10-CM code the user can confirm (#1
 
   // Typing leaves the picker's dropdown open OVER the chip (it hangs directly below
   // the field), exactly as any autocomplete does. Escape dismisses it — the gesture a
-  // person makes before reaching for the chip — and the code confirm is unchanged:
-  // picking a name never applies a code on its own.
+  // person makes before reaching for the chip. TYPING still applies nothing on its
+  // own: the confirm is what writes the code.
   await nameField.press("Escape");
   await expect(page.getByRole("listbox")).toHaveCount(0);
   await section.getByTestId("icd10-suggestion-apply").click();
@@ -44,4 +44,42 @@ test("manual condition entry suggests an ICD-10-CM code the user can confirm (#1
   // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
   await expect(row).toBeVisible({ timeout: 15_000 });
   await expect(row).toContainText("J45.909");
+});
+
+// Owner ruling (2026-07-31, #1676): an explicit PICK from the ICD-10 dropdown applies
+// that entry's code immediately, mirroring the medication form's RxNorm auto-confirm
+// on a catalog pick. A pick is a stronger statement than a typed string — you chose
+// the coded concept by name — so it needs no second confirm. The typed path above is
+// untouched, which is why both tests exist.
+test("picking a condition from the catalog applies its ICD-10-CM code (#1676)", async ({
+  page,
+}) => {
+  await page.goto("/records/problems/conditions");
+
+  const section = page.getByTestId("records-conditions");
+  const nameField = section.getByLabel("Condition", { exact: true });
+  await expect(nameField).toBeVisible();
+  await expect(page.locator("#cond-code-new")).toHaveValue("");
+
+  // A synonym query reaches the catalog entry whose display name is nothing like it —
+  // the hidden search terms doing their job.
+  await settledFill(page, nameField, "high blood pressure");
+  await page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Essential (primary) hypertension" })
+    .click();
+
+  // The pick filled the name AND the coded identity, with no confirm step.
+  await expect(nameField).toHaveValue("Essential (primary) hypertension");
+  await expect(page.locator("#cond-code-new")).toHaveValue("I10");
+  await expect(page.locator("#cond-codesys-new")).toHaveValue("ICD-10-CM");
+
+  // The confirm chip is for a code-LESS row, so it is gone once the pick applied one.
+  await expect(section.getByTestId("icd10-suggestion")).toHaveCount(0);
+
+  // Editing the name away from the picked entry retracts the code the pick applied —
+  // the row must never claim a code for a concept it no longer names.
+  await settledFill(page, nameField, "Something else entirely");
+  await expect(page.locator("#cond-code-new")).toHaveValue("");
+  await expect(page.locator("#cond-codesys-new")).toHaveValue("");
 });

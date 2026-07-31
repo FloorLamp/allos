@@ -42,6 +42,10 @@ export default function ConditionForm({
   const [name, setName] = useState(condition?.name ?? "");
   const [code, setCode] = useState(condition?.code ?? "");
   const [codeSystem, setCodeSystem] = useState(condition?.code_system ?? "");
+  // The code THIS form applied from a catalog pick, so a later name edit can retract
+  // it without ever touching a code the user typed or an import carried in. Mirrors
+  // the medication form's rxcuiRef (components/intake/useIntakeRxcui).
+  const pickedCode = useRef<string | null>(null);
 
   // Best-effort code suggestion for a code-LESS condition. Only when no code is
   // already present (imported/coded rows keep theirs — never overwritten) and the
@@ -55,6 +59,34 @@ export default function ConditionForm({
     if (!suggestion) return;
     setCode(suggestion.code);
     setCodeSystem(ICD10_SYSTEM);
+  }
+
+  // An explicit PICK from the catalog applies that entry's code immediately — the
+  // owner's ruling, mirroring how the medication form auto-confirms an RxNorm code
+  // when a catalog med is chosen (`onPickName` → `rx.autoConfirm`, #851 item 7).
+  // A pick is unambiguous by construction here: each catalog name carries exactly one
+  // curated code, so there is no candidate list to disambiguate and nothing to
+  // degrade to. TYPING is untouched — a typed name still offers the #155
+  // confirm-to-apply chip and never writes a code on its own.
+  function onPickName(picked: string) {
+    const picked10 = icd10CodeForName(picked);
+    if (!picked10) return; // free-text row: nothing curated to apply
+    pickedCode.current = picked10;
+    setCode(picked10);
+    setCodeSystem(ICD10_SYSTEM);
+  }
+
+  // Editing the name away from the picked entry retracts the code the pick applied,
+  // so the row can never claim a code for a concept it no longer names — the
+  // medication form's `onNameChange` invalidation. A code the user typed, or one an
+  // import carried in, is left alone: only this form's own pick is retractable.
+  function onNameChange(next: string) {
+    setName(next);
+    if (pickedCode.current && code === pickedCode.current) {
+      pickedCode.current = null;
+      setCode("");
+      setCodeSystem("");
+    }
   }
 
   async function handle(formData: FormData) {
@@ -81,6 +113,7 @@ export default function ConditionForm({
       setName("");
       setCode("");
       setCodeSystem("");
+      pickedCode.current = null;
     }
     onDone?.();
     router.refresh();
@@ -113,7 +146,8 @@ export default function ConditionForm({
           name="name"
           ariaLabel="Condition"
           value={name}
-          onChange={setName}
+          onChange={onNameChange}
+          onPick={onPickName}
           options={[...ICD10_CONDITION_NAMES]}
           searchTermsFor={icd10SearchTerms}
           badgeFor={(option) => (
