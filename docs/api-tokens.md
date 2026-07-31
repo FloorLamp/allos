@@ -180,13 +180,46 @@ is recorded against the identity it names, so each mapped patient gets its own
 verbatim — exactly the strings the proxy list showed — and every one that is not already
 mapped or ignored appears on the card ready to bind. Nobody has to predict how a portal
 renders a name. The list is accepted even when the run itself failed or its own patient is
-unmapped (a first run has nothing bound yet), sanitized, de-duplicated, and capped; the
-response echoes `discovered` so a tool can say "2 new patients need mapping in allos".
+unmapped (a first run has nothing bound yet), sanitized, de-duplicated, and capped.
+
+The response echoes `discovered` so a tool can say "2 **new** patients need mapping in
+allos". It counts identities that were **not already waiting or already answered**, so a
+steady-state run reporting the same list every hour reports nothing new: once there is
+nothing left to map, the field is **absent**, which is how a tool knows setup is finished.
+It is echoed on the `404` refusal too — a first run's own patient is unmapped, so that
+refusal is the only place the tool hears how much setup is left.
 
 `nothing-new` is a **calm success**: it advances "Last checked" and keeps the connection
-looking alive. Only `failed` drives the Review failure badge — and a failure deliberately
-leaves the previous timestamp standing, so the card keeps showing how long it has really
-been since the portal was last read.
+looking alive. A failure deliberately leaves the previous timestamp standing, so the card
+keeps showing how long it has really been since the portal was last read. A `failed`
+report that names a mapped patient drives that profile's Review failure badge.
+
+### Reporting a failure that never reached a patient
+
+The likely way an acquirer breaks is **before** it reaches anybody: the portal's login
+page changed, the Document Center moved. That is a fact about the portal login, true of
+every patient on it and of none in particular, so a `failed` report may name a portal
+alone:
+
+```bash
+curl -H "Authorization: Bearer $ALLOS_TOKEN" -H "Content-Type: application/json" \
+     -d '{"status":"failed","portal":"baptist-health",
+          "message":"portal login page changed"}' \
+     https://allos.example/api/documents/sync-report
+```
+
+Add `"account"` when the portal has more than one login — the same omitted-account rule
+as everywhere else: allos resolves an omitted login only when there is exactly one, and
+**refuses rather than guesses** when there are several, because "one of your two logins is
+failing" is not something anyone can act on.
+
+Only `failed` may do this. `downloaded` and `nothing-new` are claims about a patient's
+records and still require a target, with the same `400` they always gave.
+
+Such a report has no profile — that is what makes it portal-level — so it lands as a
+**run report against the portal login** rather than as a profile's sync event, and shows
+on **Integrations → Patient portals → Status**. The same is true of a first run whose own
+patient is not mapped yet: refused, nothing filed, but the run is no longer invisible.
 
 ### Finding the profile ids
 

@@ -31,9 +31,11 @@ import {
   ignorePortalIdentity,
   listPendingIdentities,
   listPortalIdentities,
+  listPortalRunReports,
   listPortals,
   portalBySlug,
   recordPendingIdentity,
+  recordPortalRunReport,
   renamePortal,
   resolveAccount,
   resolvePortalIdentity,
@@ -164,6 +166,7 @@ beforeEach(() => {
   db.exec("DELETE FROM integration_connections");
   db.exec("DELETE FROM portal_identities");
   db.exec("DELETE FROM pending_portal_identities");
+  db.exec("DELETE FROM portal_run_reports");
   // Leave only the implicit login on the shared portal, so a test that adds one starts
   // from the single-login world every household starts in.
   db.exec(
@@ -1224,7 +1227,9 @@ describe("discovery — the routine path to a mapping", () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { discovered?: number };
-    expect(body.discovered).toBe(3);
+    // TWO, not three (#1756): "Jane Doe" is already bound, so she is not waiting for
+    // anything and the tool must not be told she is.
+    expect(body.discovered).toBe(2);
 
     const pending = listPendingIdentities()
       .map((p) => p.patientLabel)
@@ -1324,5 +1329,323 @@ describe("discovery — the routine path to a mapping", () => {
     );
     expect(res.status).toBe(404);
     expect(listPendingIdentities()).toHaveLength(0);
+  });
+});
+
+// ── The account-level run report (#1756) ─────────────────────────────────────
+//
+// The walkthrough found a dead zone at the worst possible moment: the very FIRST run
+// signs in, enumerates the proxy list, is refused because its own patient is not bound
+// yet — and left no trace at all, so the card said "No run reported yet." directly under
+// its own promise that every run is reported. The same hole made a PORTAL-LEVEL failure
+// ("the login page changed") inexpressible without fabricating a patient label.
+//
+// These pin the trace, and pin what it is NOT: it is not a sync event, it does not touch
+// a profile, and it does not appear for a run the token was not allowed to make.
+describe("account-level run reports", () => {
+  function reportsFor(accountId: number) {
+    return listPortalRunReports().filter((r) => r.accountId === accountId);
+  }
+
+  function syncEventCount(): number {
+    return (
+      db.prepare("SELECT COUNT(*) AS n FROM integration_sync_events").get() as {
+        n: number;
+      }
+    ).n;
+  }
+
+  it("FIRST CONTACT leaves a trace even though the report is refused", async () => {
+    const res = await SYNC_REPORT(
+      report(memberToken, {
+        status: "nothing-new",
+        portal: "ochsner-mychart",
+        patient: "Unknown Reporter",
+        identities: ["Unknown Reporter", "SMITH, ALEX", "Ruth O'Hara-Smith"],
+      })
+    );
+    // The refusal still stands — nothing may be filed under a guess.
+    expect(res.status).toBe(404);
+    expect(syncEventCount()).toBe(0);
+
+    // …but the run happened, and the card can now say so.
+    const rows = reportsFor(defaultAccount);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ok).toBe(true);
+    expect(rows[0].status).toBe("nothing-new");
+    expect(rows[0].portalName).toBe("Ochsner MyChart");
+    // The NEWLY-WAITING count, which is what the card and the tool both quote.
+    expect(rows[0].discovered).toBe(3);
+    expect(rows[0].at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it("a resolved run stamps the login too, and rewrites rather than accumulating", async () => {
+    bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
+    for (const status of ["downloaded", "nothing-new"] as const) {
+      const res = await SYNC_REPORT(
+        report(memberToken, {
+          status,
+          portal: "ochsner-mychart",
+          patient: "Jane Doe",
+        })
+      );
+      expect(res.status).toBe(200);
+    }
+    // ONE row per login: "the last run this login reported". A tool reporting every five
+    // minutes forever cannot grow this table.
+    const rows = reportsFor(defaultAccount);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("nothing-new");
+    expect(rows[0].ok).toBe(true);
+  });
+
+  it("stamps NOTHING when the token may not write the profile the binding names", async () => {
+    // The stranger's token resolves a real login, but the binding points at a profile it
+    // cannot write. A refused run must not get to stamp a household's card.
+    bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
+    const res = await SYNC_REPORT(
+      report(strangerToken, {
+        status: "downloaded",
+        portal: "ochsner-mychart",
+        patient: "Jane Doe",
+      })
+    );
+    expect(res.status).toBe(403);
+    expect(reportsFor(defaultAccount)).toHaveLength(0);
+    expect(syncEventCount()).toBe(0);
+  });
+
+  it("is a fact about the LOGIN, not about a profile", () => {
+    const cols = (
+      db.prepare("PRAGMA table_info(portal_run_reports)").all() as {
+        name: string;
+      }[]
+    ).map((c) => c.name);
+    // A profile_id here would mean a profile-less run had been attributed to one.
+    expect(cols).not.toContain("profile_id");
+    expect(cols).toContain("account_id");
+  });
+
+  it("goes away with the login it describes, and with the portal", () => {
+    const mom = createPortalAccount(portalId, "Mom");
+    expect(mom.ok).toBe(true);
+    if (!mom.ok) return;
+    const account = accountsForPortal(portalId).find((a) => a.id === mom.id)!;
+    recordPortalRunReport(account, {
+      ok: false,
+      status: "failed",
+      message: "portal login page changed",
+      discovered: 0,
+    });
+    expect(reportsFor(mom.id)).toHaveLength(1);
+    expect(deletePortalAccount(mom.id)).toBe(true);
+    expect(reportsFor(mom.id)).toHaveLength(0);
+
+    const other = createPortal("Run Report Teardown");
+    expect(other.ok).toBe(true);
+    if (!other.ok) return;
+    const implicit = accountsForPortal(other.id)[0];
+    recordPortalRunReport(implicit, {
+      ok: true,
+      status: "nothing-new",
+      message: null,
+      discovered: 0,
+    });
+    expect(reportsFor(implicit.id)).toHaveLength(1);
+    expect(deletePortal(other.id)).toBe(true);
+    expect(reportsFor(implicit.id)).toHaveLength(0);
+  });
+});
+
+// A PORTAL-LEVEL failure (#1756). "The login page changed", "the Document Center moved" —
+// the likely failure mode, and a PRE-PATIENT one. It is true of every patient on that
+// login and of none in particular, so before this the tool had to invent a patient label
+// to say it: a lie in the one table whose job is honest patient labels.
+describe("a `failed` report that names only a portal", () => {
+  it("is accepted, and lands as an account-level trace with no sync event", async () => {
+    const res = await SYNC_REPORT(
+      report(memberToken, {
+        status: "failed",
+        portal: "ochsner-mychart",
+        message: "portal login page changed",
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      portal: string;
+      account: string;
+      status: string;
+    };
+    expect(body).toMatchObject({
+      ok: true,
+      portal: "ochsner-mychart",
+      account: "default",
+      status: "failed",
+    });
+
+    const rows = listPortalRunReports().filter(
+      (r) => r.accountId === defaultAccount
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ok).toBe(false);
+    expect(rows[0].message).toBe("portal login page changed");
+    // No profile was guessed, so there is no profile-owned row to find.
+    expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS n FROM integration_sync_events")
+          .get() as { n: number }
+      ).n
+    ).toBe(0);
+  });
+
+  it("still learns the proxy list a broken run managed to see", async () => {
+    const res = await SYNC_REPORT(
+      report(memberToken, {
+        status: "failed",
+        portal: "ochsner-mychart",
+        message: "document centre moved",
+        identities: ["SMITH, ALEX"],
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { discovered?: number }).discovered).toBe(1);
+    expect(listPendingIdentities().map((p) => p.patientLabel)).toEqual([
+      "SMITH, ALEX",
+    ]);
+  });
+
+  it("obeys the SAME omitted-account rule as everything else", async () => {
+    const mom = createPortalAccount(portalId, "Mom");
+    expect(mom.ok).toBe(true);
+    if (!mom.ok) return;
+
+    // Two logins now, so "one of your logins is failing" is not an actionable sentence:
+    // the tool must say which. Refused with the same typed, non-oracular answer.
+    const vague = await SYNC_REPORT(
+      report(memberToken, {
+        status: "failed",
+        portal: "ochsner-mychart",
+        message: "portal login page changed",
+      })
+    );
+    expect(vague.status).toBe(404);
+    expect(((await vague.json()) as { error: string }).error).toBe(
+      "unmapped-identity"
+    );
+    expect(listPortalRunReports()).toHaveLength(0);
+
+    // Named, and it lands — under Mom, not under the implicit login.
+    const named = await SYNC_REPORT(
+      report(memberToken, {
+        status: "failed",
+        portal: "ochsner-mychart",
+        account: "mom",
+        message: "portal login page changed",
+      })
+    );
+    expect(named.status).toBe(200);
+    const rows = listPortalRunReports();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].accountId).toBe(mom.id);
+  });
+
+  it("refuses an unknown portal without revealing that it is unknown", async () => {
+    const res = await SYNC_REPORT(
+      report(memberToken, { status: "failed", portal: "no-such-portal" })
+    );
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "unmapped-identity"
+    );
+    expect(listPortalRunReports()).toHaveLength(0);
+  });
+
+  it("does NOT let a non-failed status drop its patient", async () => {
+    // "I checked and found nothing" is a claim about a patient's records, and is
+    // meaningless without one. Same refusal text it always had.
+    for (const status of ["downloaded", "nothing-new"] as const) {
+      const res = await SYNC_REPORT(
+        report(memberToken, { status, portal: "ochsner-mychart" })
+      );
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toBe(
+        "`patient` must be a non-empty patient label"
+      );
+    }
+    expect(listPortalRunReports()).toHaveLength(0);
+  });
+});
+
+// The `discovered` echo (#1756). docs/api-tokens.md promises the field lets a tool tell
+// its user "2 NEW patients need mapping in allos". The route used to echo the length of
+// the reported list, so a steady-state run reporting the same three patients forever
+// answered 3 — a number that means nothing and never changes.
+describe("the `discovered` echo counts what is NEW", () => {
+  const body = {
+    status: "nothing-new",
+    portal: "ochsner-mychart",
+    patient: "Jane Doe",
+    identities: ["SMITH, ALEX", "Ruth O'Hara-Smith"],
+  };
+
+  async function discoveredOf(req: Request): Promise<number | undefined> {
+    const res = await SYNC_REPORT(req);
+    return ((await res.json()) as { discovered?: number }).discovered;
+  }
+
+  it("answers the newly-waiting count on the first run and nothing on the second", async () => {
+    bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
+    expect(await discoveredOf(report(memberToken, body))).toBe(2);
+    // Nothing new was learned, so the honest answer is "nothing" — the field is absent
+    // rather than repeating a stale 2.
+    expect(await discoveredOf(report(memberToken, body))).toBeUndefined();
+    // And the third run, once one of them has been answered, still says nothing new.
+    ignorePortalIdentity(defaultAccount, "SMITH, ALEX");
+    expect(await discoveredOf(report(memberToken, body))).toBeUndefined();
+  });
+
+  it("counts only the newcomer when the list grows", async () => {
+    bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
+    await SYNC_REPORT(report(memberToken, body));
+    expect(
+      await discoveredOf(
+        report(memberToken, {
+          ...body,
+          identities: [...body.identities, "Third Person"],
+        })
+      )
+    ).toBe(1);
+  });
+
+  it("is honest on the REFUSED path too, where the tool needs it most", async () => {
+    // First contact: the run's own patient is unmapped, so this 404 is the only place
+    // the tool hears how much setup is left.
+    const first = await SYNC_REPORT(
+      report(memberToken, {
+        status: "nothing-new",
+        portal: "ochsner-mychart",
+        patient: "Unknown Reporter",
+        identities: ["Unknown Reporter", "SMITH, ALEX"],
+      })
+    );
+    expect(first.status).toBe(404);
+    expect(((await first.json()) as { discovered?: number }).discovered).toBe(
+      2
+    );
+
+    const second = await SYNC_REPORT(
+      report(memberToken, {
+        status: "nothing-new",
+        portal: "ochsner-mychart",
+        patient: "Unknown Reporter",
+        identities: ["Unknown Reporter", "SMITH, ALEX"],
+      })
+    );
+    expect(second.status).toBe(404);
+    expect(
+      ((await second.json()) as { discovered?: number }).discovered
+    ).toBeUndefined();
   });
 });

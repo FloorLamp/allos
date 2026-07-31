@@ -713,25 +713,40 @@ export interface PendingIdentity {
 //
 // The caller MUST have authenticated first. This is not a decorative note: it is the
 // property that keeps the table from being an anonymous write amplifier.
-function recordPendingForAccount(
+// THREE outcomes, not two (#1756). "Recorded" and "newly waiting" are different
+// questions and the callers ask different ones: a refusal only needs to know whether it
+// remembered anything, while the DISCOVERED count a tool is told — "2 new patients need
+// mapping in allos" — is only true if it counts identities that were not already sitting
+// on the card. A re-sighting bumps `seen_count` and teaches nobody anything.
+type PendingWrite = "new" | "bumped" | "answered";
+
+function writePendingForAccount(
   account: PortalAccount,
   patientLabel: string,
   outcome: PendingOutcome
-): boolean {
+): PendingWrite {
   const label = normalizePatientLabel(patientLabel);
-  if (!isPatientLabel(label)) return false;
+  if (!isPatientLabel(label)) return "answered";
 
   // first/last seen come from the CLOCK SEAM (sqlNow, #1534), unlike the registry's own
   // audit stamps: the card reduces both to a calendar DAY ("first seen 2026-01-02"), so
   // they must read the same clock every other day-shaped value in the app reads.
   const now = sqlNow();
-  return writeTx((): boolean => {
+  return writeTx((): PendingWrite => {
     const answered = db
       .prepare(
         "SELECT 1 FROM portal_identities WHERE account_id = ? AND patient_label = ?"
       )
       .get(account.id, label);
-    if (answered) return false;
+    if (answered) return "answered";
+
+    // Asked INSIDE the write transaction, so "was this already waiting" and the upsert
+    // that answers it cannot be separated by a concurrent report of the same label.
+    const already = db
+      .prepare(
+        "SELECT 1 FROM pending_portal_identities WHERE account_id = ? AND patient_label = ?"
+      )
+      .get(account.id, label);
 
     db.prepare(
       `INSERT INTO pending_portal_identities
@@ -754,8 +769,18 @@ function recordPendingForAccount(
              LIMIT ?
           )`
     ).run(account.id, account.id, PENDING_PER_ACCOUNT_CAP);
-    return true;
+    return already ? "bumped" : "new";
   });
+}
+
+// Did this identity get remembered at all? The refusal paths' question — an
+// already-bound or already-ignored label is not pending and is never recorded.
+function recordPendingForAccount(
+  account: PortalAccount,
+  patientLabel: string,
+  outcome: PendingOutcome
+): boolean {
+  return writePendingForAccount(account, patientLabel, outcome) !== "answered";
 }
 
 // Remember an identity that was just REFUSED, named the way the request named it.
@@ -778,16 +803,22 @@ export function recordPendingIdentity(
 
 // Record the proxy-patient list a run DISCOVERED — the routine path by which allos learns
 // identities. Already-answered labels are skipped, so a steady-state run that reports the
-// same five patients every hour writes nothing at all. Returns how many are newly waiting.
+// same five patients every hour writes nothing at all.
+//
+// RETURNS HOW MANY ARE NEWLY WAITING — not how many were touched (#1756). This number is
+// what the route echoes to the tool, and docs/api-tokens.md promises it means "2 NEW
+// patients need mapping in allos". Counting re-sightings would make it a constant that
+// says nothing and never falls to zero, so a tool could never tell its user that setup is
+// finished.
 export function recordDiscoveredIdentities(
   account: PortalAccount,
   labels: string[]
 ): number {
-  let recorded = 0;
+  let newly = 0;
   for (const label of labels) {
-    if (recordPendingForAccount(account, label, "discovered")) recorded++;
+    if (writePendingForAccount(account, label, "discovered") === "new") newly++;
   }
-  return recorded;
+  return newly;
 }
 
 const LIST_PENDING_STMT = db.prepare(

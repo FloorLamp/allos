@@ -48,6 +48,13 @@ test.describe("API tokens (#1734)", () => {
     expect(shown).toMatch(/^[1-9][0-9]*\.[A-Za-z0-9_-]+$/);
     // The warning is the whole contract with the user — it must actually say so.
     await expect(panel).toContainText("only time it is shown");
+    // …and the one string that must be transcribed exactly, shown exactly once, has a
+    // copy affordance rather than select-and-drag (#1756). Named and tooltipped, like
+    // every other copy button in the app.
+    const copy = panel.getByTestId("api-token-copy");
+    await expect(copy).toBeVisible();
+    await expect(copy).toHaveAttribute("aria-label", "Copy");
+    await expect(copy).toHaveAttribute("title", "Copy to clipboard");
 
     // 2. The token is in the list, with the capability and a never-used stamp.
     const row = page
