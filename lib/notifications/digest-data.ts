@@ -357,10 +357,14 @@ export function gatherDigestInput(
     isWorkoutDay: false,
     activeSituations: effectiveSituations,
   });
+  // The digest has no login context (the notify tick runs per PROFILE), so weather
+  // figures render in canonical °C — the default. A weather situation's activation is a
+  // digest LINE only: it never becomes a send of its own (#1726's no-pushes boundary).
   const derivedLines = getDerivedSituationLines(profileId, td);
   const derivedSituationLines = [
     derivedLines.poorSleep,
     derivedLines.period,
+    ...derivedLines.weather,
   ].filter((l): l is string => l != null);
 
   // Held items (#1296): active intake items currently suppressed by a pause situation,

@@ -12,7 +12,11 @@ import {
   runWeatherSync,
   type WeatherSyncResult,
 } from "@/lib/integrations/weather-sync";
-import type { WeatherSource, HourlyUvRow } from "@/lib/integrations/open-meteo";
+import type {
+  WeatherSource,
+  HourlyUvRow,
+  DailyWeatherRow,
+} from "@/lib/integrations/open-meteo";
 import { getUvHoursForDay } from "@/lib/integrations/weather-cache";
 import { getUvDoseForDay } from "@/lib/queries/weather";
 import { decideUvOverexposure } from "@/lib/uv-overexposure";
@@ -43,11 +47,17 @@ function seedOutdoorActivity(
 
 // A fixture source that returns a fixed set of hourly rows regardless of the requested
 // window (the sync's own window math is exercised separately; here we control the rows).
-function fixtureSource(rows: HourlyUvRow[]): WeatherSource {
+function fixtureSource(
+  rows: HourlyUvRow[],
+  dailyRows: DailyWeatherRow[] = []
+): WeatherSource {
   return {
     id: "fixture",
     async fetchHourly() {
       return { ok: true, rows };
+    },
+    async fetchDaily() {
+      return { ok: true, rows: dailyRows };
     },
   };
 }
@@ -126,6 +136,9 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     const failing: WeatherSource = {
       id: "fixture",
       async fetchHourly() {
+        return { ok: false, rows: [], status: 500, error: "boom" };
+      },
+      async fetchDaily() {
         return { ok: false, rows: [], status: 500, error: "boom" };
       },
     };

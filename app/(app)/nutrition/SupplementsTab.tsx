@@ -73,7 +73,12 @@ import {
   situationActivationLine,
   mergedSituationOptions,
 } from "@/lib/situations";
-import { withPeriodOption } from "@/lib/derived-situations";
+import {
+  withPeriodOption,
+  withWeatherSituationOptions,
+} from "@/lib/derived-situations";
+import { weatherSituationsRelevant } from "@/lib/queries/weather-situations";
+import { getUnitPrefs } from "@/lib/settings";
 import {
   countSituationalDue,
   doseDueOn,
@@ -201,7 +206,11 @@ export default async function SupplementsTab() {
   // The visible derived-context state lines (shared with the check-in + digest, #221)
   // and whether the poor-sleep line carries the one-tap "Not today" override (only when
   // DERIVED — a declared toggle is cleared by its chip, never the override, #1292).
-  const derivedLines = getDerivedSituationLines(profile.id, todayStr);
+  const derivedLines = getDerivedSituationLines(
+    profile.id,
+    todayStr,
+    getUnitPrefs(login.id).temperatureUnit
+  );
   const showPoorSleepOverride = derivedLines.poorSleepOverridable;
   // When fitness tracking is restricted for this profile the workout/rest-day
   // concept is meaningless, so we drop the subtitle prefix and the workout/
@@ -419,8 +428,14 @@ export default async function SupplementsTab() {
     getNavRelevance(profile.id).cycle
   );
   // The item-form situation picker reads that same merged option set (#1177), passed
-  // through the SituationOptionsProvider below.
-  const situationOptionNames = situationChips.map((o) => o.name);
+  // through the SituationOptionsProvider below — WIDENED by the five built-in weather
+  // situations (#1726) when they're relevant for this profile, so an antihistamine can
+  // be keyed to "High pollen" and go due automatically. They join the PICKER only, never
+  // the toggle chip row: a weather situation is derived, so there is nothing to toggle.
+  const situationOptionNames = withWeatherSituationOptions(
+    situationChips,
+    weatherSituationsRelevant(profile.id, todayStr)
+  ).map((o) => o.name);
 
   // One-way condition bridge (#560 part 2): an ACTIVE acute illness/injury condition
   // suggests its matching clinical situation, so a sick user doesn't flip two toggles
@@ -775,7 +790,9 @@ export default async function SupplementsTab() {
           toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
           only the DERIVED contribution for today. The same lines appear on the
           check-in disclosure + digest. */}
-        {(derivedLines.poorSleep || derivedLines.period) && (
+        {(derivedLines.poorSleep ||
+          derivedLines.period ||
+          derivedLines.weather.length > 0) && (
           <div
             className="-mt-2 mb-4 space-y-1"
             data-testid="derived-situations"
@@ -817,6 +834,18 @@ export default async function SupplementsTab() {
                 <span>{derivedLines.period}</span>
               </div>
             )}
+            {derivedLines.weather.map((line) => (
+              <div
+                key={line}
+                className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="derived-weather"
+              >
+                <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                  Auto
+                </span>
+                <span>{line}</span>
+              </div>
+            ))}
           </div>
         )}
 
