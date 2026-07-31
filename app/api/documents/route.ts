@@ -8,9 +8,10 @@ import { ingestMedicalUpload } from "@/lib/medical-pipeline";
 import { MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
 import {
   classifyUploadOutcome,
-  parseTargetProfileId,
   type UploadOutcome,
 } from "@/lib/document-upload-api";
+import { parseUploadTarget } from "@/lib/acquirer-identity";
+import { resolvePortalIdentity } from "@/lib/portals";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/log";
 
@@ -50,11 +51,24 @@ import { createLogger } from "@/lib/log";
 //      Reach and access are re-derived from the login's CURRENT grants on every request,
 //      so a revoked grant takes effect immediately on every token that login holds.
 //
-// WHICH PROFILE. Explicit, always. A share sheet cannot choose, so /share-target falls
-// back to the session's active profile; a CLI can choose and therefore must. `profile`
-// arrives as a query parameter (the curl-first shape) or as a multipart field, and its
-// absence is a 400 rather than a guess — silently landing someone's labs on the wrong
-// person is exactly the failure this refuses to risk.
+// WHICH PROFILE. Explicit, always — but named in one of TWO ways, and exactly one per
+// request (#1739):
+//
+//   `profile=<id>`                  the human CLI, which knows its own instance's ids.
+//   `portal=<slug>&patient=<label>` an ACQUIRER, which must not know them.
+//
+// The second form exists because an external tool deciding profile ids would have to keep
+// that mapping in local config on every machine it runs on, and a stale local mapping
+// filing one person's records under another is the precise harm this surface must not
+// cause. So the tool reports the identity the portal showed it, VERBATIM, and allos
+// resolves it against the user-managed binding table — then intersects the result with
+// this token's write set, so a mapping is never a bypass of profile authorization.
+//
+// An identity that is not bound refuses with the typed `unmapped-identity` outcome. It
+// never defaults: a new proxy patient appearing on a portal must fail visibly and become
+// a one-tap binding, not land on whichever profile seemed closest. A share sheet cannot
+// choose at all, which is why /share-target alone falls back to the session's active
+// profile; a caller that CAN choose must.
 //
 // ERROR SHAPE (#478). `{ ok: false, error }` with an appropriate status; the 500 message
 // stays generic and the real cause goes to the server error log. Nothing here ever logs
@@ -135,20 +149,48 @@ export async function POST(req: Request): Promise<Response> {
     return jsonError("expected a multipart/form-data body", 400);
   }
 
-  // `?profile=` first (the documented curl shape), then a multipart `profile` field.
-  const profileId = parseTargetProfileId(
-    new URL(req.url).searchParams.get("profile") ?? form.get("profile")
-  );
-  if (profileId === null) {
-    return jsonError(
-      "a `profile` id is required (as ?profile= or a form field)",
-      400
+  // 3. Resolve the destination. Query parameters first (the documented curl shape), then
+  //    the matching multipart fields. parseUploadTarget enforces exactly-one-of.
+  const params = new URL(req.url).searchParams;
+  const target = parseUploadTarget({
+    profile: params.get("profile") ?? form.get("profile"),
+    portal: params.get("portal") ?? form.get("portal"),
+    patient: params.get("patient") ?? form.get("patient"),
+  });
+  if (!target.ok) return jsonError(target.error, 400);
+
+  let profileId: number;
+  if (target.target.kind === "profile") {
+    profileId = target.target.profileId;
+  } else {
+    const resolved = resolvePortalIdentity(
+      target.target.portalSlug,
+      target.target.patientLabel
     );
+    if (!resolved.ok) {
+      // TYPED refusal, not a generic 400: the tool surfaces `unmapped-identity` as "this
+      // patient isn't mapped yet" and the card turns it into a one-tap binding. Answered
+      // with 404 because the identity genuinely does not resolve — distinct from the 403
+      // a resolved-but-unauthorized identity gets below, so the two are debuggable apart
+      // WITHOUT revealing whether some other login has bound this label.
+      return Response.json(
+        {
+          ok: false,
+          error: "unmapped-identity",
+          detail:
+            "That portal patient is not mapped to a profile yet. Map it under Integrations → MyChart.",
+        },
+        { status: 404 }
+      );
+    }
+    profileId = resolved.profileId;
   }
 
-  // 3. Authorize: demo, then reachability, then write. A member who cannot reach the
+  // 4. Authorize: demo, then reachability, then write. A member who cannot reach the
   //    profile and a member who can but holds only read both get the same 403 — the
-  //    endpoint is not a probe for which profiles exist.
+  //    endpoint is not a probe for which profiles exist. A RESOLVED identity goes through
+  //    exactly this gate too: the binding says where the records belong, never that this
+  //    token may put them there.
   const reachable = accessibleProfilesForLogin(login.id).some(
     (p) => p.id === profileId
   );

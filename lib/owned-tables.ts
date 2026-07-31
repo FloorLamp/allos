@@ -235,6 +235,15 @@ export const OWNED_TABLES = [
   // data/uploads/activity-videos/<profileId>/). Ordered AFTER activities, though the
   // profile sweep runs with foreign_keys OFF so intra-subtree order is immaterial.
   "activity_videos",
+  // Portal↔patient identity bindings for the MyChart acquirer (#1739). Profile-owned: a
+  // row BINDS one portal's patient label to THIS profile, so it must die with the
+  // profile. That is a correctness requirement, not bookkeeping — a binding left dangling
+  // after a profile is deleted would resolve an incoming upload onto a profile that no
+  // longer exists, which is exactly the misfiling the identity-resolution design exists
+  // to prevent. (Its parent `portals` is GLOBAL, like `providers`: a household sees one
+  // "Ochsner MyChart" regardless of which family members it covers, so it carries no
+  // profile_id and is intentionally absent from this list.)
+  "portal_identities",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

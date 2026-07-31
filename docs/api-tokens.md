@@ -109,6 +109,60 @@ You can send several `file` parts in one request; they are ingested one at a tim
 the same batch cap the upload form uses, and any overflow is reported in a `skipped`
 count rather than silently dropped.
 
+### Uploading for a portal patient instead of a profile id
+
+An automated acquirer — a tool that signs into a hospital portal and pushes what it finds
+— should **not** decide profile ids. A mapping kept in local config on every machine goes
+stale, and a stale mapping files one person's records under another. So instead of a
+profile, such a tool names the identity the portal showed it:
+
+```bash
+curl -H "Authorization: Bearer $ALLOS_TOKEN" \
+     -F file=@summary.pdf \
+     "https://allos.example/api/documents?portal=ochsner&patient=Jane%20Q.%20Doe"
+```
+
+Allos resolves `(portal, patient)` against the mapping you manage under **Integrations →
+MyChart**, then intersects the result with what this token may write. A mapping is never a
+bypass: a binding says where records belong, not that this token may put them there.
+
+Exactly one form per request — a `profile` **or** a `(portal, patient)` pair. Both
+together is a `400`, because preferring one would silently ignore the destination you
+named.
+
+If the patient is not mapped, the request is refused with a typed outcome and **nothing is
+stored**:
+
+```json
+{ "ok": false, "error": "unmapped-identity" }
+```
+
+That refusal is the feature. When a new person appears on a portal's proxy list, the
+upload fails visibly and becomes a one-tap mapping — it never lands on whichever profile
+seemed closest.
+
+### Reporting a run
+
+A run that checked a portal and found nothing new pushes no documents at all — and that is
+the common case. Without a report the server would see no trace of it, so "Last checked"
+could never move and a perfectly healthy quiet week would look broken. An acquirer
+therefore ends every run with:
+
+```bash
+curl -H "Authorization: Bearer $ALLOS_TOKEN" -H "Content-Type: application/json" \
+     -d '{"status":"nothing-new","portal":"ochsner","patient":"Jane Q. Doe","unchanged":4}' \
+     https://allos.example/api/documents/sync-report
+```
+
+`status` is `downloaded`, `nothing-new`, or `failed`, alongside optional `inserted`,
+`updated`, `unchanged`, `failed` counts and a `message`. It lands as an ordinary sync
+event, so Data → Review shows it like any other integration.
+
+`nothing-new` is a **calm success**: it advances "Last checked" and keeps the connection
+looking alive. Only `failed` drives the Review failure badge — and a failure deliberately
+leaves the previous timestamp standing, so the card keeps showing how long it has really
+been since the portal was last read.
+
 ### Finding the profile ids
 
 `GET /api/documents/profiles` returns the profiles this token may upload to:
