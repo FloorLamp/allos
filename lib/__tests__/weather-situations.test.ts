@@ -13,12 +13,15 @@ import {
   HEATWAVE_EXIT_C,
   HEATWAVE_MIN_DAYS,
   POLLEN_ENTER,
+  POLLEN_EXIT,
   PRESSURE_SWING_ENTER_HPA,
   activeWeatherSituations,
+  evaluateSeries,
   evaluateWeatherSituations,
   fmtAmbientTemp,
   isNotableWeatherDay,
   notableDaySummary,
+  notableStatesSummary,
   pressureDelta,
   weatherSituationFigure,
   weatherSituationStateLine,
@@ -245,6 +248,41 @@ describe("pressure-swing predicate (#1726)", () => {
     expect(pressureDelta(days, "2026-03-01")).toBeNull();
     expect(on(days, "2026-03-01")).toEqual([]);
   });
+
+  it("breaks the hysteresis carry on a GAP in the cached series", () => {
+    // The swing machine carries "still swinging" across a day whose own delta sits in
+    // the band [EXIT, ENTER) — but only over CONTIGUOUS days. A missing day means the
+    // app cannot claim the swing ran through it, so the carry resets and the band day
+    // is no longer enough on its own.
+    const contiguous = series("2026-03-01", [
+      { pressureMslHpa: 1015 },
+      { pressureMslHpa: 1007 }, // −8 → enters
+      { pressureMslHpa: 1012 }, // +5 → in the band, carries
+      { pressureMslHpa: 1013 }, // +6 vs 03-02 → in the band, carries
+    ]);
+    expect(on(contiguous, "2026-03-02")).toContain(
+      BUILTIN_PRESSURE_SWING_SITUATION
+    );
+    expect(on(contiguous, "2026-03-04")).toContain(
+      BUILTIN_PRESSURE_SWING_SITUATION
+    );
+
+    const gapped = [
+      day("2026-03-01", { pressureMslHpa: 1015 }),
+      day("2026-03-02", { pressureMslHpa: 1007 }),
+      // 2026-03-03 missing.
+      day("2026-03-04", { pressureMslHpa: 1013 }),
+    ];
+    expect(on(gapped, "2026-03-02")).toContain(
+      BUILTIN_PRESSURE_SWING_SITUATION
+    );
+    // Its own delta (+6 against 03-02) is still inside the band, so ONLY the gap reset
+    // can turn this day off.
+    expect(pressureDelta(gapped, "2026-03-04")).toBe(6);
+    expect(on(gapped, "2026-03-04")).not.toContain(
+      BUILTIN_PRESSURE_SWING_SITUATION
+    );
+  });
 });
 
 describe("pollen + air-quality predicates (#1726)", () => {
@@ -257,6 +295,46 @@ describe("pollen + air-quality predicates (#1726)", () => {
       (s) => s.name === BUILTIN_HIGH_POLLEN_SITUATION
     )!;
     expect(pollen.families).toEqual(["grass"]);
+  });
+
+  it("names EVERY family that crossed on the same day, in the stable order", () => {
+    // Two families high at once is ONE High-pollen state carrying both names, never two
+    // duplicate states — and the figure names the first family in the canonical order.
+    const days = series("2026-05-01", [
+      { pollenGrass: POLLEN_ENTER.grass + 5, pollenWeed: POLLEN_ENTER.weed + 5 },
+    ]);
+    const states = evaluateWeatherSituations(days, "2026-05-01");
+    const pollenStates = states.filter(
+      (s) => s.name === BUILTIN_HIGH_POLLEN_SITUATION
+    );
+    expect(pollenStates).toHaveLength(1);
+    expect(pollenStates[0].families).toEqual(["grass", "weed"]);
+    expect(pollenStates[0].value).toBe(POLLEN_ENTER.grass + 5);
+    expect(weatherSituationFigure(pollenStates[0], "C")).toBe("grass pollen");
+  });
+
+  it("breaks a pollen run on a GAP in the cached series", () => {
+    // Same reset heatwave and AQI have: a day inside the hysteresis band holds the run
+    // only when the preceding day is actually in the series.
+    const contiguous = series("2026-05-01", [
+      { pollenGrass: POLLEN_ENTER.grass + 5 },
+      { pollenGrass: (POLLEN_ENTER.grass + POLLEN_EXIT.grass) / 2 },
+    ]);
+    expect(on(contiguous, "2026-05-02")).toContain(
+      BUILTIN_HIGH_POLLEN_SITUATION
+    );
+
+    const gapped = [
+      day("2026-05-01", { pollenGrass: POLLEN_ENTER.grass + 5 }),
+      // 2026-05-02 missing.
+      day("2026-05-03", {
+        pollenGrass: (POLLEN_ENTER.grass + POLLEN_EXIT.grass) / 2,
+      }),
+    ];
+    expect(on(gapped, "2026-05-01")).toContain(BUILTIN_HIGH_POLLEN_SITUATION);
+    expect(on(gapped, "2026-05-03")).not.toContain(
+      BUILTIN_HIGH_POLLEN_SITUATION
+    );
   });
 
   it("does not fire a family below its own entry bound", () => {
@@ -325,6 +403,30 @@ describe("notable days + formatters (#1726/#1728)", () => {
     expect(notableDaySummary(days, "2026-07-03")).toBe(
       BUILTIN_HEATWAVE_SITUATION
     );
+  });
+
+  it("formats the same summary from an INDEXED evaluation as from a per-day call", () => {
+    // #1749: a page rendering many days evaluates the series once and reads byDate per
+    // row. That indexed path must be indistinguishable from the one-off accessor —
+    // otherwise the Timeline and the one-off callers could disagree about a day.
+    const days = series("2026-07-01", [
+      { tempMaxC: 35, aqi: AQI_ENTER + 20 },
+      { tempMaxC: 35, aqi: AQI_ENTER + 20 },
+      { tempMaxC: 35, aqi: AQI_EXIT - 5 },
+      { tempMaxC: 20, pollenGrass: POLLEN_ENTER.grass + 5 },
+      { tempMaxC: 20 },
+    ]);
+    const evaluated = evaluateSeries(days);
+    for (const d of days) {
+      expect(notableStatesSummary(evaluated.byDate.get(d.date) ?? [])).toBe(
+        notableDaySummary(days, d.date)
+      );
+    }
+    // …and it really is exercising both the notable and the quiet branch.
+    expect(notableDaySummary(days, "2026-07-01")).toBe(
+      `${BUILTIN_HEATWAVE_SITUATION} · ${BUILTIN_POOR_AIR_SITUATION}`
+    );
+    expect(notableDaySummary(days, "2026-07-05")).toBeNull();
   });
 
   it("renders ambient temperature in the login's scale", () => {

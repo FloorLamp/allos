@@ -543,13 +543,26 @@ export function weatherSituationStateLine(
   return `${state.name}${detail} — ${items} (auto)`;
 }
 
+// The compact conditions summary for a day whose states are ALREADY EVALUATED — the
+// indexing entry point for a caller that renders MANY days (#1749). `evaluateSeries` is
+// one forward pass over the whole series, so a page that formats a month of Timeline
+// days must evaluate ONCE and read `byDate` per day rather than call the by-date
+// accessor in the render loop (which would re-run the pass for every row). Same
+// formatter as `notableDaySummary` below, so the indexed and the one-off path can never
+// phrase a notable day differently.
+export function notableStatesSummary(
+  states: readonly WeatherSituationState[]
+): string | null {
+  return states.length > 0 ? states.map((s) => s.name).join(" · ") : null;
+}
+
 // The compact conditions summary for a notable day (#1728's Timeline day header): the
 // active situation names, in the stable predicate order. Null on a quiet day — notable
-// by exception, silent by default.
+// by exception, silent by default. One-off lookups only; see `notableStatesSummary` for
+// the many-days shape.
 export function notableDaySummary(
   days: readonly WeatherDay[],
   date: string
 ): string | null {
-  const active = activeWeatherSituations(days, date);
-  return active.length > 0 ? active.join(" · ") : null;
+  return notableStatesSummary(evaluateWeatherSituations(days, date));
 }
