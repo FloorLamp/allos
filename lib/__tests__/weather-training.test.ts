@@ -13,6 +13,8 @@ import {
   planningWorthSurfacing,
   remainingViableDays,
   scanViableDays,
+  conditionsStamp,
+  weatherCodeLabel,
   type SessionWeather,
 } from "@/lib/weather-training";
 import {
@@ -20,7 +22,7 @@ import {
   isOutdoorActivity,
 } from "@/lib/activities-catalog";
 import { shiftDateStr } from "@/lib/date";
-import type { WeatherDay } from "@/lib/weather-situations";
+import { fmtAmbientTemp, type WeatherDay } from "@/lib/weather-situations";
 
 // Pure tests for weather-aware training (#1724). The property the whole feature turns
 // on: TOLERANCE IS REVEALED, NEVER ASSUMED. A winter cyclist must not be parked at 3 °C
@@ -369,5 +371,76 @@ describe("viable days feed the pace math (#1672/#1673 composition)", () => {
     const scan = scanViableDays("Cycling", TODAY, week, forecast, env);
     expect(remainingViableDays(scan, week.length)).toBe(3);
     expect(isLastViableDay(scan, week[0])).toBe(false);
+  });
+});
+
+describe("conditions stamps (#1728)", () => {
+  it("stamps an OUTDOOR session with temperature and sky", () => {
+    expect(
+      conditionsStamp({
+        activity: "Cycling",
+        tempLabel: "31°C",
+        weatherCode: 0,
+      })
+    ).toBe("31°C · clear");
+  });
+
+  it("renders in the login's temperature scale", () => {
+    expect(
+      conditionsStamp({
+        activity: "Trail Run",
+        tempLabel: fmtAmbientTemp(31, "F"),
+        weatherCode: 61,
+      })
+    ).toBe("88°F · rain");
+  });
+
+  it("gives an INDOOR or unknown activity no stamp — the flag decides", () => {
+    expect(
+      conditionsStamp({
+        activity: "Treadmill",
+        tempLabel: "31°C",
+        weatherCode: 0,
+      })
+    ).toBeNull();
+    expect(
+      conditionsStamp({
+        activity: "Running",
+        tempLabel: "31°C",
+        weatherCode: 0,
+      })
+    ).toBeNull();
+  });
+
+  it("degrades to whichever fact it has, and to nothing when it has neither", () => {
+    expect(
+      conditionsStamp({
+        activity: "Cycling",
+        tempLabel: "8°C",
+        weatherCode: null,
+      })
+    ).toBe("8°C");
+    expect(
+      conditionsStamp({ activity: "Cycling", tempLabel: null, weatherCode: 3 })
+    ).toBe("overcast");
+    // A cache gap renders NO stamp rather than a stale or invented one.
+    expect(
+      conditionsStamp({
+        activity: "Cycling",
+        tempLabel: null,
+        weatherCode: null,
+      })
+    ).toBeNull();
+  });
+
+  it("maps WMO codes to the bands people actually say", () => {
+    expect(weatherCodeLabel(0)).toBe("clear");
+    expect(weatherCodeLabel(2)).toBe("partly cloudy");
+    expect(weatherCodeLabel(45)).toBe("fog");
+    expect(weatherCodeLabel(65)).toBe("rain");
+    expect(weatherCodeLabel(75)).toBe("snow");
+    expect(weatherCodeLabel(95)).toBe("thunderstorm");
+    expect(weatherCodeLabel(null)).toBeNull();
+    expect(weatherCodeLabel(999)).toBeNull();
   });
 });

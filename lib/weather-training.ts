@@ -459,3 +459,46 @@ export function planningLine(input: {
   const hedge = scan.truncated ? " so far" : "";
   return `This week${hedge}: ${bestDayLabel} looks like the best window for your ${activity.toLowerCase()}${progress}.`;
 }
+
+// ---- Conditions stamps (#1728) ------------------------------------------------------
+//
+// DISPLAY ONLY. Nothing here gates, ranks, warns or sends: the point is that the data
+// explains variance the user would otherwise misattribute — a slow run at 31 °C
+// explains itself. Derived at read time from the same session-to-weather join the
+// tolerance envelope uses (one join, two consumers), never written onto the activity
+// row, so a cache gap simply renders no stamp.
+
+// WMO weather-interpretation codes → a short human label. Grouped rather than
+// enumerated: "light drizzle" vs "moderate drizzle" is more precision than a one-line
+// stamp can carry, and the bands are what people actually say. An unrecognized code
+// yields null and the stamp falls back to the temperature alone.
+export function weatherCodeLabel(code: number | null): string | null {
+  if (code == null || !Number.isFinite(code)) return null;
+  if (code === 0) return "clear";
+  if (code <= 2) return "partly cloudy";
+  if (code === 3) return "overcast";
+  if (code <= 48) return "fog";
+  if (code <= 57) return "drizzle";
+  if (code <= 67) return "rain";
+  if (code <= 77) return "snow";
+  if (code <= 82) return "showers";
+  if (code <= 86) return "snow showers";
+  if (code <= 99) return "thunderstorm";
+  return null;
+}
+
+// The compact conditions stamp for one logged OUTDOOR session — "31°C · clear". Null
+// when the activity isn't outdoor (the flag decides — an indoor session gets no stamp),
+// when there is no cached weather for its day, or when neither figure is known. The
+// temperature is rendered in the LOGIN's scale by the caller's formatter, so this takes
+// the already-formatted string.
+export function conditionsStamp(input: {
+  activity: string;
+  tempLabel: string | null;
+  weatherCode: number | null;
+}): string | null {
+  if (!isOutdoorActivity(input.activity)) return null;
+  const label = weatherCodeLabel(input.weatherCode);
+  if (input.tempLabel && label) return `${input.tempLabel} · ${label}`;
+  return input.tempLabel ?? label ?? null;
+}

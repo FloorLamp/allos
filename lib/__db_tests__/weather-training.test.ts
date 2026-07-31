@@ -23,6 +23,15 @@ import {
   sessionWeather,
 } from "@/lib/queries/weather-training";
 import { contextNotes } from "@/lib/coaching/engine";
+import { buildJournalFeedPage } from "@/lib/journal-feed";
+import type { UnitPrefs } from "@/lib/settings";
+
+// A login reading in Celsius, so the stamp assertions name the canonical figure.
+const CELSIUS_UNITS: UnitPrefs = {
+  weightUnit: "kg",
+  distanceUnit: "km",
+  temperatureUnit: "C",
+};
 
 const LNG = -74;
 let seq = 0;
@@ -269,5 +278,49 @@ describe("cross-surface agreement (#221)", () => {
     expect(line).toBeDefined();
     expect(line).toContain("Stationary Bike instead");
     expect(line).toContain("resumes when it warms up");
+  });
+});
+
+describe("conditions stamps on the journal feed (#1728)", () => {
+  it("stamps an outdoor session with the weather of its day, writing nothing", () => {
+    const p = newProfile("wt-stamp");
+    const anchor = today(p);
+    logSession(p, anchor, "Cycling", 31);
+    cacheDay(p, anchor, { tempMaxC: 31, weatherCode: 0 });
+
+    const feed = buildJournalFeedPage(p, null, CELSIUS_UNITS);
+    const card = feed.groups[0].cards[0];
+    expect(card.metrics[0]).toBe("31°C · clear");
+
+    // Read-time only: the activity row gained nothing.
+    const row = db
+      .prepare(`SELECT * FROM activities WHERE profile_id = ?`)
+      .get(p) as Record<string, unknown>;
+    expect(Object.keys(row)).not.toContain("weather_code");
+  });
+
+  it("renders no stamp for an INDOOR session, however good the data", () => {
+    const p = newProfile("wt-stamp-indoor");
+    const anchor = today(p);
+    logSession(p, anchor, "Treadmill", 31);
+    cacheDay(p, anchor, { tempMaxC: 31, weatherCode: 0 });
+
+    const feed = buildJournalFeedPage(p, null, CELSIUS_UNITS);
+    // No stamp anywhere in the metrics row — the outdoor flag decides, not the data.
+    const metrics = feed.groups[0].cards[0].metrics;
+    expect(metrics.some((m) => m.includes("·"))).toBe(false);
+  });
+
+  it("renders no stamp when the cache never covered that day", () => {
+    const p = newProfile("wt-stamp-gap");
+    const anchor = today(p);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min)
+       VALUES (?, ?, 'cardio', 'Cycling', 60)`
+    ).run(p, anchor);
+
+    const feed = buildJournalFeedPage(p, null, CELSIUS_UNITS);
+    const metrics = feed.groups[0].cards[0].metrics;
+    expect(metrics.some((m) => m.includes("·"))).toBe(false);
   });
 });

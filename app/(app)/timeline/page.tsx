@@ -36,6 +36,11 @@ import {
   getTimezone,
 } from "@/lib/settings";
 import DaylightChip from "@/components/DaylightChip";
+import { notableDaySummary } from "@/lib/weather-situations";
+import {
+  WEATHER_SERIES_LOOKBACK_DAYS,
+  getWeatherDaysForProfile,
+} from "@/lib/queries/weather-situations";
 import CyclePhaseChip from "@/components/CyclePhaseChip";
 import Avatar from "@/components/Avatar";
 import SubjectChip from "@/components/SubjectChip";
@@ -552,6 +557,28 @@ export default async function TimelinePage(props: {
           days.map((d) => d.date)
         )
       : new Map<string, number>();
+  // Timeline day CONTEXT (#1728): a compact conditions summary on days the weather was
+  // NOTABLE — a heatwave, cold snap, pressure swing, high-pollen or poor-air day per the
+  // #1726 predicates. Quiet by default, notable by exception: an ordinary mild Tuesday
+  // renders nothing, so this never becomes chrome. Display only — it gates nothing, and
+  // it reuses the SAME predicate set the dueness widening reads, so a day the Timeline
+  // calls notable is exactly a day a situational item would have gone due.
+  const notableByDay = new Map<string, string>();
+  if (!multiFeed && home && days.length > 0) {
+    const dates = days.map((d) => d.date).sort();
+    // One read spanning the feed, widened backwards so a spell's leading days are in
+    // the series the predicates need to see the run.
+    const series = getWeatherDaysForProfile(
+      daySubjectId,
+      shiftDateStr(dates[0], -WEATHER_SERIES_LOOKBACK_DAYS),
+      dates[dates.length - 1]
+    );
+    for (const date of dates) {
+      const summary = notableDaySummary(series, date);
+      if (summary) notableByDay.set(date, summary);
+    }
+  }
+
   const uvByDay = new Map<
     string,
     { uvMinutes: number | null; peakUvIndex: number | null }
@@ -984,6 +1011,14 @@ export default async function TimelinePage(props: {
                     phase={cyclePhaseOnDate(cyclePeriods, day.date)}
                     period={periodOnDate(cyclePeriods, day.date)}
                   />
+                  {notableByDay.has(day.date) && (
+                    <div
+                      className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                      data-testid="timeline-weather-context"
+                    >
+                      {notableByDay.get(day.date)}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-3 pl-4">
                   {/* The intraday panel (#1068): the day rotated 90°, on the
