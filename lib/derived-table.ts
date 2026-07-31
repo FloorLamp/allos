@@ -229,6 +229,22 @@ export function multiViewGroupKey(
   return `${r.profileId}\u0000${tableNameKey(r)}`;
 }
 
+// The Biomarkers table's ANALYTE identity for a row, in either view: the display
+// name alone in single view, (profile, display name) in multi-view so two members'
+// same-named analytes stay in distinct groups. Named once because three call sites
+// must agree on it — the SERVER's panel grouping (whose header counts are drawn from
+// it), the client's run-grouping inside an expanded panel, and the analyte count the
+// header publishes. A second spelling anywhere would let "Lipids · 6" disagree with
+// the six name headings under it.
+export function biomarkerRowKey(
+  r: { name: string; canonical_name: string | null; profileId?: number },
+  multiView: boolean
+): string {
+  return multiView && r.profileId != null
+    ? multiViewGroupKey({ ...r, profileId: r.profileId })
+    : tableNameKey(r);
+}
+
 // The multi-view comparator: the SUBJECT dimension (profileId) is woven in right
 // AFTER the primary sort key and BEFORE its secondary tie-breaks, so a member's rows
 // of the same analyte stay CONTIGUOUS (one heading + one chip per member) instead of

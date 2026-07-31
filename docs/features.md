@@ -921,11 +921,18 @@ so a flagged group self-identifies while collapsed.
 The index is the **whole** filtered set — there is no pager. A row cap would be
 the wrong unit here (one panel with a few years of draws can be dozens of rows,
 so a page could split a panel and print partial counts on each half); the panel
-taxonomy is a closed set, so the collapsed index has a hard ceiling by
+taxonomy is a closed set, so the list of headers has a hard ceiling by
 construction. Groups arrive collapsed unless the result set is short, there is
 only one group, or a filter is active — any narrowing means you already asked
 for the rows, so every matching group opens and a search can never read as
 "no results" because its hit was folded.
+
+The **readings** are bounded separately from the headers: a group that arrives
+collapsed is sent none of them, and one that arrives open is sent at most
+twenty-five, saying how many it is holding back ("Showing 25 of 72 readings").
+Opening a group, or asking a truncated one for the rest, loads that one panel's
+readings on the spot. So the page you land on costs the index, never the whole
+lab history, however many years of it there are.
 
 Readings sort by **name** (A–Z, newest reading first within an analyte) or by
 date; panel is not a sort, because the groups are already emitted in clinical
