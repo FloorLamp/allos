@@ -4,15 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWriteAccess } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { getTrendViews, setTrendViews } from "@/lib/settings";
-import {
-  addView,
-  deleteView,
-  findView,
-  parseTrendBodyView,
-  viewToQuery,
-  type TrendViewParams,
-} from "@/lib/trend-views";
 import { generateInsight, saveInsight } from "@/lib/ai";
 import { generateRecapNarrative } from "@/lib/ai-narrative";
 import { withAiLogContext } from "@/lib/ai-log";
@@ -112,70 +103,12 @@ export async function dismissBodyHygiene(
 // `reorderSaved`, and lib/trends-card-rank.ts `bodyCardOrder` composes pinned-first
 // over the ranked remainder. There is no second arrangement action to keep in step.
 
-// Read the hub's current URL state off the submitted form into a params bag. The
-// client injects the live ?from/to/tab/cmpA/cmpB/cmpn values as hidden inputs, so
-// a saved view captures exactly what the user is looking at.
-//
-// #1456: a view no longer snapshots (or restores) a pin list. Pins were Trends-only
-// ORDERING state; under the unified save store the same keys are SAVES — membership
-// that also drives the Results status card and the passport summary — so restoring a
-// view's snapshot would silently UNSAVE biomarkers on surfaces the view has nothing
-// to do with. A view stays what its name says: a URL-state configuration. Legacy
-// stored views keep their `pins` field; it is simply ignored (normalizeViewParams
-// drops it), never applied.
-function paramsFromForm(formData: FormData): TrendViewParams {
-  const s = (k: string): string | undefined => {
-    const v = String(formData.get(k) ?? "").trim();
-    return v || undefined;
-  };
-  return {
-    from: s("from"),
-    to: s("to"),
-    tab: s("tab"),
-    cmpA: s("cmpA"),
-    cmpB: s("cmpB"),
-    cmpn: String(formData.get("cmpn") ?? "") === "1",
-    // #1493 C. Through the SAME gate the stored-blob normalizer uses, so a stale or
-    // hand-posted layout value can't survive one path and fail the other.
-    view: parseTrendBodyView(s("view")),
-  };
-}
-
-// Saved views. Save the current hub state under a name for
-// the active profile — per-profile data, so requireWriteAccess (any login acting as
-// the profile may save), not requireAdmin. Re-saving the same name overwrites it.
-export async function saveTrendView(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return formError("Name your view.");
-  const params = paramsFromForm(formData);
-  setTrendViews(
-    profile.id,
-    addView(getTrendViews(profile.id), { name, params })
-  );
-  revalidatePath("/trends");
-  return formOk();
-}
-
-// Delete a saved view by name.
-export async function deleteTrendView(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return formError("Couldn't find that view.");
-  setTrendViews(profile.id, deleteView(getTrendViews(profile.id), name));
-  revalidatePath("/trends");
-  return formOk();
-}
-
-// Apply a saved view: redirect to the hub with the view's range/tab/compare params —
-// reusing the SAME URL vocabulary the DateRangeControl / CompareControls already read.
-// It restores URL state ONLY (see paramsFromForm on why the retired pins snapshot is
-// not re-applied). Unknown name is a no-op back to /trends.
-export async function applyTrendView(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const name = String(formData.get("name") ?? "").trim();
-  const view = name ? findView(getTrendViews(profile.id), name) : null;
-  if (!view) redirect("/trends");
-  const qs = viewToQuery(view.params);
-  redirect(qs ? `/trends?${qs}` : "/trends");
-}
+// `saveTrendView` / `deleteTrendView` / `applyTrendView` (and their `paramsFromForm`
+// helper) lived here until #1653. The Trends overhaul deleted `SavedViewsBar` and
+// its render call, so the Views strip and its "Save current" button were the only
+// entry points into them and nothing reached them any more — leaving three
+// still-POSTable Server Actions reading and writing a `trend_views` blob no surface
+// showed. The pure list math (lib/trend-views.ts) and the `getTrendViews` /
+// `setTrendViews` settings accessors went with them; the stored rows are simply
+// inert. e2e/trends-saved-views.spec.ts keeps the browser guard that neither those
+// rows nor anything else brings the strip back.

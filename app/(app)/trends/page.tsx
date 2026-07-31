@@ -114,7 +114,7 @@ export default async function TrendsPage(props: {
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
   // #1485 G: no-param loads open on 90D, not all time. An explicit window still
-  // wins verbatim — a shared ?from/?to link, a saved view, a quick-range pill —
+  // wins verbatim — a shared ?from/?to link, a bookmark, a quick-range pill —
   // and `?range=all` is the explicit all-time window (the pill has to be able to
   // say itself now that "no params" means something else).
   const range = resolveTrendsRange(
