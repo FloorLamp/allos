@@ -4,6 +4,20 @@
       "date": "2026-07-31",
       "entries": [
         {
+          "pr": 1745,
+          "kind": "feature",
+          "title": "Training that checks the forecast — without overruling you",
+          "body": "Outdoor suggestions now know the weather, and your tolerance is learned from your own history: if you ride at 3 °C, nothing parks your bike at 3 °C. In genuinely hostile conditions the suggestion swaps to a mapped indoor alternative and says exactly why — never a silent disappearance — and a parked activity no longer piles up 'staleness' pressure while it waits out the season. When good outdoor days are scarce, the morning digest and Upcoming name the week's best window for your ride. Logged outdoor sessions also carry a small conditions stamp (\"31°C · clear\"), so a slow run in the heat explains itself.",
+          "issues": [1724, 1728]
+        },
+        {
+          "pr": 1743,
+          "kind": "feature",
+          "title": "Weather becomes context: heatwaves, pollen, and med-aware sun safety",
+          "body": "Allos now caches daily weather and air quality for your home location and derives five situations from it — heatwave, cold snap, pressure swing, high pollen, poor air quality. They behave like the situations you already use: an antihistamine keyed to high pollen comes due while the pollen holds, the digest mentions the conditions, and Trends can ask whether a pressure swing explains a rough night. And if a medication in your stack makes sun or heat riskier — a photosensitizing antibiotic, a diuretic in a heatwave — the day's safety note says so, quietly, on the surfaces you already read.",
+          "issues": [1726, 1727]
+        },
+        {
           "pr": 1742,
           "kind": "feature",
           "title": "Patient portals get real names — and syncs tell you whose data arrived",
