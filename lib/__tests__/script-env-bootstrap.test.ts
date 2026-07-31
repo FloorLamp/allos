@@ -164,6 +164,23 @@ function walk(dir: string): string[] {
   return out;
 }
 
+// Standalone entrypoints that read process.env but must NOT load this repo's .env files.
+// Keep this SHORT and justified: the default is that a script touching process.env owes
+// the env-first import, and an entry here is a claim that loading .env would be WRONG for
+// that script, not merely unnecessary.
+const ENV_FREE = new Set<string>([
+  // scripts/upload-docs.ts (#1735) — the remote document-upload CLI. It is deliberately
+  // DEPENDENCY-FREE (Node stdlib only, nothing from this repo) so it can be copied to any
+  // machine with Node 24 and run against a remote instance with no checkout, no database
+  // and no version-skew concern. Importing ./load-env would pull in @next/env and destroy
+  // exactly that property. Its two variables (ALLOS_TOKEN, ALLOS_URL) are supplied by the
+  // OPERATOR'S shell on the REMOTE machine — this repo's .env belongs to the server, not
+  // to the client, and reading it would be the wrong behaviour rather than a missing one.
+  // It cannot reach lib/db (the #679 bug class this guard exists for) because it imports
+  // nothing from the repo at all.
+  "scripts/upload-docs.ts",
+]);
+
 function discoverEntrypoints(): string[] {
   const files: string[] = [];
   for (const dir of SCAN_DIRS) {
@@ -171,7 +188,10 @@ function discoverEntrypoints(): string[] {
     if (fs.existsSync(abs)) files.push(...walk(abs));
   }
   return files
-    .filter((rel) => rel !== ENV_LOADER && !isPlaywrightFile(rel))
+    .filter(
+      (rel) =>
+        rel !== ENV_LOADER && !isPlaywrightFile(rel) && !ENV_FREE.has(rel)
+    )
     .filter((rel) => reachesDb(rel) || usesProcessEnv(rel))
     .sort();
 }
@@ -211,6 +231,19 @@ describe("standalone script environment bootstrap", () => {
       expect(imports[0]).toBe(expected);
       expect(source).not.toContain('from "@next/env"');
       expect(source).not.toContain("loadEnvConfig(");
+    }
+  );
+
+  it.each([...ENV_FREE])(
+    "an env-free entrypoint really imports nothing from this repo: %s",
+    (file) => {
+      // The exemption above is only honest while the script stays dependency-free. If it
+      // ever grows a repo import, it can reach lib/db and must rejoin the guard.
+      const targets = importSpecifiers(file)
+        .map((spec) => resolveImport(file, spec))
+        .filter((t): t is string => t !== null);
+      expect(targets).toEqual([]);
+      expect(reachesDb(file)).toBe(false);
     }
   );
 

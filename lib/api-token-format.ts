@@ -111,3 +111,16 @@ export function scopeSatisfies(
 ): boolean {
   return granted === demanded;
 }
+
+// The rate-limit identity for an inbound bearer request: the presented token's PUBLIC id
+// half, or one shared bucket for anything that isn't even a well-formed credential (so a
+// flood of garbage headers cannot mint unlimited buckets and outrun the limiter's sweep).
+//
+// The id half only, never the secret — a rate-limit key lives in a process-wide Map and
+// may end up in a debug dump; a secret must never be in one. Pure, and it touches no
+// database, which is what lets a route apply the limit BEFORE the scrypt verification
+// that verification's cost makes necessary.
+export function apiTokenRateLimitKey(authorization: string | null): string {
+  const parsed = parseApiToken(parseBearerHeader(authorization));
+  return parsed ? `api-token:${parsed.id}` : "api-token:anonymous";
+}

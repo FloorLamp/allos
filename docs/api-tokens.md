@@ -37,6 +37,12 @@ separate scopes you opt into per token, and an old token will never silently gai
 1. Go to **Settings → Account & security → API tokens**.
 2. Give it a name that says where it will live — `laptop CLI`, `home server cron`. The
    name is only for you; it is how you decide which one to revoke later.
+
+   **Mint one token per device**, rather than sharing a single token across machines.
+   Revocation is per token, so a per-device token is what lets you retire one laptop —
+   or one machine you no longer trust — without interrupting every other client you have
+   set up.
+
 3. Choose the capability and press **Create token**.
 
 The token is then shown **once**:
@@ -56,14 +62,104 @@ the instance.
 
 ## Using a token
 
-Send it as a bearer token:
+Send it as a bearer token. Keep it in an environment variable or a secrets file, not in a
+command line — command lines show up in shell history and in other users' process lists.
+
+### Uploading documents
+
+`POST /api/documents` takes a multipart body and the profile to file it under:
 
 ```bash
-curl -H "Authorization: Bearer $ALLOS_TOKEN" https://allos.example/api/...
+curl -H "Authorization: Bearer $ALLOS_TOKEN" \
+     -F file=@labs.pdf \
+     "https://allos.example/api/documents?profile=2"
 ```
 
-Keep it in an environment variable or a secrets file, not in a command line — command
-lines show up in shell history and in other users' process lists.
+The `profile` is **required** and can also be sent as a form field. It is never
+inferred: filing someone's labs under the wrong person is the mistake this refuses to
+risk, so a missing profile is a `400`, not a default.
+
+Uploads go through exactly the same ingest engine as the in-app upload form, so they get
+the same size limits, the same content check, the same per-profile deduplication, and the
+same Data → Review entry. The response reports **each file** rather than a blanket
+success:
+
+```json
+{
+  "ok": true,
+  "profile": 2,
+  "documents": [
+    { "id": 412, "name": "labs.pdf", "outcome": "stored", "reason": null }
+  ]
+}
+```
+
+`outcome` is one of:
+
+- `stored` — the file is in the record; extraction continues on the server.
+- `duplicate` — this profile already had these exact bytes. Nothing new was stored.
+  Re-running an upload is safe by design.
+- `failed` — the engine refused it, and `reason` says why (too large, unsupported type,
+  contents that contradict the file name).
+
+`ok: true` means the request was handled, never that every file landed — always read the
+per-file `outcome`.
+
+You can send several `file` parts in one request; they are ingested one at a time, up to
+the same batch cap the upload form uses, and any overflow is reported in a `skipped`
+count rather than silently dropped.
+
+### Finding the profile ids
+
+`GET /api/documents/profiles` returns the profiles this token may upload to:
+
+```bash
+curl -H "Authorization: Bearer $ALLOS_TOKEN" \
+     https://allos.example/api/documents/profiles
+```
+
+```json
+{ "ok": true, "profiles": [{ "id": 2, "name": "Alex" }] }
+```
+
+It lists only the **writable** ones — a read-only grant would only produce a `403` a step
+later — and the names are exactly the ones this login already sees in its own profile
+switcher, disambiguated the same way. Nothing else is disclosed.
+
+### Rate limits
+
+Both endpoints are rate-limited per token (uploads: 60 requests per 5 minutes). Over the
+budget you get a `429` with a `Retry-After` header.
+
+## The command-line tool
+
+`scripts/upload-docs.ts` wraps the two endpoints. It is **dependency-free** — Node 24
+stdlib only, nothing from this repo, no database access — so you can copy that single
+file to any machine with Node 24 and run it, with no version-skew concern against the
+instance it talks to:
+
+```bash
+export ALLOS_TOKEN=...            # never passed on the command line
+node scripts/upload-docs.ts --url https://allos.example --profile alice labs.pdf scans/*.jpg
+```
+
+From a checkout you can also run `npm run upload-docs -- --url … --profile … files…`.
+
+- `--profile` takes a **name or an id** and can be repeated. Names are resolved against
+  `GET /api/documents/profiles`, case- and whitespace-insensitively. An ambiguous name is
+  an error, not a guess.
+- `--list` prints the profiles this token may upload to, and exits.
+- Sending one file to two people is two uploads, on purpose: documents are stored and
+  deduplicated per profile, so each person's copy dedups against their own record.
+- Exit codes: `0` when everything was stored or already present (a duplicate is not a
+  failure — a cron re-scanning a folder should not go red for doing its job), `1` when
+  any file failed or the instance could not be reached, `2` for bad arguments.
+
+Running the `.ts` file on bare Node prints a one-off
+`MODULE_TYPELESS_PACKAGE_JSON` warning on stderr; it is harmless.
+
+The endpoint stays **curl-first**. The script is convenience, not protocol — anything it
+does, the two `curl` calls above do.
 
 ## Revoking
 
@@ -93,6 +189,11 @@ behind on someone else's login.
   format, and the scope-demand rule. Pure, no database.
 - `lib/api-tokens.ts` — mint/list/revoke, plus `authenticateApiToken()`, the single
   helper every bearer route authenticates through.
+- `lib/document-upload-api.ts` — the upload endpoint's pure decisions: which profile a
+  request targets, and the per-file outcome mapping.
+- `app/api/documents/route.ts` — the upload endpoint. It hands every file to
+  `lib/medical-pipeline::ingestMedicalUpload`, the ONE ingest engine, and adds no gate of
+  its own (a second copy would drift from the form's).
 - Migration `127-api-tokens.ts` — the `api_tokens` table. It is login-owned (no
   `profile_id`), so it is not in `lib/owned-tables.ts`.
 
