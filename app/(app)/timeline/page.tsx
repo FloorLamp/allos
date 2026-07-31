@@ -36,7 +36,7 @@ import {
   getTimezone,
 } from "@/lib/settings";
 import DaylightChip from "@/components/DaylightChip";
-import { notableDaySummary } from "@/lib/weather-situations";
+import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
 import {
   WEATHER_SERIES_LOOKBACK_DAYS,
   getWeatherDaysForProfile,
@@ -573,8 +573,13 @@ export default async function TimelinePage(props: {
       shiftDateStr(dates[0], -WEATHER_SERIES_LOOKBACK_DAYS),
       dates[dates.length - 1]
     );
+    // ONE evaluation of that widened series (#1749), then a map lookup per rendered
+    // day. The predicates are a single forward pass with per-situation state, so asking
+    // the by-date accessor inside this loop would re-run the whole pass once per row —
+    // page-size × series-length work for a result that is identical every time.
+    const evaluated = evaluateSeries(series);
     for (const date of dates) {
-      const summary = notableDaySummary(series, date);
+      const summary = notableStatesSummary(evaluated.byDate.get(date) ?? []);
       if (summary) notableByDay.set(date, summary);
     }
   }

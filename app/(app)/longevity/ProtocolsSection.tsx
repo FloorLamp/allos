@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import {
   getProtocols,
-  getProtocolHeatmap,
+  getProtocolHeatmaps,
   getProtocolOutcomeOptions,
   getProtocolIntakeOptions,
 } from "@/lib/queries";
@@ -37,11 +37,16 @@ export default async function ProtocolsSection({
   const protocols = getProtocols(profile.id);
   const todayStr = today(profile.id);
   const weekStart = getWeekStart(profile.id);
-  const heatmaps = Object.fromEntries(
-    protocols.map((protocol) => [
-      protocol.id,
-      getProtocolHeatmap(profile.id, protocol, todayStr, weekStart),
-    ])
+  // ONE bounded gather for the whole list (#1655) — each ledger is read once over the
+  // union of the protocol windows and sliced per protocol, instead of two queries per
+  // protocol the profile has ever created. An ended experiment's heatmap is the point
+  // of keeping it in the list, so nothing is dropped; only the query count stops
+  // scaling with how long someone has used the feature.
+  const heatmaps = getProtocolHeatmaps(
+    profile.id,
+    protocols,
+    todayStr,
+    weekStart
   );
   const options = getProtocolOutcomeOptions(profile.id, todayStr);
   // "Recovery gear" (issue #592): the picker studies a recovery device, so filter

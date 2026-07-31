@@ -106,7 +106,7 @@ test.describe("B — Compare folded into Insights", () => {
   test("a retired ?tab=compare deep link lands on Insights with the comparison rendered", async ({
     page,
   }) => {
-    // The link an old bookmark, a shared URL or a stored saved view carries. A
+    // The link an old bookmark or a shared URL carries. A
     // vocabulary mapping in lib/trends-tabs.ts resolves it — no redirect — so the
     // cmpA/cmpB params ride along untouched.
     await page.goto(

@@ -2521,7 +2521,12 @@ for (const [startAgo, endAgo, flow, note] of seededCycles) {
   );
 }
 
-// ── Saved views (Trends Ph3) ─────────────────────────────────────────────────
+// ── Saved views: RETIRED, kept as legacy data ────────────────────────────────
+// The Trends overhaul removed the Views strip and #1653 removed the actions,
+// settings accessors and list math behind it. Nothing reads this key any more —
+// the rows stay ON PURPOSE, because an upgraded database still carries them and
+// e2e/trends-saved-views.spec.ts asserts that inert data cannot resurrect the
+// removed chrome. There is no cleanup migration; dead settings data is harmless.
 // (The `trend_pins` KV this block used to seed was folded into `saved_items` by
 // migration 113 — see the saved-items seed below.)
 upsertProfileSetting.run(

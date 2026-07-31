@@ -257,7 +257,7 @@ describe("defaultTrendsRange / resolveTrendsRange", () => {
     );
   });
 
-  // The contract for every shared/bookmarked link and every saved view: a URL
+  // The contract for every shared/bookmarked link: a URL
   // that says something is never reinterpreted.
   it("never rewrites an explicit window", () => {
     const custom = { from: "2026-01-01", to: "2026-02-01" };

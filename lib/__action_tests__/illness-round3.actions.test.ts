@@ -1,5 +1,6 @@
 // SERVER-ACTION TIER — the #859 round-3 episode actions: the stale-nudge one-tap
-// BACKDATED end, the nudge dismissal, and the symptom-photo attach/delete. Drives each
+// BACKDATED end, the nudge dismissal, the symptom-photo attach/delete, and that
+// route's accessible-profile serve gate (#1696). Drives each
 // through the (mocked) auth guard against a real temp DB; asserts the auth gate wrote
 // the expected rows and (for photos) files.
 
@@ -17,6 +18,7 @@ import {
   updateSymptomPhotoCaptionAction,
   deleteSymptomPhotoAction,
 } from "@/app/(app)/medical/episodes/actions";
+import { GET as serveSymptomPhoto } from "@/app/api/symptom-photo/[id]/route";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 function makeSick(profileId: number, startDaysAgo = 8): number {
@@ -184,5 +186,49 @@ describe("symptom photo attach / delete", () => {
         )
         .get(row.id, owner.id)
     ).toEqual({ caption: null });
+  });
+});
+
+describe("symptom photo serve route — accessible-profile access (#1696)", () => {
+  it("serves a household member's photo to a caregiver acting as another profile, and refuses an ungranted login", async () => {
+    // Same mismatch as the clip route beside it: the photo strip renders on the episode
+    // page, which resolves the episode across the viewer's ACCESSIBLE profiles (#879),
+    // so ACTIVE-profile scoping 404'd every thumbnail a caregiver looked at.
+    const caregiver = createLogin({ role: "member" });
+    const parent = createProfile("Photo Parent 9", caregiver.id);
+    const member = createProfile("Photo Member 9", caregiver.id);
+
+    actAs(caregiver, member);
+    const form = new FormData();
+    form.set("photo", pngFile("member-rash.png"));
+    form.set("date", today(member.id));
+    expect((await uploadSymptomPhotoAction(form)).ok).toBe(true);
+    const row = db
+      .prepare(`SELECT id FROM symptom_photos WHERE profile_id = ?`)
+      .get(member.id) as { id: number };
+
+    actAs(caregiver, parent);
+    const served = await serveSymptomPhoto(
+      new Request(`http://test/api/symptom-photo/${row.id}`),
+      { params: Promise.resolve({ id: String(row.id) }) }
+    );
+    expect(served.status).toBe(200);
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff");
+
+    // The grants boundary is untouched: a login with no grant on the owning profile is
+    // refused exactly as a nonexistent id is.
+    const stranger = createLogin({ role: "member" });
+    actAs(stranger, createProfile("Photo Stranger 9", stranger.id));
+    const denied = await serveSymptomPhoto(
+      new Request(`http://test/api/symptom-photo/${row.id}`),
+      { params: Promise.resolve({ id: String(row.id) }) }
+    );
+    expect(denied.status).toBe(404);
+    const missing = await serveSymptomPhoto(
+      new Request(`http://test/api/symptom-photo/99999999`),
+      { params: Promise.resolve({ id: "99999999" }) }
+    );
+    expect(missing.status).toBe(404);
+    expect(await denied.text()).toBe(await missing.text());
   });
 });

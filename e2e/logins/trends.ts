@@ -40,16 +40,10 @@ export const TRENDS_CURATE_EMPTY_ANALYTE = "Ferritin";
 // restricted profile, carrying ONLY its age-neutral compare section.
 //
 // Dedicated ON PURPOSE (#868): the other restricted profile — the seeded ~18-month
-// "Riley (child)" — has no second metric to overlay, and this fixture also stores a
-// saved view, which on a shared profile would put a stray chip in the Views bar
-// every other Trends spec reads. Read-only in its spec (navigation + applying a
-// view, which writes nothing), so --repeat-each stays clean.
+// "Riley (child)" — has no second metric to overlay. Read-only in its spec
+// (navigation only), so --repeat-each stays clean.
 export const E2E_LOGIN_TRENDS_COMPARE = "e2e_trends_compare";
 export const TRENDS_COMPARE_PROFILE = "Trends Compare (e2e)";
-// A saved view stored with the RETIRED `tab: "compare"` — a legacy trend_views row,
-// exactly as one saved before #1489 looks. Applying it must still land on Insights
-// with the pair selected.
-export const TRENDS_COMPARE_VIEW = "Legacy compare (e2e)";
 
 // ── Fitness becomes the windowed analytics lens (issue #1492) ────────────────
 // A dedicated ADULT profile whose training data deliberately STRADDLES the 90-day

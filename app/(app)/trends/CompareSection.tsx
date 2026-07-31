@@ -28,7 +28,7 @@ import CompareOverlay from "@/components/CompareOverlay";
 //
 // #1489 folded it out of a tab of its own and into a SECTION of Insights (rendered
 // by InsightsSection). It MOVED, it did not change: same params, same dual-axis
-// (#400) / time-axis (#402) / normalized behaviour, same saved views. It is
+// (#400) / time-axis (#402) / normalized behaviour. It is
 // age-NEUTRAL — a training-restricted profile sees this section (with the gated
 // series already filtered out of `listCompareOptions`) and nothing else on the tab.
 export default async function CompareSection({

@@ -8,11 +8,7 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
 import { createFixtureProfile } from "../fixture-profile";
-import {
-  setTrendViews,
-  setUserBirthdate,
-  setUserSex,
-} from "../../lib/settings";
+import { setUserBirthdate, setUserSex } from "../../lib/settings";
 import {
   E2E_LOGIN_TRENDS_CURATE,
   TRENDS_CURATE_PROFILE,
@@ -22,7 +18,6 @@ import {
   TRENDS_BODY_OLD_DAY,
   E2E_LOGIN_TRENDS_COMPARE,
   TRENDS_COMPARE_PROFILE,
-  TRENDS_COMPARE_VIEW,
   E2E_LOGIN_TRENDS_READINGS,
   TRENDS_READINGS_PROFILE,
   TRENDS_READINGS_HRV_MANUAL,
@@ -189,17 +184,17 @@ export function seedCuratedOverview(): void {
 // ── Compare folds into Insights, gate moves to the section ──
 export function seedCompareFold(): void {
   // ── Compare-into-Insights fixture (#1489) ────────────────────────────────────
-  // A TRAINING-RESTRICTED profile that can actually run a comparison. Two things
-  // make it the fixture this needs and the seeded "Riley (child)" is not:
-  //   • an age UNDER the instance gate (13, set by e2e/seed/coverage-gaps.ts) with
-  //     TWO overlappable series — weight + resting HR on the same dates — so the
-  //     compare overlay draws its dual-axis chart for a minor;
-  //   • a stored saved view carrying the RETIRED `tab: "compare"`, i.e. a
-  //     trend_views row exactly as one saved before #1489 looks. It lives here
-  //     rather than on a shared profile because a saved view is a visible chip in
-  //     the Views bar every other Trends spec renders.
+  // A TRAINING-RESTRICTED profile that can actually run a comparison: an age UNDER
+  // the instance gate (13, set by e2e/seed/coverage-gaps.ts) with TWO overlappable
+  // series — weight + resting HR on the same dates — so the compare overlay draws
+  // its dual-axis chart for a minor. It is dedicated rather than shared because the
+  // seeded "Riley (child)" has no second metric to overlay.
+  // (It also carried a stored saved view on the retired `tab: "compare"` until
+  // #1653 deleted the saved-views feature; the retired tab name is covered by the
+  // deep link the compare-fold spec navigates, which is what a stored view resolved
+  // through anyway.)
   // Dates are RELATIVE (inside the 90-day default window) so the fixture never goes
-  // stale; the spec only reads and applies the view, so it stays repeat-safe.
+  // stale; the spec only reads, so it stays repeat-safe.
   // Idempotent: its own fixture rows are cleared and rewritten.
   const cmpId = fixtureProfileId(TRENDS_COMPARE_PROFILE);
   const cmpToday = today(cmpId);
@@ -225,21 +220,9 @@ export function seedCompareFold(): void {
     insCmp.run(cmpId, shiftDateStr(cmpToday, -ago), kg, hr);
   }
 
-  // The legacy saved view: no from/to (an all-time view, which viewToQuery re-emits
-  // as ?range=all) so the readings above are always inside its window.
-  setTrendViews(cmpId, [
-    {
-      name: TRENDS_COMPARE_VIEW,
-      params: {
-        tab: "compare",
-        cmpA: "metric:weight",
-        cmpB: "metric:resting_hr",
-      },
-    },
-  ]);
-
-  // Write grant: applying a saved view goes through applyTrendView, a
-  // requireWriteAccess Server Action (it redirects and stores nothing).
+  // Write grant so the member gets the ORDINARY hub chrome the tab-strip and
+  // section assertions are written against, not the read-only variant. The spec
+  // itself only navigates — it writes nothing.
   seedMemberLogin(E2E_LOGIN_TRENDS_COMPARE, cmpId, "write");
   console.log(
     `e2e: seeded compare-fold fixture — profile ${cmpId} (${TRENDS_COMPARE_PROFILE}) (#1489)`

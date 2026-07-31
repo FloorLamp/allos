@@ -65,6 +65,18 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "requireItemWriteAccess (#1374): the ONE lookup that RESOLVES which profile an item belongs to so the action can gate on it — filtering by profile_id here would presuppose the answer. Reads only the id→profile_id mapping and immediately feeds it to requireProfileWriteAccess; the gate is the protection, not the filter (the app/(app)/gate-item.ts shape)",
   },
   {
+    file: "app/api/symptom-video/[id]/route.ts",
+    includes:
+      "SELECT profile_id, stored_path, poster_path, mime_type FROM symptom_videos WHERE id = ?",
+    why: "the symptom-clip serve route (#1696): the ONE lookup that RESOLVES which profile a clip belongs to so the handler can gate on THAT profile (canAccessProfile — the grants set), matching the episode page that renders the strip and resolves it across ACCESSIBLE profiles (#879). Filtering by profile_id here would presuppose the answer, and pinning it to the ACTIVE profile is the bug: a caregiver's clips 404'd. The gate is the protection, not the filter (the app/(app)/gate-item.ts shape) — nothing about the row is observable before it, and an inaccessible profile's clip is refused identically to a nonexistent id",
+  },
+  {
+    file: "app/api/symptom-photo/[id]/route.ts",
+    includes:
+      "SELECT profile_id, stored_path, mime_type FROM symptom_photos WHERE id = ?",
+    why: "the symptom-photo serve route (#1696): the same resolve-the-owner-then-gate lookup as the clip route above, for the photo strip that renders on the SAME cross-profile episode page",
+  },
+  {
     file: "lib/queries/intake/supply-pool.ts",
     includes:
       "FROM intake_items i LEFT JOIN intake_item_doses d ON d.item_id = i.id AND d.retired = 0 WHERE i.supply_id = ?",
