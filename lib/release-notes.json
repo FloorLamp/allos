@@ -4,6 +4,13 @@
       "date": "2026-07-31",
       "entries": [
         {
+          "pr": 1761,
+          "kind": "feature",
+          "title": "Your portal reminds the right person — and the tool learns its own config",
+          "body": "Allos now notices when a patient portal hasn't been checked in a while — or when someone just had an appointment and new results are likely waiting — and quietly asks the right person: the one whose login actually runs the portal tool, on their own Upcoming list and morning digest. A \"Request sync\" button covers the case where the person managing Allos isn't the person at the right computer. Asks expire on their own, are answered automatically by the next run (even a failed one — you went to the machine), and never escalate. And the portal tool can now fetch its own configuration from Allos — portal and login names, spelled exactly right — so a typo'd slug stops being a mystery refusal.",
+          "issues": [1757, 1759]
+        },
+        {
           "pr": 1758,
           "kind": "fix",
           "title": "Portal setup gets honest about its first run",
