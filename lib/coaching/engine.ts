@@ -21,6 +21,9 @@ import {
 } from "../injury-model";
 import type { ConditionConsideration } from "../condition-training-considerations";
 import type { EnduranceArm } from "../endurance-plan";
+import { parkedDisclosureLine } from "../weather-training";
+import { fmtAmbientTemp } from "../weather-situations";
+import type { WeatherTrainingContext } from "../workout-recommendation";
 import type { EquipmentAvailability } from "../equipment-availability";
 import type { WeightUnit } from "../settings";
 import type { AppRoute } from "../hrefs";
@@ -285,6 +288,11 @@ export interface CoachingInput {
   // dashboard widget + Telegram render the same note the Training overview does. Absent /
   // null ⇒ no active plan (or held by illness).
   endurancePlanArm?: EnduranceArm | null;
+  // Weather context (#1724) — today's conditions plus the profile's own revealed
+  // tolerance envelopes, pre-computed by the gather. Threaded through so the dashboard
+  // widget, Telegram and the Training overview park the same activity and render the
+  // same disclosure. Absent / null ⇒ no weather gating at all.
+  weather?: WeatherTrainingContext | null;
   // Whether the profile is CURRENTLY mid-workout per derived presence (#921). Used
   // ONLY to pick the rest recommendation's TENSE — while a session is live the card
   // softens to next-session framing instead of contradicting reality by saying
@@ -1017,6 +1025,21 @@ export function contextNotes(nw: NextWorkout): string[] {
   for (const d of nw.excludedRegions)
     notes.push(`Avoiding ${excludedRegionLabel(d)}`);
   for (const c of nw.considerations) notes.push(c.note);
+  // Weather parking (#1724) — ALWAYS disclosed, never a silent disappearance (#838).
+  // The note explains why the outdoor activity isn't in today's pick and names the
+  // indoor stand-in that took its slot. Canonical °C here; the surfaces that carry a
+  // login format it, and a null value renders the line without a figure rather than
+  // with a wrong one.
+  for (const p of nw.parked) {
+    notes.push(
+      parkedDisclosureLine({
+        activity: p.activity,
+        reason: p.reason,
+        alternative: p.alternative,
+        figure: fmtAmbientTemp(p.value, "C"),
+      })
+    );
+  }
   // The plan-aware cardio arm (#839) rides last — a calm forward-looking note, not a
   // constraint. Suppressed at the gather during an open illness episode (#837).
   if (nw.endurancePlanArm) notes.push(nw.endurancePlanArm.note);
