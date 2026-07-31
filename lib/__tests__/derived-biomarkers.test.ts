@@ -4,9 +4,20 @@ import {
   ckdEpi2021,
   phenoAge,
   derivedInputCanonicalNames,
+  DERIVED_NAMES,
+  DERIVED_DEFS_BY_NAME,
   type ComponentReading,
   type DerivedDemographics,
 } from "../derived-biomarkers";
+import { canonicalBiomarkerForName } from "../datasets/canonical-biomarkers";
+import { reconciledFlag } from "../reference-range";
+import {
+  biomarkerFamily,
+  buildCanonicalIndex,
+  normalizeCanonicalKey,
+} from "../canonical-name";
+import { panelForCanonicalName } from "../biomarker-panels";
+import canonicalSeed from "../canonical-biomarkers.json";
 
 // A demographics resolver with a fixed age + sex (eGFR needs both).
 function demo(
@@ -61,6 +72,166 @@ describe("computeDerivedReadings — Non-HDL Cholesterol", () => {
       noDemo
     );
     expect(find(r, "Non-HDL Cholesterol", "2024-01-01")?.value).toBe(158);
+  });
+});
+
+// The two cholesterol ratios (#1582). Some labs print them and some don't, so the
+// registry computes them from the components every lipid panel carries. Both share
+// the HDL denominator, so they are exercised together — including the fact that they
+// stay SEPARATE identities (#482) rather than collapsing into one "the ratio" row.
+describe("computeDerivedReadings — the cholesterol ratios", () => {
+  const draw = (
+    entries: Record<string, [number, string | null]>
+  ): Map<string, ComponentReading[]> =>
+    seriesOf(
+      Object.fromEntries(
+        Object.entries(entries).map(([name, [value, unit]]) => [
+          name,
+          [{ date: "2024-01-01", value, unit }],
+        ])
+      )
+    );
+
+  const MGDL = draw({
+    "Total Cholesterol": [205, "mg/dL"],
+    "LDL Cholesterol": [128, "mg/dL"],
+    "HDL Cholesterol": [47, "mg/dL"],
+  });
+
+  it("computes Total ÷ HDL and LDL ÷ HDL from a mg/dL draw", () => {
+    const r = computeDerivedReadings(MGDL, noDemo);
+    expect(find(r, "Cholesterol/HDL Ratio", "2024-01-01")?.value).toBeCloseTo(
+      4.36,
+      2
+    );
+    expect(find(r, "LDL/HDL Ratio", "2024-01-01")?.value).toBeCloseTo(2.72, 2);
+  });
+
+  it("keeps the two ratios as separate identities on one draw (#482)", () => {
+    // Different numerators, different reference bands: one being in range must never
+    // stand in for the other, so they are two rows, never one collapsed "ratio".
+    const r = computeDerivedReadings(MGDL, noDemo);
+    const chol = find(r, "Cholesterol/HDL Ratio", "2024-01-01");
+    const ldl = find(r, "LDL/HDL Ratio", "2024-01-01");
+    expect(chol).toBeDefined();
+    expect(ldl).toBeDefined();
+    expect(chol?.value).not.toBe(ldl?.value);
+    expect(biomarkerFamily("Cholesterol/HDL Ratio")).not.toBe(
+      biomarkerFamily("LDL/HDL Ratio")
+    );
+  });
+
+  it("labels each computed reading with its canonical entry's unit", () => {
+    const r = computeDerivedReadings(MGDL, noDemo);
+    // Cholesterol/HDL's canonical row is "ratio"; LDL/HDL's records the ratio as
+    // unitless, so the computed reading carries no unit either.
+    expect(find(r, "Cholesterol/HDL Ratio", "2024-01-01")?.unit).toBe("ratio");
+    expect(find(r, "LDL/HDL Ratio", "2024-01-01")?.unit).toBeNull();
+  });
+
+  it("gives the same ratios from mmol/L inputs (converted to mg/dL first)", () => {
+    // Both numerator and denominator are cholesterol species, so this ratio happens
+    // to be scale-invariant — but the values are still converted to ONE unit system
+    // before dividing, which is what makes that true rather than lucky.
+    const r = computeDerivedReadings(
+      draw({
+        "Total Cholesterol": [205 / 38.67, "mmol/L"],
+        "LDL Cholesterol": [128 / 38.67, "mmol/L"],
+        "HDL Cholesterol": [47 / 38.67, "mmol/L"],
+      }),
+      noDemo
+    );
+    expect(find(r, "Cholesterol/HDL Ratio", "2024-01-01")?.value).toBeCloseTo(
+      4.36,
+      2
+    );
+    expect(find(r, "LDL/HDL Ratio", "2024-01-01")?.value).toBeCloseTo(2.72, 2);
+  });
+
+  it("declines when a component's unit cannot be converted to mg/dL", () => {
+    // A "%" HDL is not a concentration this file can put on the mg/dL scale, so the
+    // reading drops out of the pairing and NEITHER ratio is invented from it.
+    const r = computeDerivedReadings(
+      draw({
+        "Total Cholesterol": [205, "mg/dL"],
+        "LDL Cholesterol": [128, "mg/dL"],
+        "HDL Cholesterol": [47, "%"],
+      }),
+      noDemo
+    );
+    expect(find(r, "Cholesterol/HDL Ratio", "2024-01-01")).toBeUndefined();
+    expect(find(r, "LDL/HDL Ratio", "2024-01-01")).toBeUndefined();
+  });
+
+  it("declines each ratio whose own numerator is missing", () => {
+    // LDL absent: the LDL ratio is simply not produced. It is NOT back-filled from
+    // Total − HDL − VLDL — a lab-calculated LDL is one inference already, and this
+    // file never stacks a second one on top of it.
+    const r = computeDerivedReadings(
+      draw({
+        "Total Cholesterol": [205, "mg/dL"],
+        "HDL Cholesterol": [47, "mg/dL"],
+      }),
+      noDemo
+    );
+    expect(find(r, "Cholesterol/HDL Ratio", "2024-01-01")?.value).toBeCloseTo(
+      4.36,
+      2
+    );
+    expect(find(r, "LDL/HDL Ratio", "2024-01-01")).toBeUndefined();
+
+    // HDL absent: the shared denominator is gone, so both decline.
+    const noHdl = computeDerivedReadings(
+      draw({
+        "Total Cholesterol": [205, "mg/dL"],
+        "LDL Cholesterol": [128, "mg/dL"],
+      }),
+      noDemo
+    );
+    expect(find(noHdl, "Cholesterol/HDL Ratio", "2024-01-01")).toBeUndefined();
+    expect(find(noHdl, "LDL/HDL Ratio", "2024-01-01")).toBeUndefined();
+  });
+
+  it("declines a non-positive HDL (divide-by-zero guard)", () => {
+    const r = computeDerivedReadings(
+      draw({
+        "Total Cholesterol": [205, "mg/dL"],
+        "LDL Cholesterol": [128, "mg/dL"],
+        "HDL Cholesterol": [0, "mg/dL"],
+      }),
+      noDemo
+    );
+    expect(find(r, "Cholesterol/HDL Ratio", "2024-01-01")).toBeUndefined();
+    expect(find(r, "LDL/HDL Ratio", "2024-01-01")).toBeUndefined();
+  });
+
+  // The dataset row as the flag machinery wants it: the curated entries carry no
+  // sex-specific optimal bands, which reconciledFlag's shape lists explicitly.
+  const rangesFor = (name: string) => {
+    const cb = canonicalBiomarkerForName(name);
+    if (!cb) throw new Error(`no canonical entry for ${name}`);
+    return {
+      ...cb,
+      optimal_low_male: null,
+      optimal_high_male: null,
+      optimal_low_female: null,
+      optimal_high_female: null,
+    };
+  };
+
+  it("flags a computed ratio against its canonical band, at the boundary", () => {
+    // The derived value goes through the SAME reconciledFlag as a stored reading, so
+    // the bands are the canonical entries' — Cholesterol/HDL: optimal ≤3.5, reference
+    // ≤5; LDL/HDL: reference ≤3.5, no optimal band.
+    const chol = rangesFor("Cholesterol/HDL Ratio");
+    expect(reconciledFlag(null, 3.5, "ratio", chol)).toBeUndefined();
+    expect(reconciledFlag(null, 3.51, "ratio", chol)).toBe("non-optimal-high");
+    expect(reconciledFlag(null, 5, "ratio", chol)).toBe("non-optimal-high");
+    expect(reconciledFlag(null, 5.01, "ratio", chol)).toBe("high");
+
+    const ldl = rangesFor("LDL/HDL Ratio");
+    expect(reconciledFlag(null, 3.5, null, ldl)).toBeUndefined();
+    expect(reconciledFlag(null, 3.51, null, ldl)).toBe("high");
   });
 });
 
@@ -435,6 +606,7 @@ describe("derivedInputCanonicalNames", () => {
     expect(new Set(derivedInputCanonicalNames())).toEqual(
       new Set([
         "Total Cholesterol",
+        "LDL Cholesterol",
         "HDL Cholesterol",
         "Triglycerides",
         "Glucose",
@@ -449,5 +621,61 @@ describe("derivedInputCanonicalNames", () => {
         "White Blood Cell Count",
       ])
     );
+  });
+});
+
+// The registry is only half the contract: every index it emits must ALSO exist as a
+// canonical_biomarkers row, or the shared range/flag/panel machinery has nothing to
+// judge the computed value against and it renders as a band-less orphan. This guards
+// the committed dataset against drifting away from the registry (#1582).
+describe("derived indices ↔ the canonical dataset", () => {
+  it("every derived name has a canonical row whose unit the deriver emits", () => {
+    for (const name of DERIVED_NAMES) {
+      const cb = canonicalBiomarkerForName(name);
+      expect(
+        cb,
+        `${name} is missing from canonical-biomarkers.json`
+      ).toBeTruthy();
+      expect(cb?.unit ?? null, `${name} unit`).toBe(
+        DERIVED_DEFS_BY_NAME[name].unit
+      );
+    }
+  });
+
+  it("puts the lipid indices on the lipids panel, beside their components", () => {
+    for (const name of [
+      "Non-HDL Cholesterol",
+      "Cholesterol/HDL Ratio",
+      "LDL/HDL Ratio",
+      "Triglyceride/HDL Ratio",
+    ] as const)
+      expect(panelForCanonicalName(name), name).toBe("lipids");
+  });
+
+  it("normalizes the ratio spellings a lab prints onto the canonical names", () => {
+    const index = buildCanonicalIndex(
+      (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers.map(
+        (b) => b.name
+      )
+    );
+    const resolve = (s: string) => index.get(normalizeCanonicalKey(s));
+    for (const spelling of [
+      "LDL/HDL Ratio",
+      "LDL/HDL",
+      "LDL:HDL Ratio",
+      "LDL/HDL Cholesterol Ratio",
+    ])
+      expect(resolve(spelling), spelling).toBe("LDL/HDL Ratio");
+    for (const spelling of [
+      "Cholesterol/HDL Ratio",
+      "Cholesterol HDL Ratio",
+      "Total Cholesterol/HDL Ratio",
+    ])
+      expect(resolve(spelling), spelling).toBe("Cholesterol/HDL Ratio");
+
+    // NOT aliased, deliberately: a bare "Cholesterol/HDL" carries exactly the token
+    // set of "HDL Cholesterol", so routing it to the ratio would hijack a distinct
+    // analyte on a guess.
+    expect(resolve("Cholesterol/HDL")).toBe("HDL Cholesterol");
   });
 });

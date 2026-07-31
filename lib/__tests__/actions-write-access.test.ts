@@ -335,6 +335,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // orphaned pool that links nobody); LINK/UNLINK gate on the ITEM's own profile
   // (requireItemWriteAccess → requireProfileWriteAccess). ---
   {
+    file: "app/(app)/results/actions.ts",
+    fn: "loadBiomarkerPanelRows",
+    why: "read-only (#1651): returns ONE panel group's readings when the reader expands it, so the Biomarkers index can ship a bounded payload instead of every reading up front; writes nothing, and it re-resolves requireScope() and re-parses the URL filters with the same helpers the page used, so it can only return rows that reader's own page render would have shown",
+  },
+  {
     file: "app/(app)/supplies/actions.ts",
     fn: "listSharedSupplyOptions",
     why: "read-only (#1374): lists the shared bottles the caller's accessible profiles already draw from (plus member-less orphans) for the item form's picker; writes nothing, so the requireScope()/requireSession() boundary is the right gate",

@@ -7,6 +7,7 @@ import {
   settledSelect,
 } from "./helpers";
 import { loginAs } from "./nav";
+import { PANEL_ROW_LIMIT } from "@/lib/biomarker-panel-groups";
 import {
   E2E_LOGIN_PANELGROUPS,
   E2E_LOGIN_PANELINDEX,
@@ -92,6 +93,9 @@ test("the master list arrives as collapsed panel groups, in clinical order (#149
   // the DOM, which is the whole point of the change.
   await expect(table.locator('td[data-card="title"]')).toHaveCount(0);
   await expect(lipids).toHaveAttribute("data-open", "false");
+  // …and the header still publishes what the panel HOLDS, so a group that ships no
+  // readings is not a group that under-reports itself (#1651).
+  await expect(lipids).toHaveAttribute("data-total", "11");
 
   // And the index fits a phone without a sideways escape hatch.
   await expectNoClippedContent(page);
@@ -161,6 +165,32 @@ test("search expands the groups it matched, so a hit is never hidden (#1499)", a
   const lipids = group(page, "lipids");
   await expect(lipids).toHaveAttribute("data-open", "true");
   await expect(group(page, "thyroid")).toHaveCount(0);
+
+  await page.context().close();
+});
+
+test("a collapsed group's readings are not in the payload until it is asked for (#1651)", async ({
+  browser,
+}) => {
+  const page = await openBrowser(browser);
+  const other = group(page, "other");
+  await expect(other).toHaveAttribute("data-open", "false");
+
+  // The claim this test exists for is about the WIRE, not the DOM: props handed to a
+  // client component are serialized into the RSC payload whatever that component
+  // renders, so a collapsed group that was merely hidden still cost its readings.
+  // This profile's `other` reading is un-canonicalized, so its name appears in no
+  // vocabulary the page ships — if it is in the response at all, it is because the
+  // row was sent. It is not.
+  const collapsed = await page.request.get(BIOMARKERS);
+  expect(await collapsed.text()).not.toContain(PANEL_GROUPS_OTHER_ANALYTE);
+
+  // Expanding is the request that pays for that panel's rows, and only that panel's.
+  await hydratedClick(page, other.getByTestId("biomarker-panel-toggle"));
+  await expect(other.getByText(PANEL_GROUPS_OTHER_ANALYTE)).toBeVisible();
+  await expect(
+    group(page, "lipids").locator('td[data-card="title"]')
+  ).toHaveCount(0);
 
   await page.context().close();
 });
@@ -269,11 +299,13 @@ test("the index lists every panel in the data, with no pager (#1581 section A)",
   await expect(page.getByRole("link", { name: "Next" })).toHaveCount(0);
 
   // A whole panel's count, not the sliver of it that fit on a page: five stored lipid
-  // analytes plus the two derived lipid ratios, and three of the seven currently out
-  // of range (total cholesterol, LDL, and the derived Non-HDL they imply).
+  // analytes plus the four derived lipid indices (#1582 added the two cholesterol
+  // ratios beside Non-HDL and TG/HDL), and three of the nine currently out of range
+  // (total cholesterol, LDL, and the derived Non-HDL they imply — both ratios land
+  // inside their reference ceilings).
   await expect(
     group(page, "lipids").getByTestId("biomarker-panel-toggle")
-  ).toHaveAttribute("aria-label", "Lipids · 7 analytes · 3 flagged");
+  ).toHaveAttribute("aria-label", "Lipids · 9 analytes · 3 flagged");
   // Twenty-seven stored analytes across seven panels, three draws each — eighty-one
   // rows plus the derived indices, all of it shipped at once.
   await expect(
@@ -381,6 +413,32 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   await expect(
     bioAge.getByTestId("derived-badge").first() // first-ok: spec-owned e2e_panelindex; the group holds only PhenoAge rows
   ).toBeVisible();
+
+  await page.context().close();
+});
+
+test("an open group over the cap says what it is holding back, and loads the rest (#1651)", async ({
+  browser,
+}) => {
+  // A narrowing filter opens every group it matched, which is exactly where an
+  // unbounded payload used to come back: "open" meant "ship all of it". A group that
+  // arrives open now ships at most PANEL_ROW_LIMIT readings and says so. Lipids on
+  // this profile is five stored analytes over three draws plus four derived indices
+  // per draw — twenty-seven readings, past the cap.
+  const page = await openIndex(browser, `${BIOMARKERS}?panel=lipids`);
+  const lipids = group(page, "lipids");
+  await expect(lipids).toHaveAttribute("data-open", "true");
+  await expect(lipids).toHaveAttribute("data-total", "27");
+
+  const more = lipids.getByTestId("biomarker-panel-more");
+  await expect(more).toContainText(`Showing ${PANEL_ROW_LIMIT} of 27 readings`);
+  await expect(lipids.locator("tr")).toHaveCount(PANEL_ROW_LIMIT + 2); // header + rows + footer
+
+  // Asking for the rest is one request for one panel, and the footer goes away
+  // because there is nothing left to hold back.
+  await hydratedClick(page, lipids.getByTestId("biomarker-panel-load-all"));
+  await expect(lipids.locator("tr")).toHaveCount(28); // header + 27 readings
+  await expect(more).toHaveCount(0);
 
   await page.context().close();
 });
