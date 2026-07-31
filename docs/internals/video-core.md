@@ -80,8 +80,23 @@ a `206 Partial Content` + `Content-Range` (scrubbing), advertises
 `Accept-Ranges`, sets `nosniff`, and streams the file (Node `fs` → web stream).
 Both serve routes (`app/api/symptom-video/[id]`, `app/api/activity-video/[id]`)
 reuse it, and a `?poster=1` param serves the poster JPEG through the same
-helper. Routes are session-gated, scoped `id AND profile_id`, path-contained,
-and use the #478 JSON error shape.
+helper. Both are session-gated, path-contained, and use the #478 JSON error
+shape.
+
+The two routes differ in **which** profiles they accept, because their surfaces
+do:
+
+- `/api/activity-video/[id]` is scoped `id AND profile_id` — the training
+  surfaces that render it are active-profile pages.
+- `/api/symptom-video/[id]` resolves the clip's **owning** profile from the row
+  and gates the session against **that** profile (`canAccessProfile`, #1696).
+  The episode page that renders the strip resolves the episode across the
+  viewer's **accessible** profiles (#879), so active-profile scoping 404'd every
+  clip a caregiver looked at. `/api/symptom-photo/[id]`, the twin strip on the
+  same page, takes the identical posture.
+
+An inaccessible profile's row is refused with the **same** response as a
+nonexistent id, so neither route reveals whether some other family's id exists.
 
 ## Surfaces (one shared grid, two thin wrappers — #221)
 
