@@ -174,6 +174,36 @@ export const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://takeout.google.com/",
   },
   {
+    id: "mychart",
+    name: "MyChart (Epic portals)",
+    kind: "external-attended",
+    status: "available",
+    blurb:
+      "Bring in visit summaries, labs, medications and immunizations from hospital " +
+      "and clinic portals that run Epic MyChart. Portal sign-in needs a person — " +
+      "two-factor codes, and sessions that time out in minutes — so allos cannot log " +
+      "in for you. Instead a small companion tool runs on your own computer, signs " +
+      "in the way you would, downloads the portal's own export, and pushes it here " +
+      "through an API token. One portal login often covers several family members " +
+      "through proxy access, so you tell allos which patient on which portal belongs " +
+      "to which profile; anything unrecognized is refused rather than filed under a " +
+      "guess.",
+    dataTypes: [
+      "Visit summaries",
+      "Labs",
+      "Medications",
+      "Immunizations",
+      "Allergies",
+      "Conditions",
+    ],
+    // Exempt: allos cannot make this sync happen. The tool runs attended, on the user's
+    // machine, when they choose — "you have not signed in to your hospital portal in
+    // three days" is not a fault, and nagging about it would be the same false positive
+    // the Fitbit Takeout entry avoids. The card still shows per-portal last-synced from
+    // the tool's own sync reports; that is reporting, not a freshness assertion.
+    staleAfterDays: null,
+  },
+  {
     id: "weather",
     name: "Weather & UV (Open-Meteo)",
     kind: "public",

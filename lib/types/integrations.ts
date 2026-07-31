@@ -16,8 +16,21 @@
 // the user hands us an export FILE they downloaded from the vendor — no account, no
 // credential, no schedule, and nothing to reconnect (Fitbit via Google Takeout). It is
 // the only kind with no ongoing connection: an import is an event, not a link.
+// The EXECUTION MODE of an integration, not its data domain. The registry already spans
+// modes allos cannot drive itself — `archive` is a file the user acquires elsewhere and
+// imports by hand, `feed` is outbound-only — so `external-attended` (#1739) is a new kind
+// rather than a new concept: an external, attended tool runs on the USER'S machine
+// (portal 2FA needs a person and sessions idle out in minutes), and pushes results in
+// through the token-authenticated upload API. Allos never executes it and never holds its
+// address; it only records what the tool reports.
 export type IntegrationKind =
-  "push" | "oauth" | "token" | "feed" | "public" | "archive";
+  | "push"
+  | "oauth"
+  | "token"
+  | "feed"
+  | "public"
+  | "archive"
+  | "external-attended";
 
 // 'available' integrations can be configured now; 'planned' render as a preview.
 export type IntegrationStatus = "available" | "planned";
@@ -30,7 +43,8 @@ export type IntegrationId =
   | "garmin"
   | "weather"
   | "calendar-feed"
-  | "fitbit-takeout";
+  | "fitbit-takeout"
+  | "mychart";
 
 // A row in the integrations registry — the Integrations page renders from these.
 export interface IntegrationDef {
