@@ -44,7 +44,8 @@ export default async function StrengthSection() {
   const exercises = getStrengthByExercise(profile.id);
   // PRs read the LOAD-CONTEXT grouping (#1610) so a record is never assembled from
   // two machines; the card labels each row with its implement. The movement-wide
-  // `exercises` above still drives the per-exercise list and detail panel.
+  // `exercises` above still drives the per-exercise list and detail panel. Both fold
+  // the SAME cached all-history scan (#1654) — one read, two aggregates.
   const prStats = getStrengthByExercise(profile.id, true);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const recentByExercise = getRecentByExercise(

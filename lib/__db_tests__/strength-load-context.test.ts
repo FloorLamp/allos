@@ -34,6 +34,7 @@ import {
   getLoggedEquipmentByExercise,
   getRecentExerciseHistory,
   getStrengthByExercise,
+  strengthSetRows,
 } from "@/lib/queries";
 
 const EXERCISE = "Machine Chest Press";
@@ -353,6 +354,55 @@ describe("PRs never combine two machines (#1610)", () => {
     const wide = recentPRs(getStrengthByExercise(plainProfileId), t, 60);
     const laned = recentPRs(getStrengthByExercise(plainProfileId, true), t, 60);
     expect(laned).toEqual(wide);
+  });
+});
+
+describe("the two groupings fold ONE all-history scan (#1654)", () => {
+  it("reads every non-warmup rep-bearing set of the profile, and only that profile's", () => {
+    // The seam both groupings share. Warmups are excluded exactly as the aggregate's
+    // own filter did, and the scan stays profile-scoped through the activities join.
+    const rows = strengthSetRows(profileId);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.reps != null || r.reps_right != null)).toBe(
+      true
+    );
+    const activityIds = [...new Set(rows.map((r) => r.activity_id))];
+    const foreign = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM activities
+          WHERE profile_id != ? AND id IN (${activityIds.map(() => "?").join(",")})`
+      )
+      .get(profileId, ...activityIds) as { n: number };
+    expect(foreign.n).toBe(0);
+    // Ascending by (date, activity id) — the ordering every "newest session" pointer
+    // in the aggregate depends on.
+    const keys = rows.map(
+      (r) => `${r.date}#${String(r.activity_id).padStart(9, "0")}`
+    );
+    expect([...keys].sort()).toEqual(keys);
+  });
+
+  it("returns the IDENTICAL list for both groupings when no set names an implement", () => {
+    // Not merely equivalent: with every set in the unassigned lane the load-context
+    // grouping normalizes to the movement-wide one, so the load-context caller cannot
+    // drift into a differently-shaped list for a profile that owns no equipment.
+    expect(
+      strengthSetRows(plainProfileId).some((r) => r.equipmentId != null)
+    ).toBe(false);
+    expect(getStrengthByExercise(plainProfileId, true)).toEqual(
+      getStrengthByExercise(plainProfileId)
+    );
+  });
+
+  it("still splits by lane for a profile that DOES name implements", () => {
+    const wide = getStrengthByExercise(profileId).filter(
+      (s) => exerciseHistoryKey(s.exercise) === exerciseHistoryKey(EXERCISE)
+    );
+    const laned = getStrengthByExercise(profileId, true).filter(
+      (s) => exerciseHistoryKey(s.exercise) === exerciseHistoryKey(EXERCISE)
+    );
+    expect(wide).toHaveLength(1);
+    expect(laned).toHaveLength(2);
   });
 });
 

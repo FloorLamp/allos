@@ -837,29 +837,36 @@ export interface ExerciseStat {
   volume: { date: string; volumeKg: number }[];
 }
 
-// cache(): a single Training render aggregates every set 3–4× (Log, Overview,
-// Analyze, Strength sections all call this), and the dashboard coaching context
-// reads it again — cache() collapses the all-history scan to one per profile per
-// request. Safe: it's a pure read, and write actions revalidate rather than
-// re-reading in the same request.
+// One rep-bearing working set of the profile's whole strength history, as the
+// aggregators below read it.
+interface StrengthSetRow {
+  exercise: string;
+  date: string;
+  activity_id: number;
+  weight_kg: number | null;
+  reps: number | null;
+  weight_kg_right: number | null;
+  reps_right: number | null;
+  target_reps: number | null;
+  to_failure: number | null;
+  rpe: number | null;
+  equipmentId: number | null;
+  equipment: string | null;
+}
+
+// THE all-history strength scan — the single unbounded read every strength aggregate
+// is folded from, hoisted out of getStrengthByExercise so the two GROUPINGS of it
+// (#1610's movement-wide and load-context lists) share ONE scan (#1654).
 //
-// `byLoadContext` (#1610) groups on `movementLoadKey` instead of `exerciseHistoryKey`
-// — one row per (movement, implement) rather than one per movement — so a top weight,
-// an e1RM or a PR can never be assembled from two registry machines that both
-// serialize as the same exact logged name. It is a PRIMITIVE second argument on
-// purpose: cache() keys on argument identity, and an options object literal would
-// mint a fresh key (and a fresh all-history scan) on every call.
-//
-// Opt-in, like `getExerciseE1rmSeries`'s: a movement-wide list (Analyze's picker,
-// the exercise detail panel, the coaching seed) must stay one row per movement, and
-// a caller that DOES split must label its rows through `loadContextLabel` — #1610
-// forbids duplicate unlabeled rows. For a profile whose sets carry no implement link
-// every session is in one lane, so both groupings return the identical list.
-export const getStrengthByExercise = cache(function getStrengthByExercise(
-  profileId: number,
-  byLoadContext = false
-): ExerciseStat[] {
-  const rows = db
+// cache(): a single Training render asks for this 3–5× (Log, Overview, Analyze and
+// Strength sections, plus the dashboard coaching context), and since #1610 two of
+// those surfaces ask for BOTH groupings in the same request. Keyed on profileId
+// alone, so a grouping choice can never mint a second scan. Safe: it's a pure read,
+// and write actions revalidate rather than re-reading in the same request.
+export const strengthSetRows = cache(function strengthSetRows(
+  profileId: number
+): StrengthSetRow[] {
+  return db
     .prepare(
       `SELECT s.exercise, a.date, a.id AS activity_id,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
@@ -880,20 +887,38 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
        -- date+id ascending so the last row of an exercise is its newest session.
        ORDER BY a.date ASC, a.id ASC`
     )
-    .all(profileId) as {
-    exercise: string;
-    date: string;
-    activity_id: number;
-    weight_kg: number | null;
-    reps: number | null;
-    weight_kg_right: number | null;
-    reps_right: number | null;
-    target_reps: number | null;
-    to_failure: number | null;
-    rpe: number | null;
-    equipmentId: number | null;
-    equipment: string | null;
-  }[];
+    .all(profileId) as StrengthSetRow[];
+});
+
+// `byLoadContext` (#1610) groups on `movementLoadKey` instead of `exerciseHistoryKey`
+// — one row per (movement, implement) rather than one per movement — so a top weight,
+// an e1RM or a PR can never be assembled from two registry machines that both
+// serialize as the same exact logged name. It is a PRIMITIVE second argument on
+// purpose: cache() keys on argument identity, and an options object literal would
+// mint a fresh key (and a fresh regrouping) on every call.
+//
+// Opt-in, like `getExerciseE1rmSeries`'s: a movement-wide list (Analyze's picker,
+// the exercise detail panel, the coaching seed) must stay one row per movement, and
+// a caller that DOES split must label its rows through `loadContextLabel` — #1610
+// forbids duplicate unlabeled rows.
+//
+// The two groupings are different AGGREGATES of the same history, not two answers to
+// one question: bodyweight resolution, the session-seed lane and the per-day volume
+// base are all resolved per GROUP, so a lane list cannot simply be folded back into a
+// movement list. What they must never do is read the history twice — since #1654 both
+// fold the one cached `strengthSetRows` scan, and a profile whose sets carry no
+// implement link short-circuits to the identical movement-wide result outright.
+export const getStrengthByExercise = cache(function getStrengthByExercise(
+  profileId: number,
+  byLoadContext = false
+): ExerciseStat[] {
+  const rows = strengthSetRows(profileId);
+  // For a profile whose sets carry no implement link at all, every set is already in
+  // the same (unassigned) lane: `movementLoadKey` partitions exactly as
+  // `exerciseHistoryKey` does and every emitted equipment field is null either way.
+  // Normalize to the movement-wide grouping so the two lists are not merely equivalent
+  // but IDENTICAL — the promise #1610's comment makes, now made structurally.
+  const laned = byLoadContext && rows.some((r) => r.equipmentId != null);
 
   const weights = loadWeightsAsc(profileId);
   const bwAsOf = (date: string) => bodyweightAsOf(weights, date);
@@ -938,15 +963,15 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     // vs "Curl") aggregate into ONE history — sessions, PRs, and the progression
     // seed no longer split on a rename (#331). getRecentExerciseHistory /
     // getExerciseBodyweightMap key the same way, so every surface agrees.
-    const key = byLoadContext
+    const key = laned
       ? movementLoadKey(r.exercise, r.equipmentId)
       : exerciseHistoryKey(r.exercise);
     let cur = map.get(key);
     if (!cur) {
       cur = {
         exercise: r.exercise,
-        equipmentId: byLoadContext ? r.equipmentId : null,
-        equipment: byLoadContext ? r.equipment : null,
+        equipmentId: laned ? r.equipmentId : null,
+        equipment: laned ? r.equipment : null,
         addBodyweight: isBodyweight(r.exercise),
         sawExternalWeight: false,
         dates: new Set(),
