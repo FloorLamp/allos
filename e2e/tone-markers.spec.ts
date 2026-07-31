@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // WCAG 1.4.1 (issue #1220): the healthspan pillars and the recent-lab flags must
 // never convey their good/warn/bad judgment by COLOR ALONE. Every judging pillar
 // tone pairs its value color with a text badge (PILLAR_TONE_LABEL — one mapping
@@ -11,7 +10,7 @@ import { test, expect } from "@playwright/test";
 // judged labs with directional flags, so the optimal-biomarkers pillar and
 // flagged lab rows are guaranteed present without exact-count assertions.
 
-// The badge wording per tone — mirrors lib/healthspan-pillars' PILLAR_TONE_LABEL
+// The badge wording per tone — mirrors lib/longevity-pillars' PILLAR_TONE_LABEL
 // (pinned exactly by the pure tier; duplicated here because Playwright specs
 // don't import app code through the @/ alias).
 const TONE_BADGE: Record<string, string> = {

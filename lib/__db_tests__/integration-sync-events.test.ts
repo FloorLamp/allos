@@ -9,12 +9,14 @@ import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
   recordSyncEvent,
+  enableWeather,
   getConnection,
   setStravaCredentials,
   setStravaTokens,
 } from "@/lib/integrations/connections";
 import { runStravaSync } from "@/lib/integrations/strava-sync";
 import {
+  getConnectedSources,
   getIntegrationSyncEvents,
   getLastSuccessfulSyncAt,
   getLatestSyncEvent,
@@ -276,5 +278,64 @@ describe("integration_sync_events: raw_ref capture + profile-scoped read (#9)", 
 
   it("returns null for a non-existent event id", () => {
     expect(getSyncEventRawRef(profileA, 9_999_999)).toBeNull();
+  });
+});
+
+// ── Weather belongs in Connected sources (issue #1614) ────────────────────────
+//
+// The Weather setup page has always linked to Data → Review's "Connected sources"
+// for its sync history, but getConnectedSources only admitted push/oauth/token
+// integrations — so Weather (kind "public") had nowhere to land: its FAILURES showed
+// under Needs attention while its successful history was unreachable. It is a
+// recurring source (the hourly tick pulls it and records an event per run), so it
+// belongs on that surface like every other stream.
+describe("getConnectedSources includes the keyless Weather stream", () => {
+  let weatherProfile: number;
+  let otherProfile: number;
+
+  beforeAll(() => {
+    weatherProfile = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('WEATHER-SRC')").run()
+        .lastInsertRowid
+    );
+    otherProfile = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('WEATHER-OTHER')").run()
+        .lastInsertRowid
+    );
+    enableWeather(weatherProfile);
+    recordSyncEvent(weatherProfile, "weather", {
+      ok: true,
+      windowStart: "2026-07-01",
+      windowEnd: "2026-07-14",
+      received: 336,
+      written: 336,
+      inserted: 336,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+    });
+  });
+
+  it("surfaces Weather with its history once it has synced", () => {
+    const sources = getConnectedSources(weatherProfile);
+    const weather = sources.find((s) => s.id === "weather");
+    expect(weather).toBeTruthy();
+    expect(weather!.kind).toBe("public");
+    expect(weather!.connected).toBe(true);
+    // Keyless and tick-driven: no on-demand pull button on this card.
+    expect(weather!.canSyncNow).toBe(false);
+    expect(weather!.latest?.inserted).toBe(336);
+    expect(weather!.history.length).toBe(1);
+  });
+
+  it("stays profile-scoped — another profile sees no Weather card", () => {
+    const sources = getConnectedSources(otherProfile);
+    expect(sources.some((s) => s.id === "weather")).toBe(false);
+  });
+
+  it("still excludes the outbound calendar feed and the archive importer", () => {
+    const ids = getConnectedSources(weatherProfile).map((s) => s.id);
+    expect(ids).not.toContain("calendar-feed");
+    expect(ids).not.toContain("fitbit-takeout");
   });
 });

@@ -4,6 +4,7 @@ import {
   getPickerProviders,
   getConditions,
   collectHouseholdRollup,
+  countVisiblePools,
 } from "@/lib/queries";
 import { mergedSituationOptions } from "@/lib/situations";
 import { loadMedicationsData, type MedicationsData } from "./med-data";
@@ -25,6 +26,7 @@ import {
   medStripMember,
   type MedStripMember,
 } from "@/lib/medication-multi-view";
+import { isPrn } from "@/lib/supplement-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -111,9 +113,7 @@ export default async function MedicationsPage(props: {
   ).map((o) => o.name);
 
   const medCount = actingData.current.length + actingData.past.length;
-  const prnCount = actingData.current.filter(
-    (item) => item.med.as_needed === 1
-  ).length;
+  const prnCount = actingData.current.filter((item) => isPrn(item.med)).length;
   const subtitle = [
     `${actingData.current.length} current`,
     prnCount > 0 ? `${prnCount} as needed` : null,
@@ -127,6 +127,10 @@ export default async function MedicationsPage(props: {
       <ProviderOptionsProvider providers={getPickerProviders()}>
         <SituationOptionsProvider options={situationOptions}>
           <MedicationAddWorkspace
+            // The medicine-cabinet door (#1522), counted over the WHOLE accessible
+            // set rather than the acting profile — the cabinet is household-scoped,
+            // and this is the number the /supplies page will list.
+            cabinetCount={countVisiblePools(scope.ids)}
             subtitle={
               medCount === 0
                 ? "Track prescriptions, over-the-counter medications, doses, and refills."

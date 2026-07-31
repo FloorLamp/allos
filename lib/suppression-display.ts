@@ -27,6 +27,8 @@ import { MED_BRIDGE_PREFIX } from "./medication-record-match";
 import { DORMANT_PRN_PREFIX } from "./dormant-prn";
 import { FOOD_TIMING_PREFIX } from "./food-drug-interactions";
 import { KEEP_APART_PREFIX } from "./intake-pairs";
+import { WEATHER_MED_PREFIX } from "./weather-med-safety";
+import { OUTDOOR_PLAN_PREFIX } from "./queries/weather-training";
 import { CONDITION_CONSIDERATION_PREFIX } from "./condition-training-considerations";
 import { SURGERY_BRIDGE_PREFIX } from "./surgery-bridge";
 
@@ -101,6 +103,9 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
       ? "Weight-loss rate caution"
       : "Goal pacing note",
   "adherence:": () => "Supplement adherence pattern",
+  // #1505: keyed on the ITEM id, so there is no name in the key to render — the
+  // label names the decision instead ("you chose to keep the current priority").
+  "demote-obligation:": () => "Obligation demotion suggestion",
   "food-suggest:": (t) => {
     const n = titleize(t.replace(/[_-]/g, " "));
     return n ? `Food suggestion — ${n}` : "Food suggestion";
@@ -130,6 +135,8 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     const region = titleize(part(t, 1).replace(/[_-]/g, " "));
     return region ? `Mobility suggestion — ${region}` : "Mobility suggestion";
   },
+  "cycle-bleeding:": (t) =>
+    part(t, 0) ? `Long period — ${part(t, 0)}` : "Long-period note",
   "mood-obs:": () => "Mood observation",
   "sleep-mood:": () => "Sleep & mood observation",
   "med-dup:": (t) => {
@@ -144,6 +151,13 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     part(t, 0)
       ? `Poor-sleep context off — ${part(t, 0)}`
       : "Poor-sleep context off",
+  // A portal sync request (#1757), keyed `portal-sync:<portal>/<account>:<day>`. The
+  // portal slug is the only nameable part — the account is a household nickname and the
+  // day is the ask's anchor — so the label names the portal and leaves it there.
+  "portal-sync:": (t) => {
+    const portal = titleize(part(t, 0).split("/")[0].replace(/[_-]/g, " "));
+    return portal ? `Portal sync request — ${portal}` : "Portal sync request";
+  },
   "illness-care:": () => "Illness care reminder",
   "temp-red-flag:": () => "Temperature red flag",
   "condition-review:": () => "Condition suggestion",
@@ -164,6 +178,25 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
   // ---- Due & scheduled (Upcoming care tier) --------------------------------
   { prefix: "dose:", domain: "Due & scheduled", label: () => "Scheduled dose" },
   { prefix: "refill:", domain: "Due & scheduled", label: () => "Refill nudge" },
+  {
+    // A declined `may` availability offer (#1505). Not in RULE_FINDING_REGISTRY for
+    // the same reason `refill:` isn't — it is an Upcoming domain key, not a rule
+    // builder's — but it must still be NAMEABLE here, or declining an offer would
+    // leave an unlabelled row in Snoozed & dismissed with no way to restore it.
+    prefix: "available:",
+    domain: "Due & scheduled",
+    label: () => "Available item",
+  },
+  {
+    // Shared supply pool low-stock (#1374). Registered HERE and not in
+    // RULE_FINDING_REGISTRY for the same reason `refill:` isn't: it is an Upcoming
+    // GENERATOR key, not a rule-findings builder output — the registry's reflection
+    // guards read builder output, and a namespace no builder emits would fail them
+    // (the surgery-bridge precedent). Id-keyed, so the label is domain-generic.
+    prefix: "pool-refill:",
+    domain: "Due & scheduled",
+    label: () => "Shared-supply refill nudge",
+  },
   {
     prefix: "appointment:",
     domain: "Due & scheduled",
@@ -203,6 +236,14 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: "training:",
     domain: "Due & scheduled",
     label: () => "Training target",
+  },
+  {
+    // The outdoor-session planning item (#1724 part 5) — "Saturday is the best window
+    // for your ride". Calm and weekly, keyed per (activity, week start) so declining
+    // this week's plan never silences next week's.
+    prefix: OUTDOOR_PLAN_PREFIX,
+    domain: "Due & scheduled",
+    label: () => "Outdoor session plan",
   },
   {
     // Wellness-practice weekly target (#1259): the Upcoming twin of the pace-aware
@@ -290,6 +331,11 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: "uv-exposure:",
     domain: "Warnings",
     label: () => "UV overexposure note",
+  },
+  {
+    prefix: WEATHER_MED_PREFIX,
+    domain: "Warnings",
+    label: () => "Weather-safety note",
   },
   {
     prefix: FOOD_TIMING_PREFIX,

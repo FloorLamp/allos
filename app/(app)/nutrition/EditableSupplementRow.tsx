@@ -4,15 +4,23 @@ import { useState } from "react";
 import type { Supplement, SupplementDose, SupplementPair } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
-import { CONDITION_LABELS, FOOD_TIMING_HINTS } from "@/lib/supplement-schedule";
+import {
+  CONDITION_LABELS,
+  FOOD_TIMING_HINTS,
+  OBLIGATION_LABELS,
+  obligationClass,
+} from "@/lib/supplement-schedule";
 import { medicationMetaLine } from "@/lib/medication-history";
 import type { AdherenceDot } from "@/lib/supplement-adherence";
 import type { DoseRate } from "@/lib/refill";
 import {
   RefillBadge,
+  SharedSupplyChip,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import type { PoolChipData } from "@/lib/queries/intake";
 import SupplementForm from "@/components/SupplementForm";
+import ModalShell from "@/components/ModalShell";
 import FoodGuidance from "@/components/FoodGuidance";
 import NotesText from "@/components/NotesText";
 import DoseStatusControl from "@/components/DoseStatusControl";
@@ -27,6 +35,7 @@ import {
   toggleActive,
   deleteSupplement,
 } from "./supplement-actions";
+import { isPrn } from "@/lib/supplement-schedule";
 
 // One scheduled dose of a supplement, as it appears in a time bucket. A
 // supplement with multiple doses renders one of these per dose. Editing opens
@@ -45,6 +54,8 @@ export default function EditableSupplementRow({
   strip,
   trainingRestricted,
   refillRate,
+  poolChip = null,
+  historicalStatus = null,
   suppressedFoodKeys = [],
 }: {
   supplement: Supplement;
@@ -60,6 +71,12 @@ export default function EditableSupplementRow({
   strip: AdherenceDot[];
   trainingRestricted: boolean;
   refillRate: DoseRate | null;
+  // The shared-bottle chip when this item draws from a pool (#1374) — it REPLACES
+  // the per-item refill badge, since a linked item keeps no private count.
+  poolChip?: PoolChipData | null;
+  // Past schedule days are read-only: show the recorded outcome without exposing
+  // today's write control against a historical row.
+  historicalStatus?: "taken" | "skipped" | "missed" | null;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
   suppressedFoodKeys?: string[];
 }) {
@@ -68,24 +85,6 @@ export default function EditableSupplementRow({
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   const s = supplement;
-
-  if (editing) {
-    return (
-      <div className="card bg-slate-50/60 dark:bg-ink-900/60">
-        <SupplementForm
-          action={updateSupplement}
-          supplement={s}
-          doses={doses}
-          allSupplements={allSupplements}
-          stackItems={stackItems}
-          pgxVariants={pgxVariants}
-          pairs={pairs}
-          onDone={() => setEditing(false)}
-          trainingRestricted={trainingRestricted}
-        />
-      </div>
-    );
-  }
 
   const subline = [s.brand, s.product].filter(Boolean).join(" · ");
   const foodHint = FOOD_TIMING_HINTS[dose.food_timing];
@@ -101,27 +100,14 @@ export default function EditableSupplementRow({
   const medMeta = isMed ? medicationMetaLine(s) : "";
 
   return (
-    <div
-      className={`card !py-3 flex items-start justify-between gap-3 ${
-        !s.active ? "opacity-50" : ""
-      } ${
-        s.priority === "mandatory"
-          ? "border-l-4 border-l-rose-400 dark:border-l-rose-500"
-          : s.priority === "high"
-            ? "border-l-4 border-l-brand-500 dark:border-l-brand-400"
-            : "border-l-4 border-l-transparent"
-      } ${menuOpen ? "relative z-20" : ""}`}
-    >
-      <div className="flex min-w-0 flex-1 items-start gap-4">
-        {!!s.active && due && (
-          <DoseStatusControl
-            doseId={dose.id}
-            taken={isTaken}
-            skipped={isSkipped}
-            variant="circle"
-          />
-        )}
-        <div className="min-w-0 flex-1">
+    <>
+      <div
+        data-testid="supplement-row"
+        className={`card grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 !rounded-lg !border-black/10 !bg-white !px-3 !py-3 !shadow-none !backdrop-blur-none dark:!border-white/10 dark:!bg-ink-900 ${
+          !s.active ? "opacity-50" : ""
+        } ${menuOpen ? "relative z-20" : ""}`}
+      >
+        <div className="col-start-1 row-start-1 min-w-0">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span
               data-testid="medicine-name"
@@ -129,32 +115,35 @@ export default function EditableSupplementRow({
             >
               {s.name}
             </span>
-            {(dose.amount || subline) && (
-              <div className="order-1 flex basis-full flex-wrap items-center gap-2 text-sm text-slate-500 lg:order-none lg:basis-auto dark:text-slate-400">
-                {dose.amount && (
-                  <>
-                    <span aria-hidden="true" className="hidden lg:inline">
-                      ·
-                    </span>
-                    <span>{dose.amount}</span>
-                  </>
-                )}
-                {subline && (
-                  <>
-                    <span
-                      aria-hidden="true"
-                      className={dose.amount ? undefined : "hidden lg:inline"}
-                    >
-                      ·
-                    </span>
-                    <span>{subline}</span>
-                  </>
-                )}
-              </div>
+            {s.obligation !== "should" && (
+              <span
+                data-testid={`intake-obligation-${s.obligation}`}
+                className={`badge ${obligationClass(s.obligation)}`}
+              >
+                {OBLIGATION_LABELS[s.obligation]}
+              </span>
             )}
             {multi && (
               <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
                 split
+              </span>
+            )}
+            {historicalStatus && (
+              <span
+                data-testid={`supplement-history-${historicalStatus}`}
+                className={`badge ${
+                  historicalStatus === "taken"
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    : historicalStatus === "skipped"
+                      ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                      : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                }`}
+              >
+                {historicalStatus === "taken"
+                  ? "Taken"
+                  : historicalStatus === "skipped"
+                    ? "Skipped"
+                    : "Missed"}
               </span>
             )}
             {s.condition !== "daily" && (
@@ -170,18 +159,22 @@ export default function EditableSupplementRow({
                 {s.stack}
               </span>
             )}
-            <RefillBadge
-              quantityOnHand={s.quantity_on_hand}
-              qtyPerDose={s.qty_per_dose}
-              refillRate={refillRate}
-              doseCount={doses.length}
-            />
+            {poolChip ? (
+              <SharedSupplyChip pool={poolChip} />
+            ) : (
+              <RefillBadge
+                quantityOnHand={s.quantity_on_hand}
+                qtyPerDose={s.qty_per_dose}
+                refillRate={refillRate}
+                doseCount={doses.length}
+              />
+            )}
             {isMed && (
               <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
                 Rx
               </span>
             )}
-            {isMed && s.as_needed === 1 && (
+            {isMed && isPrn(s) && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 PRN
               </span>
@@ -192,6 +185,97 @@ export default function EditableSupplementRow({
               </span>
             )}
           </div>
+        </div>
+        <div className="col-start-2 row-start-1 flex shrink-0 items-center gap-3 text-xs">
+          {!!s.active && due && (
+            <DoseStatusControl
+              doseId={dose.id}
+              taken={isTaken}
+              skipped={isSkipped}
+              variant="circle"
+            />
+          )}
+          <OverflowMenu
+            label="Supplement actions"
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+          >
+            {({ close, runAction }) => (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setEditing(true);
+                    close();
+                  }}
+                  className={MENU_ITEM}
+                >
+                  Edit
+                </button>
+                <form
+                  action={(fd) =>
+                    runAction(
+                      async (data) => {
+                        await toggleActive(data);
+                      },
+                      fd,
+                      s.active ? "Supplement paused" : "Supplement resumed"
+                    )
+                  }
+                >
+                  <input type="hidden" name="id" value={s.id} />
+                  <button type="submit" role="menuitem" className={MENU_ITEM}>
+                    {s.active ? "Pause" : "Resume"}
+                  </button>
+                </form>
+                {/* Plain button (not a form action): confirm() runs a modal the
+                  user must answer, which deadlocks inside a form-action
+                  transition. onClick is a normal handler, so the dialog shows. */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={MENU_ITEM_DANGER}
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: "Delete supplement",
+                      message: `Delete “${s.name}”? You can undo this.`,
+                      confirmLabel: "Delete",
+                      danger: true,
+                    });
+                    if (!ok) return;
+                    close();
+                    const fd = new FormData();
+                    fd.set("id", String(s.id));
+                    await undoable(deleteSupplement, fd, {
+                      deletedMessage: "Supplement deleted.",
+                    });
+                  }}
+                >
+                  Delete
+                </button>
+              </>
+            )}
+          </OverflowMenu>
+        </div>
+        <div
+          data-testid="supplement-row-details"
+          className="col-span-2 col-start-1 row-start-2 min-w-0 md:col-span-1"
+        >
+          {(dose.amount || subline) && (
+            <div
+              data-testid="supplement-dose-brand"
+              className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400"
+            >
+              {dose.amount && <span>{dose.amount}</span>}
+              {subline && (
+                <>
+                  {dose.amount && <span aria-hidden="true">·</span>}
+                  <span>{subline}</span>
+                </>
+              )}
+            </div>
+          )}
           {foodHint && (
             <div className="mt-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
               {foodHint}
@@ -208,7 +292,7 @@ export default function EditableSupplementRow({
             className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
           />
           {/* Food–drug guidance (issue #154): per-item food note for a matching
-              item (e.g. dairy/minerals × iron-binding drugs). */}
+            item (e.g. dairy/minerals × iron-binding drugs). */}
           <FoodGuidance
             itemId={s.id}
             name={s.name}
@@ -216,73 +300,34 @@ export default function EditableSupplementRow({
             rxcuiIngredients={s.rxcui_ingredients}
             suppressedFoodKeys={suppressedFoodKeys}
           />
-          <AdherenceSummaryLine strip={strip} />
+          <AdherenceSummaryLine strip={strip} noteworthyOnly />
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-3 text-xs">
-        <OverflowMenu
-          label="Supplement actions"
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
+
+      {editing && (
+        <ModalShell
+          title={`Edit ${s.name}`}
+          onClose={() => setEditing(false)}
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
         >
-          {({ close, runAction }) => (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setEditing(true);
-                  close();
-                }}
-                className={MENU_ITEM}
-              >
-                Edit
-              </button>
-              <form
-                action={(fd) =>
-                  runAction(
-                    async (data) => {
-                      await toggleActive(data);
-                    },
-                    fd,
-                    s.active ? "Supplement paused" : "Supplement resumed"
-                  )
-                }
-              >
-                <input type="hidden" name="id" value={s.id} />
-                <button type="submit" role="menuitem" className={MENU_ITEM}>
-                  {s.active ? "Pause" : "Resume"}
-                </button>
-              </form>
-              {/* Plain button (not a form action): confirm() runs a modal the
-                  user must answer, which deadlocks inside a form-action
-                  transition. onClick is a normal handler, so the dialog shows. */}
-              <button
-                type="button"
-                role="menuitem"
-                className={MENU_ITEM_DANGER}
-                onClick={async () => {
-                  const ok = await confirm({
-                    title: "Delete supplement",
-                    message: `Delete “${s.name}”? You can undo this.`,
-                    confirmLabel: "Delete",
-                    danger: true,
-                  });
-                  if (!ok) return;
-                  close();
-                  const fd = new FormData();
-                  fd.set("id", String(s.id));
-                  await undoable(deleteSupplement, fd, {
-                    deletedMessage: "Supplement deleted.",
-                  });
-                }}
-              >
-                Delete
-              </button>
-            </>
-          )}
-        </OverflowMenu>
-      </div>
-    </div>
+          <div
+            data-testid="supplement-edit-panel"
+            className="mt-4 min-h-0 overflow-y-auto px-1"
+          >
+            <SupplementForm
+              action={updateSupplement}
+              supplement={s}
+              doses={doses}
+              allSupplements={allSupplements}
+              stackItems={stackItems}
+              pgxVariants={pgxVariants}
+              pairs={pairs}
+              onDone={() => setEditing(false)}
+              trainingRestricted={trainingRestricted}
+            />
+          </div>
+        </ModalShell>
+      )}
+    </>
   );
 }

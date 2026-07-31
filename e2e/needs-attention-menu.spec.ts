@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // The dashboard "Needs attention" hero's per-item snooze/dismiss popover (issue
 // #281). It used to be a native <details> float with a translucent .card panel
@@ -15,9 +16,7 @@ import path from "node:path";
 // (the resetInteractionDismissals pattern). Short-lived connection, busy timeout
 // so it never contends with the running server (WAL).
 function removeSuppression(signalKey: string): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -86,10 +85,14 @@ test("snoozing from the menu runs the action, closes the menu, and hides the ite
 
   try {
     await item.getByRole("button", { name: "Snooze or dismiss" }).click();
-    await page
-      .getByRole("menu")
-      .getByRole("menuitem", { name: "1 day" })
-      .click();
+    // The menu item fires a Server Action, so this is a settledClick: the dashboard is
+    // the heaviest page in the app and its route prefetching contends with the action's
+    // POST, so the write regularly lands seconds after the click. A bare click left the
+    // toast assertion racing that latency on a 5s budget with nothing ordering it.
+    await settledClick(
+      page,
+      page.getByRole("menu").getByRole("menuitem", { name: "1 day" })
+    );
 
     // The action ran (toast confirms), the menu closed itself, and the
     // revalidated hero no longer shows the snoozed item.

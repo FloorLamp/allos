@@ -11,8 +11,9 @@ import type { SyncRowLink } from "@/lib/queries";
 // the profile-scoped loadSyncRows action and lists the records the sync inserted/
 // updated, each a typed deep link (#285) to the surface that owns it (a timeline day,
 // or Results for a lab). Mirrors RawPayloadViewer's lazy on-open fetch + hydration
-// catch-up. Rendered only for a successful sync that actually wrote rows; a legacy
-// sync (pre-#1333) has no provenance and shows a graceful "not recorded" note.
+// catch-up. Rendered for any event that actually changed rows, including a chunked
+// import that failed after earlier chunks committed; a legacy sync (pre-#1333) has
+// no provenance and shows a graceful "not recorded" note.
 export default function SyncRowsDrilldown({
   eventId,
   count,

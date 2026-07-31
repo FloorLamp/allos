@@ -11,7 +11,13 @@
 // owns the pure half: the payload shape, the actionable-dose extraction, the
 // per-kind delivery toggle, and webhook-URL validation.
 
-import type { NotificationKind, NotificationMessage } from "./types";
+import {
+  bodyFor,
+  type NotificationKind,
+  type NotificationMessage,
+} from "./types";
+import { TOGGLEABLE_NOTIFICATION_KINDS } from "./kinds";
+import { plainBody } from "./rich-text";
 
 // A shared-secret header HA can verify on the receiving side (webhook ids are
 // capability URLs, so this is belt-and-suspenders). Sent only when a secret is
@@ -44,12 +50,14 @@ export interface HomeAssistantPayload {
 }
 
 // Map a callback-token prefix that actuates a dose to the /dose action it implies.
-// `take`/`esctake` (a confirmed-taken tap) → "taken"; `skip` → "skipped". `escack`
-// (an "I'm on it" ack) resolves nothing on the dose, so it's intentionally absent.
+// `take`/`esctake` (a confirmed-taken tap) → "taken"; `skip`/`escskip` → "skipped".
+// `escack` (an "I'm on it" ack) resolves nothing on the dose, so it's intentionally
+// absent.
 const DOSE_ACTION_BY_PREFIX: Record<string, "taken" | "skipped"> = {
   take: "taken",
   skip: "skipped",
   esctake: "taken",
+  escskip: "skipped",
 };
 
 // Extract the actionable doses from a message's action tokens. The dose tokens are
@@ -97,7 +105,9 @@ export function buildHomeAssistantPayload(
   const doses = extractDoses(msg);
   return {
     title: msg.title,
-    body: msg.body,
+    // Plain text, like Web Push: an HA automation reads/speaks the body, so declared
+    // emphasis (#1720) is stripped rather than leaking markup into TTS.
+    body: plainBody(bodyFor(msg, "home-assistant")),
     kind: msg.kind ?? "other",
     profile: opts.profileName,
     profile_id: opts.profileId,
@@ -129,19 +139,12 @@ export function parseDisabledKinds(
     return [];
   }
   if (!Array.isArray(arr)) return [];
+  // The routable kinds come from the ONE registry (#1462 §6), plus `upcoming` —
+  // folded into the digest by #1108, but still accepted here so a blob stored
+  // before that fold parses instead of silently dropping a disable.
   const valid = new Set<NotificationKind>([
-    "dose",
-    "escalation",
-    "refill",
-    "preventive",
-    "workout",
-    "workout-recap",
-    "food",
-    "mood",
-    "digest",
+    ...TOGGLEABLE_NOTIFICATION_KINDS.map((k) => k.kind),
     "upcoming",
-    "weekly-recap",
-    "milestone",
   ]);
   const out: NotificationKind[] = [];
   for (const x of arr) {
@@ -171,48 +174,19 @@ export function isKindEnabled(
   return !disabled.includes(k);
 }
 
-// The kinds a household can toggle in the settings UI (excludes "test" and the
-// internal "other" catch-all). Paired with human labels for the checkbox grid.
-// Channel-neutral since #928: the SAME registry drives all three columns of the
-// notification matrix (Telegram, Web Push, Home Assistant), so a new kind (e.g.
-// #924's workout-recap) becomes one new row across every channel for free. The
-// historical `TOGGLEABLE_HA_KINDS` name is kept as an alias below for back-compat.
-export const TOGGLEABLE_NOTIFICATION_KINDS: readonly {
-  kind: NotificationKind;
-  label: string;
-}[] = [
-  { kind: "dose", label: "Dose reminders" },
-  { kind: "escalation", label: "Missed-dose escalation" },
-  { kind: "refill", label: "Refill nudges" },
-  { kind: "preventive", label: "Preventive care" },
-  { kind: "workout", label: "Workout reminders" },
-  { kind: "workout-recap", label: "Post-workout recap" },
-  { kind: "food", label: "Food-log nudges" },
-  { kind: "mood", label: "Mood check-ins" },
-  // One "Morning digest" toggle since #1108 — the "what's due" list is now the
-  // morning digest's Today section, ONE message of kind `digest`, so there's no
-  // second `upcoming` send to toggle. The `upcoming` kind stays in the type union +
-  // parseDisabledKinds' valid set for back-compat with any stored disabled blob, but
-  // it's no longer a toggleable matrix row.
-  { kind: "digest", label: "Morning digest" },
-  { kind: "weekly-recap", label: "Weekly recap" },
-  { kind: "milestone", label: "Milestones" },
-];
+// The kind registry and the safety classification now live in ONE place,
+// lib/notifications/kinds.ts (#1462 §6) — the settings UI and this channel gate read
+// the same list, so a new kind becomes a matrix row, a settings row, and a routable
+// kind together. Re-exported here because every existing importer (the matrix, the
+// push gate, the HA channel) reaches for them through this module.
+export {
+  TOGGLEABLE_NOTIFICATION_KINDS,
+  SAFETY_NOTIFICATION_KINDS,
+  isSafetyKind,
+} from "./kinds";
 
 // Back-compat alias (the registry predates the matrix as an HA-only list).
-export const TOGGLEABLE_HA_KINDS = TOGGLEABLE_NOTIFICATION_KINDS;
-
-// The SAFETY-tier kinds (#928): scheduled-dose reminders, missed-dose escalation,
-// and the PRN redose notice. The matrix may disable them per channel, but WARNS —
-// never blocks — when one ends up off on EVERY configured channel, consistent with
-// the findings-bus principle that a safety signal is never silently suppressed.
-export const SAFETY_NOTIFICATION_KINDS: ReadonlySet<NotificationKind> = new Set(
-  ["dose", "escalation", "redose"]
-);
-
-export function isSafetyKind(kind: NotificationKind): boolean {
-  return SAFETY_NOTIFICATION_KINDS.has(kind);
-}
+export { TOGGLEABLE_NOTIFICATION_KINDS as TOGGLEABLE_HA_KINDS } from "./kinds";
 
 // Validate a configured HA webhook URL: a well-formed absolute http(s) URL whose
 // path is exactly HA's built-in webhook trigger shape,

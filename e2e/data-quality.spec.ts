@@ -1,6 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -11,11 +10,14 @@ import {
   DQ_CARE_CHILD_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Structural data-quality gaps (issue #1045). One pure gap model, many formatters: a
 // dedicated dashboard widget (top-3 by leverage, no score — a count and a list), the
-// coaching rollup (a dismiss there or here silences everywhere through the shared bus),
-// and a household per-member gaps line. The seeded fixtures (seed-events.ts) ship a
+// coaching surfaces (a dismiss anywhere silences everywhere through the shared bus),
+// and a household per-member gaps line. Since #1533 the dashboard shows each gap in
+// exactly ONE card: the widget is the family's dedicated home, and the Coaching-
+// observations rollup carries them only while that widget is hidden. The seeded fixtures (seed-events.ts) ship a
 // GAPPY sole profile (no birthdate/sex + a failed doc), a COMPLETE profile (widget
 // self-hides), and a caregiver with a gappy child.
 
@@ -24,9 +26,7 @@ import {
 // (the resetCoachingObservationDismissals pattern from #206/#449). BLAST RADIUS: only
 // the `data-quality:` namespace on the gappy fixture profile.
 function resetDataQualityDismissals(profileName: string): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -87,7 +87,7 @@ test("the Data quality widget self-hides on a structurally-complete profile (#10
   await page.context().close();
 });
 
-test("dismissing a gap silences it on BOTH the widget and the coaching rollup (#1045)", async ({
+test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
   browser,
 }) => {
   resetDataQualityDismissals(DQ_GAPPY_PROFILE);
@@ -95,27 +95,34 @@ test("dismissing a gap silences it on BOTH the widget and the coaching rollup (#
     username: E2E_LOGIN_DQ_GAPPY,
     password: E2E_MEMBER_PASSWORD,
   });
+  const main = page.getByRole("main");
   await page.goto("/");
 
-  const main = page.getByRole("main");
+  // The Data quality widget is this family's dedicated dashboard home, so it owns
+  // the gap…
   const widget = main.getByTestId("data-quality");
-  const rollup = main.getByTestId("coaching-observations");
   await expect(widget).toBeVisible();
-  await expect(rollup).toBeVisible();
-
-  // The birthdate gap shows on BOTH surfaces (data-quality joins collectCoachingFindings).
   await expect(
     widget
       .getByTestId("data-quality-item")
       .filter({ hasText: "Set a birthdate" })
   ).toBeVisible();
+  // …and the Coaching-observations rollup defers: the gap is NOT a second row a
+  // screen further down (which is what the mobile stack used to show).
   await expect(
-    rollup
+    main
       .getByTestId("coaching-observations-item")
       .filter({ hasText: "Set a birthdate" })
-  ).toBeVisible();
+  ).toHaveCount(0);
+  // One row on the whole dashboard, not two — counted across BOTH cards' rows.
+  const gapRows = main
+    .locator(
+      '[data-testid="data-quality-item"], [data-testid="coaching-observations-item"]'
+    )
+    .filter({ hasText: "Set a birthdate" });
+  await expect(gapRows).toHaveCount(1);
 
-  // Dismiss it on the data-quality widget (the shared suppression bus).
+  // Dismissing on its owning widget still writes to the shared suppression bus.
   await settledClick(
     page,
     widget
@@ -123,18 +130,48 @@ test("dismissing a gap silences it on BOTH the widget and the coaching rollup (#
       .filter({ hasText: "Set a birthdate" })
       .getByTestId("data-quality-dismiss")
   );
+  await expect(gapRows).toHaveCount(0);
 
-  // Gone from BOTH surfaces after the re-render — dismiss once, silence everywhere.
+  await page.context().close();
+});
+
+test("hiding the Data quality widget hands its gaps back to the rollup (#1533)", async ({
+  browser,
+}) => {
+  test.slow();
+  resetDataQualityDismissals(DQ_GAPPY_PROFILE);
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_DQ_GAPPY,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  const main = page.getByRole("main");
+  await page.goto("/");
+
+  // Hide the dedicated home from Customize (eye toggle → Save).
+  await main.getByRole("button", { name: "Edit dashboard" }).click();
+  await main.getByRole("button", { name: "Hide Data quality" }).click();
+  await settledClick(
+    page,
+    main.getByRole("button", { name: "Save", exact: true })
+  );
+  await expect(main.getByTestId("data-quality")).toHaveCount(0);
+
+  // The gaps fall back into the rollup (the catch-all) rather than losing their
+  // dashboard reach entirely — hiding a card never silently drops a finding.
   await expect(
-    widget
-      .getByTestId("data-quality-item")
-      .filter({ hasText: "Set a birthdate" })
-  ).toHaveCount(0);
-  await expect(
-    rollup
+    main
       .getByTestId("coaching-observations-item")
       .filter({ hasText: "Set a birthdate" })
-  ).toHaveCount(0);
+  ).toBeVisible();
+
+  // Restore the default layout so neighboring specs see the seeded dashboard.
+  await main.getByRole("button", { name: "Edit dashboard" }).click();
+  await main.getByRole("button", { name: "Show Data quality" }).click();
+  await settledClick(
+    page,
+    main.getByRole("button", { name: "Save", exact: true })
+  );
+  await expect(main.getByTestId("data-quality")).toBeVisible();
 
   await page.context().close();
 });

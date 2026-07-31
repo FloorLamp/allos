@@ -51,13 +51,17 @@ jobs:
       #    NEW moderate would show here as advisory-only.
       # 2. Blocking gate at high severity — a high/critical advisory FAILS the
       #    check job instead of scrolling past unnoticed. Moderates stay
-      #    advisory (step 1); highs are enforced.
+      #    advisory (step 1); highs are enforced. The gate runs through
+      #    scripts/audit-gate.mjs, which carries a small, justified,
+      #    issue-tracked allowlist for the rare advisory with NO installable
+      #    fix (the 2026-07-24 brace-expansion case, #1454) — a NEW
+      #    high/critical still fails the job exactly as before.
       - name: Audit dependencies (visibility)
         run: npm audit
         continue-on-error: true
 
       - name: Audit dependencies (blocking, high+)
-        run: npm audit --audit-level=high
+        run: node scripts/audit-gate.mjs
 
       # PHI guard: scan the whole tree for likely-real NPIs/phones/SSNs
       # using the pure detector in lib/phi-scan.ts. High-signal structural checks
@@ -108,8 +112,15 @@ jobs:
   #     is the PR base parent (fetch-depth:2 guarantees it's present). We prefer
   #     the event's base.sha when it happens to be in history, else fall back to
   #     HEAD^1 — robust for both PR and push (HEAD^1 is the prior commit).
-  #   • auth.setup.ts is passed alongside so the login dependency runs even
-  #     though the file filter wouldn't otherwise match it.
+  #   • no setup project to pass along any more (#1538): each Playwright worker
+  #     boots its own server against its own copy of the seeded template DB and
+  #     signs itself in, so there is no shared login step to schedule.
+  #
+  #   • the `mobile` project (#1420) needs NO extra wiring here: this lane runs
+  #     `npx playwright test <specs>` with no `--project` filter, so a changed
+  #     `*.mobile.spec.ts` is matched by the same `^e2e/.*\.spec\.ts$` glob and
+  #     lands in the mobile project by its NAME (playwright.config.ts testMatch).
+  #     A changed `smoke.spec.ts` correspondingly runs in both projects.
   #
   # This lane's ONLY additive job is that repeat-each=3 scrutiny on the CHANGED
   # SPECS — the sharded `e2e` matrix below already runs the WHOLE suite at
@@ -118,7 +129,7 @@ jobs:
   #
   # SHARED INFRA (was #889, removed): a PR editing ONLY a shared e2e module —
   # seed-events.ts, fixture-logins.ts, helpers.ts, nav.ts, symptom-helpers.ts,
-  # auth.setup.ts — changes no spec, so this lane correctly skips. That is NOT a
+  # fixtures.ts, worker-env.ts — changes no spec, so this lane correctly skips. That is NOT a
   # coverage gap: shared infra is the highest blast radius, but the sharded
   # matrix runs the whole suite against the changed infra at retries=0 already,
   # so it IS scrutinized. The old fallback re-ran the whole suite here too, in a
@@ -166,7 +177,7 @@ jobs:
 
           echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
           echo "$CHANGED_SPECS"
-          npx playwright test e2e/auth.setup.ts $CHANGED_SPECS --repeat-each=3 --retries=0
+          npx playwright test $CHANGED_SPECS --repeat-each=3 --retries=0
 
       - name: Upload Playwright report
         if: ${{ !cancelled() && steps.e2e-diff.outputs.any == 'true' }}
@@ -183,12 +194,20 @@ jobs:
   # degrade gracefully (the flows under test don't need them).
   #
   # SHARDED 4-way (flaky-e2e hardening): each shard is a fresh runner + fresh
-  # `npx playwright test --shard=N/4` invocation → fresh app/demo servers per
-  # chunk. This cuts the per-push e2e wall-clock roughly in half AND removes the
+  # `npx playwright test --shard=N/4` invocation → a fresh seeded template and
+  # fresh per-worker servers per chunk. This cuts the per-push e2e wall-clock roughly in half AND removes the
   # long-lived-server cumulative degradation the orchestration runbook documents
   # for single-process full runs (docs/orchestration.md). fail-fast is off so a
   # red shard still lets the others finish — one push yields the full failure
   # picture instead of a partial one.
+  #
+  # This runs `npm run test:e2e` unfiltered, so the phone-viewport `mobile`
+  # project (#1420) rides along and its tests distribute across the four shards.
+  # That is deliberately cheap: the project is OPT-IN (smoke.spec.ts +
+  # `*.mobile.spec.ts` only — see playwright.config.ts), so it adds ~23 tests
+  # (~1.5 min total, ~25 s per shard) rather than a mobile clone of the suite. It
+  # needs no job of its own — a separate job would pay a whole extra runner's
+  # checkout + npm ci + `next build` (~4 min) to run ~25 s of tests.
   e2e:
     runs-on: ubuntu-latest
     strategy:

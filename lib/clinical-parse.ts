@@ -1,4 +1,10 @@
-import type { AllergyStatus, ConditionStatus } from "./types";
+import type {
+  AllergyCriticality,
+  AllergyStatus,
+  AllergyVerificationStatus,
+  ConditionStatus,
+  ImmunizationRoute,
+} from "./types";
 
 // Pure, DB-free parsing/normalization for the CCD clinical-list domains —
 // allergies and the problem list / conditions. The shared bits both
@@ -34,6 +40,63 @@ export function toConditionStatus(
   raw: string | null | undefined
 ): ConditionStatus {
   return normalizeClinicalStatus(raw);
+}
+
+// ---- Passport safety vocabularies (#1405/#1406) ----
+//
+// Each maps a source's raw string onto a CHECK-pinned vocabulary, and returns NULL
+// for anything it does not recognize. NULL is the honest answer: unstated is not
+// 'low', not 'confirmed', and not 'intramuscular', and a value the CHECK forbids
+// must never reach it (#385/#323). Deliberately narrow — these normalize SPELLING
+// and common abbreviations, they never INFER a value from a neighbouring field (a
+// severe reaction is not a statement of high criticality).
+
+export function toAllergyCriticality(
+  raw: string | null | undefined
+): AllergyCriticality | null {
+  const v = (raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+  if (v === "low" || v === "low-risk") return "low";
+  if (v === "high" || v === "high-risk") return "high";
+  if (v === "unable-to-assess" || v === "unabletoassess")
+    return "unable-to-assess";
+  return null;
+}
+
+export function toAllergyVerificationStatus(
+  raw: string | null | undefined
+): AllergyVerificationStatus | null {
+  const v = (raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+  if (v === "confirmed") return "confirmed";
+  // FHIR R5 renamed 'suspected' to 'presumed'; accept both spellings for one concept.
+  if (v === "suspected" || v === "presumed") return "suspected";
+  if (v === "unconfirmed") return "unconfirmed";
+  if (v === "refuted") return "refuted";
+  if (v === "entered-in-error" || v === "enteredinerror")
+    return "entered-in-error";
+  return null;
+}
+
+export function toImmunizationRoute(
+  raw: string | null | undefined
+): ImmunizationRoute | null {
+  const v = (raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s._-]+/g, "");
+  if (v === "im" || v === "intramuscular") return "intramuscular";
+  if (v === "sc" || v === "sq" || v === "subq" || v === "subcutaneous")
+    return "subcutaneous";
+  if (v === "id" || v === "intradermal") return "intradermal";
+  if (v === "po" || v === "oral" || v === "bymouth") return "oral";
+  if (v === "in" || v === "nasal" || v === "intranasal") return "intranasal";
+  if (v === "other") return "other";
+  return null;
 }
 
 // ---- imported-condition status/date intelligence (issue #590) ----

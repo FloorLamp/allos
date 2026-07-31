@@ -10,8 +10,8 @@ symptom (`symptom_photos`) photos migrate onto it in phase 3. **Video capture
 per-profile store conventions and strictest-privacy tier, adding container
 sniffing, a Range-capable serve, and poster frames; see
 `docs/internals/video-core.md` (the poster frame it extracts is EXIF-stripped
-through THIS core's `processPhoto`). This file is the contract a new photo tenant
-builds against.
+through THIS core's `processPhoto`). This file is the contract a new photo
+tenant builds against.
 
 ## Why one core (the chokepoint argument)
 
@@ -33,13 +33,14 @@ Order is load-bearing:
    never the client-declared type). HEIC is rejected with a friendly error (the
    in-app camera path always produces JPEG; prebuilt sharp lacks libheif).
 2. **Harvest before the strip** — `readJpegExif` (`lib/photo/exif.ts`, pure)
-   pulls the ONE useful truth out of EXIF: the capture date
-   (`DateTimeOriginal` → `DateTime`), so a photo taken last Tuesday and uploaded
-   today defaults to Tuesday (`resolvePhotoDate`, `lib/photo/policy.ts` — an
-   explicit user date wins; a FUTURE capture date is refused). **GPS is
-   deliberately never decoded**: the parser only records that a GPS IFD exists;
-   no field of its result can carry a coordinate.
-3. **Auto-orient** — the EXIF orientation is baked into pixels (`sharp.rotate()`).
+   pulls the ONE useful truth out of EXIF: the capture date (`DateTimeOriginal`
+   → `DateTime`), so a photo taken last Tuesday and uploaded today defaults to
+   Tuesday (`resolvePhotoDate`, `lib/photo/policy.ts` — an explicit user date
+   wins; a FUTURE capture date is refused). **GPS is deliberately never
+   decoded**: the parser only records that a GPS IFD exists; no field of its
+   result can carry a coordinate.
+3. **Auto-orient** — the EXIF orientation is baked into pixels
+   (`sharp.rotate()`).
 4. **Strip + downscale** — re-encode to JPEG (`quality 82`) inside a
    `PHOTO_MAX_EDGE` (2048px) box, `withoutEnlargement`. A sharp re-encode
    without `withMetadata()` carries no EXIF/GPS/XMP/ICC.
@@ -52,8 +53,8 @@ Order is load-bearing:
 
 Returns a typed outcome: `{ kind: "processed", photo: ProcessedPhoto }` or
 `{ kind: "invalid", error }` — callers never unconditionally confirm.
-`ProcessedPhoto` = `{ bytes, thumbBytes, mime: "image/jpeg", width, height,
-sizeBytes, contentHash, captureDate }`.
+`ProcessedPhoto` =
+`{ bytes, thumbBytes, mime: "image/jpeg", width, height, sizeBytes, contentHash, captureDate }`.
 
 The client half (`components/photo/PhotoCapture.tsx` +
 `lib/photo/client-compress.ts`) makes the common path clean/small at the first
@@ -70,9 +71,9 @@ server pipeline runs REGARDLESS. Never trust the client.
 - `unlinkPhotoFiles(domain, relPaths)` is best-effort and **path-contained**: a
   stored path resolving outside the domain root is skipped, never followed.
 - Serve routes follow the lesion/symptom posture, hardened: session-gated,
-  scoped `id AND profile_id`, path-contained, `nosniff`, `?thumb=1` for the
-  grid asset, and the #478 JSON error shape
-  (`app/api/progress-photo/[id]/route.ts` is the reference).
+  scoped `id AND profile_id`, path-contained, `nosniff`, `?thumb=1` for the grid
+  asset, and the #478 JSON error shape (`app/api/progress-photo/[id]/route.ts`
+  is the reference).
 
 ## Browse / compare — one model, two sibling views (#221)
 
@@ -88,11 +89,11 @@ first-vs-latest), `lightboxNeighbors` (no-wrap paging).
   thumbnail grid (originals load only on lightbox open), and a lightbox with
   paging + domain-supplied actions (`renderActions`).
 - `components/photo/PhotoTimeline.tsx` — the compare view over ONE series: two
-  date pickers, side-by-side or an onion-skin overlay with a blend slider, and
-  a thumbnail strip for the endpoints.
+  date pickers, side-by-side or an onion-skin overlay with a blend slider, and a
+  thumbnail strip for the endpoints.
 
-Captions/meta are factual only (date, weight snapshot) — no scoring, no
-derived judgment anywhere in the core (product-decided, #1119).
+Captions/meta are factual only (date, weight snapshot) — no scoring, no derived
+judgment anywhere in the core (product-decided, #1119).
 
 ## Adding a tenant domain (the phase-3 / #1224 checklist)
 
@@ -100,8 +101,8 @@ derived judgment anywhere in the core (product-decided, #1119).
    `lib/photo/store.ts`.
 2. Domain write core (`lib/<domain>-photo-write.ts`, auth-blind, profileId-
    first): validate domain fields → per-profile `contentHash` dedup →
-   `storeProcessedPhoto` → row insert, all inside `writeTx`; delete unlinks
-   both files. `lib/progress-photo-write.ts` is the template.
+   `storeProcessedPhoto` → row insert, all inside `writeTx`; delete unlinks both
+   files. `lib/progress-photo-write.ts` is the template.
 3. Server Action: `requireWriteAccess` → parse → `processPhoto` →
    `resolvePhotoDate` → core → `revalidatePath`; an action-tier test proves the
    stored file is metadata-free (`spliceExifIntoJpeg` from

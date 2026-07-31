@@ -12,6 +12,16 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import {
+  chartActiveDot,
+  chartAnnotationLabel,
+  chartAxisProps,
+  chartDash,
+  chartGridProps,
+  chartMarkMotion,
+  chartTooltipProps,
+  useChartMotion,
+} from "./chart-scaffold";
 import { chartBand } from "@/lib/chart-colors";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
 import { roundChartValue } from "@/lib/chart-format";
@@ -27,6 +37,8 @@ import {
 } from "@/lib/chart-time-axis";
 import {
   ANNOTATION_KIND_META,
+  annotationTooltipLabel,
+  snapAnnotationsToDates,
   type TrendAnnotation,
   type TrendWindow,
 } from "@/lib/trend-annotations";
@@ -72,6 +84,7 @@ export default function BiomarkerChart({
 }) {
   const formatPrefs = useFormatPrefs();
   const c = useChartColors();
+  const motion = useChartMotion();
   if (data.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
@@ -107,6 +120,9 @@ export default function BiomarkerChart({
   const xTicks = timeAxisTicks(xDomain);
   const withYear = spansYearBoundary(xDomain);
   const dates = data.map((d) => d.date);
+  const tooltipAnnotations = annotations?.length
+    ? snapAnnotationsToDates(annotations, dates)
+    : [];
   const windowAreas = windows?.length
     ? protocolWindowEpochs(windows, dates)
     : [];
@@ -128,7 +144,7 @@ export default function BiomarkerChart({
         cx={cx}
         cy={cy}
         r={3}
-        fill={bounded ? c.dotHollowFill : c.line}
+        fill={bounded ? c.surface : c.line}
         stroke={c.line}
         strokeWidth={bounded ? 1.5 : 1}
       />
@@ -142,7 +158,7 @@ export default function BiomarkerChart({
           data={rows}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <CartesianGrid {...chartGridProps(c)} />
           <XAxis
             dataKey="t"
             type="number"
@@ -150,12 +166,10 @@ export default function BiomarkerChart({
             domain={xDomain ?? ["auto", "auto"]}
             ticks={xTicks.length ? xTicks : undefined}
             tickFormatter={(v: number) => formatTimeTick(v, withYear)}
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
+            {...chartAxisProps(c)}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
+            {...chartAxisProps(c)}
             domain={domain}
             allowDecimals={!wide}
             tickFormatter={tickFmt}
@@ -180,13 +194,11 @@ export default function BiomarkerChart({
               y2={optimalHigh ?? domain[1]}
               fill={chartBand.optimal}
               fillOpacity={0.14}
-              label={{
-                value: "optimal",
-                fontSize: 10,
-                fill: chartBand.optimal,
-                position:
-                  optimalHigh != null ? "insideTopRight" : "insideBottomRight",
-              }}
+              label={chartAnnotationLabel(
+                "optimal",
+                chartBand.optimal,
+                optimalHigh != null ? "insideTopRight" : "insideBottomRight"
+              )}
             />
           ) : null}
 
@@ -203,12 +215,6 @@ export default function BiomarkerChart({
                 fillOpacity={0.08}
                 stroke={color}
                 strokeOpacity={0.3}
-                label={{
-                  value: w.label,
-                  position: "insideTopLeft",
-                  fontSize: 9,
-                  fill: color,
-                }}
               />
             );
           })}
@@ -218,14 +224,8 @@ export default function BiomarkerChart({
               key={`ann-${a.kind}-${a.date}-${i}`}
               x={dateToEpoch(a.date)}
               stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray="3 3"
-              strokeOpacity={0.85}
-              label={{
-                value: a.label,
-                position: "top",
-                fontSize: 9,
-                fill: ANNOTATION_KIND_META[a.kind].color,
-              }}
+              strokeDasharray={chartDash.annotation}
+              strokeOpacity={0.6}
             />
           ))}
           <Tooltip
@@ -233,18 +233,16 @@ export default function BiomarkerChart({
               `${(item?.payload as ChartPoint | undefined)?.bound ?? ""}${fmt(Number(v))}`,
               "Value",
             ]}
-            labelFormatter={(v) =>
-              formatLongDate(epochToISO(Number(v)), formatPrefs)
-            }
-            contentStyle={{
-              fontSize: 12,
-              borderRadius: 8,
-              background: c.tooltipBg,
-              border: `1px solid ${c.tooltipBorder}`,
-              color: c.tooltipText,
+            labelFormatter={(value) => {
+              const date = epochToISO(Number(value));
+              return annotationTooltipLabel(
+                formatLongDate(date, formatPrefs),
+                date,
+                tooltipAnnotations,
+                windows ?? []
+              );
             }}
-            labelStyle={{ color: c.tooltipText }}
-            itemStyle={{ color: c.tooltipText }}
+            {...chartTooltipProps(c, motion)}
           />
           <Line
             type="monotone"
@@ -252,6 +250,8 @@ export default function BiomarkerChart({
             stroke={c.line}
             strokeWidth={2}
             dot={renderDot}
+            activeDot={chartActiveDot(c.line)}
+            {...chartMarkMotion(motion)}
             connectNulls
           />
         </LineChart>

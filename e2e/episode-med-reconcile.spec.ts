@@ -1,22 +1,18 @@
-import {
-  test,
-  expect,
-  type Page,
-  type Locator,
-  type Browser,
-} from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type Locator, type Browser } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { followLink, loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { hashPasswordSync } from "../lib/password";
 import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { createFixtureProfile } from "./fixture-profile";
 import {
   medicationRow,
   medicationList,
   pastMedications,
   prnTodayItem,
 } from "./med-card-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Episode-end medication reconciliation + the dormant-PRN sweep (issue #880).
 //   1. The full arc: on a FRESH sick profile, quick-add ibuprofen during the illness, log
@@ -35,10 +31,7 @@ import {
 let seq = 0;
 
 function e2eDbPath(): string {
-  return (
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db")
-  );
+  return workerDbPath();
 }
 
 interface MemberProfile {
@@ -65,10 +58,7 @@ async function signInAsFreshMember(
   let profileId: number;
   try {
     db.pragma("busy_timeout = 5000");
-    profileId = Number(
-      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(profileName)
-        .lastInsertRowid
-    );
+    profileId = createFixtureProfile(db, profileName);
     if (seed) seed(db, profileId);
     const loginId = Number(
       db
@@ -144,6 +134,19 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
       .getByRole("link", { name: /^More details about / })
       .first(); // first-ok: the active (fresh) profile's hero-cockpit episode link (this spec owns the profile)
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
+
+    // 4b) #1512 D — the dose the chart plots is READABLE. Its medication, amount
+    // and time used to live only in the diamond's SVG `<title>`, which a touch
+    // device never shows, so on a phone the dose row was a line of shapes with no
+    // detail reachable at all. The caption beneath the chart carries it in DOM
+    // text (inline labels do not fit: an episode spans days across 274 user units
+    // and doses cluster within hours, which is the #1573 smear).
+    const doseCaption = page.getByTestId("fever-chart-doses");
+    await expect(doseCaption).toBeVisible();
+    // The spec logged the episode's only dose above, so the caption has exactly one
+    // row — a count on a spec-owned fixture, not a shared-seed surface.
+    await expect(doseCaption.getByTestId("fever-chart-dose")).toHaveCount(1);
+    await expect(doseCaption).toContainText("Ibuprofen");
 
     // 5) "Feeling better" opens the reconciliation checklist — ibuprofen is listed and
     // pre-checked (OTC PRN created during the illness). Confirm ends + closes it.
@@ -251,9 +254,9 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
           db
             .prepare(
               `INSERT INTO intake_items
-               (profile_id, name, active, kind, condition, priority, as_needed, rx,
+               (profile_id, name, active, kind, condition, obligation, rx,
                 quantity_on_hand, qty_per_dose, created_at)
-             VALUES (?, ?, 1, 'medication', 'daily', 'high', 0, 1, 30, 1, '2025-06-01 12:00:00')`
+             VALUES (?, ?, 1, 'medication', 'daily', 'must', 1, 30, 1, '2025-06-01 12:00:00')`
             )
             .run(pid, medName).lastInsertRowid
         );
@@ -327,9 +330,9 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
           db
             .prepare(
               `INSERT INTO intake_items
-                 (profile_id, name, active, kind, condition, priority, as_needed, rx,
+                 (profile_id, name, active, kind, condition, obligation, rx,
                   quantity_on_hand, qty_per_dose, created_at)
-               VALUES (?, ?, 1, 'medication', 'daily', 'high', 1, 0, 10, 1, '2025-01-01 12:00:00')`
+               VALUES (?, ?, 1, 'medication', 'daily', 'may', 0, 10, 1, '2025-01-01 12:00:00')`
             )
             .run(pid, medName).lastInsertRowid
         );

@@ -7,7 +7,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { createGoal, setStatus, updateGoal } from "@/app/(app)/goals/actions";
+import {
+  createGoal,
+  setStatus,
+  updateGoal,
+} from "@/app/(app)/training/goal-actions";
 import {
   getGoals,
   dismissFinding,
@@ -196,5 +200,119 @@ describe("scoping", () => {
 
     expect(getGoals(profileB.id)).toHaveLength(0);
     expect(getGoals(profileA.id).map((g) => g.title)).toContain("A-only goal");
+  });
+});
+
+// ── Load context on an exercise goal (#1610, migration 120) ──────────────────
+// Two registry machines both serialize as the same exact logged exercise name, so
+// `goals.exercise` alone can't say which stack an 80 kg target belongs to. The
+// action persists the choice, and refuses one that isn't this profile's to make.
+describe("createGoal / updateGoal load context", () => {
+  function addEquipment(profileId: number, name: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO equipment (profile_id, name, category)
+           VALUES (?, ?, 'Machine')`
+        )
+        .run(profileId, name).lastInsertRowid
+    );
+  }
+
+  const storedContext = (profileId: number): (number | null)[] =>
+    (
+      db
+        .prepare(
+          "SELECT equipment_id FROM goals WHERE profile_id = ? ORDER BY id"
+        )
+        .all(profileId) as { equipment_id: number | null }[]
+    ).map((r) => r.equipment_id);
+
+  it("stores the chosen implement on an exercise goal", async () => {
+    const { profile } = seedActor();
+    const hotel = addEquipment(profile.id, "Hotel chest press");
+    await createGoal(
+      fd({
+        kind: "exercise",
+        exercise: "Machine Chest Press",
+        metric: "weight",
+        target_weight: 80,
+        equipment_id: hotel,
+      })
+    );
+    expect(storedContext(profile.id)).toEqual([hotel]);
+  });
+
+  it("leaves the goal movement-wide when no implement is chosen", async () => {
+    const { profile } = seedActor();
+    await createGoal(
+      fd({
+        kind: "exercise",
+        exercise: "Machine Chest Press",
+        metric: "weight",
+        target_weight: 80,
+      })
+    );
+    // NULL is the goal's DEFAULT SCOPE, not an unassigned lane — the behavior every
+    // goal stored before this column has.
+    expect(storedContext(profile.id)).toEqual([null]);
+  });
+
+  it("treats the explicit 'any machine' choice as movement-wide", async () => {
+    const { profile } = seedActor();
+    await createGoal(
+      fd({
+        kind: "exercise",
+        exercise: "Machine Chest Press",
+        metric: "weight",
+        target_weight: 80,
+        equipment_id: "any",
+      })
+    );
+    expect(storedContext(profile.id)).toEqual([null]);
+  });
+
+  it("refuses an implement that belongs to another profile", async () => {
+    const other = createProfile("neighbour");
+    const foreign = addEquipment(other.id, "Someone else's machine");
+    const { profile } = seedActor();
+    await createGoal(
+      fd({
+        kind: "exercise",
+        exercise: "Machine Chest Press",
+        metric: "weight",
+        target_weight: 80,
+        equipment_id: foreign,
+      })
+    );
+    // Not an error the user can hit through the form; a leaked id must simply not
+    // scope this profile's goal to another profile's gear.
+    expect(storedContext(profile.id)).toEqual([null]);
+  });
+
+  it("lets an edit widen a machine-scoped goal back to movement-wide", async () => {
+    const { profile } = seedActor();
+    const home = addEquipment(profile.id, "Home chest press");
+    await createGoal(
+      fd({
+        kind: "exercise",
+        exercise: "Machine Chest Press",
+        metric: "weight",
+        target_weight: 80,
+        equipment_id: home,
+      })
+    );
+    const id = getGoals(profile.id)[0].id;
+    await updateGoal(
+      fd({
+        id,
+        kind: "exercise",
+        exercise: "Machine Chest Press",
+        metric: "weight",
+        target_weight: 80,
+        equipment_id: "any",
+      })
+    );
+    expect(storedContext(profile.id)).toEqual([null]);
   });
 });

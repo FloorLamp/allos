@@ -27,6 +27,7 @@ import { MUSCLE_VOLUME_PREFIX } from "./muscle-volume-bands";
 import { BODY_HYGIENE_PREFIX } from "./weight-anomaly";
 import { GOAL_PACE_PREFIX } from "./goal-pacing";
 import { ADHERENCE_PREFIX } from "./adherence-patterns";
+import { DEMOTION_PREFIX } from "./supplement-demotion";
 import { FOOD_SUGGEST_PREFIX, FOOD_REDUCE_PREFIX } from "./food-suggest";
 import { FOOD_HABIT_PREFIX } from "./food-habit";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
@@ -45,7 +46,9 @@ import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
 import { MED_DUP_PREFIX } from "./medication-family";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
+import { CYCLE_BLEEDING_PREFIX } from "./cycle-observation";
 import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
+import { SYNC_REQUEST_PREFIX } from "./sync-requests";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -100,6 +103,20 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: ADHERENCE_PREFIX,
     tier: "coaching",
     builder: "buildAdherencePatternFindings",
+    reasons: [],
+  },
+  {
+    // Adherence-based priority DEMOTION suggestions (#1505 part 2): a high/mandatory
+    // SUPPLEMENT the user has effectively stopped taking is SUGGESTED for the `low`
+    // tag — never auto-demoted (#559: priority is declared, not inferred). COACHING
+    // tier by hard product contract: calm, hideable, and NEVER a notification —
+    // nagging about a supplement someone has chosen not to take is the exact failure
+    // this issue removes. Medications are excluded at the detector (kind decides, the
+    // same boundary isPushedIntake draws), so poor med adherence stays a missed-dose
+    // escalation question and never a priority one.
+    prefix: DEMOTION_PREFIX,
+    tier: "coaching",
+    builder: "buildDemotionSuggestionFindings",
     reasons: [],
   },
   {
@@ -227,6 +244,41 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: DATA_QUALITY_PREFIX,
     tier: "coaching",
     builder: "buildDataQualityFindings",
+    reasons: [],
+  },
+  {
+    // Prolonged-bleeding observation (#1682): a recorded period at or past
+    // PROLONGED_PERIOD_DAYS bleeding days ("9 days of bleeding — worth discussing
+    // with a clinician"). COACHING tier by hard product contract (#449) — never a
+    // notification, never the hero: cycle carries no obligation (the attention
+    // doctrine), and the write path deliberately STORES a long period rather than
+    // refusing it, so the calm note is the whole response. Joins
+    // collectCoachingFindings and rides the shared suppression bus keyed on the
+    // period's start day, so a dismissal is per-period, never topic-wide.
+    prefix: CYCLE_BLEEDING_PREFIX,
+    tier: "coaching",
+    builder: "buildCycleBleedingFindings",
+    reasons: [],
+  },
+  {
+    // Portal SYNC REQUESTS (#1757): "run the portal tool on the computer with Mom's
+    // login". COACHING tier, and the constraint is the point — portal hygiene is never a
+    // safety signal, so this gets NO dedicated send, EVER. Its whole reach is an
+    // Upcoming item plus the digest line that item already produces (the ride-the-nag
+    // corollary #1685 established for a broken sync: reaching only surfaces you must
+    // open to see inverts the purpose of a feature whose job is to run without you).
+    //
+    // It is also deliberately kept off the non-hideable "Needs attention" hero, by
+    // cardBandForItem's coaching exclusion — the one property that would make a calm
+    // ask un-ignorable.
+    //
+    // NOT a rule-findings builder: the item is emitted by the Upcoming generator
+    // `syncRequestItems`, so the collectCoachingFindings reflection guards never see it.
+    // It is registered here because the KEY must be guardable and its tier declared —
+    // the same reason the suppression-only poor-sleep override is.
+    prefix: SYNC_REQUEST_PREFIX,
+    tier: "coaching",
+    builder: "syncRequestItems (Upcoming generator, lib/queries/upcoming)",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

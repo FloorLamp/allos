@@ -111,6 +111,14 @@ export interface FhirExportAllergy {
   severity: string | null;
   status: string;
   onset_date: string | null;
+  // FHIR AllergyIntolerance.criticality / .verificationStatus (#1405). Optional so
+  // existing partial-input callers/fixtures stay valid; null/absent = unstated, and
+  // an unstated value is simply omitted from the resource rather than guessed.
+  criticality?: string | null;
+  verification_status?: string | null;
+  // The full graded manifestation list (#1405). When present it REPLACES the single
+  // reaction/severity pair below, which is only the cached first manifestation.
+  reactions?: readonly { manifestation: string; severity: string | null }[];
 }
 
 export interface FhirExportProcedure {
@@ -124,6 +132,12 @@ export interface FhirExportImmunization {
   vaccine: string;
   date: string; // YYYY-MM-DD
   dose_label: string | null;
+  // FHIR Immunization.lotNumber / .route / .site / .reaction (#1406). Optional so
+  // existing partial-input callers/fixtures stay valid; absent stays absent.
+  lot_number?: string | null;
+  route?: string | null;
+  site?: string | null;
+  reaction?: string | null;
 }
 
 export interface FhirExportObservation {
@@ -295,13 +309,29 @@ function allergyResource(a: FhirExportAllergy): Record<string, unknown> {
     clinicalStatus: statusConcept(a.status),
     code: concept(a.substance, a.substance_code, a.substance_code_system),
   };
+  // verificationStatus is a CodeableConcept in FHIR, same shape as clinicalStatus.
+  if (a.verification_status)
+    r.verificationStatus = statusConcept(a.verification_status);
+  if (a.criticality) r.criticality = a.criticality;
   if (a.onset_date) r.onsetDateTime = a.onset_date;
-  if (a.reaction || a.severity) {
-    const reaction: Record<string, unknown> = {
-      manifestation: [{ text: a.reaction ?? a.substance }],
-    };
-    if (a.severity) reaction.severity = a.severity;
-    r.reaction = [reaction];
+  // Every graded manifestation (#1405) — a peanut allergy that causes BOTH hives and
+  // anaphylaxis exports as two reaction entries, which is what FHIR's reaction[] is
+  // for and what an importing system expects. Falls back to the cached first
+  // manifestation for a row that has no child list.
+  const graded =
+    a.reactions && a.reactions.length > 0
+      ? a.reactions
+      : a.reaction || a.severity
+        ? [{ manifestation: a.reaction ?? a.substance, severity: a.severity }]
+        : [];
+  if (graded.length > 0) {
+    r.reaction = graded.map((g) => {
+      const reaction: Record<string, unknown> = {
+        manifestation: [{ text: g.manifestation }],
+      };
+      if (g.severity) reaction.severity = g.severity;
+      return reaction;
+    });
   }
   return r;
 }
@@ -328,6 +358,12 @@ function immunizationResource(
   if (im.dose_label) {
     r.protocolApplied = [{ doseNumberString: im.dose_label }];
   }
+  // Administration attributes (#1406). Each omitted when unstated — an absent
+  // lotNumber is honest, a guessed one is not.
+  if (im.lot_number) r.lotNumber = im.lot_number;
+  if (im.route) r.route = { text: im.route };
+  if (im.site) r.site = { text: im.site };
+  if (im.reaction) r.reaction = [{ detail: { display: im.reaction } }];
   return r;
 }
 

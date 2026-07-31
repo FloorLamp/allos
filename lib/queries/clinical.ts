@@ -13,6 +13,10 @@ import {
   findCrossReactivity,
   type CrossReactivityMatch,
 } from "../allergen-cross-reactivity";
+import {
+  composeAllergyReactions,
+  isAllergyActionable,
+} from "../allergy-reactions";
 import type {
   Allergy,
   AllergyStatus,
@@ -42,18 +46,76 @@ import type {
 // unlike Conditions/Procedures/Visits which hide theirs (#134/#384). The
 // representative subquery's profile_id bind comes after the main WHERE's.
 export function getAllergies(profileId: number): Allergy[] {
-  return db
+  // provider_name joins the documenting clinician for display + for the edit form's
+  // loaded value (#1526) — the same correlated-subquery shape getSkinLesions uses, so
+  // `SELECT *` keeps carrying every stored column.
+  const rows = db
     .prepare(
-      `SELECT * FROM allergies
-       WHERE profile_id = ? AND id IN (${ALLERGY_REPRESENTATIVE_IDS})
-       ORDER BY (status = 'active') DESC, substance COLLATE NOCASE ASC, id DESC`
+      `SELECT *,
+              (SELECT p.name FROM providers p WHERE p.id = allergies.provider_id)
+                AS provider_name
+         FROM allergies
+        WHERE profile_id = ? AND id IN (${ALLERGY_REPRESENTATIVE_IDS})
+        ORDER BY (status = 'active') DESC, substance COLLATE NOCASE ASC, id DESC`
     )
     .all(profileId, profileId) as Allergy[];
+  const byAllergy = allergyReactionRows(profileId);
+  // Attach the full graded manifestation list (#1405) through the ONE pure
+  // composition, so a caller never has to know whether this row's reactions live in
+  // the child table or only in the parent's cached scalar (an imported row).
+  for (const a of rows)
+    a.reactions = composeAllergyReactions(a, byAllergy.get(a.id) ?? []);
+  return rows;
+}
+
+// Every allergy_reactions row for a profile, keyed by allergy id. A CHILD table with
+// no profile_id of its own — scoped through the JOIN to its parent, per the
+// child-table convention the profile-scoping test enforces.
+function allergyReactionRows(
+  profileId: number
+): Map<
+  number,
+  { manifestation: string; severity: string | null; position: number }[]
+> {
+  const rows = db
+    .prepare(
+      `SELECT r.allergy_id AS allergyId, r.manifestation, r.severity, r.position
+         FROM allergy_reactions r
+         JOIN allergies a ON a.id = r.allergy_id
+        WHERE a.profile_id = ?
+        ORDER BY r.allergy_id, r.position, r.id`
+    )
+    .all(profileId) as {
+    allergyId: number;
+    manifestation: string;
+    severity: string | null;
+    position: number;
+  }[];
+  const out = new Map<
+    number,
+    { manifestation: string; severity: string | null; position: number }[]
+  >();
+  for (const r of rows) {
+    const list = out.get(r.allergyId);
+    const entry = {
+      manifestation: r.manifestation,
+      severity: r.severity,
+      position: r.position,
+    };
+    if (list) list.push(entry);
+    else out.set(r.allergyId, [entry]);
+  }
+  return out;
 }
 
 export function getAllergy(profileId: number, id: number): Allergy | undefined {
   return db
-    .prepare("SELECT * FROM allergies WHERE id = ? AND profile_id = ?")
+    .prepare(
+      `SELECT *,
+              (SELECT p.name FROM providers p WHERE p.id = allergies.provider_id)
+                AS provider_name
+         FROM allergies WHERE id = ? AND profile_id = ?`
+    )
     .get(id, profileId) as Allergy | undefined;
 }
 
@@ -392,6 +454,7 @@ export function getSkinLesions(profileId: number): SkinLesion[] {
               provider_id,
               (SELECT p.name FROM providers p WHERE p.id = skin_lesions.provider_id)
                 AS provider_name,
+              encounter_id,
               notes, source, document_id, external_id, created_at
          FROM skin_lesions
         WHERE profile_id = ?
@@ -609,13 +672,19 @@ export function getAllergenSensitizations(
 // deduped by allergen. Shared by the Allergies page and the profile passport.
 export function getAllergiesView(profileId: number): AllergyViewItem[] {
   const stored = getAllergies(profileId)
-    .filter((a) => a.status !== "resolved")
+    // A resolved allergy should not screen forever, and a REFUTED or
+    // ENTERED-IN-ERROR one was ruled out / never real (#1405) — none of the three
+    // belongs on the passport, the emergency card, or the merged known-allergies
+    // list. isAllergyActionable is the ONE decision every safety consumer asks.
+    .filter((a) => a.status !== "resolved" && isAllergyActionable(a))
     .map((a) => ({
       id: a.id,
       substance: a.substance,
       reaction: a.reaction,
       severity: a.severity,
       status: a.status as AllergyStatus,
+      criticality: a.criticality,
+      reactions: a.reactions ?? [],
       onsetDate: a.onset_date,
       source: a.source,
       documentId: a.document_id,

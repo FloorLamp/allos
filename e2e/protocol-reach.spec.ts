@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
-import { followLink, settledClick } from "./helpers";
+import { test, expect } from "./fixtures";
+import { followLink, hydratedClick, settledClick } from "./helpers";
+import { frozenNow } from "./worker-env";
 
 // Protocol reach (issue #660): chart annotations, the active-protocol dashboard
 // widget, and the direct intake-item link. The default specs run authenticated as
@@ -16,11 +17,16 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
     const main = page.getByRole("main");
 
     // The add form offers the seeded Creatine supplement as an intervention.
-    const select = main.getByTestId("protocol-intake-item");
+    await main.getByTestId("new-protocol-toggle").click();
+    const select = page.getByTestId("protocol-intake-item");
     await expect(select).toBeVisible();
     await expect(
       select.locator("option", { hasText: "Creatine Monohydrate" })
     ).toHaveCount(1);
+    await page
+      .getByRole("dialog", { name: "New protocol" })
+      .getByRole("button", { name: "Close" })
+      .click();
 
     // The seeded protocol's detail page shows the intervention link to the
     // supplement surface (Nutrition → Supplements).
@@ -42,7 +48,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     const main = page.getByRole("main");
     // The seeded ongoing protocol shades the body charts, so the shared annotation
     // toggle bar offers a "Protocols" pill.
@@ -55,20 +61,22 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     test.slow();
     const uniqueName = `E2E LDL protocol ${Date.now()}`;
     // A past start so the window overlaps the seeded LDL readings.
-    const start = new Date(Date.now() - 60 * 86_400_000)
+    const start = new Date(frozenNow().getTime() - 60 * 86_400_000)
       .toISOString()
       .slice(0, 10);
 
     await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
-    const form = main.getByTestId("protocol-form");
+    await main.getByTestId("new-protocol-toggle").click();
+    const form = page.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
-    await main.locator("#pr-start-new").fill(start);
-    // Dismiss the DateField popover so it doesn't intercept the checkbox click.
+    await form.locator("#pr-start-new").fill(start);
+    // Dismiss the DateField popover so it doesn't intercept the outcome picker.
     await page.keyboard.press("Escape");
+    await form.getByLabel("Filter outcome metrics").fill("LDL Cholesterol");
     await form
-      .locator('input[name="outcome_keys"][value="biomarker:LDL Cholesterol"]')
-      .check();
+      .getByRole("button", { name: "LDL Cholesterol", exact: true })
+      .click();
     await settledClick(
       page,
       form.getByRole("button", { name: "Create protocol" })
@@ -85,12 +93,21 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
       page.getByRole("main").getByRole("button", { name: "Protocols" })
     ).toBeVisible();
 
-    // Self-clean: delete the protocol we created.
-    page.on("dialog", (d) => d.accept());
+    // Self-clean: delete the protocol we created through the app confirmation.
     await page.goto(protocolUrl);
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "More protocol actions" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
     await settledClick(
       page,
-      page.getByRole("main").getByRole("button", { name: "Delete" })
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete protocol" })
     );
     await page.waitForURL(/\/longevity(?:#|$)/);
     await expect(page.getByRole("main")).not.toContainText(uniqueName);
@@ -112,9 +129,13 @@ test.describe("active-protocol dashboard widget (#660 ask 2)", () => {
       page,
       main.getByRole("button", { name: "Save", exact: true })
     );
+    // settledClick proved the save POST completed; what remains is the layout
+    // refresh re-rendering the whole dashboard, which can outlast the default 5s
+    // on a loaded runner. A named ceiling, not a sleep — this still fails if the
+    // editor never exits.
     await expect(
       main.getByRole("button", { name: "Edit dashboard" })
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 20_000 });
 
     const widget = main.getByTestId("dashboard-widget-active-protocols");
     await expect(widget).toBeVisible();
@@ -128,8 +149,9 @@ test.describe("active-protocol dashboard widget (#660 ask 2)", () => {
       page,
       main.getByRole("button", { name: "Save", exact: true })
     );
+    // Same refresh latency as above (the restore is a second full-dashboard save).
     await expect(
       main.getByTestId("dashboard-widget-active-protocols")
-    ).toHaveCount(0);
+    ).toHaveCount(0, { timeout: 20_000 });
   });
 });

@@ -6,19 +6,25 @@
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
 import { db, today, writeTx } from "../../db";
-import { now as clockNow } from "../../clock";
+import {
+  cadenceOn,
+  doseOnDay,
+  type DoseCadence,
+  type ItemCadence,
+} from "../../intake-cadence";
+import { now as clockNow, sqlNow } from "../../clock";
 import {
   shiftDateStr,
-  daysBetweenDateStr,
   dateStrInTz,
   utcSqlString,
   parseUtcSql,
 } from "../../date";
 import { getTimezone } from "../../settings";
 import {
-  DOSE_LOG_DATE_WINDOW_DAYS,
+  isDoseDateAccepted as isDoseDateInWindow,
   isGivenAtAccepted,
   isHistoricalDoseTimeAccepted,
+  resolveQueuedTakenAt,
 } from "../../dose-log-window";
 import { decrementSupply, incrementSupply } from "./refill";
 import { getMedicationFamilyStates } from "./prn-family";
@@ -29,6 +35,13 @@ import type {
   EscalationAckOutcome,
   HistoricalDoseOutcome,
 } from "../../types";
+import type { IntakeObligation } from "../../types";
+import { isOfferedOn, slotHintCoversNow } from "../../supplement-schedule";
+import { formatMedicationDoseProduct } from "../../medication-dose-format";
+import { getSituations } from "../../settings";
+import { getEffectiveActiveSituations } from "../derived-situations";
+import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
+import type { SupplementCondition, SupplementKind } from "../../types";
 
 // A Telegram dose token carries the day the reminder was sent so a late tap still
 // logs to the right calendar date — but the token is client-supplied, so an
@@ -36,8 +49,7 @@ import type {
 // accepted-window decision lives in lib/dose-log-window (pure, unit-tested); this
 // binds it to the profile's today.
 function isDoseDateAccepted(profileId: number, date: string): boolean {
-  const diff = daysBetweenDateStr(today(profileId), date);
-  return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
+  return isDoseDateInWindow(today(profileId), date);
 }
 
 // Supplement ids with at least one dose actually TAKEN on `date` (supplement-
@@ -124,11 +136,20 @@ export function getSkippedDoseIds(
 // tap handler) can answer honestly: a tap on a button whose dose was since
 // deleted/retired by an edit, or whose item was paused, logs NOTHING and must
 // not be acknowledged as "Logged".
+//
+// `takenAt` (#1427) is an OPTIONAL captured intake instant, supplied only by the
+// offline write queue's replay: the tap happened when the user actually took the
+// dose, possibly hours before the connection came back, so the log is stamped with
+// that moment instead of the replay one. It is validated (never trusted) by the pure
+// resolveQueuedTakenAt and silently falls back to the server's own now when unusable
+// — a skewed phone clock must cost the precise minute, never the dose log. Every
+// other caller omits it and behaves byte-identically to before.
 export function markDoseTaken(
   profileId: number,
   doseId: number,
   supplementId: number | null,
-  date: string
+  date: string,
+  takenAt?: Date
 ): DoseTakenOutcome {
   // A far-off (forged) date can't land a misdated row (issue #614); a legitimate
   // late tap within the window still logs to the reminder's own day.
@@ -148,13 +169,24 @@ export function markDoseTaken(
     const owned = db
       .prepare(
         `SELECT d.item_id AS item_id, d.amount AS amount,
-                s.active AS active
+                d.weekdays AS weekdays, d.start_date AS start_date,
+                d.end_date AS end_date,
+                s.active AS active, s.cadence_kind AS cadence_kind,
+                s.cadence_weekdays AS cadence_weekdays,
+                s.cadence_interval_days AS cadence_interval_days,
+                s.cadence_anchor_date AS cadence_anchor_date
            FROM intake_item_doses d
            JOIN intake_items s ON s.id = d.item_id
           WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
       )
       .get(doseId, profileId) as
-      { item_id: number; amount: string | null; active: number } | undefined;
+      | ({
+          item_id: number;
+          amount: string | null;
+          active: number;
+        } & ItemCadence &
+          DoseCadence)
+      | undefined;
     if (!owned) return "stale-dose";
     // A paused/stopped item keeps its buttons in old messages; refuse the tap so
     // a lingering reminder can't silently log doses (and burn supply) for an item
@@ -183,18 +215,46 @@ export function markDoseTaken(
     // Snapshot the dose amount at confirm time: history must keep showing what
     // was actually taken even after a later dosage edit rewrites the dose row.
     // Always write the dose's OWN item id — never the callback token's. given_at is
-    // set to now (the tap moment) for a scheduled confirm: the schedule dictates
-    // WHEN, so a precise intake time isn't captured here (the PRN path is what makes
-    // given_at user-suppliable). The exists-check above already guaranteed no row
-    // stands for (dose,date), so this insert can't duplicate.
+    // the tap moment for a scheduled confirm: the schedule dictates WHEN, so a
+    // precise intake time isn't captured here (the PRN path is what makes given_at
+    // user-suppliable) — EXCEPT for a replayed offline confirm, whose tap moment was
+    // captured on the client and validated above (#1427). An unusable/absent stamp
+    // COALESCEs to the server's own now, exactly as before — but from the CLOCK SEAM
+    // (sqlNow, #1534), not SQL's `datetime('now')`: `date` above came from `today()`,
+    // so a real-clock fallback would write a self-contradicting row (a given_at whose
+    // profile-local date isn't the row's own date) on any run that crosses midnight.
+    // The exists-check above already guaranteed no row stands for (dose,date), so
+    // this insert can't duplicate.
+    const stamp = resolveQueuedTakenAt(
+      takenAt,
+      getTimezone(profileId),
+      date,
+      // Real time on purpose: a clock-skew comparison, not a date derivation.
+      new Date()
+    );
     db.prepare(
       `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at)
-       VALUES (?,?,?,?, datetime('now'))`
-    ).run(doseId, owned.item_id, date, owned.amount);
+       VALUES (?,?,?,?, COALESCE(?, ?))`
+    ).run(
+      doseId,
+      owned.item_id,
+      date,
+      owned.amount,
+      stamp ? utcSqlString(stamp) : null,
+      sqlNow()
+    );
     // Only the taken insert above (reached once, under the write lock) decrements
     // on-hand supply, once.
     decrementSupply(profileId, owned.item_id);
-    return "logged";
+    // The log is written either way — reality is reality. What changes is the ANSWER
+    // (#1602): an off-cadence confirm reports itself so the handler can say which days
+    // the dose was meant for instead of a bare ✓. Evaluated on the LOG'S date, not
+    // today: a late tap on yesterday's reminder is judged against yesterday.
+    const onDay =
+      cadenceOn(owned, date) && doseOnDay(owned, date)
+        ? "logged"
+        : ("logged-off-day" as const);
+    return onDay;
   });
 }
 
@@ -382,14 +442,15 @@ export function logHistoricalMedicationDose(
   return writeTx((): HistoricalDoseOutcome => {
     const dose = db
       .prepare(
-        `SELECT d.item_id, d.amount, s.as_needed
+        `SELECT d.item_id, d.amount, s.obligation
            FROM intake_item_doses d
            JOIN intake_items s ON s.id = d.item_id
           WHERE d.id = ? AND d.item_id = ? AND d.retired = 0
             AND s.profile_id = ? AND s.kind = 'medication'`
       )
       .get(doseId, itemId, profileId) as
-      { item_id: number; amount: string | null; as_needed: number } | undefined;
+      | { item_id: number; amount: string | null; obligation: IntakeObligation }
+      | undefined;
     if (!dose) return { kind: "stale-dose" };
 
     const inCourse = db
@@ -410,7 +471,7 @@ export function logHistoricalMedicationDose(
     // until duplicate/status validation succeeds so a rejected log never mutates the
     // course. Profile ownership is enforced through the parent on both statements.
     const courseToExtend =
-      !inCourse && dose.as_needed === 1
+      !inCourse && dose.obligation === "may"
         ? (db
             .prepare(
               `SELECT c.id
@@ -426,7 +487,7 @@ export function logHistoricalMedicationDose(
         : undefined;
     if (!inCourse && !courseToExtend) return { kind: "outside-course" };
 
-    if (dose.as_needed !== 1) {
+    if (dose.obligation !== "may") {
       const existing = db
         .prepare(
           `SELECT l.status
@@ -503,7 +564,7 @@ export function updateHistoricalMedicationDose(
   return writeTx((): HistoricalDoseOutcome => {
     const row = db
       .prepare(
-        `SELECT l.dose_id, l.amount, d.amount AS dose_amount, s.as_needed
+        `SELECT l.dose_id, l.amount, d.amount AS dose_amount, s.obligation
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = l.item_id
@@ -515,7 +576,7 @@ export function updateHistoricalMedicationDose(
           dose_id: number;
           amount: string | null;
           dose_amount: string | null;
-          as_needed: number;
+          obligation: IntakeObligation;
         }
       | undefined;
     if (!row) return { kind: "stale-dose" };
@@ -532,7 +593,7 @@ export function updateHistoricalMedicationDose(
       )
       .get(itemId, profileId, date, date);
     const courseToExtend =
-      !inCourse && row.as_needed === 1
+      !inCourse && row.obligation === "may"
         ? (db
             .prepare(
               `SELECT c.id
@@ -548,7 +609,7 @@ export function updateHistoricalMedicationDose(
         : undefined;
     if (!inCourse && !courseToExtend) return { kind: "outside-course" };
 
-    if (row.as_needed !== 1) {
+    if (row.obligation !== "may") {
       const existing = db
         .prepare(
           `SELECT l.status
@@ -835,7 +896,7 @@ export function updateAdministrationLog(
       .prepare(
         `SELECT l.id FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
-          WHERE l.id = ? AND s.profile_id = ? AND s.as_needed = 1
+          WHERE l.id = ? AND s.profile_id = ? AND s.obligation = 'may'
             AND l.status = 'taken'`
       )
       .get(logId, profileId);
@@ -946,7 +1007,7 @@ export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
               max_daily_count AS maxDailyCount
          FROM intake_items
         WHERE profile_id = ? AND active = 1 AND kind = 'medication'
-          AND as_needed = 1 AND redose_notice = 1
+          AND obligation = 'may' AND redose_notice = 1
           AND min_interval_hours IS NOT NULL AND min_interval_hours > 0
           AND max_daily_count IS NOT NULL AND max_daily_count > 0
         ORDER BY name`
@@ -1038,7 +1099,7 @@ export function getPrnOverMaxItems(
       `SELECT id, name, max_daily_count AS maxDailyCount
          FROM intake_items
         WHERE profile_id = ? AND active = 1
-          AND as_needed = 1 AND kind = 'medication'
+          AND obligation = 'may' AND kind = 'medication'
           AND max_daily_count IS NOT NULL AND max_daily_count > 0
         ORDER BY id`
     )
@@ -1121,7 +1182,7 @@ export function getPrnMedicationsForQuickLog(
               s.max_daily_count AS maxDailyCount
          FROM intake_items s
         WHERE s.profile_id = ? AND s.active = 1
-          AND s.as_needed = 1 AND s.kind = 'medication'
+          AND s.obligation = 'may' AND s.kind = 'medication'
         ORDER BY (lastGivenAt IS NULL), lastGivenAt DESC, s.name`
     )
     .all(date, profileId) as Omit<
@@ -1276,4 +1337,102 @@ export function getSupplementLogsInRange(
     date: string;
     status: DoseStatus;
   }[];
+}
+
+// ---- The offer tail's gather (issue #1505) --------------------------------
+
+// The `may` items this profile may be OFFERED right now, scoped by their slot hint
+// against the profile-local wall clock — the DB half of the "Log other…" tail.
+//
+// Two filters, both load-bearing and both evaluated at CALL time (which is TAP time
+// for the tail): the item's day CONDITION must apply today (a rest-day magnesium is
+// not offered on a training day), and its slot HINT must cover the current bucket (a
+// bedtime item is not offered at breakfast). A hint-less item passes the second
+// filter always — no hint means no opinion, and refusing to show it anywhere would
+// make "may with no slot" unreachable, defeating the guaranteed-access rule.
+//
+// Unlike getPrnMedicationsForQuickLog this is NOT medication-only: `may` is a shape,
+// not a kind, so a may supplement (magnesium, a preworkout) is offered on exactly the
+// same terms as a PRN med. That is the whole point of the collapse — the two were
+// always the same thing wearing different flags.
+export function getOfferedIntakeForSlot(
+  profileId: number,
+  nowHhmm: string
+): {
+  itemId: number;
+  name: string;
+  detail: string | null;
+  countToday: number;
+}[] {
+  const date = today(profileId);
+  const rows = db
+    .prepare(
+      `SELECT s.id AS id, s.name AS name, s.kind AS kind, s.product AS product,
+              s.condition AS condition, s.situation AS situation,
+              s.pause_situation_id AS pauseSituationId,
+              (SELECT d.amount FROM intake_item_doses d
+                WHERE d.item_id = s.id AND d.retired = 0
+                ORDER BY d.sort, d.id LIMIT 1) AS amount,
+              (SELECT d.time_of_day FROM intake_item_doses d
+                WHERE d.item_id = s.id AND d.retired = 0
+                ORDER BY d.sort, d.id LIMIT 1) AS timeOfDay,
+              (SELECT COUNT(*) FROM intake_item_logs l
+                WHERE l.item_id = s.id AND l.date = ? AND l.status = 'taken')
+                AS countToday
+         FROM intake_items s
+        WHERE s.profile_id = ? AND s.active = 1 AND s.obligation = 'may'
+        ORDER BY s.name, s.id`
+    )
+    .all(date, profileId) as {
+    id: number;
+    name: string;
+    kind: SupplementKind;
+    product: string | null;
+    condition: SupplementCondition;
+    situation: string | null;
+    pauseSituationId: number | null;
+    amount: string | null;
+    timeOfDay: string | null;
+    countToday: number;
+  }[];
+  if (rows.length === 0) return [];
+
+  // The day context, resolved ONCE per call — the same effective situation set every
+  // other dueness surface reads (declared ∪ derived), so an offer can't disagree with
+  // the page about whether a situational item applies today.
+  const ctx = {
+    date,
+    isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
+    activeSituations: getEffectiveActiveSituations(profileId, date),
+    predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
+  };
+  const pauseNames = new Map(
+    getSituations(profileId).map((s) => [s.id, s.name])
+  );
+
+  return rows
+    .filter((r) =>
+      isOfferedOn(
+        {
+          obligation: "may",
+          condition: r.condition,
+          situation: r.situation,
+          pause_situation:
+            r.pauseSituationId != null
+              ? (pauseNames.get(r.pauseSituationId) ?? null)
+              : null,
+        },
+        ctx
+      )
+    )
+    .filter((r) => slotHintCoversNow(r.timeOfDay, nowHhmm))
+    .map((r) => ({
+      itemId: r.id,
+      name: r.name,
+      detail:
+        r.kind === "medication"
+          ? formatMedicationDoseProduct(r.amount, r.product)
+          : r.amount,
+      countToday: r.countToday,
+    }));
 }

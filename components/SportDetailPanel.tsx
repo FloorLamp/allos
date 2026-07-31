@@ -10,6 +10,7 @@ import { dateStrInTz } from "@/lib/date";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import { StatBox } from "@/components/StatBox";
+import { journalActivityHref } from "@/lib/timeline-format";
 
 // Per-sport detail: records grid, a duration-over-time trend, and the last few
 // sessions linked to their journal entries. Sports carry only duration, so this
@@ -67,7 +68,7 @@ export default function SportDetailPanel({
           label="Last done"
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
-          href={`/training?tab=log#activity-${stat.lastActivityId}`}
+          href={journalActivityHref(stat.lastActivityId)}
         />
       </dl>
 

@@ -29,6 +29,8 @@ import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import LevelBadge from "@/components/LevelBadge";
 import { StatBox } from "@/components/StatBox";
+import { journalActivityHref } from "@/lib/timeline-format";
+import type { AppRoute } from "@/lib/hrefs";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 
 const PR_CHIP = (
@@ -89,10 +91,12 @@ export default function ExerciseDetailPanel({
   // server/client boundary, unlike a Map).
   goalProgress?: Record<number, GoalProgress>;
   // Recent sessions of this exercise (newest first), already summarized.
-  // `href` links to the session's activity in the journal; `date` is preformatted.
+  // `href` links to the session's activity in the journal (an INTERNAL route, so
+  // `AppRoute` — issue #285 — matching the RecentSessionSummary rows the query
+  // layer produces); `date` is preformatted.
   recent?: {
     date: string;
-    href: string;
+    href: AppRoute;
     equipment: string | null;
     text: string;
   }[];
@@ -231,7 +235,7 @@ export default function ExerciseDetailPanel({
           label="Last trained"
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
-          href={`/training?tab=log#activity-${stat.lastActivityId}`}
+          href={journalActivityHref(stat.lastActivityId)}
         />
         {matchedGoals.map((g) => {
           const pct = goalProgress?.[g.id]?.pct ?? 0;

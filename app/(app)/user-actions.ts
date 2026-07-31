@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
+import { isSafeNextPath, safeNextPath } from "@/lib/login-security";
 
 // Log out: revoke the session (deletes the row, clears the cookie) then send the
 // user to the login page.
@@ -34,6 +35,13 @@ export async function switchProfileAction(formData: FormData) {
   const profileId = Number(formData.get("profileId"));
   if (profileId) await setActiveProfile(profileId);
   revalidatePath("/", "layout");
+
+  // Profile-owned links may use the shared switcher chip to change context and
+  // continue to their destination in one explicit gesture. Accept internal paths
+  // only: form fields are client-controlled, so the same hardened validator used
+  // by login redirects owns the open-redirect boundary here too.
+  const rawReturnTo = formData.get("returnTo");
+  if (isSafeNextPath(rawReturnTo)) redirect(safeNextPath(rawReturnTo));
 }
 
 // Toggle one profile in/out of the session's multi-profile VIEW-SET (issue #1096) —

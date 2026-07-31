@@ -1,0 +1,705 @@
+"use server";
+import { requireSession, requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
+
+import { revalidatePath } from "next/cache";
+import { db, today, writeTx } from "@/lib/db";
+import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
+import { type JournalFeedPage } from "@/lib/journal-feed";
+import { normalizeJournalFilters } from "@/lib/journal-filters";
+import { resolveJournalFeed } from "./journal-feed-resolve";
+import { captureDelete } from "@/lib/undo-delete-db";
+import {
+  writeActivityFold,
+  snapshotKeeperFold,
+  dropSetIds,
+} from "@/lib/merge-activity";
+import { recordPairDecision } from "@/lib/queries";
+import {
+  ACTIVITY_DOMAIN,
+  activityToken,
+  pairSignature,
+} from "@/lib/import-review/detect";
+import { parseOverrideFields } from "@/lib/import-review/conflicts";
+import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
+import {
+  getUnitPrefs,
+  getDisplayFormatPrefs,
+  type WeightUnit,
+} from "@/lib/settings";
+import {
+  toKg,
+  toKm,
+  resolveWeightKg,
+  submittedWeightUnit,
+  submittedDistanceUnit,
+} from "@/lib/units";
+import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
+import {
+  finishWorkoutSession,
+  type FinishWorkoutOutcome,
+} from "@/lib/workout-finish";
+import { isRealIsoDate } from "@/lib/date";
+import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
+import { regionForExercise, type MuscleRegion } from "@/lib/lifts";
+import { creditRoutineSession } from "@/lib/routines";
+import { canonicalRpe } from "@/lib/rpe";
+
+interface SetInput {
+  exercise: string;
+  // Weight is submitted in the user's preferred unit; converted to kg here.
+  weight: number | null;
+  reps: number | null;
+  // Right-side load for per-side (asymmetric) sets; null for bilateral sets.
+  weightRight: number | null;
+  repsRight: number | null;
+  // Hold time (seconds) for timed exercises; null for rep-based sets.
+  durationSec: number | null;
+  durationSecRight: number | null;
+  // User-defined implement for this set (Equipment.id), or null. Manual entry
+  // treats the weight as TOTAL load, so no bar weight is added here.
+  equipmentId: number | null;
+  // Declared intent: planned rep count, or "to failure" (AMRAP). Optional —
+  // older clients and integrations don't send them.
+  targetReps?: number | null;
+  toFailure?: boolean;
+  // Warmup flag (#338): a ramp-up set, excluded from working-set math. Optional
+  // (older clients/imports don't send it — such sets stay working sets).
+  warmup?: boolean;
+  // Optional logged RPE (5–10) for the set (#743). Canonicalized to a half-point
+  // value at the write boundary (lib/rpe.ts); absent/off-scale ⇒ stored NULL.
+  rpe?: number | null;
+}
+
+// The stored canonical (kg) loads of the activity's existing sets before an edit
+// replaces them, keyed by `${exercise}#${set_number}`. Lets an untouched edit
+// re-store the exact stored kg instead of drifting it by the display-rounding
+// quantum on every kg↔lb round-trip (issue #194). Empty/absent on create.
+type StoredSetWeights = Map<
+  string,
+  { weight_kg: number | null; weight_kg_right: number | null }
+>;
+const setKey = (exercise: string, setNumber: number) =>
+  `${exercise}#${setNumber}`;
+
+function writeSets(
+  activityId: number,
+  formData: FormData,
+  weightUnit: "kg" | "lb",
+  stored?: StoredSetWeights
+) {
+  const raw = formData.get("sets");
+  if (!raw) return;
+  let sets: SetInput[] = [];
+  try {
+    sets = JSON.parse(String(raw));
+  } catch {
+    sets = [];
+  }
+  const setStmt = db.prepare(
+    `INSERT INTO exercise_sets
+       (activity_id, exercise, set_number, weight_kg, reps, weight_kg_right, reps_right,
+        duration_sec, duration_sec_right, equipment_id, target_reps, to_failure, warmup, rpe)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+  const counters: Record<string, number> = {};
+  for (const s of sets) {
+    if (!s.exercise?.trim()) continue;
+    const ex = s.exercise.trim();
+    counters[ex] = (counters[ex] ?? 0) + 1;
+    const prior = stored?.get(setKey(ex, counters[ex]));
+    setStmt.run(
+      activityId,
+      ex,
+      counters[ex],
+      s.weight != null
+        ? resolveWeightKg(s.weight, prior?.weight_kg, weightUnit)
+        : null,
+      s.reps ?? null,
+      s.weightRight != null
+        ? resolveWeightKg(s.weightRight, prior?.weight_kg_right, weightUnit)
+        : null,
+      s.repsRight ?? null,
+      s.durationSec ?? null,
+      s.durationSecRight ?? null,
+      s.equipmentId ?? null,
+      // Canonicalize intent at the write boundary (like toKg above): a target
+      // must be a positive integer, and an AMRAP set carries no target —
+      // otherwise a stray 0 would make every session judge as "hit target".
+      !s.toFailure && Number.isInteger(s.targetReps) && s.targetReps! > 0
+        ? s.targetReps
+        : null,
+      s.toFailure ? 1 : null,
+      // Warmup flag (#338): canonicalize to 0/1 at the write boundary (the
+      // column is NOT NULL DEFAULT 0).
+      s.warmup ? 1 : 0,
+      // RPE (#743): snap to a half point / reject off-scale at the boundary; the
+      // CHECK (5–10) only ever sees a valid value or NULL.
+      canonicalRpe(s.rpe)
+    );
+  }
+}
+
+// Re-validate every surface that reads activity-derived data after a create/edit/
+// merge/delete: the Journal feed on /training, the /trends fitness-volume chart +
+// workout heatmap (issue #333), and the dashboard rollups. Kept in one place so the
+// next activity-reading surface is added once, not in each mutation.
+function revalidateActivitySurfaces() {
+  revalidatePath("/training");
+  revalidatePath("/trends");
+  revalidatePath("/");
+}
+
+// Create a new activity, or update an existing one when `id` is present. Returns
+// a typed SaveActivityOutcome (issue #332): a validation or ownership failure must
+// reach the auto-saving form as an explicit `{ ok: false }` — never `undefined`,
+// which the client read as success and confirmed with "Saved ✓" while nothing
+// persisted (silently losing the edit).
+export async function saveActivity(
+  formData: FormData
+): Promise<SaveActivityOutcome> {
+  // Multi-view (#1330): an EDIT card carries its subject's `profile_id`, so
+  // gateItemProfile() → requireProfileWriteAccess targets (and write-gates) the
+  // SUBJECT's profile — a read-only-granted / ungranted member is bounced. A CREATE
+  // (no profile_id) falls back to requireWriteAccess() on the acting profile, so a new
+  // activity always lands on the acting profile. `login` (for the viewer's unit prefs)
+  // is the acting login regardless. Everything below keys on the resolved target.
+  const { login } = await requireSession();
+  const targetProfileId = await gateItemProfile(formData);
+  const profile = { id: targetProfileId };
+  const id = formData.get("id") ? Number(formData.get("id")) : null;
+  const type = String(formData.get("type")) as ActivityType;
+  // Training-restriction gate — now TYPE-AWARE (#489, evolving #488). A profile
+  // below the instance min_training_age keeps duration-based SPORT/CARDIO logging
+  // (a lightweight, age-neutral activity log on /training) but still cannot log a
+  // STRENGTH session — the adult e1RM/strength-standard/fitness-age apparatus stays
+  // gated. Authoritative HERE at the write boundary so the create and view paths
+  // agree regardless of what the UI offers (a stale editor / command palette can't
+  // slip a strength row past the restriction, nor lose a legitimate sport log).
+  if (!isActivityTypeAllowed(type, isTrainingRestricted(profile.id)))
+    return { ok: false, reason: "restricted" };
+  const title = String(formData.get("title") ?? "").trim();
+  const date = String(formData.get("date") ?? "").trim();
+  // Reject non-ISO dates server-side too: the client gates on this, but the
+  // action must not persist "2026-07" / "Friday" if a bad value slips through.
+  if (!title || !isRealIsoDate(date)) return { ok: false, reason: "invalid" };
+
+  const prefs = getUnitPrefs(login.id);
+  // Honor the unit each value was CAPTURED in (issue #630) instead of re-reading
+  // the login's pref at write time — a debounced auto-save can land after the
+  // login flipped its unit in another tab, which would mis-convert a
+  // correctly-entered set/distance. Falls back to the stored pref when the form
+  // didn't send a unit (older clients).
+  const weightUnit = submittedWeightUnit(
+    formData.get("weight_unit"),
+    prefs.weightUnit
+  );
+  const distanceUnit = submittedDistanceUnit(
+    formData.get("distance_unit"),
+    prefs.distanceUnit
+  );
+  const notes = (formData.get("notes") as string)?.trim() || null;
+  const intensity = (formData.get("intensity") as string)?.trim() || null;
+  const startTime = (formData.get("start_time") as string)?.trim() || null;
+  const endTime = (formData.get("end_time") as string)?.trim() || null;
+
+  // Components: [{ name, type, distance (user unit) | null, duration_min | null }].
+  // NOT parseComponents (issue #334): this is the untrusted FORM payload whose
+  // `distance` is in the user's unit and gets converted to `distance_km` below — a
+  // different shape from the stored ActivityComponent[] that parseComponents returns.
+  let rawComponents: {
+    name: string;
+    type: ActivityType;
+    distance: number | null;
+    duration_min: number | null;
+  }[] = [];
+  try {
+    rawComponents = JSON.parse(String(formData.get("components") ?? "[]"));
+  } catch {
+    rawComponents = [];
+  }
+  // Numeric fields arrive from parsed JSON and may be strings ("5") — coerce with
+  // Number + a finiteness guard so a string can't concatenate in the reduces below
+  // or persist as a string, and a garbage value becomes null rather than NaN.
+  const num = (v: unknown): number | null => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const components = rawComponents
+    .filter((c) => c.name?.trim())
+    .map((c) => {
+      const distance = num(c.distance);
+      return {
+        name: c.name.trim(),
+        type: c.type,
+        distance_km: distance != null ? toKm(distance, distanceUnit) : null,
+        duration_min: num(c.duration_min),
+      };
+    });
+  const componentsJson = components.length ? JSON.stringify(components) : null;
+
+  // Roll the legs up into the parent's distance + the two formalized times via the
+  // shared compositeRollup (#313/#1202): sum-of-parts distance, ACTIVE duration
+  // (Σ legs for cardio, the entered total for strength — the clock span is no longer
+  // preferred, so a benign edit can't flip a paused import's active up to its
+  // rest-inflated elapsed), and ELAPSED (the clock span, kept only when ≥ active).
+  const clockDurationMin =
+    startTime && endTime ? minutesBetween(startTime, endTime) : null;
+  const enteredDurationValue = num(formData.get("duration_min"));
+  const enteredDurationMin =
+    enteredDurationValue != null && enteredDurationValue > 0
+      ? enteredDurationValue
+      : null;
+  const { distanceKm, durationMin, elapsedMin, hasStrength } = compositeRollup(
+    components,
+    clockDurationMin ?? enteredDurationMin,
+    clockDurationMin
+  );
+  const explicitComponentDuration = components.reduce(
+    (total, component) => total + (component.duration_min ?? 0),
+    0
+  );
+  if (
+    hasStrength &&
+    durationMin != null &&
+    explicitComponentDuration > durationMin
+  )
+    return { ok: false, reason: "invalid" };
+
+  // Estimated calories (issue #151): the activity form fills this from the MET
+  // dataset × nearest bodyweight × duration, and the user can override it. Stored
+  // ONLY for MANUAL activities (a fresh insert is always manual; an edit only sets
+  // it when the row is source-null, below) so an estimate never shadows a device
+  // value. A blank/invalid field clears it. Rounded, non-negative.
+  const estCalories = (() => {
+    const n = num(formData.get("est_calories"));
+    return n != null && n >= 0 ? Math.round(n) : null;
+  })();
+
+  // Session-level equipment link (issue #342): the gear the whole activity used —
+  // a bike for a ride, shoes for a run. Untrusted, so resolve it to an id THIS
+  // profile actually owns (equipment is profile-owned); a blank/foreign/garbage
+  // value becomes null rather than writing a dangling or cross-profile FK.
+  const equipmentId = (() => {
+    const raw = formData.get("equipment_id");
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) return null;
+    const owned = db
+      .prepare("SELECT 1 FROM equipment WHERE id = ? AND profile_id = ?")
+      .get(n, profile.id);
+    return owned ? n : null;
+  })();
+
+  const activityId = writeTx((): number | null => {
+    let activityId: number;
+    let storedSets: StoredSetWeights | undefined;
+    if (id) {
+      // Verify the activity belongs to this profile before touching it or its
+      // sets — the form id is untrusted. Bail (no-op) when it isn't owned.
+      const owned = db
+        .prepare("SELECT 1 FROM activities WHERE id = ? AND profile_id = ?")
+        .get(id, profile.id);
+      if (!owned) return null;
+      db.prepare(
+        `UPDATE activities
+         SET date = ?, type = ?, title = ?, notes = ?, duration_min = ?, elapsed_min = ?, distance_km = ?,
+             intensity = ?, start_time = ?, end_time = ?, components = ?,
+             equipment_id = ?,
+             -- Estimated calories (issue #151): only for MANUAL rows (source +
+             -- external_id null) so an estimate never overwrites an imported row's
+             -- device energy; imported rows keep their existing value untouched.
+             est_calories = CASE WHEN source IS NULL AND external_id IS NULL
+                                 THEN ? ELSE est_calories END,
+             -- Stamp last-edited (UTC, same form as created_at) so the Journal can
+             -- show "edited …" alongside "added …" (issue #11).
+             updated_at = datetime('now'),
+             -- Mark integration-owned rows as hand-edited so re-ingest won't
+             -- clobber this edit (no-op for manual rows: source/external_id null).
+             edited = CASE WHEN source IS NOT NULL OR external_id IS NOT NULL
+                           THEN 1 ELSE edited END
+         WHERE id = ? AND profile_id = ?`
+      ).run(
+        date,
+        type,
+        title,
+        notes,
+        durationMin,
+        elapsedMin,
+        distanceKm,
+        intensity,
+        startTime,
+        endTime,
+        componentsJson,
+        equipmentId,
+        estCalories,
+        id,
+        profile.id
+      );
+      activityId = id;
+      // Snapshot the existing sets' canonical loads keyed by (exercise, set
+      // number) BEFORE replacing them, so an untouched edit re-stores the exact
+      // stored kg rather than drifting it on a kg↔lb round-trip (issue #194).
+      storedSets = new Map();
+      for (const row of db
+        .prepare(
+          "SELECT exercise, set_number, weight_kg, weight_kg_right FROM exercise_sets WHERE activity_id = ?"
+        )
+        .all(id) as {
+        exercise: string;
+        set_number: number;
+        weight_kg: number | null;
+        weight_kg_right: number | null;
+      }[]) {
+        storedSets.set(setKey(row.exercise, row.set_number), {
+          weight_kg: row.weight_kg,
+          weight_kg_right: row.weight_kg_right,
+        });
+      }
+      // Replace sets wholesale (parent ownership verified above).
+      db.prepare("DELETE FROM exercise_sets WHERE activity_id = ?").run(id);
+    } else {
+      const res = db
+        .prepare(
+          `INSERT INTO activities
+             (date, type, title, notes, duration_min, elapsed_min, distance_km, intensity, start_time, end_time, components, equipment_id, est_calories, profile_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        )
+        .run(
+          date,
+          type,
+          title,
+          notes,
+          durationMin,
+          elapsedMin,
+          distanceKm,
+          intensity,
+          startTime,
+          endTime,
+          componentsJson,
+          equipmentId,
+          estCalories,
+          profile.id
+        );
+      activityId = Number(res.lastInsertRowid);
+    }
+    if (hasStrength) writeSets(activityId, formData, weightUnit, storedSets);
+    return activityId;
+  });
+  // The tx returns null when the (untrusted) form id isn't this profile's — the
+  // ownership check bailed, so nothing was written. Report it instead of a silent
+  // no-op the form would confirm as "Saved ✓".
+  if (activityId == null) return { ok: false, reason: "not-owned" };
+
+  // Advance the active routine's position when this session credits today's
+  // routine day (#740). Derived ENTIRELY from the logged data — the strength
+  // regions of the persisted sets (via regionForExercise → LiftDef.region) and
+  // whether the activity included cardio — never a stored link column. The write
+  // core is once-per-profile-local-day and credited-only; keyed on the activity's
+  // date (the profile-local day the session belongs to). Best-effort: a routine
+  // hiccup must never fail an otherwise-successful save.
+  try {
+    const regions: MuscleRegion[] = [];
+    if (hasStrength) {
+      const seen = new Set<MuscleRegion>();
+      for (const row of db
+        .prepare(
+          "SELECT DISTINCT exercise FROM exercise_sets WHERE activity_id = ?"
+        )
+        .all(activityId) as { exercise: string }[]) {
+        const r = regionForExercise(row.exercise);
+        if (r && !seen.has(r)) {
+          seen.add(r);
+          regions.push(r);
+        }
+      }
+    }
+    const hasCardio =
+      type === "cardio" || components.some((c) => c.type === "cardio");
+    creditRoutineSession(profile.id, date, { regions, hasCardio });
+  } catch {
+    // Crediting is advisory; swallow so the save still confirms.
+  }
+
+  // Delayed post-workout dose dispatch (#1154 §B): a save landing a session on
+  // TODAY arms (or RE-arms — finish→unfinish→re-finish coalesces to one send)
+  // the ~60s dispatch timer. Covers BOTH the live Finish (end_time just set) and
+  // a retroactive completed log. Non-blocking — the action returns immediately;
+  // the timer's fire-time verification skips a row that isn't a completed
+  // today-session (a still-live draft, an undone finish), and the hourly tick
+  // stays the mandatory backstop if the process restarts inside the window. The
+  // shared one-shot marker keeps the two paths to a single send.
+  if (date === today(profile.id)) {
+    queuePostWorkoutDispatch(profile.id, activityId);
+  }
+
+  revalidateActivitySurfaces();
+  // Return the row id so the auto-saving form can switch from create to update.
+  return { ok: true, id: activityId };
+}
+
+// Headless "Finish workout" (#1124/#1205, #221): stamp end = now on a live draft
+// through the SHARED finishWorkoutSession core — the request-path sibling of the
+// notification-finish (which calls the same core from the notify process). Stamping a
+// today-session's end arms the ~60s post-workout dose dispatch, exactly like a form
+// save does, so an at-app finish still delivers due post-workout doses. The auth +
+// cross-profile gate lives HERE (requireWriteAccess); the lib core is auth-blind.
+export async function finishWorkout(
+  activityId: number
+): Promise<FinishWorkoutOutcome> {
+  const { profile } = await requireWriteAccess();
+  if (!Number.isInteger(activityId) || activityId <= 0)
+    return { kind: "not-found" };
+  const outcome = finishWorkoutSession(profile.id, activityId);
+  if (outcome.kind === "finished") {
+    queuePostWorkoutDispatch(profile.id, activityId);
+    revalidateActivitySurfaces();
+  }
+  return outcome;
+}
+
+// Record the user's bodyweight (entered in their preferred unit) as a body-metrics
+// entry, so bodyweight lifts can fold it into volume / strength stats. Called from
+// the activity form when a bodyweight exercise is logged with no weight on record.
+export async function logBodyweight(
+  weight: number,
+  date: string,
+  // The unit the value was captured in (issue #630) — honored over the login's
+  // current stored pref so an inline bodyweight log converts with the render-time
+  // unit. Falls back to the stored pref when the caller doesn't pass one.
+  weightUnit?: WeightUnit
+) {
+  const { login, profile } = await requireWriteAccess();
+  const d = date.trim();
+  if (!Number.isFinite(weight) || weight <= 0 || !d) return;
+  const unit = submittedWeightUnit(
+    weightUnit,
+    getUnitPrefs(login.id).weightUnit
+  );
+  db.prepare(
+    `INSERT INTO body_metrics (date, weight_kg, source, profile_id) VALUES (?,?,?,?)`
+  ).run(d, toKg(weight, unit), "manual", profile.id);
+  // A bodyweight entry feeds bodyweight-lift volume/strength, so it refreshes the
+  // same fitness surfaces an activity write does (plus /trends body charts).
+  revalidateActivitySurfaces();
+}
+
+// MANUAL pair-merge from the Journal (issue #64): the user picks two activities of
+// the SAME day and explicitly merges them — the escape hatch for duplicates no
+// heuristic catches (e.g. rows with no clock windows). Reuses the SAME machinery as
+// the Data → Review resolver: fold the discarded row's gap-filling fields into the
+// keeper (writeActivityFold, keeper edited=1), record a durable 'merged' decision
+// keyed on the stable pair signature, then delete the discarded row.
+//
+// The keeper is user-chosen (issue #1081): the keeper radio spans the originating card
+// + the checked siblings, so picking a SIBLING as keeper absorbs the originating card
+// itself. UNLIKE the review resolver, each dropped row routes through captureDelete so
+// the whole N-way merge is UNDOABLE from a toast (issue #30).
+//
+// FULLY-INVERTIBLE undo (issues #199/#200), now across N drops: every dropped row is
+// captured with its OWN MergeUndoContext — the shared pre-fold keeper snapshot, that
+// drop's re-parented set ids (#199) + moved route id (#569), and the keeper↔drop pair
+// signature — so undoing (via the batch undoDeletes) re-inserts every dropped row,
+// moves each one's sets back off the keeper, restores the keeper's pre-fold fields
+// (idempotent across the N tokens — the same snapshot), and clears every recorded
+// 'merged' decision so the un-merged pairs resurface in Review. The undo of a
+// chosen-away originating card brings it back exactly like any other drop.
+//
+// Same-profile + same-day are enforced server-side (the untrusted form ids), even
+// though the UI only ever offers same-day siblings.
+export async function mergeActivities(
+  formData: FormData
+): Promise<{ undoIds: number[] }> {
+  // Merging edits the keeper and deletes the discarded rows — a write (issue #33).
+  // Multi-view (#1330): a merge on a subject's card carries that subject's
+  // `profile_id`, so gateItemProfile() write-gates + targets the subject's profile.
+  // Every keep_id/drop id is re-verified `AND profile_id = ?` below against THIS
+  // resolved profile, so a cross-profile member is refused by construction — two
+  // people's activities are never duplicates of each other. Single-view merge (no
+  // profile_id) falls back to the acting profile.
+  const profileId = await gateItemProfile(formData);
+  const profile = { id: profileId };
+  // Merge is an adult-analytics affordance (the Journal duplicate-review flow) and
+  // is not offered on the restricted profile's lightweight activity log; keep it
+  // fully gated for a restricted profile (#489) so the un-surfaced action can't be
+  // reached out-of-band.
+  if (isTrainingRestricted(profile.id)) return { undoIds: [] };
+  const keepId = Number(formData.get("keep_id"));
+  // drop_ids is a JSON array (the multi-select); a single drop_id is still accepted
+  // for the pairwise callers and the in-flight-form back-compat.
+  const dropIds = parseMergeDropIds(formData).filter((id) => id !== keepId);
+  if (!keepId || dropIds.length === 0) return { undoIds: [] };
+  // Conflict-preview overrides (issue #100): validated to real fold-field names
+  // only — the value for each is taken from the re-read discarded row, never the
+  // client. Empty for the common (no-conflict) one-click merge; applies to the first
+  // drop in the fold order (the pairwise case).
+  const overrideFields = parseOverrideFields(formData.get("overrides"));
+
+  let undoIds: number[] = [];
+  const ok = writeTx((): boolean => {
+    const keep = db
+      .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
+      .get(keepId, profile.id) as Record<string, unknown> | undefined;
+    if (!keep) return false;
+    const drops: Record<string, unknown>[] = [];
+    for (const id of dropIds) {
+      const drop = db
+        .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
+        .get(id, profile.id) as Record<string, unknown> | undefined;
+      // Every drop must be the acting profile's and share the keeper's day — a manual
+      // merge only makes sense within one day (the detector buckets by day too).
+      if (drop && drop.date === keep.date) drops.push(drop);
+    }
+    if (drops.length === 0) return false;
+
+    // Snapshot the invert-undo context BEFORE the fold mutates anything (#199/#200):
+    // the keeper's pre-fold fields (shared across drops), and each drop's set ids
+    // before writeActivityFold re-parents them onto the keeper.
+    const keeperBefore = snapshotKeeperFold(keep);
+    const setIdsByDrop = new Map<number, number[]>();
+    for (const drop of drops)
+      setIdsByDrop.set(drop.id as number, dropSetIds(drop.id as number));
+
+    // The N-way core folds every drop into the keeper and re-parents their children,
+    // returning the ACTUAL per-drop route move so each undo context inverts exactly
+    // what happened (#569).
+    const moves = writeActivityFold(
+      profile.id,
+      keepId,
+      keep,
+      drops,
+      overrideFields
+    );
+    const movedRouteByDrop = new Map(
+      moves.map((m) => [m.dropId, m.movedRouteId])
+    );
+
+    const tokens: number[] = [];
+    for (const drop of drops) {
+      const signature = pairSignature(
+        activityToken(keep as { id: number; external_id: string | null }),
+        activityToken(drop as { id: number; external_id: string | null })
+      );
+      recordPairDecision(profile.id, ACTIVITY_DOMAIN, signature, "merged");
+      // Capture-and-delete this dropped row. Its sets/route have already been
+      // re-parented onto the keeper (#199/#569), so nothing set-related cascades; the
+      // per-drop merge context rides in the payload so undo fully inverts (#200).
+      const undoId = captureDelete("activity", profile.id, drop.id as number, {
+        keeperId: keepId,
+        domain: ACTIVITY_DOMAIN,
+        signature,
+        keeperBefore,
+        movedSetIds: setIdsByDrop.get(drop.id as number) ?? [],
+        movedRouteId: movedRouteByDrop.get(drop.id as number) ?? null,
+      });
+      if (undoId != null) tokens.push(undoId);
+    }
+    undoIds = tokens;
+    return true;
+  });
+  if (!ok) return { undoIds: [] };
+
+  // Refresh every activity-reading surface the folded/deleted rows feed — the
+  // Journal feed on /training, the /trends fitness chart + heatmap, and the
+  // dashboard rollups (same surfaces deleteActivity refreshes).
+  revalidateActivitySurfaces();
+  return { undoIds };
+}
+
+// Parse the Journal merge's drop ids: the multi-select `drop_ids` JSON array, or a
+// single legacy `drop_id`. Positive integers only, deduped; the caller re-verifies
+// each `AND profile_id = ?`, so this is shape validation, not an auth check.
+function parseMergeDropIds(formData: FormData): number[] {
+  const seen = new Set<number>();
+  const raw = formData.get("drop_ids");
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      list = null;
+    }
+  }
+  if (Array.isArray(list))
+    for (const x of list) {
+      const n = Number(x);
+      if (Number.isInteger(n) && n > 0) seen.add(n);
+    }
+  const single = Number(formData.get("drop_id"));
+  if (Number.isInteger(single) && single > 0) seen.add(single);
+  return [...seen];
+}
+
+// Load one window of the Journal feed (issues #451, #1634). The Training → Log
+// surface renders only its newest UNFILTERED page server-side; this fetches the
+// next-older window on a "Load more" tap (or when a deep link targets a day/activity
+// below the loaded set) — and, since #1634, page one of a FILTERED feed whenever the
+// user changes a filter, so search pages over matches across the whole ledger instead
+// of over whatever windows happen to be loaded.
+//
+// A READ, but scoped to the SESSION's active profile (or, in a household view, its
+// authorized view-set — resolveJournalFeed re-resolves the scope on every call).
+// `before` and `filters` are the only client inputs and neither selects a profile:
+// the cursor is used purely as a `date <` bound, and the filters are normalized
+// (normalizeJournalFilters) before anything reaches SQL — an unknown activity type,
+// an over-long query, or a malformed tag degrades to "no such filter" rather than
+// being trusted. A malformed cursor normalizes to null (start from the newest day).
+export async function loadJournalPage(
+  before: string | null,
+  filters?: unknown
+): Promise<JournalFeedPage> {
+  await requireSession();
+  const cursor =
+    typeof before === "string" && isRealIsoDate(before) ? before : null;
+  const feed = await resolveJournalFeed(
+    normalizeJournalFilters(filters),
+    cursor
+  );
+  return { groups: feed.groups, nextBefore: feed.cursor };
+}
+
+export async function deleteActivity(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
+  // Multi-view (#1330): a card's delete carries its subject's `profile_id`, so
+  // gateItemProfile() write-gates + targets the row's own profile (a read-only /
+  // ungranted member is bounced); single-view delete (no profile_id) falls back to
+  // the acting profile. Everything below is scoped by this target profile id.
+  const profileId = await gateItemProfile(formData);
+  const profile = { id: profileId };
+  const id = Number(formData.get("id"));
+  if (!id) return { undoId: null };
+  // Type-aware restriction (#489): a restricted profile owns only sport/cardio
+  // rows (strength creation is blocked), but guard defensively so a leftover
+  // strength row can't be deleted from the lightweight activity log either — the
+  // gate matches the write path so create/delete agree.
+  if (isTrainingRestricted(profile.id)) {
+    const act = db
+      .prepare("SELECT type FROM activities WHERE id = ? AND profile_id = ?")
+      .get(id, profile.id) as { type: ActivityType } | undefined;
+    if (act && !isActivityTypeAllowed(act.type, true)) return { undoId: null };
+  }
+  // Capture the activity + its exercise_sets into the undo holding table and
+  // delete it in one transaction (issue #30), so a mis-tap can be undone from the
+  // toast. children cascade; captureDelete returns the undo token.
+  //
+  // PAIR-DECISION POLICY (issue #334). A plain delete DELIBERATELY leaves any
+  // recorded import-pair decision this row took part in (`import_pair_decisions`,
+  // keyed on the stable pair signature) in place — it does NOT clear `ext:` or
+  // `id:` signature rows. This is the same durability contract the whole pair-
+  // decision system is built on (lib/import-review/detect.ts): a decision is keyed
+  // on natural identity (external_id for sourced rows, row id for manual) PRECISELY
+  // so it survives the row's re-creation. Deleting a sourced activity is transient —
+  // the rolling 48h re-sync re-inserts it under the same external_id, re-forming the
+  // identical pair, where the prior resolution should still apply; and a manual row's
+  // `id:` token never recycles, so its leftover is a harmless dead row. A plain delete
+  // means "remove this row", not "un-resolve a duplicate I separately decided" — so it
+  // must not retroactively invert a merge/kept-both/dismissed decision. (A MERGE's undo
+  // DOES clear its own just-recorded decision — that's inverting its own side effect,
+  // #200 — which is a different operation from this bare delete.) Pinned by
+  // lib/__action_tests__/delete-pair-decision.actions.test.ts.
+  const undoId = captureDelete("activity", profile.id, id);
+  revalidateActivitySurfaces();
+  return { undoId };
+}

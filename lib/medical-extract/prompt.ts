@@ -2,6 +2,8 @@
 // schema, and building the per-document content blocks sent to the model.
 import Anthropic from "@anthropic-ai/sdk";
 import { CATEGORIES, FLAGS } from "./constants";
+import { EXTRACTION_CONFIDENCES } from "../extraction-confidence";
+import { RESULT_STATUSES } from "../lab-result-lifecycle";
 import { ext, IMAGE_TYPES, spreadsheetToText } from "./files";
 
 export const SYSTEM = `You are a medical-records data-extraction engine. You are given a single
@@ -36,6 +38,15 @@ Rules:
   non-numeric out-of-range results, "normal" or null otherwise.
 - panel: the panel/section heading it appeared under (e.g. "Lipid Panel", "CBC",
   "Comprehensive Metabolic Panel", "Body Composition"), else null.
+- result_status: ONLY when the report states the result's status — "preliminary",
+  "final", "corrected", or "amended" (a "CORRECTED REPORT" / "AMENDED" banner or a
+  per-analyte status column). A corrected/amended result is a re-issue of a value the
+  patient may already have seen, so never guess it, and never write "final" just
+  because the report looks routine — leave null when nothing is stated.
+- fasting: 1 when the report states the specimen was drawn FASTING, 0 when it states
+  it was non-fasting/random, null when it doesn't say. Never infer from the analyte.
+- specimen: the specimen as printed ("Serum", "Plasma", "Whole Blood", "Urine",
+  "RBC", "Urine, 24-hour"), else null.
 - notes: leave null. Only set it for a short (<12 words) clinically meaningful note; never
   copy reference paragraphs, citations, methodology, or boilerplate disclaimers.
 - prescription: when a result is a MEDICATION (category "prescription") read off a pharmacy
@@ -53,7 +64,8 @@ Rules:
   one entry per administered dose in the "immunizations" array — vaccine (the name or brand
   EXACTLY as printed, e.g. "Vaxelis", "Tdap", "Boostrix", "Shingrix", "Yellow Fever"), date
   (ISO YYYY-MM-DD of administration), dose_label (e.g. "Dose 1", "Booster") if shown else null,
-  and a short note else null. Set document_type to "immunization" for such documents. A lab
+  lot_number / route / site / reaction when the card prints them else null, and a short note
+  else null. Set document_type to "immunization" for such documents. A lab
   report with antibody TITERS (e.g. "Measles IgG", "Hepatitis B Surface Antibody") is NOT an
   immunization record — put those in results as normal lab analytes, not in immunizations.
 - clinical entities: when the document is a CLINICAL NARRATIVE (a discharge / after-visit
@@ -63,8 +75,9 @@ Rules:
   field null when it isn't printed. Each array is empty for a plain lab/scan report:
   - conditions: problem-list diagnoses (name + ICD-10/SNOMED code when printed; status
     "active"/"inactive"/"resolved" when stated; onset/resolved dates ISO YYYY-MM-DD).
-  - allergies: allergies / intolerances (substance + reaction + severity + status). Do NOT emit a
-    row for an explicit "no known allergies" / "NKDA" statement — leave the array empty.
+  - allergies: allergies / intolerances (substance + reaction + severity + status, plus
+    criticality and verification_status when the document states them — never inferred). Do NOT
+    emit a row for an explicit "no known allergies" / "NKDA" statement — leave the array empty.
   - procedures: procedures / surgical history (name + code + performed date ISO YYYY-MM-DD).
   - encounters: the visit(s) the document describes (date, end/discharge date, type e.g.
     "Office Visit"/"Emergency", class_code AMB/IMP/EMER, reason, attending provider name, facility
@@ -146,9 +159,39 @@ Rules:
     names "Hearing Threshold, Right Ear <freq>" and "Hearing Threshold, Left Ear <freq>" where
     <freq> is one of 250 Hz, 500 Hz, 1 kHz, 2 kHz, 4 kHz, 8 kHz (right = AD/OD, left = AS/OS).
     There is no separate audiogram object — thresholds are results only.
+- confidence: on EVERY row you emit (in results and in every clinical array), state how
+  sure you are that the row you just wrote matches the document: "high" when the text is
+  clean and unambiguous, "medium" when you had to interpret something (a cramped or
+  partly illegible figure, an ambiguous unit or reference range, a date you inferred from
+  context, a hedged clinical phrasing), "low" when you are genuinely unsure the row is
+  right. Judge YOUR reading of the document, not whether the result itself is normal or
+  the diagnosis serious. For a medium/low row add confidence_reason: a phrase (<12 words)
+  naming what was unclear, e.g. "unit smudged", "collection date inferred from header",
+  "diagnosis stated as possible". Leave confidence_reason null on a high row. Be honest and
+  sparing — this ONLY decides which rows a human looks at first; nothing is discarded,
+  auto-accepted, or scored because of it, so neither hedging on everything nor claiming
+  high on everything helps the reader.
 - Be concise: emit only the structured fields above. Brevity matters — there may be 100+
   results and the response must fit in the output budget.
 - Do not invent data. If the document has no extractable results, return empty arrays.`;
+
+// Per-record certainty (#1601), spread into EVERY array item's schema below so the
+// model answers it the same way for a lab reading, a condition, and an imaging study.
+// Not in any `required` list: an older/smaller model that omits it must still produce a
+// valid extraction, and an absent answer degrades to "unknown" (lib/extraction-confidence).
+const CONFIDENCE_FIELDS = {
+  confidence: {
+    type: ["string", "null"],
+    enum: [...EXTRACTION_CONFIDENCES, null],
+    description:
+      "How sure you are that THIS row matches the document: high / medium / low. About your reading of the source, not about whether the finding is clinically worrying. Used only to order human review — nothing is discarded or auto-accepted from it.",
+  },
+  confidence_reason: {
+    type: ["string", "null"],
+    description:
+      "For a medium/low row only: a phrase (<12 words) naming what was unclear, e.g. 'unit smudged', 'date inferred from header'. Null on a high row.",
+  },
+} as const;
 
 export const TOOL: Anthropic.Tool = {
   name: "save_medical_data",
@@ -203,6 +246,22 @@ export const TOOL: Anthropic.Tool = {
             unit: { type: ["string", "null"] },
             reference_range: { type: ["string", "null"] },
             flag: { type: ["string", "null"], enum: [...FLAGS, null] },
+            result_status: {
+              type: ["string", "null"],
+              enum: [...RESULT_STATUSES, null],
+              description:
+                "The result's stated status: preliminary / final / corrected / amended. Null unless the report states it — a corrected or amended result re-issues a value the patient may already have read.",
+            },
+            fasting: {
+              type: ["number", "null"],
+              description:
+                "1 when the report states the draw was fasting, 0 when it states non-fasting, null when unstated. Never inferred from the analyte.",
+            },
+            specimen: {
+              type: ["string", "null"],
+              description:
+                "Specimen as printed: Serum, Plasma, Whole Blood, Urine, RBC, ... Null when unstated.",
+            },
             collected_date: { type: ["string", "null"] },
             notes: { type: ["string", "null"] },
             prescription: {
@@ -243,6 +302,7 @@ export const TOOL: Anthropic.Tool = {
                 },
               },
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["category", "name", "canonical_name"],
         },
@@ -265,6 +325,26 @@ export const TOOL: Anthropic.Tool = {
             },
             dose_label: { type: ["string", "null"] },
             notes: { type: ["string", "null"] },
+            lot_number: {
+              type: ["string", "null"],
+              description: "Lot number exactly as printed, else null",
+            },
+            route: {
+              type: ["string", "null"],
+              description:
+                "Route as printed, e.g. 'IM', 'intramuscular', 'SC', 'oral', 'intranasal'. Null if not stated.",
+            },
+            site: {
+              type: ["string", "null"],
+              description:
+                "Body site as printed, e.g. 'Left deltoid', 'R thigh'. Null if not stated.",
+            },
+            reaction: {
+              type: ["string", "null"],
+              description:
+                "Adverse reaction to THIS dose, if the record states one, else null",
+            },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["vaccine"],
         },
@@ -303,6 +383,7 @@ export const TOOL: Anthropic.Tool = {
               type: ["string", "null"],
               description: "Resolution date, ISO YYYY-MM-DD, else null",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["name"],
         },
@@ -333,10 +414,21 @@ export const TOOL: Anthropic.Tool = {
               type: ["string", "null"],
               description: "active, inactive, or resolved. Null if not stated.",
             },
+            criticality: {
+              type: ["string", "null"],
+              description:
+                "Criticality of a FUTURE exposure: 'low', 'high', or 'unable-to-assess'. Null if not stated — do NOT infer it from the severity.",
+            },
+            verification_status: {
+              type: ["string", "null"],
+              description:
+                "'confirmed', 'suspected', 'unconfirmed', 'refuted', or 'entered-in-error' when the document states it. Null if not stated.",
+            },
             onset_date: {
               type: ["string", "null"],
               description: "Onset date, ISO YYYY-MM-DD, else null",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["substance"],
         },
@@ -361,6 +453,7 @@ export const TOOL: Anthropic.Tool = {
               type: ["string", "null"],
               description: "Performed date, ISO YYYY-MM-DD, else null",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["name"],
         },
@@ -412,6 +505,7 @@ export const TOOL: Anthropic.Tool = {
               type: ["string", "null"],
               description: "A short visit summary note, else null",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["date"],
         },
@@ -441,6 +535,7 @@ export const TOOL: Anthropic.Tool = {
               type: ["boolean", "null"],
               description: "Whether the relative is deceased, if stated",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["condition"],
         },
@@ -473,6 +568,7 @@ export const TOOL: Anthropic.Tool = {
               description:
                 "Lifecycle status if stated (planned / active / completed / …)",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["description"],
         },
@@ -499,6 +595,7 @@ export const TOOL: Anthropic.Tool = {
               description:
                 "Lifecycle status if stated (proposed / active / achieved / …)",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["description"],
         },
@@ -552,6 +649,7 @@ export const TOOL: Anthropic.Tool = {
               type: ["string", "null"],
               description: "Report date, ISO YYYY-MM-DD, else null",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: ["gene"],
         },
@@ -607,6 +705,7 @@ export const TOOL: Anthropic.Tool = {
               type: ["string", "null"],
               description: "e.g. 'final', 'preliminary'",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: [],
         },
@@ -687,6 +786,7 @@ export const TOOL: Anthropic.Tool = {
               type: ["string", "null"],
               description: "Any other printed note",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: [],
         },
@@ -739,6 +839,7 @@ export const TOOL: Anthropic.Tool = {
               description:
                 "Recommended recheck interval in DAYS when stated ('recheck in 6 months' → 180)",
             },
+            ...CONFIDENCE_FIELDS,
           },
           required: [],
         },

@@ -1,4 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { expandTrendsContext } from "./trends-chrome";
+import { expectNoClippedContent } from "./helpers";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
@@ -13,20 +15,25 @@ test.describe("mobile tab strips scroll instead of clipping (#640)", () => {
     page,
   }) => {
     await page.goto("/trends");
+    // Since #1485 F the strip lives inside the phone context bar and is collapsed
+    // by default; expanded, it is the same scroller this has always asserted.
+    await expandTrendsContext(page);
 
-    // The strip overflows the viewport (6 tabs), so it must be its OWN scroll
-    // container — otherwise <main>'s overflow-x-clip eats the trailing tabs.
+    // The strip must be its OWN horizontal scroll container — otherwise <main>'s
+    // overflow-x-clip eats any trailing tab a narrower phone (or a longer strip)
+    // pushes past the edge. This used to be asserted as "it genuinely overflows at
+    // 390px", but #1489 cut the strip to five chips that FIT — the stronger
+    // outcome, pinned by trends-compare-fold.mobile.spec.ts — so what survives here
+    // is the scroller property itself plus the reachability of the last tab.
     const strip = page.getByRole("tablist");
-    const { scrollW, clientW } = await strip.evaluate((el) => ({
-      scrollW: el.scrollWidth,
-      clientW: el.clientWidth,
-    }));
-    expect(scrollW).toBeGreaterThan(clientW); // genuinely overflowing
-    // The page body itself does NOT scroll sideways (the clip backstop holds).
-    const bodyOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1
+    const overflowX = await strip.evaluate(
+      (el) => getComputedStyle(el).overflowX
     );
-    expect(bodyOverflow).toBe(true);
+    expect(["auto", "scroll"]).toContain(overflowX);
+    // Nothing OUTSIDE that scroller sits past the right edge. Element-level
+    // (#1543): the shell's clip makes a page-level width comparison read "no
+    // overflow" on every page, so it could never have caught a regression here.
+    await expectNoClippedContent(page);
 
     // The Insights tab — last in the strip — is clickable: Playwright scrolls the
     // strip to it, which was impossible when the strip was clipped, not scrollable.
@@ -107,11 +114,106 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
       // the right of the take circle, with the widened gap between them.
       expect(sBox!.x).toBeGreaterThanOrEqual(tBox!.x + tBox!.width);
     }
+
+    // Only the identity line yields to the action buttons. Supporting text starts
+    // below that top row and spans beneath the buttons instead of carrying their
+    // empty right gutter down the whole card.
+    const patternRow = page
+      .getByTestId("supplement-row")
+      .filter({ hasText: "Evening Vitamin C (e2e)" });
+    const details = patternRow.getByTestId("supplement-row-details");
+    const doseBrand = patternRow.getByTestId("supplement-dose-brand");
+    const actions = patternRow.getByRole("button", {
+      name: "Supplement actions",
+    });
+    await expect(doseBrand).toContainText("500 mg");
+    await expect(details.getByTestId("adherence-summary")).toBeVisible();
+    const [detailsBox, actionsBox] = await Promise.all([
+      details.boundingBox(),
+      actions.boundingBox(),
+    ]);
+    expect(detailsBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+    expect(detailsBox!.y).toBeGreaterThanOrEqual(
+      actionsBox!.y + actionsBox!.height
+    );
+    expect(detailsBox!.x + detailsBox!.width).toBeGreaterThanOrEqual(
+      actionsBox!.x + actionsBox!.width
+    );
   });
 });
 
 test.describe("nutrition food-log controls stay in the viewport on mobile", () => {
   test.use({ viewport: PHONE });
+
+  test("Food and Supplement controls scroll with their tab context", async ({
+    page,
+  }) => {
+    for (const surface of [
+      { href: "/nutrition", testId: "food-log-context" },
+      {
+        href: "/nutrition?tab=supplements",
+        testId: "supplement-schedule-context",
+      },
+    ]) {
+      await page.goto(surface.href);
+      const controls = page.getByTestId(surface.testId);
+      await expect(controls).toBeVisible();
+      await expect
+        .poll(() =>
+          controls.evaluate((element) => getComputedStyle(element).position)
+        )
+        .toBe("static");
+    }
+
+    const supplementDate = page.getByTestId("supplement-day-menu-trigger");
+    await expect(
+      page
+        .getByTestId("supplement-context-heading")
+        .getByTestId("supplement-day-menu-trigger")
+    ).toBeVisible();
+    await expect(supplementDate).toHaveCSS("border-top-width", "0px");
+    await expect(page.getByTestId("supplement-day-toggle")).toBeHidden();
+    await supplementDate.click();
+    const supplementDateMenu = page.getByTestId("supplement-day-menu");
+    await expect(supplementDateMenu).toBeVisible();
+    await expect(supplementDateMenu.getByRole("menuitemradio")).toHaveCount(7);
+    await expect(
+      supplementDateMenu.getByRole("menuitemradio", { name: "Today" })
+    ).toHaveAttribute("aria-checked", "true");
+    await supplementDateMenu
+      .getByRole("menuitemradio", { name: "Today" })
+      .click();
+    await expect(page.getByTestId("supplements-status-mobile")).toHaveText(
+      /^(?:\d+\/\d+ taken|0 scheduled)$/
+    );
+    const addSupplement = page.getByTestId("supplement-add-toggle");
+    await expect(addSupplement.locator("svg")).toBeVisible();
+    await expect(addSupplement.getByText("Add supplement")).toBeHidden();
+    const addSupplementBox = await addSupplement.boundingBox();
+    expect(addSupplementBox).not.toBeNull();
+    expect(addSupplementBox!.width).toBeGreaterThanOrEqual(40);
+    expect(addSupplementBox!.height).toBeGreaterThanOrEqual(40);
+
+    const slots = page.getByTestId("supplement-slot-selector");
+    const [all, morning, midday, evening] = await Promise.all([
+      slots.getByTestId("supplement-slot-all").boundingBox(),
+      slots.getByTestId("supplement-slot-morning").boundingBox(),
+      slots.getByTestId("supplement-slot-midday").boundingBox(),
+      slots.getByTestId("supplement-slot-evening").boundingBox(),
+    ]);
+    expect(all).not.toBeNull();
+    expect(morning).not.toBeNull();
+    expect(midday).not.toBeNull();
+    expect(evening).not.toBeNull();
+    expect(all!.x).toBeLessThan(morning!.x);
+    expect(morning!.x).toBeLessThan(midday!.x);
+    expect(midday!.x).toBeLessThan(evening!.x);
+    expect(all!.y).toBeCloseTo(morning!.y, 0);
+    expect(morning!.y).toBeCloseTo(midday!.y, 0);
+    expect(midday!.y).toBeCloseTo(evening!.y, 0);
+    expect(evening!.height).toBeGreaterThanOrEqual(48);
+  });
 
   // The /nutrition two-column grid (lg:grid-cols-[1fr_320px]) collapses to a
   // single column below lg. A CSS grid item defaults to min-width:auto
@@ -136,11 +238,9 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     expect(box!.x + box!.width).toBeLessThanOrEqual(PHONE.width + 1);
     expect(box!.x).toBeGreaterThanOrEqual(0);
 
-    // And the page body itself does not scroll sideways.
-    const noBodyScroll = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1
-    );
-    expect(noBodyScroll).toBe(true);
+    // And no OTHER element on the page is pushed off the right edge either
+    // (#1543 — element-level, since the shell clips the page-level signal away).
+    await expectNoClippedContent(page);
   });
 });
 
@@ -157,13 +257,16 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
   }) => {
     await page.goto("/nutrition?tab=supplements");
 
-    const addCard = page
-      .locator("div.card")
-      .filter({ hasText: "Add supplement" });
-    await addCard.getByLabel("Name").fill(NAME);
-    await addCard.getByLabel("Amount").first().fill("1 tab"); // first-ok: the first dose's Amount field in the add form this spec fills
-    await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the add form this spec fills
-    await addCard.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByTestId("supplement-add-toggle").click();
+    const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+    await addDialog.getByLabel("Name").fill(NAME);
+    await addDialog.getByLabel("Amount").first().fill("1 tab"); // first-ok: the first dose's Amount field in the scoped add modal
+    await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
+    // Submit by keyboard as well as exercising the modal's focusable controls. The
+    // dev-only Next overlay portal can cover the bottom edge of a 390px viewport;
+    // production has no overlay, and Enter is the real accessible submit path.
+    await addDialog.getByRole("button", { name: "Add", exact: true }).focus();
+    await page.keyboard.press("Enter");
 
     const name = page
       .getByTestId("medicine-name")

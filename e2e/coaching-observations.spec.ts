@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Issue #449 — the four #45 observational domains (training balance/plateau,
 // body-metric hygiene, goal pacing, adherence patterns) render only on their own
@@ -20,9 +21,7 @@ import path from "node:path";
 // preventive/dose/biomarker suppressions other specs depend on. Short-lived
 // connection, busy timeout so it never contends with the running server (WAL).
 function resetCoachingObservationDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -70,7 +69,9 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
     .filter({ hasText: "E2E Dismiss Press" });
   await expect(row).toBeVisible();
 
-  await row.getByTestId("coaching-observations-dismiss").click();
+  // Settled (#868): a bare click here can land in the pre-hydration window and be
+  // swallowed, which shows up as "the row never left" under a loaded suite run.
+  await settledClick(page, row.getByTestId("coaching-observations-dismiss"));
 
   // Dismiss writes to the shared suppression store, so THIS finding is gone from
   // the rollup after the re-render.

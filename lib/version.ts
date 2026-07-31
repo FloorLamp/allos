@@ -2,7 +2,10 @@ import { execSync } from "child_process";
 
 // The GitHub repo the deployed image is built from — used to link a commit
 // hash back to its source. Keep in sync with the deploy workflow's IMAGE.
-const REPO_URL = "https://github.com/FloorLamp/allos";
+// Exported so the release notes (lib/release-notes.ts) link their PRs/issues at
+// the SAME repo the version hash links to — one source of truth for "where this
+// build came from".
+export const REPO_URL = "https://github.com/FloorLamp/allos";
 
 export type AppVersion = {
   /** Short (7-char) commit hash, or null when it can't be determined. */

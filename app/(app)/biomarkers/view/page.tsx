@@ -1,5 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
+import {
+  biomarkerViewHref,
+  panelFilterHref,
+  BIOMARKERS_LIST_HREF,
+} from "@/lib/hrefs";
 import {
   documentLabel,
   getBiomarkerSeriesWithDerived,
@@ -7,14 +13,28 @@ import {
   getLabFollowUps,
   getIopFollowUps,
   getMedicalDocumentsByIds,
+  getMedicalRecords,
   getFoodSuggestions,
-  isBiomarkerStarred,
+  getRevisionsByRecord,
+  isBiomarkerSaved,
 } from "@/lib/queries";
+import {
+  fastingLabel,
+  resultStatusLabel,
+  revisionSummary,
+} from "@/lib/lab-result-lifecycle";
 import { biomarkerFamily } from "@/lib/canonical-name";
+import {
+  OTHER_PANEL,
+  panelForCanonicalName,
+  panelLabel,
+} from "@/lib/biomarker-panels";
+import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { tableNameKey } from "@/lib/derived-table";
 import { isIopBiomarker } from "@/lib/followup-iop";
 import TrackLabFollowUpControl from "../TrackLabFollowUpControl";
 import FoodSuggestions from "@/components/FoodSuggestions";
-import type { CanonicalBiomarker, Sex } from "@/lib/types";
+import type { CanonicalBiomarker, MedicalRecord, Sex } from "@/lib/types";
 import {
   rangeBadge,
   RANGE_BADGE_META,
@@ -60,6 +80,7 @@ import { getProtocolWindowsForOutcome } from "@/lib/queries";
 import { buildProtocolWindows } from "@/lib/trend-annotations";
 import { buildTrendAnnotations } from "@/lib/trends-series";
 import StarButton from "@/components/StarButton";
+import { bioSeriesKey } from "@/lib/saved-items";
 import ScrollFade from "@/components/ScrollFade";
 import {
   FitnessPercentileCard,
@@ -67,6 +88,10 @@ import {
 } from "@/components/FitnessPercentile";
 
 export const dynamic = "force-dynamic";
+
+// How many sibling analytes the panel strip lists. A wayfinding affordance, not a
+// second table — the "see the whole panel" link carries the rest.
+const PANEL_SIBLING_CAP = 12;
 
 function formatRange(
   low: number | null,
@@ -101,6 +126,18 @@ function latestHeightPercentile(
   );
 }
 
+// The collection attributes a reading actually states (#1404), as display chips:
+// its lifecycle status, its fasting state, its specimen. Empty when the source said
+// none of them — an unstated status is NOT "Final", and an unstated fasting state is
+// NOT "Non-fasting", so nothing is rendered rather than something invented.
+function readingAttributes(r: MedicalRecord): string[] {
+  return [
+    resultStatusLabel(r.result_status),
+    fastingLabel(r.fasting ?? null),
+    r.specimen ?? null,
+  ].filter((x): x is string => !!x);
+}
+
 export default async function BiomarkerDetailPage(props: {
   searchParams: Promise<{ name?: string }>;
 }) {
@@ -108,26 +145,27 @@ export default async function BiomarkerDetailPage(props: {
   const { login, profile } = await requireSession();
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const canonical = searchParams.name?.trim();
-  const series = canonical
-    ? getBiomarkerSeriesWithDerived(profile.id, canonical)
-    : [];
+  // A paramless /biomarkers/view is a degenerate page (#1447): a bare "Biomarker"
+  // h1 over "No biomarker selected." and nothing else. It isn't a state anything
+  // links to — `biomarkerViewHref` already returns the LIST route when it has no
+  // canonical name — so a hand-typed URL or a stale bookmark lands where that
+  // helper would have sent it, rather than on an empty canvas.
+  if (!canonical) redirect(BIOMARKERS_LIST_HREF);
+  const series = getBiomarkerSeriesWithDerived(profile.id, canonical);
 
-  if (!canonical || series.length === 0) {
+  if (series.length === 0) {
     return (
       <div>
         <Link
-          href="/results/biomarkers"
+          href={BIOMARKERS_LIST_HREF}
           className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
         >
           <IconArrowLeft className="h-4 w-4" /> Back to biomarkers
         </Link>
-        <PageHeader title={canonical || "Biomarker"} />
+        <PageHeader title={canonical} />
         <EmptyState
-          message={
-            canonical
-              ? `No readings found for “${canonical}”.`
-              : "No biomarker selected."
-          }
+          message={`No readings found for “${canonical}”.`}
+          action={{ href: BIOMARKERS_LIST_HREF, label: "Browse biomarkers" }}
         />
       </div>
     );
@@ -147,7 +185,7 @@ export default async function BiomarkerDetailPage(props: {
   // labs, not measured. Surface the formula so the value is transparent. Newest
   // derived reading carries the most representative substituted formula.
   const derivedReading = [...series].reverse().find((r) => r.derived);
-  const starred = isBiomarkerStarred(profile.id, canonical);
+  const starred = isBiomarkerSaved(profile.id, canonical);
   // Effective reference range and optimal band for the user's sex + age
   // (age band, then sex-specific override, else the generic band). Drive the chart
   // bands, the displayed ranges, and the badge. For an age-banded biomarker the
@@ -176,8 +214,45 @@ export default async function BiomarkerDetailPage(props: {
     docLabels.set(d.id, documentLabel(d));
   }
 
+  // Correction lineage (#1404): the prior values a re-import overwrote, per reading.
+  // A re-issued lab result no longer replaces what the user read with nothing to show
+  // for it — the superseded value is preserved beside its reading (never among the
+  // readings, so it can't chart, count, or flag) and surfaces here. Derived readings
+  // carry synthetic negative ids and have no lineage; the helper filters them out.
+  const revisionsByRecord = getRevisionsByRecord(
+    profile.id,
+    series.map((r) => r.id)
+  );
+
   // Newest reading overall (series is oldest-first) for the header value.
   const latest = series[series.length - 1];
+
+  // "The rest of this panel" (#1502). The analyte's normalized panel, plus the
+  // profile's other CURRENT readings in it — one row per analyte via the shared
+  // `current` facet (deduped, latest-per-#482-family), so this can't list the same
+  // marker twice or resurrect a name only an old draw carried. The analyte itself
+  // is excluded by FAMILY identity, not by raw name, so a "Vitamin D" page doesn't
+  // list "Vitamin D, 25-Hydroxy" as its own sibling. Capped: this is a wayfinding
+  // strip, not a second table.
+  const panelId = panelForCanonicalName(canonical);
+  const ownFamily = biomarkerFamily(canonical).toLowerCase();
+  const panelSiblings =
+    panelId === OTHER_PANEL
+      ? []
+      : [
+          ...new Map(
+            getMedicalRecords(profile.id, {
+              panel: panelId,
+              current: true,
+              excludeCategories: NON_BIOMARKER_CATEGORIES,
+            })
+              .map((r) => tableNameKey(r))
+              .filter((n) => biomarkerFamily(n).toLowerCase() !== ownFamily)
+              .map((n) => [n.toLowerCase(), { name: n }] as const)
+          ).values(),
+        ]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .slice(0, PANEL_SIBLING_CAP);
 
   const cbHasRange =
     !!cb && [ref.low, ref.high, opt.low, opt.high].some((v) => v != null);
@@ -514,7 +589,13 @@ export default async function BiomarkerDetailPage(props: {
         subtitle={`${series.length} reading${series.length === 1 ? "" : "s"}${
           cb?.note ? ` · ${cb.note}` : ""
         }`}
-        action={<StarButton canonicalName={canonical} starred={starred} />}
+        action={
+          <StarButton
+            itemKey={bioSeriesKey(canonical)}
+            saved={starred}
+            label={canonical}
+          />
+        }
       />
 
       {derivedReading && (
@@ -619,6 +700,49 @@ export default async function BiomarkerDetailPage(props: {
           </div>
         )}
       </div>
+
+      {/* "The rest of this panel" (#1502). A single-analyte page used to be a dead
+          end: you could see your LDL, but nothing told you it arrived with an HDL
+          and a triglycerides, or offered a way across. The normalized taxonomy
+          makes that answerable — panelForCanonicalName places this analyte, and the
+          siblings are the profile's OWN current readings in the same panel (the
+          shared getMedicalRecords facet, deduped and latest-per-family like every
+          other biomarker surface), so it never advertises a marker never measured.
+          Hidden for an analyte the taxonomy can't place, and when nothing else in
+          the panel has been measured. */}
+      {panelSiblings.length > 0 && panelId !== OTHER_PANEL && (
+        <div
+          data-testid="panel-siblings"
+          className="card mb-6 border-l-4 border-l-violet-300 text-sm dark:border-l-violet-700"
+        >
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-slate-700 dark:text-slate-200">
+              <span className="font-semibold">
+                Part of your {panelLabel(panelId)} panel.
+              </span>{" "}
+              Also measured:
+            </span>
+            <Link
+              href={panelFilterHref(panelId)}
+              className="shrink-0 font-medium text-brand-700 hover:underline dark:text-brand-400"
+            >
+              See the whole panel →
+            </Link>
+          </div>
+          <ul className="flex flex-wrap gap-2">
+            {panelSiblings.map((sib) => (
+              <li key={sib.name}>
+                <Link
+                  href={biomarkerViewHref(sib.name)}
+                  className="badge bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-200 dark:hover:bg-ink-700"
+                >
+                  {sib.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Cross-link to the immunization/immunity surface (#544 part 2): the value
           lives here, the schedule meaning lives there — a user on either wants the
@@ -768,6 +892,25 @@ export default async function BiomarkerDetailPage(props: {
                   <td className="td whitespace-nowrap">{r.date}</td>
                   <td className="td">
                     <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+                    {/* How this result was collected and where it sits in the lab
+                        lifecycle (#1404) — shown only when the source said. */}
+                    {readingAttributes(r).length > 0 && (
+                      <div
+                        className="text-xs text-slate-500 dark:text-slate-400"
+                        data-testid="reading-attributes"
+                      >
+                        {readingAttributes(r).join(" · ")}
+                      </div>
+                    )}
+                    {(revisionsByRecord.get(r.id) ?? []).map((rev) => (
+                      <div
+                        key={rev.id}
+                        className="text-xs text-amber-700 dark:text-amber-400"
+                        data-testid="reading-revision"
+                      >
+                        {revisionSummary(rev)}
+                      </div>
+                    ))}
                   </td>
                   <td className="td text-slate-500 dark:text-slate-400">
                     {r.reference_range ?? "—"}

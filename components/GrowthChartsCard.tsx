@@ -1,105 +1,98 @@
-"use client";
-
-import { useState } from "react";
-import GrowthChart, {
-  type GrowthBand,
-  type GrowthPlotPoint,
-} from "./GrowthChart";
+import GrowthChart from "./GrowthChart";
+import ChartCard from "./ChartCard";
+import { EmptyState } from "./ui";
 import { ordinalPercentile } from "@/lib/growth-format";
+import type { GrowthTrendView } from "@/lib/growth-trend-views";
+import { growthTrendsHref, type AppRoute } from "@/lib/hrefs";
 
-export interface GrowthMetricView {
-  metric: "height" | "weight" | "bmi" | "head_circumference";
-  label: string;
-  unit: string;
-  valueRound: number;
-  bands: GrowthBand[];
-  points: GrowthPlotPoint[];
-  latestPercentile: number | null;
-  minMonths: number;
-  maxMonths: number;
-}
+export type GrowthMetricView = GrowthTrendView;
 
-// The growth-chart card for the Body Metrics page: a WHO/CDC percentile chart per
-// available anthropometric, with a metric switcher, the current percentile, and
-// the required "not medical advice" disclaimer. Only rendered by the server page
-// when the profile is in chart range (child with known sex + birthdate).
+// The growth-chart group for the Body Metrics page: one independent WHO/CDC chart
+// card per available anthropometric. These used to be collapsed behind a metric
+// switcher, which made four distinct clinical references look like one metric and
+// gave the tile view only one representative series.
 export default function GrowthChartsCard({
   views,
   currentAgeMonths,
   source,
+  detailHref,
+  range,
 }: {
   views: GrowthMetricView[];
   currentAgeMonths: number;
   // "WHO" (0–2 y) or "CDC" (2–20 y) — which reference the current age uses.
   source: string;
+  // The Body hub links its large card to the composite detail page. Omitted on
+  // that detail page itself so the header never self-links.
+  detailHref?: AppRoute;
+  range?: { from?: string; to?: string };
 }) {
-  // The selected metric is DERIVED against the current `views`, not just seeded
-  // from them (issue #405): switching profiles hands this persistent client
-  // component a new `views` prop, and a stale selection (e.g. "head_circumference"
-  // from an infant, absent for an older child) would render views[0]'s chart with
-  // NO tab highlighted. Fall back to the first view whenever the selection isn't in
-  // the current set, so the highlighted tab always matches the chart.
-  const [selected, setSelected] = useState<GrowthMetricView["metric"] | null>(
-    null
-  );
-  const active =
-    selected != null && views.some((v) => v.metric === selected)
-      ? selected
-      : (views[0]?.metric ?? null);
-  const view = views.find((v) => v.metric === active) ?? views[0];
-  if (!view) return null;
+  if (views.length === 0) return null;
+  const orderedViews = [
+    ...views.filter((view) => view.latestPercentile != null),
+    ...views.filter((view) => view.latestPercentile == null),
+  ];
 
   return (
-    <div className="card">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Growth percentiles
-        </h2>
-        <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800">
-          {views.map((v) => (
-            <button
-              key={v.metric}
-              type="button"
-              onClick={() => setSelected(v.metric)}
-              className={`rounded-md px-2.5 py-1 text-sm font-medium transition ${
-                v.metric === active
-                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
-                  : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              {v.label}
-            </button>
-          ))}
+    <section className="space-y-3" data-testid="growth-charts-card">
+      {detailHref && (
+        <div>
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+            Growth Percentiles
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Separate {source} reference trajectories for each growth measure.
+          </p>
         </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {orderedViews.map((view) => (
+          <ChartCard
+            key={view.metric}
+            anchorId={`growth-${view.metric}`}
+            testid={`growth-chart-${view.metric}`}
+            title={view.percentileTitle}
+            headline={
+              view.latestPercentile == null
+                ? undefined
+                : ordinalPercentile(view.latestPercentile)
+            }
+            description={`${view.referenceSource} ${view.label.toLowerCase()}-for-age reference`}
+            detailHref={
+              detailHref ? growthTrendsHref(view.metric, range) : null
+            }
+            detailTitle={view.percentileTitle}
+            footer={
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Reference curves (WHO 0–2 y, CDC 2–20 y).
+              </p>
+            }
+          >
+            {view.latestPercentile != null && view.bands.length > 0 ? (
+              <GrowthChart
+                bands={view.bands}
+                points={view.points}
+                currentAgeMonths={currentAgeMonths}
+                minMonths={view.minMonths}
+                maxMonths={view.maxMonths}
+                unit={view.unit}
+                valueRound={view.valueRound}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center [&>*]:w-full">
+                <EmptyState
+                  message={
+                    !view.referenceAvailable
+                      ? `${view.percentileTitle} is not available for this age.`
+                      : `No ${view.label.toLowerCase()} measurement is available in this date range.`
+                  }
+                />
+              </div>
+            )}
+          </ChartCard>
+        ))}
       </div>
-
-      <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-        {view.latestPercentile != null ? (
-          <>
-            Latest {view.label.toLowerCase()} is tracking the{" "}
-            <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {ordinalPercentile(view.latestPercentile)}
-            </span>{" "}
-            percentile ({source}).
-          </>
-        ) : (
-          <>No in-range {view.label.toLowerCase()} measurement to score yet.</>
-        )}
-      </p>
-
-      <GrowthChart
-        bands={view.bands}
-        points={view.points}
-        currentAgeMonths={currentAgeMonths}
-        minMonths={view.minMonths}
-        maxMonths={view.maxMonths}
-        unit={view.unit}
-        valueRound={view.valueRound}
-      />
-
-      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        Reference curves (WHO 0–2 y, CDC 2–20 y).
-      </p>
-    </div>
+    </section>
   );
 }

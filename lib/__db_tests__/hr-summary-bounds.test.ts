@@ -15,7 +15,12 @@
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect } from "vitest";
-import { getHrDailySummary, getHrSeriesBySource } from "@/lib/queries";
+import {
+  getHrDailySummary,
+  getHrDailySummaryInRange,
+  getHrSeriesBySource,
+  getHrSeriesBySourceInRange,
+} from "@/lib/queries";
 import { db } from "@/lib/db";
 
 function newProfile(name: string): number {
@@ -85,6 +90,7 @@ describe("getHrDailySummary — bounded window equals full-history slice (#387)"
     seedHr(p, END, 200);
 
     const full = getHrDailySummary(p, BIG);
+    expect(getHrDailySummary(p, -1)).toEqual(full);
     expect(full.length).toBe(200); // one row per day, ascending
 
     for (const k of [1, 15, 60, 199, 200, 250]) {
@@ -95,6 +101,21 @@ describe("getHrDailySummary — bounded window equals full-history slice (#387)"
   it("returns [] for a profile with no HR minutes", () => {
     const p = newProfile("hr daily empty");
     expect(getHrDailySummary(p, 30)).toEqual([]);
+  });
+
+  it("reads an explicit historical calendar range without newer HR days", () => {
+    const p = newProfile("hr daily calendar bounds");
+    seedHr(p, END, 200);
+    const from = dayStr(END, 149);
+    const to = dayStr(END, 140);
+    const expected = getHrDailySummary(p, BIG).filter(
+      (row) => row.date >= from && row.date <= to
+    );
+
+    expect(getHrDailySummaryInRange(p, from, to)).toEqual(expected);
+    expect(expected).toHaveLength(10);
+    expect(expected[0].date).toBe(from);
+    expect(expected.at(-1)?.date).toBe(to);
   });
 });
 
@@ -146,5 +167,20 @@ describe("getHrSeriesBySource — full per-source window, no group LIMIT (#623)"
   it("returns [] for a profile with no HR minutes", () => {
     const p = newProfile("hr series empty");
     expect(getHrSeriesBySource(p, 30)).toEqual([]);
+  });
+
+  it("windows both source series to exact calendar bounds", () => {
+    const p = newProfile("hr source calendar bounds");
+    seedHr(p, END, 90);
+    const from = dayStr(END, 29);
+    const to = dayStr(END, 20);
+    const series = getHrSeriesBySourceInRange(p, from, to);
+
+    expect(series).toHaveLength(2);
+    for (const source of series) {
+      expect(source.data).toHaveLength(10);
+      expect(source.data[0].date).toBe(from);
+      expect(source.data.at(-1)?.date).toBe(to);
+    }
   });
 });

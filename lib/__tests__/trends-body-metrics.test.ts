@@ -2,12 +2,19 @@ import { describe, it, expect } from "vitest";
 import {
   BODY_METRIC_META,
   BODY_METRIC_SLUGS,
+  bodyCardIdForSeriesKey,
+  bodyMetricSlugForSavedId,
+  seriesKeyForBodyCard,
   isBodyMetricSlug,
+  savedMetricIdForBodySlug,
   resolveBodyMetricUnit,
-  last30DaySlice,
   buildBodyMetricTile,
   orderBodyMetricTiles,
+  stableEmptyLast,
   bodyMetricPeriodStats,
+  collapseCoincidentPeriods,
+  seriesCoverageNote,
+  bodyChartScale,
   type OrderableTile,
 } from "@/lib/trends-body-metrics";
 
@@ -27,11 +34,6 @@ describe("BODY_METRIC_META registry", () => {
     }
   });
 
-  it("gives every metric a distinct base order", () => {
-    const orders = BODY_METRIC_SLUGS.map((s) => BODY_METRIC_META[s].order);
-    expect(new Set(orders).size).toBe(orders.length);
-  });
-
   it("only weight carries the login weight-unit suffix; others are static", () => {
     expect(resolveBodyMetricUnit(BODY_METRIC_META.weight, "lb")).toBe(" lb");
     expect(resolveBodyMetricUnit(BODY_METRIC_META.weight, "kg")).toBe(" kg");
@@ -48,47 +50,123 @@ describe("BODY_METRIC_META registry", () => {
     expect(BODY_METRIC_META.steps.windowed).toBe(false);
     expect(BODY_METRIC_META.hr.windowed).toBe(false);
   });
+
+  it("owns full chart names and concise/composite context names", () => {
+    expect(BODY_METRIC_META.steps.title).toBe("Daily Steps");
+    expect(BODY_METRIC_META.steps.label).toBe("Steps");
+    expect(BODY_METRIC_META["resting-hr"].title).toBe("Resting Heart Rate");
+    expect(BODY_METRIC_META["resting-hr"].label).toBe("RHR");
+    expect(BODY_METRIC_META["skin-temp"].title).toBe(
+      "Skin Temperature Variation"
+    );
+    expect(BODY_METRIC_META["skin-temp"].label).toBe("Skin Temp");
+    expect(BODY_METRIC_META.systolic.summaryTitle).toBe("Blood Pressure");
+    expect(BODY_METRIC_META.diastolic.summaryTitle).toBe("Blood Pressure");
+    expect(BODY_METRIC_META.hr.summaryTitle).toBe("Heart Rate");
+  });
+
+  it("capitalizes every word in user-facing labels", () => {
+    for (const meta of Object.values(BODY_METRIC_META)) {
+      for (const value of [meta.label, meta.title, meta.summaryTitle]) {
+        if (!value) continue;
+        for (const word of value.split(/\s+/)) {
+          const firstLetter = word.match(/[A-Za-z]/)?.[0];
+          if (firstLetter) {
+            expect(firstLetter, `${meta.slug}: ${value}`).toBe(
+              firstLetter.toUpperCase()
+            );
+          }
+        }
+      }
+    }
+  });
+
+  it("maps detail slugs to stable saved ids and back", () => {
+    expect(savedMetricIdForBodySlug("weight")).toBe("weight");
+    expect(savedMetricIdForBodySlug("body-fat")).toBe("bodyfat");
+    expect(savedMetricIdForBodySlug("resting-hr")).toBe("resting_hr");
+    expect(savedMetricIdForBodySlug("steps")).toBe("steps");
+
+    expect(bodyMetricSlugForSavedId("weight")).toBe("weight");
+    expect(bodyMetricSlugForSavedId("bodyfat")).toBe("body-fat");
+    expect(bodyMetricSlugForSavedId("resting_hr")).toBe("resting-hr");
+    expect(bodyMetricSlugForSavedId("steps")).toBe("steps");
+    expect(bodyMetricSlugForSavedId("not-a-metric")).toBeNull();
+  });
 });
 
-describe("last30DaySlice", () => {
-  const today = "2026-07-22";
-  it("keeps only the trailing 30 days (today − 29 … today, inclusive)", () => {
-    const points = [
-      { date: "2026-05-01", value: 1 }, // > 30d ago → dropped
-      { date: "2026-06-23", value: 2 }, // exactly 29 days before today → kept
-      { date: "2026-06-22", value: 9 }, // 30 days before → dropped
-      { date: "2026-07-22", value: 3 }, // today → kept
-    ];
-    const sliced = last30DaySlice(points, today);
-    expect(sliced.map((p) => p.value)).toEqual([2, 3]);
+describe("the ★ ↔ Body-card correspondence (#1643)", () => {
+  it("round-trips every pinnable card between its id and its series key", () => {
+    for (const slug of BODY_METRIC_SLUGS) {
+      const key = seriesKeyForBodyCard(slug);
+      expect(key, slug).not.toBeNull();
+      expect(bodyCardIdForSeriesKey(key as string)).toBe(slug);
+    }
+  });
+
+  it("speaks the stored saved-id vocabulary, legacy ids included", () => {
+    // The store holds "bodyfat" / "resting_hr"; the tab holds "body-fat" /
+    // "resting-hr". ONE table reconciles them (#482) — a second one per surface is
+    // exactly how a starred card would fail to pin.
+    expect(seriesKeyForBodyCard("body-fat")).toBe("metric:bodyfat");
+    expect(seriesKeyForBodyCard("resting-hr")).toBe("metric:resting_hr");
+    expect(bodyCardIdForSeriesKey("metric:bodyfat")).toBe("body-fat");
+    expect(bodyCardIdForSeriesKey("metric:resting_hr")).toBe("resting-hr");
+  });
+
+  it("answers null for the cards that have no savable series", () => {
+    // The percentile card, the Sleep summary and the intraday HR zoom are cards but
+    // not metrics — they can only ever occupy their ranked slot.
+    expect(seriesKeyForBodyCard("growth")).toBeNull();
+    expect(seriesKeyForBodyCard("sleep")).toBeNull();
+    expect(seriesKeyForBodyCard("hr-day")).toBeNull();
+  });
+
+  it("answers null for a saved ref that names no Body card", () => {
+    expect(bodyCardIdForSeriesKey("metric:volume")).toBeNull();
+    expect(bodyCardIdForSeriesKey("bio:ApoB")).toBeNull();
+    expect(bodyCardIdForSeriesKey("weight")).toBeNull();
+    expect(bodyCardIdForSeriesKey("")).toBeNull();
   });
 });
 
 describe("buildBodyMetricTile", () => {
-  const today = "2026-07-22";
-  it("shapes a tile from the full series' 30-day tail, presence over the full series", () => {
+  it("shapes a tile from the selected range, with presence over the full series", () => {
     const full = [
-      { date: "2026-01-01", value: 80 }, // old — outside the 30d tail
+      { date: "2026-01-01", value: 80 },
       { date: "2026-07-10", value: 78 },
       { date: "2026-07-20", value: 77 },
     ];
-    const tile = buildBodyMetricTile(
-      BODY_METRIC_META.weight,
-      full,
-      "kg",
-      today
-    );
+    const tile = buildBodyMetricTile(BODY_METRIC_META.weight, full, "kg", {
+      from: "2026-07-01",
+      to: "2026-07-31",
+    });
     expect(tile.slug).toBe("weight");
+    expect(tile.title).toBe("Weight");
     expect(tile.href).toBe("/trends/metric/weight");
     expect(tile.unit).toBe(" kg");
     expect(tile.present).toBe(true);
     expect(tile.latestDate).toBe("2026-07-20");
-    // Only the trailing-30d points make the sparkline.
+    // Only points inside the selected range make the sparkline.
     expect(tile.points.map((p) => p.value)).toEqual([78, 77]);
   });
 
-  it("is absent (present=false) for an empty series", () => {
-    const tile = buildBodyMetricTile(BODY_METRIC_META.steps, [], "kg", today);
+  it("keeps a known metric present when the selected range is empty", () => {
+    const tile = buildBodyMetricTile(
+      BODY_METRIC_META.steps,
+      [{ date: "2026-01-01", value: 1000 }],
+      "kg",
+      { from: "2026-07-01", to: "2026-07-31" }
+    );
+    expect(tile.title).toBe("Daily Steps");
+    expect(tile.label).toBe("Steps");
+    expect(tile.present).toBe(true);
+    expect(tile.latestDate).toBe("2026-01-01");
+    expect(tile.points).toEqual([]);
+  });
+
+  it("is absent (present=false) for an empty full series", () => {
+    const tile = buildBodyMetricTile(BODY_METRIC_META.steps, [], "kg", {});
     expect(tile.present).toBe(false);
     expect(tile.latestDate).toBeNull();
     expect(tile.points).toEqual([]);
@@ -96,82 +174,285 @@ describe("buildBodyMetricTile", () => {
 });
 
 describe("orderBodyMetricTiles", () => {
-  it("drops absent tiles and sorts present ones most-recent-first, ties by order", () => {
+  it("drops absent tiles and sequences the rest by the tab's ranked card order", () => {
     const tiles: OrderableTile[] = [
-      {
-        slug: "bmi",
-        id: "bmi",
-        label: "BMI",
-        present: false,
-        latestDate: null,
-        order: 7,
-      },
-      {
-        slug: "weight",
-        id: "weight",
-        label: "Weight",
-        present: true,
-        latestDate: "2026-07-01",
-        order: 0,
-      },
-      {
-        slug: "steps",
-        id: "steps",
-        label: "Steps",
-        present: true,
-        latestDate: "2026-07-20",
-        order: 5,
-      },
-      {
-        slug: "sleep",
-        id: "sleep",
-        label: "Sleep",
-        present: true,
-        latestDate: "2026-07-20",
-        order: 1,
-      },
+      { slug: "bmi", id: "bmi", label: "BMI", present: false },
+      { slug: "weight", id: "weight", label: "Weight", present: true },
+      { slug: "steps", id: "steps", label: "Steps", present: true },
+      { slug: "sleep", id: "sleep", label: "Sleep", present: true },
     ];
-    const ordered = orderBodyMetricTiles(tiles);
-    // Absent BMI dropped; the two 2026-07-20 entries tie and break by base order
-    // (sleep 1 before steps 5); weight (older) last.
+    // The order the tab's ranker produced — the tile grid is a formatter over it,
+    // never a second sort (#1490 retired the per-surface recency sort).
+    const ordered = orderBodyMetricTiles(tiles, [
+      "sleep",
+      "steps",
+      "weight",
+      "bmi",
+    ]);
     expect(ordered.map((t) => t.slug)).toEqual(["sleep", "steps", "weight"]);
+  });
+
+  it("keeps an unranked tile rather than dropping it", () => {
+    const ordered = orderBodyMetricTiles(
+      [
+        { slug: "sun", id: "sun", label: "Sun", present: true },
+        { slug: "weight", id: "weight", label: "Weight", present: true },
+      ],
+      ["weight"]
+    );
+    expect(ordered.map((t) => t.slug)).toEqual(["weight", "sun"]);
+  });
+
+  it("sinks selected-range empty tiles while preserving rank within each group", () => {
+    const ordered = orderBodyMetricTiles(
+      [
+        {
+          slug: "weight",
+          id: "weight",
+          label: "Weight",
+          present: true,
+          empty: true,
+        },
+        {
+          slug: "steps",
+          id: "steps",
+          label: "Steps",
+          present: true,
+          empty: false,
+        },
+        {
+          slug: "sleep",
+          id: "sleep",
+          label: "Sleep",
+          present: true,
+          empty: false,
+        },
+        {
+          slug: "bmi",
+          id: "bmi",
+          label: "BMI",
+          present: true,
+          empty: true,
+        },
+      ],
+      ["weight", "steps", "bmi", "sleep"]
+    );
+    expect(ordered.map((tile) => tile.slug)).toEqual([
+      "steps",
+      "sleep",
+      "weight",
+      "bmi",
+    ]);
+  });
+});
+
+describe("stableEmptyLast", () => {
+  it("is a stable partition", () => {
+    const items = [
+      { id: "empty-a", empty: true },
+      { id: "filled-a", empty: false },
+      { id: "empty-b", empty: true },
+      { id: "filled-b", empty: false },
+    ];
+    expect(stableEmptyLast(items, (item) => item.empty)).toEqual([
+      items[1],
+      items[3],
+      items[0],
+      items[2],
+    ]);
   });
 });
 
 describe("bodyMetricPeriodStats", () => {
   const today = "2026-07-22";
-  it("computes latest/avg/min/max/delta over 7/30/90-day trailing windows", () => {
-    const points = [
-      { date: "2026-04-25", value: 100 }, // ~88d ago → only in the 90d window
-      { date: "2026-07-01", value: 80 }, // ~21d ago → in 30d + 90d
-      { date: "2026-07-20", value: 76 }, // 2d ago → all windows
-      { date: "2026-07-22", value: 78 }, // today → all windows
-    ];
-    const [w7, w30, w90] = bodyMetricPeriodStats(points, today, 1);
 
-    expect(w7.count).toBe(2);
-    expect(w7.latest).toBe(78);
-    expect(w7.min).toBe(76);
-    expect(w7.max).toBe(78);
-    expect(w7.delta).toBe(2); // 78 − 76
-
-    expect(w30.count).toBe(3);
-    expect(w30.min).toBe(76);
-    expect(w30.max).toBe(80);
-    expect(w30.delta).toBe(-2); // 78 − 80
-
-    expect(w90.count).toBe(4);
-    expect(w90.max).toBe(100);
-    expect(w90.avg).toBe(83.5); // (100+80+76+78)/4
+  // #1541 — the whole point of the collapse: three windows that contain the SAME
+  // readings produced three identical cards, which is the common case for any
+  // series younger than a week (every new install, every fresh integration).
+  it("collapses windows that cover the same readings into one card", () => {
+    const stats = bodyMetricPeriodStats(
+      [
+        { date: "2026-07-20", value: 8200 },
+        { date: "2026-07-21", value: 9100 },
+        { date: "2026-07-22", value: 7600 },
+      ],
+      today,
+      0
+    );
+    expect(stats).toHaveLength(1);
+    const [only] = stats;
+    expect(only.windows).toEqual([7, 30, 90]);
+    expect(only.days).toBe(90);
+    expect(only.label).toBe("7–90d");
+    // The count + the covered span — the passthrough that makes the card explicable.
+    expect(only.count).toBe(3);
+    expect(only.from).toBe("2026-07-20");
+    expect(only.to).toBe("2026-07-22");
   });
 
-  it("reports nulls for a window with no readings", () => {
-    const [w7] = bodyMetricPeriodStats(
+  it("collapses only the coincident RUN, keeping a window that really differs", () => {
+    // 7d holds one reading; 30d and 90d both hold two → two cards, not three.
+    const stats = bodyMetricPeriodStats(
+      [
+        { date: "2026-07-01", value: 78.4 },
+        { date: "2026-07-21", value: 77.9 },
+      ],
+      today,
+      1
+    );
+    expect(stats.map((s) => s.label)).toEqual(["7d", "30–90d"]);
+    expect(stats.map((s) => s.count)).toEqual([1, 2]);
+    expect(stats[1].delta).toBeCloseTo(-0.5, 5);
+  });
+
+  it("keeps three cards when all three windows genuinely differ", () => {
+    const stats = bodyMetricPeriodStats(
+      [
+        { date: "2026-04-25", value: 100 },
+        { date: "2026-07-01", value: 80 },
+        { date: "2026-07-20", value: 76 },
+      ],
+      today,
+      1
+    );
+    expect(stats.map((s) => s.label)).toEqual(["7d", "30d", "90d"]);
+    expect(stats.every((s) => s.windows.length === 1)).toBe(true);
+  });
+
+  it("collapses three EMPTY windows too — one 'no readings' card, not three", () => {
+    const stats = bodyMetricPeriodStats(
       [{ date: "2026-01-01", value: 5 }],
       today
     );
-    expect(w7.count).toBe(0);
-    expect(w7.latest).toBeNull();
-    expect(w7.delta).toBeNull();
+    expect(stats).toHaveLength(1);
+    expect(stats[0].count).toBe(0);
+    expect(stats[0].label).toBe("7–90d");
+  });
+
+  // ── The degenerate inputs (#1545) ──────────────────────────────────────────
+  // A windowed statistic's contract is decided at its edges, and those edges are
+  // the ORDINARY state of a real install: no readings at all (a metric never
+  // recorded), and exactly one (the day after a first weigh-in or a fresh
+  // integration). Pinning what the function returns there is what lets a SURFACE
+  // spec assert "one card per DISTINCT window" instead of a fixed 7/30/90 trio —
+  // the presence-trio that #1541's collapse had to break to be fixable.
+
+  it("returns ONE empty card for a metric with no readings at all", () => {
+    const stats = bodyMetricPeriodStats([], today);
+    expect(stats).toHaveLength(1);
+    expect(stats[0]).toMatchObject({
+      label: "7–90d",
+      windows: [7, 30, 90],
+      count: 0,
+      from: null,
+      to: null,
+      latest: null,
+      avg: null,
+      min: null,
+      max: null,
+      delta: null,
+    });
+  });
+
+  it("returns ONE card for a single reading, with a zero delta and no spread", () => {
+    const stats = bodyMetricPeriodStats(
+      [{ date: "2026-07-21", value: 81.25 }],
+      today,
+      1
+    );
+    expect(stats).toHaveLength(1);
+    const [only] = stats;
+    expect(only.label).toBe("7–90d");
+    expect(only.count).toBe(1);
+    // latest === min === max, and the change is against ITSELF: exactly zero, not
+    // null. A single reading is a real (if uninformative) answer, and the card must
+    // say so rather than render three copies of it.
+    expect(only.latest).toBe(81.3);
+    expect(only.min).toBe(81.3);
+    expect(only.max).toBe(81.3);
+    expect(only.avg).toBe(81.3);
+    expect(only.delta).toBe(0);
+    expect(only.from).toBe("2026-07-21");
+    expect(only.to).toBe("2026-07-21");
+  });
+});
+
+describe("collapseCoincidentPeriods", () => {
+  const stat = (days: number, count: number) => ({
+    label: `${days}d`,
+    days,
+    windows: [days],
+    count,
+    from: null,
+    to: null,
+    latest: null,
+    avg: null,
+    min: null,
+    max: null,
+    delta: null,
+  });
+
+  it("is a no-op when every window differs", () => {
+    const out = collapseCoincidentPeriods([
+      stat(7, 1),
+      stat(30, 2),
+      stat(90, 3),
+    ]);
+    expect(out).toHaveLength(3);
+  });
+
+  it("merges an ADJACENT run only — a matching count either side of a gap is not one window", () => {
+    // Nested windows can't actually produce this (counts are monotonic), but the
+    // merge must stay a run-collapse rather than a group-by-count.
+    const out = collapseCoincidentPeriods([
+      stat(7, 2),
+      stat(30, 3),
+      stat(90, 3),
+    ]);
+    expect(out.map((s) => s.label)).toEqual(["7d", "30–90d"]);
+  });
+});
+
+describe("seriesCoverageNote (#1541 fix 4)", () => {
+  const pts = [{ date: "2026-07-19" }, { date: "2026-07-25" }];
+
+  it("names what is actually drawn when the window is wider than the series", () => {
+    expect(
+      seriesCoverageNote(pts, { from: "2026-04-27", to: "2026-07-25" })
+    ).toBe("All 2 readings, 07-19 → 07-25");
+  });
+
+  it("stays silent when the range genuinely bounds the series", () => {
+    // The window starts ON the first reading — the pill is already truthful.
+    expect(
+      seriesCoverageNote(pts, { from: "2026-07-19", to: "2026-07-25" })
+    ).toBeNull();
+  });
+
+  it("drops the 'All' when the range also clips the recent end", () => {
+    expect(seriesCoverageNote(pts, { from: null, to: "2026-07-20" })).toBe(
+      "2 readings, 07-19 → 07-25"
+    );
+  });
+
+  it("has nothing to say about an empty window", () => {
+    expect(seriesCoverageNote([], { from: null, to: null })).toBeNull();
+  });
+});
+
+describe("bodyChartScale (#1541 fix 5)", () => {
+  it("floors a COUNT metric at zero and groups its ticks", () => {
+    expect(bodyChartScale(BODY_METRIC_META.steps)).toEqual({
+      yDomain: [0, "auto"],
+      groupYTicks: true,
+    });
+    expect(bodyChartScale(BODY_METRIC_META.calories).groupYTicks).toBe(true);
+    expect(bodyChartScale(BODY_METRIC_META.hydration).groupYTicks).toBe(true);
+  });
+
+  it("leaves a ratio/index metric on the auto domain, where zero would flatten it", () => {
+    for (const slug of ["weight", "bmi", "resting-hr", "spo2"] as const) {
+      expect(bodyChartScale(BODY_METRIC_META[slug]).yDomain).toBeUndefined();
+    }
   });
 });

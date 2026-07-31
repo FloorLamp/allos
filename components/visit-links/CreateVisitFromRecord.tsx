@@ -1,7 +1,7 @@
 import {
   createVisitFromRecordAction,
   declineCreateVisitAction,
-} from "@/app/(app)/visit-links/actions";
+} from "@/app/(app)/visit-link-actions";
 import type { CreateVisitOffer } from "@/lib/queries";
 
 // "Create a visit from this record?" (#1099). Some records imply a visit happened (an
@@ -41,7 +41,7 @@ export default function CreateVisitFromRecord({
       </h2>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {offers.length} record{offers.length === 1 ? "" : "s"} look like a visit
-        happened, but there&rsquo;s no visit on that day yet.
+        happened, but there’s no visit on that day yet.
       </p>
       <ul className="mt-3 space-y-2">
         {offers.map((o) => (

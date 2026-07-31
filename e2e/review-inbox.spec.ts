@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // Dogfoods the Data → Review import inbox (the feature that motivated this tier).
@@ -6,7 +6,7 @@ import { followLink } from "./helpers";
 // top: "Needs attention" (a currently-failing integration) spans both, then
 // "Connected sources" (recurring per-provider streams, collapsed to latest-state
 // with a Sync now / push explainer) and "Imports" (the chronological one-off feed
-// of documents + paste jobs). Plus the profile-menu badge count.
+// of documents + archive imports + paste jobs). Plus the profile-menu badge count.
 test.describe("Data → Review import inbox", () => {
   test("splits connected sources from one-off imports, with a failing integration on top", async ({
     page,
@@ -82,6 +82,17 @@ test.describe("Data → Review import inbox", () => {
     await expect(viewer.getByText("records:", { exact: false })).toBeVisible();
     await viewer.getByTestId("raw-expand-all").click();
     await expect(viewer.getByText(/"Steps"/)).toBeVisible();
+
+    // Saving the payload to a file. The captured provider payload is JSON, so the
+    // format-aware button offers JSON and names the file after the sync event it came
+    // from (the XML counterpart is asserted in import-records-browser.spec.ts).
+    const downloadBtn = viewer.getByTestId("raw-download");
+    await expect(downloadBtn).toHaveText(/Download JSON/);
+    const [saved] = await Promise.all([
+      page.waitForEvent("download"),
+      downloadBtn.click(),
+    ]);
+    expect(saved.suggestedFilename()).toMatch(/^sync-payload-\d+\.json$/);
   });
 
   test("the sync provenance drill-in lists written records with working deep links (#1333)", async ({
@@ -142,6 +153,35 @@ test.describe("Data → Review import inbox", () => {
     await expect(oura.getByRole("button", { name: "Sync now" })).toHaveCount(0);
   });
 
+  test("a truncated pull sync renders as partial, not a clean success (#1614)", async ({
+    page,
+  }) => {
+    await page.goto("/data?section=review");
+    const review = page.getByTestId("review-inbox");
+    const stravaCard = review.getByTestId("source-strava");
+    await expect(stravaCard).toBeVisible();
+
+    // The seeded truncated run sits in Strava's recent history (its newest event is
+    // still the token failure), so open the card's native <details>. It carries no
+    // onToggle, so a click works pre-hydration.
+    await stravaCard.getByText(/Recent syncs/).click();
+
+    // The run reports what it DID land — and is explicitly marked partial, so a page
+    // cap / rate limit can no longer read as a fully green sync.
+    const partial = stravaCard.getByTestId(/^sync-partial-/);
+    await expect(partial).toBeVisible();
+    await expect(partial).toHaveText(/partial/);
+    await expect(
+      stravaCard.getByText(/page cap or rate limit stopped this run early/)
+    ).toBeVisible();
+    // The reason names the recovery, so the run doesn't look like data loss.
+    await expect(
+      stravaCard.getByText(/next sync picks up where it left off/)
+    ).toBeVisible();
+    // The same card's complete runs are NOT marked partial — exactly one marker.
+    await expect(partial).toHaveCount(1);
+  });
+
   test("a dead-token source shows a 'Needs reconnect' card, distinct from 'Not connected' (issue #326)", async ({
     page,
   }) => {
@@ -165,7 +205,7 @@ test.describe("Data → Review import inbox", () => {
     ).toHaveCount(0);
   });
 
-  test("the Imports feed merges uploaded documents and paste jobs, not syncs", async ({
+  test("the Imports feed merges documents, paste jobs, and archive imports—not recurring syncs", async ({
     page,
   }) => {
     await page.goto("/data?section=review");
@@ -201,8 +241,17 @@ test.describe("Data → Review import inbox", () => {
     await expect(feed.getByText("Pasted labs")).toBeVisible();
     await expect(feed.getByText(/review to save/)).toBeVisible();
 
-    // Recurring integration syncs are NOT in this feed anymore — they live in the
-    // "Connected sources" section above.
+    // The one-off Fitbit Takeout event is an archive import, so its accounting lives
+    // here rather than masquerading as a recurring connection.
+    const fitbit = feed
+      .getByRole("listitem")
+      .filter({ hasText: "Fitbit (Google Takeout)" });
+    await expect(fitbit).toBeVisible();
+    await expect(fitbit.getByText("3 new · 2 unchanged")).toBeVisible();
+
+    // Recurring integration syncs are NOT in this feed — they live in the
+    // "Connected sources" section above. The seeded no-op Strava rows would produce
+    // "No new data" if they leaked into this one-off list.
     await expect(feed.getByText("No new data")).toHaveCount(0);
 
     // Following the document link lands on its import-detail page. A click can

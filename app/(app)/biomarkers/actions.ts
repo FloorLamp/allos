@@ -2,38 +2,12 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db, writeTx, today } from "@/lib/db";
-import { isBiomarkerStarred, unstarBiomarkerFamily } from "@/lib/queries";
+import { today } from "@/lib/db";
 import {
   trackLabFollowUpCore,
   trackIopFollowUpCore,
 } from "@/lib/followup-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
-
-// Star / unstar a biomarker (toggles a starred_biomarkers row). Revalidates the
-// surfaces that show the pinned card: /biomarkers and the dashboard.
-export async function toggleStarBiomarker(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const name = String(formData.get("canonical_name") ?? "").trim();
-  if (!name) return;
-  // Check-then-act as one atomic transaction so concurrent toggles can't both
-  // read the same state and race (e.g. two inserts, or an insert lost to a delete).
-  writeTx(() => {
-    if (isBiomarkerStarred(profile.id, name)) {
-      // Unstar the whole #482 family: a star on any member lights the family, so
-      // clearing must remove every member's pin, not just this exact name (else the
-      // toggle would read as still-starred).
-      unstarBiomarkerFamily(profile.id, name);
-    } else {
-      db.prepare(
-        "INSERT OR IGNORE INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, ?)"
-      ).run(profile.id, name);
-    }
-  });
-  revalidatePath("/results");
-  revalidatePath("/biomarkers/view", "page");
-  revalidatePath("/");
-}
 
 // Track a follow-up for a FLAGGED biomarker reading (#700 labs adapter): creates a
 // linked, OPEN care-plan item whose planned_date is the reading date + the chosen

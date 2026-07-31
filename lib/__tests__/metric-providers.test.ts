@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DOCUMENTS_SOURCE_CLASS } from "@/lib/metric-source-priority";
 import {
   pickOneProviderPerDay,
   pickRowsOneOriginPerSourceDay,
@@ -235,5 +236,128 @@ describe("pickRowsOneSourcePerDay", () => {
       { date: "2026-06-15", source: "health-connect", v: 1 },
       { date: "2026-06-16", source: "oura", v: 3 },
     ]);
+  });
+});
+
+describe("the documents class in the day resolvers (issue #1640)", () => {
+  const withClass = {
+    order: [DOCUMENTS_SOURCE_CLASS, ...PROVIDER_PREFERENCE],
+    strict: false,
+  };
+
+  it("elects EVERY document — the day a scan exists is the scan's day", () => {
+    const out = pickOneProviderPerDay(
+      [
+        { date: "2026-01-10", source: "document:5", value: 21.4 },
+        { date: "2026-01-10", source: "withings", value: 23.9 },
+        { date: "2026-02-10", source: "document:7", value: 19.8 },
+        { date: "2026-02-10", source: "withings", value: 23.1 },
+        // A day no report covers still falls back down the list (preference mode).
+        { date: "2026-02-11", source: "withings", value: 23.0 },
+      ],
+      withClass
+    );
+    expect(out.sort((a, b) => (a.date < b.date ? -1 : 1))).toEqual([
+      { date: "2026-01-10", value: 21.4 },
+      { date: "2026-02-10", value: 19.8 },
+      { date: "2026-02-11", value: 23.0 },
+    ]);
+  });
+
+  it("keeps every member's ROWS for a day the class wins", () => {
+    interface Row {
+      date: string;
+      source: string | null;
+    }
+    const rows: Row[] = [
+      { date: "2026-01-10", source: "document:5" },
+      { date: "2026-01-10", source: "document:7" },
+      { date: "2026-01-10", source: "withings" },
+    ];
+    expect(
+      pickRowsOneSourcePerDay(
+        rows,
+        withClass,
+        (r) => r.date,
+        (r) => r.source
+      )
+    ).toEqual([
+      { date: "2026-01-10", source: "document:5" },
+      { date: "2026-01-10", source: "document:7" },
+    ]);
+  });
+
+  it("without the class, two documents stay two competing sources (#533)", () => {
+    interface Row {
+      date: string;
+      source: string | null;
+    }
+    const rows: Row[] = [
+      { date: "2026-01-10", source: "document:5" },
+      { date: "2026-01-10", source: "document:7" },
+    ];
+    // Neither is in the default preference, so the deterministic lexicographic
+    // tie-break picks ONE of them — they are not one source.
+    expect(
+      pickRowsOneSourcePerDay(
+        rows,
+        PROVIDER_PREFERENCE,
+        (r) => r.date,
+        (r) => r.source
+      )
+    ).toEqual([{ date: "2026-01-10", source: "document:5" }]);
+  });
+});
+
+describe("strict mode in the day resolvers (issue #1642)", () => {
+  const strictDocs = { order: [DOCUMENTS_SOURCE_CLASS], strict: true };
+
+  it("drops the days the strict source didn't cover — honest gaps, not fallback", () => {
+    const out = pickOneProviderPerDay(
+      [
+        { date: "2026-01-10", source: "document:5", value: 21.4 },
+        { date: "2026-01-10", source: "withings", value: 23.9 },
+        { date: "2026-01-11", source: "withings", value: 23.8 },
+        { date: "2026-01-12", source: "withings", value: 23.7 },
+      ],
+      strictDocs
+    );
+    expect(out).toEqual([{ date: "2026-01-10", value: 21.4 }]);
+  });
+
+  it("the same day in PREFERENCE mode keeps the fallback (the contrast)", () => {
+    const out = pickOneProviderPerDay(
+      [{ date: "2026-01-11", source: "withings", value: 23.8 }],
+      { order: [DOCUMENTS_SOURCE_CLASS, ...PROVIDER_PREFERENCE], strict: false }
+    );
+    expect(out).toEqual([{ date: "2026-01-11", value: 23.8 }]);
+  });
+
+  it("a strict single source yields no rows at all on days it missed", () => {
+    interface Row {
+      date: string;
+      source: string | null;
+    }
+    const rows: Row[] = [
+      { date: "2026-01-10", source: "oura" },
+      { date: "2026-01-11", source: "health-connect" },
+    ];
+    expect(
+      pickRowsOneSourcePerDay(
+        rows,
+        { order: ["oura"], strict: true },
+        (r) => r.date,
+        (r) => r.source
+      )
+    ).toEqual([{ date: "2026-01-10", source: "oura" }]);
+  });
+
+  it("a bare preference list is preference mode — passthrough is unchanged", () => {
+    expect(
+      pickOneProviderPerDay(
+        [{ date: "2026-01-11", source: "vendor-x", value: 5 }],
+        PROVIDER_PREFERENCE
+      )
+    ).toEqual([{ date: "2026-01-11", value: 5 }]);
   });
 });

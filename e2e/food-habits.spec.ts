@@ -1,5 +1,5 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { hydratedClick, settledClick } from "./helpers";
 // Food-habit targets (issue #580): the /nutrition Weekly habits card shows a food_group
 // frequency target with its #579-rollup progress, and a new habit can be tracked/removed.
 // The seed plants a "fatty fish 2×/week" habit. Idempotent — the tracked-then-removed
@@ -57,7 +57,9 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
   // Create a protocol that adopts the "Shellfish" food habit as its practice — the
   // #580 protocol↔target link. This also creates the shellfish habit target.
   await page.goto("/longevity#protocols");
-  const form = page.getByRole("main").getByTestId("protocol-form");
+  const main = page.getByRole("main");
+  await main.getByTestId("new-protocol-toggle").click();
+  const form = page.getByTestId("protocol-form");
   await form.getByLabel("Name").fill(protocolName);
   await form
     .getByTestId("protocol-practice-type")
@@ -92,10 +94,22 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
   await dialog2.getByRole("button", { name: "Stop tracking" }).click();
   await expect(page.getByTestId("habit-shellfish")).toHaveCount(0);
 
-  // Clean up the protocol (native confirm on delete) — leave the fixture as found.
-  page.on("dialog", (d) => d.accept());
+  // Clean up the protocol through the app confirmation — leave the fixture as found.
   await page.goto(protocolUrl);
-  await page.getByRole("main").getByRole("button", { name: "Delete" }).click();
+  await hydratedClick(
+    page,
+    page.getByRole("button", { name: "More protocol actions" })
+  );
+  await page
+    .getByRole("menu")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await settledClick(
+    page,
+    page
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "Delete protocol" })
+  );
   await page.waitForURL(/\/longevity(?:#|$)/);
 });
 

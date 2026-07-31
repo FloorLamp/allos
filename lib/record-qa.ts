@@ -42,6 +42,8 @@ export interface RecordCitation {
 // keeps it enumerable; a new SearchDomain that reaches Q&A adds its label deliberately.
 export const DOMAIN_LABEL: Record<SearchDomain, string> = {
   biomarker: "Lab result",
+  imaging: "Imaging study",
+  genomic: "Genomic result",
   document: "Document",
   condition: "Condition",
   allergy: "Allergy",
@@ -49,8 +51,15 @@ export const DOMAIN_LABEL: Record<SearchDomain, string> = {
   immunization: "Immunization",
   encounter: "Visit",
   appointment: "Appointment",
+  provider: "Provider",
+  episode: "Illness episode",
+  dental: "Dental record",
+  skin: "Skin lesion",
   activity: "Activity",
   supplement: "Supplement or medication",
+  protocol: "Protocol",
+  practice: "Wellness practice",
+  equipment: "Equipment",
   "family-history": "Family history",
   "care-plan": "Care plan",
   "care-goal": "Care goal",
@@ -155,10 +164,51 @@ const STOPWORDS = new Set<string>([
 // term runs the full per-domain search).
 const MAX_TERMS = 6;
 
+// The sibling cap on the singular VARIANTS appended after the asked-for terms (issue
+// #1597). Variants only run once the asked-for terms haven't already filled the
+// citation cap, so the worst case is MAX_TERMS + MAX_SINGULAR_TERMS searches — still
+// bounded, still personal-app scale.
+const MAX_SINGULAR_TERMS = 6;
+
+// Conservative English plural → singular fold for ONE term — PURE (issue #1597). The
+// per-domain retrieval matches with `LIKE '%term%'`, which bridges singular→plural on
+// its own ("vaccine" is a substring of "vaccines") but NOT plural→singular ("colds" is
+// not a substring of "cold"), so a plural question term silently misses every
+// singular-named row. This restores the missing direction with rules, not a stemmer:
+//
+//   -ies → -y     ("allergies" → "allergy")
+//   -(ch|sh|s|x|z)es → drop "es"   ("rashes" → "rash", "glasses" → "glass")
+//   -s   → drop "s"                ("colds" → "cold", "vaccines" → "vaccine")
+//
+// and NEVER folds the shapes where a trailing "s" is part of the word: "-ss"
+// (stress, illness), "-us" (virus, sinus, tinnitus), "-is" (psoriasis, diagnosis).
+// Returns null when nothing should be folded, so the caller can skip cleanly. Over-
+// folding is cheap here (an extra `LIKE` that finds nothing) but never free, so the
+// rules stay small and the short-word floor keeps "abs"/"ads" intact.
+export function singularizeTerm(term: string): string | null {
+  if (term.length < 4) return null;
+  if (!term.endsWith("s")) return null;
+  if (term.endsWith("ss") || term.endsWith("us") || term.endsWith("is")) {
+    return null;
+  }
+  if (term.endsWith("ies")) return term.slice(0, -3) + "y";
+  if (term.endsWith("es")) {
+    const stem = term.slice(0, -2);
+    if (/(ch|sh|s|x|z)$/.test(stem)) return stem;
+  }
+  return term.slice(0, -1);
+}
+
 // Extract the salient search terms from a natural-language question — PURE. Lowercase,
 // split on non-word runs, drop stopwords and 1-2 char fragments, dedupe, and cap. This
 // is the deterministic seam: the model NEVER picks what to retrieve; these terms drive
 // the same profile-scoped search every other surface uses.
+//
+// Plural folding (issue #1597) runs as a SECOND pass, so the asked-for terms always
+// come first and a fold can never crowd one out of MAX_TERMS: after the terms are
+// picked, each one that looks plural also emits its singular form (deduped against
+// the terms already chosen, capped by MAX_SINGULAR_TERMS). The retrieval then runs
+// both forms, so "which vaccines in 2024?" still finds a row named "…vaccine".
 export function extractQueryTerms(question: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -171,7 +221,16 @@ export function extractQueryTerms(question: string): string[] {
     out.push(term);
     if (out.length >= MAX_TERMS) break;
   }
-  return out;
+  const variants: string[] = [];
+  for (const term of out) {
+    const singular = singularizeTerm(term);
+    if (!singular || singular.length < 3) continue;
+    if (seen.has(singular)) continue;
+    seen.add(singular);
+    variants.push(singular);
+    if (variants.length >= MAX_SINGULAR_TERMS) break;
+  }
+  return [...out, ...variants];
 }
 
 // Turn the gathered, de-duplicated search hits into a numbered citation set — PURE.

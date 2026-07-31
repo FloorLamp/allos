@@ -20,7 +20,13 @@
 
 import { getMoodOnDate } from "../queries";
 import { getProfileMoodCheckin, getMoodCheckinIgnored } from "../settings";
-import { shouldSendMoodCheckin, MOOD_FACES, MOOD_LABELS } from "../mood";
+import {
+  isFinalMoodCheckin,
+  shouldSendMoodCheckin,
+  MOOD_CHECKIN_PAUSE_NOTICE,
+  MOOD_FACES,
+  MOOD_LABELS,
+} from "../mood";
 import type { NotificationAction, NotificationMessage } from "./types";
 
 // The callback token for one face tap: "mood:<profileId>:<valence>:<date>".
@@ -34,18 +40,31 @@ export function moodCheckinCallbackData(
   return `mood:${profileId}:${valence}:${date}`;
 }
 
+// The "keep these coming" token (#1668): "moodkeep:<profileId>:<date>". Ids only, like
+// every other callback. Tapping it resets the ignored streak — the SAME write logging a
+// mood performs, so there is one mechanism behind three entry points (a logged mood,
+// this button, and the in-app Resume action).
+export function moodKeepCallbackData(profileId: number, date: string): string {
+  return `moodkeep:${profileId}:${date}`;
+}
+
 // Build the day's check-in, or null when it shouldn't send: opt-in off, already
 // logged today (nothing to ask), or auto-paused after too many ignored days.
 export function buildMoodCheckin(
   profileId: number,
   date: string
 ): NotificationMessage | null {
+  const ignoredCount = getMoodCheckinIgnored(profileId);
   const send = shouldSendMoodCheckin({
     enabled: getProfileMoodCheckin(profileId),
     alreadyLoggedToday: getMoodOnDate(profileId, date) != null,
-    ignoredCount: getMoodCheckinIgnored(profileId),
+    ignoredCount,
   });
   if (!send) return null;
+  // The send that will EXHAUST the streak announces the pause (#1668) — ride the nag,
+  // zero additional sends. Ignoring it lets the pause proceed exactly as before, now as
+  // informed silence rather than reminders that appear to have broken.
+  const final = isFinalMoodCheckin(ignoredCount);
 
   const actions: NotificationAction[] = MOOD_FACES.map((face, i) => ({
     label: `${face} ${MOOD_LABELS[i]}`,
@@ -54,10 +73,20 @@ export function buildMoodCheckin(
     row: "mood",
   }));
 
+  if (final) {
+    actions.push({
+      label: "Keep daily check-ins",
+      data: moodKeepCallbackData(profileId, date),
+      row: "mood-keep",
+    });
+  }
+
   return {
-    title: "How are you today?",
+    title: "🙂 How are you today?",
     // Gentle, optional, zero-pressure copy — skipping is always fine.
-    body: "One tap logs your day — or just skip this. You can add detail any time from the dashboard.",
+    body: final
+      ? `One tap logs your day — or just skip this. You can add detail any time from the dashboard.\n${MOOD_CHECKIN_PAUSE_NOTICE}`
+      : "One tap logs your day — or just skip this. You can add detail any time from the dashboard.",
     actions,
     kind: "mood",
   };

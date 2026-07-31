@@ -164,7 +164,7 @@ export function assembleIllnessEpisode(
          JOIN intake_items ii ON ii.id = l.item_id
          LEFT JOIN intake_item_doses d
            ON d.id = l.dose_id AND d.item_id = l.item_id
-        WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.as_needed = 1
+        WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
           AND l.date >= ? AND l.date <= ?
         ORDER BY l.date ASC, COALESCE(l.given_at, l.taken_at) ASC, l.id ASC`
     )

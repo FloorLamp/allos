@@ -14,6 +14,7 @@ import {
 // held grouping/count, and the visible-state formatters.
 
 const ctx = (active: string[] = []) => ({
+  date: "2026-03-04",
   isWorkoutDay: false,
   activeSituations: new Set(active),
 });
@@ -67,7 +68,7 @@ describe("isDueOn — pause beats due (#1296)", () => {
       condition: "daily" as const,
       situation: null,
       pause_situation: "Pre-surgery",
-      as_needed: 1,
+      obligation: "may" as const,
     };
     expect(isDueOn(item, ctx())).toBe(false);
     expect(isDueOn(item, ctx(["Pre-surgery"]))).toBe(false);
@@ -132,19 +133,19 @@ describe("held visible-state formatters", () => {
 describe("pauseLinkNeedsConfirm — consent gate (#1296/#449)", () => {
   it("confirms for a medication or a mandatory item", () => {
     expect(
-      pauseLinkNeedsConfirm({ kind: "medication", priority: "high" })
+      pauseLinkNeedsConfirm({ kind: "medication", obligation: "should" })
     ).toBe(true);
     expect(
-      pauseLinkNeedsConfirm({ kind: "supplement", priority: "mandatory" })
+      pauseLinkNeedsConfirm({ kind: "supplement", obligation: "must" })
     ).toBe(true);
   });
 
   it("no confirm for an ordinary non-mandatory supplement", () => {
     expect(
-      pauseLinkNeedsConfirm({ kind: "supplement", priority: "high" })
+      pauseLinkNeedsConfirm({ kind: "supplement", obligation: "should" })
     ).toBe(false);
-    expect(pauseLinkNeedsConfirm({ kind: "supplement", priority: "low" })).toBe(
-      false
-    );
+    expect(
+      pauseLinkNeedsConfirm({ kind: "supplement", obligation: "may" })
+    ).toBe(false);
   });
 });

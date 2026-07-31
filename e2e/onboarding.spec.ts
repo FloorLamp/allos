@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs, followLink } from "./nav";
+import { hydratedClick } from "./helpers";
 import {
   resetOnboardingFixture,
   withE2eDb,
@@ -10,6 +11,7 @@ import {
   E2E_LOGIN_ONBOARDING_CAREGIVER,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Onboarding is a stateful, one-way setup WIZARD: the very first step flips the seeded
 // fixture profile's onboarding state not_started→in_progress (later completing it /
@@ -27,7 +29,7 @@ import {
 // resolution; it mirrors playwright.config.ts's DB_PATH fallback because workers
 // don't inherit the webServer env block.
 function resetFixture(role: OnboardingFixtureRole): void {
-  const dbPath = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+  const dbPath = workerDbPath();
   withE2eDb(dbPath, (db) => resetOnboardingFixture(db, role));
 }
 
@@ -236,7 +238,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
       [
         "Monitor body metrics and labs",
         /Record a starting metric/,
-        "/trends?tab=body",
+        "/trends#body",
       ],
     ] as const) {
       await chooseOutcome(label, actionName, href);
@@ -261,13 +263,16 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await firstValue
       .getByRole("link", { name: /Record a starting metric/ })
       .click();
-    await expect(page).toHaveURL(/\/trends\?tab=body/);
+    await expect(page).toHaveURL(/\/trends#body/);
     const returnBanner = page.getByTestId("onboarding-return-banner");
     await expect(returnBanner).toBeVisible();
 
+    // #1486: the body quick-add is the combined "Log measurements" form in the
+    // desktop "+ Log" modal.
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     await page.getByLabel("Weight (kg)").fill("72.4");
-    await page.getByRole("button", { name: "Save entry" }).click();
-    await expect(page.getByText("Entry saved")).toBeVisible();
+    await page.getByRole("button", { name: "Save measurements" }).click();
+    await expect(page.getByText("Measurements saved")).toBeVisible();
 
     // Continue setup is a Next <Link> back into /onboarding → followLink rides
     // out the pre-hydration swallow (#889 sweep).

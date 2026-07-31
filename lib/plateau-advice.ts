@@ -15,6 +15,7 @@
 import {
   liftInfo,
   exerciseHistoryKey,
+  loadContextLabel,
   LIFT_OPTIONS,
   type MuscleId,
 } from "./lifts";
@@ -116,15 +117,35 @@ export function plateauBreakClause(advice: PlateauBreakAdvice): string {
   return `a deload (${advice.deloadPhrase}) or ${advice.variationPhrase}`;
 }
 
+/**
+ * How a plateaued lift is NAMED once load contexts exist (#1610): the movement plus
+ * the registry implement it stalled on, so two machines' findings read as the two
+ * distinct signals they are ("Machine Chest Press (Hotel chest press)"). The bare
+ * movement name when the sets carry no implement link.
+ *
+ * The plateau surfaces' name for the ONE load-context label composer in lib/lifts —
+ * the same phrasing the Trends progression chart, the PR lists and the Analyze
+ * context chooser render, so a split lane is spelled identically everywhere it is
+ * named. Kept as a plateau-domain export because every plateau surface already
+ * imports its copy from this module.
+ */
+export function plateauSubject(
+  exercise: string,
+  equipmentLabel: string | null | undefined
+): string {
+  return loadContextLabel(exercise, equipmentLabel);
+}
+
 // Surface 1 — the plateau finding detail (Training → Overview, dashboard rollup,
 // Telegram). Uses the scheduled-deload-week pointer when one is imminent (#741),
 // else the ad-hoc ~10% drop; both name the variations.
 export function plateauFindingDetail(
   exercise: string,
-  upcomingDeload: UpcomingDeload | null = null
+  upcomingDeload: UpcomingDeload | null = null,
+  equipmentLabel: string | null = null
 ): string {
   const advice = plateauBreakAdvice(exercise, { upcomingDeload });
-  const lead = `Your estimated 1RM for ${exercise} has been flat for about 6 weeks.`;
+  const lead = `Your estimated 1RM for ${plateauSubject(exercise, equipmentLabel)} has been flat for about 6 weeks.`;
   if (advice.scheduledDeloadWhen) {
     return (
       `${lead} Your routine's deload week ${advice.scheduledDeloadWhen} — ` +

@@ -75,6 +75,10 @@ export interface ProviderLink {
 // from the absorbed row to the survivor; the schema-binding test keeps it complete.
 export const PROVIDER_LINK_COLUMNS: ProviderLink[] = [
   { table: "medical_records", column: "provider_id" },
+  // A reading links the PERFORMING lab above and, separately, the clinician who
+  // ORDERED it (#1404) — the imaging_studies two-column shape, one domain over. A
+  // merge re-points both, or the orderer link would strand on the deleted duplicate.
+  { table: "medical_records", column: "ordering_provider_id" },
   { table: "immunizations", column: "provider_id" },
   { table: "intake_items", column: "provider_id" },
   // Per-course prescriber link (#1204): a renewal course records the individual who
@@ -96,6 +100,11 @@ export const PROVIDER_LINK_COLUMNS: ProviderLink[] = [
   { table: "optical_prescriptions", column: "provider_id" },
   // Skin lesions (#715) link the recording dermatologist.
   { table: "skin_lesions", column: "provider_id" },
+  // Allergies (#1526) link the clinician who DOCUMENTED the allergy — the attribution
+  // half of the row that gates drug warnings and prints on the emergency card. Added
+  // by migration 125, so it joins this bound list in the same change (an absent entry
+  // would strand the link on a merged-away duplicate — the #201 hazard).
+  { table: "allergies", column: "provider_id" },
 ];
 
 // The link columns grouped by table (a table may carry more than one — encounters
@@ -152,6 +161,8 @@ const TABLE_LABEL: Record<string, [singular: string, plural: string]> = {
   appointments: ["appointment", "appointments"],
   imaging_studies: ["imaging study", "imaging studies"],
   optical_prescriptions: ["optical prescription", "optical prescriptions"],
+  skin_lesions: ["skin lesion", "skin lesions"],
+  allergies: ["allergy", "allergies"],
 };
 
 function plural(table: string, count: number): string {

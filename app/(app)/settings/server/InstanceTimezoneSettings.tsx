@@ -9,7 +9,7 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The GLOBAL instance-default timezone: seeds newly created profiles and backs
 // up any profile without its own timezone. Admin-only. Per-person timezones are
-// set on Settings → Profile.
+// set on Settings → Health profile.
 export default function InstanceTimezoneSettings({
   timezone: initialTimezone,
 }: {
@@ -29,7 +29,7 @@ export default function InstanceTimezoneSettings({
   }
 
   return (
-    <div className="card mt-6 max-w-lg space-y-4">
+    <div className="card space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Instance-default timezone
@@ -40,7 +40,7 @@ export default function InstanceTimezoneSettings({
       <p className="text-xs text-slate-500 dark:text-slate-400">
         The timezone a newly created profile starts with, and the fallback for
         any profile that hasn’t set its own. Changing it does not alter existing
-        profiles — each has its own timezone on Settings → Profile.
+        profiles — each has its own timezone on Settings → Health profile.
       </p>
 
       <TimezoneSelect

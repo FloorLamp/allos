@@ -1,8 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
-import { followLink } from "./helpers";
+import { followLink, settledClick } from "./helpers";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_DQ_ADULT,
@@ -13,6 +12,7 @@ import {
   REST_CARD_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Issues #1146 + #1219 — every dashboard signal carries its affordance, and every
 // data-quality CTA deep-links the exact form that fixes the gap (the #1083
@@ -31,9 +31,7 @@ import {
 // resetDataQualityDismissals pattern from #1045). BLAST RADIUS: only the
 // `data-quality:` namespace on the named fixture profile.
 function resetDataQualityDismissals(profileName: string): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -55,9 +53,7 @@ function resetDataQualityDismissals(profileName: string): void {
 // rec and its secondary is present (the coaching-rest-card.spec reset, scoped the
 // same way). BLAST RADIUS: only `coaching:%` dismissals on that fixture profile.
 function resetCoachingSnoozes(profileName: string): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -191,9 +187,11 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
   });
 });
 
-// Riley (child) is granted to the e2e_child member; the growth quick-add renders
-// only for a minor profile, so the focus deep link is asserted on that login.
-test("the growth quick-add honors ?focus=height (#1146 pediatric-height CTA)", async ({
+// Riley (child) is granted to the e2e_child member; the growth FIELDS render only
+// for a minor profile, so the focus deep link is asserted on that login. Since
+// #1486 they are life-stage-gated rows of the ONE combined measurements form, which
+// the deep link expands (desktop) with the height field focused.
+test("the measurements form honors ?focus=height (#1146 pediatric-height CTA)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -201,8 +199,8 @@ test("the growth quick-add honors ?focus=height (#1146 pediatric-height CTA)", a
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    await page.goto("/trends?tab=body&focus=height");
-    const form = page.getByTestId("growth-quick-add");
+    await page.goto("/trends?focus=height");
+    const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
     await expect(form.getByLabel("Height", { exact: true })).toBeFocused();
   } finally {
@@ -247,6 +245,7 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
   test("the Coaching observations rollup reveals findings beyond its cap of 2", async ({
     browser,
   }) => {
+    test.slow();
     resetDataQualityDismissals(DQ_GAPPY_PROFILE);
     const page = await loginAs(browser, {
       username: E2E_LOGIN_DQ_GAPPY,
@@ -254,9 +253,21 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
     });
     try {
       await page.goto("/");
-      const rollup = page
-        .getByRole("main")
-        .getByTestId("coaching-observations");
+      const main = page.getByRole("main");
+      // This fixture's only coaching findings are its four structural gaps, and since
+      // #1533 those live in their dedicated Data quality widget rather than doubling
+      // into the rollup. Hiding that widget hands them back to the rollup (the
+      // catch-all), which gives this #1219 disclosure test a deterministic, spec-owned
+      // set of four rows instead of an exact count of shared seed findings.
+      await main.getByRole("button", { name: "Edit dashboard" }).click();
+      await main.getByRole("button", { name: "Hide Data quality" }).click();
+      await settledClick(
+        page,
+        main.getByRole("button", { name: "Save", exact: true })
+      );
+      await expect(main.getByTestId("data-quality")).toHaveCount(0);
+
+      const rollup = main.getByTestId("coaching-observations");
       await expect(rollup).toBeVisible();
       await expect(
         rollup.getByTestId("coaching-observations-item")
@@ -268,6 +279,15 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
           .getByTestId("coaching-observations-more-item")
           .filter({ hasText: "Set a biological sex" })
       ).toBeVisible();
+
+      // Restore the default layout for neighboring specs on this fixture profile.
+      await main.getByRole("button", { name: "Edit dashboard" }).click();
+      await main.getByRole("button", { name: "Show Data quality" }).click();
+      await settledClick(
+        page,
+        main.getByRole("button", { name: "Save", exact: true })
+      );
+      await expect(main.getByTestId("data-quality")).toBeVisible();
     } finally {
       await page.context().close();
     }

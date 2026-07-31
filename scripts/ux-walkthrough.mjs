@@ -18,13 +18,16 @@
 //   node scripts/ux-walkthrough.mjs onboarding invite pages workflows
 //
 // Or let the harness own the server lifecycle (scratch DB, boot, poll-ready,
-// teardown; UX_SEED=1 seeds first for a data-rich census):
+// teardown; UX_SEED=1 seeds first for a data-rich census, UX_SEED=thin seeds and
+// then trims observations to the last ~7 days — the week-old-phone shape):
 //
 //   node scripts/ux-walkthrough.mjs --serve onboarding pages
 //
 // Journeys: `onboarding` (fresh-install wizard, admin), `invite` (email invite →
-// set-password → member first sign-in), `pages` (screenshot every static
-// app/(app) route at desktop AND mobile widths — the visual census), `workflows`
+// set-password → member first sign-in), `pages` (screenshot every
+// app/(app) route at desktop AND mobile widths — the visual census; dynamic
+// `[param]` routes census one representative instance each, see
+// scripts/ux-census-routes.mjs), `workflows`
 // (quick-log starter set: search, activity, check-in, food, weight, medication),
 // `live` (live workout mode: start → set → finish → verify), `dismiss` (dismiss
 // a finding, verify it stays dismissed across reload), `dose` (confirm a dose,
@@ -33,6 +36,14 @@
 // `onboarding` first on a fresh DB — it saves the admin session the later
 // journeys reuse. Every run writes an index.html contact sheet next to the
 // shots.
+//
+// Mobile audit (#1510): the `pages` census also records per-route DOM metrics
+// (height, first-data offset, table/form/menu counts, h1-scale headings, a
+// findings-flood heuristic) into metrics.json; `workflows` (+ dose/dismiss/
+// profiles) records tap costs (taps vs typed inputs, span per action; reach
+// costs driven through the mobile drawer) into taps.json. Both feed a ranked
+// audit.md, and `--baseline <prior shots dir>` diffs a previous run —
+// firstData/height growth >15% flags a route, ANY +1 tap flags an action.
 //
 // Notes discovered the hard way:
 //   - EMAIL_TEST_CAPTURE (lib/email.ts) is the deterministic mailbox: every send
@@ -54,6 +65,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
+import { DYNAMIC_ROUTES, routeSlug } from "./ux-census-routes.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -117,6 +129,233 @@ figcaption{font-size:12px;color:#555;padding-top:6px;word-break:break-all}</styl
   log(`contact sheet: ${path.join(SHOTS, "index.html")}`);
 }
 
+// ---------------------------------------------------------------------------
+// Mobile-audit instrumentation (#1510). Two recorders, same seeing-tool ethos:
+// they MEASURE, they never assert — the numbers land in metrics.json/taps.json
+// + a ranked audit.md, and `--baseline <old metrics dir>` diffs a prior run.
+//
+// Part 1 — per-route DOM metrics, collected by the pages census on the same
+// visits it already makes. The probe runs in-page; every threshold is the
+// #1510-pinned value (h1-scale ≥ 20px computed; flood = ≥4 sibling .card
+// elements sharing a 24-char text prefix; firstData selector list fixed).
+const metricsRows = [];
+// Dynamic patterns the census could NOT reach this run (#1544) — an unregistered
+// pattern, or a `follow` whose index rendered no detail link (a genuinely empty
+// table on the fresh/thin shapes). Reported in audit.md so the gap is visible
+// rather than looking like a route that simply doesn't exist.
+const unresolvedDynamic = [];
+function pageProbe() {
+  const top = (el) =>
+    el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : null;
+  const firstData = document.querySelector(
+    ".recharts-responsive-container, svg.recharts-surface, table tbody tr, [data-testid*=list] li, .card ul li"
+  );
+  // Findings-flood heuristic: ≥4 same-parent .card siblings sharing a prefix.
+  let floods = 0;
+  const byParent = new Map();
+  for (const el of document.querySelectorAll("[class*=card]")) {
+    const p = el.parentElement;
+    if (!p) continue;
+    if (!byParent.has(p)) byParent.set(p, []);
+    byParent.get(p).push((el.textContent || "").trim().slice(0, 24));
+  }
+  for (const texts of byParent.values()) {
+    const counts = new Map();
+    for (const t of texts) {
+      if (!t) continue;
+      counts.set(t, (counts.get(t) || 0) + 1);
+    }
+    for (const n of counts.values()) if (n >= 4) floods++;
+  }
+  // Render health (#1544): a detail page that threw renders app/(app)/error.tsx
+  // and a missing/inaccessible id renders app/(app)/not-found.tsx — both INSIDE
+  // the app shell, so a screenshot of one looks like a plausible page. Detect
+  // them by their own markers so the census can say so out loud. Still a
+  // measurement, not an assertion: it lands in metrics.json + audit.md.
+  const renderFault = document.querySelector('[data-testid="app-not-found"]')
+    ? "not-found"
+    : [...document.querySelectorAll("h1")].some(
+          (h) => (h.textContent || "").trim() === "Something went wrong"
+        )
+      ? "error-boundary"
+      : null;
+  return {
+    height: document.documentElement.scrollHeight,
+    firstData: top(firstData),
+    renderFault,
+    tables: document.querySelectorAll("table").length,
+    forms: document.querySelectorAll("form").length,
+    menus: document.querySelectorAll(
+      '[data-testid*="overflow"], button[aria-haspopup]'
+    ).length,
+    h1Scale: [...document.querySelectorAll("h1,h2")].filter(
+      (e) => parseFloat(getComputedStyle(e).fontSize) >= 20
+    ).length,
+    floods,
+  };
+}
+
+// Part 2 — tap costs. A tap = one pointer gesture; typing one field = one
+// "input" (never per-keystroke). Journeys open a span, drive through the
+// counting helpers, close it; uninstrumented clicks outside a span cost
+// nothing. Coverage is whatever the journeys drive — gaps are logged in
+// audit.md, never guessed.
+const tapCosts = {};
+let tapSpan = null;
+function beginTaps(name) {
+  tapSpan = { name, taps: 0, inputs: 0 };
+}
+function endTaps(note) {
+  if (!tapSpan) return;
+  tapCosts[tapSpan.name] = {
+    taps: tapSpan.taps,
+    inputs: tapSpan.inputs,
+    ...(note ? { note } : {}),
+  };
+  log(`taps: ${tapSpan.name} = ${tapSpan.taps} taps, ${tapSpan.inputs} inputs`);
+  tapSpan = null;
+}
+async function tapClick(target) {
+  if (tapSpan) tapSpan.taps++;
+  await target.click();
+}
+async function tapFill(target, value) {
+  if (tapSpan) tapSpan.inputs++;
+  await target.fill(value);
+}
+// A keyboard gesture used as a commit (Enter on a combobox) counts as a tap.
+function tapGesture() {
+  if (tapSpan) tapSpan.taps++;
+}
+
+// Artifact writer, called from the run's finally block. Regressions vs a
+// baseline: firstData/height growth >15% flags a route; ANY +1 tap flags an
+// action (step-function damage — no percentage threshold, per #1510).
+function writeAuditArtifacts(baselineDir) {
+  const out = [];
+  if (metricsRows.length) {
+    fs.writeFileSync(
+      path.join(SHOTS, "metrics.json"),
+      JSON.stringify(metricsRows, null, 1)
+    );
+    out.push("metrics.json");
+  }
+  if (Object.keys(tapCosts).length) {
+    fs.writeFileSync(
+      path.join(SHOTS, "taps.json"),
+      JSON.stringify(tapCosts, null, 1)
+    );
+    out.push("taps.json");
+  }
+  if (!out.length && !unresolvedDynamic.length) return;
+
+  const mobile = metricsRows.filter((r) => r.viewport === "mobile");
+  const rank = (key, n = 10) =>
+    [...mobile]
+      .filter((r) => r[key] != null)
+      .sort((a, b) => b[key] - a[key])
+      .slice(0, n);
+  const row = (r, key) => `| ${r.route} | ${r[key]} |`;
+  const lines = ["# Mobile audit report", ""];
+  // Render health first (#1544) — a route that rendered the error boundary or the
+  // 404 boundary produced numbers, but they measure a broken page, so say so
+  // before any ranking a reader might otherwise trust.
+  const faulted = metricsRows.filter((r) => r.renderFault);
+  if (faulted.length) {
+    lines.push("## Render faults (page did not render its own content)", "");
+    lines.push("| route | viewport | fault | resolved |", "|---|---|---|---|");
+    for (const r of faulted)
+      lines.push(
+        `| ${r.route} | ${r.viewport} | ${r.renderFault} | ${r.resolved ?? ""} |`
+      );
+    lines.push("");
+  }
+  if (unresolvedDynamic.length) {
+    lines.push("## Unreached dynamic routes (census blind spots)", "");
+    lines.push("| route | why |", "|---|---|");
+    for (const u of unresolvedDynamic)
+      lines.push(`| ${u.pattern} | ${u.why} |`);
+    lines.push("");
+  }
+  if (mobile.length) {
+    lines.push("## Worst first-data offsets (px, mobile)", "");
+    lines.push("| route | firstData |", "|---|---|");
+    for (const r of rank("firstData")) lines.push(row(r, "firstData"));
+    lines.push("", "## Tallest pages (px, mobile)", "");
+    lines.push("| route | height |", "|---|---|");
+    for (const r of rank("height")) lines.push(row(r, "height"));
+    lines.push("", "## Most standing forms (mobile)", "");
+    lines.push("| route | forms |", "|---|---|");
+    for (const r of rank("forms")) lines.push(row(r, "forms"));
+    const flooded = mobile.filter((r) => r.floods > 0);
+    if (flooded.length) {
+      lines.push(
+        "",
+        "## Findings floods (≥4 sibling cards, shared prefix)",
+        ""
+      );
+      lines.push("| route | floods |", "|---|---|");
+      for (const r of flooded) lines.push(row(r, "floods"));
+    }
+    const multiH1 = mobile.filter((r) => r.h1Scale > 1);
+    if (multiH1.length) {
+      lines.push("", "## Pages with >1 h1-scale heading", "");
+      lines.push("| route | h1Scale |", "|---|---|");
+      for (const r of multiH1) lines.push(row(r, "h1Scale"));
+    }
+  }
+  if (Object.keys(tapCosts).length) {
+    lines.push("", "## Tap costs", "");
+    lines.push("| action | taps | inputs |", "|---|---|---|");
+    for (const [name, c] of Object.entries(tapCosts).sort(
+      (a, b) => b[1].taps - a[1].taps
+    ))
+      lines.push(
+        `| ${name} | ${c.taps} | ${c.inputs}${c.note ? ` (${c.note})` : ""} |`
+      );
+  }
+
+  if (baselineDir) {
+    lines.push("", "## Baseline diff", "");
+    const load = (f) => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(baselineDir, f), "utf8"));
+      } catch {
+        return null;
+      }
+    };
+    const oldMetrics = load("metrics.json");
+    if (oldMetrics) {
+      const key = (r) => `${r.viewport} ${r.route}`;
+      const prev = new Map(oldMetrics.map((r) => [key(r), r]));
+      for (const r of metricsRows) {
+        const o = prev.get(key(r));
+        if (!o) continue;
+        for (const k of ["firstData", "height"]) {
+          if (r[k] != null && o[k] != null && r[k] > o[k] * 1.15)
+            lines.push(
+              `- REGRESSION ${key(r)}: ${k} ${o[k]} → ${r[k]} (+${Math.round(((r[k] - o[k]) / o[k]) * 100)}%)`
+            );
+          else if (r[k] != null && o[k] != null && r[k] < o[k] * 0.85)
+            lines.push(`- improved ${key(r)}: ${k} ${o[k]} → ${r[k]}`);
+        }
+      }
+    } else lines.push("- no metrics.json in baseline dir");
+    const oldTaps = load("taps.json");
+    if (oldTaps)
+      for (const [name, c] of Object.entries(tapCosts)) {
+        const o = oldTaps[name];
+        if (o && c.taps > o.taps)
+          lines.push(
+            `- TAP REGRESSION ${name}: ${o.taps} → ${c.taps} (any +1 flags — annotate the baseline if deliberate)`
+          );
+      }
+  }
+  fs.writeFileSync(path.join(SHOTS, "audit.md"), lines.join("\n") + "\n");
+  out.push("audit.md");
+  log(`audit artifacts: ${out.map((f) => path.join(SHOTS, f)).join(", ")}`);
+}
+
 // goto-and-settle. The dev server needs a beat after navigation for hydration
 // and streamed data; one tunable knob instead of scattered waitForTimeouts.
 async function visit(page, route, ms = 1200) {
@@ -152,7 +391,7 @@ async function adminPage(browser, viewport = { width: 1280, height: 900 }) {
     storageState: fs.existsSync(state) ? state : undefined,
   });
   const page = await ctx.newPage();
-  page.setDefaultTimeout(45_000);
+  page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
   await page.goto(`${BASE}/`);
   for (let i = 0; page.url().includes("login") && i < 3; i++) {
     await signIn(page, ADMIN_USER, ADMIN_PASS);
@@ -167,13 +406,34 @@ async function adminPage(browser, viewport = { width: 1280, height: 900 }) {
 
 async function signIn(page, username, password) {
   await page.goto(`${BASE}/login`);
-  // Let the form hydrate — a pre-hydration submit is silently swallowed.
+  // A pre-hydration submit is silently swallowed, and on a cold filesystem
+  // hydration can outlast any fixed sleep (a 2s guess lost repeatedly: the
+  // click landed, NO POST ever fired, and the census aborted "unauthenticated").
+  // The e2e suite's settledClick answer, inlined — but verify the REQUEST,
+  // not the response: the login POST has been measured taking 45s–5min to
+  // answer on a cold filesystem, and a response-keyed re-click aborts the
+  // in-flight submission and restarts it forever. The request event fires
+  // the moment the click actually lands, so it's the honest "click took"
+  // signal at any server speed.
   await page.waitForTimeout(2000);
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
+  for (let i = 0; i < 8; i++) {
+    const fired = page
+      .waitForRequest(
+        (r) => r.method() === "POST" && r.url().includes("/login"),
+        { timeout: 8_000 }
+      )
+      .catch(() => null);
+    await page.click('button[type="submit"]').catch(() => {});
+    if (await fired) break;
+  }
   await page
-    .waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 30_000 })
+    // The POST + its redirect self-fetch can take minutes (the server compiles
+    // the target page inside the 303) — give the URL change page-load patience.
+    .waitForURL((u) => !u.pathname.startsWith("/login"), {
+      timeout: Math.max(90_000, Number(process.env.UX_TIMEOUT_MS) || 0),
+    })
     .catch(() => {});
   await page.waitForTimeout(1500);
 }
@@ -185,7 +445,7 @@ async function onboardingJourney(browser) {
   const page = await (
     await browser.newContext({ viewport: { width: 1280, height: 900 } })
   ).newPage();
-  page.setDefaultTimeout(45_000);
+  page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
 
   await page.goto(`${BASE}/`);
   await page.waitForURL(/login/);
@@ -280,7 +540,7 @@ async function inviteJourney(browser) {
       : undefined,
   });
   const page = await adminCtx.newPage();
-  page.setDefaultTimeout(45_000);
+  page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
   await page.goto(`${BASE}/settings/family`);
   if (page.url().includes("login")) {
     await signIn(page, ADMIN_USER, ADMIN_PASS);
@@ -358,7 +618,7 @@ async function inviteJourney(browser) {
     viewport: { width: 1280, height: 900 },
   });
   const inv = await invCtx.newPage();
-  inv.setDefaultTimeout(45_000);
+  inv.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
   await inv.goto(link.replace(/^https?:\/\/[^/]+/, BASE));
   await inv.waitForTimeout(1200);
   await shot(inv, "invitee-set-password");
@@ -375,10 +635,67 @@ async function inviteJourney(browser) {
 }
 
 // ---------------------------------------------------------------------------
-// Journey: every static page, desktop + mobile. Routes are enumerated from the
-// filesystem (app/(app)/**/page.tsx, dynamic [param] segments skipped), so the
-// census stays current as pages are added. Redirect routes screenshot their
-// target — that's fine, the point is "what does a user see at every URL".
+// Dynamic-route resolution (#1544). Each `[param]` pattern gets ONE instance,
+// from scripts/ux-census-routes.mjs: a literal slug off a static enum, or the
+// first detail link found on an index route (which also proves index → detail).
+// Every failure is recorded LOUDLY in unresolvedDynamic — a route is never
+// silently dropped from the manifest.
+async function resolveDynamicRoutes(page, patterns) {
+  const resolved = new Map();
+  for (const pattern of patterns) {
+    const entry = DYNAMIC_ROUTES.find((d) => d.pattern === pattern);
+    if (!entry) {
+      const why = "no DYNAMIC_ROUTES entry in scripts/ux-census-routes.mjs";
+      log(`BLIND SPOT: ${pattern} — ${why}; NOT censused`);
+      unresolvedDynamic.push({ pattern, why });
+      continue;
+    }
+    if (entry.strategy === "literal") {
+      resolved.set(pattern, {
+        target: entry.instance,
+        via: `literal (${entry.enumSource})`,
+      });
+      continue;
+    }
+    let hit = null;
+    for (const from of entry.from) {
+      try {
+        await page.goto(`${BASE}${from}`);
+        await page.waitForTimeout(1500);
+        const hrefs = await page.$$eval("a[href]", (as) =>
+          as.map((a) => a.getAttribute("href"))
+        );
+        const found = hrefs.find(
+          (h) => h && entry.match.test(h.split(/[?#]/)[0])
+        );
+        if (found) {
+          hit = { target: found.split("#")[0], via: `first link on ${from}` };
+          break;
+        }
+        log(`  ${pattern}: no matching detail link on ${from}`);
+      } catch (err) {
+        log(
+          `  ${pattern}: index ${from} failed — ${err.message.split("\n")[0]}`
+        );
+      }
+    }
+    if (hit) resolved.set(pattern, hit);
+    else {
+      const why = `no detail link on ${entry.from.join(" / ")} (empty table on this data shape?)`;
+      log(`BLIND SPOT: ${pattern} — ${why}; NOT censused`);
+      unresolvedDynamic.push({ pattern, why });
+    }
+  }
+  return resolved;
+}
+
+// ---------------------------------------------------------------------------
+// Journey: every page, desktop + mobile. Routes are enumerated from the
+// filesystem (app/(app)/**/page.tsx), so the census stays current as pages are
+// added. Dynamic `[param]` segments are resolved to one representative instance
+// each through DYNAMIC_ROUTES (#1544) instead of being skipped — detail pages
+// are exactly where density problems concentrate. Redirect routes screenshot
+// their target — that's fine, the point is "what does a user see at every URL".
 async function pagesJourney(browser) {
   const appDir = path.join(process.cwd(), "app", "(app)");
   const routes = [];
@@ -388,13 +705,34 @@ async function pagesJourney(browser) {
         if (e.name === "page.tsx") routes.push(route || "/");
         continue;
       }
-      if (e.name.startsWith("[")) continue; // dynamic — needs an id, skip
       walk(path.join(dir, e.name), `${route}/${e.name}`);
     }
   };
   walk(appDir, "");
-  log(`pages census: ${routes.length} static routes`);
+  // UX_ROUTES: comma-separated route prefixes to census a SUBSET (e.g.
+  // "/trends,/upcoming" to audit one hub, or to keep a run tractable on a
+  // pathologically slow dev filesystem). Unset = every route.
+  const only = (process.env.UX_ROUTES || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const keep = (r) =>
+    !only.length || only.some((p) => r === p || r.startsWith(p));
+  const picked = routes.filter((r) => !r.includes("[")).filter(keep);
+  const dynamicPatterns = routes.filter((r) => r.includes("[")).filter(keep);
+  const staticTotal = routes.filter((r) => !r.includes("[")).length;
+  if (only.length)
+    log(
+      `pages census: ${picked.length} of ${staticTotal} static routes + ${dynamicPatterns.length} dynamic (UX_ROUTES=${only.join(",")})`
+    );
+  else
+    log(
+      `pages census: ${picked.length} static routes + ${dynamicPatterns.length} dynamic patterns`
+    );
 
+  // Resolved once (in the first authenticated viewport) and reused for the
+  // second, so the follow-the-index cost is paid a single time per run.
+  let dynamicTargets = null;
   const state = path.join(SHOTS, "admin-state.json");
   for (const [tag, viewport] of [
     ["desktop", { width: 1280, height: 900 }],
@@ -405,7 +743,7 @@ async function pagesJourney(browser) {
       storageState: fs.existsSync(state) ? state : undefined,
     });
     const page = await ctx.newPage();
-    page.setDefaultTimeout(45_000);
+    page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
     // No stored admin session → sign in once. VERIFY it took: a silently
     // failed login here once produced 58 byte-identical /login screenshots
     // that looked like a completed census — abort loudly instead.
@@ -425,12 +763,36 @@ async function pagesJourney(browser) {
       await ctx.close();
       continue;
     }
-    for (const route of routes.sort()) {
-      const slug = route === "/" ? "home" : route.slice(1).replace(/\//g, "-");
+    if (!dynamicTargets) {
+      dynamicTargets = await resolveDynamicRoutes(page, dynamicPatterns);
+      for (const [pattern, r] of dynamicTargets)
+        log(`resolved ${pattern} → ${r.target} (${r.via})`);
+    }
+    // Static routes census themselves; a dynamic pattern censuses its resolved
+    // instance but is KEYED by the pattern — ids differ run to run, and both the
+    // shot filenames and the `--baseline` metrics diff need a stable key.
+    const visits = [
+      ...picked.map((route) => ({ route, target: route })),
+      ...[...dynamicTargets].map(([route, r]) => ({ route, target: r.target })),
+    ].sort((a, b) => a.route.localeCompare(b.route));
+    for (const { route, target } of visits) {
+      const slug = routeSlug(route);
       try {
-        await page.goto(`${BASE}${route}`);
+        await page.goto(`${BASE}${target}`);
         await page.waitForTimeout(1200);
         await shot(page, `page-${tag}-${slug}`);
+        // #1510 Part 1: the metrics probe rides the census visit it already made.
+        const m = await page.evaluate(pageProbe);
+        metricsRows.push({
+          route,
+          ...(target === route ? {} : { resolved: target }),
+          viewport: tag,
+          ...m,
+        });
+        if (m.renderFault)
+          log(
+            `RENDER FAULT ${route} (${tag}) at ${target}: ${m.renderFault} — the shot is a boundary, not the page`
+          );
       } catch (err) {
         log(`FAILED to shoot ${route} (${tag}): ${err.message.split("\n")[0]}`);
       }
@@ -440,26 +802,122 @@ async function pagesJourney(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// #1510 Part 2: reach costs — taps from the logged-in dashboard to each hub
+// (and two second-level examples), measured by DRIVING the mobile drawer,
+// never inferred from the nav model. A hub whose link isn't reachable in the
+// open drawer (relevance-gated / grouped) records as unmeasured, loudly.
+async function measureReachCosts(browser) {
+  const state = path.join(SHOTS, "admin-state.json");
+  const ctx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    storageState: fs.existsSync(state) ? state : undefined,
+  });
+  const page = await ctx.newPage();
+  page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 20_000);
+  await page.goto(`${BASE}/`);
+  if (page.url().includes("login")) {
+    await signIn(page, ADMIN_USER, ADMIN_PASS);
+    await page.goto(`${BASE}/`);
+  }
+  const hubs = [
+    ["Training", "/training"],
+    ["Nutrition", "/nutrition"],
+    ["Timeline", "/timeline"],
+    ["Trends", "/trends"],
+    ["Sleep", "/sleep"],
+    ["Upcoming", "/upcoming"],
+    ["Medications", "/medications"],
+    ["Longevity", "/longevity"],
+  ];
+  for (const [name, href] of hubs) {
+    await page.goto(`${BASE}/`);
+    await page.waitForTimeout(800);
+    beginTaps(`reach: ${name}`);
+    await tapClick(page.getByRole("button", { name: "Open menu" }).first());
+    await page.waitForTimeout(500);
+    const link = page.getByRole("link", { name, exact: true }).first();
+    if (await link.isVisible().catch(() => false)) {
+      await tapClick(link);
+      await page.waitForTimeout(800);
+      if (page.url().includes(href)) endTaps();
+      else
+        endTaps(`landed on ${new URL(page.url()).pathname}, expected ${href}`);
+    } else {
+      endTaps("link not visible in open drawer (grouped/gated) — unmeasured");
+      await page.keyboard.press("Escape");
+    }
+  }
+  // Second-level examples (the #1510-pinned pair): Trends → Body, Records → Visits.
+  await page.goto(`${BASE}/trends`);
+  await page.waitForTimeout(1000);
+  beginTaps("reach: Trends → Body (from Trends)");
+  const bodyTab = page.getByRole("link", { name: "Body", exact: true }).first();
+  if (await bodyTab.isVisible().catch(() => false)) {
+    await tapClick(bodyTab);
+    await page.waitForTimeout(800);
+    endTaps();
+  } else endTaps("Body tab not visible — unmeasured");
+  await page.goto(`${BASE}/records/problems`);
+  await page.waitForTimeout(1000);
+  beginTaps("reach: Records → Visits (from Records)");
+  const visitsTab = page
+    .getByRole("link", { name: "Visits", exact: true })
+    .first();
+  if (await visitsTab.isVisible().catch(() => false)) {
+    await tapClick(visitsTab);
+    await page.waitForTimeout(800);
+    endTaps();
+  } else endTaps("Visits tab not visible — unmeasured");
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
 // Journey: common workflows — a starter set, each a short "do the thing a user
 // does" sequence with shots before/after. Add more by following this shape;
 // keep each step honest (log loudly when a step can't complete rather than
 // silently skipping — this is a seeing tool, a blind spot must be visible).
+// Tap spans here are SURFACE-LOCAL (they count from the action's owning page);
+// total user cost = the hub's reach cost + the action's span — audit.md says so.
 async function workflowsJourney(browser) {
+  // #1510 Part 2 — reach costs first (mobile drawer, measured by driving).
+  await measureReachCosts(browser);
+
   const { ctx, page } = await adminPage(browser);
 
   // Workflow: global search (the palette deep-links everywhere).
-  await page
-    .getByRole("button", { name: /Search/ })
-    .first()
-    .click();
+  beginTaps("search → open first result");
+  await tapClick(page.getByRole("button", { name: /Search/ }).first());
   await page.waitForTimeout(500);
   await page.keyboard.type("vitamin");
+  if (tapSpan) tapSpan.inputs++; // the query = one input
   await page.waitForTimeout(1200);
   await shot(page, "workflow-search-results");
-  await page.keyboard.press("Escape");
+  // Scope the option fallback to the palette dialog — an unscoped role=option
+  // matches the sidebar calendar's hidden native <select> options, which pass
+  // count() but can never be clicked (verified the hard way: the click retried
+  // for 45s against <option>Jan</option> and killed the whole run).
+  const paletteResult = page
+    .getByTestId("palette-result")
+    .or(page.getByRole("dialog").getByRole("option"))
+    .first();
+  if (await paletteResult.isVisible().catch(() => false)) {
+    try {
+      await tapClick(paletteResult);
+      await page.waitForTimeout(1200);
+      endTaps();
+      await shot(page, "workflow-search-opened");
+    } catch {
+      endTaps("result visible but not clickable — open-result tap unmeasured");
+      await page.keyboard.press("Escape");
+    }
+  } else {
+    endTaps("no clickable result found — open-result tap unmeasured");
+    await page.keyboard.press("Escape");
+  }
 
   // Workflow: quick-log an activity (the sidebar's primary action).
-  await page.getByRole("button", { name: "Log activity" }).first().click();
+  beginTaps("log activity, retro (from Dashboard)");
+  await tapClick(page.getByRole("button", { name: "Log activity" }).first());
   await page.waitForTimeout(1000);
   await shot(page, "workflow-log-activity-editor");
   const form = page.getByTestId("activity-form");
@@ -470,26 +928,27 @@ async function workflowsJourney(browser) {
     // shows "Not saved — Add an activity to start" until one is added
     // (verified the hard way: activities table stayed empty).
     const box = form.getByPlaceholder(/What did you do/);
-    await box.fill("Walking").catch(() => {});
+    await tapFill(box, "Walking").catch(() => {});
     await page.waitForTimeout(800);
     await shot(page, "workflow-log-activity-filled");
     // Scope to the editor — an unscoped role=option match hits the sidebar
     // calendar's native <select> options.
     const option = form.locator('[role="option"], [role="listbox"] li').first();
-    if (await option.count()) await option.click();
-    else await box.press("Enter");
+    if (await option.count()) await tapClick(option);
+    else {
+      tapGesture(); // Enter as the commit gesture
+      await box.press("Enter");
+    }
     await page.waitForTimeout(800);
     // A cardio part needs a distance or duration before the draft saves
     // ("Not saved — Enter a distance, duration, or a start & end time").
-    await form
-      .getByTestId("cardio-duration")
-      .fill("30")
-      .catch(() => {});
+    await tapFill(form.getByTestId("cardio-duration"), "30").catch(() => {});
     await page.waitForTimeout(800);
     await shot(page, "workflow-log-activity-committed");
     const done = page.getByRole("button", { name: "Done" });
     if (await done.count()) {
-      await done.first().click();
+      await tapClick(done.first());
+      endTaps();
       await page.waitForTimeout(1200);
       await shot(page, "workflow-log-activity-done");
       // Honest completion check: the new activity should be visible on the
@@ -507,10 +966,12 @@ async function workflowsJourney(browser) {
           "log-activity: 'Walking' NOT visible on /training — the log likely did not save; check shots"
         );
     } else {
+      endTaps("incomplete — no Done button");
       log("log-activity: no Done button found — left editor open (see shots)");
       await page.keyboard.press("Escape");
     }
   } else {
+    endTaps("incomplete — editor did not open");
     log("log-activity: editor did not open — check shots");
   }
 
@@ -521,7 +982,9 @@ async function workflowsJourney(browser) {
   if (await checkin.count()) {
     await checkin.scrollIntoViewIfNeeded();
     await shot(page, "workflow-checkin-before");
-    await checkin.getByTestId("mood-tap-4").click();
+    beginTaps("mood check-in (on Dashboard)");
+    await tapClick(checkin.getByTestId("mood-tap-4"));
+    endTaps();
     await page.waitForTimeout(1500);
     await shot(page, "workflow-checkin-after");
     if (!(await checkin.getByTestId("mood-server-logged").count()))
@@ -536,7 +999,9 @@ async function workflowsJourney(browser) {
   const foodBar = page.getByTestId("food-log-bar");
   if (await foodBar.count()) {
     await shot(page, "workflow-food-before");
-    await page.getByTestId("log-nuts_seeds").click();
+    beginTaps("log food serving (on Nutrition)");
+    await tapClick(page.getByTestId("log-nuts_seeds"));
+    endTaps();
     await page.waitForTimeout(1500);
     await shot(page, "workflow-food-after");
     // The undo affordance only exists once today's serving is recorded.
@@ -555,8 +1020,10 @@ async function workflowsJourney(browser) {
   if (await weight.count()) {
     await weight.scrollIntoViewIfNeeded();
     await shot(page, "workflow-weight-before");
-    await weight.fill("82");
-    await page.getByRole("button", { name: "Save entry" }).click();
+    beginTaps("log weight (on Trends → Body)");
+    await tapFill(weight, "82");
+    await tapClick(page.getByRole("button", { name: "Save entry" }));
+    endTaps();
     // The history row lands after the server revalidation round-trips — poll
     // instead of a single racy check (a false "not saved" here cried wolf once).
     let saved = false;
@@ -583,14 +1050,16 @@ async function workflowsJourney(browser) {
   await shot(page, "workflow-med-before");
   const medToggle = page.getByTestId("medication-add-toggle");
   if (await medToggle.count()) {
-    await medToggle.click();
+    beginTaps("quick-add medication (on Medications)");
+    await tapClick(medToggle);
     await page.waitForTimeout(800);
     const quick = page.getByTestId("quick-add-medication");
     if (await quick.count()) {
-      await quick.getByPlaceholder(/Ibuprofen/).fill("Ibuprofen");
-      await quick.getByTestId("quick-add-amount").fill("200 mg");
+      await tapFill(quick.getByPlaceholder(/Ibuprofen/), "Ibuprofen");
+      await tapFill(quick.getByTestId("quick-add-amount"), "200 mg");
       await shot(page, "workflow-med-filled");
-      await quick.getByRole("button", { name: "Quick add" }).click();
+      await tapClick(quick.getByRole("button", { name: "Quick add" }));
+      endTaps();
       await page.waitForTimeout(2000);
       await shot(page, "workflow-med-added");
       const visible = await page
@@ -603,6 +1072,7 @@ async function workflowsJourney(browser) {
           "add-medication: Ibuprofen not visible after Quick add — may not have saved"
         );
     } else {
+      endTaps("incomplete — quick-add form did not open");
       log("add-medication: quick-add form did not open — check shots");
     }
   } else {
@@ -691,7 +1161,9 @@ async function dismissFindingJourney(browser) {
   const label = await dismiss.getAttribute("aria-label");
   await dismiss.scrollIntoViewIfNeeded();
   await shot(page, "dismiss-before");
-  await dismiss.click();
+  beginTaps("dismiss finding (on Dashboard)");
+  await tapClick(dismiss);
+  endTaps();
   await page.waitForTimeout(1500);
   await shot(page, "dismiss-after");
   if (await page.getByRole("button", { name: label, exact: true }).count())
@@ -723,7 +1195,9 @@ async function doseJourney(browser) {
   if (before === "Mark not taken")
     log("dose-confirm: dose already taken today (prior run) — toggling anyway");
   await shot(page, "dose-before");
-  await take.click();
+  beginTaps("confirm dose (on Medications)");
+  await tapClick(take);
+  endTaps();
   await page.waitForTimeout(1500);
   await shot(page, "dose-after");
   const after = await page
@@ -759,12 +1233,14 @@ async function profilesJourney(browser) {
   //    belongs to profile 1), so the list is the data-isolation probe.
   await visit(page, "/medications", 1500);
   await shot(page, "profiles-acting-admin");
-  await page.getByTestId("user-menu-trigger").first().click();
+  beginTaps("switch acting profile");
+  await tapClick(page.getByTestId("user-menu-trigger").first());
   await page.waitForTimeout(600);
   await shot(page, "profiles-menu-open");
   const switchTo = page.getByTestId("switch-to-2");
   if (await switchTo.count()) {
-    await switchTo.click();
+    await tapClick(switchTo);
+    endTaps();
     await page.waitForTimeout(2000);
     await visit(page, "/medications", 1500);
     await shot(page, "profiles-acting-jordan");
@@ -786,6 +1262,7 @@ async function profilesJourney(browser) {
     await page.getByTestId("switch-to-1").click();
     await page.waitForTimeout(1500);
   } else {
+    endTaps("incomplete — switch-to-2 not in menu");
     log("profile-switch: switch-to-2 not in the profile menu — check shots");
     await page.keyboard.press("Escape");
   }
@@ -819,7 +1296,7 @@ async function profilesJourney(browser) {
     viewport: { width: 1280, height: 900 },
   });
   const member = await memberCtx.newPage();
-  member.setDefaultTimeout(45_000);
+  member.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
   await signIn(member, INVITEE.username, INVITEE.password);
   await member.waitForTimeout(1500);
   await shot(member, "readonly-member-home");
@@ -862,12 +1339,12 @@ trailer<</Size 4/Root 1 0 R>>
   );
   await visit(page, "/data", 1500);
   await page
-    .getByRole("tab", { name: /File Upload/ })
-    .or(page.getByRole("link", { name: /File Upload/ }))
-    .or(page.getByRole("button", { name: /File Upload/ }))
+    .getByRole("tab", { name: /File upload/i })
+    .or(page.getByRole("link", { name: /File upload/i }))
+    .or(page.getByRole("button", { name: /File upload/i }))
     .first()
     .click()
-    .catch(() => log("upload: File Upload tab not found — trying inline form"));
+    .catch(() => log("upload: File upload tab not found — trying inline form"));
   await page.waitForTimeout(1000);
   const input = page.getByTestId("medical-upload-input");
   if (!(await input.count())) {
@@ -878,7 +1355,7 @@ trailer<</Size 4/Root 1 0 R>>
   await input.setInputFiles(pdfPath);
   await page.waitForTimeout(500);
   await shot(page, "upload-file-chosen");
-  // testid, not name — the "File Upload (incl. CSV)" tab also matches "Upload".
+  // testid, not name — the "File upload (incl. CSV)" tab also matches "Upload".
   await page.getByTestId("medical-upload-submit").click();
   await checkVisible(
     page,
@@ -1010,12 +1487,12 @@ async function ccdJourney(browser) {
   fs.writeFileSync(ccdPath, CCD_FIXTURE);
   await visit(page, "/data", 1500);
   await page
-    .getByRole("tab", { name: /File Upload/ })
-    .or(page.getByRole("link", { name: /File Upload/ }))
-    .or(page.getByRole("button", { name: /File Upload/ }))
+    .getByRole("tab", { name: /File upload/i })
+    .or(page.getByRole("link", { name: /File upload/i }))
+    .or(page.getByRole("button", { name: /File upload/i }))
     .first()
     .click()
-    .catch(() => log("ccd: File Upload tab not found — trying inline form"));
+    .catch(() => log("ccd: File upload tab not found — trying inline form"));
   await page.waitForTimeout(1000);
   const input = page.getByTestId("medical-upload-input");
   if (!(await input.count())) {
@@ -1040,7 +1517,8 @@ async function ccdJourney(browser) {
   await shot(page, "ccd-results-after");
   if (landed) log("ccd: structured import landed (lab visible on Results)");
   // The condition + allergy from the Problems/Allergies sections.
-  await visit(page, "/records/problems", 1500);
+  await visit(page, "/records/problems/conditions", 1500);
+  await visit(page, "/records/problems/allergies", 1500);
   await checkVisible(
     page,
     () => page.getByText("Asthma"),
@@ -1077,11 +1555,18 @@ const journeys = {
 };
 const args = process.argv.slice(2);
 const serve = args.includes("--serve");
-const picked = args.filter((a) => journeys[a]);
+// #1510: --baseline <dir of a prior run> diffs its metrics.json/taps.json.
+const baselineIdx = args.indexOf("--baseline");
+const baselineDir = baselineIdx >= 0 ? args[baselineIdx + 1] : null;
+const picked = args.filter(
+  // A journey name — and, when --baseline is present, not its value argument.
+  (a, i) => journeys[a] && (baselineIdx < 0 || i !== baselineIdx + 1)
+);
 if (!picked.length) {
   console.error(
-    `usage: node scripts/ux-walkthrough.mjs [--serve] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
---serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first) and tears it down after.`
+    `usage: node scripts/ux-walkthrough.mjs [--serve] [--baseline <prior shots dir>] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
+--serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first, UX_SEED=thin seeds then trims to the last ~7 days) and tears it down after.
+--baseline diffs a prior run's metrics.json/taps.json (pages/workflows journeys write them) into audit.md.`
   );
   process.exit(1);
 }
@@ -1100,7 +1585,11 @@ if (serve) {
     EMAIL_TEST_CAPTURE: MAIL_FILE,
     PORT: port,
   };
-  if (process.env.UX_SEED === "1") {
+  // Census data shapes: unset = fresh DB (empty states), `1` = the full seed
+  // (~3 weeks of history), `thin` = seed then trim observations to the last ~7
+  // days (#1544) — the week-old-phone shape where trailing 7/30/90-day windows
+  // coincide, which neither pole reproduces.
+  if (process.env.UX_SEED === "1" || process.env.UX_SEED === "thin") {
     log("seeding scratch DB…");
     const r = spawnSync("npx", ["tsx", "scripts/seed.ts"], {
       env,
@@ -1108,6 +1597,17 @@ if (serve) {
     });
     if (r.status !== 0)
       log("WARNING: seed exited non-zero — continuing unseeded");
+    if (process.env.UX_SEED === "thin") {
+      log("thinning scratch DB to the last ~7 days…");
+      const t = spawnSync("npx", ["tsx", "scripts/ux-thin-data.ts"], {
+        env,
+        stdio: "inherit",
+      });
+      if (t.status !== 0)
+        log(
+          "WARNING: thin trim exited non-zero — this run is the FULL seed shape, not thin"
+        );
+    }
   }
   log(`starting dev server on :${port} (db: ${dbPath})…`);
   server = spawn("npm", ["run", "dev"], {
@@ -1143,6 +1643,7 @@ try {
 } finally {
   await browser.close();
   writeContactSheet();
+  writeAuditArtifacts(baselineDir);
   if (server) {
     try {
       process.kill(-server.pid);

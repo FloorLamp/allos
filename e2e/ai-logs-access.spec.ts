@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -15,11 +15,21 @@ test.describe("AI logs access gate (#391)", () => {
     test.slow();
 
     await page.goto("/settings/logs");
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-    // The admin-only tab is present …
-    await expect(page.getByRole("link", { name: "AI logs" })).toBeVisible();
+    // #1462: pages are topic GROUPS, so the heading names the group (it used to be a
+    // generic "Settings" over a tab strip).
+    await expect(
+      page.getByRole("heading", { name: "Logs & audit" })
+    ).toBeVisible();
+    // The admin-only sub-page entry is present …
+    await expect(
+      page.getByTestId("settings-subpage-nav").getByRole("link", {
+        name: "AI logs",
+      })
+    ).toBeVisible();
     // … and the streaming log surface renders (subtitle + the live-count row).
-    await expect(page.getByText(/AI activity log/)).toBeVisible();
+    await expect(
+      page.getByText(/Every extraction, suggestion, and insight call/)
+    ).toBeVisible();
     await expect(page.getByText(/\d+ events/)).toBeVisible();
   });
 

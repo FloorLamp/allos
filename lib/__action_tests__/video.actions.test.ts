@@ -19,7 +19,7 @@ import {
 import {
   uploadActivityVideoAction,
   deleteActivityVideoAction,
-} from "@/app/(app)/journal/video-actions";
+} from "@/app/(app)/training/video-actions";
 import { GET as serveSymptomVideo } from "@/app/api/symptom-video/[id]/route";
 import { GET as serveActivityVideo } from "@/app/api/activity-video/[id]/route";
 import { db, today } from "@/lib/db";
@@ -267,5 +267,82 @@ describe("uploadSymptomVideoAction (active-profile path) + serve route", () => {
     expect(fs.existsSync(path.resolve(process.cwd(), row.stored_path))).toBe(
       false
     );
+  });
+});
+
+describe("symptom clip serve route — accessible-profile access (#1696)", () => {
+  it("serves a household member's clip to a caregiver acting as another profile", async () => {
+    // A caregiver login granted TWO profiles: a well one it acts as, and the member
+    // who owns the clip. This is the shape the episode page renders under — it
+    // resolves the episode across the viewer's ACCESSIBLE profiles (#879), so the
+    // strip mounted while every byte request 404'd on the ACTIVE-profile filter.
+    const caregiver = createLogin({ role: "member" });
+    const parent = createProfile("Care Parent 9", caregiver.id);
+    const member = createProfile("Sick Member 9", caregiver.id);
+
+    actAs(caregiver, member);
+    const form = new FormData();
+    form.set(
+      "video",
+      videoFile(buildMp4Fixture({ durationSec: 5, creationDate: "2026-05-02" }))
+    );
+    expect((await uploadSymptomVideoAction(form)).ok).toBe(true);
+    const row = db
+      .prepare(`SELECT id FROM symptom_videos WHERE profile_id = ?`)
+      .get(member.id) as { id: number };
+
+    // Acting as the OTHER accessible profile — the caregiver's own — the clip serves.
+    actAs(caregiver, parent);
+    const served = await serveSymptomVideo(
+      new Request(`http://test/api/symptom-video/${row.id}`),
+      { params: Promise.resolve({ id: String(row.id) }) }
+    );
+    expect(served.status).toBe(200);
+    expect(served.headers.get("accept-ranges")).toBe("bytes");
+
+    // The audit keeps naming the ACTING profile, and names the SUBJECT beside it, so a
+    // cross-profile read of PHI bytes is attributable to both.
+    const audit = db
+      .prepare(
+        `SELECT active_profile_id AS acting, detail FROM audit_events
+          WHERE target = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(`symptom-video:${row.id}`) as {
+      acting: number;
+      detail: string;
+    };
+    expect(audit.acting).toBe(parent.id);
+    expect(audit.detail).toBe(`profile:${member.id}`);
+  });
+
+  it("refuses a login with no grant on the owning profile, identically to a missing id", async () => {
+    const owner = createLogin({ role: "member" });
+    const ownerProfile = createProfile("Clip Owner 9", owner.id);
+    actAs(owner, ownerProfile);
+    const form = new FormData();
+    form.set("video", videoFile(buildMp4Fixture({ durationSec: 4 })));
+    expect((await uploadSymptomVideoAction(form)).ok).toBe(true);
+    const row = db
+      .prepare(`SELECT id FROM symptom_videos WHERE profile_id = ?`)
+      .get(ownerProfile.id) as { id: number };
+
+    // A member granted only its OWN profile — the grants boundary is untouched.
+    const stranger = createLogin({ role: "member" });
+    actAs(stranger, createProfile("Stranger 9", stranger.id));
+    const denied = await serveSymptomVideo(
+      new Request(`http://test/api/symptom-video/${row.id}`),
+      { params: Promise.resolve({ id: String(row.id) }) }
+    );
+    expect(denied.status).toBe(404);
+
+    // Byte-identical to a row that does not exist at all, so the endpoint is never an
+    // oracle for whether some other family's id is real.
+    const missing = await serveSymptomVideo(
+      new Request(`http://test/api/symptom-video/99999999`),
+      { params: Promise.resolve({ id: "99999999" }) }
+    );
+    expect(missing.status).toBe(404);
+    expect(await denied.json()).toEqual({ ok: false, error: "not found" });
+    expect(await missing.json()).toEqual({ ok: false, error: "not found" });
   });
 });

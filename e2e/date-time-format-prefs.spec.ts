@@ -1,6 +1,7 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // Clears any body-hygiene dismissal so the seeded 92 kg weight-jump finding is
 // guaranteed visible before the finding-text assertion, regardless of retries or
@@ -8,9 +9,7 @@ import path from "node:path";
 // #206 — same blast radius as rule-findings.spec.ts's reset). Short-lived
 // connection, busy timeout so it never contends with the running server (WAL).
 function resetBodyHygieneDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -55,7 +54,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
 }) => {
   try {
     // Baseline: the status-quo defaults (mdy long-date; 24h clock).
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/conditions");
     await expect(page.getByText("Mar 1, 2019").first()).toBeVisible(); // first-ok: asserts a date renders in the mdy long-date format — order-agnostic presence
 
     await page.goto("/training");
@@ -73,7 +72,8 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // The seeded weight-jump finding embeds its dates in the default shape too
     // ("On Monday, July 6 you logged …", #1020).
     resetBodyHygieneDismissals();
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
+    await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
       page
         .getByRole("main")
@@ -88,7 +88,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // save transition — so a second change fired before that render commits would
     // post a stale first value. A human's two clicks settle between renders; the
     // reload gives the second change a committed starting state deterministically.
-    await page.goto("/settings");
+    await page.goto("/settings/display");
     await selectAndSave(page, "date-format-select", "iso");
     await page.reload();
     await expect(page.getByTestId("date-format-select")).toHaveValue("iso");
@@ -100,7 +100,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     await expect(page.getByTestId("time-format-select")).toHaveValue("12h");
 
     // The record date now renders ISO on /conditions.
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/conditions");
     await expect(page.getByText("2019-03-01").first()).toBeVisible(); // first-ok: asserts a date renders in ISO format — order-agnostic presence
 
     // The journal timestamp now renders a 12-hour clock on Training → Log.
@@ -118,7 +118,8 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // The weight-jump finding's embedded dates follow the pref too — same
     // finding, same dedupeKey, reshaped text (#1020).
     resetBodyHygieneDismissals();
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
+    await page.getByTestId("body-hygiene-findings-toggle").click();
     await expect(
       page
         .getByRole("main")
@@ -129,7 +130,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
   } finally {
     // Restore the defaults so the shared admin login preference doesn't bleed into
     // other specs.
-    await page.goto("/settings");
+    await page.goto("/settings/display");
     await selectAndSave(page, "date-format-select", "mdy");
     await page.reload();
     await selectAndSave(page, "time-format-select", "24h");

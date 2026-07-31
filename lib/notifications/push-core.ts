@@ -2,7 +2,12 @@
 // web-push import, no network — so this stays in the "pure logic" test tier
 // (lib/__tests__/push.test.ts). The DB + web-push wiring lives in ./push.ts.
 
-import type { NotificationKind, NotificationMessage } from "./types";
+import {
+  bodyFor,
+  type NotificationKind,
+  type NotificationMessage,
+} from "./types";
+import { plainBody } from "./rich-text";
 
 // Where a tapped push notification opens. Deep links carry NO detail beyond the
 // message the user already sees; tapping just opens the app (see the SW's
@@ -78,10 +83,12 @@ export function buildPushPayload(
   msg: NotificationMessage,
   url: string = pushClickThroughUrl(msg)
 ): string {
+  // Web Push carries PLAIN text: builder-declared emphasis (#1720) is stripped here,
+  // never forked — the words (including the status words that carry the meaning) are
+  // identical to the Telegram copy, only the markup is gone.
+  const plain = plainBody(bodyFor(msg, "push"));
   const body =
-    msg.body.length > MAX_BODY
-      ? `${msg.body.slice(0, MAX_BODY - 1)}…`
-      : msg.body;
+    plain.length > MAX_BODY ? `${plain.slice(0, MAX_BODY - 1)}…` : plain;
   const payload: PushPayload = { title: msg.title, body, url };
   return JSON.stringify(payload);
 }
@@ -94,8 +101,16 @@ export function buildPushPayload(
 // mirroring the Home Assistant channel's per-kind gate (isKindEnabled). Deliberately
 // narrow: dose/refill/etc. carry real content in their body and stay push-deliverable
 // even when their tap actions are dropped.
+//
+// The MOOD check-in joins the set (#1718): it is the food nudge's exact sibling — its
+// whole content is "One tap logs your day", five face buttons Web Push strips, and no
+// url action, so the push read as an instruction to tap nothing. The rule this
+// encodes: a builder's copy must never reference an affordance the channel strips —
+// either the kind is excluded here, or it carries a url action and channel-neutral
+// copy (the practice nudge and the household round take that second road).
 const PUSH_UNDELIVERABLE_KINDS: ReadonlySet<NotificationKind> = new Set([
   "food",
+  "mood",
 ]);
 
 // Whether a message of this kind is worth delivering over Web Push. Pure so the

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -94,7 +95,7 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(checkin.getByTestId("prn-log-now")).toBeVisible();
   });
 
-  test("the Context section toggles a situation and the Supplements bar agrees (#1221 part 6 / #1311)", async () => {
+  test("the Context section toggles a situation and the Supplements schedule reflects it (#1221 part 6 / #1311)", async () => {
     const SITUATION = "Deadline (e2e)";
     await page.goto("/");
     const checkin = page.getByRole("main").getByTestId("how-are-you-card");
@@ -116,25 +117,24 @@ test.describe("dashboard daily loop (#1221)", () => {
       checkin.getByTestId("checkin-situation-activation")
     ).toContainText(/situational item/);
 
-    // The Supplements bar agrees on next visit: the SAME situation reads active there,
-    // and its own activation line renders (one shared vocabulary + dueness count, #221).
+    // Supplements reflects the shared state without duplicating situation controls.
     await page.goto("/nutrition?tab=supplements");
-    const bar = page.getByRole("main").getByTestId("situations-bar");
-    await expect(bar).toBeVisible();
-    await expect(
-      bar.getByRole("button", { name: SITUATION, exact: true })
-    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("situations-bar")).toHaveCount(0);
     await expect(
       page.getByRole("main").getByTestId("situation-activation")
     ).toContainText(/situational item/);
 
-    // Restore the fixture (toggle OFF) so --repeat-each stays clean.
-    await settledClick(
-      page,
-      bar.getByRole("button", { name: SITUATION, exact: true })
+    // Restore through the dashboard context surface that owns the controls.
+    await page.goto("/");
+    const restoredCheckin = page
+      .getByRole("main")
+      .getByTestId("how-are-you-card");
+    await restoredCheckin.getByTestId("checkin-section-context-toggle").click();
+    const restoredChip = restoredCheckin.getByTestId(
+      `checkin-situation-${SITUATION}`
     );
-    await expect(
-      bar.getByRole("button", { name: SITUATION, exact: true })
-    ).toHaveAttribute("aria-pressed", "false");
+    await expect(restoredChip).toHaveAttribute("aria-pressed", "true");
+    await settledClick(page, restoredChip);
+    await expect(restoredChip).toHaveAttribute("aria-pressed", "false");
   });
 });

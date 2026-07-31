@@ -2,15 +2,27 @@ import MobileNav from "@/components/MobileNav";
 import SidebarContent from "@/components/SidebarContent";
 import CommandPalette from "@/components/CommandPalette";
 import ActivityEditorProvider from "@/components/ActivityEditorProvider";
+import QuickEntryProvider from "@/components/QuickEntryProvider";
+import PullToRefresh from "@/components/PullToRefresh";
+import QuickShortcutHandler from "@/components/QuickShortcutHandler";
 import ExtractionToaster from "@/components/ExtractionToaster";
 import ImportJobsToaster from "@/components/ImportJobsToaster";
 import VersionWatcher from "@/components/VersionWatcher";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
+import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
-import ProfileViewStrip from "@/components/ProfileViewStrip";
+import ProfileViewStrip, {
+  viewStripVisible,
+} from "@/components/ProfileViewStrip";
+import ShellChrome from "@/components/ShellChrome";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
+import {
+  hasUnseenNotes,
+  loadReleaseNotes,
+  newestNoteDate,
+} from "@/lib/release-notes";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
@@ -20,6 +32,7 @@ import {
   getDisplayFormatPrefs,
   getTimezone,
   getWeekStart,
+  getWhatsNewSeenDate,
 } from "@/lib/settings";
 import { getUserAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
@@ -88,6 +101,10 @@ export default async function AppLayout({
   const inViewProfiles = scope.viewIds
     .map((id) => scope.profiles.find((p) => p.id === id))
     .filter((p): p is (typeof scope.profiles)[number] => p != null);
+  // Whether the view banner renders at all — the SAME predicate the strip itself
+  // uses (viewStripVisible), read here because the sticky chrome owns the top
+  // padding when the banner is present (issue #1416).
+  const showViewStrip = viewStripVisible(inViewProfiles);
   // Own-profile link (#1013): the acting profile's subject name when the login is
   // acting as someone OTHER than its own profile (null when acting as self / no
   // own-profile set). Threaded to the live workout editor + dock — the fastest-
@@ -157,6 +174,15 @@ export default async function AppLayout({
       ? Date.now() - presence.sinceMin * 60_000
       : null;
   const version = getAppVersion();
+  // Unopened bundled release notes for this LOGIN (issue #1421) — the ONE pure
+  // comparison (hasUnseenNotes over the newest bundled note date vs the login's
+  // stored seen marker), resolved once here and threaded into the shared sidebar
+  // content so both viewports render the same calm dot. Login-scoped, so it does
+  // not change when the acting profile does.
+  const whatsNewUnseen = hasUnseenNotes(
+    newestNoteDate(loadReleaseNotes()),
+    getWhatsNewSeenDate(login.id)
+  );
   // Gates any admin-only nav entries in both surfaces.
   const isAdmin = login.role === "admin";
   // The Household overview is cross-profile; show it only when the caller can
@@ -195,90 +221,149 @@ export default async function AppLayout({
       <WeekStartProvider weekStart={weekStart}>
         <FormatPrefsProvider prefs={formatPrefs}>
           <ConfirmProvider>
-            <OfflineQueueProvider activeProfileId={profile.id}>
-              <ProfileSwitchWatcher activeProfileId={profile.id} />
-              <ActivityEditorProvider
-                units={units}
-                suggestions={suggestions}
-                history={exerciseHistory}
-                equipment={equipment}
-                recentActivityEquipment={recentActivityEquipment}
-                bodyweightKg={bodyweightKg}
-                lastActivity={lastActivity}
-                restricted={restricted}
-                deloadContext={deloadContext}
-                recoveringContext={recoveringContext}
-                plateauHints={plateauHints}
-                presence={presence}
-                liveEditData={liveEditData}
-                liveStartEpochMs={liveStartEpochMs}
-                subjectName={actingSubjectName}
-              >
-                <div className="flex min-h-screen">
-                  <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
-                    <SidebarContent
-                      activityDates={timelineDates}
-                      version={version}
-                      active={session.profile}
-                      username={login.username}
-                      profiles={profiles}
-                      viewIds={scope.viewIds}
-                      restricted={restricted}
-                      isAdmin={isAdmin}
-                      multiProfile={multiProfile}
-                      foodLoggingRelevant={foodLoggingRelevant}
-                      hasIntakeItems={hasIntakeItems}
-                      relevance={relevance}
-                      reviewCount={reviewCount}
-                      readOnly={readOnly}
-                    />
-                  </aside>
-                  {/* clip (not hidden) so it doesn't force overflow-y to auto, which
+            {/* The acting profile, for device-local state that must be keyed by
+                SUBJECT — form drafts above all (#1699), so a profile switch can
+                never surface another subject's half-typed entry. */}
+            <ActiveProfileProvider profileId={profile.id}>
+              <OfflineQueueProvider activeProfileId={profile.id}>
+                <ProfileSwitchWatcher activeProfileId={profile.id} />
+                {/* The shared quick-entry overlay host (#1468). Inside
+                  OfflineQueueProvider by necessity: the forms it mounts
+                  (MeasurementsQuickAdd) queue offline writes, and it
+                  renders them as its OWN children, so they must sit under that
+                  provider. It gathers nothing until a sheet row is tapped. */}
+                <QuickEntryProvider>
+                  <ActivityEditorProvider
+                    units={units}
+                    suggestions={suggestions}
+                    history={exerciseHistory}
+                    equipment={equipment}
+                    recentActivityEquipment={recentActivityEquipment}
+                    bodyweightKg={bodyweightKg}
+                    lastActivity={lastActivity}
+                    restricted={restricted}
+                    deloadContext={deloadContext}
+                    recoveringContext={recoveringContext}
+                    plateauHints={plateauHints}
+                    presence={presence}
+                    liveEditData={liveEditData}
+                    liveStartEpochMs={liveStartEpochMs}
+                    subjectName={actingSubjectName}
+                  >
+                    <div className="flex min-h-screen">
+                      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
+                        <SidebarContent
+                          activityDates={timelineDates}
+                          version={version}
+                          active={session.profile}
+                          username={login.username}
+                          profiles={profiles}
+                          viewIds={scope.viewIds}
+                          restricted={restricted}
+                          isAdmin={isAdmin}
+                          multiProfile={multiProfile}
+                          foodLoggingRelevant={foodLoggingRelevant}
+                          hasIntakeItems={hasIntakeItems}
+                          relevance={relevance}
+                          reviewCount={reviewCount}
+                          readOnly={readOnly}
+                          whatsNewUnseen={whatsNewUnseen}
+                        />
+                      </aside>
+                      {/* clip (not hidden) so it doesn't force overflow-y to auto, which
             turns <main> into a scroll container and breaks position:sticky inside it.
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
-                  <main className="min-w-0 flex-1 overflow-x-clip">
-                    <MobileNav
-                      activityDates={timelineDates}
-                      version={version}
-                      active={session.profile}
-                      username={login.username}
-                      profiles={profiles}
-                      viewIds={scope.viewIds}
-                      restricted={restricted}
-                      isAdmin={isAdmin}
-                      multiProfile={multiProfile}
-                      foodLoggingRelevant={foodLoggingRelevant}
-                      hasIntakeItems={hasIntakeItems}
-                      relevance={relevance}
-                      reviewCount={reviewCount}
-                      readOnly={readOnly}
-                    />
-                    {/* max(padding, safe-area inset) keeps content clear of the
+                      <main className="min-w-0 flex-1 overflow-x-clip">
+                        {/* The ONE sticky top chrome (issue #1416): the phone top
+                    bar and the multi-profile view banner ride together, hiding
+                    on scroll-down and returning on scroll-up, so "whose data am
+                    I looking at?" stays answerable mid-scroll instead of
+                    scrolling away with the content. On desktop the wrapper drops
+                    to `static` and the banner sits exactly where it always did.
+                    The banner is passed in (not rendered inside the container)
+                    so there is ONE strip in the DOM on every viewport — never a
+                    hidden md:* / md:hidden pair. */}
+                        <ShellChrome
+                          disabledTabFirstPageIds={
+                            restricted ? ["training"] : undefined
+                          }
+                          banner={
+                            showViewStrip ? (
+                              <ProfileViewStrip
+                                profiles={inViewProfiles}
+                                actingProfileId={scope.actingProfileId}
+                              />
+                            ) : null
+                          }
+                        >
+                          <MobileNav
+                            activityDates={timelineDates}
+                            version={version}
+                            active={session.profile}
+                            username={login.username}
+                            profiles={profiles}
+                            viewIds={scope.viewIds}
+                            restricted={restricted}
+                            isAdmin={isAdmin}
+                            multiProfile={multiProfile}
+                            foodLoggingRelevant={foodLoggingRelevant}
+                            hasIntakeItems={hasIntakeItems}
+                            relevance={relevance}
+                            reviewCount={reviewCount}
+                            readOnly={readOnly}
+                            whatsNewUnseen={whatsNewUnseen}
+                          />
+                        </ShellChrome>
+                        {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
-              that the viewport paints edge-to-edge (viewportFit cover). */}
-                    <div
-                      data-testid="app-content-container"
-                      className="mx-auto pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
-                    >
-                      <OnboardingReturnBanner show={showOnboardingReturn} />
-                      <ProfileViewStrip
-                        profiles={inViewProfiles}
-                        actingProfileId={scope.actingProfileId}
-                      />
-                      {children}
+              that the viewport paints edge-to-edge (viewportFit cover).
+              Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
+              the unchanged pt-8 / 1.25rem from `md` up. The top padding all but
+              disappears when the view banner is showing — ShellChrome already
+              spends it above the banner, and doubling it would push the page
+              heading a third of the way down a phone screen. Below `md` a token
+              pt-2 survives, because #1539 cut the band's own bottom padding from
+              12px to 6px: at zero the page heading would sit 7px under a bordered
+              bar. From `md` up the band's md:pb-4 still supplies the whole gap. */}
+                        <div
+                          data-testid="app-content-container"
+                          className={`mx-auto pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem] ${
+                            showViewStrip ? "pt-2 md:pt-0" : "pt-4 md:pt-8"
+                          }`}
+                        >
+                          {/* The deploy notice (#1520) is an INLINE banner in this
+                            slot, not a floating toast — it renders nothing until
+                            the watcher sees a new COMMIT_SHA. Mounted inside the
+                            content container (and inside the persistent layout, so
+                            it survives client navigation) beside the onboarding
+                            banner it copies. */}
+                          <VersionWatcher current={version.sha} />
+                          <OnboardingReturnBanner show={showOnboardingReturn} />
+                          {children}
+                        </div>
+                      </main>
                     </div>
-                  </main>
-                </div>
-                <CommandPalette
-                  profileName={session.profile.name}
-                  weightUnit={units.weightUnit}
-                />
-                <ExtractionToaster profileId={profile.id} />
-                <ImportJobsToaster profileId={profile.id} />
-                <VersionWatcher current={version.sha} />
-              </ActivityEditorProvider>
-            </OfflineQueueProvider>
+                    <CommandPalette
+                      profileName={session.profile.name}
+                      weightUnit={units.weightUnit}
+                    />
+                    {/* PWA home-screen shortcuts land here (#1424): reads
+                      `?quick=` and opens the SAME activity editor / quick-entry
+                      overlay / palette the sheet does. Beside CommandPalette so
+                      it sits inside both contexts it dispatches into, and
+                      viewport-agnostic — the shortcut URL is an ordinary link. */}
+                    <QuickShortcutHandler restricted={restricted} />
+                    <ExtractionToaster profileId={profile.id} />
+                    <ImportJobsToaster profileId={profile.id} />
+                    {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and
+                      listens to nothing in a browser tab, where the browser's own
+                      refresh already exists. */}
+                    <PullToRefresh />
+                  </ActivityEditorProvider>
+                </QuickEntryProvider>
+              </OfflineQueueProvider>
+            </ActiveProfileProvider>
           </ConfirmProvider>
         </FormatPrefsProvider>
       </WeekStartProvider>

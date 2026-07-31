@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   formatLongDate,
   formatMonthDay,
+  formatWeekdayDate,
   formatClock,
   formatClockMinutes,
   formatClockValue,
   formatDateShape,
+  formatDateWithYear,
+  formatTimestamp,
   formatRelativeDate,
   formatCompactAge,
   formatRelativeTime,
@@ -77,6 +80,32 @@ describe("formatMonthDay", () => {
     expect(
       formatMonthDay("2024-08-03", { timeFormat: "24h", dateFormat: "iso" })
     ).toBe("2024-08-03");
+  });
+});
+
+describe("formatWeekdayDate", () => {
+  it("renders a compact weekday label and omits the current year", () => {
+    expect(formatWeekdayDate("2026-07-22")).toBe("Wed, Jul 22");
+  });
+
+  it("respects dmy and iso date preferences", () => {
+    expect(
+      formatWeekdayDate("2026-07-22", {
+        timeFormat: "24h",
+        dateFormat: "dmy",
+      })
+    ).toBe("Wed, 22 Jul");
+    expect(
+      formatWeekdayDate("2026-07-22", {
+        timeFormat: "24h",
+        dateFormat: "iso",
+      })
+    ).toBe("Wed, 2026-07-22");
+  });
+
+  it("appends the year when it differs and preserves invalid input", () => {
+    expect(formatWeekdayDate("2024-07-22")).toBe("Mon, Jul 22, 2024");
+    expect(formatWeekdayDate("not-a-date")).toBe("not-a-date");
   });
 });
 
@@ -303,5 +332,79 @@ describe("daysRemainingLabel", () => {
 
   it("returns null when unparseable", () => {
     expect(daysRemainingLabel("bad", TODAY)).toBeNull();
+  });
+});
+
+// ---- The vocabulary's year-bearing entries (issue #1448) ----
+// The two shapes anything LEAVING the app must use: a printed card, an export, an
+// ops row. The auto-year formatters (formatLongDate/formatMonthDay) deliberately
+// drop the year inside the current calendar year, which is why the printable
+// medication list carried "Generated Jul 24, 2026, 22:14" beside an undated
+// "Friday, July 24". These two never drop it.
+describe("formatDateWithYear", () => {
+  it("always carries the year, including inside the current one", () => {
+    // TODAY is pinned to 2026 — the auto-year formatters omit it here, so this
+    // is exactly the case the print card got wrong.
+    expect(formatMonthDay("2026-07-24", DEFAULT_FORMAT_PREFS)).toBe("Jul 24");
+    expect(formatDateWithYear("2026-07-24", DEFAULT_FORMAT_PREFS)).toBe(
+      "Jul 24, 2026"
+    );
+  });
+
+  it("follows the login's date shape", () => {
+    expect(
+      formatDateWithYear("2026-07-24", { timeFormat: "24h", dateFormat: "dmy" })
+    ).toBe("24 Jul 2026");
+    expect(
+      formatDateWithYear("2026-07-24", { timeFormat: "24h", dateFormat: "iso" })
+    ).toBe("2026-07-24");
+  });
+
+  it("returns the input unchanged when it isn't a date", () => {
+    expect(formatDateWithYear("not-a-date", DEFAULT_FORMAT_PREFS)).toBe(
+      "not-a-date"
+    );
+  });
+});
+
+describe("formatTimestamp", () => {
+  it("renders date + clock in one shape", () => {
+    expect(
+      formatTimestamp("2026-07-24T22:14:15Z", DEFAULT_FORMAT_PREFS, {
+        zone: "utc",
+      })
+    ).toBe("Jul 24, 2026, 22:14");
+  });
+
+  it("reads SQLite's zone-less datetime('now') form as UTC, not local", () => {
+    // The audit table stores "YYYY-MM-DD HH:MM:SS" with no zone marker; parsed
+    // naively that is LOCAL time, which shifts the row by the host's offset.
+    expect(
+      formatTimestamp("2026-07-24 22:14:15", DEFAULT_FORMAT_PREFS, {
+        zone: "utc",
+      })
+    ).toBe("Jul 24, 2026, 22:14");
+  });
+
+  it("follows both the date shape and the clock preference", () => {
+    expect(
+      formatTimestamp(
+        "2026-07-24T22:14:15Z",
+        { timeFormat: "12h", dateFormat: "iso" },
+        { zone: "utc" }
+      )
+    ).toBe("2026-07-24, 10:14 PM");
+  });
+
+  it("keeps the year even for an instant inside the current year", () => {
+    expect(
+      formatTimestamp("2026-01-02T03:04:00Z", DEFAULT_FORMAT_PREFS, {
+        zone: "utc",
+      })
+    ).toBe("Jan 2, 2026, 03:04");
+  });
+
+  it("returns the raw text when unparseable rather than 'Invalid Date'", () => {
+    expect(formatTimestamp("nonsense", DEFAULT_FORMAT_PREFS)).toBe("nonsense");
   });
 });

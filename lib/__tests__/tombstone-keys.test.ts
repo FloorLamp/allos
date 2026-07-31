@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   activityTombstoneKey,
   medicalRecordTombstoneKey,
+  practiceLogTombstoneKey,
   bodyMetricTombstoneKey,
   metricSampleTombstoneKey,
   hrMinuteTombstoneKey,
@@ -18,6 +19,9 @@ describe("tombstone key composition", () => {
     expect(activityTombstoneKey("strava:123")).toBe("strava:123");
     expect(medicalRecordTombstoneKey("health-connect:Glucose:t")).toBe(
       "health-connect:Glucose:t"
+    );
+    expect(practiceLogTombstoneKey("fitbit-takeout:7")).toBe(
+      "fitbit-takeout:7"
     );
   });
 
@@ -60,6 +64,17 @@ describe("importTombstoneForRow — derive (table, key) from a captured root row
     ).toEqual({ table: "medical_records", key: "hc:BP:t" });
     expect(
       importTombstoneForRow("medical_records", { external_id: null })
+    ).toBeNull();
+  });
+
+  it("practice_logs: keyed by external_id", () => {
+    expect(
+      importTombstoneForRow("practice_logs", {
+        external_id: "fitbit-takeout:7",
+      })
+    ).toEqual({ table: "practice_logs", key: "fitbit-takeout:7" });
+    expect(
+      importTombstoneForRow("practice_logs", { external_id: null })
     ).toBeNull();
   });
 
@@ -120,6 +135,7 @@ describe("importTombstoneForRow — derive (table, key) from a captured root row
 describe("TOMBSTONE_TABLES coverage (#653)", () => {
   it("covers metric_samples but NOT hr_minutes (no per-row delete path)", () => {
     expect(TOMBSTONE_TABLES).toContain("metric_samples");
+    expect(TOMBSTONE_TABLES).toContain("practice_logs");
     // hr_minutes is browse/export-only — dormant read coverage was removed so the
     // read side no longer implies a protection with no writer.
     expect(TOMBSTONE_TABLES as readonly string[]).not.toContain("hr_minutes");

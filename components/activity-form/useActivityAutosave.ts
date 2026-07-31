@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveActivity } from "@/app/(app)/journal/actions";
+import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a

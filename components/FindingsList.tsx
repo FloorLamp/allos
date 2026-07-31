@@ -1,7 +1,6 @@
-import Link from "next/link";
-import { IconX } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import type { Finding } from "@/lib/findings";
+import FindingRow from "@/components/FindingRow";
 
 // Shared presentational list for the page-level, dismissible observational findings
 // (issue #45, domains 4–6) — the training-balance, body-hygiene, and goal-pacing
@@ -26,6 +25,7 @@ export default function FindingsList({
   subtitle,
   icon,
   testid,
+  collapsible = false,
 }: {
   findings: Finding[];
   // Overflow beyond the surface's cap, revealed by a "Show N more" disclosure.
@@ -39,65 +39,26 @@ export default function FindingsList({
   // dismiss button `${testid}-dismiss` (overflow rows: `${testid}-more-item` /
   // `${testid}-more-dismiss`).
   testid: string;
+  // Dense supporting findings can start as a one-row disclosure so they remain
+  // visible without pushing the page's primary content below the fold.
+  collapsible?: boolean;
 }) {
   if (findings.length === 0) return null;
 
+  // The row itself is the shared FindingRow (#1496) — the Training → Overview
+  // rollup renders the SAME row inside its group disclosure.
   const row = (f: Finding, itemTestid: string, dismissTestid: string) => (
-    <li
+    <FindingRow
       key={f.dedupeKey}
-      data-testid={itemTestid}
-      className={`flex items-start gap-3 rounded-xl border p-3 ${
-        f.tone === "info"
-          ? "border-slate-200 bg-slate-50/60 dark:border-ink-750 dark:bg-ink-850/40"
-          : "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/30"
-      }`}
-    >
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-slate-800 dark:text-slate-100">
-          {f.title}
-        </p>
-        {f.detail && (
-          <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-            {f.detail}
-          </p>
-        )}
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-          {f.evidence && <span>{f.evidence}</span>}
-          {f.actionHref && (
-            <Link
-              href={f.actionHref}
-              className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-            >
-              {f.actionLabel ?? "View"} →
-            </Link>
-          )}
-        </div>
-      </div>
-      {/* Dismiss through the shared findings-bus suppression store (#39/#45). */}
-      <form action={dismissAction}>
-        <input type="hidden" name="dedupe_key" value={f.dedupeKey} />
-        <button
-          type="submit"
-          data-testid={dismissTestid}
-          aria-label={`Dismiss ${f.title}`}
-          title="Dismiss"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
-        >
-          <IconX className="h-4 w-4" stroke={2} />
-        </button>
-      </form>
-    </li>
+      finding={f}
+      dismissAction={dismissAction}
+      itemTestid={itemTestid}
+      dismissTestid={dismissTestid}
+    />
   );
 
-  return (
-    <div className="card" data-testid={testid}>
-      <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
-        {icon}
-        {heading}
-      </h2>
-      <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-        {subtitle}
-      </p>
+  const rows = (
+    <>
       <ul className="space-y-3">
         {findings.map((f) => row(f, `${testid}-item`, `${testid}-dismiss`))}
       </ul>
@@ -116,6 +77,56 @@ export default function FindingsList({
           </ul>
         </details>
       )}
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <details className="card group" data-testid={testid}>
+        <summary
+          className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden"
+          data-testid={`${testid}-toggle`}
+        >
+          <span className="flex min-w-0 items-start gap-2">
+            <span className="mt-0.5">{icon}</span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-slate-800 dark:text-slate-100">
+                {heading}
+              </span>
+              <span className="mt-0.5 block text-sm text-slate-500 dark:text-slate-400">
+                {subtitle}
+              </span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+              {findings.length + moreFindings.length}
+            </span>
+            <span
+              className="text-sm text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400"
+              aria-hidden
+            >
+              ▾
+            </span>
+          </span>
+        </summary>
+        <div className="mt-4 border-t border-black/10 pt-4 dark:border-white/10">
+          {rows}
+        </div>
+      </details>
+    );
+  }
+
+  return (
+    <div className="card" data-testid={testid}>
+      <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
+        {icon}
+        {heading}
+      </h2>
+      <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+        {subtitle}
+      </p>
+      {rows}
     </div>
   );
 }

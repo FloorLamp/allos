@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #742 — per-muscle weekly volume bands. The Overview coverage list (#736)
 // now carries a band VERDICT chip per muscle (below / within / above / untrained),
 // computed ONCE by the shared bandVerdict + palette (lib/muscle-volume-bands.ts) the

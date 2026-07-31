@@ -1,6 +1,8 @@
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
+import { OTHER_PANEL, panelLabel, parsePanelId } from "./biomarker-panels";
 import {
   biomarkerViewHref,
+  dataSectionHref,
   importHref,
   protocolHref,
   MEDICATIONS_HREF,
@@ -67,6 +69,28 @@ export interface TimelineEvent {
   // document"), NEVER a causal claim; the primary `href` stays the event's own
   // source record. AppRoute-typed like every internal link (#285).
   linkedRefs?: { label: string; href: AppRoute }[];
+  // The event's raw LOCAL clock window (issue #1068), carried on the event so the
+  // Timeline day view's intraday panel can draw it as a span from the SAME event
+  // set the feed lists — one gather, two formatters, never a second per-layer
+  // query. Set only where the source row genuinely has a window (activities);
+  // absent everywhere else, which is exactly what data-gates the block layer. The
+  // span itself is resolved by the ONE canonical `activityWindow()` computation
+  // (lib/training-zones), the same one the training-zone aggregation uses.
+  clockWindow?: {
+    date: string;
+    start_time: string | null;
+    end_time: string | null;
+    duration_min: number | null;
+  };
+}
+
+// The DOM id of a rendered feed entry (issue #1068). The intraday panel's ticks
+// and blocks link to `#<anchor>`, so tapping one scrolls the list below to that
+// entry — chart as map, list as detail. Event ids carry ':' separators (and
+// document/exercise names can carry anything), so everything outside the
+// fragment-safe set collapses to '-'.
+export function timelineEntryAnchorId(eventId: string): string {
+  return `timeline-entry-${eventId.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
 }
 
 export interface TimelineDay {
@@ -252,6 +276,33 @@ export function normalizeTimelineRange(
   return { from, to };
 }
 
+// "Nothing here" on the Timeline has TWO meanings and only one of them is a brand-new
+// account (issue #1410). With a category pill or a date window applied, an empty feed
+// is a FILTER RESULT — the reader knows why it's empty and the fix is to widen the
+// filter, so the message stays the bare "No <category> events yet." it has always been.
+// With neither applied, the account genuinely holds nothing and the fix is to put
+// something IN it: that, and only that, earns the next-action links below.
+export function isTimelineUnfiltered(
+  category: TimelineCategory | undefined,
+  range: DateRange
+): boolean {
+  return !category && !range.from && !range.to;
+}
+
+// The next actions on that base empty state — the three INGEST DOORS a timeline
+// actually fills from: something you did, something you measured, something a clinic
+// gave you. Deliberately not one CTA: naming only "log an activity" would tell a
+// reader who came to Allos with a stack of lab PDFs the wrong thing. Every href is
+// `AppRoute`, so a consolidated-away destination is a build error (#285).
+export const TIMELINE_EMPTY_ACTIONS: ReadonlyArray<{
+  href: AppRoute;
+  label: string;
+}> = [
+  { href: "/training?tab=log", label: "Log an activity" },
+  { href: "/trends#body", label: "Add a body metric" },
+  { href: dataSectionHref("import"), label: "Import a document" },
+];
+
 // ---------------------------------------------------------------------------
 // Shared date-range vocabulary. The Timeline and the Trends hub both drive their
 // charts from the SAME from/to window and the SAME quick-range pills, so the
@@ -295,6 +346,98 @@ export function isAllTimeRange(range: DateRange): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Trends' default window (#1485 G). TRENDS ONLY — the Timeline keeps its
+// all-time default (a feed has different semantics: it reads backwards from
+// today and its "load more" is the window).
+// ---------------------------------------------------------------------------
+
+// The quick-range pill the Trends surfaces open on when the URL names no window.
+// All-time as the default made every slope read as a lifetime average and buried
+// recent change; 90D is the shortest window that still shows a lab trend.
+export const DEFAULT_TRENDS_RANGE_LABEL = "90D";
+
+// Because the default is a REAL window rather than the absence of one, "All time"
+// needs a way to say itself in a URL — an empty query string now means 90D, so
+// the pill that used to clear the params would otherwise be a no-op that lands
+// back on the default. `?range=all` is that sentinel: an EXPLICIT all-time window,
+// as deep-linkable as any ?from/?to pair. Trends-only; the Timeline never emits it.
+export const ALL_TIME_RANGE_PARAM = "range";
+export const ALL_TIME_RANGE_VALUE = "all";
+
+// The default window itself, resolved against the profile's today. Derived from
+// `quickRanges` BY LABEL (not by index) so it can never drift from the pill it
+// lights: a default load must render 90D active, which `isQuickRangeActive` only
+// says for an exact from/to match.
+export function defaultTrendsRange(todayStr: string): DateRange {
+  const ranges = quickRanges(todayStr);
+  const qr =
+    ranges.find((q) => q.label === DEFAULT_TRENDS_RANGE_LABEL) ??
+    ranges[ranges.length - 1];
+  return { from: qr.from, to: qr.to };
+}
+
+// Resolve a Trends surface's window from its already-parsed params. The whole
+// rule, in one place, for every Trends surface (the hub and the metric detail
+// pages) — three cases, in precedence order:
+//
+//   1. `?range=all` — an explicit all-time window. Params always win.
+//   2. Either bound set — an explicit window (a shared/bookmarked ?from/?to link,
+//      a quick-range pill). Used verbatim; a partial window keeps
+//      its open side open, exactly as before.
+//   3. Neither — the no-param default, 90D.
+//
+// A URL that says something is therefore NEVER reinterpreted; only the URL that
+// says nothing gained a meaning.
+export function resolveTrendsRange(
+  parsed: DateRange,
+  todayStr: string,
+  rangeParam?: string
+): DateRange {
+  if (rangeParam === ALL_TIME_RANGE_VALUE) return {};
+  if (parsed.from || parsed.to) return parsed;
+  return defaultTrendsRange(todayStr);
+}
+
+// The single-day (today) window behind the Vitals tab's "1D" pill (#1466). It is
+// NOT part of the shared `quickRanges` set: on a daily-grain series a one-day
+// window is a single dot — worse than useless — so only a surface that swaps to
+// genuinely INTRADAY content injects it, through DateRangeControl's `extraRanges`.
+export function intradayQuickRange(todayStr: string): QuickRange {
+  return { label: "1D", from: todayStr, to: todayStr };
+}
+
+// Whether `range` is that single-day window — the Vitals tab's cue to swap its
+// windowed daily charts for the intraday ones.
+export function isIntradayRange(range: DateRange, todayStr: string): boolean {
+  return isQuickRangeActive(range, intradayQuickRange(todayStr));
+}
+
+// Whether `range` is a CUSTOM window — one that no chip in the row already names:
+// not "All time" and not an exact quick-range match. Two surfaces ask this same
+// question and must never drift (#1455), so it lives here once:
+//   • DateRangeControl opens its collapsed mobile From/To panel by default when
+//     the active window is custom, so a shared ?from=/?to= URL still shows its
+//     dates instead of hiding them behind the "Custom…" pill.
+//   • The Trends hub + metric pages render the `rangeSummaryLabel` chip ONLY for a
+//     custom window — with a preset active the chip just repeats the lit pill's
+//     own label (the duplicate "All time" chip).
+//
+// `extraRanges` is whatever the surface injected beyond the shared set (#1466's 1D
+// pill). A window one of THOSE pills names is not custom either — otherwise
+// lighting 1D would also pop the "Custom…" panel open and print a summary chip
+// duplicating the lit pill, the exact pair of bugs #1455 D removed.
+export function isCustomRange(
+  range: DateRange,
+  todayStr: string,
+  extraRanges: QuickRange[] = []
+): boolean {
+  if (isAllTimeRange(range)) return false;
+  return ![...extraRanges, ...quickRanges(todayStr)].some((qr) =>
+    isQuickRangeActive(range, qr)
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Pure event-shaping helpers (extracted from lib/timeline.ts so they can be unit
 // tested without a DB). timeline.ts imports these to build TimelineEvents.
 // ---------------------------------------------------------------------------
@@ -305,6 +448,23 @@ export function countTone(
   nonoptimalCount: number
 ): TimelineEvent["tone"] {
   return abnormalCount ? "bad" : nonoptimalCount ? "warn" : "default";
+}
+
+// Display name for a grouped medical event (#1502). `panelId` is the normalized
+// panel slug the SQL resolved from the group's canonical names; `fallback` is the
+// pre-#1502 key (the stored free-text panel, else the record category). A known
+// panel renders its curated label ("Lipids", "Complete blood count"); the reserved
+// `other` slug — an un-canonicalized analyte with no panel to claim — keeps the
+// old behavior verbatim so nothing regresses into a meaningless "Other results".
+// A blank fallback (a category-less row) degrades to "Lab" rather than an empty
+// title. Pure, so the same rule is testable without a DB.
+export function medicalGroupLabel(
+  panelId: string,
+  fallback: string | null | undefined
+): string {
+  const known = parsePanelId(panelId);
+  if (known && known !== OTHER_PANEL) return panelLabel(known);
+  return fallback?.trim() || "Lab";
 }
 
 // Destination for a grouped medical/lab panel event: the source document when

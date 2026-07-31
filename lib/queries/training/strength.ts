@@ -17,9 +17,11 @@ import type { SetStatus } from "../../journal-format";
 import { judgeTargets, summarizeExercise } from "../../journal-format";
 import {
   classifyBodyweightByExercise,
+  equipmentLoadLane,
   exerciseHistoryKey,
   exerciseHistoryNames,
   isBodyweight,
+  movementLoadKey,
   resolveBodyweightKind,
 } from "../../lifts";
 import type { WeightUnit } from "../../settings";
@@ -37,6 +39,12 @@ export interface RecentSession {
   activityId: number;
   // User-defined implement used in the session (first non-null), else null.
   equipment: string | null;
+  // The registry equipment id behind `equipment` (first non-null), else null — the
+  // session's LOAD CONTEXT (#1610). Two machines serialize as the same exact
+  // exercise name, so this is the only datum that keeps their seeds, "Recent"
+  // reference and next-set suggestions from bleeding into each other. null is the
+  // explicit unassigned/default lane, never a wildcard.
+  equipmentId: number | null;
   // Bodyweight to fold into set loads when ranking this session's sets for
   // next-set seeding: the bodyweight as of the session date for catalog
   // bodyweight lifts, 0 otherwise — the same base getStrengthByExercise folds.
@@ -130,7 +138,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
       `SELECT s.exercise, a.date, a.id AS activity_id, s.set_number,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
               s.duration_sec, s.duration_sec_right, s.target_reps, s.to_failure,
-              s.warmup, s.rpe, eq.name AS equipment
+              s.warmup, s.rpe, s.equipment_id, eq.name AS equipment
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        LEFT JOIN equipment eq ON eq.id = s.equipment_id
        WHERE a.profile_id = ? AND a.date >= ?
@@ -151,6 +159,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
     to_failure: number | null;
     warmup: number | null;
     rpe: number | null;
+    equipment_id: number | null;
     equipment: string | null;
   }[];
 
@@ -191,10 +200,17 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
         activityId: r.activity_id,
         date: r.date,
         equipment: null,
+        equipmentId: null,
         baseKg: e.addBodyweight ? (bodyweightAsOf(weights, r.date) ?? 0) : 0,
         sets: [],
       };
       e.sessions.push(last);
+    }
+    // First non-null implement of the session, id and label resolved together so
+    // the load context (#1610) and the rendered label can never disagree.
+    if (last.equipmentId == null && r.equipment_id != null) {
+      last.equipmentId = r.equipment_id;
+      last.equipment = r.equipment;
     }
     if (last.equipment == null && r.equipment) last.equipment = r.equipment;
     last.sets.push({
@@ -274,6 +290,10 @@ export type ExerciseCompareMetric = "volume" | "e1rm" | "top" | "reps";
 export interface ExerciseCompareSession {
   date: string;
   activityId: number;
+  // The session's LOAD CONTEXT (#1610): the registry implement its sets were
+  // performed on, or null for the unassigned lane. `equipment` is the same lane's
+  // display label, resolved together with the id so the two cannot disagree.
+  equipmentId: number | null;
   equipment: string | null;
   setCount: number;
   totalReps: number;
@@ -284,13 +304,140 @@ export interface ExerciseCompareSession {
   summary: string;
 }
 
+// One selectable LOAD CONTEXT of a movement (#1610): a registry implement it has
+// actually been logged on, or the unassigned lane. `lane` is the shared
+// `equipmentLoadLane` string — the same identity every load-sensitive builder keys
+// on, and the value the Analyze URL carries — so the chooser can never invent a
+// second lane scheme.
+export interface ExerciseLoadContext {
+  lane: string;
+  equipmentId: number | null;
+  // The implement's registry name, or null for the unassigned lane.
+  equipment: string | null;
+  // What the chooser renders. Named for the attribute that actually DISTINGUISHES
+  // the choices (#531): two machines share the exercise name, so the implement is
+  // the label, and the lane with no implement says so rather than repeating the
+  // movement name a second, identical-looking time.
+  label: string;
+  sessions: number;
+  lastDate: string;
+}
+
+// The load contexts one movement has been logged in, most recently used first —
+// the labeled children #1610 asks Training to expose under a single top-level
+// movement. Variant-collapsed by the same `exerciseHistoryNames` preimage the
+// comparison scan uses, so "Barbell Curl" and "Curl" contribute to one context list
+// while two registry machines stay two contexts. Profile-scoped via the JOIN.
+export function getExerciseLoadContexts(
+  profileId: number,
+  exercise: string
+): ExerciseLoadContext[] {
+  const key = exerciseHistoryKey(exercise);
+  if (!key) return [];
+  const names = exerciseHistoryNames(exercise);
+  const placeholders = names.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT s.equipment_id AS equipmentId, eq.name AS equipment,
+              a.date AS date, a.id AS activityId
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+         LEFT JOIN equipment eq ON eq.id = s.equipment_id
+        WHERE a.profile_id = ? AND LOWER(TRIM(s.exercise)) IN (${placeholders})
+          AND s.warmup = 0 -- same working-set basis as the comparison itself (#338)`
+    )
+    .all(profileId, ...names) as {
+    equipmentId: number | null;
+    equipment: string | null;
+    date: string;
+    activityId: number;
+  }[];
+
+  const acc = new Map<
+    string,
+    {
+      equipmentId: number | null;
+      equipment: string | null;
+      dates: Set<string>;
+      lastDate: string;
+    }
+  >();
+  for (const r of rows) {
+    const lane = equipmentLoadLane(r.equipmentId);
+    let e = acc.get(lane);
+    if (!e)
+      acc.set(
+        lane,
+        (e = {
+          equipmentId: r.equipmentId,
+          equipment: r.equipment,
+          dates: new Set(),
+          lastDate: r.date,
+        })
+      );
+    e.dates.add(r.date);
+    if (r.date > e.lastDate) e.lastDate = r.date;
+  }
+
+  return [...acc.entries()]
+    .map(([lane, e]) => ({
+      lane,
+      equipmentId: e.equipmentId,
+      equipment: e.equipment,
+      label: e.equipment ?? "Unassigned",
+      sessions: e.dates.size,
+      lastDate: e.lastDate,
+    }))
+    .sort(
+      (a, b) =>
+        b.lastDate.localeCompare(a.lastDate) || a.label.localeCompare(b.label)
+    );
+}
+
+// Which registry implements each MOVEMENT has been logged on, keyed by the canonical
+// `exerciseHistoryKey` — the goal form's answer to "does this lift even have a load
+// context to choose?" (#1610). Only real, non-null links appear: the unassigned lane
+// is not an implement a goal can be scoped to, it is the absence of one.
+//
+// One distinct-pair scan for the whole profile, so the client form can look a lift up
+// as the user types instead of round-tripping per keystroke. Profile-scoped via the
+// JOIN to activities.
+export function getLoggedEquipmentByExercise(
+  profileId: number
+): Record<string, number[]> {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT s.exercise AS exercise, s.equipment_id AS equipmentId
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ? AND s.equipment_id IS NOT NULL`
+    )
+    .all(profileId) as { exercise: string; equipmentId: number }[];
+  const out: Record<string, number[]> = {};
+  for (const r of rows) {
+    const key = exerciseHistoryKey(r.exercise);
+    if (!key) continue;
+    const ids = (out[key] ??= []);
+    if (!ids.includes(r.equipmentId)) ids.push(r.equipmentId);
+  }
+  for (const ids of Object.values(out)) ids.sort((a, b) => a - b);
+  return out;
+}
+
 // Full per-session history for one exercise, used by the Training comparison
 // tab. This keeps the set-level math in the query layer so the page component can
 // stay focused on controls and presentation.
+//
+// `opts.equipmentLane` narrows the scan to ONE load context (#1610) — the shared
+// `equipmentLoadLane` string, so "none" is the explicit unassigned lane and never a
+// wildcard. Two registry machines both serialize as the same exact logged name, so
+// without the lane a hotel chest press's 50 kg and a home machine's 80 kg would be
+// charted as one progression and their session table read as one history. Omitted,
+// the scan stays movement-wide exactly as before — the shape a profile with no
+// registry equipment (a single lane) gets either way.
 export function getExerciseComparison(
   profileId: number,
   exercise: string,
-  unit: WeightUnit
+  unit: WeightUnit,
+  opts: { equipmentLane?: string } = {}
 ): ExerciseCompareSession[] {
   // Canonical, variant-collapsed key so the comparison series merges a lift's
   // variants ("Barbell Curl"/"Curl") into one history like the other builders
@@ -304,12 +451,12 @@ export function getExerciseComparison(
   const names = exerciseHistoryNames(exercise);
   const placeholders = names.map(() => "?").join(", ");
 
-  const rows = db
+  const all = db
     .prepare(
       `SELECT s.exercise, a.date, a.id AS activity_id, s.set_number,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
               s.duration_sec, s.duration_sec_right, s.target_reps, s.to_failure,
-              eq.name AS equipment
+              s.equipment_id AS equipment_id, eq.name AS equipment
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        LEFT JOIN equipment eq ON eq.id = s.equipment_id
        WHERE a.profile_id = ? AND LOWER(TRIM(s.exercise)) IN (${placeholders})
@@ -329,8 +476,19 @@ export function getExerciseComparison(
     duration_sec_right: number | null;
     target_reps: number | null;
     to_failure: number | null;
+    equipment_id: number | null;
     equipment: string | null;
   }[];
+
+  // Narrow to the requested load context BEFORE the per-session fold, so a session
+  // that touched two implements contributes only its comparable sets rather than a
+  // blended top weight / e1RM / volume (#1610).
+  const rows =
+    opts.equipmentLane == null
+      ? all
+      : all.filter(
+          (r) => equipmentLoadLane(r.equipment_id) === opts.equipmentLane
+        );
 
   if (rows.length === 0) return [];
 
@@ -341,6 +499,7 @@ export function getExerciseComparison(
     {
       date: string;
       activityId: number;
+      equipmentId: number | null;
       equipment: string | null;
       rows: typeof rows;
     }
@@ -352,13 +511,18 @@ export function getExerciseComparison(
       session = {
         date: r.date,
         activityId: r.activity_id,
+        equipmentId: null,
         equipment: null,
         rows: [],
       };
       bySession.set(r.activity_id, session);
     }
-    if (session.equipment == null && r.equipment)
+    // Id and label resolved TOGETHER off the first implement-bearing set, so the
+    // lane a row reports and the name it renders can never disagree (#1610).
+    if (session.equipmentId == null && r.equipment_id != null) {
+      session.equipmentId = r.equipment_id;
       session.equipment = r.equipment;
+    }
     session.rows.push(r);
   }
 
@@ -401,6 +565,7 @@ export function getExerciseComparison(
     return {
       date: s.date,
       activityId: s.activityId,
+      equipmentId: s.equipmentId,
       equipment: s.equipment,
       setCount: s.rows.length,
       totalReps,
@@ -452,51 +617,92 @@ export function getExerciseSetCountsSince(
 // The only caller (buildTrainingObservationFindings → detectPlateaus) windows each
 // series to the last PLATEAU_WINDOW_DAYS anyway, so passing that cutoff makes the
 // rep-bearing-history scan a free win (issue #389) with no change to the plateau
-// output. Omit `since` for the full lifetime series.
+// output. `until` closes the other end for the Trends → Fitness strength-
+// progression section (#1492), which reads this SAME series inside the hub's
+// shared window instead of forking a windowed 1RM engine of its own. Omit both for
+// the full lifetime series.
+//
+// `opts.byLoadContext` (#1610) adds the EQUIPMENT axis to the grouping: with it, a
+// movement logged on two registry machines yields one series PER machine (keyed by
+// movementLoadKey — still variant-collapsed on the name axis, so #432/#1399's
+// "Barbell Curl"/"Curl" merge is untouched) plus an unassigned lane for sets with no
+// implement link. Plateau detection reads it that way, because a home chest press
+// and a hotel chest press are not one progression — averaging them fabricates a flat
+// slope from two perfectly healthy ones. It stays OPT-IN so the Trends → Fitness
+// strength-progression chart keeps its movement-wide series until that surface can
+// render labeled load contexts; the SQL scan and per-set math are identical either
+// way (one computation, one grouping choice).
+export interface E1rmSeriesRow {
+  exercise: string;
+  // The load context this series belongs to when grouped by it — the registry
+  // equipment id and its label, both null for the unassigned lane and always null
+  // when grouping movement-wide.
+  equipmentId: number | null;
+  equipment: string | null;
+  points: { date: string; value: number; reps: number }[];
+}
 export function getExerciseE1rmSeries(
   profileId: number,
-  since?: string
-): {
-  exercise: string;
-  points: { date: string; value: number; reps: number }[];
-}[] {
+  since?: string,
+  until?: string,
+  opts: { byLoadContext?: boolean } = {}
+): E1rmSeriesRow[] {
+  const byLoadContext = opts.byLoadContext === true;
   const rows = db
     .prepare(
       `SELECT s.exercise, a.date,
-              s.weight_kg, s.reps, s.weight_kg_right, s.reps_right
+              s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
+              s.equipment_id AS equipmentId, eq.name AS equipment
          FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+         LEFT JOIN equipment eq ON eq.id = s.equipment_id
         WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
           AND s.warmup = 0 -- warmups don't seed the plateau e1RM series (#338)
           AND (? IS NULL OR a.date >= ?)
+          AND (? IS NULL OR a.date <= ?)
         ORDER BY a.date ASC, a.id ASC`
     )
-    .all(profileId, since ?? null, since ?? null) as {
+    .all(
+      profileId,
+      since ?? null,
+      since ?? null,
+      until ?? null,
+      until ?? null
+    ) as {
     exercise: string;
     date: string;
     weight_kg: number | null;
     reps: number | null;
     weight_kg_right: number | null;
     reps_right: number | null;
+    equipmentId: number | null;
+    equipment: string | null;
   }[];
 
   const weights = loadWeightsAsc(profileId);
-  // canonical key -> { display name (first-seen), date -> best (e1rm, reps) }
+  // grouping key -> { display name (first-seen), load context, date -> best }
   const acc = new Map<
     string,
     {
       exercise: string;
+      equipmentId: number | null;
+      equipment: string | null;
       addBodyweight: boolean;
       byDate: Map<string, { e1rm: number; reps: number }>;
     }
   >();
   for (const r of rows) {
     // Canonical, variant-collapsed key so a lift's variants merge into ONE series
-    // exactly as getStrengthByExercise aggregates them (#331/#432).
-    const key = exerciseHistoryKey(r.exercise);
+    // exactly as getStrengthByExercise aggregates them (#331/#432) — plus the
+    // equipment lane when the caller asked for load contexts (#1610).
+    const key = byLoadContext
+      ? movementLoadKey(r.exercise, r.equipmentId)
+      : exerciseHistoryKey(r.exercise);
     let e = acc.get(key);
     if (!e) {
       e = {
         exercise: r.exercise,
+        equipmentId: byLoadContext ? r.equipmentId : null,
+        equipment: byLoadContext ? r.equipment : null,
         addBodyweight: isBodyweight(r.exercise),
         byDate: new Map(),
       };
@@ -527,21 +733,32 @@ export function getExerciseE1rmSeries(
     }
   }
 
-  const out: {
-    exercise: string;
-    points: { date: string; value: number; reps: number }[];
-  }[] = [];
+  const out: E1rmSeriesRow[] = [];
   for (const e of acc.values()) {
     const points = [...e.byDate.entries()]
       .filter(([, v]) => v.e1rm > 0)
       .map(([date, v]) => ({ date, value: v.e1rm, reps: v.reps }))
       .sort((a, b) => a.date.localeCompare(b.date));
-    if (points.length > 0) out.push({ exercise: e.exercise, points });
+    if (points.length > 0)
+      out.push({
+        exercise: e.exercise,
+        equipmentId: e.equipmentId,
+        equipment: e.equipment,
+        points,
+      });
   }
   return out;
 }
 
-export function getVolumeByDate(profileId: number) {
+// Total working volume (kg lifted) per session date, ascending. `since`/`until`
+// (YYYY-MM-DD, inclusive) optionally bound it to a window — the SAME computation,
+// windowed (#1492/#221): the Trends → Fitness volume chart passes the hub's shared
+// range, /training passes neither and keeps its full-history series.
+export function getVolumeByDate(
+  profileId: number,
+  since?: string,
+  until?: string
+) {
   return db
     .prepare(
       `SELECT a.date AS date,
@@ -552,9 +769,20 @@ export function getVolumeByDate(profileId: number) {
          AND ((s.weight_kg IS NOT NULL AND s.reps IS NOT NULL)
           OR (s.weight_kg_right IS NOT NULL AND s.reps_right IS NOT NULL))
          AND s.warmup = 0 -- warmups aren't working volume (#338)
+         AND (? IS NULL OR a.date >= ?)
+         AND (? IS NULL OR a.date <= ?)
        GROUP BY a.date ORDER BY a.date ASC`
     )
-    .all(profileId) as { date: string; volume: number }[];
+    .all(
+      profileId,
+      since ?? null,
+      since ?? null,
+      until ?? null,
+      until ?? null
+    ) as {
+    date: string;
+    volume: number;
+  }[];
 }
 
 // Per-exercise strength stats for the combined Strength page: best set,
@@ -562,6 +790,13 @@ export function getVolumeByDate(profileId: number) {
 // series over time (one point per session date, ascending).
 export interface ExerciseStat {
   exercise: string;
+  // The LOAD CONTEXT these stats belong to when grouped by it (#1610) — the
+  // registry equipment id and its label, both null for the unassigned lane and
+  // always null when grouping movement-wide. A surface that renders a
+  // load-context-grouped list MUST label its rows through `loadContextLabel`;
+  // #1610 forbids duplicate unlabeled rows.
+  equipmentId: number | null;
+  equipment: string | null;
   sessions: number; // distinct dates trained
   totalSets: number;
   topWeightKg: number;
@@ -602,20 +837,47 @@ export interface ExerciseStat {
   volume: { date: string; volumeKg: number }[];
 }
 
-// cache(): a single Training render aggregates every set 3–4× (Log, Overview,
-// Analyze, Strength sections all call this), and the dashboard coaching context
-// reads it again — cache() collapses the all-history scan to one per profile per
-// request. Safe: it's a pure read, and write actions revalidate rather than
-// re-reading in the same request.
-export const getStrengthByExercise = cache(function getStrengthByExercise(
+// One rep-bearing working set of the profile's whole strength history, as the
+// aggregators below read it.
+interface StrengthSetRow {
+  exercise: string;
+  date: string;
+  activity_id: number;
+  weight_kg: number | null;
+  reps: number | null;
+  weight_kg_right: number | null;
+  reps_right: number | null;
+  target_reps: number | null;
+  to_failure: number | null;
+  rpe: number | null;
+  equipmentId: number | null;
+  equipment: string | null;
+}
+
+// THE all-history strength scan — the single unbounded read every strength aggregate
+// is folded from, hoisted out of getStrengthByExercise so the two GROUPINGS of it
+// (#1610's movement-wide and load-context lists) share ONE scan (#1654).
+//
+// cache(): a single Training render asks for this 3–5× (Log, Overview, Analyze and
+// Strength sections, plus the dashboard coaching context), and since #1610 two of
+// those surfaces ask for BOTH groupings in the same request. Keyed on profileId
+// alone, so a grouping choice can never mint a second scan. Safe: it's a pure read,
+// and write actions revalidate rather than re-reading in the same request.
+export const strengthSetRows = cache(function strengthSetRows(
   profileId: number
-): ExerciseStat[] {
-  const rows = db
+): StrengthSetRow[] {
+  return db
     .prepare(
       `SELECT s.exercise, a.date, a.id AS activity_id,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
-              s.target_reps, s.to_failure, s.rpe
+              s.target_reps, s.to_failure, s.rpe,
+              -- The per-set implement link (#1610): the newest session's own load
+              -- context, so the forward-looking seed below can't blend two machines
+              -- that were both logged under the same exact exercise name — and the
+              -- grouping lane itself when byLoadContext is asked for.
+              s.equipment_id AS equipmentId, eq.name AS equipment
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+       LEFT JOIN equipment eq ON eq.id = s.equipment_id
        -- Any set with reps, weighted OR bodyweight (bodyweight sets store a
        -- NULL weight); the load is resolved per exercise below. Warmups are
        -- excluded (#338) — inert to e1RM, best/top weight, volume, PRs and the
@@ -625,24 +887,47 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
        -- date+id ascending so the last row of an exercise is its newest session.
        ORDER BY a.date ASC, a.id ASC`
     )
-    .all(profileId) as {
-    exercise: string;
-    date: string;
-    activity_id: number;
-    weight_kg: number | null;
-    reps: number | null;
-    weight_kg_right: number | null;
-    reps_right: number | null;
-    target_reps: number | null;
-    to_failure: number | null;
-    rpe: number | null;
-  }[];
+    .all(profileId) as StrengthSetRow[];
+});
+
+// `byLoadContext` (#1610) groups on `movementLoadKey` instead of `exerciseHistoryKey`
+// — one row per (movement, implement) rather than one per movement — so a top weight,
+// an e1RM or a PR can never be assembled from two registry machines that both
+// serialize as the same exact logged name. It is a PRIMITIVE second argument on
+// purpose: cache() keys on argument identity, and an options object literal would
+// mint a fresh key (and a fresh regrouping) on every call.
+//
+// Opt-in, like `getExerciseE1rmSeries`'s: a movement-wide list (Analyze's picker,
+// the exercise detail panel, the coaching seed) must stay one row per movement, and
+// a caller that DOES split must label its rows through `loadContextLabel` — #1610
+// forbids duplicate unlabeled rows.
+//
+// The two groupings are different AGGREGATES of the same history, not two answers to
+// one question: bodyweight resolution, the session-seed lane and the per-day volume
+// base are all resolved per GROUP, so a lane list cannot simply be folded back into a
+// movement list. What they must never do is read the history twice — since #1654 both
+// fold the one cached `strengthSetRows` scan, and a profile whose sets carry no
+// implement link short-circuits to the identical movement-wide result outright.
+export const getStrengthByExercise = cache(function getStrengthByExercise(
+  profileId: number,
+  byLoadContext = false
+): ExerciseStat[] {
+  const rows = strengthSetRows(profileId);
+  // For a profile whose sets carry no implement link at all, every set is already in
+  // the same (unassigned) lane: `movementLoadKey` partitions exactly as
+  // `exerciseHistoryKey` does and every emitted equipment field is null either way.
+  // Normalize to the movement-wide grouping so the two lists are not merely equivalent
+  // but IDENTICAL — the promise #1610's comment makes, now made structurally.
+  const laned = byLoadContext && rows.some((r) => r.equipmentId != null);
 
   const weights = loadWeightsAsc(profileId);
   const bwAsOf = (date: string) => bodyweightAsOf(weights, date);
 
   interface Acc {
     exercise: string;
+    // The group's load context when grouping by it; both null movement-wide.
+    equipmentId: number | null;
+    equipment: string | null;
     addBodyweight: boolean; // catalog bodyweight lift → fold bodyweight into load
     sawExternalWeight: boolean; // any set logged a weight
     dates: Set<string>;
@@ -660,6 +945,10 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     // variants (a Barbell Curl and a Dumbbell Curl activity same day); this is the
     // implement pickSeedSessions prefers so the seed doesn't mix them (#393).
     newestExercise: string;
+    // …and the newest session's own LOAD CONTEXT (#1610). Two registry machines
+    // both serialize as the same exact name, so the name alone can't stop a
+    // same-day hotel-machine set from seeding off the home machine.
+    newestEquipmentId: number | null;
     // Raw rows of the most recent session (same date, across activities),
     // ranked into lastSessionBest by sessionBestSet at the end — the single
     // shared definition of a session's seeding set (lib/coaching).
@@ -674,11 +963,15 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     // vs "Curl") aggregate into ONE history — sessions, PRs, and the progression
     // seed no longer split on a rename (#331). getRecentExerciseHistory /
     // getExerciseBodyweightMap key the same way, so every surface agrees.
-    const key = exerciseHistoryKey(r.exercise);
+    const key = laned
+      ? movementLoadKey(r.exercise, r.equipmentId)
+      : exerciseHistoryKey(r.exercise);
     let cur = map.get(key);
     if (!cur) {
       cur = {
         exercise: r.exercise,
+        equipmentId: laned ? r.equipmentId : null,
+        equipment: laned ? r.equipment : null,
         addBodyweight: isBodyweight(r.exercise),
         sawExternalWeight: false,
         dates: new Set(),
@@ -694,6 +987,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         lastDate: r.date,
         lastActivityId: r.activity_id,
         newestExercise: r.exercise,
+        newestEquipmentId: r.equipmentId,
         lastSessionRows: [],
         volByDate: new Map(),
         repsByDate: new Map(),
@@ -716,6 +1010,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     // the last row processed is the newest activity — its name is the implement
     // pickSeedSessions seeds from (#393).
     cur.newestExercise = r.exercise;
+    cur.newestEquipmentId = r.equipmentId;
     cur.lastSessionRows.push(r); // r.date === cur.lastDate after the advance
     if (r.weight_kg != null || r.weight_kg_right != null)
       cur.sawExternalWeight = true;
@@ -777,13 +1072,21 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
       // unaffected — only the forward-looking seed is dropped.
       const seedFresh = isSeedFresh(c.lastDate, t);
       // Seed off the newest session's own implement, never a heavier/lighter
-      // sibling variant that happens to share the newest date (#393). All buffered
-      // rows share lastDate, so pickSeedSessions filters that date to the newest
-      // logged name — the same ONE decision the editor chip uses.
-      const seedRows = pickSeedSessions(c.lastSessionRows, c.newestExercise);
+      // sibling variant that happens to share the newest date (#393) and never a
+      // different registry machine logged under the same exact name (#1610). All
+      // buffered rows share lastDate, so pickSeedSessions filters that date to the
+      // newest logged name AND its equipment lane — the same ONE decision the
+      // editor chip uses.
+      const seedRows = pickSeedSessions(
+        c.lastSessionRows,
+        c.newestExercise,
+        c.newestEquipmentId
+      );
       const seedBase = c.addBodyweight ? (bwAsOf(c.lastDate) ?? 0) : 0;
       return {
         exercise: c.exercise,
+        equipmentId: c.equipmentId,
+        equipment: c.equipment,
         sessions: c.dates.size,
         totalSets: c.totalSets,
         topWeightKg: c.topWeightKg,

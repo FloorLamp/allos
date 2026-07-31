@@ -1,22 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition, type ReactNode } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   IconAdjustmentsHorizontal,
@@ -28,6 +13,7 @@ import {
 } from "@tabler/icons-react";
 import type { WidgetSpan } from "@/lib/dashboard-widgets";
 import SaveStatus from "@/components/SaveStatus";
+import SortableOrder from "@/components/SortableOrder";
 
 export interface GridWidget {
   id: string;
@@ -88,6 +74,7 @@ function SortableWidget({
           type="button"
           onClick={() => onToggle(widget.id)}
           aria-label={hidden ? `Show ${widget.label}` : `Hide ${widget.label}`}
+          title={hidden ? "Show widget" : "Hide widget"}
           className="rounded-md border border-black/10 bg-white/90 p-1 text-slate-500 shadow-sm hover:text-slate-800 dark:border-white/10 dark:bg-ink-900/90 dark:text-slate-400 dark:hover:text-slate-100"
         >
           {hidden ? (
@@ -102,6 +89,7 @@ function SortableWidget({
           {...attributes}
           {...listeners}
           aria-label={`Drag ${widget.label}`}
+          title="Drag to reorder"
           className="cursor-grab touch-none rounded-md border border-black/10 bg-white/90 p-1 text-slate-500 shadow-sm hover:text-slate-800 active:cursor-grabbing dark:border-white/10 dark:bg-ink-900/90 dark:text-slate-400 dark:hover:text-slate-100"
         >
           <IconGripVertical className="h-4 w-4" />
@@ -142,11 +130,20 @@ function SortableWidget({
 // user-hidden ids only and refreshes, Cancel restores the pre-edit state.
 export default function DashboardGrid({
   widgets,
+  promoted = [],
   saveAction,
 }: {
   widgets: GridWidget[];
+  // Widget ids the "Now" strip is rendering above the grid right now (issue #1413).
+  // Skipped in NORMAL mode only, so the card appears once on the page rather than
+  // twice. Deliberately NOT filtered out of `widgets`: Customize must keep showing
+  // every eligible widget, or a momentarily-promoted card would vanish from the
+  // editor and the user could neither reorder nor un-hide it — and, worse, Save
+  // would persist an order missing it. Promotion is transient; the layout is not.
+  promoted?: string[];
   saveAction: (order: string[], hidden: string[]) => Promise<void>;
 }) {
+  const promotedIds = useMemo(() => new Set(promoted), [promoted]);
   const byId = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets]);
 
   const [editing, setEditing] = useState(false);
@@ -162,13 +159,6 @@ export default function DashboardGrid({
   const [pending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState(0);
   const [error, setError] = useState(false);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   function enterEdit() {
     setSnapshot({ order: [...order], hidden: [...hidden] });
@@ -195,17 +185,6 @@ export default function DashboardGrid({
     });
   }
 
-  function onDragEnd(e: DragEndEvent) {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    setOrder((prev) => {
-      const oldIndex = prev.indexOf(String(active.id));
-      const newIndex = prev.indexOf(String(over.id));
-      if (oldIndex < 0 || newIndex < 0) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
-  }
-
   function save() {
     setError(false);
     startTransition(async () => {
@@ -222,7 +201,7 @@ export default function DashboardGrid({
 
   if (!editing) {
     const visible = order
-      .filter((id) => !hidden.has(id))
+      .filter((id) => !hidden.has(id) && !promotedIds.has(id))
       .map((id) => byId.get(id))
       .filter((w): w is GridWidget => !!w && w.available);
     return (
@@ -257,28 +236,26 @@ export default function DashboardGrid({
       <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300">
         Drag the handle to reorder. Use the eye to show or hide a widget.
       </div>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={onDragEnd}
-      >
-        <SortableContext items={order} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-6">
-            {order.map((id) => {
-              const w = byId.get(id);
-              if (!w) return null;
-              return (
-                <SortableWidget
-                  key={id}
-                  widget={w}
-                  hidden={hidden.has(id)}
-                  onToggle={toggle}
-                />
-              );
-            })}
-          </div>
-        </SortableContext>
-      </DndContext>
+      {/* The SHARED drag mechanism (#1485 C) — the same DndContext/SortableContext
+          and list math the Trends Overview tiles lift with, differing only in the
+          lift mode: this surface has a dedicated grip handle, so it keeps the
+          immediate pointer lift + keyboard activator. */}
+      <SortableOrder ids={order} onReorder={setOrder} lift="handle">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-6">
+          {order.map((id) => {
+            const w = byId.get(id);
+            if (!w) return null;
+            return (
+              <SortableWidget
+                key={id}
+                widget={w}
+                hidden={hidden.has(id)}
+                onToggle={toggle}
+              />
+            );
+          })}
+        </div>
+      </SortableOrder>
 
       {/* Sticky Save / Cancel bar. */}
       <div className="sticky bottom-4 z-30 mt-6 flex items-center justify-end gap-3 rounded-xl border border-black/10 bg-white/95 px-4 py-3 shadow-lg backdrop-blur dark:border-white/10 dark:bg-ink-900/95">

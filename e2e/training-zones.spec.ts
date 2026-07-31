@@ -1,18 +1,22 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledFill } from "./helpers";
 
 // Issue #159: training intensity distribution (HR zones). The seed profile is
 // ~40y with a resting HR, so the zone model builds via Karvonen. e2e/seed-events
 // layers a windowed cardio ride with per-minute HR (50 min Zone 2 + 10 min Zone 4)
-// plus one out-of-window resting bucket that must NOT count. These specs prove the
-// Trends → Fitness zone section renders that distribution, and that the Settings →
+// plus one out-of-window resting bucket that must NOT count (both dated within the
+// hub's 90-day default window, so the section's shared range includes them). These
+// specs prove the Trends → Fitness zone section renders that distribution, and that the Settings →
 // Profile inputs persist. Reads only + a self-cleaning settings round-trip, so no
 // rows other specs assert on are disturbed.
 
 test("Trends → Fitness renders the HR training-intensity section (#159)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=fitness&ftab=cardio");
+  // #1492: the nested `?ftab=cardio` strip retired — zones are a SECTION of the
+  // windowed Fitness lens now (and the old link still lands here, covered by
+  // e2e/trends-fitness-lens.mobile.spec.ts).
+  await page.goto("/trends?tab=fitness");
   const main = page.getByRole("main");
 
   const zones = main.getByTestId("training-zones");
@@ -41,7 +45,7 @@ test("Trends → Fitness renders the HR training-intensity section (#159)", asyn
 test("Settings → Profile persists the max-HR override and Zone 2 target (#159)", async ({
   page,
 }) => {
-  await page.goto("/settings/profile");
+  await page.goto("/settings/training");
   const main = page.getByRole("main");
 
   const form = main.getByTestId("training-zones-form");

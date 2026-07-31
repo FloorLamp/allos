@@ -41,8 +41,9 @@ next-env.d.ts
 # database
 /data
 
-# playwright e2e (isolated DB, saved auth state, reports/artifacts)
+# playwright e2e (per-worker DBs + servers, saved auth state, reports/artifacts)
 /e2e/.data
+# The per-worker signed-in storage state (#1538) — session cookies, never committable.
 /e2e/.auth
 /test-results
 /playwright-report

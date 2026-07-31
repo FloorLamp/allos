@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // Issue #45 (domains 4–6): three deterministic, dismissible observational-findings
 // surfaces, each fed by a pure lib rule over data the app already stores and each
@@ -25,9 +25,11 @@ test("Training → Overview shows a plateau finding for the flat Skullcrusher (#
 test("Trends → Body shows a data-hygiene finding for the weight jump (#45)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   const card = page.getByRole("main").getByTestId("body-hygiene-findings");
   await expect(card).toBeVisible();
+  await expect(card).not.toHaveAttribute("open", "");
+  await card.getByTestId("body-hygiene-findings-toggle").click();
   await expect(card).toContainText(/unusual weight reading/i);
 });
 
@@ -48,9 +50,7 @@ test("Training → Goals shows an off-pace goal finding (#45)", async ({
 // already gone at its first assertion). Short-lived connection, busy timeout
 // so it never contends with the running server (WAL).
 function resetBodyHygieneDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -66,8 +66,9 @@ function resetBodyHygieneDismissals(): void {
 // bus store (dismissBodyHygiene → dismissFinding), so it stops rendering.
 test("a body-hygiene finding can be dismissed (#45)", async ({ page }) => {
   resetBodyHygieneDismissals();
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   const main = page.getByRole("main");
+  await main.getByTestId("body-hygiene-findings-toggle").click();
   // Target the SEEDED 92 kg anomaly specifically: in the full suite other specs
   // (offline-queue, manual-vitals) log weights of their own before this file runs,
   // which can trip additional >3% findings — a bare "Unusual weight reading"

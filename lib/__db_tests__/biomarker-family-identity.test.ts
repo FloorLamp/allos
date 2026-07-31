@@ -13,12 +13,13 @@ import { shiftDateStr } from "@/lib/date";
 import {
   getMedicalRecords,
   getBiomarkerSeries,
-  getStarredBiomarkers,
-  isBiomarkerStarred,
+  getSavedBiomarkers,
+  isBiomarkerSaved,
   collectUpcoming,
   biomarkerFamilyKey,
 } from "@/lib/queries";
 import {
+  BIOMARKER_FAMILIES,
   biomarkerFamily,
   buildCanonicalIndex,
   snapCanonicalName,
@@ -65,9 +66,7 @@ function clearRows() {
   db.prepare(
     "DELETE FROM medical_records WHERE profile_id = ? AND panel = 'Fam'"
   ).run(p.profileId);
-  db.prepare("DELETE FROM starred_biomarkers WHERE profile_id = ?").run(
-    p.profileId
-  );
+  db.prepare("DELETE FROM saved_items WHERE profile_id = ?").run(p.profileId);
 }
 
 function retestKeys(): string[] {
@@ -189,9 +188,9 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 
     // A star on one total spelling lights the star on the other total spelling.
     db.prepare(
-      "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, 'Vitamin D, 25-Hydroxy')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
-    expect(isBiomarkerStarred(p.profileId, "Vitamin D")).toBe(true);
+    expect(isBiomarkerSaved(p.profileId, "Vitamin D")).toBe(true);
 
     // RETEST: a fresh total satisfies the family, so no retest nudge fires.
     expect(retestKeys()).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
@@ -202,11 +201,11 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     addReading("Vitamin D, 25-Hydroxy", old, 30);
     // Star the total; then a NEWER generic-"Vitamin D" total sibling arrives.
     db.prepare(
-      "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, 'Vitamin D, 25-Hydroxy')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
     addReading("Vitamin D", shiftDateStr(p.todayStr, -5), 41);
 
-    const star = getStarredBiomarkers(p.profileId).find(
+    const star = getSavedBiomarkers(p.profileId).find(
       (s) => s.canonical_name === "Vitamin D, 25-Hydroxy"
     );
     // The tile shows the family's latest reading — the newer total sibling.
@@ -272,5 +271,167 @@ describe("derived-analyte retest is satisfied by fresh inputs (#482 scope 2)", (
     addReading("Creatinine", shiftDateStr(p.todayStr, -790), 1.0, "mg/dL");
 
     expect(retestKeys()).toContain("biomarker:egfr");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1401 — the SQL family key must realize the family's `match` matcher, not just
+// its enumerated member list. A stored display name caught ONLY by the regex was a
+// family member to every JS surface (star, retest clock, dismissal key) and its OWN
+// singleton to the dedup / is_latest SQL, so the same measurement double-counted on
+// one date and could be marked "current" twice. The key now calls the ONE pure
+// biomarkerFamily() through the biomarker_family() user function, so the two halves
+// agree on EVERY name rather than only the enumerated ones.
+// ---------------------------------------------------------------------------
+describe("the SQL family key honours a family's match matcher (#1401)", () => {
+  // An A1c spelling `isA1cFamily` catches, that NO family enumerates and that
+  // snapCanonicalName leaves untouched — the escape the issue reports. Synthetic.
+  const FREEFORM = "HbA1c (Whole Blood)";
+
+  function a1cRows(rows: { canonical_name: string | null }[]) {
+    return rows.filter((r) =>
+      (r.canonical_name ?? "").toLowerCase().includes("a1c")
+    );
+  }
+
+  // The SQL family key over a stored row's display name — the exact expression the
+  // dedup / is_latest partitions use.
+  function sqlFamilyKeyOf(canonical: string): string | null {
+    return (
+      db
+        .prepare(
+          `SELECT ${biomarkerFamilyKey()} AS k FROM medical_records
+             WHERE profile_id = ? AND canonical_name = ?`
+        )
+        .get(p.profileId, canonical) as { k: string | null }
+    ).k;
+  }
+
+  it("the fixture name really is match-only (unsnapped and un-enumerated)", () => {
+    // If a later change enumerates or snaps this spelling the test stops proving
+    // anything, so pin the premise: the vocabulary leaves it alone and no family's
+    // member list contains it — yet JS still folds it into the A1c family.
+    expect(snapCanonicalName(FREEFORM, INDEX)).toBe(FREEFORM);
+    const enumerated = BIOMARKER_FAMILIES.flatMap((f) => f.members);
+    expect(enumerated).not.toContain(FREEFORM.toLowerCase());
+    expect(biomarkerFamily(FREEFORM)).toBe("family:hemoglobin-a1c");
+  });
+
+  it("SQL resolves it to the SAME family identity the JS surfaces do", () => {
+    addReading(FREEFORM, shiftDateStr(p.todayStr, -10), 6.1, "%");
+    addReading("Hemoglobin A1c", shiftDateStr(p.todayStr, -40), 6.0, "%");
+    expect(sqlFamilyKeyOf(FREEFORM)).toBe(biomarkerFamily(FREEFORM));
+    expect(sqlFamilyKeyOf(FREEFORM)).toBe(sqlFamilyKeyOf("Hemoglobin A1c"));
+    // A non-family analyte still falls through to its own display name — byte-for-
+    // byte the pre-family grouping, so nothing outside a family moved.
+    addReading("Ferritin", p.todayStr, 55);
+    expect(sqlFamilyKeyOf("Ferritin")).toBe("Ferritin");
+  });
+
+  it("a same-date canonical + match-only pair is ONE reading, not a double count", () => {
+    // The failure scenario: one draw, printed twice — once under the canonical name
+    // and once under a freeform spelling. Same date, value and unit, so this is one
+    // measurement and cross-source dedup must collapse it.
+    const date = shiftDateStr(p.todayStr, -10);
+    addReading("Hemoglobin A1c", date, 6.1, "%");
+    addReading(FREEFORM, date, 6.1, "%");
+    expect(a1cRows(getMedicalRecords(p.profileId))).toHaveLength(1);
+    expect(
+      a1cRows(getMedicalRecords(p.profileId, { current: true }))
+    ).toHaveLength(1);
+  });
+
+  it("a same-date pair with DIFFERENT values stays visible but marks ONE current", () => {
+    // Different values on one date is a genuine conflict, never silently merged —
+    // both rows stay listed — but only ONE can be the family's current reading.
+    const date = shiftDateStr(p.todayStr, -10);
+    addReading("Hemoglobin A1c", date, 6.1, "%");
+    addReading(FREEFORM, date, 6.4, "%");
+    expect(a1cRows(getMedicalRecords(p.profileId))).toHaveLength(2);
+    const current = a1cRows(getMedicalRecords(p.profileId, { current: true }));
+    expect(current).toHaveLength(1);
+  });
+
+  it("the star store and the readings agree about it too", () => {
+    // The cross-surface half of the bug: the star folded the freeform spelling into
+    // the family while the SQL join keyed it as a singleton, so the tile and the
+    // "current reading" pointed at different rows.
+    addReading(FREEFORM, shiftDateStr(p.todayStr, -5), 6.3, "%");
+    db.prepare(
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Hemoglobin A1c')"
+    ).run(p.profileId);
+    expect(isBiomarkerSaved(p.profileId, FREEFORM)).toBe(true);
+    const star = getSavedBiomarkers(p.profileId).find(
+      (s) => s.canonical_name === "Hemoglobin A1c"
+    );
+    expect(star?.latest_value_num).toBe(6.3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1394/#1395 — the retest CLOCK grouped by family while the retest INTERVAL was
+// looked up by the representative row's raw name. Labs report HbA1c and its eAG
+// re-expression on one draw; the eAG line lands with the higher id and becomes the
+// family's representative; the curated dataset has no eAG entry — so a diabetic's
+// quarterly A1c silently fell to the flat 365-day default and the nudge went quiet.
+// ---------------------------------------------------------------------------
+describe("the A1c retest clock and interval key on the same identity (#1394/#1395)", () => {
+  function biomarkerItem(key: string) {
+    return collectUpcoming(p.profileId, p.todayStr).find((i) => i.key === key);
+  }
+  const A1C_KEY = "biomarker:family:hemoglobin-a1c";
+
+  // A1c 7.2% plus its eAG re-expression on one draw. eAG is inserted SECOND, so it
+  // carries the higher id and wins the family's "newest wins, id breaks the tie"
+  // representative rule — the condition the bug needs. Synthetic values.
+  function addOneDraw(date: string) {
+    addReading("Hemoglobin A1c", date, 7.2, "%");
+    addReading("Estimated Average Glucose", date, 160, "mg/dL");
+  }
+
+  it("an eAG-representative family still nudges on the 90-day A1c clock", () => {
+    const date = shiftDateStr(p.todayStr, -120); // stale at 90d, fresh at 365d
+    addOneDraw(date);
+    // Premise: the family's representative really is the eAG line, whose name the
+    // curated dataset does not carry.
+    const current = getMedicalRecords(p.profileId, { current: true }).filter(
+      (r) =>
+        biomarkerFamily(r.canonical_name ?? r.name) === "family:hemoglobin-a1c"
+    );
+    expect(current).toHaveLength(1);
+    expect(current[0].canonical_name).toBe("Estimated Average Glucose");
+
+    const item = biomarkerItem(A1C_KEY);
+    expect(item).toBeDefined();
+    // The family's curated cadence, not the flat 365-day fallback.
+    expect(item!.dueDate).toBe(shiftDateStr(date, 90));
+    // …and the line names the family's anchor, so the title doesn't drift with
+    // whichever member happens to be newest (the key never did).
+    expect(item!.title).toBe("Retest Hemoglobin A1c");
+  });
+
+  it("stays quiet inside the 90-day window", () => {
+    addOneDraw(shiftDateStr(p.todayStr, -30));
+    expect(biomarkerItem(A1C_KEY)).toBeUndefined();
+  });
+
+  it("reads the same clock when the lab reported ONLY the eAG line", () => {
+    const date = shiftDateStr(p.todayStr, -120);
+    addReading("Estimated Average Glucose", date, 160, "mg/dL");
+    const item = biomarkerItem(A1C_KEY);
+    expect(item).toBeDefined();
+    expect(item!.dueDate).toBe(shiftDateStr(date, 90));
+  });
+
+  it("does not leak the A1c clock onto a neighbouring glucose analyte", () => {
+    // A plain fasting glucose is NOT the A1c family — it keeps its own 180d cadence,
+    // its own key, and its own title.
+    const date = shiftDateStr(p.todayStr, -200);
+    addReading("Glucose, Fasting", date, 96, "mg/dL");
+    const item = biomarkerItem("biomarker:glucose, fasting");
+    expect(item).toBeDefined();
+    expect(item!.dueDate).toBe(shiftDateStr(date, 180));
+    expect(item!.title).toBe("Retest Glucose, Fasting");
+    expect(biomarkerItem(A1C_KEY)).toBeUndefined();
   });
 });

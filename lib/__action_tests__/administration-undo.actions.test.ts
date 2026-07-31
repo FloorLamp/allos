@@ -15,7 +15,7 @@ import {
   logMedicationAdministration,
   deleteAdministration,
 } from "@/app/(app)/medications/actions";
-import { undoDelete } from "@/app/(app)/undo/actions";
+import { undoDelete } from "@/app/(app)/undo-actions";
 import { seedActor, fd, type TestProfile } from "./harness";
 
 vi.mocked(revalidatePath);
@@ -26,9 +26,8 @@ function seedPrnMed(profile: TestProfile, onHand = 20): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed,
-            quantity_on_hand, qty_per_dose)
-         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, ?, 1)`
+           (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'may', ?, 1)`
       )
       .run(profile.id, onHand).lastInsertRowid
   );

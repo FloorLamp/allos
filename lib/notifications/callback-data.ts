@@ -16,6 +16,7 @@ import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
+import { OFFER_COLLAPSE_PREFIX, OFFER_EXPAND_PREFIX } from "./offer-tail";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
@@ -138,7 +139,14 @@ export function resolveTapProfile(
 // repeat) — the only outcomes a "Logged ✅" acknowledgement is honest for. An
 // "already-skipped" dose is resolved, but NOT as taken (issue #280).
 export function tapLogged(outcome: DoseTakenOutcome): boolean {
-  return outcome === "logged" || outcome === "already-taken";
+  return (
+    outcome === "logged" ||
+    // A taken log WAS written on an off-cadence day (#1602) — it resolves the dose and
+    // is honestly "logged". Only the ANSWER TEXT differs, so that the tap is not
+    // acknowledged as if the dose had been due.
+    outcome === "logged-off-day" ||
+    outcome === "already-taken"
+  );
 }
 
 // True when a tap left the dose RESOLVED (taken, skipped, or an already-standing
@@ -147,6 +155,7 @@ export function tapLogged(outcome: DoseTakenOutcome): boolean {
 export function tapResolved(outcome: DoseTakenOutcome): boolean {
   return (
     outcome === "logged" ||
+    outcome === "logged-off-day" ||
     outcome === "skipped" ||
     outcome === "already-taken" ||
     outcome === "already-skipped"
@@ -160,11 +169,22 @@ export function tapResolved(outcome: DoseTakenOutcome): boolean {
 // behavior, which falsely confirmed doses of possibly-critical medications).
 // Likewise a dose meanwhile resolved as SKIPPED (issue #280): the ✅ tap wrote
 // nothing, so the answer names the status that actually stands.
-export function tapAnswerText(outcome: DoseTakenOutcome): string {
+export function tapAnswerText(
+  outcome: DoseTakenOutcome,
+  // The item's cadence phrase (`cadenceLabel`), for the off-day answer only.
+  cadence?: string | null
+): string {
   switch (outcome) {
     case "logged":
     case "already-taken": // idempotent repeat of a taken log — honest
       return "Logged ✅";
+    // Logged, but NOT on one of this item's days (#1602). A frozen reminder message can
+    // outlive the day it was built for, and a cadence makes that gap meaningful: the
+    // answer says so rather than confirming as though the dose had been owed.
+    case "logged-off-day":
+      return cadence
+        ? `Logged ✅ — note: scheduled for ${cadence}`
+        : "Logged ✅ — note: not scheduled today";
     case "already-skipped":
       return "Not logged — already marked skipped ⏭. Open the app to change it.";
     case "inactive":
@@ -185,6 +205,7 @@ export function tapSkipAnswerText(outcome: DoseTakenOutcome): string {
     case "skipped":
     case "already-skipped": // idempotent repeat of a skip — honest
       return "Skipped ⏭";
+    case "logged-off-day":
     case "already-taken":
       return "Not skipped — already logged as taken ✅. Open the app to change it.";
     case "inactive":
@@ -353,7 +374,9 @@ export function refillAnswerText(outcome: RefillTapOutcome): string {
 // The token mirrors a dose tap's shape (profile/dose/supp/date) under distinct
 // "esctake"/"escack" prefixes.
 
-export type EscalationAction = "take" | "ack";
+// ⏭ Skip joins the two original affordances (#1716): a skip is a RECORDED DELIBERATE
+// DECISION, distinct from silence, and skipped doses already end the escalation loop.
+export type EscalationAction = "take" | "ack" | "skip";
 
 export interface EscalationCallback {
   profileId: number;
@@ -363,14 +386,15 @@ export interface EscalationCallback {
   action: EscalationAction;
 }
 
-// Parse an "esctake:…" / "escack:…" token (same field layout as a dose token).
-// Malformed (wrong prefix, bad ids, missing date) → null.
+// Parse an "esctake:…" / "escskip:…" / "escack:…" token (same field layout as a dose
+// token). Malformed (wrong prefix, bad ids, missing date) → null.
 export function parseEscalationCallback(
   data: unknown
 ): EscalationCallback | null {
   if (typeof data !== "string") return null;
   let action: EscalationAction;
   if (data.startsWith("esctake:")) action = "take";
+  else if (data.startsWith("escskip:")) action = "skip";
   else if (data.startsWith("escack:")) action = "ack";
   else return null;
   const [, profStr, doseStr, suppStr, date] = data.split(":");
@@ -438,6 +462,25 @@ export function escalationTakeCloseText(outcome: DoseTakenOutcome): string {
     return "This dose was marked skipped ⏭ — check the app.";
   }
   return OUTDATED_MESSAGE_TEXT;
+}
+
+// Replacement message body after an escalation ⏭ Skip tap (#1716), per
+// markDoseSkipped's outcome. A skip that STANDS closes the escalation honestly; an
+// already-taken dose is not silently overwritten, and a stale/paused dose says so.
+// Shares the ledger — and therefore the vocabulary — with the dose reminder's own skip.
+export function escalationSkipCloseText(outcome: DoseTakenOutcome): string {
+  switch (outcome) {
+    case "skipped":
+    case "already-skipped":
+      return "Skipped ⏭ — recorded as a decision, not a miss.";
+    case "logged-off-day":
+    case "already-taken":
+      return "Already confirmed taken ✅";
+    case "inactive":
+    case "stale-dose":
+    default:
+      return OUTDATED_MESSAGE_TEXT;
+  }
 }
 
 // Replacement message body after an escalation 👍 I'm-on-it tap, per
@@ -533,17 +576,11 @@ export function parsePracticeDoneCallback(
   return { profileId, targetId, token };
 }
 
-// The toast answer for a practice Done tap, from the typed write outcome. Honest per
-// outcome (the markDoseTaken contract): the running count on a fresh log, an honest
-// "couldn't log" otherwise — never an unconditional confirm.
-export function practiceDoneAnswerText(outcome: PracticeLogOutcome): string {
-  if (outcome.kind === "logged") {
-    return outcome.count === 1
-      ? "Logged today's session"
-      : `Logged — ${outcome.count} sessions today`;
-  }
-  return "Couldn't log that session.";
-}
+// The toast answer for a practice Done tap is `practiceLogOutcomeText` in lib/practice.ts
+// — the SAME sentence the Wellness card's button, the quick-entry overlay row, and the
+// command palette's inline quick log say, because they all answer from one write core's
+// one typed outcome (#1633). It used to live here, which made the chat surface the
+// accidental owner of a domain string three web surfaces also needed.
 
 // ---- Workout finish/discard over Telegram (the stale-nudge buttons, #1205) ----
 // The "⏱️ Still working out?" nudge's "Finish workout" / "Discard" buttons carry the
@@ -724,18 +761,29 @@ export function parseFoodOptInCallback(
 // (the #232 never-unconditionally-confirm discipline); only a current-day tap logs.
 // A same-day tap from an older window keeps working (the date is right; only the
 // button counts on the old message are stale, which the rebuild refreshes).
-export type FoodTapDateGuard = { kind: "current-day" } | { kind: "stale-date" };
+export type TapDateGuard = { kind: "current-day" } | { kind: "stale-date" };
+export type FoodTapDateGuard = TapDateGuard;
 
-// Decide whether a food tap's token date is today in the profile's timezone. Pure so
-// the tz-midnight boundary (a 23:59 tap on yesterday's nudge vs a 00:01 tap on
-// today's) is unit-pinnable; the handler passes today(profileId).
+// Decide whether a tap's token date is still the subject's today. Pure, so the
+// tz-midnight boundary (a 23:59 tap on yesterday's message vs a 00:01 tap on today's)
+// is unit-pinnable. ONE guard for every live-keyboard surface (#221): the food nudge
+// (#947) and the household round (#1719) both mint tokens carrying a send-time date,
+// and both would otherwise write to the wrong day on a next-morning tap.
+export function tapDateGuard(
+  tokenDate: string,
+  todayDate: string
+): TapDateGuard {
+  return tokenDate === todayDate
+    ? { kind: "current-day" }
+    : { kind: "stale-date" };
+}
+
+// The food nudge's name for the shared guard; the handler passes today(profileId).
 export function foodTapDateGuard(
   tokenDate: string,
   todayDate: string
 ): FoodTapDateGuard {
-  return tokenDate === todayDate
-    ? { kind: "current-day" }
-    : { kind: "stale-date" };
+  return tapDateGuard(tokenDate, todayDate);
 }
 
 // The honest Telegram toast for a refused cross-date tap: name the stale date so the
@@ -844,6 +892,46 @@ export function parseMoodCheckinCallback(
   return { profileId, valence: Number(m[2]), date: m[3] };
 }
 
+// The "Keep daily check-ins" token (#1668): "moodkeep:<profileId>:<date>". Ids only.
+export interface MoodKeepCallback {
+  profileId: number;
+  date: string;
+}
+
+export function parseMoodKeepCallback(data: unknown): MoodKeepCallback | null {
+  if (typeof data !== "string" || !data.startsWith("moodkeep:")) return null;
+  const m = /^moodkeep:(\d+):(\d{4}-\d{2}-\d{2})$/.exec(data);
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  if (!profileId) return null;
+  return { profileId, date: m[2] };
+}
+
+// The outcome of a keep/resume — a typed union, never a boolean, so the toast states
+// what actually happened. "already-active" covers the tap on a message whose streak was
+// meanwhile reset by a logged mood (the auto-resume path), which is not a failure.
+export type MoodKeepOutcome = "kept" | "already-active" | "not-enabled";
+
+export function moodKeepAnswerText(outcome: MoodKeepOutcome): string {
+  switch (outcome) {
+    case "kept":
+      return "Got it — daily check-ins continue 🙂";
+    case "already-active":
+      return "Check-ins are already running — nothing to resume.";
+    case "not-enabled":
+    default:
+      return "Check-ins are off — turn them on in Settings → Notifications.";
+  }
+}
+
+// The closing line the announcement collapses to once kept (its title is retained
+// above it by replacementWithTitle).
+export function moodKeepCloseText(outcome: MoodKeepOutcome): string {
+  return outcome === "kept"
+    ? "Daily check-ins will keep coming 🙂"
+    : moodKeepAnswerText(outcome);
+}
+
 // The 1..4 severity button labels (mirrors the symptom-log bar's scale).
 export const SYMPTOM_SEVERITY_LABELS: Record<number, string> = {
   1: "Mild",
@@ -896,4 +984,150 @@ export function parseTempReply(
         ? "C"
         : "F";
   return { value, unit };
+}
+
+// ---- Household dose round (issue #1459) --------------------------------------
+// The caregiver-subscribed cross-profile dose reminder: one message in the RECEIVING
+// profile's chat listing OTHER household members' due doses, each with a confirm
+// button. The token therefore carries TWO profile ids:
+//
+//   hh:<receiverProfileId>:<memberProfileId>:<doseId>:<itemId>:<date>
+//
+//   • receiverProfileId — the subscribing profile whose chat the round was sent to.
+//     The handler cross-checks it against the chat the tap CAME from, so a token
+//     leaked into another chat can't be replayed there.
+//   • memberProfileId  — the profile the dose belongs to, and the WRITE SCOPE the
+//     confirm runs under (markDoseTaken's first argument).
+//
+// Ids only, never names (#233), and neither id is trusted alone: the handler
+// re-validates the receiver→member access edge against LIVE grants at tap time,
+// exactly as the send did. A revoked grant between send and tap must refuse.
+export interface HouseholdDoseCallback {
+  receiverProfileId: number;
+  memberProfileId: number;
+  doseId: number;
+  itemId: number;
+  date: string;
+}
+
+// The single source of truth for the token (the formatter mints it, the parser reads
+// it) so send and handle can never drift apart.
+export function householdDoseCallback(cb: HouseholdDoseCallback): string {
+  return `hh:${cb.receiverProfileId}:${cb.memberProfileId}:${cb.doseId}:${cb.itemId}:${cb.date}`;
+}
+
+// Parse a household-round confirm token. Anything malformed — wrong prefix, a
+// non-numeric id, a missing date, or a receiver that IS the member (the round is
+// cross-profile by construction) — returns null and the tap falls through to the
+// generic acknowledge.
+export function parseHouseholdDoseCallback(
+  data: unknown
+): HouseholdDoseCallback | null {
+  if (typeof data !== "string" || !data.startsWith("hh:")) return null;
+  const [, receiverStr, memberStr, doseStr, itemStr, date] = data.split(":");
+  const receiverProfileId = Number(receiverStr);
+  const memberProfileId = Number(memberStr);
+  const doseId = Number(doseStr);
+  const itemId = Number(itemStr);
+  if (!receiverProfileId || !memberProfileId || !doseId || !itemId || !date) {
+    return null;
+  }
+  if (receiverProfileId === memberProfileId) return null;
+  return { receiverProfileId, memberProfileId, doseId, itemId, date };
+}
+
+// The outcome of resolving a household-round tap's ACCESS, before any write. Kept a
+// typed union (never a boolean) so the handler answers each refusal honestly — the
+// same discipline markDoseTaken's outcome union enforces on the write itself.
+export type HouseholdTapAccess =
+  | { kind: "allowed"; loginId: number }
+  | { kind: "wrong-chat" } // the tap came from a chat that isn't the receiver's
+  | { kind: "unsubscribed" } // the round was turned off, or this member deselected
+  | { kind: "revoked" }; // no login of the receiver still has write access
+
+// The Telegram toast for a REFUSED household tap. A refusal must never read like a
+// confirm: each case names what actually happened, and none of them wrote anything.
+export function householdTapRefusalText(
+  access: Exclude<HouseholdTapAccess, { kind: "allowed" }>
+): string {
+  switch (access.kind) {
+    case "unsubscribed":
+      return "Not logged — this household round is no longer set up. Open the app.";
+    case "revoked":
+      return "Not logged — you no longer have access to log for this person.";
+    case "wrong-chat":
+    default:
+      return "Not logged — this reminder is out of date. Open the app.";
+  }
+}
+
+// The honest toast for a household tap refused because its token names a date that is
+// no longer the MEMBER's today (#1719). The date compared is the member's, not the
+// receiver's: a round assembled at the receiver's slot can legitimately span two
+// calendar dates in a mixed-timezone household, and each button carries its own
+// member's day. Names the stale date, and says a fresh round is coming — a caregiver
+// must not be left wondering whether the dose was recorded somewhere.
+export function householdStaleDateAnswerText(tokenDate: string): string {
+  return `Not logged — this round is from ${tokenDate}. Today's round will arrive as usual.`;
+}
+
+// The toast for a household confirm that DID reach the write, per markDoseTaken's
+// outcome. Prefixed with the member's name because one chat's round spans several
+// people and a bare "Logged ✅" doesn't say for whom (#531 label discipline applied
+// to the answer, not just the button).
+export function householdTapAnswerText(
+  memberName: string,
+  outcome: DoseTakenOutcome
+): string {
+  const base = tapAnswerText(outcome);
+  return tapLogged(outcome) ? `${memberName}: ${base}` : base;
+}
+
+// ---- The offer tail (issue #1505) ------------------------------------------
+
+export interface OfferTailCallback {
+  profileId: number;
+  date: string;
+  // Which way the tap moves the keyboard. Both directions are pure keyboard edits:
+  // no message is sent, nothing is written, nothing is logged.
+  action: "expand" | "collapse";
+}
+
+// Parse an "offer:<profileId>:<date>" / "offerc:<profileId>:<date>" tail token.
+// `date` is the digest's own day: a tap on YESTERDAY's message must not expand into
+// today's offers, because the keyboard would then be logging against a message whose
+// context has rolled over (the tick strips old keyboards for the same reason).
+export function parseOfferTailCallback(
+  data: unknown
+): OfferTailCallback | null {
+  if (typeof data !== "string") return null;
+  const [prefix, profStr, date] = data.split(":");
+  if (prefix !== OFFER_EXPAND_PREFIX && prefix !== OFFER_COLLAPSE_PREFIX)
+    return null;
+  const profileId = Number(profStr);
+  if (!profileId || !date) return null;
+  return {
+    profileId,
+    date,
+    action: prefix === OFFER_EXPAND_PREFIX ? "expand" : "collapse",
+  };
+}
+
+export interface DemoteCallback {
+  profileId: number;
+  itemId: number;
+  date: string;
+}
+
+// Parse a "demote:<profileId>:<itemId>:<date>" button token — the ⤓ May action
+// riding a dose reminder (#1505 part 2). Like every other tap token, the profile id
+// is a CROSS-CHECK only: the handler re-resolves the acting profile from the chat and
+// the write re-filters on it, so a forged id reaches nothing.
+export function parseDemoteCallback(data: unknown): DemoteCallback | null {
+  if (typeof data !== "string" || !data.startsWith("demote:")) return null;
+  const [, profStr, itemStr, date] = data.split(":");
+  const profileId = Number(profStr);
+  const itemId = Number(itemStr);
+  if (!profileId || !itemId || !date) return null;
+  return { profileId, itemId, date };
 }

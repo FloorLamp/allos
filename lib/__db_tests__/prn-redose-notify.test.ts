@@ -55,9 +55,8 @@ function seedRedoseMed(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed,
-            redose_notice, min_interval_hours, max_daily_count)
-         VALUES (?, 'Ibuprofen (test)', 1, 'medication', 'daily', 'high', 1, ?, ?, ?)`
+           (profile_id, name, active, kind, condition, obligation, redose_notice, min_interval_hours, max_daily_count)
+         VALUES (?, 'Ibuprofen (test)', 1, 'medication', 'daily', 'may', ?, ?, ?)`
       )
       .run(profileId, redoseNotice, minInterval, maxDaily).lastInsertRowid
   );
@@ -204,6 +203,26 @@ describe("runRedoseNotices orchestrator", () => {
     await runRedoseNotices(p, "RedoseNoInterval", date, now);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
+  });
+
+  // #1721: the two dispatch-path builders (redose, post-workout) never met the
+  // tick's prefixMessage and named nobody. In a two-profile household chat a
+  // safety-adjacent "whose ibuprofen interval passed?" must be answerable from the
+  // message itself — every other dispatch-path builder already self-attributes.
+  it("names the subject profile in a multi-profile instance (#1721)", async () => {
+    const p = newProfile("Ada");
+    newProfile("Bo"); // a second data subject in the same instance
+    const { itemId, doseId } = seedRedoseMed(p);
+    const now = new Date();
+    const date = today(p);
+    logAdmin(itemId, doseId, date, 8, now);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runRedoseNotices(p, "Ada", date, now);
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(payload.title).toContain("Ada");
+    expect(payload.kind).toBe("redose");
   });
 
   it("no channel configured ⇒ no marker, retries next tick", async () => {

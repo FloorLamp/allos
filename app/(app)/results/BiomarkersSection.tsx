@@ -7,12 +7,12 @@ import {
 import { today } from "@/lib/db";
 import { EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
-import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
+import { parseSortDir } from "@/lib/table-sort";
 import {
   filterDerivedForTable,
   prepareTableRecords,
   prepareMultiViewTableRecords,
-  paginateRecords,
+  parseBiomarkerSortColumn,
 } from "@/lib/derived-table";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
@@ -20,6 +20,7 @@ import BioAgeHero from "@/components/BioAgeHero";
 import TrajectoryFindings from "./TrajectoryFindings";
 import BiomarkersTable from "@/components/BiomarkersTable";
 import RecordForm from "@/components/RecordForm";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
 import { addRecord } from "@/app/(app)/medical/actions";
@@ -27,6 +28,9 @@ import {
   BIOMARKER_CATEGORIES,
   NON_BIOMARKER_CATEGORIES,
 } from "@/lib/medical-categories";
+import { parsePanelId } from "@/lib/biomarker-panels";
+import { reachablePanelIds } from "@/lib/biomarker-panel-reach";
+import { PHONE_STACK } from "@/lib/phone-fold";
 
 // The query params the Biomarkers section consumes — the former /biomarkers index
 // page's searchParams, unchanged (#1042 phase 5 moved the content, not the
@@ -39,10 +43,21 @@ export interface BiomarkersSearchParams {
   sort?: string;
   dir?: string;
   current?: string;
-  p?: string;
   // Prefill the add form's name from the command palette's "Add result" hit
   // action (#662). Reached as /results?new=1&name=<canonical>#biomarkers.
   name?: string;
+  // The intent half of that deep link. Since #1499 section C the add form lives
+  // behind "+ Add result", so an "I came here to add a reading" link has to say so:
+  // `?new=1` (or a prefilled `?name=`) auto-expands the panel.
+  new?: string;
+}
+
+// Does this visit want the entry panel OPEN on arrival? Only a deliberate
+// add-a-reading deep link — the command palette's "Add result" hit and the
+// medication-monitoring "log this lab" action both carry `new=1&name=<analyte>`.
+// An ordinary read of the hub gets the collapsed affordance.
+function entryPanelOpen(searchParams: BiomarkersSearchParams): boolean {
+  return searchParams.new === "1" || !!searchParams.name?.trim();
 }
 
 // Parse the shared browser filters/sort off the searchParams once — identical for
@@ -56,7 +71,11 @@ function parseFilters(searchParams: BiomarkersSearchParams) {
   const category = BIOMARKER_CATEGORIES.includes(searchParams.category as never)
     ? searchParams.category
     : undefined;
-  const panel = searchParams.panel?.trim() || undefined;
+  // `?panel=` is a normalized panel SLUG (#1502), validated against the closed
+  // PanelId set: an unknown/legacy value (an old bookmark carrying the free-text
+  // "Quest Diagnostics" the facet used to emit) is IGNORED rather than filtering
+  // the table to nothing, and a typo can never fork a group.
+  const panel = parsePanelId(searchParams.panel);
   const range =
     searchParams.range === "oor"
       ? ("oor" as const)
@@ -64,11 +83,20 @@ function parseFilters(searchParams: BiomarkersSearchParams) {
         ? ("nonoptimal" as const)
         : undefined;
   const q = searchParams.q?.trim() || undefined;
-  const sort = parseSortColumn(
-    searchParams.sort,
-    ["name", "panel", "date"] as const,
-    "name"
-  );
+  // Default sort is NAME ascending, which orders readings of one analyte date
+  // DESCENDING (medicalOrderBy's `name, date DESC, id DESC`) — newest first under
+  // each heading. #1499 briefly defaulted to `panel` instead, for a reason that was
+  // entirely a paging artifact: one bounded page (#114) held an alphabetical slice
+  // scattered across a dozen panels, so each header counted the sliver of its panel
+  // that landed there. #1581 dropped the page, so the groups are whole either way
+  // and the ordering the reader can actually perceive — the order of names INSIDE an
+  // expanded group — is what the default should serve.
+  //
+  // `panel` is deliberately NOT an offered sort column any more: grouping already
+  // emits the panels in curated clinical order, so "sort by panel" reorders groups
+  // that are no longer paged apart and does nothing visible. An old `?sort=panel`
+  // bookmark falls back to `name` through parseSortColumn rather than failing.
+  const sort = parseBiomarkerSortColumn(searchParams.sort);
   const dir = parseSortDir(searchParams.dir);
   const current = searchParams.current === "1";
   return { category, panel, range, q, sort, dir, current };
@@ -137,80 +165,107 @@ function SingleBiomarkersView({
     dir,
     current,
   });
-  // Ship only ONE page to the client BiomarkersTable so the RSC payload stays
-  // bounded as lab history grows (#114) — the full deduped list is built above in
-  // one pass, then sliced here by the `?p=` page (clamped to a real page).
-  const pageData = paginateRecords(records, Number(searchParams.p));
   const canonicalOptions = getCanonicalAutocomplete(profileId);
   const now = today(profileId);
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <CanonicalNamesProvider names={canonicalOptions}>
-        <div>
+        {/* DOM order is the unchanged #1499 section D order — the CURATED GLANCE
+        first (the pinned analytes you chose, then what is moving, then the aging
+        index), the panel-group index below it — and from `sm` up that is also what
+        renders, because every slot's order resets there. Below `sm` the slots are
+        re-ordered so the INDEX leads (#1647); the reasoning, and why caps alone
+        could not get there, is in lib/phone-fold's PHONE_STACK. */}
+        <div className={PHONE_STACK.container} data-testid="biomarkers-stack">
+          <div className={PHONE_STACK.glance}>
+            {/* Starred leads on desktop because it is the only part the reader
+            authored. On a phone it is a surface you go TO, so it sits below the
+            index — still whole, still one scroll, never behind a tap. */}
+            <StarredBiomarkers />
+          </div>
+
           {/* Forward-looking trajectory rules (#41), the ONE thing #1164 moved from the
           deleted Trends → Biomarkers tab: a "what's changing" area that warns BEFORE a
           single-value flag catches a range crossing. A full-history standing read, so
-          it ignores the browser's filters. Renders nothing when no trajectory fires. */}
-          <TrajectoryFindings />
+          it ignores the browser's filters. Renders nothing when no trajectory fires.
+          It KEEPS its place above the index on a phone — it is the one card here that
+          has to find the reader rather than be looked up — and pays for it by folding
+          its rows at that width (#1647). */}
+          <div className={PHONE_STACK.warning}>
+            <TrajectoryFindings />
+          </div>
 
           {/* Biological-age hero (#209): the derived PhenoAge index (#157) surfaced as a
           headline "how am I aging" result, pinned above the analyte table. Adult-
           gated; renders nothing for child profiles. The derived table row remains. */}
-          <BioAgeHero />
+          <div className={PHONE_STACK.glance}>
+            <BioAgeHero />
+          </div>
 
-          <StarredBiomarkers />
-
-          <MedicalFilters
-            category={active}
-            panel={panel}
-            range={range}
-            q={q}
-            current={current}
-          />
-
-          {pageData.total === 0 ? (
-            <EmptyState
-              message={
-                active || panel || range || q || current
-                  ? "No records match these filters."
-                  : "No records yet. Import documents from the Data page (Data → Import), or add one below."
-              }
+          <div className={PHONE_STACK.index}>
+            {/* The facet offers the taxonomy intersected with what this browser's
+            category scope can actually surface (#1581 section D) — a STATIC
+            derivation, so its contents stay stable while filters change. It travels
+            WITH the table across the phone re-order: a control that filters a list
+            has to stay attached to the list it filters. */}
+            <MedicalFilters
+              category={active}
+              panel={panel}
+              panels={reachablePanelIds()}
+              range={range}
+              q={q}
+              current={current}
             />
-          ) : (
-            <BiomarkersTable
-              records={pageData.rows}
-              now={now}
-              filters={{
-                category: active,
-                panel,
-                range,
-                q,
-                sort,
-                dir,
-                current,
-              }}
-              pagination={{
-                total: pageData.total,
-                page: pageData.page,
-                pageCount: pageData.pageCount,
-                pageSize: pageData.pageSize,
-              }}
-            />
-          )}
 
-          <div className="card mb-6" id="add-result">
-            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Add medical record
-            </h2>
-            <RecordForm
-              mode="add"
-              action={addRecord}
-              categories={BIOMARKER_CATEGORIES}
-              defaultDate={now}
-              defaultCategory={active ?? "lab"}
-              defaultName={searchParams.name?.trim() || undefined}
-            />
+            {records.length === 0 ? (
+              <EmptyState
+                message={
+                  active || panel || range || q || current
+                    ? "No records match these filters."
+                    : "No records yet. Import documents from the Data page (Data → Import), or add one below."
+                }
+              />
+            ) : (
+              <BiomarkersTable
+                records={records}
+                now={now}
+                filters={{
+                  category: active,
+                  panel,
+                  range,
+                  q,
+                  sort,
+                  dir,
+                  current,
+                }}
+              />
+            )}
+          </div>
+
+          {/* Entry behind "+ Add result" (#1499 section C — the #1497 rare-cadence
+          rule). Lab readings arrive a few times a year, mostly by import; a standing
+          form charged every read of the hub for it. `#add-result` stays on the
+          wrapper so the palette / medication-monitoring deep links still land here,
+          and they auto-expand it. */}
+          <div className={PHONE_STACK.entry}>
+            <AddEntryPanel
+              id="add-result"
+              testId="add-result-panel"
+              panelId="add-result-panel-body"
+              label="Add medical record"
+              addLabel="Add result"
+              defaultOpen={entryPanelOpen(searchParams)}
+            >
+              <RecordForm
+                mode="add"
+                action={addRecord}
+                categories={BIOMARKER_CATEGORIES}
+                defaultDate={now}
+                defaultCategory={active ?? "lab"}
+                defaultName={searchParams.name?.trim() || undefined}
+              />
+            </AddEntryPanel>
           </div>
         </div>
       </CanonicalNamesProvider>
@@ -266,14 +321,13 @@ function MultiBiomarkersView({
   );
   // Merge the partitions: is_latest recomputed per (profile, family), `current`
   // applied over that per-member latest, then ordered with the subject dimension for
-  // stable pagination. Slice one page, then stamp subject identity onto the page.
+  // a deterministic merge. Subject identity is stamped onto the merged rows.
   const records = prepareMultiViewTableRecords(storedTagged, derivedTagged, {
     sort,
     dir,
     current,
   });
-  const pageData = paginateRecords(records, Number(searchParams.p));
-  const pageRows = stampSubjects(scope, pageData.rows);
+  const rows = stampSubjects(scope, records);
   // The add form + canonical autocomplete + relative-age clock are acting-scoped.
   const canonicalOptions = getCanonicalAutocomplete(scope.actingProfileId);
   const now = today(scope.actingProfileId);
@@ -281,74 +335,92 @@ function MultiBiomarkersView({
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <CanonicalNamesProvider names={canonicalOptions}>
-        <div>
-          {/* Personal "you" surfaces stay acting-only in multi-view. */}
-          <TrajectoryFindings />
-          <BioAgeHero />
-
+        {/* The same four phone slots as single view (#1647) — a caregiver on a phone
+        reads the index first for the same reason, and one member's stars must not
+        push it further down than another's. N starred cards share ONE glance slot, so
+        their relative order (and the whole card list's position) is unchanged. */}
+        <div className={PHONE_STACK.container} data-testid="biomarkers-stack">
           {/* Starred lens is per profile — one labeled card per member (each renders
-          nothing when that member has no stars). */}
-          {scope.profiles
-            .filter((p) => ids.includes(p.id))
-            .map((p) => (
-              <StarredBiomarkers
-                key={p.id}
-                profileId={p.id}
-                subjectLabel={p.name}
+          nothing when that member has no stars). Ordered ahead of the trajectory
+          rollup and the bio-age hero, matching single view (#1499 section D). */}
+          <div className={PHONE_STACK.glance}>
+            {scope.profiles
+              .filter((p) => ids.includes(p.id))
+              .map((p) => (
+                <StarredBiomarkers
+                  key={p.id}
+                  profileId={p.id}
+                  subjectLabel={p.name}
+                />
+              ))}
+          </div>
+
+          {/* Personal "you" surfaces stay acting-only in multi-view. */}
+          <div className={PHONE_STACK.warning}>
+            <TrajectoryFindings />
+          </div>
+          <div className={PHONE_STACK.glance}>
+            <BioAgeHero />
+          </div>
+
+          <div className={PHONE_STACK.index}>
+            {/* The facet offers the taxonomy intersected with what this browser's
+            category scope can actually surface (#1581 section D) — a STATIC
+            derivation, so its contents stay stable while filters change. */}
+            <MedicalFilters
+              category={active}
+              panel={panel}
+              panels={reachablePanelIds()}
+              range={range}
+              q={q}
+              current={current}
+            />
+
+            {records.length === 0 ? (
+              <EmptyState
+                message={
+                  active || panel || range || q || current
+                    ? "No records match these filters."
+                    : "No records yet for these profiles. Import documents from the Data page (Data → Import), or add one below."
+                }
               />
-            ))}
+            ) : (
+              <BiomarkersTable
+                records={rows}
+                now={now}
+                multiView={{ actingProfileId: scope.actingProfileId }}
+                filters={{
+                  category: active,
+                  panel,
+                  range,
+                  q,
+                  sort,
+                  dir,
+                  current,
+                }}
+              />
+            )}
+          </div>
 
-          <MedicalFilters
-            category={active}
-            panel={panel}
-            range={range}
-            q={q}
-            current={current}
-          />
-
-          {pageData.total === 0 ? (
-            <EmptyState
-              message={
-                active || panel || range || q || current
-                  ? "No records match these filters."
-                  : "No records yet for these profiles. Import documents from the Data page (Data → Import), or add one below."
-              }
-            />
-          ) : (
-            <BiomarkersTable
-              records={pageRows}
-              now={now}
-              multiView={{ actingProfileId: scope.actingProfileId }}
-              filters={{
-                category: active,
-                panel,
-                range,
-                q,
-                sort,
-                dir,
-                current,
-              }}
-              pagination={{
-                total: pageData.total,
-                page: pageData.page,
-                pageCount: pageData.pageCount,
-                pageSize: pageData.pageSize,
-              }}
-            />
-          )}
-
-          <div className="card mb-6" id="add-result">
-            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Add medical record
-            </h2>
-            <RecordForm
-              mode="add"
-              action={addRecord}
-              categories={BIOMARKER_CATEGORIES}
-              defaultDate={now}
-              defaultCategory={active ?? "lab"}
-              defaultName={searchParams.name?.trim() || undefined}
-            />
+          {/* Entry behind "+ Add result" (#1499 section C), acting-scoped as before. */}
+          <div className={PHONE_STACK.entry}>
+            <AddEntryPanel
+              id="add-result"
+              testId="add-result-panel"
+              panelId="add-result-panel-body"
+              label="Add medical record"
+              addLabel="Add result"
+              defaultOpen={entryPanelOpen(searchParams)}
+            >
+              <RecordForm
+                mode="add"
+                action={addRecord}
+                categories={BIOMARKER_CATEGORIES}
+                defaultDate={now}
+                defaultCategory={active ?? "lab"}
+                defaultName={searchParams.name?.trim() || undefined}
+              />
+            </AddEntryPanel>
           </div>
         </div>
       </CanonicalNamesProvider>

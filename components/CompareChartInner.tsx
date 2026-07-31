@@ -12,6 +12,17 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import {
+  ChartLegend,
+  chartActiveDot,
+  chartAxisProps,
+  chartDash,
+  chartGridProps,
+  chartLineDot,
+  chartMarkMotion,
+  chartTooltipProps,
+  useChartMotion,
+} from "./chart-scaffold";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { roundChartValue } from "@/lib/chart-format";
@@ -25,6 +36,7 @@ import {
 } from "@/lib/chart-time-axis";
 import {
   ANNOTATION_KIND_META,
+  annotationTooltipLabel,
   snapAnnotationsToDates,
   type TrendAnnotation,
   type TrendWindow,
@@ -70,6 +82,7 @@ export default function CompareChart({
 }) {
   const formatPrefs = useFormatPrefs();
   const c = useChartColors();
+  const motion = useChartMotion();
   const snapped = annotations?.length
     ? snapAnnotationsToDates(
         annotations,
@@ -106,7 +119,7 @@ export default function CompareChart({
   const withYear = spansYearBoundary(xDomain);
   return (
     <div
-      className="h-72 w-full"
+      className="flex h-72 w-full flex-col"
       data-testid="compare-chart"
       // "dual" only for genuinely different units; same-unit (and normalized)
       // pairs share one axis (issue #400) — exposed so the e2e can assert it.
@@ -115,12 +128,24 @@ export default function CompareChart({
       // longer index-spaced.
       data-axis-scale="time"
     >
-      <ResponsiveContainer width="100%" height="100%">
+      {/* Identity for a 2-series overlay was tooltip-only (plus, in the dual-axis
+          case, a colored axis tick) — i.e. color-alone, and only on hover. */}
+      <ChartLegend
+        items={[
+          { label: labelA, color: colorA },
+          { label: labelB, color: colorB },
+        ]}
+      />
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        className="min-h-0 flex-1"
+      >
         <LineChart
           data={rows}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <CartesianGrid {...chartGridProps(c)} />
           <XAxis
             dataKey="t"
             type="number"
@@ -128,15 +153,16 @@ export default function CompareChart({
             domain={xDomain ?? ["auto", "auto"]}
             ticks={xTicks.length ? xTicks : undefined}
             tickFormatter={(v: number) => formatTimeTick(v, withYear)}
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
+            {...chartAxisProps(c)}
           />
+          {/* Axis ticks stay in the TEXT token even in the dual-axis case (issue
+              #1445): identity belongs to the marks and the legend above, and a
+              tick painted in the series color is a number wearing a data color.
+              Which axis is which stays readable — left is A, right is B, and the
+              legend orders them the same way. */}
           <YAxis
             yAxisId="left"
-            // Color the axis after series A only when it belongs to A alone (the
-            // dual-unit case); a shared axis stays neutral since it serves both.
-            tick={{ fontSize: 11, fill: dualAxis ? colorA : c.tick }}
-            stroke={dualAxis ? colorA : c.axis}
+            {...chartAxisProps(c)}
             domain={normalized ? [0, 1] : ["auto", "auto"]}
             tickFormatter={normalized ? pct : undefined}
           />
@@ -144,8 +170,7 @@ export default function CompareChart({
             <YAxis
               yAxisId="right"
               orientation="right"
-              tick={{ fontSize: 11, fill: colorB }}
-              stroke={colorB}
+              {...chartAxisProps(c)}
               domain={["auto", "auto"]}
             />
           )}
@@ -156,18 +181,16 @@ export default function CompareChart({
                 : `${roundChartValue(Number(v))}${name === labelA ? unitA : unitB}`,
               name,
             ]}
-            labelFormatter={(v) =>
-              formatLongDate(epochToISO(Number(v)), formatPrefs)
-            }
-            contentStyle={{
-              fontSize: 12,
-              borderRadius: 8,
-              background: c.tooltipBg,
-              border: `1px solid ${c.tooltipBorder}`,
-              color: c.tooltipText,
+            labelFormatter={(value) => {
+              const date = epochToISO(Number(value));
+              return annotationTooltipLabel(
+                formatLongDate(date, formatPrefs),
+                date,
+                snapped,
+                windows ?? []
+              );
             }}
-            labelStyle={{ color: c.tooltipText }}
-            itemStyle={{ color: c.tooltipText }}
+            {...chartTooltipProps(c, motion)}
           />
           {windowAreas.map((w, i) => {
             const color = ANNOTATION_KIND_META.protocol.color;
@@ -181,12 +204,6 @@ export default function CompareChart({
                 fillOpacity={0.08}
                 stroke={color}
                 strokeOpacity={0.3}
-                label={{
-                  value: w.label,
-                  position: "insideTopLeft",
-                  fontSize: 9,
-                  fill: color,
-                }}
               />
             );
           })}
@@ -196,14 +213,8 @@ export default function CompareChart({
               yAxisId="left"
               x={dateToEpoch(a.date)}
               stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray="3 3"
-              strokeOpacity={0.85}
-              label={{
-                value: a.label,
-                position: "top",
-                fontSize: 9,
-                fill: ANNOTATION_KIND_META[a.kind].color,
-              }}
+              strokeDasharray={chartDash.annotation}
+              strokeOpacity={0.6}
             />
           ))}
           <Line
@@ -213,7 +224,9 @@ export default function CompareChart({
             name={labelA}
             stroke={colorA}
             strokeWidth={2}
-            dot={{ r: 2, fill: colorA, stroke: colorA }}
+            dot={chartLineDot(c, { color: colorA, pointCount: rows.length })}
+            activeDot={chartActiveDot(colorA)}
+            {...chartMarkMotion(motion)}
             connectNulls
           />
           <Line
@@ -223,7 +236,9 @@ export default function CompareChart({
             name={labelB}
             stroke={colorB}
             strokeWidth={2}
-            dot={{ r: 2, fill: colorB, stroke: colorB }}
+            dot={chartLineDot(c, { color: colorB, pointCount: rows.length })}
+            activeDot={chartActiveDot(colorB)}
+            {...chartMarkMotion(motion)}
             connectNulls
           />
         </LineChart>

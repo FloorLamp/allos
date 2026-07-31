@@ -3,6 +3,8 @@
 // family history, care plans/goals, documents). Split out of lib/types.ts (#319);
 // the `@/lib/types` barrel re-exports everything here, so import paths are unchanged.
 
+import type { ResultStatus } from "../lab-result-lifecycle";
+
 // A healthcare provider or organization. GLOBAL — shared across the
 // whole family/instance (a family sees one "Quest Diagnostics" / "Dr. Smith"),
 // modeled like logins/profiles, so it is intentionally NOT profile-scoped. Records
@@ -178,6 +180,21 @@ export interface MedicalRecord {
   source?: string | null;
   external_id?: string | null;
   edited?: number | null;
+  // The result LIFECYCLE + collection attributes (#1404, migration 120). All
+  // nullable: a legacy or manual reading states none of them, and "unstated" is a
+  // real answer that must not be guessed into 'final' or 'non-fasting'.
+  //   • result_status — the FHIR Observation.status vocabulary
+  //     (preliminary/final/corrected/amended); see lib/lab-result-lifecycle.ts.
+  //   • fasting — 1 fasting / 0 non-fasting / NULL unstated.
+  //   • specimen — serum, plasma, whole blood, urine, RBC … (free text).
+  //   • ordering_provider_id — the clinician who ORDERED the test, distinct from
+  //     `provider_id` above (the PERFORMING lab). ordering_provider_name is joined
+  //     for display. Both absent on minimal read shapes that don't select them.
+  result_status?: ResultStatus | null;
+  fasting?: number | null;
+  specimen?: string | null;
+  ordering_provider_id?: number | null;
+  ordering_provider_name?: string | null;
   // Set on VIRTUAL records computed at read time from other readings (issue #40 —
   // derived clinical indices like Non-HDL, HOMA-IR, eGFR). These are never stored:
   // they carry a synthetic negative `id`, no `document_id`, and are read-only in the
@@ -185,6 +202,28 @@ export interface MedicalRecord {
   // (shown as the "derived" tooltip/subtitle). Absent on real stored rows.
   derived?: boolean;
   derived_formula?: string;
+}
+
+// One PRESERVED prior state of a reading (#1404, migration 120): the value a
+// re-import overwrote, captured immediately before the overwrite. A CHILD of
+// medical_records (no profile_id of its own — it is reached through `record_id`)
+// and never an observation in its own right: a superseded value must not chart,
+// count, or flag. `superseded_by_status` is what the INCOMING result called itself,
+// so a revision row answers both "what did it say?" and "did the lab call this a
+// correction?" without re-reading the live row, which may have moved on again.
+export interface MedicalRecordRevision {
+  id: number;
+  record_id: number;
+  date: string | null;
+  value: string | null;
+  value_num: number | null;
+  unit: string | null;
+  reference_range: string | null;
+  flag: MedicalFlag | null;
+  result_status: ResultStatus | null;
+  superseded_by_status: ResultStatus | null;
+  source: string | null;
+  superseded_at: string;
 }
 
 // "higher is better", "lower is better", or "best inside a range" — governs how
@@ -323,12 +362,51 @@ export interface CanonicalBiomarker {
 // engine expands it to its component series. `source` mirrors the medical
 // provenance convention: NULL for manual entries, 'document:<id>' for rows
 // projected from an uploaded immunization record.
+// Route of administration (migration 122, #1406). CHECK-pinned on the column —
+// unlike a body SITE, the route vocabulary really is small and closed in practice,
+// and 'other' is the deliberate escape hatch so an unusual route never forces a
+// rebuild migration. Runtime array is the single source for the union AND the
+// immunizations.route CHECK (enum-parity test). NULL means unstated, which is not
+// the same claim as any of these.
+export const IMMUNIZATION_ROUTES = [
+  "intramuscular",
+  "subcutaneous",
+  "intradermal",
+  "oral",
+  "intranasal",
+  "other",
+] as const;
+export type ImmunizationRoute = (typeof IMMUNIZATION_ROUTES)[number];
+
+// Structured declination reason on an `immunization_overrides` row of kind
+// 'declined' (#1406) — the three categories school forms actually distinguish,
+// alongside (not replacing) the existing free-text `reason`. Runtime array is the
+// single source for the union AND the immunization_overrides.exemption_type CHECK.
+// NULL for an 'immune' override, where the concept does not apply, and for a
+// declination whose category was never stated.
+export const IMMUNIZATION_EXEMPTION_TYPES = [
+  "medical",
+  "religious",
+  "philosophical",
+] as const;
+export type ImmunizationExemptionType =
+  (typeof IMMUNIZATION_EXEMPTION_TYPES)[number];
+
 export interface Immunization {
   id: number;
   date: string;
   vaccine: string;
   dose_label: string | null;
   notes: string | null;
+  // Administration attributes every school / travel / camp / employer form asks for
+  // (#1406). All nullable: a legacy or hand-entered dose simply doesn't state them.
+  // `lot_number` and `site` are free text (a lot is a manufacturer string and a site
+  // is named far too diversely to freeze); `route` is CHECK-pinned. `reaction` is the
+  // adverse reaction to THIS dose, which previously had nowhere to live.
+  lot_number: string | null;
+  route: ImmunizationRoute | null;
+  site: string | null;
+  reaction: string | null;
   source: string | null;
   // Idempotent dedup key for synced rows (integration / SMART Health Card);
   // NULL for manual and document-extracted rows.
@@ -349,6 +427,54 @@ export interface Immunization {
 export const ALLERGY_STATUSES = ["active", "inactive", "resolved"] as const;
 export type AllergyStatus = (typeof ALLERGY_STATUSES)[number];
 
+// FHIR AllergyIntolerance.criticality (#1405): the potential for a FUTURE exposure
+// to be life-threatening — a different question from how bad the recorded reaction
+// was (`severity`). Runtime array is the single source for the union AND the
+// allergies.criticality CHECK (enum-parity test). NULL = unstated.
+export const ALLERGY_CRITICALITIES = [
+  "low",
+  "high",
+  "unable-to-assess",
+] as const;
+export type AllergyCriticality = (typeof ALLERGY_CRITICALITIES)[number];
+
+// FHIR AllergyIntolerance.verificationStatus (#1405). This is not decoration: a
+// 'refuted' allergy must NOT gate a drug (it is excluded from the drug-allergy
+// safety matcher), and an 'entered-in-error' row is excluded from the passport /
+// emergency-card view entirely. 'suspected' is the word this app uses for FHIR R5's
+// 'presumed'. Runtime array is the single source for the union AND the
+// allergies.verification_status CHECK. NULL = unstated, which is NOT 'confirmed'.
+export const ALLERGY_VERIFICATION_STATUSES = [
+  "unconfirmed",
+  "suspected",
+  "confirmed",
+  "refuted",
+  "entered-in-error",
+] as const;
+export type AllergyVerificationStatus =
+  (typeof ALLERGY_VERIFICATION_STATUSES)[number];
+
+// One graded manifestation of an allergy (table: allergy_reactions, migration 122).
+// A CHILD row: no profile_id, scoped through `allergy_id` → allergies, cleared by
+// ON DELETE CASCADE. `position` 0 is the manifestation cached onto the parent row's
+// legacy `reaction`/`severity` pair — see lib/allergy-reactions.
+export interface AllergyReaction {
+  id: number;
+  allergy_id: number;
+  manifestation: string;
+  severity: string | null;
+  position: number;
+}
+
+// The composed, display-ready manifestation (no ids): what `Allergy.reactions`
+// carries and what every read surface renders. Declared here — lib/types is the
+// source of truth for shared record shapes — and re-exported by
+// lib/allergy-reactions, which owns the composition that produces it.
+export interface AllergyManifestation {
+  manifestation: string;
+  severity: string | null;
+}
+
 // A recorded allergy / intolerance (table: allergies). `substance` is the
 // offending agent (drug/food/environmental) — a name, ideally with a code when
 // the source carried one. reaction/manifestation and severity are free text as
@@ -361,10 +487,31 @@ export interface Allergy {
   substance: string;
   substance_code: string | null;
   substance_code_system: string | null;
+  // The FIRST manifestation, kept as a denormalized cache of allergy_reactions row 0
+  // by the one write core (lib/allergy-reactions-write). Reads that want the full
+  // graded list compose through lib/allergy-reactions.composeAllergyReactions.
   reaction: string | null;
   severity: string | null; // mild/moderate/severe when coded, else free text
   status: AllergyStatus;
+  // Safety attributes (#1405). Nullable — unstated is a real third answer.
+  criticality: AllergyCriticality | null;
+  verification_status: AllergyVerificationStatus | null;
+  // The full graded manifestation list, attached by getAllergies through the ONE
+  // composition in lib/allergy-reactions (child rows when present, else the cached
+  // scalar above as a single implicit manifestation). Optional because a raw
+  // `SELECT * FROM allergies` row has not been composed yet.
+  reactions?: readonly AllergyManifestation[];
   notes: string | null;
+  // Attribution (#1526): who documented this allergy, and at which visit. An allergy
+  // gates drug-interaction warnings and prints on the emergency card, so "who
+  // confirmed it and when" is what a clinician asks before trusting it — the natural
+  // companion to `verification_status`. Both nullable, both no-ON-DELETE: the allergy
+  // outlives the visit and the provider record.
+  provider_id: number | null;
+  // Documenting provider, joined for display. Optional because a raw
+  // `SELECT * FROM allergies` row has not joined the registry.
+  provider_name?: string | null;
+  encounter_id: number | null;
   source: string | null;
   document_id: number | null;
   external_id: string | null;
@@ -683,6 +830,10 @@ export interface SkinLesion {
   provider_id: number | null;
   // Recording provider, joined for display (#1088). NULL for a self-photographed lesion.
   provider_name?: string | null;
+  // The visit this lesion was checked at (#1526) — the `finding` above is what a
+  // dermatologist told you AT an appointment, so the judgment and the visit that
+  // produced it stay linked. Nullable, no ON DELETE: the lesion outlives the visit.
+  encounter_id: number | null;
   notes: string | null;
   source: string | null;
   document_id: number | null;
@@ -825,4 +976,10 @@ export interface MedicalDocument {
   // one finalize UPDATE in lib/import-persist.ts; the digest's "new documents"
   // window keys on it. NULL until a document first completes.
   extraction_completed_at: string | null;
+  // ACQUIRED-BY (#1748): the portal registry row this document was pushed in from,
+  // stamped only on the portal-resolved upload path. NULL means a person put it here —
+  // the upload form, the share sheet, or a `profile=<id>` CLI push — which is what every
+  // document predating the acquirer surface also means. Survives a reassignment: how it
+  // arrived does not change when whose it is changes.
+  acquired_portal_id: number | null;
 }

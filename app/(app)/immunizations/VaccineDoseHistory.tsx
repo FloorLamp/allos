@@ -11,6 +11,7 @@ import {
   resolveDoseLabels,
   seriesLengthForCode,
 } from "@/lib/immunization-status";
+import { immunizationAdministrationLine } from "@/lib/record-format";
 import type { Immunization } from "@/lib/types";
 
 // Editable dose list for the per-vaccine detail page. Lists every stored dose
@@ -112,6 +113,21 @@ export default function VaccineDoseHistory({
                     notes={im.notes}
                     className="ml-2 text-xs text-slate-400"
                   />
+                  {/* Lot / route / site + any adverse reaction (#1406), through the
+                      SAME pure line the master history table renders. */}
+                  {immunizationAdministrationLine(im) ? (
+                    <span
+                      className="block text-xs text-slate-400"
+                      data-testid={`dose-admin-${im.id}`}
+                    >
+                      {immunizationAdministrationLine(im)}
+                    </span>
+                  ) : null}
+                  {im.reaction ? (
+                    <span className="block text-xs text-amber-700 dark:text-amber-300">
+                      Reaction: {im.reaction}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="td text-slate-500 dark:text-slate-400">
                   {im.vaccine === code
@@ -127,6 +143,7 @@ export default function VaccineDoseHistory({
                       type="button"
                       onClick={() => setEditingId(im.id)}
                       aria-label="Edit"
+                      title="Edit dose"
                       className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                     >
                       <IconPencil className="h-4 w-4" stroke={1.75} />
@@ -135,6 +152,7 @@ export default function VaccineDoseHistory({
                       type="button"
                       onClick={() => onDelete(im)}
                       aria-label="Delete"
+                      title="Delete dose"
                       className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                     >
                       <IconTrash className="h-4 w-4" stroke={1.75} />

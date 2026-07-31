@@ -1,4 +1,5 @@
 import type { DateRange } from "./timeline-format";
+import { formatCompactAge } from "./format-date";
 
 // Pure helpers backing the Trends hub. The hub reuses the existing per-domain
 // queries and then windows their date-keyed series to the shared from/to range
@@ -26,6 +27,50 @@ export function filterSeriesByRange<T extends { date: string }>(
   return series.filter(
     (d) => (!from || d.date >= from) && (!to || d.date <= to)
   );
+}
+
+// The SPARSE-SERIES fallback (#1485 G). With 90D as the default window, a series
+// measured once a year is empty in the default view — and a tile that answers "no
+// data in this range" has thrown away the one number the user came for. So when a
+// series has NO points inside the window but DOES have history, the surface shows
+// its newest reading instead.
+//
+// Returns that reading, or null when the fallback does not apply — which is both
+// of the cases where showing it would be a lie or a duplicate:
+//   • the window has points of its own (the tile draws the real series), and
+//   • the series is empty outright (a never-measured saved biomarker — the #1456
+//     placeholder tile, whose ★ must stay reachable, still renders).
+// `series` must be chronological (oldest → newest), as every series here is.
+//
+// This is a SELECTION, not a plot: the caller must render the returned reading as
+// explicitly outside the window (see `outOfWindowAgeLabel`) and must never merge
+// it into the charted points, or a stale value reads as a current one.
+export function outOfWindowLatest<T extends { date: string }>(
+  series: readonly T[],
+  range: DateRange
+): T | null {
+  if (series.length === 0) return null;
+  const { from, to } = range;
+  const inWindow = series.some(
+    (d) => (!from || d.date >= from) && (!to || d.date <= to)
+  );
+  if (inWindow) return null;
+  return series[series.length - 1];
+}
+
+// The age label that rides an out-of-window reading — "4mo ago", "3y ago". This
+// is the honesty half of the fallback and is NEVER optional at the call sites: it
+// is the only thing distinguishing a five-month-old value from today's.
+//
+// Compact form (`formatCompactAge`) rather than the "5 months ago" long form: a
+// trend tile is the dense, always-visible context #1216 minted that helper for,
+// and it gets denser still under #1485 B's two-column mobile grid.
+export function outOfWindowAgeLabel(date: string, todayStr: string): string {
+  const compact = formatCompactAge(date, todayStr);
+  // formatCompactAge says "Today" for a same-day reading; "Today ago" is not a
+  // phrase. (Reachable only for a window that excludes today, e.g. a historical
+  // custom range, but the label must read correctly there too.)
+  return compact === "Today" ? "today" : `${compact} ago`;
 }
 
 export interface SeriesSummary {

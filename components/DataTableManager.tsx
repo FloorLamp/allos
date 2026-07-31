@@ -9,7 +9,7 @@ import {
   deleteDatasetRows,
   deleteAllDatasetRows,
 } from "@/app/(app)/data/manage-actions";
-import { undoDeletes } from "@/app/(app)/undo/actions";
+import { undoDeletes } from "@/app/(app)/undo-actions";
 import { currentPathHref } from "@/lib/hrefs";
 
 // How long the bulk-delete "Undo" toast stays up (ms) — the holding rows live
@@ -324,7 +324,7 @@ export default function DataTableManager({
                   type="button"
                   onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage <= 1}
-                  className="btn-ghost text-sm disabled:opacity-40"
+                  className="btn-ghost text-sm"
                 >
                   Prev
                 </button>
@@ -335,7 +335,7 @@ export default function DataTableManager({
                   type="button"
                   onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage >= pageCount}
-                  className="btn-ghost text-sm disabled:opacity-40"
+                  className="btn-ghost text-sm"
                 >
                   Next
                 </button>

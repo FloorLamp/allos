@@ -1,22 +1,32 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { requireWriteAccess } from "@/lib/auth";
 import { getActiveSituations, setActiveSituations } from "@/lib/settings";
 import { isRealIsoDate } from "@/lib/date";
 import { normalizeOutcomeKeys } from "@/lib/protocol-metrics";
-import { getProtocol, situationUsedByOtherProtocol } from "@/lib/queries";
+import {
+  getFrequencyTargets,
+  getProtocol,
+  situationUsedByOtherProtocol,
+} from "@/lib/queries";
 import { getEquipmentById } from "@/lib/equipment";
 import { parseScopedPractice } from "@/lib/protocol-practice";
-import { logPracticeSession } from "@/lib/practice-log";
-import {
-  formError,
-  formOk,
-  type FormResult,
-  type PracticeLogOutcome,
-} from "@/lib/types";
+import { findPracticeTarget } from "@/lib/queries/wellness";
+import { formError, formOk, type FormResult } from "@/lib/types";
+import { createLogger } from "@/lib/log";
+import { protocolReopenEligibility } from "@/lib/protocol-reopen";
+import { practiceIdentity } from "@/lib/practice";
+
+const log = createLogger("protocols");
+
+export type CreateProtocolResult =
+  | { ok: true; redirectTo: `/protocols/${number}` }
+  | { ok: false; error: string };
+export type DeleteProtocolResult =
+  | { ok: true; redirectTo: "/longevity#protocols" }
+  | { ok: false; error: string };
 
 function revalidateProtocols(id?: number) {
   // The hub lives on the Longevity page's #protocols section (#1042 phase 4);
@@ -137,14 +147,17 @@ function syncPracticeTarget(
   let owns = 0;
 
   if (practice) {
-    const found = db
-      .prepare(
-        `SELECT id FROM frequency_targets
-          WHERE profile_id = ? AND scope_kind = ? AND scope_value = ?
-          LIMIT 1`
-      )
-      .get(profileId, practice.scopeKind, practice.scopeValue) as
-      { id: number } | undefined;
+    const found =
+      practice.scopeKind === "practice"
+        ? findPracticeTarget(profileId, practice.scopeValue)
+        : (db
+            .prepare(
+              `SELECT id FROM frequency_targets
+                WHERE profile_id = ? AND scope_kind = ? AND scope_value = ?
+                LIMIT 1`
+            )
+            .get(profileId, practice.scopeKind, practice.scopeValue) as
+            { id: number } | undefined);
     if (found) {
       tid = found.id;
       // If the protocol already OWNED this exact target, keep ownership and let the
@@ -159,13 +172,17 @@ function syncPracticeTarget(
     } else {
       const info = db
         .prepare(
-          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, per_week_max)
-           VALUES (?, ?, ?, ?, ?)`
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+           VALUES (?, ?, ?, ?, ?, ?)`
         )
         .run(
           profileId,
           practice.scopeKind,
           practice.scopeValue,
+          practice.scopeKind === "practice"
+            ? practiceIdentity(practice.scopeValue)
+            : null,
           practice.perWeek,
           practice.perWeekMax
         );
@@ -199,30 +216,9 @@ function cleanupStaleOwnedTarget(
     maybeDeleteOwnedTarget(profileId, staleOwnedTargetId, exceptProtocolId);
 }
 
-// One-tap log a wellness-practice session (#1259) for TODAY (the profile-local date).
-// The thin action over the auth-blind write core (logPracticeSession) — the ONE shared
-// entry point for the protocol detail, the Active-protocols widget, and (via its own
-// wrapper) the Telegram Done button. requireWriteAccess resolves the ACTIVE profile, so a
-// caregiver acting-as a child logs against the child (the profileId-first write core
-// needs no special code — the caregiver shape is a scoping property of the auth gate).
-// Returns the typed outcome carrying the day's running count; the surface renders from it,
-// never unconditionally confirms.
-export async function logPractice(
+export async function createProtocol(
   formData: FormData
-): Promise<PracticeLogOutcome> {
-  const { profile } = await requireWriteAccess();
-  const practice = String(formData.get("practice") ?? "").trim();
-  if (!practice) return { kind: "invalid-date" };
-  const outcome = logPracticeSession(profile.id, practice, today(profile.id));
-  if (outcome.kind === "logged") {
-    revalidateProtocols();
-    revalidatePath("/timeline");
-    revalidatePath("/upcoming");
-  }
-  return outcome;
-}
-
-export async function createProtocol(formData: FormData): Promise<FormResult> {
+): Promise<CreateProtocolResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Name your protocol.");
@@ -238,38 +234,54 @@ export async function createProtocol(formData: FormData): Promise<FormResult> {
   );
   const equipmentId = resolveEquipmentId(profile.id, formData);
   const intakeItemId = resolveIntakeItemId(profile.id, formData);
-  // On create there is no prior practice link, so no stale-target cleanup applies.
-  const practice = syncPracticeTarget(profile.id, formData, {
-    frequency_target_id: null,
-    owns_frequency_target: 0,
-  });
+  let protocolId: number;
+  try {
+    protocolId = writeTx(() => {
+      // On create there is no prior practice link, so no stale-target cleanup
+      // applies. Keep the optional target, protocol row, and situation activation
+      // atomic so a failed row write cannot leave an orphan target behind.
+      const practice = syncPracticeTarget(profile.id, formData, {
+        frequency_target_id: null,
+        owns_frequency_target: 0,
+      });
 
-  const info = db
-    .prepare(
-      `INSERT INTO protocols
-        (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
-         equipment_id, frequency_target_id, owns_frequency_target, intake_item_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      profile.id,
-      name,
-      start,
-      end,
-      notes,
-      JSON.stringify(outcomeKeys),
-      situation,
-      equipmentId,
-      practice.frequency_target_id,
-      practice.owns_frequency_target,
-      intakeItemId
-    );
+      const info = db
+        .prepare(
+          `INSERT INTO protocols
+            (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
+             equipment_id, frequency_target_id, owns_frequency_target, intake_item_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          profile.id,
+          name,
+          start,
+          end,
+          notes,
+          JSON.stringify(outcomeKeys),
+          situation,
+          equipmentId,
+          practice.frequency_target_id,
+          practice.owns_frequency_target,
+          intakeItemId
+        );
 
-  // Starting an ongoing protocol activates its situation (if any).
-  if (situation && !end) activateSituation(profile.id, situation);
+      // Starting an ongoing protocol activates its situation (if any).
+      if (situation && !end) activateSituation(profile.id, situation);
+      return Number(info.lastInsertRowid);
+    });
+  } catch (err) {
+    // Keep the client response free of database detail; the persisted server log
+    // carries the actionable cause for Settings → Errors.
+    log.error("protocol create failed", {
+      profileId: profile.id,
+      err: err instanceof Error ? err : String(err),
+    });
+    return formError("Couldn't create that protocol. Try again.");
+  }
 
   revalidateProtocols();
-  redirect(`/protocols/${info.lastInsertRowid}`);
+  return { ok: true, redirectTo: `/protocols/${protocolId}` };
 }
 
 export async function updateProtocol(formData: FormData): Promise<FormResult> {
@@ -293,43 +305,71 @@ export async function updateProtocol(formData: FormData): Promise<FormResult> {
   );
   const equipmentId = resolveEquipmentId(profile.id, formData);
   const intakeItemId = resolveIntakeItemId(profile.id, formData);
-  const practice = syncPracticeTarget(profile.id, formData, {
-    frequency_target_id: existing.frequency_target_id,
-    owns_frequency_target: existing.owns_frequency_target,
-  });
+  // One transaction for the whole edit, exactly as create runs: the practice
+  // target, the protocol row, the stale-target cleanup and the situation
+  // reconciliation are one state change, and a half-applied edit would leave an
+  // orphan target or a situation that disagrees with the row it was named on.
+  writeTx(() => {
+    const practice = syncPracticeTarget(profile.id, formData, {
+      frequency_target_id: existing.frequency_target_id,
+      owns_frequency_target: existing.owns_frequency_target,
+    });
 
-  db.prepare(
-    `UPDATE protocols
+    db.prepare(
+      `UPDATE protocols
        SET name = ?, start_date = ?, end_date = ?, notes = ?,
            outcome_keys = ?, situation = ?, equipment_id = ?,
            frequency_target_id = ?, owns_frequency_target = ?,
            intake_item_id = ?
      WHERE id = ? AND profile_id = ?`
-  ).run(
-    name,
-    start,
-    end,
-    notes,
-    JSON.stringify(outcomeKeys),
-    situation,
-    equipmentId,
-    practice.frequency_target_id,
-    practice.owns_frequency_target,
-    intakeItemId,
-    id,
-    profile.id
-  );
-  // Now that the protocol row no longer references the old target, clean it up.
-  cleanupStaleOwnedTarget(profile.id, practice.staleOwnedTargetId, id);
+    ).run(
+      name,
+      start,
+      end,
+      notes,
+      JSON.stringify(outcomeKeys),
+      situation,
+      equipmentId,
+      practice.frequency_target_id,
+      practice.owns_frequency_target,
+      intakeItemId,
+      id,
+      profile.id
+    );
+    // Now that the protocol row no longer references the old target, clean it up.
+    cleanupStaleOwnedTarget(profile.id, practice.staleOwnedTargetId, id);
 
-  // Reconcile the situation activation with the edit: a removed/renamed situation
-  // on an ongoing protocol is deactivated (unless a sibling needs it); a newly-set
-  // situation on an ongoing protocol is activated.
-  const wasOngoing = existing.end_date == null;
-  if (existing.situation && existing.situation !== situation && wasOngoing) {
-    deactivateSituation(profile.id, existing.situation, id);
-  }
-  if (situation && end == null) activateSituation(profile.id, situation);
+    // Reconcile the situation activation with the edit: a removed/renamed situation
+    // on an ongoing protocol is deactivated (unless a sibling needs it); a newly-set
+    // situation on an ongoing protocol is activated.
+    const wasOngoing = existing.end_date == null;
+    if (existing.situation && existing.situation !== situation && wasOngoing) {
+      deactivateSituation(profile.id, existing.situation, id);
+    }
+    if (situation && end == null) activateSituation(profile.id, situation);
+  });
+
+  revalidateProtocols(id);
+  return formOk();
+}
+
+export async function updateProtocolOutcomes(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that protocol.");
+  if (!getProtocol(profile.id, id))
+    return formError("Couldn't find that protocol.");
+
+  const outcomeKeys = normalizeOutcomeKeys(
+    formData.getAll("outcome_keys").map((value) => String(value))
+  );
+  db.prepare(
+    `UPDATE protocols
+        SET outcome_keys = ?
+      WHERE id = ? AND profile_id = ?`
+  ).run(JSON.stringify(outcomeKeys), id, profile.id);
 
   revalidateProtocols(id);
   return formOk();
@@ -344,36 +384,207 @@ export async function endProtocol(formData: FormData): Promise<FormResult> {
   if (existing.end_date != null)
     return formError("That protocol has already ended.");
   const end = today(profile.id);
-  db.prepare(
-    "UPDATE protocols SET end_date = ? WHERE id = ? AND profile_id = ?"
-  ).run(end, id, profile.id);
-  // Ending the protocol inverts its situation activation.
-  if (existing.situation)
-    deactivateSituation(profile.id, existing.situation, id);
+  // The row write and the situation inversion are ONE transition (see resume for
+  // the same pairing): a protocol that reads "ended" while its situation is still
+  // active would keep firing situational supplements and nudges for a block the
+  // user has stopped.
+  writeTx(() => {
+    db.prepare(
+      "UPDATE protocols SET end_date = ? WHERE id = ? AND profile_id = ?"
+    ).run(end, id, profile.id);
+    // Ending the protocol inverts its situation activation.
+    if (existing.situation)
+      deactivateSituation(profile.id, existing.situation, id);
+  });
   revalidateProtocols(id);
   return formOk();
 }
 
-export async function deleteProtocol(formData: FormData): Promise<FormResult> {
+export async function resumeProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
   if (!existing) return formError("Couldn't find that protocol.");
-  db.prepare("DELETE FROM protocols WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
+  const eligibility = protocolReopenEligibility(
+    existing.end_date,
+    today(profile.id)
   );
-  // Delete carries its side-state (row-ops rule): a practice frequency target this
-  // protocol OWNED is removed too — but only after the protocol row is gone (else
-  // the FK on protocols.frequency_target_id fails) and only when no sibling
-  // protocol references it.
-  if (existing.owns_frequency_target && existing.frequency_target_id != null)
-    maybeDeleteOwnedTarget(profile.id, existing.frequency_target_id, id);
-  // An ongoing protocol's situation activation is reversed (unless a sibling
-  // protocol still needs it).
-  if (existing.situation && existing.end_date == null)
-    deactivateSituation(profile.id, existing.situation, id);
+  if (eligibility.kind !== "eligible") {
+    return formError(
+      eligibility.kind === "expired"
+        ? "This protocol is outside the resume window. Run it again instead."
+        : "This protocol can't be resumed."
+    );
+  }
+
+  // Reopening the row and reactivating its situation are ONE transition, so they
+  // go in ONE writeTx like create/run-again do. Split, a failure between them
+  // commits a protocol that reads "Ongoing" while its situational supplements and
+  // nudges stay off — and the user cannot self-correct, because an already-active
+  // protocol is no longer resume-eligible.
+  writeTx(() => {
+    db.prepare(
+      "UPDATE protocols SET end_date = NULL WHERE id = ? AND profile_id = ?"
+    ).run(id, profile.id);
+    if (existing.situation) activateSituation(profile.id, existing.situation);
+  });
+  revalidateProtocols(id);
+  return formOk();
+}
+
+export async function runProtocolAgain(
+  formData: FormData
+): Promise<CreateProtocolResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that protocol.");
+  const existing = getProtocol(profile.id, id);
+  if (!existing) return formError("Couldn't find that protocol.");
+  if (
+    protocolReopenEligibility(existing.end_date, today(profile.id)).kind !==
+    "expired"
+  ) {
+    return formError("Resume this protocol instead.");
+  }
+
+  const start = today(profile.id);
+  const protocolId = writeTx(() => {
+    let frequencyTargetId = existing.frequency_target_id;
+    let ownsFrequencyTarget = 0;
+
+    // An owned cadence belongs to one protocol run. Preserve the old target as
+    // the historical snapshot and give the new run a distinct active target.
+    // Uniquely constrained scopes cannot be duplicated, so their target is
+    // transferred to the new run instead.
+    if (existing.owns_frequency_target && frequencyTargetId != null) {
+      const target = db
+        .prepare(
+          `SELECT scope_kind, scope_value, per_week, per_week_max
+             FROM frequency_targets
+            WHERE id = ? AND profile_id = ?`
+        )
+        .get(frequencyTargetId, profile.id) as
+        | {
+            scope_kind: string;
+            scope_value: string;
+            per_week: number;
+            per_week_max: number | null;
+          }
+        | undefined;
+      if (target) {
+        if (
+          target.scope_kind === "food_group" ||
+          target.scope_kind === "substance"
+        ) {
+          db.prepare(
+            `UPDATE protocols SET owns_frequency_target = 0
+              WHERE id = ? AND profile_id = ?`
+          ).run(existing.id, profile.id);
+          ownsFrequencyTarget = 1;
+        } else {
+          const activeTargets = getFrequencyTargets(profile.id);
+          const activeMatch =
+            target.scope_kind === "practice"
+              ? findPracticeTarget(profile.id, target.scope_value)
+              : activeTargets.find(
+                  (candidate) =>
+                    candidate.scope_kind === target.scope_kind &&
+                    candidate.scope_value === target.scope_value
+                );
+          if (activeMatch) {
+            if (activeMatch.id === frequencyTargetId) {
+              // A sibling ongoing protocol already keeps this shared target
+              // active. Transfer ownership to the new run instead of creating a
+              // second active target for the same cadence.
+              db.prepare(
+                `UPDATE protocols SET owns_frequency_target = 0
+                  WHERE id = ? AND profile_id = ?`
+              ).run(existing.id, profile.id);
+              ownsFrequencyTarget = 1;
+            } else {
+              frequencyTargetId = activeMatch.id;
+            }
+          } else {
+            const info = db
+              .prepare(
+                `INSERT INTO frequency_targets
+                  (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+                 VALUES (?, ?, ?, ?, ?, ?)`
+              )
+              .run(
+                profile.id,
+                target.scope_kind,
+                target.scope_value,
+                target.scope_kind === "practice"
+                  ? practiceIdentity(target.scope_value)
+                  : null,
+                target.per_week,
+                target.per_week_max
+              );
+            frequencyTargetId = Number(info.lastInsertRowid);
+            ownsFrequencyTarget = 1;
+          }
+        }
+      } else {
+        frequencyTargetId = null;
+      }
+    }
+
+    const info = db
+      .prepare(
+        `INSERT INTO protocols
+          (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
+           equipment_id, frequency_target_id, owns_frequency_target, intake_item_id)
+         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        profile.id,
+        existing.name,
+        start,
+        existing.notes,
+        JSON.stringify(existing.outcomeKeys),
+        existing.situation,
+        existing.equipment_id,
+        frequencyTargetId,
+        ownsFrequencyTarget,
+        existing.intake_item_id
+      );
+    if (existing.situation) activateSituation(profile.id, existing.situation);
+    return Number(info.lastInsertRowid);
+  });
+
   revalidateProtocols();
-  redirect("/longevity#protocols");
+  return { ok: true, redirectTo: `/protocols/${protocolId}` };
+}
+
+export async function deleteProtocol(
+  formData: FormData
+): Promise<DeleteProtocolResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that protocol.");
+  const existing = getProtocol(profile.id, id);
+  if (!existing) return formError("Couldn't find that protocol.");
+  // The row and every piece of side-state it carries go together in one
+  // transaction; the ORDER inside it still matters (see below), but a failure
+  // partway can no longer leave an orphan target or a stranded situation.
+  writeTx(() => {
+    db.prepare("DELETE FROM protocols WHERE id = ? AND profile_id = ?").run(
+      id,
+      profile.id
+    );
+    // Delete carries its side-state (row-ops rule): a practice frequency target this
+    // protocol OWNED is removed too — but only after the protocol row is gone (else
+    // the FK on protocols.frequency_target_id fails) and only when no sibling
+    // protocol references it.
+    if (existing.owns_frequency_target && existing.frequency_target_id != null)
+      maybeDeleteOwnedTarget(profile.id, existing.frequency_target_id, id);
+    // An ongoing protocol's situation activation is reversed (unless a sibling
+    // protocol still needs it).
+    if (existing.situation && existing.end_date == null)
+      deactivateSituation(profile.id, existing.situation, id);
+  });
+  revalidateProtocols();
+  return { ok: true, redirectTo: "/longevity#protocols" };
 }

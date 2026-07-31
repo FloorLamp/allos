@@ -89,7 +89,7 @@ export default function ReassignDocument({
           type="button"
           onClick={onMove}
           disabled={pending || !dest}
-          className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+          className="btn-ghost inline-flex items-center gap-1.5 text-sm"
         >
           <IconArrowsExchange className="h-4 w-4" />
           {pending ? "Moving…" : "Move"}

@@ -12,6 +12,7 @@ import {
   countDistinctWeeks,
   detectVolumeShortfalls,
   muscleVolumeSignalKey,
+  parseMuscleVolumeKey,
   MIN_BAND_HISTORY_WEEKS,
   MUSCLE_VOLUME_PREFIX,
   allBands,
@@ -153,5 +154,29 @@ describe("detectVolumeShortfalls — engine gating", () => {
       monthAnchor: "2026-07",
     });
     expect(out).toHaveLength(0);
+  });
+});
+
+// The key's INVERSE (#1496): the Overview rollup folds N per-muscle findings into one
+// row and needs their muscles back out of the dedupeKeys — one key grammar, owned here.
+describe("parseMuscleVolumeKey", () => {
+  it("round-trips every muscle's signal key", () => {
+    for (const m of MUSCLE_IDS) {
+      expect(parseMuscleVolumeKey(muscleVolumeSignalKey(m, "2026-07"))).toBe(m);
+    }
+  });
+
+  it("returns null for a foreign or malformed key", () => {
+    expect(
+      parseMuscleVolumeKey("training-obs:plateau:skullcrusher")
+    ).toBeNull();
+    expect(
+      parseMuscleVolumeKey("muscle-volume:above:chest:2026-07")
+    ).toBeNull();
+    expect(
+      parseMuscleVolumeKey("muscle-volume:below:elbows:2026-07")
+    ).toBeNull();
+    expect(parseMuscleVolumeKey("muscle-volume:below:")).toBeNull();
+    expect(parseMuscleVolumeKey("")).toBeNull();
   });
 });

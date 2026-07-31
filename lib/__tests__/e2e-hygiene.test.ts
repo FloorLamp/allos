@@ -67,6 +67,16 @@ import { fileURLToPath } from "node:url";
 //        so a NEW inline sequence fails. The helper module is SKIPPED (not
 //        allowlisted) for these three — it OWNS the markers by design.
 //
+// A SIXTH check (the fixture-LOGIN budget, issue #1392) — not a count-freeze but a
+// per-fixture rule:
+//
+//   (vi) Every `E2E_LOGIN_*` constant seeded by the fixture-login modules (the
+//        e2e/logins/* set that e2e/fixture-logins.ts composes, #1511) must be
+//        referenced by a spec AND used in a sign-in position, else carry a written
+//        justification. The seeded login population is MONOTONIC — each one is a
+//        permanent Settings → Family row — and that ratchet is what grew the family
+//        page into the #830/#1111/#1392 census family. See LOGIN_NO_SIGNIN_ALLOW.
+//
 // NOT mechanically enforced here (documented rule only — see
 // docs/internals/e2e-hygiene.md): exact-count assertions against SHARED-SEED
 // fixture rows ("2 today", "≥ 2 episode rows"). Detecting those syntactically
@@ -130,6 +140,128 @@ const CREATE_LOGIN_ALLOW: Record<string, number> = {};
 const SET_GRANTS_ALLOW: Record<string, number> = {};
 const ADD_PROFILE_ALLOW: Record<string, number> = {};
 
+// ── (vii) The fixture-PROFILE constructor freeze (issue #1487) ───────────────
+// A fixture profile created with a bare `INSERT INTO profiles` starts with NO
+// `saved_items` rows — which was invisible while Trends Overview rendered the four
+// standard metric tiles unconditionally, and became a broken, unreachable-in-
+// production state the moment Overview went membership-driven (#1487): a raw-SQL
+// fixture profile renders an EMPTY grid, while every profile a real user can create
+// (createProfile / bootstrapAuth) is seeded with the standard metric saves. ~107
+// fixture profiles were in that state.
+//
+// So profile creation in e2e goes through the ONE blessed constructor
+// e2e/fixture-profile.ts (createFixtureProfile / createFixtureProfileWithId), which
+// calls the SAME lib/standard-metric-seeds.ts core the production paths call. The raw
+// insert is frozen at ZERO everywhere else, so a new fixture can't reintroduce the
+// divergence; the constructor module OWNS the marker and is skipped, not allowlisted.
+//
+// The DELETE side is frozen the same way, and it is not hypothetical: the moment the
+// constructor started seeding, two specs' hand-rolled cleanups (`DELETE FROM profiles`
+// after clearing their own rows) began failing on `saved_items.profile_id`'s foreign
+// key. Creation gained side-state and the destructors did not — the #1487 "row
+// operations carry their side-state" rule, applied to fixtures. So the pair lives in
+// one module: `destroyFixtureProfile` removes what the constructor wrote, and a raw
+// profile DELETE is banned everywhere else, which is what makes the NEXT addition to
+// the production seed core a one-file edit instead of a suite-wide FK hunt.
+// ── (viii) The DB-per-worker harness freeze (issue #1538) ───────────────────
+// Each Playwright worker now runs against its OWN database and its OWN app server.
+// Two things make that work, and both are one-line-easy to get wrong:
+//
+//   • a spec gets its worker's server + session by importing `test` from
+//     e2e/fixtures.ts. A spec that imports `test` from "@playwright/test" instead
+//     silently opts OUT — no per-worker baseURL, no per-worker storage state — and
+//     drives whatever happens to answer on the base port. Frozen at ZERO
+//     everywhere but the fixture module itself (TYPE-only imports from
+//     "@playwright/test" — Page, Locator, Browser — stay fine and are not matched).
+//
+//   • a spec that opens SQLite directly resolves the file with workerDbPath()
+//     (e2e/worker-env.ts). `process.env.ALLOS_DB_PATH` is the APP SERVER's
+//     environment, not the spec process's — reading it from a spec is how a
+//     direct-DB spec would read the wrong worker's database (or none at all).
+//     Frozen at ZERO outside the harness modules that legitimately set it.
+// ── (ix) The wall-clock freeze (the #1538 drift follow-up) ──────────────────
+// The app's clock is FROZEN for the whole run (ALLOS_TEST_NOW, #990): the seeded
+// template, every worker's app server and — since the per-worker harness patched
+// `browser.newContext` — every browser context answer the same `now()`. A spec
+// process does NOT: `new Date()` / `Date.now()` there is the REAL clock, and the
+// gap between real and frozen is however long the run has been going. That used to
+// be a few minutes; a `--repeat-each=3` lane over a large spec set now runs ~90,
+// which is long enough for a row a spec timestamps from the wall clock to land in
+// the app's FUTURE and drop out of every recency window (the #1441 finished-session
+// recap failed exactly this way, deterministically, 29 minutes in).
+//
+// So a spec's "now" is `frozenNow()` (e2e/worker-env.ts), never the wall clock.
+// Existing reads are frozen at today's per-file count — the remainder are
+// UNIQUE-NAME suffixes (`E2E Sauna ${Date.now()}`) and a TOTP probe that genuinely
+// needs real time, neither of which is a stored timestamp — and a NEW one fails
+// unless it carries a same-line `clock-ok: <why>` marker.
+const WALL_CLOCK_RE = /\bDate\.now\(\)|\bnew Date\(\)/g;
+const WALL_CLOCK_OK_MARKER = "clock-ok";
+const WALL_CLOCK_ALLOW: Record<string, number> = {
+  "episode-med-reconcile.spec.ts": 2,
+  "equipment-manager.spec.ts": 1,
+  "family-helpers.ts": 3,
+  "food-habits.spec.ts": 1,
+  "medication-cold-start-adherence.spec.ts": 1,
+  "offline-dose-confirm.spec.ts": 2,
+  "offline-queue.spec.ts": 2,
+  "prn-redose-interval-only.spec.ts": 1,
+  "prn-redose.spec.ts": 1,
+  "protocol-reach.spec.ts": 1,
+  "protocols.spec.ts": 1,
+  "rpe-logging.spec.ts": 1,
+  "seed/findings.ts": 1,
+  "seed/household.ts": 1,
+  "seed/metrics.ts": 1,
+  "seed/prelude.ts": 2,
+  "training-restriction.spec.ts": 1,
+  "two-factor.spec.ts": 2,
+  "undo-delete.spec.ts": 1,
+};
+
+// ── (x) The document-level overflow check freeze (issue #1543) ──────────────
+// The app shell clips horizontal overflow (`<main className="… overflow-x-clip">`,
+// app/(app)/layout.tsx), so the document NEVER reports itself wider than the
+// viewport on an (app) page: a 3000px-wide div injected into <main> still reads a
+// document scroll width of 360 at a 360px viewport. Every hand-rolled
+// "document width ≤ viewport width" guard is therefore UNCONDITIONALLY TRUE — 15
+// sites across 13 specs asserted exactly nothing, including one written in the
+// inverted direction (unconditionally false), which is the same vacuity.
+//
+// The blessed guard is `expectNoClippedContent(page)` (e2e/helpers.ts, #1063): it
+// asserts ELEMENT-level containment (every rendered element's right edge inside the
+// viewport +2px, unless it sits in a working `overflow-x: auto|scroll` container
+// that itself fits), reports the offending tag/testid/class + widths, and folds the
+// document-level check in as belt-and-braces for surfaces OUTSIDE the clipping shell
+// (share pages, print views) — so the honest home for that comparison is the helper,
+// which the scan excludes.
+//
+// Frozen at ZERO: every site was converted in #1543. The scan is TEXTUAL, so a
+// comment or string in an e2e file that spells the pattern out counts itself —
+// phrase the prose without the literal (this file is not scanned, so it may).
+// An alias (`const de = document.documentElement; de.scrollWidth`) evades the regex;
+// that is a deliberate limit, not a supported escape.
+const DOC_SCROLLWIDTH_RE = /(?:documentElement|document\.body)\.scrollWidth/g;
+const DOC_SCROLLWIDTH_ALLOW: Record<string, number> = {};
+
+const WORKER_HARNESS_FILES = new Set([
+  "fixtures.ts",
+  "worker-env.ts",
+  "global-setup.ts",
+  "global-teardown.ts",
+]);
+const PW_TEST_IMPORT_RE =
+  /import\s*\{[^}]*\btest\b[^}]*\}\s*from\s*["']@playwright\/test["']/g;
+const PW_TEST_IMPORT_ALLOW: Record<string, number> = {};
+const RAW_DB_ENV_RE = /process\.env\.ALLOS_DB_PATH/g;
+const RAW_DB_ENV_ALLOW: Record<string, number> = {};
+
+const FIXTURE_PROFILE_FILE = "fixture-profile.ts";
+const RAW_PROFILE_INSERT_RE = /INSERT\s+(?:OR\s+\w+\s+)?INTO\s+profiles\b/g;
+const RAW_PROFILE_INSERT_ALLOW: Record<string, number> = {};
+const RAW_PROFILE_DELETE_RE = /DELETE\s+FROM\s+profiles\b/g;
+const RAW_PROFILE_DELETE_ALLOW: Record<string, number> = {};
+
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
 // drops out entirely. New files must not appear.
@@ -174,14 +306,71 @@ const FIRST_ALLOW: Record<string, number> = {};
 // .toPass( on any e2e/*.ts fails.
 const TOPASS_ALLOW: Record<string, number> = {};
 
+// ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────
+// Every seeded fixture login is a PERMANENT row on Settings → Family and a
+// permanent member of the grant matrix. That population is monotonic — it only
+// ever grows — and at ~90 logins it grew the family page into the #830/#1111/#1392
+// census family (a 5 MB matrix render that starved the durable-row probes until the
+// #1412 collapse capped the page at O(logins)). The product fix removed the cliff;
+// this guard removes the RATCHET, per the issue's remaining "fixture-budget" lane.
+//
+// The rule: a fixture LOGIN is seeded only when a spec SIGNS IN as it (a separate
+// cookie context is the only way to drive a non-profile-1 active profile without
+// mutating the shared admin storageState's server-side active profile — see the
+// e2e/fixture-logins.ts header) or when the login itself is the SUBJECT (access
+// control / the family screen). A fixture that only needs an isolated PROFILE takes
+// `fixtureProfileId(name)` alone and no login — a profile is free here, a login is not.
+//
+// Mechanically: every `E2E_LOGIN_*` constant in e2e/fixture-logins.ts must appear in
+// at least one e2e/*.spec.ts (a login no spec references at all is dead weight) AND
+// be used in a sign-in position (`loginAs(...)` / `creds(...)` / `username:`), unless
+// it carries a written justification below. The check is textual, so a new sign-in
+// wrapper may need an allowlist line — that's the point: adding a login stays a
+// deliberate, justified act rather than a reflex.
+const LOGIN_CONST_RE = /export const (E2E_LOGIN_[A-Z0-9_]+) = "([^"]+)"/g;
+// The budget is measured over the COMPOSED population, not one file: #1511 split the
+// constants into per-domain modules under e2e/logins/ that e2e/fixture-logins.ts
+// re-exports. Every one of them declares logins, so all of them are the source of
+// truth (and none of them counts as a "spec that references" a login).
+const FIXTURE_LOGINS_FILE = "fixture-logins.ts";
+const FIXTURE_LOGINS_DIR = "logins/";
+const isFixtureLoginsModule = (name: string) =>
+  name === FIXTURE_LOGINS_FILE || name.startsWith(FIXTURE_LOGINS_DIR);
+// A constant used within this many characters after a sign-in opener counts as
+// "signed in as" (covers the multi-line `loginAs(browser, { username: X, … })` form).
+const SIGNIN_WINDOW_RE = /(?:loginAs\(|creds\(|username:)[\s\S]{0,200}/g;
+// Fixture logins that are deliberately never signed in as, with WHY. Keep this list
+// short — each entry is a login the family page carries forever.
+const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
+  E2E_LOGIN_SLEEP_EDIT:
+    "template login: sleep-page clones its scrypt hash into per-test logins it creates and drives itself",
+  E2E_LOGIN_GRANTEDIT:
+    "access-control subject: family-grants drives its grant row / own-profile select AS THE ADMIN (#1412)",
+};
+
+// RECURSIVE since #1511 split the two append-magnet modules into per-domain files
+// (e2e/seed/*.ts, e2e/logins/*.ts): a guard that stopped at the top level would
+// silently stop scanning the moved content. `name` is the path RELATIVE to e2e/
+// (posix), so a top-level file keeps its bare basename — every allowlist / skip-set
+// key above is unchanged — and a nested one reads as "seed/medical.ts".
 function specFiles(): { name: string; text: string }[] {
-  return fs
-    .readdirSync(E2E_DIR)
-    .filter((f) => f.endsWith(".ts") && !SCAN_EXCLUDE.has(f))
-    .map((name) => ({
-      name,
-      text: fs.readFileSync(path.join(E2E_DIR, name), "utf8"),
-    }));
+  const out: { name: string; text: string }[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      // Skip the runtime dot-dirs (.data / .auth / test-results) — generated, not source.
+      if (entry.name.startsWith(".")) continue;
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".ts")) {
+        const name = path.relative(E2E_DIR, full).split(path.sep).join("/");
+        if (!SCAN_EXCLUDE.has(name)) {
+          out.push({ name, text: fs.readFileSync(full, "utf8") });
+        }
+      }
+    }
+  };
+  walk(E2E_DIR);
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function countMatches(text: string, re: RegExp): number {
@@ -332,6 +521,182 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `onClick+refresh hydration swallow / toaster false-settle (#830/#1111). Use ` +
         `setGrantsViaFamily from e2e/family-helpers.ts; see docs/internals/e2e-hygiene.md.`,
     });
+  });
+
+  it("every seeded fixture login is signed in as by a spec (the #1392 fixture-login budget)", () => {
+    const src = specFiles()
+      .filter((f) => isFixtureLoginsModule(f.name))
+      .map((f) => f.text)
+      .join("\n");
+    const constants = [...src.matchAll(LOGIN_CONST_RE)].map((m) => m[1]);
+    // The constants file is the population's source of truth; an empty read means
+    // the regex (or the file) moved, which must fail loudly rather than pass vacuously.
+    expect(constants.length).toBeGreaterThan(0);
+
+    const files = specFiles().filter((f) => !isFixtureLoginsModule(f.name));
+    const violations: string[] = [];
+
+    for (const name of constants) {
+      const use = new RegExp(`\\b${name}\\b`);
+      const referencedBy = files.filter((f) => use.test(f.text));
+      const signsIn = files.some((f) =>
+        (f.text.match(SIGNIN_WINDOW_RE) ?? []).some((w) => use.test(w))
+      );
+      const why = LOGIN_NO_SIGNIN_ALLOW[name];
+      if (signsIn) {
+        if (why)
+          violations.push(
+            `${name}: allowlisted as never-signed-in, but a spec now signs in as it — ` +
+              `remove its LOGIN_NO_SIGNIN_ALLOW entry in lib/__tests__/e2e-hygiene.test.ts.`
+          );
+        continue;
+      }
+      if (why) continue;
+      violations.push(
+        referencedBy.length === 0
+          ? `${name}: seeded in e2e/logins/ but NO e2e spec references it — ` +
+              `delete the login (and its seedMemberLogin call); a dead login is a permanent ` +
+              `Settings → Family row (#1392).`
+          : `${name}: referenced by ${referencedBy
+              .map((f) => f.name)
+              .join(", ")} but never signed in as (loginAs/creds/username:). ` +
+              `A fixture that only needs an isolated PROFILE takes fixtureProfileId(name) ` +
+              `and NO login — the login population is monotonic and grows the family ` +
+              `grant matrix forever (#1392). If this login IS the subject (access control) ` +
+              `or a sign-in wrapper hides the use, add it to LOGIN_NO_SIGNIN_ALLOW in ` +
+              `lib/__tests__/e2e-hygiene.test.ts with a reason; see docs/internals/e2e-hygiene.md.`
+      );
+    }
+
+    for (const name of Object.keys(LOGIN_NO_SIGNIN_ALLOW)) {
+      if (!constants.includes(name))
+        violations.push(
+          `${name}: allowlisted in LOGIN_NO_SIGNIN_ALLOW but no longer exists in ` +
+            `e2e/logins/ — remove its entry.`
+        );
+    }
+
+    expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  it("no NEW raw INSERT INTO profiles in an e2e/*.ts (use createFixtureProfile)", () => {
+    checkPattern(
+      "raw fixture-profile insert",
+      RAW_PROFILE_INSERT_RE,
+      RAW_PROFILE_INSERT_ALLOW,
+      {
+        skipFiles: new Set([FIXTURE_PROFILE_FILE]),
+        hint:
+          `A raw INSERT INTO profiles skips the standard Overview metric seeds every ` +
+          `production-created profile gets (#1487), so the fixture renders an empty ` +
+          `Trends Overview no real profile can be in. Use createFixtureProfile from ` +
+          `e2e/fixture-profile.ts; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no NEW raw DELETE FROM profiles in an e2e/*.ts (use destroyFixtureProfile)", () => {
+    checkPattern(
+      "raw fixture-profile delete",
+      RAW_PROFILE_DELETE_RE,
+      RAW_PROFILE_DELETE_ALLOW,
+      {
+        skipFiles: new Set([FIXTURE_PROFILE_FILE]),
+        hint:
+          `A raw DELETE FROM profiles leaves the rows the fixture CONSTRUCTOR seeded ` +
+          `(#1487 standard metric saves) and fails on their foreign key. Use ` +
+          `destroyFixtureProfile from e2e/fixture-profile.ts — the constructor's pair; ` +
+          `see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("the blessed fixture-profile constructor exists and seeds the standard metric saves", () => {
+    const mod = fs.readFileSync(
+      path.join(E2E_DIR, FIXTURE_PROFILE_FILE),
+      "utf8"
+    );
+    expect(mod).toMatch(/export function createFixtureProfile\b/);
+    expect(mod).toMatch(/export function createFixtureProfileWithId\b/);
+    // The destructor is not optional: creation writes side-state, so a fixture that
+    // deletes its profile needs the pair (see the DELETE freeze above).
+    expect(mod).toMatch(/export function destroyFixtureProfile\b/);
+    // It must delegate to the production seeding core, not re-implement it.
+    expect(mod).toMatch(/seedStandardMetricSaves\(/);
+  });
+
+  it("no e2e/*.ts imports `test` from @playwright/test (import it from ./fixtures)", () => {
+    checkPattern(
+      "@playwright/test `test` import",
+      PW_TEST_IMPORT_RE,
+      PW_TEST_IMPORT_ALLOW,
+      {
+        skipFiles: WORKER_HARNESS_FILES,
+        hint:
+          `A spec that imports \`test\` from "@playwright/test" opts out of the ` +
+          `DB-per-worker harness (#1538): no per-worker baseURL, no per-worker session. ` +
+          `Import { test, expect } from "./fixtures" — TYPE imports (Page, Locator, ` +
+          `Browser) may stay on "@playwright/test"; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no e2e/*.ts reads process.env.ALLOS_DB_PATH (use workerDbPath())", () => {
+    checkPattern(
+      "process.env.ALLOS_DB_PATH read",
+      RAW_DB_ENV_RE,
+      RAW_DB_ENV_ALLOW,
+      {
+        skipFiles: WORKER_HARNESS_FILES,
+        hint:
+          `ALLOS_DB_PATH is the APP SERVER's environment, not the spec process's — a ` +
+          `spec reading it opens the wrong worker's database (#1538). Use ` +
+          `workerDbPath() from ./worker-env; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no document-level overflow check in an e2e/*.ts (use expectNoClippedContent)", () => {
+    checkPattern(
+      "document-level overflow check",
+      DOC_SCROLLWIDTH_RE,
+      DOC_SCROLLWIDTH_ALLOW,
+      {
+        hint:
+          `The app shell clips horizontal overflow, so a document-width vs ` +
+          `viewport-width comparison is unconditionally true on every (app) page — ` +
+          `it asserts NOTHING (#1543). Use expectNoClippedContent(page) from ` +
+          `e2e/helpers.ts, which measures element-level containment (right edge ` +
+          `inside the viewport unless inside a working overflow-x scroller that ` +
+          `itself fits) and names the offending element; see ` +
+          `docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no NEW wall-clock read in an e2e/*.ts (derive timestamps from frozenNow())", () => {
+    checkPattern("wall-clock read", WALL_CLOCK_RE, WALL_CLOCK_ALLOW, {
+      skipFiles: WORKER_HARNESS_FILES,
+      excludeLineMarker: WALL_CLOCK_OK_MARKER,
+      hint:
+        `A spec's "now" is the harness's frozen now, never the wall clock: the app ` +
+        `serves a frozen \`now()\` and a long lane drifts ~90 minutes from real time, ` +
+        `so a wall-clock timestamp lands in the app's future (#1538). Use ` +
+        `frozenNow() from ./worker-env, or add a same-line \`clock-ok: <why>\` ` +
+        `comment for a use that is NOT a stored timestamp (a unique-name suffix, a ` +
+        `TOTP probe); see docs/internals/e2e-hygiene.md.`,
+    });
+  });
+
+  it("the per-worker harness exposes its addressing helpers", () => {
+    const env = fs.readFileSync(path.join(E2E_DIR, "worker-env.ts"), "utf8");
+    expect(env).toMatch(/export function workerDbPath\b/);
+    expect(env).toMatch(/export function workerDir\b/);
+    expect(env).toMatch(/export function workerPort\b/);
+    const fixtures = fs.readFileSync(path.join(E2E_DIR, "fixtures.ts"), "utf8");
+    // The two option overrides are what point page/context at THIS worker.
+    expect(fixtures).toMatch(/baseURL:\s*async/);
+    expect(fixtures).toMatch(/storageState:\s*async/);
   });
 
   it("the blessed interaction module exists and exports settledClick + followLink", () => {

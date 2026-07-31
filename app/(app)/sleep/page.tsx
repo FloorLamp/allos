@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getDisplayFormatPrefs } from "@/lib/settings";
+import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
 import {
   getLastNightSummary,
   getSleepDurationTrend,
@@ -25,6 +25,8 @@ import SleepMoodSection from "./SleepMoodSection";
 import SleepLogAction from "./SleepLogAction";
 import OuraScores from "./OuraScores";
 import SleepTrendsSection from "./SleepTrendsSection";
+import SourceComparison from "../trends/SourceComparison";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -82,7 +84,11 @@ export default async function SleepPage() {
     ouraScores.readiness != null;
 
   return (
-    <div className="mx-auto w-full max-w-6xl" data-testid="sleep-page">
+    <PageContainer
+      width="wide"
+      className="mx-auto w-full"
+      data-testid="sleep-page"
+    >
       <PageHeader
         title="Sleep"
         subtitle="Duration, timing, stages, and how sleep relates to mood."
@@ -203,6 +209,14 @@ export default async function SleepPage() {
         }
       />
 
+      <SourceComparison
+        profileId={profile.id}
+        weightUnit={getUnitPrefs(login.id).weightUnit}
+        metricKey="sleep_min"
+        className="mb-6"
+        range={{ from: shiftDateStr(todayStr, -89), to: todayStr }}
+      />
+
       {!hasAny && (
         <p
           className="text-sm text-slate-500 dark:text-slate-400"
@@ -245,6 +259,6 @@ export default async function SleepPage() {
           />
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
@@ -7,14 +7,36 @@ import {
   E2E_MEMBER_PASSWORD,
   NUTRITION_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The nutrition trio (#974 protein gauge / #975 dietary preferences / #976 fiber
 // adequacy), driven end-to-end against the dedicated NUTRITION_PROFILE (seed-events):
 // a weigh-in, this-week food servings, a confirmed capsule fiber supplement, sex = male,
 // and a flagged low omega-3. Fixture discipline (#868): the profile is spec-owned; the
 // preferences test MUTATES the excluded set and resets it in afterEach so it's repeat-safe.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const WAIT = 15_000;
+
+// The spec-owned protein goal (#1503). The picker MUTATES profile_settings, so the
+// key is cleared after the test that sets it — the profile is back to the default
+// "active" band for every repeat and for neighboring specs.
+function clearProteinGoal() {
+  const handle = new Database(DB_PATH);
+  try {
+    const pid = (
+      handle
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(NUTRITION_PROFILE) as { id: number }
+    ).id;
+    handle
+      .prepare(
+        "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'training_goal'"
+      )
+      .run(pid);
+  } finally {
+    handle.close();
+  }
+}
 
 function clearPreferences() {
   const handle = new Database(DB_PATH);
@@ -54,8 +76,8 @@ test.describe("Nutrition trio", () => {
       await expect(page.getByTestId("protein-gauge-weekly")).toBeVisible();
       await expect(page.getByTestId("protein-gauge-band")).toBeVisible();
 
-      // Today is IN PROGRESS — the today bar carries the floor "at least" phrasing.
-      await expect(gauge).toContainText(/at least/i);
+      // Today is IN PROGRESS — the compact label still marks the value as a floor.
+      await expect(gauge).toContainText(/Today\s*≥\s*\d+g/i);
 
       const before = Number(await todayBar.getAttribute("data-grams"));
       expect(before).toBeGreaterThan(0);
@@ -86,6 +108,57 @@ test.describe("Nutrition trio", () => {
     }
   });
 
+  // #1503 — the protein goal became settable: the band the gauge draws follows the
+  // Settings pick instead of everyone silently sitting on the "active" band.
+  test.describe("protein goal", () => {
+    test.beforeEach(clearProteinGoal);
+    test.afterEach(clearProteinGoal);
+
+    test("changing the Settings goal moves the Nutrition tab's target band", async ({
+      browser,
+    }) => {
+      const page = await loginAs(browser, {
+        username: E2E_LOGIN_NUTRITION,
+        password: E2E_MEMBER_PASSWORD,
+      });
+      try {
+        // Baseline: the unset profile reads the documented default band.
+        await page.goto("/nutrition?tab=food");
+        const band = page.getByTestId("protein-gauge-band");
+        await expect(band).toBeVisible({ timeout: WAIT });
+        const before = Number(await band.getAttribute("data-grams-low"));
+        expect(before).toBeGreaterThan(0);
+
+        // Pick a cut phase (autosaves on change, like the card beside it). Gate on
+        // the committed save before navigating away.
+        await page.goto("/settings/nutrition");
+        const goalSelect = page.getByTestId("protein-goal");
+        await expect(goalSelect).toBeVisible({ timeout: WAIT });
+        await expect(goalSelect).toHaveValue("active");
+        await goalSelect.selectOption("cut");
+        await expect(page.getByLabel("Saved")).toBeVisible({ timeout: WAIT });
+        // The card explains the band it just selected.
+        await expect(page.getByTestId("protein-goal-band")).toContainText(
+          /g\/kg/
+        );
+        await page.reload();
+        await expect(goalSelect).toHaveValue("cut", { timeout: WAIT });
+
+        // The gauge's target band moved up — the engine was always one setting away.
+        // A fresh server-rendered navigation, so one read is deterministic; the
+        // assertion is an INEQUALITY (a cut band is higher than the active one) rather
+        // than a literal gram figure that would encode the fixture's bodyweight.
+        await page.goto("/nutrition?tab=food");
+        const bandAfter = page.getByTestId("protein-gauge-band");
+        await expect(bandAfter).toBeVisible({ timeout: WAIT });
+        const after = Number(await bandAfter.getAttribute("data-grams-low"));
+        expect(after).toBeGreaterThan(before);
+      } finally {
+        await page.close();
+      }
+    });
+  });
+
   // #976 — the fiber adequacy card + the honest unknown-grams note.
   test("fiber card renders basis-honest copy and the grams-unknown supplement note", async ({
     browser,
@@ -99,12 +172,15 @@ test.describe("Nutrition trio", () => {
       const fiber = page.getByTestId("fiber-adequacy");
       await expect(fiber).toBeVisible({ timeout: WAIT });
       // A non-tracked basis is a floor; the target names the DRI adequate intake.
-      await expect(fiber.getByTestId("fiber-intake")).toContainText(/floor/i);
-      await expect(fiber.getByTestId("fiber-target")).toContainText(
+      const fiberDetails = page.getByTestId("fiber-estimate-details");
+      await expect(fiberDetails.getByTestId("fiber-intake")).toContainText(
+        /floor/i
+      );
+      await expect(fiberDetails.getByTestId("fiber-target")).toContainText(
         /adequate intake/i
       );
       // The capsule fiber supplement contributes 0 g and is noted honestly.
-      await expect(fiber).toContainText(/grams unknown/i);
+      await expect(fiberDetails).toContainText(/grams unknown/i);
     } finally {
       await page.close();
     }
@@ -131,7 +207,7 @@ test.describe("Nutrition trio", () => {
         // that save (a local run caught the set coming back empty). Gate, then
         // reload — the same pattern the format-prefs spec documents; the reload
         // also clears the indicator's linger so each gate refers to its own save.
-        await page.goto("/settings/profile");
+        await page.goto("/settings/nutrition");
         const presetSelect = page.getByTestId("dietary-preset");
         await expect(presetSelect).toBeVisible({ timeout: WAIT });
         await presetSelect.selectOption("vegetarian");
@@ -156,25 +232,34 @@ test.describe("Nutrition trio", () => {
         await expect(presetSelect).toHaveValue("vegetarian", { timeout: WAIT });
         await expect(page.getByLabel("Saved")).toBeVisible({ timeout: WAIT });
 
-        // On the Food tab, the suggestions summary now carries the muted preference note
-        // (#980 item 4) — the demote/substitute is explicable on-surface, like the #950
-        // slot chip is for ordering.
+        // The anchored sidebar row opens a modal with the muted preference note
+        // (#980 item 4) — the demote/substitute is explicable without reflowing the
+        // nutrition layout.
         await page.goto("/nutrition?tab=food");
+        await page.getByTestId("nutrition-suggestions-summary").click();
         const prefNote = page.getByTestId("suggestions-preference-note");
         await expect(prefNote).toBeVisible({ timeout: WAIT });
         await expect(prefNote).toContainText(/vegetarian-friendly/i);
+        await expect(prefNote).toHaveCSS("font-style", "normal");
 
         // The flagged low-omega-3 suggestion now leads with a plant source (nuts/seeds),
-        // not fish — substitution, never blocked. The suggestions block is a native
-        // <details> (a pure client toggle — no Server Action).
-        await page.getByTestId("nutrition-suggestions-summary").click();
-        const suggestions = page.getByTestId("nutrition-suggestions");
+        // not fish — substitution, never blocked. Opening the modal is a pure
+        // client toggle — no Server Action.
+        const suggestions = page.getByTestId("nutrition-suggestions-panel");
         await expect(suggestions).toContainText(/walnut|flax|chia|algae/i, {
           timeout: WAIT,
         });
+        await page
+          .getByRole("dialog", { name: "Lab suggestions" })
+          .getByRole("button", { name: "Close" })
+          .click();
 
         // An excluded group (fatty fish) is still reachable in the log bar — demoted,
         // never removed. Its row + log control are present and clickable.
+        const fishRow = page.getByTestId("food-group-fatty_fish");
+        if (!(await fishRow.isVisible())) {
+          await page.getByTestId("food-more-groups-summary").click();
+        }
         await expect(page.getByTestId("food-group-fatty_fish")).toBeVisible({
           timeout: WAIT,
         });

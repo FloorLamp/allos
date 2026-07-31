@@ -38,8 +38,8 @@ const FHIR_INPUT_TABLES = new Set<string>([
 const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
   // Preference / UI state — not the user's health record.
   {
-    table: "starred_biomarkers",
-    why: "UI pin state (which biomarkers are starred)",
+    table: "saved_items",
+    why: "UI save state (which items the ★ star gesture marked — biomarkers, Trends tiles; #1456 folded starred_biomarkers + trend_pins here). Curation, not the user's health record; every saved biomarker's READINGS export via medical_records.",
   },
   {
     table: "upcoming_dismissals",
@@ -70,6 +70,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
   {
     table: "integration_sync_events",
     why: "integration sync audit log — operational, not a health record",
+  },
+  {
+    table: "portal_identities",
+    why: "portal↔patient routing configuration (#1739) — it records HOW records arrive (which label on which portal maps to this profile), never anything a clinician wrote. Deliberately not portable: it is keyed on a `portals` row that is global to this instance and on a label defined by an external portal's proxy list, so it is meaningless on another instance, and the documents it routed export in full via medical_documents. Same class as integration_connections/integration_sync_events, which sit directly above.",
   },
   {
     table: "profile_share_links",

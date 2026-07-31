@@ -10,7 +10,11 @@ import {
   resolveDoseLabelsByVaccine,
   immunizationHasDuplicateVaccineDate,
 } from "@/lib/immunization-status";
-import { formatRecordDate, sourceLabel } from "@/lib/record-format";
+import {
+  formatRecordDate,
+  immunizationAdministrationLine,
+  sourceLabel,
+} from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { Immunization } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
@@ -93,6 +97,26 @@ export default function ImmunizationHistory({
       cellClassName: "text-slate-600 dark:text-slate-300",
       sort: { value: (im) => (im.provider_name ?? "").toLowerCase() },
       cell: (im) => im.provider_name ?? "—",
+    },
+    {
+      // Lot / route / site (#1406) — the facts a school or travel form asks for.
+      // Formatted by the ONE shared pure line so this table, the per-vaccine dose
+      // list and the export can't phrase the same dose differently. An adverse
+      // reaction to the dose rides underneath.
+      header: "Lot / route / site",
+      headerClassName: "hidden md:table-cell",
+      cellClassName: "hidden text-slate-600 md:table-cell dark:text-slate-300",
+      sort: { value: (im) => immunizationAdministrationLine(im).toLowerCase() },
+      cell: (im) => (
+        <span data-testid={`immunization-admin-${im.id}`}>
+          {immunizationAdministrationLine(im) || "—"}
+          {im.reaction ? (
+            <span className="block text-xs text-amber-700 dark:text-amber-300">
+              Reaction: {im.reaction}
+            </span>
+          ) : null}
+        </span>
+      ),
     },
     {
       header: "Source",

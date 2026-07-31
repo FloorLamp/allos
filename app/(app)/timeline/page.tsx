@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { AppRoute } from "@/lib/hrefs";
+import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -36,6 +36,11 @@ import {
   getTimezone,
 } from "@/lib/settings";
 import DaylightChip from "@/components/DaylightChip";
+import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
+import {
+  WEATHER_SERIES_LOOKBACK_DAYS,
+  getWeatherDaysForProfile,
+} from "@/lib/queries/weather-situations";
 import CyclePhaseChip from "@/components/CyclePhaseChip";
 import Avatar from "@/components/Avatar";
 import SubjectChip from "@/components/SubjectChip";
@@ -70,15 +75,25 @@ import {
 } from "@/lib/queries";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { SYMPTOMS } from "@/lib/symptoms";
-import SymptomLogBar from "../symptoms/SymptomLogBar";
+import SymptomLogBar from "../../../components/illness/SymptomLogBar";
+import SymptomEntryCard from "./SymptomEntryCard";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import {
   groupTimelineDays,
+  isTimelineUnfiltered,
   normalizeTimelineRange,
   timelineCategoryFromParam,
   timelineDateFromParam,
+  timelineEntryAnchorId,
+  TIMELINE_EMPTY_ACTIONS,
 } from "@/lib/timeline-format";
-import { formatLongDate } from "@/lib/format-date";
+import { getIntradayDay } from "@/lib/queries/intraday";
+import IntradayPanel from "@/components/IntradayPanel";
+import { formatLongDate, formatMonthDay } from "@/lib/format-date";
+import { shiftDateStr } from "@/lib/date";
+import TimelineDayNav from "@/components/TimelineDayNav";
+import { contextLabel } from "@/lib/context-label";
+import ContextBar from "@/components/ContextBar";
 import { EmptyState, MedicalValue, PageHeader } from "@/components/ui";
 import ActivityIcon from "@/components/ActivityIcon";
 import DateRangeControl from "@/components/DateRangeControl";
@@ -542,6 +557,33 @@ export default async function TimelinePage(props: {
           days.map((d) => d.date)
         )
       : new Map<string, number>();
+  // Timeline day CONTEXT (#1728): a compact conditions summary on days the weather was
+  // NOTABLE — a heatwave, cold snap, pressure swing, high-pollen or poor-air day per the
+  // #1726 predicates. Quiet by default, notable by exception: an ordinary mild Tuesday
+  // renders nothing, so this never becomes chrome. Display only — it gates nothing, and
+  // it reuses the SAME predicate set the dueness widening reads, so a day the Timeline
+  // calls notable is exactly a day a situational item would have gone due.
+  const notableByDay = new Map<string, string>();
+  if (!multiFeed && home && days.length > 0) {
+    const dates = days.map((d) => d.date).sort();
+    // One read spanning the feed, widened backwards so a spell's leading days are in
+    // the series the predicates need to see the run.
+    const series = getWeatherDaysForProfile(
+      daySubjectId,
+      shiftDateStr(dates[0], -WEATHER_SERIES_LOOKBACK_DAYS),
+      dates[dates.length - 1]
+    );
+    // ONE evaluation of that widened series (#1749), then a map lookup per rendered
+    // day. The predicates are a single forward pass with per-situation state, so asking
+    // the by-date accessor inside this loop would re-run the whole pass once per row —
+    // page-size × series-length work for a result that is identical every time.
+    const evaluated = evaluateSeries(series);
+    for (const date of dates) {
+      const summary = notableStatesSummary(evaluated.byDate.get(date) ?? []);
+      if (summary) notableByDay.set(date, summary);
+    }
+  }
+
   const uvByDay = new Map<
     string,
     { uvMinutes: number | null; peakUvIndex: number | null }
@@ -559,6 +601,32 @@ export default async function TimelinePage(props: {
     }
   }
   const cyclePeriods = !multiFeed ? listCyclePeriods(daySubjectId) : [];
+
+  // The intraday panel (#1068) — the SINGLE-day view only. It is the day rotated
+  // 90°, so it reads the SAME resolved event list the feed below renders (never a
+  // second gather): whatever the category filter and the age restriction dropped
+  // is already gone, which makes "a hidden feed event can never appear as a tick"
+  // true by construction. Null when nothing on the day is intraday.
+  const intraday =
+    singleDaySelected && range.from && days.length > 0
+      ? getIntradayDay(daySubjectId, range.from, days[0].events)
+      : null;
+
+  // The day's symptom state, gathered ONCE (#1517 C): it feeds both the retro entry
+  // bar and the decision about whether that bar opens on arrival. Only read on the
+  // surface that renders it — a single selected day that belongs to the acting
+  // profile (the bar writes to the acting profile, never a mixed subject).
+  const symptomDay =
+    singleDaySelected && range.from && !viewingOtherSubject ? range.from : null;
+  const daySymptomSeverities = symptomDay
+    ? getSymptomSeveritiesOnDate(daySubjectId, symptomDay)
+    : {};
+  const daySymptomNotes = symptomDay
+    ? getSymptomNotesOnDate(daySubjectId, symptomDay)
+    : {};
+  const dayIllnessActive = symptomDay
+    ? hasActiveIllnessSituation(daySubjectId)
+    : false;
 
   const latestDay = (multiFeed ? mergedDays : days)[0]?.date;
   const oldestDay = (multiFeed ? mergedDays : days).at(-1)?.date;
@@ -584,71 +652,90 @@ export default async function TimelinePage(props: {
         restoreKey={`${category ?? "all"}:${range.from ?? ""}:${range.to ?? ""}`}
       />
 
+      {/* The filter block (issue #1517 A+B). It used to be `sticky` on a phone —
+          permanently occupying viewport height for the chrome you set once and
+          rarely re-touch, while the day nav below it (prev/next day, used
+          constantly) scrolled away. The priority is swapped: below `md` this block
+          scrolls away, collapsed to one summary line ("All · Through today ▾") that
+          expands on tap, and TimelineDayNav takes the pinned slot instead. From
+          `md` up — where the height is not scarce — it is sticky exactly as before,
+          and from `sm` up the controls are simply always shown. */}
       <div
         id="timeline-controls"
-        className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-2 mb-5 space-y-2 bg-slate-50/50 px-2 py-2 backdrop-blur-md sm:space-y-4 sm:py-3 md:top-0 dark:bg-ink-950/50"
+        className="mb-5 md:sticky md:top-0 md:z-20 md:-mx-2 md:bg-slate-50/50 md:px-2 md:py-3 md:backdrop-blur-md md:dark:bg-ink-950/50"
       >
-        <DateRangeControl
-          basePath="/timeline"
-          range={range}
-          todayStr={todayStr}
-          hiddenParams={{ category }}
-          buildHref={(r) => filterHref(category, r)}
-          LinkComponent={TimelineFilterLink}
-          idPrefix="timeline"
-          rightSlot={
-            <>
-              <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
-                {throughLabel}
-              </span>
-              {latestDay && oldestDay && latestDay !== oldestDay && (
-                <>
-                  <a
-                    href={`#timeline-day-${latestDay}`}
-                    className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
-                  >
-                    Latest
-                  </a>
-                  <a
-                    href={`#timeline-day-${oldestDay}`}
-                    className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
-                  >
-                    Oldest
-                  </a>
-                </>
-              )}
-            </>
+        <ContextBar
+          idPrefix="timeline-filters"
+          label={contextLabel(
+            category ? timelineCategoryLabel(category) : "All",
+            throughLabel
+          )}
+          controls={
+            <div className="space-y-2 sm:space-y-4">
+              <DateRangeControl
+                basePath="/timeline"
+                range={range}
+                todayStr={todayStr}
+                hiddenParams={{ category }}
+                buildHref={(r) => filterHref(category, r)}
+                LinkComponent={TimelineFilterLink}
+                idPrefix="timeline"
+                rightSlot={
+                  <>
+                    <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+                      {throughLabel}
+                    </span>
+                    {latestDay && oldestDay && latestDay !== oldestDay && (
+                      <>
+                        <a
+                          href={`#timeline-day-${latestDay}`}
+                          className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
+                        >
+                          Latest
+                        </a>
+                        <a
+                          href={`#timeline-day-${oldestDay}`}
+                          className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
+                        >
+                          Oldest
+                        </a>
+                      </>
+                    )}
+                  </>
+                }
+              />
+
+              <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+                <TimelineFilterLink
+                  href={filterHref(undefined, range)}
+                  className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
+                    !category
+                      ? "bg-brand-500 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+                  }`}
+                >
+                  All
+                </TimelineFilterLink>
+                {visibleCategories.map((c) => {
+                  const active = c === category;
+                  return (
+                    <TimelineFilterLink
+                      key={c}
+                      href={filterHref(c, range)}
+                      className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
+                        active
+                          ? "bg-brand-500 text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+                      }`}
+                    >
+                      {timelineCategoryLabel(c)}
+                    </TimelineFilterLink>
+                  );
+                })}
+              </div>
+            </div>
           }
         />
-
-        <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-          <TimelineFilterLink
-            href={filterHref(undefined, range)}
-            className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-              !category
-                ? "bg-brand-500 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-            }`}
-          >
-            All
-          </TimelineFilterLink>
-          {visibleCategories.map((c) => {
-            const active = c === category;
-            return (
-              <TimelineFilterLink
-                key={c}
-                href={filterHref(c, range)}
-                className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                  active
-                    ? "bg-brand-500 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
-              >
-                {timelineCategoryLabel(c)}
-              </TimelineFilterLink>
-            );
-          })}
-        </div>
       </div>
 
       {/* Multi-view merged feed: the interleaved | by-person toggle (issue #1327 fix 2,
@@ -667,38 +754,81 @@ export default async function TimelinePage(props: {
         </div>
       )}
 
+      {/* Adjacent-day navigation (#1425). Single-day views only — it is the view
+          that HAS neighbours. Both destinations are built here, on the server,
+          with the same `timelineDayHref` every other day link uses (and carrying
+          the `subject` param when the day belongs to another member, so walking
+          days never silently changes whose day you are reading). The component
+          renders the arrows AND owns the horizontal swipe that follows them. */}
+      {singleDaySelected && range.from && (
+        <TimelineDayNav
+          prevHref={timelineDayHref(
+            shiftDateStr(range.from, -1),
+            viewingOtherSubject ? daySubjectId : undefined
+          )}
+          nextHref={timelineDayHref(
+            shiftDateStr(range.from, 1),
+            viewingOtherSubject ? daySubjectId : undefined
+          )}
+          prevLabel={formatMonthDay(shiftDateStr(range.from, -1), formatPrefs)}
+          nextLabel={formatMonthDay(shiftDateStr(range.from, 1), formatPrefs)}
+          targetSelector='[data-testid="app-content-container"]'
+        />
+      )}
+
       {/* Retro symptom entry (#799): on a single selected day, offer the one-tap symptom
           bar. It writes to the ACTING profile, so it's shown only when the day being
           viewed IS the acting profile's (never a mixed-subject / wrong-profile write —
           #1329). When no illness-type situation is active it offers the suggest-only
           "Mark as illness" bridge (direction A of the two-way bridge). */}
       {singleDaySelected && range.from && !viewingOtherSubject && (
-        <div className="card mb-5" data-testid="timeline-symptom-entry">
-          <h2 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-            Log symptoms for {formatLongDate(range.from, formatPrefs)}
-          </h2>
+        <SymptomEntryCard
+          dateLabel={formatLongDate(range.from, formatPrefs)}
+          // #1517 C: open when logging IS the point of the visit — the day already
+          // carries symptom entries, or an illness-type situation is active (the
+          // sick-day flow #799 built the bar for). Otherwise the ordinary day gets
+          // the block back. Both inputs are already read below for the bar itself.
+          defaultOpen={
+            Object.keys(daySymptomSeverities).length > 0 ||
+            Object.keys(daySymptomNotes).length > 0 ||
+            dayIllnessActive
+          }
+        >
           <SymptomLogBar
             date={range.from}
-            initial={getSymptomSeveritiesOnDate(daySubjectId, range.from)}
-            initialNotes={getSymptomNotesOnDate(daySubjectId, range.from)}
+            initial={daySymptomSeverities}
+            initialNotes={daySymptomNotes}
             symptoms={SYMPTOMS}
             customNames={getCustomSymptomNames(daySubjectId)}
             rankedKeys={getSymptomLogOrder(daySubjectId)}
-            suggestActivateIllness={!hasActiveIllnessSituation(daySubjectId)}
+            suggestActivateIllness={!dayIllnessActive}
             temperatureUnit={units.temperatureUnit}
             textIntakeEnabled={isTaskConfigured("symptom-map")}
           />
-        </div>
+        </SymptomEntryCard>
       )}
 
       {!hasAnyEvents ? (
-        <EmptyState
-          message={
-            category
-              ? `No ${timelineCategoryLabel(category).toLowerCase()} events yet.`
-              : "No timeline events yet."
-          }
-        />
+        /* A brand-new account is not the same message as a filter that matched
+           nothing (#1410): only the UNFILTERED empty state names the ingest doors
+           the timeline fills from — a filtered one would be telling the reader to
+           log a workout when the fix is to drop a category pill. */
+        isTimelineUnfiltered(category, range) ? (
+          <EmptyState
+            testId="timeline-empty"
+            message="No timeline events yet. Your day-by-day history fills in from what you log and import."
+            actions={TIMELINE_EMPTY_ACTIONS}
+          />
+        ) : (
+          <EmptyState
+            testId="timeline-empty-filtered"
+            message={
+              category
+                ? `No ${timelineCategoryLabel(category).toLowerCase()} events yet.`
+                : "No timeline events yet."
+            }
+          />
+        )
       ) : multiFeed && viewMode === "by-person" ? (
         <div className="space-y-8" data-testid="timeline-by-person">
           {memberSections.map((section) => {
@@ -886,10 +1016,35 @@ export default async function TimelinePage(props: {
                     phase={cyclePhaseOnDate(cyclePeriods, day.date)}
                     period={periodOnDate(cyclePeriods, day.date)}
                   />
+                  {notableByDay.has(day.date) && (
+                    <div
+                      className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                      data-testid="timeline-weather-context"
+                    >
+                      {notableByDay.get(day.date)}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-3 pl-4">
+                  {/* The intraday panel (#1068): the day rotated 90°, on the
+                      SINGLE-day view only — the scrolling feed gets no per-day
+                      chart. Null when nothing on the day is intraday, so an
+                      ordinary day renders no empty frame. */}
+                  {intraday && intraday.date === day.date && (
+                    <IntradayPanel
+                      model={intraday}
+                      formatPrefs={formatPrefs}
+                      profileId={daySubjectId}
+                    />
+                  )}
                   {day.events.map((event) => (
-                    <div key={event.id} className="relative">
+                    <div
+                      key={event.id}
+                      // Per-entry anchor (#1068) so an intraday tick can scroll
+                      // the list to its entry. Offset for the sticky controls.
+                      id={timelineEntryAnchorId(event.id)}
+                      className="relative scroll-mt-[calc(13rem+env(safe-area-inset-top))] md:scroll-mt-44"
+                    >
                       <span className="absolute left-0 top-[1.875rem] h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
                       <span className="absolute left-0 top-[1.5625rem] h-2.5 w-2.5 -translate-x-[1.3125rem] rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
                       <EventCard

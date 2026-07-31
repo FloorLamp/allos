@@ -8,6 +8,7 @@
 
 import {
   getSleepSessions,
+  getSleepSessionsInRange,
   getSleepSessionsSince,
   getSleepStageDailyTotals,
   getLatestMetricSample,
@@ -27,7 +28,7 @@ import {
 } from "./intake/schedule";
 import { getSupplementLogsInRange } from "./intake/adherence";
 import { today } from "../db";
-import { shiftDateStr, zonedDateParts } from "../date";
+import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "../date";
 import {
   getActiveSituations,
   getTimezone,
@@ -36,7 +37,7 @@ import {
 } from "../settings";
 import { doseAdherenceSince } from "../adherence-patterns";
 import { indexTakenByDose } from "../supplement-adherence";
-import { isDueOn, timeBucket } from "../supplement-schedule";
+import { doseDueOn, timeBucket } from "../supplement-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
   summarizeBedtimeSupplements,
@@ -175,6 +176,69 @@ export function getLastNightSummary(
   return windowSummary ?? latestDailySleepSummary(durationTrend);
 }
 
+export interface SleepDateRange {
+  from?: string;
+  to?: string;
+}
+
+// The latest sleep summary inside a selected Trends window. This is a distinct
+// question from "last night": newer sessions outside the window cannot decide
+// whether an older window has sleep, nor can they supply its headline value.
+// Timed sessions use the canonical main-vs-nap classifier; duration-only manual
+// rows remain available without inventing bed/wake clocks.
+export function getSleepSummaryInRange(
+  profileId: number,
+  range: SleepDateRange
+): LastNightSummary | null {
+  const inRange = (date: string) =>
+    (!range.from || date >= range.from) && (!range.to || date <= range.to);
+  const timezone = getTimezone(profileId);
+  const sessions = getSleepSessionsInRange(
+    profileId,
+    range.from,
+    range.to
+  ).filter((session) => inRange(session.date));
+  const stagesByDay = new Map<string, SleepStageMinutes>();
+  for (const row of getSleepStageDailyTotals(profileId).filter((stage) =>
+    inRange(stage.date)
+  )) {
+    stagesByDay.set(row.date, {
+      deep: row.deep,
+      rem: row.rem,
+      light: row.light,
+      awake: row.awake,
+    });
+  }
+  const sessionSummary = lastNightSummary(sessions, timezone, stagesByDay);
+
+  const mainDurations = mainSleepNights(sessions, timezone).map((night) => ({
+    date: night.wakeDay,
+    value: night.durationMin,
+  }));
+  const durationByDay = new Map(
+    mainDurations.map((row) => [row.date, row.value])
+  );
+  const manualRows = getEditableManualSleepDurations(
+    profileId,
+    range.from ?? "0000-01-01",
+    range.to ?? "9999-12-31"
+  );
+  for (const row of manualRows) {
+    if (!durationByDay.has(row.date)) durationByDay.set(row.date, row.value);
+  }
+  const durationTrend = [...durationByDay]
+    .map(([date, value]) => ({ date, value }))
+    .sort((left, right) => (left.date < right.date ? -1 : 1));
+  const latestDuration = durationTrend.at(-1);
+  if (
+    latestDuration &&
+    (sessionSummary == null || latestDuration.date > sessionSummary.wakeDay)
+  ) {
+    return latestDailySleepSummary(durationTrend, "manual");
+  }
+  return sessionSummary;
+}
+
 // The main-session bed/wake per night for the consistency strip (issue #1066),
 // oldest→newest, capped at `limitDays` recent nights. Nap sessions are dropped by
 // the shared classifier (mainSleepNights) before the clock-hour re-expression.
@@ -238,7 +302,7 @@ function bedtimeSupplementsByWakeDay(
   if (sleepDateByWakeDay.size === 0) return new Map();
 
   const supplements = getSupplements(profileId).filter(
-    (item) => item.kind === "supplement" && item.as_needed !== 1
+    (item) => item.kind === "supplement" && item.obligation !== "may"
   );
   const supplementById = new Map(supplements.map((item) => [item.id, item]));
   const supplementDoses = getSupplementDosesForHistory(profileId).filter(
@@ -284,7 +348,8 @@ function bedtimeSupplementsByWakeDay(
       if (!resolved && since != null && sleepDate < since) return [];
       if (
         !resolved &&
-        !isDueOn(item, {
+        !doseDueOn(item, dose, {
+          date: sleepDate,
           isWorkoutDay: workoutDays.has(sleepDate),
           activeSituations: situationsOn(sleepDate),
         })
@@ -409,6 +474,27 @@ export function getSleepRegularity(
     // explicit opts.freeDays (tests) wins; otherwise the stored setting (Sat/Sun
     // default) drives it. The pure core stays auth-blind: the setting is data.
     { freeDays: getFreeDays(profileId), ...opts }
+  );
+}
+
+// SRI for the selected Trends window. The range supplies both the input sessions
+// and the rolling-window anchor, so a historical view cannot display today's SRI.
+export function getSleepRegularityInRange(
+  profileId: number,
+  range: SleepDateRange
+): SleepRegularity | null {
+  const end = range.to ?? today(profileId);
+  const start = range.from ?? shiftDateStr(end, -27);
+  const span = daysBetweenDateStr(start, end);
+  const windowDays = span == null ? 28 : Math.max(1, span + 1);
+  return computeSleepRegularity(
+    getSleepSessionsInRange(profileId, start, end),
+    getTimezone(profileId),
+    {
+      asOf: end,
+      windowDays,
+      freeDays: getFreeDays(profileId),
+    }
   );
 }
 

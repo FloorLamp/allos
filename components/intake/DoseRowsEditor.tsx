@@ -3,12 +3,15 @@
 import type { Dispatch, SetStateAction } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import Combobox from "@/components/Combobox";
+import DateField from "@/components/DateField";
 import {
   TIME_BUCKETS,
   FOOD_TIMINGS,
   FOOD_TIMING_LABELS,
 } from "@/lib/supplement-schedule";
 import type { FoodTiming } from "@/lib/types";
+import { WeekdayChips } from "@/components/intake/CadenceEditor";
+import { doseCadenceLabel, normalizeWeekdays } from "@/lib/intake-cadence";
 
 // One editable dose row's client state (shared by both intake forms, #846).
 export interface DoseState {
@@ -16,12 +19,21 @@ export interface DoseState {
   amount: string;
   time_of_day: string;
   food_timing: FoodTiming;
+  // Per-row calendar (#1602), behind the Advanced reveal. `weekdays` empty = every one
+  // of the item's on-days. The date window is what expresses a TAPER as several rows
+  // instead of a series of destructive amount edits.
+  weekdays: number[];
+  start_date: string;
+  end_date: string;
 }
 
 export const emptyDose = (): DoseState => ({
   amount: "",
   time_of_day: "",
   food_timing: "any",
+  weekdays: [],
+  start_date: "",
+  end_date: "",
 });
 
 // The dose-rows editor shared by both intake forms (#846): one or more amount /
@@ -35,11 +47,15 @@ export default function DoseRowsEditor({
   dosageOptions,
   amountPlaceholder = "amount",
   singleAmountOnly = false,
+  weekStart = 0,
 }: {
   doses: DoseState[];
   setDoses: Dispatch<SetStateAction<DoseState[]>>;
   dosageOptions: string[];
   amountPlaceholder?: string;
+  // The profile's first day of the week, so the per-dose chips are ordered exactly
+  // like every other calendar surface.
+  weekStart?: number;
   // PRN ⇒ amount-only mode (#851 item 9): a PRN medication carries exactly ONE
   // amount-only dose (plus its with-food relation) — no time-of-day slots, no split,
   // no add/remove — because the redose interval owns "when". A no-op for the scheduled
@@ -153,10 +169,62 @@ export default function DoseRowsEditor({
                 onClick={() => setDoses((ds) => ds.filter((_, j) => j !== i))}
                 className="tap-target flex h-10 w-10 items-center justify-center justify-self-end rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                 aria-label="Remove dose"
+                title="Remove dose"
               >
                 <IconX className="h-4 w-4" />
               </button>
             )}
+            {/* Per-row calendar (#1602) behind a reveal: most rows never need it, and
+                putting weekday chips and a date window on every dose would make the
+                ordinary two-slot schedule look like a scheduling system. The summary
+                stays OPEN once the row has a rule, so a constraint that changes when
+                the dose lands is never hidden behind a closed disclosure. */}
+            <details
+              className="sm:col-span-full"
+              open={d.weekdays.length > 0 || !!d.start_date || !!d.end_date}
+            >
+              <summary
+                className="cursor-pointer text-xs text-slate-500 dark:text-slate-400"
+                data-testid={`dose-advanced-${i}`}
+              >
+                {doseCadenceLabel({
+                  weekdays: normalizeWeekdays(d.weekdays),
+                  start_date: d.start_date || null,
+                  end_date: d.end_date || null,
+                }) ?? "Only on certain days or dates"}
+              </summary>
+              <div className="mt-2 space-y-2 border-l-2 border-black/10 pl-3 dark:border-white/10">
+                <WeekdayChips
+                  value={d.weekdays}
+                  onChange={(weekdays) => setDose(i, { weekdays })}
+                  weekStart={weekStart}
+                  idPrefix={`dose-${i}`}
+                />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="text-xs text-slate-500 dark:text-slate-400">
+                    From
+                    <DateField
+                      value={d.start_date}
+                      onChange={(start_date) => setDose(i, { start_date })}
+                      inputClassName="mt-1"
+                      data-testid={`dose-${i}-start-date`}
+                    />
+                  </label>
+                  <label className="text-xs text-slate-500 dark:text-slate-400">
+                    Until
+                    <DateField
+                      value={d.end_date}
+                      onChange={(end_date) => setDose(i, { end_date })}
+                      inputClassName="mt-1"
+                      data-testid={`dose-${i}-end-date`}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Ending a dose here stops it being due — its history is kept.
+                </p>
+              </div>
+            </details>
           </div>
         ))}
       </div>

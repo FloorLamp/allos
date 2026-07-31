@@ -89,7 +89,7 @@ export default function ReprocessDiffPanel({
             onClick={preview}
             disabled={busy}
             data-testid="reprocess-preview"
-            className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+            className="btn-ghost inline-flex items-center gap-1.5 text-sm"
           >
             <IconRefresh className="h-4 w-4" />
             {previewing ? "Preparing preview…" : "Preview changes"}
@@ -125,7 +125,7 @@ export default function ReprocessDiffPanel({
               onClick={commit}
               disabled={busy}
               data-testid="reprocess-anyway"
-              className="btn inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+              className="btn inline-flex items-center gap-1.5 text-sm"
             >
               {committing ? "Re-extracting…" : "Re-extract anyway"}
             </button>
@@ -133,7 +133,7 @@ export default function ReprocessDiffPanel({
               type="button"
               onClick={cancel}
               disabled={busy}
-              className="btn-ghost text-sm disabled:opacity-50"
+              className="btn-ghost text-sm"
             >
               Cancel
             </button>
@@ -212,7 +212,7 @@ export default function ReprocessDiffPanel({
                 busy || reprocessPreviewView(result.diff).commitDisabled
               }
               data-testid="reprocess-commit"
-              className="btn inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+              className="btn inline-flex items-center gap-1.5 text-sm"
             >
               <IconRefresh className="h-4 w-4" />
               {committing ? "Saving…" : "Save changes"}
@@ -221,7 +221,7 @@ export default function ReprocessDiffPanel({
               type="button"
               onClick={cancel}
               disabled={busy}
-              className="btn-ghost text-sm disabled:opacity-50"
+              className="btn-ghost text-sm"
             >
               Cancel
             </button>

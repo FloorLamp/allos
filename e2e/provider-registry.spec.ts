@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick, followLink } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // The provider-domain closeout sweep (#1055/#1056/#1057/#1058/#1088), driven as the
 // seeded admin against the dedicated "(e2e)" provider fixtures planted by
@@ -10,7 +11,7 @@ import { settledClick, followLink } from "./helpers";
 // (org card + nested individual + specialty chip), the detail "Practices at" tie-in,
 // declining a suggestion, the archive round-trip, and #1088 (a vision form sets a
 // provider that then appears in that provider's directory activity).
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 function providerId(name: string): number {
   const db = new Database(DB_PATH, { readonly: true });

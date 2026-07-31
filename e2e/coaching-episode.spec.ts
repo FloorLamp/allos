@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #44 item 3b: rest-nudge episode continuity. The e2e seed
 // (e2e/seed-events.ts) forces a rest recommendation for profile 1 today (a short
 // night below the 6h floor) and pre-seeds a rest episode that started yesterday,

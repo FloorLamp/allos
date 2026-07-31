@@ -1,5 +1,6 @@
 "use server";
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
@@ -13,6 +14,7 @@ import {
   type Role,
 } from "@/lib/auth";
 import { db, writeTx } from "@/lib/db";
+import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { hashPassword } from "@/lib/password";
 import { checkPasswordStrength } from "@/lib/password-strength";
 import {
@@ -38,6 +40,7 @@ import {
 } from "@/lib/grants";
 import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { removeFromOffsiteMirror } from "@/lib/backup";
+import { deleteApiTokensForLogin } from "@/lib/api-tokens";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
 import { photoDomainRoot } from "@/lib/photo/store";
@@ -159,6 +162,12 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
       "onboarding_state",
       serializeOnboardingState(initialOnboardingState())
     );
+    // The standard Overview metric tiles as default-saved rows (issue #1487), so a
+    // new profile's Trends Overview looks the same as an existing one's once the
+    // grid is membership-driven. Create-time only — never re-run, or an unstarred
+    // metric would come back. Same set for every profile: the training/growth age
+    // gates stay a render-time filter (see lib/standard-metric-seeds.ts).
+    seedStandardMetricSaves(db, id);
     return id;
   });
   recordAudit({
@@ -343,6 +352,14 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
         `DELETE FROM integration_sync_rows WHERE event_id IN (
            SELECT id FROM integration_sync_events WHERE profile_id = ?)`
       ).run(id);
+      // Correction lineage (#1404), reached through medical_records (parent, OWNED).
+      // Its ON DELETE CASCADE FK is a no-op here because the sweep runs with
+      // foreign_keys OFF, so the child rows are cleared explicitly before the parent
+      // (mirrors exercise_sets/routine_days/integration_sync_rows above).
+      db.prepare(
+        `DELETE FROM medical_record_revisions WHERE record_id IN (
+           SELECT id FROM medical_records WHERE profile_id = ?)`
+      ).run(id);
 
       // Every directly profile-owned table, deleted by profile_id. (No FK cascade —
       // upgraded DBs got profile_id via addColumnIfMissing, which can't attach an ON
@@ -415,6 +432,18 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
 
 // ---- Logins ----
 
+// A password hash of a value NOBODY knows — the stored credential for a login
+// created through the invite path (issue #1434 part C). `logins.password_hash` is
+// NOT NULL, and a nullable-credential auth path would be a much larger,
+// security-sensitive change, so "passwordless" is expressed as an unguessable
+// random secret that is generated, hashed, and immediately discarded. The login is
+// therefore unusable until the invitee sets a real password through their token —
+// strictly safer than the interim password an admin invents, knows, and leaves
+// valid alongside the invite link.
+async function unusablePasswordHash(): Promise<string> {
+  return hashPassword(crypto.randomBytes(32).toString("hex"));
+}
+
 export async function createLogin(formData: FormData): Promise<FamilyResult> {
   const admin = await requireAdmin();
   const username = String(formData.get("username") ?? "").trim();
@@ -436,18 +465,70 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
     };
   if (email && !isValidEmail(email))
     return { ok: false, error: "Enter a valid email address." };
-  const strength = checkPasswordStrength(password, { username });
-  if (!strength.ok) return { ok: false, error: strength.error };
 
-  const passwordHash = await hashPassword(password);
+  // The invite carries its own trust (issue #1434): when the admin chose to email a
+  // set-password link, the login is created PASSWORDLESS and no password is asked
+  // for or accepted. Anything else still needs a real password up front. An invite
+  // the instance can't actually send is refused BEFORE the insert, so no login is
+  // ever left with a credential nobody can claim.
+  const invitePath = wantsInvite && !!email && canSendAuthEmail();
+  if (wantsInvite && !invitePath) {
+    return {
+      ok: false,
+      error: !email
+        ? "Add an email address to send an invite, or set a password instead."
+        : "Couldn't send the invite — configure SMTP and the public app URL on Settings → Server first.",
+    };
+  }
+  if (!invitePath) {
+    const strength = checkPasswordStrength(password, { username });
+    if (!strength.ok) return { ok: false, error: strength.error };
+  }
+
+  // The profiles this login should be able to open from day one (issue #1434 part
+  // B) — access is part of CREATING a member, not a separate discipline the admin
+  // has to remember afterwards. Admins are implicit-all and never carry
+  // login_profiles rows, so their submitted selection is ignored. Same field shape
+  // as setGrants (repeated `profileId` + `access_<id>`), normalized through the same
+  // pure helpers against the REAL profile ids, so a forged id can't be granted.
+  const validIds = (
+    db.prepare("SELECT id FROM profiles").all() as { id: number }[]
+  ).map((r) => r.id);
+  const initialGrants: GrantInput[] =
+    role === "admin"
+      ? []
+      : normalizeGrantInputs(
+          formData
+            .getAll("profileId")
+            .map((v) => Number(v))
+            .filter((n) => Number.isFinite(n))
+            .map((profileId) => ({
+              profileId,
+              access: normalizeAccess(formData.get(`access_${profileId}`)),
+            })),
+          validIds
+        );
+
+  const passwordHash = invitePath
+    ? await unusablePasswordHash()
+    : await hashPassword(password);
   let newId: number;
   try {
-    const info = db
-      .prepare(
-        "INSERT INTO logins (username, password_hash, role, email) VALUES (?, ?, ?, ?)"
-      )
-      .run(username, passwordHash, role, email || null);
-    newId = Number(info.lastInsertRowid);
+    // One transaction: the login and its initial grants land together, so a member
+    // is never briefly visible with the zero-grant dead end this fixes.
+    newId = writeTx((): number => {
+      const info = db
+        .prepare(
+          "INSERT INTO logins (username, password_hash, role, email) VALUES (?, ?, ?, ?)"
+        )
+        .run(username, passwordHash, role, email || null);
+      const id = Number(info.lastInsertRowid);
+      const ins = db.prepare(
+        "INSERT OR IGNORE INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, ?)"
+      );
+      for (const g of initialGrants) ins.run(id, g.profileId, g.access);
+      return id;
+    });
     recordAudit({
       loginId: admin.login.id,
       profileId: admin.profile.id,
@@ -455,6 +536,19 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
       target: String(newId),
       detail: `${username} (${role})`,
     });
+    if (initialGrants.length > 0) {
+      recordAudit({
+        loginId: admin.login.id,
+        profileId: admin.profile.id,
+        action: AUDIT_ACTIONS.grantUpdate,
+        target: String(newId),
+        detail: formatGrantDiff({
+          add: initialGrants,
+          update: [],
+          remove: [],
+        }),
+      });
+    }
   } catch (err) {
     // Surface the case-insensitive unique constraints as friendly messages instead
     // of a 500 (username and the unique-if-set email index).
@@ -473,38 +567,35 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
     throw err;
   }
 
-  // Optionally email a set-password invite. A failure here never rolls back the
-  // login — it's created; we just report the invite couldn't go out and the admin
-  // can resend from the login's row.
+  // Email the set-password invite. A failure here never rolls back the login — it's
+  // created; we just report the invite couldn't go out. The login is passwordless,
+  // so say so plainly: the admin's rescue is "Send invite" (or a manual reset) from
+  // the login's row, not a password only they know.
   let inviteNote = "";
-  if (wantsInvite) {
-    if (!email) {
-      inviteNote = " Add an email to send an invite.";
-    } else if (!canSendAuthEmail()) {
+  if (invitePath) {
+    try {
+      await sendInviteEmail(newId, username, email);
+      recordAudit({
+        loginId: admin.login.id,
+        profileId: admin.profile.id,
+        action: AUDIT_ACTIONS.loginInviteSent,
+        target: String(newId),
+      });
+      inviteNote = ` Sent an invite to ${email} — no password is set until they use it.`;
+    } catch {
       inviteNote =
-        " Couldn't send the invite — configure SMTP and the public app URL on Settings → Server first.";
-    } else {
-      try {
-        await sendInviteEmail(newId, username, email);
-        recordAudit({
-          loginId: admin.login.id,
-          profileId: admin.profile.id,
-          action: AUDIT_ACTIONS.loginInviteSent,
-          target: String(newId),
-        });
-        inviteNote = ` Sent an invite to ${email}.`;
-      } catch {
-        inviteNote =
-          " Couldn't send the invite email. Try again from the login’s row.";
-      }
+        " Couldn’t send the invite email — the login has no password yet. Resend from its row.";
     }
   }
 
   revalidatePath("/settings/family");
+  revalidatePath("/", "layout"); // an initial grant changes the member's switcher
   const base =
     role === "admin"
       ? `Created admin “${username}”.`
-      : `Created “${username}”. Grant it a profile below.`;
+      : initialGrants.length > 0
+        ? `Created “${username}” with access to ${initialGrants.length} ${initialGrants.length === 1 ? "profile" : "profiles"}.`
+        : `Created “${username}”. Grant it a profile below — it can’t sign in usefully until you do.`;
   return { ok: true, message: base + inviteNote };
 }
 
@@ -655,6 +746,10 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
     // cascade via the FK, but delete explicitly so this holds even if foreign_keys
     // is ever off (the sibling deletes above).
     db.prepare("DELETE FROM login_auth_tokens WHERE login_id = ?").run(id);
+    // API tokens (issue #1734) die with their login for the same reason and in the
+    // same posture: the FK is ON DELETE CASCADE, but this runs explicitly so the
+    // teardown holds even if foreign_keys is off, like the siblings above.
+    deleteApiTokensForLogin(id);
     db.prepare("DELETE FROM logins WHERE id = ?").run(id);
   });
   recordAudit({

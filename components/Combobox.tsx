@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { IconSearch, IconX } from "@tabler/icons-react";
-import { fuzzyFilter } from "@/lib/fuzzy";
+import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
 
 // Shared autocomplete. Two modes via `allowFreeText`:
 //  - false (default): the value must be picked from `options`; an empty match
@@ -23,6 +23,8 @@ export default function Combobox({
   badge,
   badgeFor,
   iconFor,
+  labelFor,
+  searchTermsFor,
   allowFreeText = false,
   emptyLabel = "No matches",
   freeTextLabel,
@@ -33,6 +35,7 @@ export default function Combobox({
   selectOnFocus = false,
   closeStopsPropagation = false,
   inputClassName = "",
+  inputElementRef,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -49,6 +52,12 @@ export default function Combobox({
   // TRAILING (right-hand) slot. The provider picker uses this for the
   // individual/organization icon; additive, so existing callers are unaffected.
   iconFor?: (option: string) => React.ReactNode;
+  // Render a label different from the option's selected value. Keyed pickers can
+  // pass stable ids as `options` while keeping human labels in the list.
+  labelFor?: (option: string) => React.ReactNode;
+  // Hidden aliases for matching while keeping the option's visible label stable.
+  // Used by the protocol outcome picker so "A1c" finds "Hemoglobin A1c".
+  searchTermsFor?: (option: string) => readonly string[];
   allowFreeText?: boolean;
   emptyLabel?: string;
   // Renders the free-text row for the current query; default: Use "<query>".
@@ -62,6 +71,7 @@ export default function Combobox({
   selectOnFocus?: boolean;
   closeStopsPropagation?: boolean;
   inputClassName?: string;
+  inputElementRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -76,7 +86,9 @@ export default function Combobox({
   const q = value.trim().toLowerCase();
   // Fuzzy subsequence match + ranking (see lib/fuzzy): "bpr" finds "Bench
   // Press". An empty query keeps the first 8 options in their original order.
-  const filtered = fuzzyFilter(options, value, 8);
+  const filtered = searchTermsFor
+    ? fuzzyFilterWithTerms(options, value, searchTermsFor, 8)
+    : fuzzyFilter(options, value, 8);
   const showUse =
     allowFreeText &&
     value.trim() !== "" &&
@@ -126,7 +138,10 @@ export default function Combobox({
         <IconSearch className="h-4 w-4" stroke={2} aria-hidden="true" />
       </span>
       <input
-        ref={inputRef}
+        ref={(node) => {
+          inputRef.current = node;
+          if (inputElementRef) inputElementRef.current = node;
+        }}
         id={id}
         value={value}
         name={name}
@@ -252,7 +267,7 @@ export default function Combobox({
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {iconFor?.(o)}
-                    <span className="truncate">{o}</span>
+                    <span className="truncate">{labelFor?.(o) ?? o}</span>
                   </span>
                   {badgeFor?.(o)}
                 </button>

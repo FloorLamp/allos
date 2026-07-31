@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { getOptimalShareRows } from "@/lib/queries";
-import { RANGE_BADGE_META } from "@/lib/reference-range";
 import { biomarkerViewHref } from "@/lib/hrefs";
+import type { OptimalShareRow } from "@/lib/longevity-pillars";
 import type { LongevitySection } from "@/lib/longevity";
+import { MedicalValue } from "@/components/ui";
 import PillarStat from "./PillarStat";
 
 // Longevity §4 — Optimal-share biomarkers (#1042 phase 4): the expanded
@@ -12,6 +13,50 @@ import PillarStat from "./PillarStat";
 // optimalShareRows — reconciliation pinned by a pure test), non-optimal first.
 // Links point at the biomarker surfaces that exist TODAY (/biomarkers +
 // biomarkerViewHref); phase 5 (Results) repoints them later.
+//
+// A row shows the CANONICAL name and leads with the VALUE (#1501):
+//   • `canonicalName?.trim() || name` — the vocabulary's canonical_name already IS clean,
+//     deliberately-cased display text ("Uric Acid", "eGFR"); `name` is the raw
+//     string the lab delivered, which may be shouting case. Rendering the raw one
+//     while holding the canonical was this card's bug. (The provenance/edit
+//     surfaces — import review, the editable record row, the detail page's "as
+//     reported" column — deliberately keep showing the raw string.)
+//   • the existing MedicalValue (value + unit + directional caret + sr-only
+//     severity, #1220) instead of a direction chip: both directions used to
+//     collapse into one amber "Above/Below optimal" badge that took the row's
+//     width and never showed the number. The curated optimal band trails it,
+//     muted, so a reading is legible against its target at a glance.
+
+function BiomarkerRow({ row: r }: { row: OptimalShareRow }) {
+  return (
+    <li
+      className="flex items-baseline justify-between gap-2 text-sm"
+      data-testid="longevity-biomarker-row"
+    >
+      <Link
+        href={biomarkerViewHref(r.canonicalName, r.name)}
+        className={`truncate hover:underline ${
+          r.badge === "optimal"
+            ? "text-slate-700 dark:text-slate-200"
+            : "text-brand-700 dark:text-brand-400"
+        }`}
+      >
+        {r.canonicalName?.trim() || r.name}
+      </Link>
+      <span className="shrink-0 whitespace-nowrap tabular-nums">
+        <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+        {r.optimalText && (
+          <span
+            data-testid="longevity-biomarker-optimal"
+            className="ml-2 text-xs text-slate-500 dark:text-slate-400"
+          >
+            opt {r.optimalText}
+          </span>
+        )}
+      </span>
+    </li>
+  );
+}
 export default async function BiomarkersSection({
   section,
 }: {
@@ -26,7 +71,7 @@ export default async function BiomarkersSection({
     <section
       id="biomarkers"
       data-testid="longevity-biomarkers"
-      className="card mb-6 scroll-mt-20"
+      className="card scroll-mt-20"
     >
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -51,23 +96,7 @@ export default async function BiomarkersSection({
           <h3 className="mb-2 section-label">Outside their optimal band</h3>
           <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
             {nonOptimal.map((r, i) => (
-              <li
-                key={`${r.name}-${i}`}
-                className="flex items-center justify-between gap-2 text-sm"
-                data-testid="longevity-biomarker-row"
-              >
-                <Link
-                  href={biomarkerViewHref(r.canonicalName, r.name)}
-                  className="truncate text-brand-700 hover:underline dark:text-brand-400"
-                >
-                  {r.name}
-                </Link>
-                <span
-                  className={`badge shrink-0 ${RANGE_BADGE_META[r.badge].chip}`}
-                >
-                  {RANGE_BADGE_META[r.badge].label}
-                </span>
-              </li>
+              <BiomarkerRow key={`${r.name}-${i}`} row={r} />
             ))}
           </ul>
         </div>
@@ -81,23 +110,7 @@ export default async function BiomarkersSection({
           </summary>
           <ul className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
             {optimal.map((r, i) => (
-              <li
-                key={`${r.name}-${i}`}
-                className="flex items-center justify-between gap-2 text-sm"
-                data-testid="longevity-biomarker-row"
-              >
-                <Link
-                  href={biomarkerViewHref(r.canonicalName, r.name)}
-                  className="truncate text-slate-700 hover:underline dark:text-slate-200"
-                >
-                  {r.name}
-                </Link>
-                <span
-                  className={`badge shrink-0 ${RANGE_BADGE_META[r.badge].chip}`}
-                >
-                  {RANGE_BADGE_META[r.badge].label}
-                </span>
-              </li>
+              <BiomarkerRow key={`${r.name}-${i}`} row={r} />
             ))}
           </ul>
         </details>

@@ -170,7 +170,7 @@ export default function ImportClient({
         type="button"
         onClick={startExtract}
         disabled={!text.trim() || starting}
-        className="btn disabled:cursor-not-allowed disabled:opacity-50"
+        className="btn"
       >
         {starting ? "Starting…" : "Extract with AI"}
       </button>
@@ -301,7 +301,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
               type="button"
               onClick={discard}
               disabled={pending !== null}
-              className="btn-ghost text-sm disabled:opacity-50"
+              className="btn-ghost text-sm"
             >
               {pending === "discard" ? "Discarding…" : "Discard"}
             </button>
@@ -325,7 +325,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
               type="button"
               onClick={save}
               disabled={pending !== null}
-              className="btn disabled:opacity-50"
+              className="btn"
             >
               {pending === "save" ? "Saving…" : "Save to your log"}
             </button>

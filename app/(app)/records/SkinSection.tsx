@@ -2,12 +2,15 @@ import {
   getSkinLesions,
   getSkinLesionFollowUps,
   getPickerProviders,
+  getEncounterPickerOptions,
+  encountersForRecords,
 } from "@/lib/queries";
 import { getLesionPhotos } from "@/lib/skin-photo-write";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
-import SkinLesionForm from "@/app/(app)/skin/SkinLesionForm";
-import SkinLesionList from "@/app/(app)/skin/SkinLesionList";
-import { addSkinLesion } from "@/app/(app)/skin/actions";
+import { EncounterOptionsProvider } from "@/components/EncounterOptionsContext";
+import SkinLesionForm from "@/app/(app)/records/specialty/skin/SkinLesionForm";
+import SkinLesionList from "@/app/(app)/records/specialty/skin/SkinLesionList";
+import { addSkinLesion } from "@/app/(app)/records/specialty/skin/actions";
 
 // Skin (former /skin index, #1042 final tail): the profile's tracked moles / spots —
 // a body-map location, size, and ABCDE observations, with serial dated PHOTOS per
@@ -17,31 +20,43 @@ import { addSkinLesion } from "@/app/(app)/skin/actions";
 // the app tracks and compares; any judgment about a lesion is your dermatologist's.
 // The skin lesion form here is the ONLY creation path for this domain, so the section
 // renders unconditionally (its former nav leaf was ungated). Server Actions + client
-// components stayed in app/(app)/skin/; the page body moved here.
+// components stayed in app/(app)/records/specialty/skin/; the page body moved here.
 export default function SkinSection({ profileId }: { profileId: number }) {
   const records = getSkinLesions(profileId);
   const followUps = getSkinLesionFollowUps(profileId);
   const photos = getLesionPhotos(profileId);
+  // "Checked at: <visit>" (#1526): lesion id → its linked visit, the batch inverse of
+  // encounterForRecord — the SAME join and the SAME label the picker in the form offers.
+  const checkedAt = encountersForRecords(profileId, "skin");
+  const encounterOptions = getEncounterPickerOptions(profileId);
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <SkinLesionList
-            items={records}
-            followUps={followUps}
-            photos={photos}
-          />
-        </div>
+      <EncounterOptionsProvider
+        options={{
+          actingProfileId: profileId,
+          byProfile: { [profileId]: encounterOptions },
+        }}
+      >
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="min-w-0 space-y-4 lg:col-span-2">
+            <SkinLesionList
+              items={records}
+              followUps={followUps}
+              photos={photos}
+              checkedAt={checkedAt}
+            />
+          </div>
 
-        <div className="min-w-0 space-y-4">
-          <SkinLesionForm action={addSkinLesion} />
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            This is a self-monitoring record for you and your dermatologist — it
-            tracks and compares lesions, it does not assess them.
-          </p>
+          <div className="min-w-0 space-y-4">
+            <SkinLesionForm action={addSkinLesion} />
+            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+              This is a self-monitoring record for you and your dermatologist —
+              it tracks and compares lesions, it does not assess them.
+            </p>
+          </div>
         </div>
-      </div>
+      </EncounterOptionsProvider>
     </ProviderOptionsProvider>
   );
 }

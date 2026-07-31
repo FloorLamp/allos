@@ -3,6 +3,7 @@ import {
   MONTHS_LONG,
   MONTHS_SHORT,
   WEEKDAYS_LONG,
+  WEEKDAYS_SHORT,
 } from "./date";
 
 // ---- Display-format preferences (login tier, issue #964) ----
@@ -144,6 +145,22 @@ function localTodayStr(): string {
   return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
 }
 
+// ---- The display vocabulary (issue #1448) ----
+// One question ("how does this instance display a date?"), one computation. Every
+// rendered date/time picks the entry that matches its CONTEXT; nothing hand-rolls a
+// shape. Under the default prefs the four read:
+//
+//   formatLongDate      "Friday, July 24"     day-scoped headers, in-app, auto-year
+//   formatMonthDay      "Jul 24"              dense chips/labels, in-app, auto-year
+//   formatDateWithYear  "Jul 24, 2026"        print/export/anything leaving the app
+//   formatTimestamp     "Jul 24, 2026, 22:14" an absolute instant (stamps, ops rows)
+//
+// "auto-year" = the year is appended only outside the current calendar year, which
+// is right for an in-app surface and WRONG for one that outlives the session (see
+// formatDateWithYear). All four honor the login's dateFormat/timeFormat prefs; the
+// pure guard lib/__tests__/date-locale-guard.test.ts fails CI on a pref-less call
+// and on any implicit-locale toLocale* date render.
+
 // Consistent journal date formatting: "Weekday, Month Day", with the year
 // appended only when it isn't the current calendar year. Input is an ISO
 // YYYY-MM-DD string (parsed as local midnight so the day doesn't shift). Pref-aware
@@ -188,6 +205,114 @@ export function formatMonthDay(
       year: d.getFullYear() !== new Date().getFullYear(),
     }
   );
+}
+
+// Full calendar date that ALWAYS carries its year — "Jul 24, 2026" (mdy),
+// "24 Jul 2026" (dmy), "2026-07-24" (iso). The year-bearing sibling of
+// formatMonthDay, which drops the year inside the current calendar year because
+// its callers are in-app chips where "this year" is unambiguous from context.
+//
+// That auto-year rule breaks the moment a date LEAVES the app (issue #1448): the
+// printable medication list rendered its "Generated" stamp with the year and the
+// same card's STARTED column with formatLongDate — "Generated Jul 24, 2026, 22:14"
+// beside "Friday, July 24" — two shapes in one card, the second undated once the
+// paper outlives the year. Print/export surfaces use THIS, never the auto-year
+// formatters. Pure, fixed-English, pref-aware like the rest of the vocabulary.
+export function formatDateWithYear(
+  iso: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
+  const d = new Date(iso + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return iso;
+  return formatDateShape(
+    prefs.dateFormat,
+    d.getFullYear(),
+    d.getMonth() + 1,
+    d.getDate(),
+    { monthStyle: "short", year: true }
+  );
+}
+
+// Compact weekday + date label for selectors and other dense calendar contexts:
+// "Wed, Jul 22" (mdy), "Wed, 22 Jul" (dmy), or "Wed, 2026-07-22" (iso).
+// Like the other date helpers, it uses the fixed English calendar tables and keeps
+// the year only when the date falls outside the current calendar year.
+export function formatWeekdayDate(
+  iso: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
+  const d = new Date(iso + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return iso;
+  return formatDateShape(
+    prefs.dateFormat,
+    d.getFullYear(),
+    d.getMonth() + 1,
+    d.getDate(),
+    {
+      monthStyle: "short",
+      weekday: WEEKDAYS_SHORT[d.getDay()],
+      year: d.getFullYear() !== new Date().getFullYear(),
+    }
+  );
+}
+
+// Parse the two timestamp serializations the app stores: an ISO instant
+// ("2026-07-24T22:14:15.000Z", the JSONL logs) and SQLite's zone-less
+// `datetime('now')` form ("2026-07-24 22:14:15", the audit table), the latter
+// normalized to explicit UTC so it can't be read as local time. Returns null when
+// unparseable so a caller can fall back to the raw text rather than print "Invalid
+// Date".
+function parseTimestamp(input: string | number | Date): Date | null {
+  if (input instanceof Date)
+    return Number.isNaN(input.getTime()) ? null : input;
+  if (typeof input === "number") {
+    const d = new Date(input);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const text = input.trim();
+  if (!text) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)
+    ? `${text.replace(" ", "T")}Z`
+    : text;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Date + clock in ONE shape — "Jul 24, 2026, 22:14" — the vocabulary entry for an
+// absolute point in time (a print "Generated" stamp, an ops-table row time).
+//
+// `zone: "utc"` reads the instant in UTC rather than the runtime's zone. That is
+// what the admin ops tables want (issue #1448): Audit rendered SQLite's raw
+// `2026-07-24 22:14:15` while its sibling Errors/AI-log tables rendered
+// `toLocaleString()` — the SERVER's zone when server-rendered and the BROWSER's
+// after hydration, so the same three admin screens disagreed with each other AND
+// with themselves across a hydration boundary. Reading them all as UTC (with the
+// column header saying so) makes the trio one family and makes the render
+// deterministic. In-app surfaces keep the default "local".
+//
+// Always carries the year, for the same reason formatDateWithYear does — a
+// timestamp names a specific instant, so an undated one is a bug. Pure.
+export function formatTimestamp(
+  input: string | number | Date,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  opts: { zone?: "local" | "utc" } = {}
+): string {
+  const d = parseTimestamp(input);
+  if (!d) return typeof input === "string" ? input : "";
+  const utc = opts.zone === "utc";
+  const date = formatDateShape(
+    prefs.dateFormat,
+    utc ? d.getUTCFullYear() : d.getFullYear(),
+    (utc ? d.getUTCMonth() : d.getMonth()) + 1,
+    utc ? d.getUTCDate() : d.getDate(),
+    { monthStyle: "short", year: true }
+  );
+  const clock = formatClock(
+    prefs.timeFormat,
+    utc ? d.getUTCHours() : d.getHours(),
+    utc ? d.getUTCMinutes() : d.getMinutes()
+  );
+  return `${date}, ${clock}`;
 }
 
 // A human "time since" label: Today / Yesterday / N days|weeks|months|years ago.

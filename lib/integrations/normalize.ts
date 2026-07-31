@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import type { ActivityType, ActivityComponent } from "@/lib/types";
+import type { ActivityType, ActivityComponent, MedicalFlag } from "@/lib/types";
+import {
+  normalizeResultStatus,
+  supersedesReading,
+} from "@/lib/lab-result-lifecycle";
+import { insertRecordRevision } from "@/lib/queries/medical/revisions";
 import {
   hasBodyMetric,
   mergeBodyMetricPartialAware,
@@ -108,6 +113,128 @@ export interface NormActivity {
   components?: ActivityComponent[] | null;
 }
 
+// A provider-owned wellness-practice session. Unlike training activities, practices
+// live in their own ledger and carry no exercise type, distance, sets, or components.
+export interface NormPracticeLog {
+  external_id: string;
+  practice: string;
+  date: string;
+  time: string | null;
+  duration_min: number | null;
+}
+
+export function upsertPracticeLogs(
+  profileId: number,
+  rows: NormPracticeLog[],
+  source: string,
+  sink?: SyncRowSink
+): UpsertCounts {
+  const compareCols = ["practice", "date", "time", "duration_min", "source"];
+  const find = db.prepare(
+    `SELECT id, edited, practice, date, time, duration_min, source
+       FROM practice_logs WHERE profile_id = ? AND external_id = ?`
+  );
+  const insert = db.prepare(
+    `INSERT INTO practice_logs
+       (profile_id, practice, date, time, duration_min, source, external_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  const update = db.prepare(
+    `UPDATE practice_logs
+        SET practice = ?, date = ?, time = ?, duration_min = ?, source = ?
+      WHERE id = ? AND profile_id = ?`
+  );
+  // Fitbit meditations originally landed in activities. Migration 118 moves the
+  // untouched rows, but deliberately leaves a user-edited/attached activity in
+  // place. Preserve that cross-table occupancy on every later re-import so the same
+  // provider record cannot also appear as a practice.
+  const findLegacyActivity = db.prepare(
+    `SELECT edited FROM activities
+      WHERE profile_id = ? AND external_id = ?`
+  );
+  const tombstoned = loadImportTombstones(profileId, "practice_logs");
+  // A meditation deleted before migration 118 has its suppression recorded against
+  // the old target table. The provider identity did not change when its destination
+  // did, so that deletion must continue to suppress the rerouted practice.
+  const legacyActivityTombstones = loadImportTombstones(
+    profileId,
+    "activities"
+  );
+  const counts = emptyCounts();
+
+  for (const row of rows) {
+    const found = find.get(profileId, row.external_id) as
+      | (Record<string, unknown> & { id: number; edited: number | null })
+      | undefined;
+    if (found && isEditLocked(found.edited)) {
+      counts.edited++;
+      continue;
+    }
+    if (found) {
+      const post: Record<string, unknown> = {
+        practice: row.practice,
+        date: row.date,
+        time: row.time,
+        duration_min: row.duration_min,
+        source,
+      };
+      const disposition = classifyUpsert(
+        true,
+        rowsEqual(compareCols, found, post)
+      );
+      if (disposition === "updated") {
+        update.run(
+          row.practice,
+          row.date,
+          row.time,
+          row.duration_min,
+          source,
+          found.id,
+          profileId
+        );
+        sink?.push({
+          target_table: "practice_logs",
+          target_id: found.id,
+          disposition,
+        });
+      }
+      tallyUpsert(counts, disposition);
+    } else if (
+      tombstoned.has(row.external_id) ||
+      legacyActivityTombstones.has(row.external_id)
+    ) {
+      counts.suppressed++;
+    } else {
+      const legacyActivity = findLegacyActivity.get(
+        profileId,
+        row.external_id
+      ) as { edited: number | null } | undefined;
+      if (legacyActivity) {
+        if (isEditLocked(legacyActivity.edited)) counts.edited++;
+        else counts.suppressed++;
+        continue;
+      }
+      const info = insert.run(
+        profileId,
+        row.practice,
+        row.date,
+        row.time,
+        row.duration_min,
+        source,
+        row.external_id
+      );
+      const disposition = classifyUpsert(false, false);
+      tallyUpsert(counts, disposition);
+      sink?.push({
+        target_table: "practice_logs",
+        target_id: Number(info.lastInsertRowid),
+        disposition: "inserted",
+      });
+    }
+  }
+  return counts;
+}
+
 // A GPS route for an activity → activity_routes (issue #569). Provider-agnostic:
 // carries the encoded polyline as delivered plus optional start/end coordinates,
 // keyed to its parent activity by `external_id` (resolved to the activity's DB id
@@ -155,6 +282,12 @@ export interface NormVital {
   canonical: string;
   value_num: number;
   unit: string;
+  // The result's place in the lab lifecycle when the SOURCE states one (#1404) —
+  // FHIR `Observation.status`: preliminary / final / corrected / amended. Optional:
+  // a device/vitals feed states nothing, which stays NULL ("unstated"), never a
+  // guessed 'final'. A source that re-issues a value as 'corrected' makes the
+  // supersession explicit rather than leaving it to be inferred from the diff.
+  result_status?: string | null;
 }
 
 export interface IngestCounts {
@@ -312,7 +445,7 @@ export function upsertMetricSamples(
   // an update's provenance row (#1333) names the existing row rather than relying on
   // lastInsertRowid (unreliable for an ON CONFLICT DO UPDATE).
   const find = db.prepare(
-    "SELECT id, value, date, end_time, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?"
+    "SELECT id, value, date, end_time, edited, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?"
   );
   const stmt = db.prepare(
     `INSERT INTO metric_samples
@@ -349,6 +482,7 @@ export function upsertMetricSamples(
           value: number;
           date: string;
           end_time: string;
+          edited: number;
           activity_external_id: string | null;
         }
       | undefined;
@@ -365,6 +499,17 @@ export function upsertMetricSamples(
       )
     ) {
       counts.suppressed++;
+      continue;
+    }
+    // The #133 user-edit lock, which metric_samples gained in #1488 alongside the
+    // detail-page readings table's per-row Edit. A hand-corrected sample survives
+    // every later re-push of the rolling window, counted `unchanged` — the same
+    // contract activities / body_metrics / medical_records have had since #133.
+    if (found && isEditLocked(found.edited)) {
+      // Its OWN split (#659), like the body-metrics and vitals paths above: a lock
+      // hold is not an ordinary no-op re-send, so it stays visible in Review rather
+      // than hidden inside `unchanged`.
+      counts.edited++;
       continue;
     }
     // A delayed retry of an older cumulative snapshot must never roll a newer
@@ -464,6 +609,15 @@ export function upsertHrMinutes(
 // manual + document-extracted rows). Returns the affected row ids so the caller can
 // run reconcileFlags() to set out-of-range flags. `value` mirrors value_num as text
 // (the medical UI shows `value`).
+//
+// A re-issued result (#1404) does NOT silently replace what the user already read:
+// when the incoming row supersedes the stored one — a changed value/unit/date, or an
+// incoming status the source itself calls corrected/amended — the prior state is
+// preserved as a medical_record_revisions child row FIRST, inside this same
+// transaction, and only then is the reading updated in place. The reading keeps its
+// id (every link, star, dismissal and provenance row points at it), and the value it
+// used to hold is still there to show. An idempotent re-send of the rolling window
+// is `unchanged` and writes nothing at all.
 const VITAL_COMPARE_COLS: string[] = [
   "date",
   "category",
@@ -472,6 +626,7 @@ const VITAL_COMPARE_COLS: string[] = [
   "value_num",
   "unit",
   "canonical_name",
+  "result_status",
 ];
 
 export function upsertVitals(
@@ -481,18 +636,19 @@ export function upsertVitals(
   sink?: SyncRowSink
 ): { ids: number[]; counts: UpsertCounts } {
   const find = db.prepare(
-    `SELECT id, edited, date, category, name, value, value_num, unit, canonical_name
+    `SELECT id, edited, date, category, name, value, value_num, unit, canonical_name,
+            reference_range, flag, result_status
        FROM medical_records WHERE profile_id = ? AND external_id = ?`
   );
   const insert = db.prepare(
     `INSERT INTO medical_records
-       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id, result_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE medical_records
        SET date = ?, category = ?, name = ?, value = ?, value_num = ?, unit = ?,
-           canonical_name = ?
+           canonical_name = ?, result_status = ?
      WHERE id = ?`
   );
   // Re-import tombstones for medical_records vitals (#508), keyed by external_id.
@@ -522,6 +678,7 @@ export function upsertVitals(
       // Resolved post-image (note the incoming `canonical` maps to the stored
       // `canonical_name` column). The `flag` column isn't compared: it's set out
       // of band by reconcileFlags, not by this write.
+      const status = normalizeResultStatus(r.result_status);
       const post = {
         date: r.date,
         category: r.category,
@@ -530,12 +687,46 @@ export function upsertVitals(
         value_num: r.value_num,
         unit: r.unit,
         canonical_name: r.canonical,
+        result_status: status,
       };
       const disposition = classifyUpsert(
         true,
         rowsEqual(VITAL_COMPARE_COLS, found, post)
       );
       if (disposition === "updated") {
+        // A re-ISSUED result — a changed value/unit/date, or an incoming status the
+        // source itself calls corrected/amended — preserves what it replaces BEFORE
+        // the overwrite (#1404), in this same transaction. A re-canonicalization or
+        // a category re-classification changes how the reading is FILED, not what it
+        // SAID, so it updates in place with no revision row (supersedesReading owns
+        // that distinction — one computation).
+        if (
+          supersedesReading(
+            {
+              date: found.date as string | null,
+              value: found.value as string | null,
+              value_num: found.value_num as number | null,
+              unit: found.unit as string | null,
+              result_status: found.result_status as string | null,
+            },
+            { ...post, result_status: status }
+          )
+        ) {
+          insertRecordRevision(
+            found.id,
+            {
+              date: found.date as string | null,
+              value: found.value as string | null,
+              value_num: found.value_num as number | null,
+              unit: found.unit as string | null,
+              reference_range: found.reference_range as string | null,
+              flag: found.flag as MedicalFlag | null,
+              result_status: found.result_status as string | null,
+            },
+            status,
+            source
+          );
+        }
         update.run(
           r.date,
           r.category,
@@ -544,6 +735,7 @@ export function upsertVitals(
           r.value_num,
           r.unit,
           r.canonical,
+          status,
           found.id
         );
       }
@@ -569,7 +761,8 @@ export function upsertVitals(
         r.unit,
         r.canonical,
         source,
-        r.external_id
+        r.external_id,
+        normalizeResultStatus(r.result_status)
       );
       const newId = Number(info.lastInsertRowid);
       ids.push(newId);

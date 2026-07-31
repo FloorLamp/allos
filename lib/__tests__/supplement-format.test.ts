@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { plainBody } from "@/lib/notifications/rich-text";
 import {
   renderWindowMessage,
   intakeWindowNoun,
@@ -11,13 +12,13 @@ import type {
   FoodTiming,
   Supplement,
   SupplementDose,
-  SupplementPriority,
+  IntakeObligation,
 } from "../types";
 
 function supp(
   id: number,
   name: string,
-  priority: SupplementPriority = "high",
+  obligation: IntakeObligation = "should",
   kind: SupplementKind = "supplement",
   product: string | null = null
 ): Supplement {
@@ -28,7 +29,7 @@ function supp(
     active: 1,
     created_at: "2026-07-05",
     condition: "daily",
-    priority,
+    obligation,
     brand: null,
     product,
     situation: null,
@@ -41,13 +42,13 @@ function supp(
     escalate_chat_id: null,
     quantity_on_hand: null,
     qty_per_dose: 1,
+    supply_id: null,
     last_fill_size: null,
     kind,
     prescriber: null,
     pharmacy: null,
     rx_number: null,
     rx: 0,
-    as_needed: 0,
     min_interval_hours: null,
     max_daily_count: null,
     redose_notice: 0,
@@ -58,6 +59,10 @@ function supp(
     provider_id: null,
     source_record_id: null,
     indication_condition_id: null,
+    cadence_kind: "daily",
+    cadence_weekdays: null,
+    cadence_interval_days: null,
+    cadence_anchor_date: null,
   };
 }
 
@@ -77,6 +82,9 @@ function dose(
     retired: 0,
     created_at: null,
     updated_at: null,
+    weekdays: null,
+    start_date: null,
+    end_date: null,
   };
 }
 
@@ -97,7 +105,7 @@ function entry(opts: {
   amount?: string | null;
   taken?: boolean;
   skipped?: boolean;
-  priority?: SupplementPriority;
+  obligation?: IntakeObligation;
   food?: FoodTiming;
   kind?: SupplementKind;
   product?: string | null;
@@ -113,7 +121,7 @@ function entry(opts: {
     supp: supp(
       opts.suppId,
       opts.name,
-      opts.priority ?? "high",
+      opts.obligation ?? "should",
       opts.kind ?? "supplement",
       opts.product ?? null
     ),
@@ -147,7 +155,7 @@ describe("renderWindowMessage", () => {
         suppId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
-        priority: "mandatory",
+        obligation: "must",
       }),
       entry({ doseId: 11, suppId: 2, name: "Magnesium", amount: "400 mg" }),
     ]);
@@ -265,9 +273,9 @@ describe("renderWindowMessage", () => {
       }),
     ]);
     expect(msg.body).toContain("⚠️");
-    expect(msg.body.toLowerCase()).toContain("grapefruit");
+    expect(plainBody(msg.body).toLowerCase()).toContain("grapefruit");
     // The taken line (after the pending one) carries no guidance.
-    const lines = msg.body.split("\n");
+    const lines = plainBody(msg.body).split("\n");
     expect(lines[0]).toContain("⚠️");
     expect(lines[1].startsWith("✅ Simvastatin — 40 mg")).toBe(true);
     expect(lines[1]).not.toContain("⚠️");
@@ -280,7 +288,7 @@ describe("renderWindowMessage", () => {
         suppId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
-        priority: "mandatory",
+        obligation: "must",
         food: "with_fat",
         adherence: { streak: 12, pct: 93 },
       }),
@@ -315,9 +323,9 @@ describe("renderWindowMessage", () => {
 
   it("sorts pending by priority then name, keeping buttons aligned with the lines", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, suppId: 1, name: "Zinc", priority: "low" }),
-      entry({ doseId: 11, suppId: 2, name: "Creatine", priority: "mandatory" }),
-      entry({ doseId: 12, suppId: 3, name: "Iron", priority: "high" }),
+      entry({ doseId: 10, suppId: 1, name: "Zinc", obligation: "may" }),
+      entry({ doseId: 11, suppId: 2, name: "Creatine", obligation: "must" }),
+      entry({ doseId: 12, suppId: 3, name: "Iron", obligation: "should" }),
     ]);
     expect(msg.body).toBe("🔴 Creatine\n• Iron\n• Zinc");
     // Buttons follow the sorted lines; each dose contributes ✅ then ⏭. #232

@@ -32,7 +32,14 @@ export default function BodyViewToggle({
         <IconLayoutGrid className="h-4 w-4" stroke={1.75} aria-hidden />
         Tiles
       </Segment>
-      <Segment href={allHref} active={view === "all"} testid="body-view-all">
+      <Segment
+        href={allHref}
+        // The control only renders on desktop, where the URL-less responsive
+        // default IS the full chart stack. Reflect the effective layout instead
+        // of leaving both segments unselected until `?view=all` is explicit.
+        active={view !== "tiles"}
+        testid="body-view-all"
+      >
         <IconChartLine className="h-4 w-4" stroke={1.75} aria-hidden />
         All charts
       </Segment>

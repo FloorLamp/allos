@@ -28,9 +28,11 @@ import {
   getMoodLogs,
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
+import { loadContextLabel } from "../lifts";
 import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
-import { isDueOn } from "../supplement-schedule";
-import { currentStreak, flexibleStreak } from "../streak";
+import { doseDueOn } from "../supplement-schedule";
+import { getIntakeDeltaLine } from "../intake-history";
+import { activityStreak, currentStreak } from "../streak";
 import {
   buildWeeklyRecap,
   resolveRecapWindow,
@@ -51,6 +53,7 @@ import {
   getWeekStart,
   getZone2WeeklyTargetMin,
   setProfileSetting,
+  getPublicUrl,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import { illnessDaysInWindow } from "../illness-episode-store";
@@ -109,7 +112,8 @@ function windowAdherence(
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
     const dueIds = doses
       .filter((dose) =>
-        isDueOn(suppById.get(dose.item_id)!, {
+        doseDueOn(suppById.get(dose.item_id)!, dose, {
+          date: d,
           isWorkoutDay,
           activeSituations: situationsOn(d),
         })
@@ -189,8 +193,10 @@ export function gatherRecapInput(
   // a PR set after a completed window's end (the in-progress week) never leaks
   // back in either (`within` excludes dates past its anchor).
   const withinDays = daysBetweenDateStr(win.start, win.end) ?? days - 1;
+  // byLoadContext (#1610): two machines' records are two records, and the label
+  // below names the implement so the recap doesn't repeat one bare lift name twice.
   const strengthPRs = recentPRs(
-    getStrengthByExercise(profileId),
+    getStrengthByExercise(profileId, true),
     win.end,
     withinDays
   );
@@ -202,9 +208,12 @@ export function gatherRecapInput(
   const prLabels: string[] = [];
   const seen = new Set<string>();
   for (const p of strengthPRs) {
-    if (!seen.has(p.exercise)) {
-      seen.add(p.exercise);
-      prLabels.push(p.exercise);
+    // Named by load context (#1610): two machines' records are two labels, and one
+    // implement's two record kinds still collapse to a single mention.
+    const label = loadContextLabel(p.exercise, p.equipment);
+    if (!seen.has(label)) {
+      seen.add(label);
+      prLabels.push(label);
     }
   }
   for (const p of cardioPRs) {
@@ -223,7 +232,7 @@ export function gatherRecapInput(
 
   // Streaks walk back arbitrarily far, so they need the FULL date history — not the
   // windowed `activities` above. getActivityDates is the cheap DISTINCT-dates read
-  // (currentStreak/flexibleStreak read it as a set, so dedup is irrelevant).
+  // (activityStreak/currentStreak read it as a set, so dedup is irrelevant).
   const activityDates = getActivityDates(profileId);
   const goalsCompleted = getGoals(profileId)
     .filter(
@@ -250,8 +259,12 @@ export function gatherRecapInput(
     prevEstimatedKcal,
     prLabels,
     adherence: windowAdherence(profileId, win.start, win.end),
+    // The pushed tier's state changes (#1505 part 3), from the ONE shared classifier
+    // the morning digest and the household card also read — so the recap can never
+    // report a different "what changed" than they do.
+    intakeDeltaLine: getIntakeDeltaLine(profileId, td),
     weights,
-    streak: flexibleStreak(td, activityDates),
+    streak: activityStreak(td, activityDates),
     strictStreak: currentStreak(td, activityDates),
     goalsCompleted,
     // Sick days within the window (issue #837) — the recovery-context honesty line,
@@ -350,7 +363,7 @@ export async function runWeeklyRecap(
     getRecentNarratives(profileId, ["week"], 5),
     recap
   );
-  const msg = renderRecapMessage(recap, profileName, narrative);
+  const msg = renderRecapMessage(recap, profileName, narrative, getPublicUrl());
   if (!msg) {
     setProfileSetting(profileId, dedupKey, date);
     log.info("weekly recap: nothing to send", { profile: profileId });

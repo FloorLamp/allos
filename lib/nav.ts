@@ -4,12 +4,65 @@
 // DOM — lets it be unit-tested directly (the pure suite is DB/JSX-free) while
 // the component only wires it to usePathname() and local collapse state.
 
+// PHYSICAL-REGISTRY surfaces (issue #1522): pages reached from their CONSUMERS
+// rather than from a nav row of their own — the equipment registry (created from
+// the activity form's picker, linked from the Training header) and the household
+// medicine cabinet (created from an item's refill section, linked from the
+// Medications / Supplements headers and Household). Neither is a nav leaf, so
+// under the plain prefix rule below they would highlight NOTHING and the sidebar
+// would stop saying where you are (the orphan-highlight wart the all-pages census
+// found on /equipment, #1451). Each therefore declares the nav entry that OWNS it,
+// and lights that one up instead.
+//
+// This is a HIGHLIGHT map, not a route map: the child routes stay real, reachable
+// URLs. Longest-prefix wins, so a future `/x` + `/x/y` pair can't be ambiguous.
+export const NAV_PARENT_ROUTES: Readonly<Record<string, string>> = {
+  "/equipment": "/training",
+  "/supplies": "/medications",
+};
+
+// The longest-prefix resolution over an ARBITRARY child → parent map. Exported
+// (and taking its map as an argument) so the tiebreak can be unit-tested with a
+// NESTED pair, which the two-entry production map cannot express.
+//
+// The tiebreak compares CHILD keys — that is what "longest prefix" means. The
+// earlier form measured the incoming child against the winning PARENT string, so
+// for `/x` → `/training` and `/x/y` → `/data` a `/x/y/z` pathname asked
+// `"/x/y".length > "/training".length` (false) and kept the shorter, wrong parent.
+// Track the winning child alongside the parent instead.
+export function navParentIn(
+  map: Readonly<Record<string, string>>,
+  pathname: string
+): string | null {
+  let best: string | null = null;
+  let bestChild = "";
+  for (const [child, parent] of Object.entries(map)) {
+    if (pathname === child || pathname.startsWith(child + "/")) {
+      if (!best || child.length > bestChild.length) {
+        best = parent;
+        bestChild = child;
+      }
+    }
+  }
+  return best;
+}
+
+// The nav entry a parent-less registry route highlights, or null for every
+// ordinary route. Exported for the unit tests; `isRouteActive` is the only
+// production caller.
+export function navParentFor(pathname: string): string | null {
+  return navParentIn(NAV_PARENT_ROUTES, pathname);
+}
+
 // True when `href` should be treated as the active route for the current
 // `pathname`. The dashboard ("/") matches exactly so it isn't lit up on every
 // page; every other entry matches by prefix so nested routes (e.g.
-// /biomarkers/123) still highlight their parent nav item. Mirrors the historic
-// inline rule so highlighting behavior is unchanged.
+// /biomarkers/123) still highlight their parent nav item. A registry route in
+// NAV_PARENT_ROUTES delegates entirely to its declared parent — exactly one entry
+// lights up, and it is never the child's own (the child has no nav row).
 export function isRouteActive(href: string, pathname: string): boolean {
+  const parent = navParentFor(pathname);
+  if (parent !== null) return href === parent;
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 

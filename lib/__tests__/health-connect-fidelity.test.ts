@@ -39,12 +39,15 @@ describe("SOURCE_FIDELITY registry completeness (#1065)", () => {
     }
   });
 
-  it("keeps skin temperature as an explicit 'off' row with no parser home", () => {
+  // Skin temperature was an `off` row purely because nothing consumed it, not because
+  // a delta is unusable: it now has a metric_samples home (skin_temp_delta_c), so the
+  // guidance flips to `full` — one nightly reading, every one kept.
+  it("recommends `full` for skin temperature now that it has a parser home", () => {
     const skin = SOURCE_FIDELITY.find((r) =>
       r.keys.includes("skin_temperature")
     );
-    expect(skin?.setting).toBe("off");
-    expect(KNOWN_HEALTH_CONNECT_KEYS.has("skin_temperature")).toBe(false);
+    expect(skin?.setting).toBe("full");
+    expect(KNOWN_HEALTH_CONNECT_KEYS.has("skin_temperature")).toBe(true);
   });
 
   it("maps the load-bearing recommendations from the verified matrix", () => {
@@ -55,7 +58,7 @@ describe("SOURCE_FIDELITY registry completeness (#1065)", () => {
     expect(recommendedSettingForKey("sleep")).toBe("full");
     expect(recommendedSettingForKey("exercise")).toBe("full");
     expect(recommendedSettingForKey("nutrition")).toBe("daily");
-    expect(recommendedSettingForKey("skin_temperature")).toBe("off");
+    expect(recommendedSettingForKey("skin_temperature")).toBe("full");
     expect(recommendedSettingForKey("no_such_key")).toBeUndefined();
   });
 });

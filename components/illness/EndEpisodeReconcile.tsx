@@ -170,7 +170,7 @@ export default function EndEpisodeReconcile({
               data-testid="episode-med-reconcile-confirm"
               disabled={pending}
               onClick={() => submit([...selected])}
-              className="btn disabled:opacity-50"
+              className="btn"
             >
               {pending ? "Ending…" : "End episode"}
             </button>

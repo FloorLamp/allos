@@ -30,7 +30,7 @@ const MENU_WIDTH = 160; // matches w-40
 const GAP = 4;
 const MARGIN = 8; // keep the panel this far from the viewport edges
 
-interface MenuHelpers {
+export interface MenuHelpers {
   close: () => void;
   // Run a menu item's server action, then close the menu and toast. Awaiting the
   // action first is load-bearing: closing the menu (which unmounts the <form>)
@@ -129,6 +129,7 @@ export default function OverflowMenu({
         type="button"
         onClick={() => onOpenChange(!open)}
         aria-label={label}
+        title={label}
         aria-haspopup="menu"
         data-testid="overflow-menu-trigger"
         // ≥40px hit box (#644): a 16px glyph centered in a 40px box so the sole

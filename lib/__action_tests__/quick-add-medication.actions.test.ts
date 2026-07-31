@@ -17,10 +17,9 @@ interface MedRow {
   name: string;
   kind: string;
   condition: string;
-  priority: string;
+  obligation: string;
   brand: string | null;
   product: string | null;
-  as_needed: number;
   min_interval_hours: number | null;
   max_daily_count: number | null;
   redose_notice: number;
@@ -31,7 +30,7 @@ interface MedRow {
 function latestMedNamed(profileId: number, name: string): MedRow {
   return db
     .prepare(
-      `SELECT id, name, kind, condition, priority, brand, product, as_needed,
+      `SELECT id, name, kind, condition, obligation, brand, product, obligation,
               min_interval_hours, max_daily_count, redose_notice, active, source
          FROM intake_items
         WHERE profile_id = ? AND name = ?
@@ -61,10 +60,9 @@ function shape(row: MedRow) {
   return {
     kind: row.kind,
     condition: row.condition,
-    priority: row.priority,
     brand: row.brand,
     product: row.product,
-    as_needed: row.as_needed,
+    obligation: row.obligation,
     min_interval_hours: row.min_interval_hours,
     max_daily_count: row.max_daily_count,
     redose_notice: row.redose_notice,
@@ -83,7 +81,7 @@ describe("OTC quick-add row parity (#843)", () => {
       kind: "medication",
       condition: "daily",
       brand: "Advil",
-      as_needed: "1",
+      obligation: "may",
       min_interval_hours: "6",
       max_daily_count: "4",
       rxcui: "",
@@ -122,7 +120,7 @@ describe("OTC quick-add row parity (#843)", () => {
 
     // And it really is a medication (course opened, PRN), so it lands on Medications.
     expect(quickRow.kind).toBe("medication");
-    expect(quickRow.as_needed).toBe(1);
+    expect(quickRow.obligation).toBe("may");
     const courses = db
       .prepare("SELECT COUNT(*) AS c FROM medication_courses WHERE item_id = ?")
       .get(quickRow.id) as { c: number };

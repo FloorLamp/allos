@@ -98,6 +98,7 @@ export default function ProviderAffiliations({
                   type="button"
                   className="btn-ghost shrink-0 p-1"
                   aria-label={`Remove affiliation with ${a.name}`}
+                  title="Remove affiliation"
                   data-testid="affiliation-unlink"
                   onClick={() => {
                     const fd = new FormData();

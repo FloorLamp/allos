@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Skin-lesion tracking on the Skin section of /records (#715, folded #1042): add a body-map-anchored lesion through the real
 // form, see it in its identity CARD with the ABCDE observation + status shown, track a
@@ -11,7 +12,7 @@ import { settledClick } from "./helpers";
 // raw-connection cleanup in beforeAll AND afterAll makes the spec idempotent across CI
 // retries — it only ever touches rows it created (skin_lesions + any care-plan follow-up
 // or lesion_photos it seeds off them).
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const LABEL = "E2ESkinWatchMole"; // collision-free identity marker (not in seed)
 
 // A minimal valid PNG (signature + a truncated body) — enough for the magic-byte sniff.
@@ -106,13 +107,15 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
       card.getByRole("img", { name: /Lesion photo from/ })
     ).toBeVisible({ timeout: 15000 });
 
-    // Filter by "Removed" hides it; back to "All statuses" shows it again.
+    // Filter by "Removed" hides it; back to "All" shows it again. The status filter
+    // is the family's shared FilterPills group since #1449, not a <select>.
     const list = page.getByTestId("skin-lesion-list");
-    await list.getByLabel("Filter by status").selectOption("removed");
+    const skinFilter = list.getByTestId("skin-status-filter");
+    await skinFilter.getByRole("button", { name: "Removed" }).click();
     await expect(
       list.getByTestId("lesion-card").filter({ hasText: LABEL })
     ).toHaveCount(0);
-    await list.getByLabel("Filter by status").selectOption("");
+    await skinFilter.getByRole("button", { name: "All" }).click();
     await expect(
       list.getByTestId("lesion-card").filter({ hasText: LABEL })
     ).toBeVisible();

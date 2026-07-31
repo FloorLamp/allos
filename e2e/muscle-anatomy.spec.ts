@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #737 — the hand-authored MuscleAnatomy SVG figure, in its two wired hosts:
 // per-exercise mode inside the ExerciseDetailPanel guide section, and weekly
 // coverage mode on Training → Overview beside the #736 list (which stays — the
@@ -11,12 +10,12 @@ import { test, expect } from "@playwright/test";
 test("per-exercise anatomy renders in the detail panel guide section (#737)", async ({
   page,
 }) => {
-  // Same host exercise-guide.spec.ts drives: Trends → Fitness renders the
-  // Strength explorer + detail panel; Back Squat is a seeded catalog lift
-  // (primary quads; secondary glutes/hamstrings/lower-back).
-  await page.goto("/trends?tab=fitness");
+  // Same host exercise-guide.spec.ts drives: Training → Analyze renders the
+  // per-exercise detail panel (its home since #1492 turned Trends → Fitness into
+  // the windowed lens); Back Squat is a seeded catalog lift (primary quads;
+  // secondary glutes/hamstrings/lower-back).
+  await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   const main = page.getByRole("main");
-  await main.getByRole("cell", { name: /Back Squat/ }).click();
 
   const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();

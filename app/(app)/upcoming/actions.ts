@@ -11,11 +11,18 @@ import {
   recordPreventiveDone,
   setPreventiveOverride,
   markCarePlanItemDone,
+  logPracticeByTargetId,
 } from "@/lib/queries";
 import { snoozeUntil } from "@/lib/upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import { resolveFollowUpCore } from "@/lib/followup-write";
-import { formError, formOk, type FormResult } from "@/lib/types";
+import {
+  formError,
+  formOk,
+  type FormResult,
+  type DoseTakenOutcome,
+  type PracticeLogOutcome,
+} from "@/lib/types";
 import { requireSession } from "@/lib/auth";
 import { dismissMultiviewHint } from "@/lib/settings";
 import { explainFinding } from "@/lib/explain-finding";
@@ -38,6 +45,34 @@ async function gateItemProfile(formData: FormData): Promise<number> {
   }
   const { profile } = await requireWriteAccess();
   return profile.id;
+}
+
+export type LogUpcomingPracticeResult =
+  { ok: true; outcome: PracticeLogOutcome } | { ok: false; error: string };
+
+export async function logUpcomingPractice(
+  formData: FormData
+): Promise<LogUpcomingPracticeResult> {
+  const requestedProfileId = Number(formData.get("profile_id"));
+  let pid: number;
+  if (requestedProfileId > 0) {
+    await requireProfileWriteAccess(requestedProfileId);
+    pid = requestedProfileId;
+  } else {
+    const { profile } = await requireWriteAccess();
+    pid = profile.id;
+  }
+  const targetId = Number(formData.get("target_id"));
+  if (!targetId) return { ok: false, error: "Couldn't find that practice." };
+  const outcome = logPracticeByTargetId(pid, targetId);
+  if (outcome.kind === "logged") {
+    revalidatePath("/upcoming");
+    revalidatePath("/wellness");
+    revalidatePath("/longevity");
+    revalidatePath("/timeline");
+    revalidatePath("/");
+  }
+  return { ok: true, outcome };
 }
 
 // "Why is this flagged?" (issue #878, Phase 1). Narrate a finding's OWN reason payload
@@ -71,16 +106,27 @@ export async function explainFindingAction(
 // its parent supplement, logs it once, and decrements tracked supply) — the same
 // path the Telegram callback uses — so a dose confirmed here reflects everywhere.
 // Marking-only (never un-marks): a taken dose simply drops off the Upcoming list.
-export async function markTaken(formData: FormData): Promise<FormResult> {
+//
+// The result CARRIES markDoseTaken's typed outcome (issue #1468). The action had
+// been throwing it away and returning a flat `formOk()`, so every caller could
+// only say "done" — the unconditional-confirm hazard the DoseTakenOutcome union
+// exists to prevent (a dose since retired by an edit, or whose item was paused,
+// logs NOTHING). The Telegram tap has answered from the outcome since #280; the
+// in-app confirms now can too. The added field is additive: `ok` still means "the
+// request was understood", and the existing server-form caller ignores it.
+export type MarkTakenResult =
+  { ok: true; outcome: DoseTakenOutcome } | { ok: false; error: string };
+
+export async function markTaken(formData: FormData): Promise<MarkTakenResult> {
   const pid = await gateItemProfile(formData);
   const doseId = Number(formData.get("dose_id"));
-  if (!doseId) return formError("Couldn't find that dose.");
-  markDoseTaken(pid, doseId, null, today(pid));
+  if (!doseId) return { ok: false, error: "Couldn't find that dose." };
+  const outcome = markDoseTaken(pid, doseId, null, today(pid));
   revalidatePath("/upcoming");
   revalidatePath("/nutrition");
   revalidatePath("/medications");
   revalidatePath("/");
-  return formOk();
+  return { ok: true, outcome };
 }
 
 // Inline "mark done" for a due preventive visit/screening on the Upcoming page

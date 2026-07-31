@@ -1,6 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // Imaging-study CRUD on the #imaging section of /results (#702, #1042 phase 5): add a structured study through the real
 // form, see it in the list with its modality + contrast shown, filter by modality,
@@ -9,7 +11,7 @@ import { settledClick } from "./helpers";
 // Fixture discipline (shared seeded DB): a unique body-region marker scopes every
 // action and a raw-connection cleanup in beforeAll AND afterAll makes the spec
 // idempotent across CI retries — it only ever touches rows it created.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const REGION = "E2EREGION1";
 const DOSE_REGION = "E2EDOSEREGION1";
 const PET_REGION = "E2EPETREGION1";
@@ -28,9 +30,22 @@ function cleanup() {
 // A recent ISO date safely inside the trailing-3-year dose window (the app clock is
 // frozen to the run's real "today").
 function recentDate(): string {
-  const d = new Date();
+  const d = frozenNow();
   d.setDate(d.getDate() - 30);
   return d.toISOString().slice(0, 10);
+}
+
+async function submitWithToast(
+  page: Page,
+  button: Locator,
+  message: string
+): Promise<void> {
+  // A cold Server Action response can outlive the toast it triggers. Observe the
+  // transient feedback concurrently while settledClick still owns durability.
+  await Promise.all([
+    expect(page.getByText(message)).toBeVisible({ timeout: 15_000 }),
+    settledClick(page, button),
+  ]);
 }
 
 test.describe("Imaging studies — add → view → filter → edit → delete (#702)", () => {
@@ -41,6 +56,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     test.slow();
 
     await page.goto("/results/imaging");
+    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
@@ -50,8 +67,11 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Laterality").selectOption("left");
     await form.getByLabel("Contrast given").check();
     await form.getByLabel("Impression").fill("No acute abnormality.");
-    await form.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByText("Study saved")).toBeVisible();
+    await submitWithToast(
+      page,
+      form.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
 
     // It appears in the list with its factual identity + contrast badge.
     const list = page.getByTestId("imaging-study-list");
@@ -78,8 +98,11 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       .click();
     const editForm = list.getByTestId("imaging-study-form");
     await editForm.getByLabel("Impression").fill("Interval improvement.");
-    await editForm.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText("Study updated")).toBeVisible();
+    await submitWithToast(
+      page,
+      editForm.getByRole("button", { name: "Save", exact: true }),
+      "Study updated"
+    );
     // The toast fires right after the save action returns; the ROW text only updates
     // once handle()'s router.refresh() re-fetches the list RSC (ImagingStudyForm.handle
     // — toast → onDone → router.refresh). That refresh can outrun the default 5s on a
@@ -109,6 +132,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     test.slow();
 
     await page.goto("/results/imaging");
+    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
@@ -117,8 +142,11 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Body region").fill(DOSE_REGION);
     await form.getByLabel("Study date").fill(recentDate());
     await form.getByLabel("Effective dose (mSv)").fill("10");
-    await form.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByText("Study saved")).toBeVisible();
+    await submitWithToast(
+      page,
+      form.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
 
     // The list row shows the recorded-dose badge.
     const list = page.getByTestId("imaging-study-list");
@@ -164,7 +192,9 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       }
     }
 
-    await page.goto("/imaging");
+    await page.goto("/results/imaging");
+    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
@@ -176,16 +206,32 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Study date").fill(recentDate());
     // Close the DateField calendar popup so it can't intercept the Add click.
     await page.keyboard.press("Escape");
-    await settledClick(
+    // Assert the SUBMIT OUTCOME, exactly as the two sibling tests do. This test
+    // used to click blind through settledClick, which resolves on any same-origin
+    // POST — including one carrying a REFUSAL. `addImagingStudy` surfaces a
+    // failure as an inline `role="alert"` and renders no row, so a refused submit
+    // was indistinguishable from a slow one: it surfaced 20 s later as a bare
+    // "element(s) not found" on the row locator, naming neither the refusal nor
+    // its reason (recurring-failure census, docs/internals/e2e-hygiene.md).
+    // Waiting for "Study saved" fails AT the submit, with the inline error in the
+    // snapshot, whenever the action does not actually succeed.
+    await submitWithToast(
       page,
-      form.getByRole("button", { name: "Add", exact: true })
+      form.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
     );
 
     // The list row shows the PET display label (modality + region — the marker
     // region alone contains "PET", so assert the full label).
     const list = page.getByTestId("imaging-study-list");
+    await expect(list).toBeVisible();
     const row = list.getByRole("row").filter({ hasText: PET_REGION });
-    await expect(row).toContainText(`PET ${PET_REGION}`);
+    // Post-submit re-render ceiling. The toast above already proved the write
+    // succeeded, so reaching this timeout now means one specific thing — the row
+    // never repainted — rather than any of "refused", "slow" or "never submitted".
+    // The ceiling is measured, not a sleep: the post-action repaint runs ~0.3 s
+    // unthrottled and ~8 s under a 25× CPU throttle.
+    await expect(row).toContainText(`PET ${PET_REGION}`, { timeout: 20_000 });
 
     // The cumulative card now carries an estimated portion (the PET typical
     // dose), and the combined figure reads as an estimate ("≈"). No exact-total

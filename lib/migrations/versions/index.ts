@@ -110,6 +110,28 @@ import { migration as m108 } from "./108-intake-pause-situation";
 import { migration as m109 } from "./109-health-connect-token-hash";
 import { migration as m110 } from "./110-integration-sync-rows";
 import { migration as m111 } from "./111-symptom-episode-photo-links";
+import { migration as m112 } from "./112-shared-supply-pools";
+import { migration as m113 } from "./113-saved-items";
+import { migration as m114 } from "./114-standard-metric-seeds";
+import { migration as m115 } from "./115-metric-sample-edit-lock";
+import { migration as m116 } from "./116-food-event-meal-slot";
+import { migration as m117 } from "./117-fitbit-activity-components";
+import { migration as m118 } from "./118-imported-practice-logs";
+import { migration as m119 } from "./119-practice-sync-provenance";
+import { migration as m120 } from "./120-lab-result-lifecycle";
+import { migration as m121 } from "./121-goal-equipment-context";
+import { migration as m122 } from "./122-records-safety-passport";
+import { migration as m123 } from "./123-practice-target-unique";
+import { migration as m124 } from "./124-intake-obligation";
+import { migration as m125 } from "./125-lesion-allergy-encounter-link";
+import { migration as m126 } from "./126-intake-cadence";
+import { migration as m127 } from "./127-api-tokens";
+import { migration as m128 } from "./128-portal-identity";
+import { migration as m129 } from "./129-weather-daily-cache";
+import { migration as m130 } from "./130-acquirer-provenance";
+import { migration as m131 } from "./131-portal-accounts";
+import { migration as m132 } from "./132-portal-run-reports";
+import { migration as m133 } from "./133-portal-sync-requests";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -229,4 +251,26 @@ export const MIGRATIONS: Migration[] = [
   m109,
   m110,
   m111,
+  m112,
+  m113,
+  m114,
+  m115,
+  m116,
+  m117,
+  m118,
+  m119,
+  m120,
+  m121,
+  m122,
+  m123,
+  m124,
+  m125,
+  m126,
+  m127,
+  m128,
+  m129,
+  m130,
+  m131,
+  m132,
+  m133,
 ];

@@ -37,7 +37,7 @@ export default function FreeDaysForm({ freeDays }: { freeDays: number[] }) {
   }
 
   return (
-    <div className="card max-w-lg space-y-4" data-testid="free-days-form">
+    <div className="card space-y-4" data-testid="free-days-form">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Free days

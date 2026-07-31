@@ -13,10 +13,13 @@ import {
   getProtocols,
   getProtocol,
   getProtocolComparison,
+  getProtocolOutcomePickerData,
   getProtocolWindows,
   getProtocolWindowsForOutcome,
   getActiveProtocolSummaries,
   getProtocolIntakeItem,
+  getProtocolOutcomeOptions,
+  resolveOutcomeSeries,
   situationUsedByOtherProtocol,
 } from "@/lib/queries";
 import { captureDelete } from "@/lib/undo-delete-db";
@@ -164,6 +167,200 @@ describe("protocol comparison seam", () => {
     expect(o.intervention.mean).toBe(110);
     expect(o.meanDelta).toBe(-20);
     expect(o.betterness).toBe("better"); // LDL is lower_better
+
+    const picker = getProtocolOutcomePickerData(
+      profile,
+      protocol,
+      "2026-06-25",
+      "kg"
+    );
+    expect(
+      picker.options.find(
+        (option) => option.key === "biomarker:LDL Cholesterol"
+      )?.preview
+    ).toMatchObject({
+      beforeMean: 130,
+      duringMean: 110,
+      meanDelta: -20,
+      unit: "mg/dL",
+      beforeN: 1,
+      duringN: 1,
+    });
+    expect(picker.comparison.outcomes).toHaveLength(1);
+    expect(picker.comparison.outcomes[0].meanDelta).toBe(-20);
+  });
+
+  it("keeps a selected biomarker editable after its source reading is deleted", () => {
+    const profile = newProfile("Proto Historical Outcome");
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit)
+       VALUES (?, '2026-04-15', 'lab', 'Ferritin', 'Ferritin', 80, 'ng/mL')`
+    ).run(profile);
+    const id = insertProtocol(profile, {
+      name: "Historical marker",
+      start: "2026-05-01",
+      keys: ["biomarker:Ferritin"],
+    });
+    db.prepare(
+      `DELETE FROM medical_records
+        WHERE profile_id = ? AND canonical_name = 'Ferritin'`
+    ).run(profile);
+
+    const picker = getProtocolOutcomePickerData(
+      profile,
+      getProtocol(profile, id)!,
+      "2026-06-25",
+      "kg"
+    );
+    expect(picker.options.map((option) => option.key)).toContain(
+      "biomarker:Ferritin"
+    );
+    expect(picker.comparison.outcomes.map((outcome) => outcome.key)).toContain(
+      "biomarker:Ferritin"
+    );
+  });
+});
+
+describe("protocol outcome options (#1586)", () => {
+  it("inherits shared biomarker relevance order within its tracked-only scope", () => {
+    const profile = newProfile("Proto Ranked Outcomes");
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit, flag)
+       VALUES (?, ?, 'lab', ?, ?, ?, ?, ?)`
+    );
+    insert.run(
+      profile,
+      "2026-01-01",
+      "Hemoglobin A1c",
+      "Hemoglobin A1c",
+      5.7,
+      "%",
+      "normal"
+    );
+    insert.run(
+      profile,
+      "2026-06-20",
+      "LDL Cholesterol",
+      "LDL Cholesterol",
+      150,
+      "mg/dL",
+      "high"
+    );
+    insert.run(
+      profile,
+      "2026-06-20",
+      "Albumin",
+      "Albumin",
+      4.4,
+      "g/dL",
+      "normal"
+    );
+
+    const biomarkerKeys = getProtocolOutcomeOptions(profile, "2026-06-25")
+      .filter((option) => option.key.startsWith("biomarker:"))
+      .map((option) => option.key);
+
+    expect(biomarkerKeys.slice(0, 3)).toEqual([
+      "biomarker:Hemoglobin A1c",
+      "biomarker:LDL Cholesterol",
+      "biomarker:Albumin",
+    ]);
+  });
+
+  it("includes a computed derived index and resolves its virtual series", () => {
+    const profile = newProfile("Proto Derived Outcomes");
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit)
+       VALUES (?, '2026-05-01', 'lab', ?, ?, ?, 'mg/dL')`
+    );
+    insert.run(profile, "Total Cholesterol", "Total Cholesterol", 210);
+    insert.run(profile, "HDL Cholesterol", "HDL Cholesterol", 50);
+
+    const options = getProtocolOutcomeOptions(profile, "2026-06-25");
+    expect(options.map((option) => option.key)).toContain(
+      "biomarker:Non-HDL Cholesterol"
+    );
+    expect(
+      resolveOutcomeSeries(profile, "biomarker:Non-HDL Cholesterol", "kg")
+        ?.samples
+    ).toEqual([{ date: "2026-05-01", value: 160 }]);
+  });
+
+  it("offers one logical option and merges legacy body-metric readings", () => {
+    const profile = newProfile("Proto Deduped Outcomes");
+    db.prepare(
+      `INSERT INTO body_metrics
+         (profile_id, date, resting_hr, source)
+       VALUES (?, '2026-05-01', 58, 'manual')`
+    ).run(profile);
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value_num, unit)
+       VALUES (?, ?, 'lab', ?, ?, ?, ?)`
+    );
+    insert.run(
+      profile,
+      "2026-04-01",
+      "Resting Heart Rate",
+      "Resting Heart Rate",
+      62,
+      "bpm"
+    );
+    // The authoritative body_metrics value wins on an overlapping date.
+    insert.run(
+      profile,
+      "2026-05-01",
+      "Resting Heart Rate",
+      "Resting Heart Rate",
+      70,
+      "bpm"
+    );
+    insert.run(
+      profile,
+      "2026-05-01",
+      "Body Fat Percentage",
+      "Body Fat Percentage",
+      20,
+      "%"
+    );
+    insert.run(profile, "2026-05-01", "PhenoAge", "PhenoAge", 44, "yrs");
+
+    const optionKeys = getProtocolOutcomeOptions(profile, "2026-06-25").map(
+      (option) => option.key
+    );
+    expect(optionKeys).toEqual(
+      expect.arrayContaining([
+        "metric:resting_hr",
+        "metric:body_fat",
+        "index:phenoage",
+      ])
+    );
+    expect(optionKeys).not.toEqual(
+      expect.arrayContaining([
+        "biomarker:Resting Heart Rate",
+        "biomarker:Body Fat Percentage",
+        "biomarker:PhenoAge",
+      ])
+    );
+
+    expect(
+      resolveOutcomeSeries(profile, "biomarker:Resting Heart Rate", "kg")
+    ).toMatchObject({
+      key: "metric:resting_hr",
+      samples: [
+        { date: "2026-04-01", value: 62 },
+        { date: "2026-05-01", value: 58 },
+      ],
+    });
+    expect(
+      resolveOutcomeSeries(profile, "biomarker:PhenoAge", "kg")
+    ).toMatchObject({
+      key: "index:phenoage",
+      samples: [{ date: "2026-05-01", value: 44 }],
+    });
   });
 });
 
@@ -197,6 +394,24 @@ describe("protocol chart windows (issue #660)", () => {
     expect(getProtocolWindowsForOutcome(profile, "metric:weight")).toHaveLength(
       1
     );
+  });
+
+  it("normalizes legacy stored aliases without requiring a data migration", () => {
+    const profile = newProfile("Proto Legacy Outcome Keys");
+    const id = insertProtocol(profile, {
+      name: "Legacy HR trial",
+      start: "2026-03-01",
+      keys: ["biomarker:Resting Heart Rate", "metric:resting_hr"],
+    });
+
+    expect(getProtocol(profile, id)?.outcomeKeys).toEqual([
+      "metric:resting_hr",
+    ]);
+    expect(
+      getProtocolWindowsForOutcome(profile, "biomarker:Resting Heart Rate").map(
+        (window) => window.name
+      )
+    ).toEqual(["Legacy HR trial"]);
   });
 });
 
@@ -234,8 +449,8 @@ describe("intake-item link delete null-out (issue #660)", () => {
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-           VALUES (?, 'Creatine', 1, 'supplement', 'daily', 'low')`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Creatine', 1, 'supplement', 'daily', 'should')`
         )
         .run(profile).lastInsertRowid
     );

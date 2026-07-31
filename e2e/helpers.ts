@@ -49,171 +49,276 @@ import { expect, type Locator, type Page } from "@playwright/test";
 //     under CI contention) or too long (slows the suite); it asserts nothing.
 //     (The ONE legitimate `waitForTimeout` is proving the ABSENCE of an effect —
 //     e.g. "no autosave fired within the 700ms window"; those stay, allowlisted.)
+//
+// ── This module deliberately stays ONE file — insert ALPHABETICALLY (issue #1511) ─
+// It is the settle-primitive CHOKEPOINT: splitting it would give the same wait two
+// homes, which is exactly the drift it exists to prevent. What it does NOT have to
+// be is an append magnet — every PR adding a helper used to land at the bottom, so
+// unrelated PRs conflicted on the same trailing lines. The functions below are
+// therefore ordered ALPHABETICALLY by name (private helpers included). Add a new
+// one at its alphabetical position, never at the end.
 
-// Click `locator` and await the Server Action POST it fires before returning.
+// Change a control that AUTOSAVES, and return only once that write is DURABLE.
 //
-// Next App Router Server Actions POST to the CURRENT route URL (same origin) — a
-// `<form action={serverAction}>` submit posts natively before hydration and via a
-// `fetch` POST after, and either way the response completes only once the action
-// AND its `revalidatePath`/`router.refresh()` have run server-side. We arm a
-// `waitForResponse` for that POST BEFORE clicking (so a fast action can't resolve
-// in the gap between click and wait), then click, then await the response. When it
-// resolves the mutation is durably applied; the follow-up `expect(...)` asserts the
-// re-rendered UI (React applies the revalidated payload on the next tick — the
-// assertion's own retry absorbs that sub-tick).
+// The Settings convention (#794) is autosave-on-blur/change, and #1462 §6 folded the
+// last explicit-Save settings card (the notification mega-card) into it. That removes
+// the "click Save, then wait for Saved" idiom, and each obvious replacement is wrong
+// on its own:
 //
-// WORKS when: the click definitely triggers exactly one same-origin POST (form
-// submit, action button). PREFER this over networkidle/waitForTimeout/toPass for
-// those.
+//   • Waiting for the `Saved` check: it LINGERS three seconds, so after two quick
+//     edits it can still be showing from the FIRST save while the second is in flight
+//     — and a following `page.reload()` aborts that write (the PR #586 class: the
+//     value is LOST, not merely late). It is also absent entirely when the
+//     interaction was a NO-OP (a checkbox already at its target value fires no change
+//     event, so nothing saves and nothing confirms).
+//   • Waiting for one same-origin POST (settledClick's arm): settledSelect and
+//     settledCheck RETRY their interaction until React has hydrated, so one call can
+//     fire several saves — and the next call's wait then resolves on a leftover
+//     response while its own write is still open.
 //
-// DOES NOT WORK when: the click fires NO action (a pure client toggle, an
-// `<a href>` navigation with no action) — there is no POST to await and this will
-// time out. Use followLink for navigations and a plain `expect` for client-only
-// state (decision tree above). If a click fires an action AND navigates, this
-// still resolves on the action POST.
-//
-// ALSO NOT RELIABLE on a page with steady background action-POST traffic (the
-// dashboard's watchers/pollers): the wait can resolve on a bystander POST while
-// the mutation's own request is still in flight — and a follow-up `page.reload()`
-// then aborts it (the write is lost, not just late). There, prefer asserting a
-// SERVER-rendered marker that only the completed mutation + refresh can produce
-// (the wellbeing card's `mood-server-logged` marker is the precedent) — the
-// assertion's own retry is the settle.
-export async function settledClick(
-  page: Page,
-  locator: Locator,
-  opts: { timeout?: number } = {}
-): Promise<void> {
-  const timeout = opts.timeout ?? 15_000;
-  const origin = new URL(page.url()).origin;
-  await expect(locator).toBeVisible();
-  await Promise.all([
-    page.waitForResponse(
-      (resp) => {
-        if (resp.request().method() !== "POST") return false;
-        try {
-          return new URL(resp.url()).origin === origin;
-        } catch {
-          return false;
-        }
-      },
-      { timeout }
-    ),
-    locator.click({ timeout }),
-  ]);
-}
-
-// Set files on a file `<input>` and await the Server-Action POST the resulting
-// change fires — the settledClick idiom for an upload input (which has no click to
-// drive). A hidden camera/file input's `onChange` submits a Server Action (upload
-// + `revalidatePath`/`router.refresh()`); we arm the POST wait BEFORE
-// `setInputFiles` (so a fast upload can't resolve in the gap), then await it, so
-// the follow-up `expect(...)` runs against the durably-applied strip rather than a
-// bare timed count poll. WORKS when the change definitely fires exactly one
-// same-origin POST (the upload). Mirrors settledClick for inputs.
-export async function settledUpload(
-  page: Page,
-  input: Locator,
-  files: Parameters<Locator["setInputFiles"]>[0],
-  opts: { timeout?: number } = {}
-): Promise<void> {
-  const timeout = opts.timeout ?? 20_000;
-  const origin = new URL(page.url()).origin;
-  await Promise.all([
-    page.waitForResponse(
-      (resp) => {
-        if (resp.request().method() !== "POST") return false;
-        try {
-          return new URL(resp.url()).origin === origin;
-        } catch {
-          return false;
-        }
-      },
-      { timeout }
-    ),
-    input.setInputFiles(files),
-  ]);
-}
-
-// Fill a form field so its value durably lands in React STATE, not just the DOM —
-// the input analog of followLink's pre-hydration guard.
-//
-// Root cause: a `.fill()` dispatched before React hydrates the input sets the DOM
-// value (a plain `toHaveValue` then passes) but never fires the input's `onChange`,
-// so a CONTROLLED input's state stays unchanged and hydration REVERTS the field to
-// state. Anything that then reads STATE — a Save that builds its payload from
-// component state (Settings' `PublicUrlSettings`/`SmtpSettings`) — persists the
-// empty/stale value, SILENTLY (an empty value is often a valid save), and no
-// value-assertion catches it because the DOM looked set. That widened hydration
-// window under `--workers>1`/CI load is the same one followLink handles for clicks;
-// it was the ~1/3-under-load email-auth:58 flake.
-//
-// Wait until React has hydrated THIS element (on hydration React attaches
-// `__reactFiber$…`/`__reactProps$…` own-properties to the DOM node) BEFORE filling,
-// so `.fill()`'s input event fires `onChange` and the value lands in state; then
-// confirm it holds. WORKS for text/number inputs and textareas.
-//
-// NOTE: settledFill guarantees the value reached React state — NOT that a later save
-// or navigation kept it. When the fill feeds a save whose success is SILENT (empty
-// is valid), also confirm the PERSISTED effect after saving (reload + assert), the
-// email-auth precedent.
-export async function settledFill(
-  page: Page,
-  field: Locator,
-  value: string,
-  opts: { timeout?: number } = {}
-): Promise<void> {
-  const timeout = opts.timeout ?? 10_000;
-  await expect(field).toBeVisible();
-  await expect(async () => {
-    const hydrated = await field.evaluate((el) =>
-      Object.keys(el).some(
-        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+// What is actually reliable is the SPINNER's absence, scoped to the card: SaveStatus
+// renders `Saving` for exactly as long as useSaveStatus' transition is pending, and
+// that transition stays pending until the Server Action has RETURNED. So "no spinner
+// in this card" means "no write outstanding" — and it is correct for a no-op too.
+// The one hazard is looking before React has committed the pending render; two
+// animation frames is that commit boundary (a real event, not a sleep).
+async function awaitAutosaveSettled(scope: Locator): Promise<void> {
+  await scope.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       )
-    );
-    // Not hydrated yet → toPass retries (the fill would be reverted). Once React has
-    // attached, the fill fires onChange and the value sticks in state.
-    expect(hydrated, "input not hydrated yet").toBe(true);
-    await field.fill(value);
-    await expect(field).toHaveValue(value, { timeout: 2_000 });
-  }).toPass({ timeout });
+  );
+  await expect(scope.getByLabel("Saving")).toHaveCount(0);
 }
 
-// Toggle a checkbox so the change durably lands in React STATE — the checkbox analog
-// of settledFill.
+// The centre of an element, in viewport coordinates — the natural place for a
+// finger to land on it — measured only once the element has STOPPED MOVING.
 //
-// Root cause (same family as settledFill): a `.check()`/`.uncheck()` dispatched before
-// React hydrates a CONTROLLED checkbox (`checked={…} onChange={…}`) clicks the box but
-// no `onChange` is wired, so state never flips and hydration REVERTS the box. Playwright
-// then reports `check: Clicking the checkbox did not change its state` (the click didn't
-// stick) — or, worse, the click sticks in the DOM but not state and a later save reads
-// the stale value. It was the `food-telegram` line-26 `enableTelegram.check()` flake.
+// The settling is the whole point. Every surface a gesture spec wants to grab
+// arrives on a 240ms slide, and a `boundingBox()` taken mid-animation is a
+// position the element has already left: the coordinates go to CDP, the touch
+// lands wherever the panel has since moved to, and the gesture is delivered to
+// some other element entirely (a heading, the backdrop) with no error — the test
+// just fails to do anything. Polling until two consecutive reads agree costs a
+// few frames and removes the whole class.
+export async function centerOf(
+  locator: Locator
+): Promise<{ x: number; y: number }> {
+  let previous: string | null = null;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const box = await locator.boundingBox();
+    const key = box
+      ? `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)}`
+      : null;
+    if (box && key === previous) {
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    }
+    previous = key;
+    await locator.page().waitForTimeout(50);
+  }
+  throw new Error("element never settled into a stable position");
+}
+
+// Open the Upcoming page's display aggregates (issue #1504).
 //
-// Wait until React has hydrated THIS element (the `__reactFiber$…`/`__reactProps$…`
-// markers, as settledFill/followLink do) BEFORE toggling, so the click fires `onChange`
-// and the state flips; then confirm it holds. `setChecked(checked)` is idempotent (a
-// no-op when already in the target state), so this also replaces a
-// `if (!await box.isChecked()) await box.check()` guard.
-export async function settledCheck(
-  page: Page,
-  box: Locator,
-  checked: boolean,
-  opts: { timeout?: number } = {}
+// The planning page folds a band's scheduled doses into one disclosure, and its
+// interaction + PGx notes into another, collapsed on every visit. A spec that
+// asserts on an individual dose / interaction / PGx ROW has to open the fold
+// first — the rows are real and unchanged, they are just behind a <details>.
+//
+// Native <details>, so this needs no hydration and no server round-trip; it is
+// idempotent (an already-open disclosure is skipped) and tolerant of a page with
+// no aggregate at all, so a spec may call it unconditionally after navigating.
+// Pass a `kind` to open only that class.
+export type UpcomingAggregateKind = "dose" | "med-safety";
+
+export async function expandUpcomingAggregates(
+  scope: Page | Locator,
+  kind?: UpcomingAggregateKind
 ): Promise<void> {
-  const timeout = opts.timeout ?? 10_000;
-  await expect(box).toBeVisible();
-  await expect(async () => {
-    const hydrated = await box.evaluate((el) =>
-      Object.keys(el).some(
-        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
-      )
+  // Exact testids, never a `^=` prefix: the summary INSIDE each disclosure is
+  // `upcoming-aggregate-summary-<kind>`, which a prefix match would also select —
+  // and a <summary> has no <summary> of its own, so the loop would hang on it.
+  const kinds: UpcomingAggregateKind[] = kind ? [kind] : ["dose", "med-safety"];
+  const selector = kinds
+    .map((k) => `[data-testid="upcoming-aggregate-${k}"]`)
+    .join(", ");
+  const aggregates = scope.locator(selector);
+  const count = await aggregates.count();
+  for (let i = 0; i < count; i++) {
+    const disclosure = aggregates.nth(i);
+    const open = await disclosure.evaluate(
+      (el) => (el as HTMLDetailsElement).open
     );
-    // Not hydrated yet → toPass retries (the toggle would be reverted). Once React has
-    // attached, the click fires onChange and the state sticks.
-    expect(hydrated, "checkbox not hydrated yet").toBe(true);
-    await box.setChecked(checked);
-    await expect(box).toBeChecked({ checked, timeout: 2_000 });
-  }).toPass({ timeout });
+    if (open) continue;
+    const summary = disclosure.locator("summary");
+    // Centre it before clicking. Opening one disclosure grows the page under the
+    // next one, and at phone width the mobile shell's fixed bottom bar can sit over
+    // wherever it lands — Playwright's own minimal auto-scroll then never reaches an
+    // actionable hit target. Centring clears both bars at every viewport.
+    await summary.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await summary.click();
+    await expect(disclosure).toHaveJSProperty("open", true);
+  }
+}
+
+// Mobile clipped-content guard (issue #1063). The app shell deliberately clips
+// horizontal overflow (`<main className="… overflow-x-clip">` in
+// app/(app)/layout.tsx), so broken phone-width layouts never page-scroll — they
+// render as INVISIBLE, unreachable content (copy/token buttons pushed off-screen).
+// That also defeats the naive `document.scrollWidth > clientWidth` check: it
+// reads 0 overflow on every page. So this asserts ELEMENT-level containment:
+// every rendered element's right edge must sit inside the viewport (+2px
+// tolerance), unless it lives inside a functioning `overflow-x: auto|scroll`
+// container that itself fits — the AGENTS.md "wide content scrolls inside its
+// own container" rule, made mechanical. Call it AFTER the page's content is
+// visible (assert a page-specific element first), with the viewport already at
+// phone width. Offenders are reported with tag/testid/class + widths so a
+// failure names the guilty element directly.
+export async function expectNoClippedContent(page: Page): Promise<void> {
+  const offenders = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const TOL = 2;
+    const bad: string[] = [];
+    const insideWorkingScroller = (el: Element): boolean => {
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const o = getComputedStyle(a).overflowX;
+        if (o === "auto" || o === "scroll") {
+          const r = a.getBoundingClientRect();
+          // The scroll container must itself fit the viewport — a scroller that
+          // overflows just moves the problem up a level.
+          if (r.right <= vw + TOL) return true;
+        }
+      }
+      return false;
+    };
+    for (const el of Array.from(document.body.querySelectorAll("*"))) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue; // not rendered
+      if (r.right <= vw + TOL) continue; // fits
+      if (r.left >= vw) continue; // fully off-canvas by design (drawers, toasts)
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.opacity === "0") continue;
+      if (insideWorkingScroller(el)) continue;
+      const id = el.getAttribute("data-testid");
+      const cls = typeof el.className === "string" ? el.className : "";
+      bad.push(
+        `<${el.tagName.toLowerCase()}${id ? ` data-testid="${id}"` : ""}` +
+          `${cls ? ` class="${cls.slice(0, 80)}"` : ""}> ` +
+          `right=${Math.round(r.right)} vs viewport=${vw}`
+      );
+    }
+    // Belt-and-braces: the PR #1249 document-level check too, for surfaces
+    // outside the clipping app shell (share pages, print views).
+    const doc = document.documentElement;
+    if (doc.scrollWidth > doc.clientWidth + TOL) {
+      bad.push(
+        `document scrollWidth=${doc.scrollWidth} vs clientWidth=${doc.clientWidth}`
+      );
+    }
+    return bad.slice(0, 20);
+  });
+  expect(offenders, offenders.join("\n")).toEqual([]);
+}
+
+// The SVG half of the containment guard (issue #1573).
+//
+// `expectNoClippedContent` above walks DOM boxes, and that is exactly why it did
+// not catch this: an SVG `<text>` that paints past its own plot is still inside a
+// `<svg>` element whose box fits the viewport, so the element-level walk sees
+// nothing wrong. #1573 was found by measuring — an annotation label at the right
+// SIZE (10px, the #1445 floor) whose right edge landed at 449px against a 390px
+// viewport, and same-row labels stacking into a smear.
+//
+// So every rendered `<text>` inside a chart is measured against BOTH bounds that
+// matter: its own owning `<svg>` (the plot it belongs to) and the viewport. The
+// layout that keeps them inside is computed in `lib/chart-svg.ts` (clampLabel /
+// placeRowLabels); this is the browser-side proof.
+//
+// Call it after the charts are visible, at whatever viewport the case is about.
+export async function expectSvgTextInsidePlot(page: Page): Promise<void> {
+  const offenders = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const TOL = 2;
+    const bad: string[] = [];
+    for (const text of Array.from(document.querySelectorAll("svg text"))) {
+      const box = text.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue; // not rendered
+      const style = getComputedStyle(text);
+      if (style.visibility === "hidden" || style.opacity === "0") continue;
+      const owner = text.closest("svg");
+      if (!owner) continue;
+      const plot = owner.getBoundingClientRect();
+      if (plot.width === 0) continue;
+      const label = (text.textContent ?? "").trim().slice(0, 40);
+      const id =
+        owner.getAttribute("data-testid") ??
+        owner.parentElement?.getAttribute("data-testid") ??
+        owner.tagName;
+      if (box.right > plot.right + TOL || box.left < plot.left - TOL) {
+        bad.push(
+          `"${label}" paints outside its plot (${id}): ` +
+            `[${Math.round(box.left)}, ${Math.round(box.right)}] vs ` +
+            `plot [${Math.round(plot.left)}, ${Math.round(plot.right)}]`
+        );
+      }
+      if (box.right > vw + TOL || box.left < -TOL) {
+        bad.push(
+          `"${label}" paints outside the viewport (${id}): ` +
+            `right=${Math.round(box.right)} left=${Math.round(box.left)} vs ` +
+            `viewport=${vw}`
+        );
+      }
+    }
+    return bad.slice(0, 20);
+  });
+  expect(offenders, offenders.join("\n")).toEqual([]);
+}
+
+// The other half of #1573's sibling issue (#1518): a chart label at the right
+// PLACE is still unreadable at 3.5px. Asserts every rendered chart `<text>` is at
+// least `minPx` of real type — which for a scaled viewBox means measuring what the
+// browser actually painted, not the number in the source.
+export async function expectSvgTextLegible(
+  page: Page,
+  minPx = 9
+): Promise<void> {
+  const sizes = await page.evaluate(() => {
+    const out: { label: string; px: number; owner: string }[] = [];
+    for (const text of Array.from(document.querySelectorAll("svg text"))) {
+      const box = text.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      const owner = text.closest("svg");
+      if (!owner) continue;
+      const plot = owner.getBoundingClientRect();
+      const viewBox = owner.getAttribute("viewBox");
+      const units = viewBox ? Number(viewBox.split(/\s+/)[2]) : 0;
+      // A viewBox font size is in USER UNITS; what it PAINTS at is that size
+      // times the container ratio. Measure the painted size, which is the only
+      // number a reader experiences.
+      const declared = Number.parseFloat(getComputedStyle(text).fontSize);
+      const px =
+        units > 0 && plot.width > 0
+          ? (declared * plot.width) / units
+          : declared;
+      out.push({
+        label: (text.textContent ?? "").trim().slice(0, 30),
+        px: Math.round(px * 100) / 100,
+        owner: owner.getAttribute("data-testid") ?? owner.tagName,
+      });
+    }
+    return out;
+  });
+  expect(sizes.length, "the page should be drawing chart text").toBeGreaterThan(
+    0
+  );
+  const tooSmall = sizes.filter((s) => s.px < minPx);
+  expect(
+    tooSmall,
+    `chart text below ${minPx}px effective size:\n` +
+      tooSmall.map((s) => `"${s.label}" (${s.owner}) at ${s.px}px`).join("\n")
+  ).toEqual([]);
 }
 
 // Follow a Next.js <Link> reliably, retrying the click until the client router
@@ -297,63 +402,43 @@ export async function followLink(
   }
 }
 
-// Mobile clipped-content guard (issue #1063). The app shell deliberately clips
-// horizontal overflow (`<main className="… overflow-x-clip">` in
-// app/(app)/layout.tsx), so broken phone-width layouts never page-scroll — they
-// render as INVISIBLE, unreachable content (copy/token buttons pushed off-screen).
-// That also defeats the naive `document.scrollWidth > clientWidth` check: it
-// reads 0 overflow on every page. So this asserts ELEMENT-level containment:
-// every rendered element's right edge must sit inside the viewport (+2px
-// tolerance), unless it lives inside a functioning `overflow-x: auto|scroll`
-// container that itself fits — the AGENTS.md "wide content scrolls inside its
-// own container" rule, made mechanical. Call it AFTER the page's content is
-// visible (assert a page-specific element first), with the viewport already at
-// phone width. Offenders are reported with tag/testid/class + widths so a
-// failure names the guilty element directly.
-export async function expectNoClippedContent(page: Page): Promise<void> {
-  const offenders = await page.evaluate(() => {
-    const vw = document.documentElement.clientWidth;
-    const TOL = 2;
-    const bad: string[] = [];
-    const insideWorkingScroller = (el: Element): boolean => {
-      for (let a = el.parentElement; a; a = a.parentElement) {
-        const o = getComputedStyle(a).overflowX;
-        if (o === "auto" || o === "scroll") {
-          const r = a.getBoundingClientRect();
-          // The scroll container must itself fit the viewport — a scroller that
-          // overflows just moves the problem up a level.
-          if (r.right <= vw + TOL) return true;
-        }
-      }
-      return false;
-    };
-    for (const el of Array.from(document.body.querySelectorAll("*"))) {
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) continue; // not rendered
-      if (r.right <= vw + TOL) continue; // fits
-      if (r.left >= vw) continue; // fully off-canvas by design (drawers, toasts)
-      const cs = getComputedStyle(el);
-      if (cs.visibility === "hidden" || cs.opacity === "0") continue;
-      if (insideWorkingScroller(el)) continue;
-      const id = el.getAttribute("data-testid");
-      const cls = typeof el.className === "string" ? el.className : "";
-      bad.push(
-        `<${el.tagName.toLowerCase()}${id ? ` data-testid="${id}"` : ""}` +
-          `${cls ? ` class="${cls.slice(0, 80)}"` : ""}> ` +
-          `right=${Math.round(r.right)} vs viewport=${vw}`
-      );
-    }
-    // Belt-and-braces: the PR #1249 document-level check too, for surfaces
-    // outside the clipping app shell (share pages, print views).
-    const doc = document.documentElement;
-    if (doc.scrollWidth > doc.clientWidth + TOL) {
-      bad.push(
-        `document scrollWidth=${doc.scrollWidth} vs clientWidth=${doc.clientWidth}`
-      );
-    }
-    return bad.slice(0, 20);
-  });
-  expect(offenders, offenders.join("\n")).toEqual([]);
+// Click a pure CLIENT TOGGLE exactly once, after React has hydrated it — the
+// button analog of settledFill/settledCheck.
+//
+// Decision-tree case 3 covers most client-only clicks: assert the effect with a
+// retrying `expect` and you're done. This helper is for the sub-case where the
+// click itself can be LOST: a tap dispatched before React attaches the button's
+// `onClick` (the #500/#830 hydration window, widened under `--workers>1`/CI load)
+// does nothing at all, and there is no POST to await and no URL to watch, so a
+// following `expect` just times out.
+//
+// openMobileDrawer solves that by RE-TAPPING until the drawer mounts, which is
+// only safe because its hamburger sets `open` TRUE and never toggles. A real
+// TOGGLE (the #1455 "Custom…" pill, the digest's "Show all N") flips state, so a
+// second tap UNDOES the first — a retry loop there is a coin flip. Instead: wait
+// for the hydration markers React attaches to the DOM node, then click ONCE.
+//
+// WORKS for a client-state button whose effect is a re-render (a disclosure, an
+// expander). For a click that fires a Server Action use settledClick; for one that
+// navigates use followLink.
+export async function hydratedClick(
+  page: Page,
+  button: Locator,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(button).toBeVisible();
+  await expect(async () => {
+    const hydrated = await button.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries the PROBE only; the click below runs once,
+    // after the handler is attached, so the toggle can never be double-fired.
+    expect(hydrated, "button not hydrated yet").toBe(true);
+  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; the click stays outside the loop so a toggle is never fired twice
+  await button.click();
 }
 
 // Playwright surfaces a click on a link that a prior iteration already navigated
@@ -362,4 +447,367 @@ export async function expectNoClippedContent(page: Page): Promise<void> {
 // every other click failure must reach the caller.
 function isDetachedElementError(err: Error): boolean {
   return /not attached|is detached|element was detached/i.test(err.message);
+}
+
+// Open MobileNav's slide-in drawer and return it (issue #1420 — the `mobile`
+// Playwright project's one shared interaction). The drawer is the phone shell's
+// only route to the app's navigation: below `md` the desktop sidebar is hidden and
+// the drawer's <aside> isn't even MOUNTED until the hamburger is tapped
+// (components/MobileNav.tsx renders it behind `{open && …}`), so a mobile spec that
+// needs a nav link has to open it first.
+//
+// The tap fires NO Server Action and NO navigation — it's a pure `setOpen(true)`
+// client toggle — so neither settledClick nor followLink applies, and a tap landing
+// in the pre-hydration window (#500/#830) is silently swallowed with nothing to
+// await. This is decision-tree case 4: re-tap until the drawer mounts, guarded on
+// its visibility. Re-tapping is safe because the hamburger only ever sets `open`
+// TRUE (it never toggles), so a late tap can't close what a prior one opened.
+export async function openMobileDrawer(page: Page): Promise<Locator> {
+  // The drawer <aside> is identified by the close (✕) button that ONLY it renders
+  // (SidebarContent's `onClose` prop is set for the drawer, not the desktop
+  // sidebar), so this can never resolve to the hidden desktop sidebar.
+  const drawer = page.locator("aside", {
+    has: page.getByRole("button", { name: "Close menu" }),
+  });
+  await expect(async () => {
+    if (!(await drawer.isVisible())) {
+      await page.getByRole("button", { name: "Open menu" }).click();
+    }
+    await expect(drawer).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the hamburger past the pre-hydration swallow — a pure client toggle with no POST/navigation to settle on; set-true-only, so a late tap can't re-close it
+  return drawer;
+}
+
+// Toggle a checkbox so the change durably lands in React STATE — the checkbox analog
+// of settledFill.
+//
+// Root cause (same family as settledFill): a `.check()`/`.uncheck()` dispatched before
+// React hydrates a CONTROLLED checkbox (`checked={…} onChange={…}`) clicks the box but
+// no `onChange` is wired, so state never flips and hydration REVERTS the box. Playwright
+// then reports `check: Clicking the checkbox did not change its state` (the click didn't
+// stick) — or, worse, the click sticks in the DOM but not state and a later save reads
+// the stale value. It was the `food-telegram` line-26 `enableTelegram.check()` flake.
+//
+// Wait until React has hydrated THIS element (the `__reactFiber$…`/`__reactProps$…`
+// markers, as settledFill/followLink do) BEFORE toggling, so the click fires `onChange`
+// and the state flips; then confirm it holds. `setChecked(checked)` is idempotent (a
+// no-op when already in the target state), so this also replaces a
+// `if (!await box.isChecked()) await box.check()` guard.
+export async function settledCheck(
+  page: Page,
+  box: Locator,
+  checked: boolean,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(box).toBeVisible();
+  await expect(async () => {
+    const hydrated = await box.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries (the toggle would be reverted). Once React has
+    // attached, the click fires onChange and the state sticks.
+    expect(hydrated, "checkbox not hydrated yet").toBe(true);
+    await box.setChecked(checked);
+    await expect(box).toBeChecked({ checked, timeout: 2_000 });
+  }).toPass({ timeout });
+}
+
+export async function settledCheckSave(
+  page: Page,
+  box: Locator,
+  checked: boolean,
+  scope: Locator,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  await settledCheck(page, box, checked, opts);
+  await awaitAutosaveSettled(scope);
+}
+
+// Click `locator` and await the Server Action POST it fires before returning.
+//
+// Next App Router Server Actions POST to the CURRENT route URL (same origin) — a
+// `<form action={serverAction}>` submit posts natively before hydration and via a
+// `fetch` POST after, and either way the response completes only once the action
+// AND its `revalidatePath`/`router.refresh()` have run server-side. We arm a
+// `waitForResponse` for that POST BEFORE clicking (so a fast action can't resolve
+// in the gap between click and wait), then click, then await the response. When it
+// resolves the mutation is durably applied; the follow-up `expect(...)` asserts the
+// re-rendered UI (React applies the revalidated payload on the next tick — the
+// assertion's own retry absorbs that sub-tick).
+//
+// WORKS when: the click definitely triggers exactly one same-origin POST (form
+// submit, action button). PREFER this over networkidle/waitForTimeout/toPass for
+// those.
+//
+// DOES NOT WORK when: the click fires NO action (a pure client toggle, an
+// `<a href>` navigation with no action) — there is no POST to await and this will
+// time out. Use followLink for navigations and a plain `expect` for client-only
+// state (decision tree above). If a click fires an action AND navigates, this
+// still resolves on the action POST.
+//
+// ALSO NOT RELIABLE on a page with steady background action-POST traffic (the
+// dashboard's watchers/pollers): the wait can resolve on a bystander POST while
+// the mutation's own request is still in flight — and a follow-up `page.reload()`
+// then aborts it (the write is lost, not just late). There, prefer asserting a
+// SERVER-rendered marker that only the completed mutation + refresh can produce
+// (the wellbeing card's `mood-server-logged` marker is the precedent) — the
+// assertion's own retry is the settle.
+export async function settledClick(
+  page: Page,
+  locator: Locator,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 15_000;
+  const origin = new URL(page.url()).origin;
+  await expect(locator).toBeVisible();
+  await Promise.all([
+    page.waitForResponse(
+      (resp) => {
+        if (resp.request().method() !== "POST") return false;
+        try {
+          return new URL(resp.url()).origin === origin;
+        } catch {
+          return false;
+        }
+      },
+      { timeout }
+    ),
+    locator.click({ timeout }),
+  ]);
+}
+
+// Fill a form field so its value durably lands in React STATE, not just the DOM —
+// the input analog of followLink's pre-hydration guard.
+//
+// Root cause: a `.fill()` dispatched before React hydrates the input sets the DOM
+// value (a plain `toHaveValue` then passes) but never fires the input's `onChange`,
+// so a CONTROLLED input's state stays unchanged and hydration REVERTS the field to
+// state. Anything that then reads STATE — a Save that builds its payload from
+// component state (Settings' `PublicUrlSettings`/`SmtpSettings`) — persists the
+// empty/stale value, SILENTLY (an empty value is often a valid save), and no
+// value-assertion catches it because the DOM looked set. That widened hydration
+// window under `--workers>1`/CI load is the same one followLink handles for clicks;
+// it was the ~1/3-under-load email-auth:58 flake.
+//
+// Wait until React has hydrated THIS element (on hydration React attaches
+// `__reactFiber$…`/`__reactProps$…` own-properties to the DOM node) BEFORE filling,
+// so `.fill()`'s input event fires `onChange` and the value lands in state; then
+// confirm it holds. WORKS for text/number inputs and textareas.
+//
+// NOTE: settledFill guarantees the value reached React state — NOT that a later save
+// or navigation kept it. When the fill feeds a save whose success is SILENT (empty
+// is valid), also confirm the PERSISTED effect after saving (reload + assert), the
+// email-auth precedent.
+export async function settledFill(
+  page: Page,
+  field: Locator,
+  value: string,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(field).toBeVisible();
+  await expect(async () => {
+    const hydrated = await field.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries (the fill would be reverted). Once React has
+    // attached, the fill fires onChange and the value sticks in state.
+    expect(hydrated, "input not hydrated yet").toBe(true);
+    await field.fill(value);
+    await expect(field).toHaveValue(value, { timeout: 2_000 });
+  }).toPass({ timeout });
+}
+
+// Choose a `<select>` option so the change durably lands in React STATE — the
+// select analog of settledFill/settledCheck.
+//
+// Same root cause: a `selectOption()` dispatched before React hydrates a CONTROLLED
+// select sets the DOM value but fires no `onChange`, so state never moves and
+// hydration REVERTS it — and for a select whose handler NAVIGATES (the responsive
+// tables' card-mode sort control, #1426) the swallowed change leaves no trace at all:
+// no POST to await, no URL to watch, just a spec that times out on the destination.
+//
+// Wait for React's hydration markers on the node, then select; retrying is safe
+// because `selectOption` sets an ABSOLUTE value (unlike a toggle, a second
+// application is a no-op), so the whole thing sits inside the probe.
+export async function settledSelect(
+  page: Page,
+  select: Locator,
+  value: string,
+  opts: { timeout?: number; destination?: RegExp } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(select).toBeVisible();
+  await expect(async () => {
+    const hydrated = await select.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries (the selection would be reverted). Once
+    // React has attached, the change fires onChange and the value sticks.
+    expect(hydrated, "select not hydrated yet").toBe(true);
+    await select.selectOption(value);
+    await expect(select).toHaveValue(value, { timeout: 2_000 });
+    // A controlled select can update its own DOM value before a router.push()
+    // finishes. When the selection navigates, make that destination part of the
+    // same retry boundary so a swallowed or slow transition re-selects the
+    // absolute value instead of leaving the caller to time out on the source URL.
+    if (opts.destination) {
+      await expect(page).toHaveURL(opts.destination, { timeout: 2_000 });
+    }
+  }).toPass({ timeout });
+}
+
+export async function settledSelectSave(
+  page: Page,
+  select: Locator,
+  value: string,
+  scope: Locator,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  await settledSelect(page, select, value, opts);
+  await awaitAutosaveSettled(scope);
+}
+
+// Set files on a file `<input>` and await the Server-Action POST the resulting
+// change fires — the settledClick idiom for an upload input (which has no click to
+// drive). A hidden camera/file input's `onChange` submits a Server Action (upload
+// + `revalidatePath`/`router.refresh()`); we arm the POST wait BEFORE
+// `setInputFiles` (so a fast upload can't resolve in the gap), then await it, so
+// the follow-up `expect(...)` runs against the durably-applied strip rather than a
+// bare timed count poll. WORKS when the change definitely fires exactly one
+// same-origin POST (the upload). Mirrors settledClick for inputs.
+export async function settledUpload(
+  page: Page,
+  input: Locator,
+  files: Parameters<Locator["setInputFiles"]>[0],
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 20_000;
+  const origin = new URL(page.url()).origin;
+  await Promise.all([
+    page.waitForResponse(
+      (resp) => {
+        if (resp.request().method() !== "POST") return false;
+        try {
+          return new URL(resp.url()).origin === origin;
+        } catch {
+          return false;
+        }
+      },
+      { timeout }
+    ),
+    input.setInputFiles(files),
+  ]);
+}
+
+// ── Touch gestures (issues #1425 / #1469) ────────────────────────────────────
+//
+// Drive a real one-finger drag. Playwright's `page.touchscreen` only taps, and
+// `page.mouse` produces `pointerType: "mouse"` events which the shell/page
+// gestures deliberately ignore (a mouse drag across a page is a text selection,
+// not a navigation). So this goes through CDP `Input.dispatchTouchEvent`, the
+// same channel `touchscreen.tap` uses: Chromium runs it through its real input
+// pipeline, which is what produces the compatibility PointerEvents the
+// recognizer (components/overlay/useDragGesture.ts) listens for — including the
+// `pointercancel` the browser fires when it decides the gesture is a scroll.
+// Synthesising PointerEvents in `page.evaluate` would bypass exactly that
+// arbitration and prove nothing about the behaviour that matters.
+//
+// `stepDelayMs` is how a spec chooses between the two commit paths in
+// lib/gesture.ts: 0 (the default) is a fast flick, a delay makes the same
+// distance a slow drag that must clear `commitPx` on distance alone.
+export async function touchSwipe(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  opts: { steps?: number; stepDelayMs?: number } = {}
+): Promise<void> {
+  const steps = Math.max(2, opts.steps ?? 10);
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: from.x, y: from.y }],
+    });
+    for (let i = 1; i <= steps; i++) {
+      if (opts.stepDelayMs) await page.waitForTimeout(opts.stepDelayMs);
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          {
+            x: from.x + ((to.x - from.x) * i) / steps,
+            y: from.y + ((to.y - from.y) * i) / steps,
+          },
+        ],
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// ── Streamed-reveal guard (#1644/#1674) ──────────────────────────────────────
+//
+// A page that streams a Suspense boundary (the Trends landing surface's body
+// census) delivers the boundary's content in a `<div hidden id="S:n">` staging
+// node at the end of `<body>`; React then MOVES it into place, on a schedule of
+// its own (a rAF, or a coalescing timeout). Until that reveal runs, a testid
+// inside the streamed content matches TWO nodes — the hidden staged copy and,
+// mid-move, the revealed one — which a strict-mode locator reports as a
+// duplicated-element bug, and on a loaded CI shard the reveal can lag SECONDS
+// behind the load event, so per-spec waits with default 5s ceilings kept losing.
+//
+// This guard closes the class at the harness level: every full-document
+// navigation (goto/reload/back/forward — client-side navigations render in
+// place and never stage) waits until no staging node remains before returning,
+// with a generous named ceiling. Installed once, on every page of every
+// context, by the `browser` fixture's newContext patch — so no spec ever calls
+// anything, and a future spec cannot forget to.
+const STREAM_REVEAL_TIMEOUT_MS = 30_000;
+
+async function settleStreamedReveal(page: Page): Promise<void> {
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll('div[hidden][id^="S:"]').length === 0,
+      undefined,
+      { timeout: STREAM_REVEAL_TIMEOUT_MS }
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // A destroyed context (an immediate follow-up navigation, a closed page, a
+    // non-HTML response) is not a stuck reveal — only a genuine timeout is.
+    if (/Timeout.*exceeded/i.test(message)) {
+      throw new Error(
+        `streamed content was still staged (hidden div[id^="S:"]) ` +
+          `${STREAM_REVEAL_TIMEOUT_MS}ms after navigation to ${page.url()} — ` +
+          `React's reveal never ran; see e2e/helpers.ts settleStreamedReveal`
+      );
+    }
+  }
+}
+
+export function installStreamRevealGuard(page: Page): void {
+  for (const method of ["goto", "reload", "goBack", "goForward"] as const) {
+    const original = page[method].bind(page) as (
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    (page as unknown as Record<string, unknown>)[method] = async (
+      ...args: unknown[]
+    ) => {
+      const result = await original(...args);
+      await settleStreamedReveal(page);
+      return result;
+    };
+  }
 }

@@ -12,7 +12,8 @@ import {
   RATE_WINDOW_DAYS,
   type DoseRate,
 } from "../../refill";
-import { getSupplementDoses } from "./schedule";
+import { getSupplementDoses, getSupplements } from "./schedule";
+import { cadenceDensity } from "../../intake-cadence";
 
 // Effective consumption rate (doses/day) + its basis for every item that has
 // either scheduled doses or logged history, for refill "≈N days left" math
@@ -54,7 +55,18 @@ export function getRefillRates(
   }[];
   const history = new Map(rows.map((r) => [r.sid, r]));
 
-  // Fallback rate ≈ number of scheduled dose rows per item.
+  // Fallback rate ≈ scheduled dose rows per item, SCALED BY CADENCE DENSITY (#1602).
+  // The count of rows answers "how many doses on a day it lands", not "per day": a
+  // weekly med with one dose row consumes 1/7 of a tablet per day, so 12 tablets are
+  // ≈12 weeks of supply, not ≈12 days. Without the scaling the low-supply nudge would
+  // fire on a weekly med almost immediately and then keep firing — the refill-nagging
+  // twin of the daily-reminder problem this issue exists to fix.
+  //
+  // Only the SCHEDULE fallback needs it. The history-based rate is measured from the
+  // taken log, which already contains the real cadence, so scaling it would double-count.
+  const cadenceById = new Map(
+    getSupplements(profileId).map((s) => [s.id, cadenceDensity(s)])
+  );
   const scheduleCount = new Map<number, number>();
   for (const d of getSupplementDoses(profileId)) {
     scheduleCount.set(d.item_id, (scheduleCount.get(d.item_id) ?? 0) + 1);
@@ -75,7 +87,7 @@ export function getRefillRates(
       consumptionRate(
         h?.in_window ?? 0,
         daysSinceFirstLog,
-        scheduleCount.get(id) ?? 0,
+        (scheduleCount.get(id) ?? 0) * (cadenceById.get(id) ?? 1),
         windowDays
       )
     );
@@ -96,20 +108,60 @@ export function getRefillRates(
 // was never removed, inventing supply. A negative on-hand reads as "out" (days-
 // of-supply math floors <=0 to 0, and the edit form clamps the shown value), and
 // a manual refill overwrites it outright.
-export function decrementSupply(profileId: number, supplementId: number): void {
+// SHARED SUPPLY POOLS (#1374): when the item carries a `supply_id`, the adjustment
+// lands on the POOL instead of the item's private counter — one bottle, one count, every
+// taker drawing from it. This is the ONE place either adjustment is written, so every
+// dose-log path (the page tri-state, the dashboard hero, Upcoming, the household
+// cockpit's cross-profile confirm, PRN quick-log, the historical-dose backfill, the
+// offline replay, and every Telegram tap) becomes pool-aware without a second decrement
+// path. The item's own `qty_per_dose` is what's drawn — an adult and a child share a
+// bottle but not a dose size.
+//
+// The item lookup is profile-scoped, so a forged id can neither touch another profile's
+// item nor reach the pool through it.
+function poolIdFor(profileId: number, supplementId: number): number | null {
+  const row = db
+    .prepare(
+      `SELECT supply_id FROM intake_items WHERE id = ? AND profile_id = ?`
+    )
+    .get(supplementId, profileId) as { supply_id: number | null } | undefined;
+  return row?.supply_id ?? null;
+}
+
+// `sign` is +1 (credit, an untoggle/undo) or -1 (consume). The pool UPDATE draws the
+// LINKED ITEM's qty_per_dose via a scalar subquery so the two sides stay exact inverses,
+// and no-ops when the pool isn't tracking a quantity — mirroring the item branch.
+function adjustSupply(
+  profileId: number,
+  supplementId: number,
+  sign: 1 | -1
+): void {
+  const supplyId = poolIdFor(profileId, supplementId);
+  if (supplyId != null) {
+    db.prepare(
+      `UPDATE shared_supplies
+          SET quantity_on_hand = quantity_on_hand + ? * (
+                SELECT qty_per_dose FROM intake_items
+                 WHERE id = ? AND profile_id = ?
+              ),
+              updated_at = datetime('now')
+        WHERE id = ? AND quantity_on_hand IS NOT NULL`
+    ).run(sign, supplementId, profileId, supplyId);
+    return;
+  }
   db.prepare(
     `UPDATE intake_items
-        SET quantity_on_hand = quantity_on_hand - qty_per_dose
+        SET quantity_on_hand = quantity_on_hand + ? * qty_per_dose
       WHERE id = ? AND profile_id = ? AND quantity_on_hand IS NOT NULL`
-  ).run(supplementId, profileId);
+  ).run(sign, supplementId, profileId);
+}
+
+export function decrementSupply(profileId: number, supplementId: number): void {
+  adjustSupply(profileId, supplementId, -1);
 }
 
 export function incrementSupply(profileId: number, supplementId: number): void {
-  db.prepare(
-    `UPDATE intake_items
-        SET quantity_on_hand = quantity_on_hand + qty_per_dose
-      WHERE id = ? AND profile_id = ? AND quantity_on_hand IS NOT NULL`
-  ).run(supplementId, profileId);
+  adjustSupply(profileId, supplementId, 1);
 }
 
 // The typed outcome of a one-tap "Refilled" (issue #852 item 3) — handlers answer from
@@ -139,7 +191,7 @@ export function refillSupply(
   return writeTx(() => {
     const row = db
       .prepare(
-        `SELECT quantity_on_hand, qty_per_dose, last_fill_size
+        `SELECT quantity_on_hand, qty_per_dose, last_fill_size, supply_id
            FROM intake_items WHERE id = ? AND profile_id = ?`
       )
       .get(itemId, profileId) as
@@ -147,9 +199,36 @@ export function refillSupply(
           quantity_on_hand: number | null;
           qty_per_dose: number;
           last_fill_size: number | null;
+          supply_id: number | null;
         }
       | undefined;
     if (!row) return { kind: "stale-item" };
+    // A POOLED item (#1374) refills the shared bottle, not its own (always NULL)
+    // counter — same lock-read-relative increment, applied to the pool row. The
+    // remembered fill size stays on the ITEM: "I buy the 90-count bottle" is a fact
+    // about how this person restocks, and the pool has no single restocker.
+    if (row.supply_id != null) {
+      const pool = db
+        .prepare("SELECT quantity_on_hand FROM shared_supplies WHERE id = ?")
+        .get(row.supply_id) as { quantity_on_hand: number | null } | undefined;
+      if (!pool) return { kind: "stale-item" };
+      if (pool.quantity_on_hand == null) return { kind: "untracked" };
+      const remembered =
+        row.last_fill_size != null && row.last_fill_size > 0
+          ? row.last_fill_size
+          : null;
+      const fill = fillSize != null && fillSize > 0 ? fillSize : remembered;
+      if (fill == null) return { kind: "needs-size" };
+      const next = resolveRefillWrite(pool.quantity_on_hand, fill) as number;
+      db.prepare(
+        `UPDATE shared_supplies SET quantity_on_hand = ?, updated_at = datetime('now')
+          WHERE id = ?`
+      ).run(next, row.supply_id);
+      db.prepare(
+        "UPDATE intake_items SET last_fill_size = ? WHERE id = ? AND profile_id = ?"
+      ).run(fill, itemId, profileId);
+      return { kind: "refilled", newQuantity: next, fillSize: fill };
+    }
     if (row.quantity_on_hand == null) return { kind: "untracked" };
     const remembered =
       row.last_fill_size != null && row.last_fill_size > 0

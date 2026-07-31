@@ -1,3 +1,23 @@
+/* Global stylesheet.
+ *
+ * LAYOUT (issue #1511 — this file used to be an append magnet, so every PR that
+ * touched CSS conflicted on the same trailing lines):
+ *
+ *   1. FOUNDATION — the @tailwind directives, the :root design tokens, base
+ *      element rules, and the @layer components block. Its ORDER IS LOAD-BEARING
+ *      (later rules of equal specificity win, and the utilities are emitted at
+ *      the @tailwind utilities line above everything below it). Do not reorder it.
+ *   2. FEATURE SECTIONS — each introduced by a "SECTION:" comment, each
+ *      self-contained (its own keyframes, media queries, and its own
+ *      prefers-reduced-motion override) and targeting selectors no other section
+ *      touches. These are ordered ALPHABETICALLY by section name.
+ *
+ * ADDING CSS: put the rule INSIDE the feature section that owns it; if it is a new
+ * feature, add a new SECTION in its ALPHABETICAL position among the sections below
+ * — never at the end of the file. A section that must beat the foundation (the
+ * print block re-declaring :root) still belongs after it, which every feature
+ * section already is. */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -40,11 +60,36 @@ input[type="checkbox"]:disabled {
   cursor: not-allowed;
 }
 
+html {
+  /* Keep a horizontal overscroll INSIDE the page (issues #1425 / #1469).
+
+     The app has two horizontal touch gestures — the edge-swipe that opens the
+     nav drawer and the Timeline's adjacent-day swipe — and by default a
+     horizontal drag that the page cannot scroll CHAINS to the browser's own
+     in-page history navigation: the swipe goes "back" instead, and the gesture
+     appears to do nothing except lose your place. (That is not a theory; it is
+     what the browser tests caught, landing on the previous history entry.)
+
+     `contain` stops the chaining without stopping any scrolling: an inner
+     horizontal scroller — a wide table, the Timeline's filter-chip strip, a
+     chart — still scrolls exactly as before. It is the x-axis twin of the
+     `overscroll-behavior-y: contain` that pull-to-refresh (#1467) already sets
+     while it is active.
+
+     Caveat worth knowing: this governs the BROWSER's overscroll gesture, not the
+     platform's. An iOS Safari TAB keeps its system edge-swipe-back (no CSS can
+     reach it), so there the drawer's edge gesture competes with it; installed to
+     the home screen — the posture this app is built for — there is no system
+     edge-swipe and the drawer gets the edge to itself. */
+  overscroll-behavior-x: contain;
+}
+
 body {
   @apply text-slate-800 antialiased dark:text-slate-200;
   /* Suppress the gray flash mobile browsers paint on tap; interactive elements
      already carry their own hover/active styles. */
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-x: contain;
   /* Vitals light page: airy off-white with a soft green glow up top + a faint
      vertical gradient, so the canvas isn't flat. */
   background:
@@ -114,11 +159,27 @@ body::before {
      border-alpha-language.test.ts and hover-fill-language.test.ts. */
   /* Frosted glass: translucent surface + backdrop blur lets the page glow
      diffuse through; soft shadow for elevation, hairline border for the edge. */
+  /* Padding is responsive (issue #1416, section A): a phone spends ~11% of a
+     390px line on a p-5 card's two gutters, and the app stacks cards. p-4 below
+     `sm`, the unchanged p-5 from `sm` up — ONE tokenized change here rather than
+     a per-page sweep, so every card on every surface tightens together. */
   .card {
-    @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-5 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
+    @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-4 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 sm:p-5 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
+  }
+  /* backdrop-filter makes every .card its own stacking context. Elevate every
+     card ancestor of an OPEN combobox so the listbox can clear later sibling
+     cards; raising the listbox alone cannot escape its card's stacking context. */
+  .card:has([role="combobox"][aria-expanded="true"]) {
+    @apply relative z-20;
   }
   .input {
     @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
+  }
+  /* The field counterpart of the button family's disabled treatment (#1450 B).
+     `.input` previously declared nothing for `:disabled`, so a disabled field
+     was indistinguishable from an editable one except by trying to type in it. */
+  .input:disabled {
+    @apply cursor-not-allowed bg-slate-100 text-slate-600 dark:bg-ink-750 dark:text-slate-400;
   }
   .number-no-spinner {
     appearance: textfield;
@@ -176,13 +237,34 @@ body::before {
      dark offset is ink-950, matching the near-black page surface the buttons sit
      against. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 dark:focus-visible:ring-offset-ink-950;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-black/10 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750 dark:focus-visible:ring-offset-ink-950;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 dark:focus-visible:ring-offset-ink-950;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  }
+  /* ONE disabled treatment for the whole button family (issue #1450 cluster B).
+     `disabled:opacity-50` used to fade the SATURATED fill instead of replacing
+     it: a disabled "Create login" rendered as washed-out green with white text
+     (~2.3:1, well under AA) which reads as half-loaded or broken rather than
+     "finish the form first" — while the admin Delete buttons hand-rolled a
+     separate grey, so one page family carried two disabled looks.
+     A muted SURFACE with readable text says "not yet" instead: slate-100 under
+     slate-600 is 6.9:1 and ink-750 under slate-400 is ~6.4:1, both clearing AA,
+     and neither can be mistaken for an active control. `bg-none` drops .btn's
+     gradient so the background-color actually shows; the rule is listed after
+     the base classes and after their :hover, so it wins on a hovered disabled
+     button too. Call sites should NOT re-declare `disabled:*` — that is exactly
+     how the second treatment grew. */
+  .btn:disabled,
+  .btn-ghost:disabled,
+  .btn-danger:disabled,
+  .btn[aria-disabled="true"],
+  .btn-ghost[aria-disabled="true"],
+  .btn-danger[aria-disabled="true"] {
+    @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
   }
   /* Compact size modifier for the .btn family — tighter padding for dense
      contexts (table rows, card headers, inline controls). Defined AFTER the base
@@ -200,67 +282,448 @@ body::before {
   .td {
     @apply px-2 py-2 text-sm text-slate-700 sm:px-3 dark:text-slate-300;
   }
+  /* ── Responsive tables (issue #1426) ────────────────────────────────────────
+     Below `sm`, a `.table-cards` table stops being a table and becomes a stack of
+     flat divider rows — over the SAME DOM. There is no second content tree and no
+     `hidden md:*` twin pair to drift (the responsive-surface rule in AGENTS.md):
+     every cell is authored once, in one `<td>`, and declares where it lands on the
+     card via `data-card` (components/ResponsiveTable.tsx → lib/card-row.ts).
+
+     Placement is a flex row with wrapping, so DOM order doesn't dictate phone order:
+       order 1 title   — the row's identity, grows to fill the first line
+       order 2 actions — pinned to that line's right edge
+       order 3 value   — full-width, the headline number/state
+       order 4 meta    — the secondary attributes, flowing into one wrapped line
+       order 5 full    — a full-width body (an inline edit form) replacing the rest
+
+     A `<td>` with NO `data-card` is desktop-only detail and is hidden on the card;
+     that `:not([data-card])` rule outranks a Tailwind `hidden md:table-cell` on the
+     same cell (0,2,1 vs 0,1,0), which is exactly what lets a column that's hidden on
+     a NARROW table reappear as a card meta line — the phone finally gets the panel,
+     category and notes it used to lose. */
+  .table-cards {
+    @apply max-sm:block;
+  }
+  /* Headers are gone in stacked-row mode (each cell carries its own label instead),
+     so a sortable list pairs this with components/TableSortSelect.tsx. */
+  .table-cards thead {
+    @apply max-sm:hidden;
+  }
+  .table-cards tbody {
+    @apply max-sm:block;
+  }
+  .table-cards tr {
+    @apply max-sm:mb-0 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-3 max-sm:gap-y-1 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:border-b max-sm:border-black/5 max-sm:bg-transparent max-sm:p-3 max-sm:dark:border-white/10;
+  }
+  .table-cards tr:last-child {
+    @apply max-sm:border-b-0;
+  }
+  /* A SECTION HEADER row (issue #1499's panel groups) is not a record card — it is
+     the index entry above one. In card mode it drops the card frame entirely and
+     lets its own control own the surface, so the group header reads as a header at
+     both viewports from the one `<tr>` (no `hidden md:*` twin to drift). The extra
+     class beats `.table-cards tr` on specificity, which a utility class on the row
+     could not — the reason the header's colour lives on its button. */
+  .table-cards tr.table-section-row {
+    @apply max-sm:mb-2 max-sm:block max-sm:border-0 max-sm:bg-transparent max-sm:p-0;
+  }
+  /* A reading NESTED inside an open section group (issue #1581 section C) sits under
+     a container the group header already drew, so it does not also need the full card
+     padding — the #1539 double-framing pattern, one level in. Padding only: the frame
+     itself (the rounded border, the fill, the bottom margin) came off every stacked
+     row in #1616, leaving the divider that separates one reading from the next, which
+     this keeps. Same mechanism as the section-header rule above — an element+class
+     selector outranks `.table-cards tr`, which a utility class on the row could not —
+     and a table that renders its rows UNGROUPED simply never sets the class. */
+  .table-cards tr.table-nested-row {
+    @apply max-sm:py-1.5;
+  }
+  .table-cards td {
+    @apply max-sm:block max-sm:px-0 max-sm:py-0;
+  }
+  .table-cards td:not([data-card]) {
+    @apply max-sm:hidden;
+  }
+  .table-cards td[data-card="title"] {
+    @apply max-sm:order-1 max-sm:min-w-0 max-sm:flex-1 max-sm:text-[0.9375rem] max-sm:font-medium max-sm:text-slate-800 max-sm:dark:text-slate-100;
+  }
+  .table-cards td[data-card="actions"] {
+    @apply max-sm:order-2 max-sm:ml-auto max-sm:shrink-0;
+  }
+  .table-cards td[data-card="value"] {
+    @apply max-sm:order-3 max-sm:w-full max-sm:basis-full max-sm:text-base;
+  }
+  .table-cards td[data-card="meta"] {
+    @apply max-sm:order-4 max-sm:text-xs max-sm:text-slate-500 max-sm:dark:text-slate-400;
+  }
+  .table-cards td[data-card="full"] {
+    @apply max-sm:order-5 max-sm:w-full max-sm:basis-full;
+  }
+  /* A metric detail page already gives its readings one containing card. Flatten
+     those phone rows into compact divider-separated records so they do not read
+     as padded cards nested inside another card. Desktop keeps the table grid. */
+  .metric-readings-list tr {
+    @apply max-sm:mb-0 max-sm:items-center max-sm:gap-x-2 max-sm:gap-y-0.5 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:bg-transparent max-sm:pr-0 max-sm:pl-2 max-sm:pt-0 max-sm:pb-2;
+  }
+  .metric-readings-list tr:last-child {
+    @apply max-sm:border-b-0;
+  }
+  .metric-readings-list td[data-card="value"] {
+    @apply max-sm:order-2 max-sm:ml-auto max-sm:w-auto max-sm:basis-auto max-sm:text-right max-sm:text-[0.9375rem] max-sm:font-medium;
+  }
+  .metric-readings-list td[data-card="actions"] {
+    @apply max-sm:order-3 max-sm:ml-0;
+  }
+  /* Practice histories sit inside an existing card, so their responsive rows are
+     compact divider-separated records rather than padded cards. The one table DOM
+     still carries the session, optional notes, and its overflow action. */
+  .practice-session-list tr {
+    @apply max-sm:p-0 max-sm:py-2;
+  }
+  .practice-session-list td[data-card="meta"] {
+    @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm max-sm:text-slate-500 max-sm:dark:text-slate-400;
+  }
+  /* Keep the readings row compact without shrinking the menu's effective touch
+     target: the visible control occupies 32px in layout while its pseudo-element
+     extends the clickable button box to 40px. */
+  .metric-readings-list
+    td[data-card="actions"]
+    [data-testid="overflow-menu-trigger"] {
+    @apply max-sm:relative max-sm:h-8 max-sm:w-8;
+  }
+  @media (max-width: 639.98px) {
+    .metric-readings-list
+      td[data-card="actions"]
+      [data-testid="overflow-menu-trigger"]::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+    }
+  }
+  .metric-readings-list td[data-card="meta"] {
+    @apply max-sm:flex max-sm:w-full max-sm:basis-full max-sm:justify-between max-sm:gap-3 max-sm:text-right;
+  }
+  .metric-readings-list td[data-card="meta"] .card-cell-label {
+    @apply max-sm:mr-0 max-sm:shrink-0;
+  }
+  .metric-readings-list td.metric-reading-source {
+    @apply max-sm:justify-start max-sm:gap-1 max-sm:text-left;
+  }
+  /* The column's own label, shown only in card mode (the `<th>` is hidden there). */
+  /* The passing muted pairing (#794): the label is set apart from its value by
+     case and size, never by dropping below the contrast floor. */
+  .card-cell-label {
+    @apply mr-1 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
+  }
   /* Icon-only tap targets share the .btn family's keyboard focus ring (issue
      #794 cluster 8c). The touch-only clickable-area extension lives in the
      pointer:coarse block below; this rule is the always-on focus affordance. */
   .tap-target {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   }
-}
-
-/* Native <input type="time"> (ActivityForm start/end) keeps browser-drawn chrome
-   even inside .input: the picker-indicator paints a hover background box, and the
-   focused hh/mm segment gets an OS highlight — both look wrong against the dark
-   theme. color-scheme already tints the glyphs; these rules just tame the stray
-   backgrounds so the control reads consistently in both themes. */
-input[type="time"]::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  border-radius: 0.25rem;
-  opacity: 0.55;
-  transition: opacity 0.15s;
-}
-input[type="time"]::-webkit-calendar-picker-indicator:hover {
-  opacity: 1;
-  background: transparent;
-}
-input[type="time"]::-webkit-datetime-edit-hour-field:focus,
-input[type="time"]::-webkit-datetime-edit-minute-field:focus,
-input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
-  background-color: rgba(34, 197, 94, 0.18);
-  color: inherit;
-  border-radius: 0.25rem;
-  outline: none;
-}
-
-/* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
-   density, which is below the ~44px touch-target guideline. On coarse-pointer
-   (touch) devices only, extend the clickable area with an invisible pseudo
-   element so the tap target reaches 44px without changing the visual size or
-   affecting mouse layouts. */
-@media (pointer: coarse) {
-  .tap-target {
-    position: relative;
+  /* Press feedback (issue #1416, section F). A touch target that dips slightly
+     while held answers "did that register?" on a phone, where there is no hover
+     state to answer it. Transform-only (no layout, no paint of anything else);
+     the reduced-motion override lives in the media block below. */
+  .press {
+    @apply transition-transform duration-100 active:scale-[0.97];
   }
-  .tap-target::after {
-    content: "";
-    position: absolute;
-    inset: -6px;
+  /* The plot box inside `components/ChartCard.tsx` (issue #1488). The CARD owns the
+     plot height — square below `sm`, `plotHeightClass` (default h-64) above — and
+     this rule is what makes that ownership real: whatever the caller renders into
+     the slot (the chart, its lazy-loading placeholder, its offline/error fallback,
+     an EmptyState) fills the box instead of carrying its own `h-32`/`h-40`/`h-64`.
+     A class selector plus an element selector outranks the utility's single class,
+     so it wins over the chart's own height without `!important` — and a call site
+     therefore cannot silently reintroduce a per-chart height vocabulary. */
+  .chart-card-plot > * {
+    height: 100%;
+    width: 100%;
   }
 }
 
-/* iOS Safari auto-zooms the page when a focused form control's font-size is
-   under 16px, in any orientation. Enforce the floor on touch devices only —
-   desktop keeps its compact text — keyed on the device (pointer) rather than
-   viewport width so landscape phones are covered. !important lets this beat
-   compact utility classes (text-xs/text-sm) on individual controls. */
-@media (pointer: coarse) {
-  input,
-  select,
-  textarea {
-    font-size: max(16px, 1em) !important;
+/* ── SECTION: Chart hover motion ── */
+/* Chart hover motion (#1445, Part 3c). The mount draw-in and the tooltip's own
+   fade are recharts props, decided in `components/chart-scaffold.tsx`; these two
+   rules cover what recharts styles in the DOM rather than through props — the
+   active dot growing under the cursor and the tooltip box sliding along the
+   series. 150ms, ease-out: fast enough to feel attached to the pointer, slow
+   enough not to snap. Suppressed wholesale under prefers-reduced-motion, which
+   also settles #794's open 8d checkbox for the chart layer. */
+.recharts-active-dot circle {
+  transition:
+    r 150ms ease-out,
+    opacity 150ms ease-out;
+}
+.recharts-tooltip-wrapper {
+  transition: transform 150ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .recharts-active-dot circle,
+  .recharts-tooltip-wrapper {
+    transition: none;
   }
 }
 
+/* ── SECTION: Fitness-check tile landing sweep ── */
+/* Fitness-check tile landing sweep (#1307). Applied by FitnessCheckView to the
+   just-saved tile as its new value lands on the grid — a brief scale/settle that
+   draws the eye to the tile that keeps the memory. The class is applied in JS only
+   when motion is allowed (prefers-reduced-motion suppresses it there), and this
+   media query is belt-and-braces so the keyframe never runs for a reduced-motion
+   viewer even if the class slips through. */
+@keyframes fitness-tile-land {
+  0% {
+    transform: scale(0.96);
+  }
+  55% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.fitness-tile-land {
+  animation: fitness-tile-land 480ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fitness-tile-land {
+    animation: none;
+  }
+}
+
+/* ── SECTION: Motion primitives + the overlay motion family ── */
+/* ── Motion primitives (issue #1416, section F) ────────────────────────────────
+   The app's shared vocabulary for the two things it animates: a transform
+   (slide/scale) and an opacity fade. Durations mirror lib/motion.ts's MOTION_MS
+   — that module hands the SAME number to components/usePresence.ts so an exiting
+   element stays mounted for exactly as long as its animation paints. Keep the
+   two in sync (a longer CSS duration truncates the exit; a shorter one leaves a
+   frozen element on screen).
+
+   Every class below is transform/opacity only — never a property that triggers
+   layout — and every one is disabled wholesale under prefers-reduced-motion at
+   the bottom of this block. Reduced motion still gets the full mount/unmount
+   sequence (usePresence collapses its duration to 0); it simply arrives. */
+
+/* ── The overlay motion family (issue #1469) ───────────────────────────────────
+   ONE duration + easing token pair for every overlay surface — the nav drawer,
+   BottomSheet (incl. its responsive dialog presentation), and the activity
+   dock's expanded editor. Their DISMISSAL contracts differ on purpose (#1428:
+   the sheet discards, the dock minimizes); their motion does not.
+
+   The numbers live in these three custom properties and nowhere else, so
+   retuning the app's overlay feel is one edit rather than a hunt through three
+   components. `--overlay-ms` is mirrored by lib/motion.ts's OVERLAY_MOTION_MS
+   (which is what usePresence uses to time the unmount) and the two are pinned
+   together by lib/__tests__/motion-tokens.test.ts.
+
+   Class names are produced ONLY by `overlayMotionClass()` in lib/motion.ts — a
+   component that writes `overlay-enter-bottom` itself fails the chokepoint scan
+   (lib/__tests__/overlay-motion-chokepoint.test.ts). */
+:root {
+  --overlay-ms: 240ms;
+  /* Decelerating on the way in: the panel arrives and settles. */
+  --overlay-ease-enter: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Accelerating on the way out: a dismissed panel should leave briskly. */
+  --overlay-ease-exit: ease-in;
+}
+
+@keyframes overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes overlay-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes overlay-slide-up-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes overlay-slide-up-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes overlay-slide-left-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes overlay-slide-left-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+/* The scrim: fades, never slides. */
+.overlay-enter-scrim {
+  animation: overlay-fade-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+/* The *-exit variants hold their final frame (`forwards`) so the element stays
+   faded/off-screen for the tail of the exit window instead of snapping back to
+   its resting state one frame before it unmounts. */
+.overlay-exit-scrim {
+  animation: overlay-fade-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
+}
+
+/* Bottom-anchored panel: the sheet, and the dock's expanded editor. */
+.overlay-enter-bottom {
+  animation: overlay-slide-up-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+.overlay-exit-bottom {
+  animation: overlay-slide-up-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
+}
+
+/* Edge-anchored panel: the mobile nav drawer. */
+.overlay-enter-left {
+  animation: overlay-slide-left-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+.overlay-exit-left {
+  animation: overlay-slide-left-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
+}
+
+/* BottomSheet's RESPONSIVE presentation (issue #1428, section A): a bottom sheet
+   below `md`, a centered modal from `md` up. A slide-up on a centered card reads
+   as the card falling off the bottom of the screen, so above `md` the same class
+   fades instead. The media query lives HERE rather than in the component: one
+   class name is correct at both widths, with no resize listener and no wrong
+   first paint between hydration and a JS width check. Same tokens either way. */
+.overlay-enter-dialog {
+  animation: overlay-slide-up-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+.overlay-exit-dialog {
+  animation: overlay-slide-up-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
+}
+@media (min-width: 768px) {
+  .overlay-enter-dialog {
+    animation: overlay-fade-in var(--overlay-ms) var(--overlay-ease-enter);
+  }
+  .overlay-exit-dialog {
+    animation: overlay-fade-out var(--overlay-ms) var(--overlay-ease-exit)
+      forwards;
+  }
+}
+
+/* The drag settle (issues #1425 / #1469). While a finger is on a panel the
+   recognizer writes `transform` inline frame by frame with no transition at all
+   (the panel IS the finger); on release the consumer adds this class for one
+   duration so the panel animates the rest of the way out — or back to rest —
+   instead of teleporting. The enter/exit keyframes above are suppressed for that
+   element while it is being dragged (the component drops the class), so there is
+   never a keyframe and an inline transform fighting over the same property. */
+.overlay-settle {
+  transition: transform var(--overlay-ms) var(--overlay-ease-exit);
+}
+
+/* The sticky top chrome (components/ShellChrome.tsx) — the phone top bar plus
+   the multi-profile view banner, hiding and revealing as ONE unit on scroll.
+
+   The slide is `-100%` of the element's own height PLUS the notch inset back:
+   the safe-area strip under the status bar keeps its background painted while
+   the bar itself is gone, so a hidden bar never turns the notch into a window
+   onto scrolling content. `env(...)` resolves to 0 where there is no inset, so
+   this is a plain `-100%` on a laptop or a notch-less phone.
+
+   The transform is on this ONE element by design — issue #1425's drag gesture
+   drives the same property here rather than adding a second transformed
+   wrapper. */
+.shell-chrome {
+  transition: transform 180ms ease-out;
+}
+.shell-chrome[data-hidden="true"] {
+  transform: translateY(calc(-100% + env(safe-area-inset-top, 0px)));
+}
+
+/* A SECOND sticky strip parked directly under the shell chrome and riding its
+   hide/reveal (issue #1485 F — the Trends context bar is the first tenant).
+
+   `--shell-chrome-h` is published by components/ShellChrome.tsx from its own
+   measured height (the bar alone, or the bar plus the multi-profile view banner),
+   which is why it is a variable and not a constant. The value below is the
+   pre-hydration default — one bar row — so the strip parks in the right place on
+   the server-rendered first paint, before the ResizeObserver has said anything.
+
+   Phone only: from `sm` up the page keeps its ordinary static layout (the tenant
+   drops to `position: static` there), so the hidden transform is scoped to the
+   same breakpoint or it would translate a static element on a laptop.
+
+   The travel is the strip's own height PLUS the chrome above it, so it clears the
+   viewport entirely rather than parking half-off under a bar that has itself gone. */
+:root {
+  --shell-chrome-h: 3.5rem;
+}
+.sub-chrome {
+  transition: transform 180ms ease-out;
+}
+@media (max-width: 639.98px) {
+  .sub-chrome[data-hidden="true"] {
+    transform: translateY(
+      calc(-100% - var(--shell-chrome-h) + env(safe-area-inset-top, 0px))
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Belt and braces: `overlayMotionClass()` already returns "" under the
+     preference, so these classes are not even applied — but a surface that
+     settles a drag (`.overlay-settle`) or one added later must snap too, and a
+     stylesheet that only works because its JS caller remembered to check is one
+     refactor away from animating a viewer who asked it not to. */
+  .overlay-enter-scrim,
+  .overlay-exit-scrim,
+  .overlay-enter-bottom,
+  .overlay-exit-bottom,
+  .overlay-enter-left,
+  .overlay-exit-left,
+  .overlay-enter-dialog,
+  .overlay-exit-dialog {
+    animation: none;
+  }
+  .overlay-settle {
+    transition: none;
+  }
+  /* The chrome still hides and reveals — the preference asks for no TRAVEL, not
+     for a permanently parked bar — it simply snaps. */
+  .shell-chrome,
+  .sub-chrome {
+    transition: none;
+  }
+  .press {
+    transition: none;
+  }
+  .press:active {
+    transform: none;
+  }
+}
+
+/* ── SECTION: Print: the medical passport ── */
 /* Print: produce a clean one/two-page "medical passport" (issue #105). Chrome
    (nav, buttons) opts out with Tailwind's `print:hidden`; here we set page
    margins, flatten the frosted-glass surfaces to plain bordered cards, and force
@@ -309,28 +772,58 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   }
 }
 
-/* Fitness-check tile landing sweep (#1307). Applied by FitnessCheckView to the
-   just-saved tile as its new value lands on the grid — a brief scale/settle that
-   draws the eye to the tile that keeps the memory. The class is applied in JS only
-   when motion is allowed (prefers-reduced-motion suppresses it there), and this
-   media query is belt-and-braces so the keyframe never runs for a reduced-motion
-   viewer even if the class slips through. */
-@keyframes fitness-tile-land {
-  0% {
-    transform: scale(0.96);
+/* ── SECTION: Time input chrome ── */
+/* Native <input type="time"> (ActivityForm start/end) keeps browser-drawn chrome
+   even inside .input: the picker-indicator paints a hover background box, and the
+   focused hh/mm segment gets an OS highlight — both look wrong against the dark
+   theme. color-scheme already tints the glyphs; these rules just tame the stray
+   backgrounds so the control reads consistently in both themes. */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 0.25rem;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background: transparent;
+}
+input[type="time"]::-webkit-datetime-edit-hour-field:focus,
+input[type="time"]::-webkit-datetime-edit-minute-field:focus,
+input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
+  background-color: rgba(34, 197, 94, 0.18);
+  color: inherit;
+  border-radius: 0.25rem;
+  outline: none;
+}
+
+/* ── SECTION: Touch tap targets ── */
+/* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
+   density, which is below the ~44px touch-target guideline. On coarse-pointer
+   (touch) devices only, extend the clickable area with an invisible pseudo
+   element so the tap target reaches 44px without changing the visual size or
+   affecting mouse layouts. */
+@media (pointer: coarse) {
+  .tap-target {
+    position: relative;
   }
-  55% {
-    transform: scale(1.03);
-  }
-  100% {
-    transform: scale(1);
+  .tap-target::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
   }
 }
-.fitness-tile-land {
-  animation: fitness-tile-land 480ms ease-out;
-}
-@media (prefers-reduced-motion: reduce) {
-  .fitness-tile-land {
-    animation: none;
+
+/* ── SECTION: Touch zoom floor (iOS) ── */
+/* iOS Safari auto-zooms the page when a focused form control's font-size is
+   under 16px, in any orientation. Enforce the floor on touch devices only —
+   desktop keeps its compact text — keyed on the device (pointer) rather than
+   viewport width so landscape phones are covered. !important lets this beat
+   compact utility classes (text-xs/text-sm) on individual controls. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
   }
 }

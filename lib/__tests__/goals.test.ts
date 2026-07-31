@@ -35,6 +35,7 @@ function makeGoal(overrides: Partial<Goal> = {}): Goal {
     created_at: "2026-01-01",
     exercise: null,
     metric: null,
+    equipment_id: null,
     target_weight_kg: null,
     target_reps: null,
     target_sets: null,

@@ -17,12 +17,20 @@ import { dispWeight, fmtWeight } from "@/lib/units";
 import { today } from "@/lib/db";
 import { formatRelativeDate } from "@/lib/format-date";
 import { recentPRs } from "@/lib/coaching";
+import { loadContextLabel } from "@/lib/lifts";
 import LineChartCard from "@/components/LineChartCard";
 import StrengthExplorer from "@/components/StrengthExplorer";
 import PrCard from "@/components/PrCard";
 import { EmptyState } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 
+// UNMOUNTED since #1492. This section (and the full-history explorer it hosts) was
+// only ever rendered by Trends → Fitness, which became the WINDOWED analytics lens:
+// "analyze on Trends, do on /training". Its capabilities live on /training →
+// Analyze (the picker + per-item detail panel — the explorer triplet's fourth
+// sibling), which #1491 item 3 converges these three onto. Kept, not deleted, so
+// that convergence has its subjects; /training page changes are out of #1492's
+// scope, so nothing re-mounts it here.
 // Strength analytics + coaching. Extracted from the former /workouts page, with
 // a "Recent PRs" card added on top.
 export default async function StrengthSection() {
@@ -34,6 +42,11 @@ export default async function StrengthSection() {
     value: dispWeight(v.volume, wu, 0),
   }));
   const exercises = getStrengthByExercise(profile.id);
+  // PRs read the LOAD-CONTEXT grouping (#1610) so a record is never assembled from
+  // two machines; the card labels each row with its implement. The movement-wide
+  // `exercises` above still drives the per-exercise list and detail panel. Both fold
+  // the SAME cached all-history scan (#1654) — one read, two aggregates.
+  const prStats = getStrengthByExercise(profile.id, true);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const recentByExercise = getRecentByExercise(
     profile.id,
@@ -45,7 +58,7 @@ export default async function StrengthSection() {
   const goalProgress = Object.fromEntries(
     getGoalProgressMap(profile.id, goals)
   );
-  const prs = recentPRs(exercises, today(profile.id), 30);
+  const prs = recentPRs(prStats, today(profile.id), 30);
 
   return (
     <section>
@@ -57,7 +70,7 @@ export default async function StrengthSection() {
           <PrCard
             title="🏆 Recent PRs"
             items={prs.map((p) => ({
-              name: p.exercise,
+              name: loadContextLabel(p.exercise, p.equipment),
               value:
                 p.kind === "1rm"
                   ? p.bodyweight
@@ -91,7 +104,7 @@ export default async function StrengthSection() {
 
       {!bodyweightKg && exercises.length > 0 && (
         <Notice tone="amber" className="mb-6">
-          Add a body weight entry on the Body Metrics page to see strength
+          Add a body weight entry on the Body metrics page to see strength
           standards relative to your bodyweight.
         </Notice>
       )}

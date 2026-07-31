@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { saveActivity } from "@/app/(app)/journal/actions";
+import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 
 const mixedComponents = JSON.stringify([

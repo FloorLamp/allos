@@ -6,6 +6,10 @@ import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
 import Combobox from "@/components/Combobox";
 import type { OverrideKind } from "@/lib/immunization-status";
+import {
+  IMMUNIZATION_EXEMPTION_TYPES,
+  type ImmunizationExemptionType,
+} from "@/lib/types";
 import { setImmunizationOverride, clearImmunizationOverride } from "../actions";
 
 // Per-vaccine override controls on the detail view. Lets the active
@@ -20,6 +24,16 @@ const IMMUNE_REASONS = [
 ];
 const DECLINED_REASONS = ["Personal choice", "Medical exemption", "Not needed"];
 
+// Structured exemption categories (#1406). A school / camp / employer form asks
+// which KIND of exemption a declination is, and the free-text reason could not
+// answer that. Only offered for a declination — an "immune" override is not an
+// exemption — and "Not stated" stays the default: unstated is a real answer.
+const EXEMPTION_LABELS: Record<ImmunizationExemptionType, string> = {
+  medical: "Medical exemption",
+  religious: "Religious exemption",
+  philosophical: "Philosophical / personal-belief exemption",
+};
+
 export default function OverrideControls({
   vaccine,
   current,
@@ -28,6 +42,7 @@ export default function OverrideControls({
   current: {
     kind: OverrideKind;
     reason: string | null;
+    exemption_type: ImmunizationExemptionType | null;
     note: string | null;
   } | null;
 }) {
@@ -35,6 +50,9 @@ export default function OverrideControls({
   const toast = useToast();
   const [kind, setKind] = useState<OverrideKind>(current?.kind ?? "immune");
   const [reason, setReason] = useState(current?.reason ?? "");
+  const [exemption, setExemption] = useState<string>(
+    current?.exemption_type ?? ""
+  );
   const reasons = kind === "immune" ? IMMUNE_REASONS : DECLINED_REASONS;
 
   async function save(formData: FormData) {
@@ -73,6 +91,9 @@ export default function OverrideControls({
                 ? "Immune (self-reported)"
                 : "Not tracking / declined"}
             </span>
+            {current.exemption_type
+              ? ` · ${EXEMPTION_LABELS[current.exemption_type]}`
+              : ""}
             {current.reason ? ` · ${current.reason}` : ""}
             {current.note ? ` · ${current.note}` : ""}
           </span>
@@ -116,6 +137,28 @@ export default function OverrideControls({
             ? "Counts the series as complete regardless of dose count."
             : "Drops the vaccine from needs-attention and shows it as Declined."}
         </p>
+        {kind === "declined" && (
+          <div>
+            <label className="label" htmlFor="override-exemption">
+              Exemption type (optional)
+            </label>
+            <select
+              id="override-exemption"
+              name="exemption_type"
+              className="input"
+              data-testid="override-exemption"
+              value={exemption}
+              onChange={(e) => setExemption(e.target.value)}
+            >
+              <option value="">Not stated</option>
+              {IMMUNIZATION_EXEMPTION_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {EXEMPTION_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="label" htmlFor="override-reason">
             Reason (optional)

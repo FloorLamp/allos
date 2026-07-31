@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { saveActivity } from "@/app/(app)/journal/actions";
+import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { getStrengthByExercise } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 

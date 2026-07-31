@@ -41,7 +41,7 @@ describe("saveFreeDays", () => {
 
     await saveFreeDays(freeDaysForm([4, 3, 3])); // Wed/Thu, dup dropped, sorted
     expect(getFreeDays(profile.id)).toEqual([3, 4]);
-    expect(revalidate).toHaveBeenCalledWith("/settings/profile");
+    expect(revalidate).toHaveBeenCalledWith("/settings/health");
     expect(revalidate).toHaveBeenCalledWith("/trends");
   });
 

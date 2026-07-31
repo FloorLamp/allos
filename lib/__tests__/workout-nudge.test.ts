@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  orderBehindTargets,
+  type BehindTarget,
+} from "@/lib/workout-recommendation";
+import {
+  behindThisWeekLine,
+  digestWorkoutLine,
+  type WorkoutRecommendation,
+} from "@/lib/notifications/workout-format";
+import { plainBody } from "@/lib/notifications/rich-text";
+import { renderBodyHtml } from "@/lib/notifications/telegram-render";
+import {
   trainingSignalKey,
   isWorkoutNudgeSuppressed,
 } from "@/lib/workout-nudge";
@@ -102,5 +113,154 @@ describe("isWorkoutNudgeSuppressed (#245 bus gating)", () => {
         TODAY
       )
     ).toBe(true);
+  });
+});
+
+// ---- "Behind this week" explains the suggestion (issue #1709) ----
+//
+// The reported message recommended Back and then listed Chest first: `behind` was
+// flattened to opaque strings at the top of the pipeline, in routine-declaration order,
+// so nothing connected the two halves and the target that actually drove the
+// suggestion — the one at 0/2 — sat buried mid-line.
+describe("behind-target ordering and marking (#1709)", () => {
+  // `type` scope values are capitalized by frequencyScopeLabel; region values pass
+  // through verbatim. Using type targets keeps the fixture readable AND exercises the
+  // real label path.
+  const t = (
+    id: number,
+    scopeValue: string,
+    count: number,
+    perWeek: number
+  ): BehindTarget => ({
+    id,
+    scopeKind: "type",
+    scopeValue,
+    count,
+    perWeek,
+  });
+
+  // The reported fixture, in its original routine-declaration order.
+  const REPORTED = [
+    t(1, "chest", 1, 2),
+    t(2, "back", 0, 2),
+    t(3, "cardio", 1, 2),
+    t(4, "lower body", 1, 2),
+  ];
+
+  it("puts the driving target first, then the rest by deficit", () => {
+    const ordered = orderBehindTargets(REPORTED, 2);
+    expect(ordered.map((x) => x.scopeValue)).toEqual([
+      "back", // the driver, 0/2
+      "chest", // then deficit order; all three tie at 1, so routine order holds
+      "cardio",
+      "lower body",
+    ]);
+    expect(ordered[0].driving).toBe(true);
+    expect(ordered.slice(1).every((x) => !x.driving)).toBe(true);
+  });
+
+  it("falls back to pure deficit order when no behind target drove the suggestion", () => {
+    // The suggestion came from habit or variety — nothing is marked.
+    const ordered = orderBehindTargets(REPORTED, null);
+    expect(ordered.map((x) => x.scopeValue)).toEqual([
+      "back", // biggest deficit (2), even unmarked
+      "chest",
+      "cardio",
+      "lower body",
+    ]);
+    expect(ordered.every((x) => !x.driving)).toBe(true);
+  });
+
+  it("breaks equal deficits by routine order, for stability", () => {
+    const ordered = orderBehindTargets(
+      [t(1, "chest", 1, 2), t(2, "cardio", 1, 2), t(3, "back", 0, 3)],
+      null
+    );
+    expect(ordered.map((x) => x.scopeValue)).toEqual([
+      "back", // deficit 3
+      "chest", // both deficit 1 → declaration order
+      "cardio",
+    ]);
+  });
+
+  it("marks a SINGLE behind target too — the connection is the point", () => {
+    const ordered = orderBehindTargets([t(2, "back", 0, 2)], 2);
+    expect(ordered[0].driving).toBe(true);
+  });
+
+  it("renders the driver first with the ← today marker, bold where supported", () => {
+    const line = behindThisWeekLine(orderBehindTargets(REPORTED, 2))!;
+    // Plain channels (Web Push / Home Assistant) get the suffix alone — the marker
+    // survives without markup.
+    expect(plainBody(line)).toBe(
+      "Behind this week: Back 0/2 ← today, Chest 1/2, Cardio 1/2, Lower body 1/2"
+    );
+    // Telegram additionally bolds the driving item.
+    expect(renderBodyHtml(line)).toContain("<b>Back 0/2 ← today</b>");
+    expect(renderBodyHtml(line)).not.toContain("<b>Chest");
+  });
+
+  it("says nothing when nothing is behind", () => {
+    expect(behindThisWeekLine([])).toBeNull();
+  });
+});
+
+// ---- The digest's one-line workout preview (issue #1712 §2) ----
+//
+// The digest had no workout line at all, though recommendWorkout already computes one
+// for the dedicated nudge slot. The preview formats the SAME recommendation, so a 7am
+// heads-up and the actionable prompt later cannot disagree.
+describe("digestWorkoutLine (#1712)", () => {
+  const rec = (
+    over: Partial<WorkoutRecommendation> = {}
+  ): WorkoutRecommendation => ({
+    focus: [],
+    exercises: [],
+    behind: [],
+    rest: null,
+    onTrack: null,
+    ...over,
+  });
+
+  it("names the session and its lead exercises", () => {
+    expect(
+      digestWorkoutLine(
+        rec({
+          sessionLabel: "Back",
+          exercises: ["Lat Pulldown", "Cable Row", "Deadlift", "Pull Up"],
+        })
+      )
+    ).toBe("🏋️ Today: Back — Lat Pulldown, Cable Row, Deadlift");
+  });
+
+  it("reframes on a rest day instead of pushing", () => {
+    expect(
+      digestWorkoutLine(rec({ rest: { title: "Rest day", detail: "…" } }))
+    ).toBe("🛌 Today: Rest day");
+  });
+
+  it("reframes when the week is already on track", () => {
+    expect(
+      digestWorkoutLine(
+        rec({ onTrack: { title: "On track this week", detail: "…" } })
+      )
+    ).toBe("✅ Today: On track this week");
+  });
+
+  it("names a deload week so a lighter session reads as on-plan", () => {
+    expect(
+      digestWorkoutLine(
+        rec({
+          sessionLabel: "Push",
+          exercises: ["Bench Press"],
+          deloadWeek: true,
+        })
+      )
+    ).toBe("🏋️ Today: Push — Bench Press (deload week)");
+  });
+
+  it("is absent when there is no recommendation to preview", () => {
+    expect(digestWorkoutLine(null)).toBeNull();
+    expect(digestWorkoutLine(rec())).toBeNull();
   });
 });

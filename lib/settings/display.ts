@@ -13,8 +13,6 @@ import { isValidTimezone, resolveTimezone } from "../timezone";
 // Type-only import so lib/settings ↔ lib/dashboard-widgets stays a compile-time
 // edge (no runtime cycle: dashboard-widgets imports nothing back from settings).
 import type { DashboardLayout } from "../dashboard-widgets";
-import { parsePins, serializePins } from "../trend-pins";
-import { parseViews, serializeViews, type TrendView } from "../trend-views";
 import {
   getSetting,
   getProfileSetting,
@@ -208,34 +206,29 @@ export function setFreeDays(profileId: number, days: number[]): void {
   setProfileSetting(profileId, "free_days", normalizeFreeDays(days).join(","));
 }
 
-// Pin-to-Trends — the profile's pinned Trends-Overview
-// tiles (metric + biomarker keys), stored as a JSON array in profile_settings
-// (same key/value precedent as active_situations / dashboard_layout). The list
-// math (parse/toggle/order) lives in the pure lib/trend-pins; this tier only
-// (de)serializes it. Reads defensively — a malformed blob yields an empty list.
-export function getTrendPins(profileId: number): string[] {
-  return parsePins(getProfileSetting(profileId, "trend_pins"));
-}
+// The retired `trend_pins` accessors lived here until #1456 folded that KV into the
+// `saved_items` table (migration 113 deletes the settings rows); the save store's
+// reads/writes are lib/queries/saved.ts, not a settings tier.
 
-export function setTrendPins(profileId: number, pins: readonly string[]): void {
-  setProfileSetting(profileId, "trend_pins", serializePins(pins));
-}
+// The `trend_views` accessors lived here until #1653. They (de)serialized the
+// Trends hub's named URL-state snapshots, whose Views strip the Trends overhaul
+// deleted; with no surface left to read or write them, the accessors, their pure
+// list math (lib/trend-views.ts) and the three Server Actions on top went together.
+// Existing "trend_views" profile_settings rows are inert — nothing reads the key.
 
-// Saved views — named snapshots of the Trends hub state
-// (range + tab + compare pair + pins), stored as a JSON array in profile_settings
-// (key "trend_views", same precedent as trend_pins). The list math (add/rename/
-// delete/normalize) lives in the pure lib/trend-views; this tier only
-// (de)serializes it. Reads defensively — a malformed blob yields an empty list.
-export function getTrendViews(profileId: number): TrendView[] {
-  return parseViews(getProfileSetting(profileId, "trend_views"));
-}
-
-export function setTrendViews(
-  profileId: number,
-  views: readonly TrendView[]
-): void {
-  setProfileSetting(profileId, "trend_views", serializeViews(views));
-}
+// The retired `trends_card_order` accessors lived here until #1643. #1490 shipped a
+// per-profile, per-tab card ARRANGEMENT blob as the override half of the ranked
+// default, on the assumption that a drag affordance would follow. None ever did:
+// `saveTrendsCardOrder` had no UI writer, so the key never held a production row.
+// Meanwhile Trends already HAD a user-arrangement substrate — `saved_items`, which
+// the Overview grid's ★, drag and ⋯-menu arrows all write (#1456/#1487/#1485-C).
+//
+// #1643 folded the Body tab onto that one store rather than completing a second:
+// starred cards lead in their saved order, the ranker sequences the remainder
+// (lib/trends-card-rank.ts `bodyCardOrder`, fed by `getBodyCardPins` in
+// lib/queries/trends-context.ts). Retiring the key needed NO migration and no
+// cleanup entry — with zero writers there is nothing stored to move or prune, and
+// the read path is simply gone.
 
 // Per-profile dashboard customization — the widget order + hidden
 // set, stored as a JSON blob (same key/value precedent as active situations).
@@ -323,4 +316,73 @@ export function setIllnessHeroUi(
         : null,
   };
   setProfileSetting(profileId, "illness_hero_ui", JSON.stringify(normalized));
+}
+
+// The dashboard "Needs attention" hero's collapse preference (issue #1413, section
+// B). Per-LOGIN, not per-profile: it is a viewing-density choice about the reader's
+// own screen (the same tier as their unit and date-format prefs), not a fact about
+// the person whose health is being displayed — a caregiver who collapses the hero on
+// their phone means it for every profile they switch between, and should not have to
+// re-collapse it per family member.
+//
+// Stored as a plain "1"/"0" string rather than JSON: it is one boolean with no
+// foreseeable second field, and the illness hero's JSON blob shape (setIllnessHeroUi)
+// exists only because that one carries a profile id alongside its flag.
+//
+// Note what this setting canNOT do (#449): it never hides the hero, never removes
+// the count, and never applies to a safety-locked hero — those are decided by
+// attentionHeroState (lib/attention.ts), which consults this preference LAST.
+export function getAttentionHeroCollapsed(loginId: number): boolean {
+  return getLoginSetting(loginId, "attention_hero_collapsed") === "1";
+}
+
+export function setAttentionHeroCollapsed(
+  loginId: number,
+  collapsed: boolean
+): void {
+  setLoginSetting(loginId, "attention_hero_collapsed", collapsed ? "1" : "0");
+}
+
+// The dashboard "Recently resolved — reopen?" lines the VIEWER has dismissed (issue
+// #1548), as a set of episode ids. Per-LOGIN, exactly like the attention hero's
+// collapse preference above and for the same reason: this is a statement about the
+// reader's own screen, not a fact about the person whose episode it is. Another login
+// with access to the same profile still sees the line — deliberately.
+//
+// Why NOT the findings bus (`upcoming_dismissals`): the reopen line is a calm
+// convenience, not a finding — it carries no dedupeKey, never reaches Upcoming, the
+// digest, or a notification, and the #449 tiers stay untouched. Putting a viewer
+// preference on the medical suppression bus would give it reach it must not have.
+//
+// Stored as a JSON array of integers rather than a flag-per-key, because the ids are
+// a SET whose membership is pruned as a whole on every write (see
+// dismissRecentlyResolvedEpisode). Read defensively — a hand-edited or older value
+// must degrade to "nothing dismissed", never throw on the dashboard's render path.
+export function getRecentlyResolvedDismissed(loginId: number): number[] {
+  const raw = getLoginSetting(loginId, "recently_resolved_dismissed");
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (v): v is number => typeof v === "number" && Number.isInteger(v) && v > 0
+    );
+  } catch {
+    return [];
+  }
+}
+
+// Replaces the stored set wholesale (the caller has already pruned it). Sorted so the
+// stored value is stable across equivalent writes and diffable by eye.
+export function setRecentlyResolvedDismissed(
+  loginId: number,
+  episodeIds: number[]
+): void {
+  const unique = [...new Set(episodeIds.filter((id) => Number.isInteger(id)))];
+  unique.sort((a, b) => a - b);
+  setLoginSetting(
+    loginId,
+    "recently_resolved_dismissed",
+    JSON.stringify(unique)
+  );
 }

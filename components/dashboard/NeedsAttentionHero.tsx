@@ -16,7 +16,6 @@ import {
   IconTemperature,
   IconClipboardPlus,
   IconCircleCheck,
-  IconArrowRight,
   type TablerIcon,
 } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
@@ -27,10 +26,13 @@ import {
   groupAttentionForCard,
   attentionCardItems,
   attentionCountLabel,
+  attentionHeroState,
   moreInUpcomingCount,
   planAttentionMoreLinks,
   type CardBand,
 } from "@/lib/attention";
+import AttentionHeroCard from "@/components/dashboard/AttentionHeroCard";
+import AppBadge from "@/components/AppBadge";
 import {
   isItemSuppressibleFlag,
   upcomingDueText,
@@ -187,13 +189,23 @@ function Row({
 export default function NeedsAttentionHero({
   items,
   today,
+  preferCollapsed,
+  saveCollapsed,
 }: {
   items: UpcomingItem[];
   today: string;
+  // The VIEWER's stored collapse preference (issue #1413, per-login). Only ever a
+  // request: attentionHeroState ignores it for a safety-locked or empty hero.
+  preferCollapsed: boolean;
+  saveCollapsed: (collapsed: boolean) => Promise<void>;
 }) {
   const groups = groupAttentionForCard(items, today);
   // The badge / count is the CARD subset — the act-now slice, NOT the full model.
   const count = attentionCardItems(items, today).length;
+  // The resolved collapse decision (#1413 section B). Computed in lib/attention so
+  // the #449 contract — count always visible, safety items never compacted — is
+  // pinned by unit tests rather than by what this JSX happens to render.
+  const heroState = attentionHeroState(items, today, preferCollapsed);
   // The far-future scheduled work the card hides, waiting on the Upcoming page. A
   // strict subset guarantees this reconciles with the page's total.
   const more = moreInUpcomingCount(items, count);
@@ -208,6 +220,10 @@ export default function NeedsAttentionHero({
         aria-label="Needs attention"
         className="card flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-emerald-500 py-3 dark:border-l-emerald-400"
       >
+        {/* Clears the installed-PWA icon badge (#1424). Mounting it on THIS
+            branch too is the point: the card below isn't rendered at count 0, so
+            a badge set on a previous visit would otherwise never come off. */}
+        <AppBadge count={count} />
         <div
           data-testid="attention-all-clear"
           className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
@@ -233,89 +249,77 @@ export default function NeedsAttentionHero({
     );
   }
 
+  // The card chrome (section, heading, count badge, collapse toggle) is owned by the
+  // client shell — the collapse state drives the heading as well as the body, and the
+  // #449 always-visible count lives there. Everything below is the BODY: the item
+  // rows, which keep their inline Server Action forms and stay server-rendered.
   return (
-    <section
-      data-testid="needs-attention"
-      aria-label="Needs attention"
-      className="card border-l-4 border-l-brand-500 dark:border-l-brand-400"
-    >
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
-          <IconAlertTriangle
-            className="h-5 w-5 text-brand-600 dark:text-brand-400"
-            stroke={1.75}
-            aria-hidden="true"
-          />
-          Needs attention
-          {count > 0 && (
-            <span
-              data-testid="attention-count"
-              className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300"
-            >
-              {count}
-            </span>
-          )}
-        </h2>
-        <Link
-          href="/upcoming"
-          aria-label="View all needs attention"
-          className="text-xs text-brand-600 hover:underline dark:text-brand-400"
-        >
-          View all <IconArrowRight className="inline h-4 w-4" />
-        </Link>
-      </div>
-
-      <div className="space-y-4">
-        {groups.map((group) => (
-          <div key={group.band}>
-            <div className={`mb-1 section-label ${BAND_TONE[group.band]}`}>
-              {group.label}
-              <span className="ml-1 text-slate-500 dark:text-slate-400">
-                ({attentionCountLabel(group.items.length, group.overflow)})
-              </span>
-            </div>
-            <div className="space-y-0.5">
-              {group.items.map((item) => (
-                <Row
-                  key={item.key}
-                  item={item}
-                  now={today}
-                  tone={BAND_TONE[group.band]}
-                />
-              ))}
-              {/* Defensive global cap (issue #283): a pathological day (a giant
+    <>
+      {/* Same count the card's own badge shows, painted on the installed app
+          icon (#1424) — one number, two surfaces, no second query. A SIBLING of
+          the card, not a child: the card's body sits inside a <Collapse>, and a
+          badge that stopped updating whenever the user collapsed the hero would
+          be a silent, viewport-shaped bug. */}
+      <AppBadge count={count} />
+      <AttentionHeroCard
+        count={count}
+        topBand={heroState.topBand}
+        locked={heroState.locked}
+        initialCollapsed={heroState.collapsed}
+        saveCollapsed={saveCollapsed}
+      >
+        <div className="space-y-4">
+          {groups.map((group) => (
+            <div key={group.band}>
+              <div className={`mb-1 section-label ${BAND_TONE[group.band]}`}>
+                {group.label}
+                <span className="ml-1 text-slate-500 dark:text-slate-400">
+                  ({attentionCountLabel(group.items.length, group.overflow)})
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <Row
+                    key={item.key}
+                    item={item}
+                    now={today}
+                    tone={BAND_TONE[group.band]}
+                  />
+                ))}
+                {/* Defensive global cap (issue #283): a pathological day (a giant
                 flagged import, an overdue backlog) collapses each band's remainder
                 to a link instead of blowing the layout. The copy names THIS band's items so it can't be
                 mistaken for the card-level remainder below (issue #538); when this
                 is the last band and a remainder follows, the link is merged into the
                 trailing line instead (planAttentionMoreLinks), so two never stack. */}
-              {moreLinks.perBand[group.band] && (
-                <Link
-                  href={moreLinks.perBand[group.band]!.href}
-                  data-testid={`attention-overflow-${group.band}`}
-                  className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                >
-                  {moreLinks.perBand[group.band]!.text}
-                </Link>
-              )}
+                {moreLinks.perBand[group.band] && (
+                  <Link
+                    href={moreLinks.perBand[group.band]!.href}
+                    data-testid={`attention-overflow-${group.band}`}
+                    className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    {moreLinks.perBand[group.band]!.text}
+                  </Link>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-        {/* The card is a strict subset of the Upcoming page; the far-future
+          ))}
+          {/* The card is a strict subset of the Upcoming page; the far-future
           scheduled work it hides is one click away, with an exact count so the two
           surfaces reconcile (issue #524). Names what it hides ("scheduled later") so
           it reads distinctly from a band cap-overflow link; when the last band also
           overflowed, this line absorbs it into one merged link (issue #538). */}
-        {moreLinks.trailing && (
-          <Link
-            href={moreLinks.trailing.href}
-            data-testid="attention-more-upcoming"
-            className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
-            {moreLinks.trailing.text}
-          </Link>
-        )}
-      </div>
-    </section>
+          {moreLinks.trailing && (
+            <Link
+              href={moreLinks.trailing.href}
+              data-testid="attention-more-upcoming"
+              className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+            >
+              {moreLinks.trailing.text}
+            </Link>
+          )}
+        </div>
+      </AttentionHeroCard>
+    </>
   );
 }

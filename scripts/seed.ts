@@ -10,6 +10,7 @@ import { reconcileFlags } from "../lib/queries";
 import { providerDedupKey } from "../lib/providers";
 import { orderIntakePair } from "../lib/intake-pairs";
 import { hashPasswordSync } from "../lib/password";
+import { seedStandardMetricSaves } from "../lib/standard-metric-seeds";
 import { createShareLink } from "../lib/share-links-db";
 import { isDemoMode, DEMO_USERNAME, DEMO_PASSWORD } from "../lib/demo";
 import {
@@ -1085,13 +1086,13 @@ med.run(
   "Pollen sensitization; oral allergy syndrome pattern"
 );
 
-// Supplements — scheduling context, priority, brand/product, stacks, food
+// Supplements — scheduling context, obligation, brand/product, stacks, food
 // timing, split dosing, a situational example, and an interaction pair so every
 // feature is demoable.
 const sup = db.prepare(
   `INSERT INTO intake_items
-     (profile_id, name, notes, condition, priority, brand, product, situation, stack)
-   VALUES (1,?,?,?,?,?,?,?,?)`
+     (profile_id, name, notes, condition, obligation, brand, product, situation, stack)
+   VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const dose = db.prepare(
   `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
@@ -1103,7 +1104,7 @@ function addSupp(
     name: string;
     notes?: string | null;
     condition?: string;
-    priority?: string;
+    obligation?: string;
     brand?: string | null;
     product?: string | null;
     situation?: string | null;
@@ -1116,7 +1117,7 @@ function addSupp(
       s.name,
       s.notes ?? null,
       s.condition ?? "daily",
-      s.priority ?? "high",
+      s.obligation ?? "should",
       s.brand ?? null,
       s.product ?? null,
       s.situation ?? null,
@@ -1127,11 +1128,11 @@ function addSupp(
   return id;
 }
 
-// Fat-soluble, lab-confirmed deficiency → mandatory; stacked with K2.
+// Fat-soluble, lab-confirmed deficiency → must; stacked with K2.
 addSupp(
   {
     name: "Vitamin D3",
-    priority: "mandatory",
+    obligation: "must",
     brand: "Thorne",
     product: "Vitamin D/K2",
     stack: "D3 + K2",
@@ -1139,19 +1140,23 @@ addSupp(
   },
   [{ amount: "2000 IU", time: "Morning", food: "with_fat" }]
 );
-addSupp({ name: "Vitamin K2", priority: "high", stack: "D3 + K2" }, [
+addSupp({ name: "Vitamin K2", obligation: "should", stack: "D3 + K2" }, [
   { amount: "100 mcg", time: "Morning", food: "with_fat" },
 ]);
 const creatineId = addSupp(
-  { name: "Creatine Monohydrate", condition: "post_workout", priority: "low" },
+  {
+    name: "Creatine Monohydrate",
+    condition: "post_workout",
+    obligation: "may",
+  },
   [{ amount: "5 g", time: "Anytime", food: "any" }]
 );
 // Split dose across two fat-containing meals.
-addSupp({ name: "Omega-3", priority: "high", brand: "Nordic Naturals" }, [
+addSupp({ name: "Omega-3", obligation: "should", brand: "Nordic Naturals" }, [
   { amount: "600 mg", time: "Midday", food: "with_fat" },
   { amount: "600 mg", time: "Evening", food: "with_fat" },
 ]);
-addSupp({ name: "Magnesium Glycinate", priority: "high", notes: "Sleep" }, [
+addSupp({ name: "Magnesium Glycinate", obligation: "should", notes: "Sleep" }, [
   { amount: "400 mg", time: "Before sleep", food: "any" },
 ]);
 // A SECOND magnesium form so the stack TOTAL (400 + 200 = 600 mg elemental)
@@ -1160,7 +1165,7 @@ addSupp({ name: "Magnesium Glycinate", priority: "high", notes: "Sleep" }, [
 addSupp(
   {
     name: "Magnesium Citrate",
-    priority: "low",
+    obligation: "may",
     notes: "Digestion; adds to the magnesium stack total",
   },
   [{ amount: "200 mg", time: "Morning", food: "any" }]
@@ -1169,30 +1174,34 @@ addSupp(
   {
     name: "Whey Protein",
     condition: "post_workout",
-    priority: "low",
+    obligation: "may",
     brand: "Optimum Nutrition",
   },
   [{ amount: "30 g", time: "Anytime", food: "any" }]
 );
 // Before-meal example.
 addSupp(
-  { name: "Plant Sterols", priority: "low", notes: "Cholesterol support" },
+  { name: "Plant Sterols", obligation: "may", notes: "Cholesterol support" },
   [{ amount: "2 g", time: "Evening", food: "before_meal" }]
 );
 // A "keep apart" pair: calcium blocks iron absorption.
-const calId = addSupp({ name: "Calcium", priority: "low" }, [
+const calId = addSupp({ name: "Calcium", obligation: "may" }, [
   { amount: "500 mg", time: "Midday", food: "with_food" },
 ]);
 const ironId = addSupp(
-  { name: "Iron", priority: "low", notes: "Empty stomach for absorption" },
+  { name: "Iron", obligation: "may", notes: "Empty stomach for absorption" },
   [{ amount: "18 mg", time: "Morning", food: "empty_stomach" }]
 );
-// Situational: only surfaces while "Illness" is active.
+// Situational: only surfaces while "Illness" is active. `should` by INTENT (#1505),
+// not by literal translation of its old `priority: "low"`: a situational item exists
+// to COME DUE when its situation activates, which is the whole point of the demo (and
+// what the situations browser test asserts). A `may` situational item would only ever
+// be "available", so the seed would stop demonstrating the gate it was written for.
 const zincId = addSupp(
   {
     name: "Zinc",
     condition: "situational",
-    priority: "low",
+    obligation: "should",
     situation: "Illness",
     notes: "Immune support",
   },
@@ -1211,8 +1220,8 @@ db.prepare(
 // course history + side effects, plus a fully discontinued med for the Past list.
 const medIns = db.prepare(
   `INSERT INTO intake_items
-     (profile_id, name, notes, condition, priority, kind, prescriber, active)
-   VALUES (1,?,?,?,?, 'medication', ?, ?)`
+     (profile_id, name, notes, condition, obligation, kind, prescriber, active)
+   VALUES (1, ?, ?, ?, ?, 'medication', ?, ?)`
 );
 const courseIns = db.prepare(
   `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
@@ -1231,7 +1240,8 @@ const medDose = db.prepare(
 // Sertraline: stopped once (side effect) then restarted — shows in Current with a
 // two-course history and a resolved side effect linked to the first course.
 const sertId = Number(
-  medIns.run("Sertraline", "SSRI", "daily", "high", "Patel", 1).lastInsertRowid
+  medIns.run("Sertraline", "SSRI", "daily", "should", "Patel", 1)
+    .lastInsertRowid
 );
 medDose.run(sertId, "50 mg", "Morning", "with_food", 0);
 const sertCourse1 = Number(
@@ -1248,7 +1258,7 @@ sideEffectIns.run(sertId, sertCourse1, "Nausea", "moderate", daysAgo(110), 1);
 
 // Amoxicillin: a completed antibiotic course — shows in Past / discontinued.
 const amoxId = Number(
-  medIns.run("Amoxicillin", "Antibiotic", "daily", "high", "Patel", 0)
+  medIns.run("Amoxicillin", "Antibiotic", "daily", "should", "Patel", 0)
     .lastInsertRowid
 );
 medDose.run(amoxId, "500 mg", "Morning", "with_food", 0);
@@ -1271,10 +1281,8 @@ const atorvastatinId = Number(
   db
     .prepare(
       `INSERT INTO intake_items
-         (profile_id, name, notes, active, condition, priority, kind, as_needed,
-          document_id, source)
-       VALUES (1, 'Atorvastatin', 'Preventive', 0, 'daily', 'high',
-               'medication', 1, NULL, 'extracted')`
+         (profile_id, name, notes, active, condition, obligation, kind, document_id, source)
+         VALUES (1, 'Atorvastatin', 'Preventive', 0, 'daily', 'may', 'medication', NULL, 'extracted')`
     )
     .run().lastInsertRowid
 );
@@ -1298,7 +1306,7 @@ const warfarinId = Number(
     "Warfarin",
     "Anticoagulant — keep vitamin K intake consistent",
     "daily",
-    "high",
+    "should",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
@@ -1317,13 +1325,10 @@ const ibuprofenId = Number(
     "Ibuprofen",
     "OTC NSAID — as needed for pain",
     "daily",
-    "low",
+    "may",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
-);
-db.prepare("UPDATE intake_items SET as_needed = 1 WHERE id = ?").run(
-  ibuprofenId
 );
 const ibuprofenDoseId = Number(
   medDose.run(ibuprofenId, "200 mg", "Anytime", "with_food", 0).lastInsertRowid
@@ -1372,7 +1377,7 @@ const simvastatinId = Number(
     "Simvastatin",
     "Statin — take in the evening",
     "daily",
-    "high",
+    "should",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
@@ -1405,13 +1410,13 @@ const hyzaarId = Number(
     "Hyzaar",
     "Combination antihypertensive (losartan/HCTZ)",
     "daily",
-    "high",
+    "may",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
 );
 db.prepare(
-  "UPDATE intake_items SET rxcui = ?, rxcui_ingredients = ?, as_needed = 1 WHERE id = ?"
+  "UPDATE intake_items SET rxcui = ?, rxcui_ingredients = ? WHERE id = ?"
 ).run("979464", '["52175","5487"]', hyzaarId);
 medDose.run(hyzaarId, "50-12.5 mg", "Anytime", "any", 0);
 courseIns.run(hyzaarId, daysAgo(40), null, null, "Ongoing for blood pressure");
@@ -1421,12 +1426,11 @@ const klorConId = Number(
     "Klor-Con",
     "Potassium chloride supplement",
     "daily",
-    "low",
+    "may",
     "Dr. Test Provider",
     1
   ).lastInsertRowid
 );
-db.prepare("UPDATE intake_items SET as_needed = 1 WHERE id = ?").run(klorConId);
 medDose.run(klorConId, "10 mEq", "Anytime", "with_food", 0);
 courseIns.run(klorConId, daysAgo(40), null, null, "Ongoing potassium support");
 
@@ -2156,8 +2160,9 @@ db.prepare(
 const redLightTargetId = Number(
   db
     .prepare(
-      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, per_week_max, created_at)
-       VALUES (1, 'practice', 'Red light therapy', 3, 5, ?)`
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max, created_at)
+       VALUES (1, 'practice', 'Red light therapy', 'red light therapy', 3, 5, ?)`
     )
     .run(`${daysAgo(35)} 09:00:00`).lastInsertRowid
 );
@@ -2516,21 +2521,20 @@ for (const [startAgo, endAgo, flow, note] of seededCycles) {
   );
 }
 
-// ── Trends pins + saved views (Trends Ph2/Ph3) ───────────────────────────────
-upsertProfileSetting.run(
-  "trend_pins",
-  JSON.stringify([
-    "metric:weight",
-    "bio:LDL Cholesterol",
-    "bio:Vitamin D, 25-Hydroxy",
-  ])
-);
+// ── Saved views: RETIRED, kept as legacy data ────────────────────────────────
+// The Trends overhaul removed the Views strip and #1653 removed the actions,
+// settings accessors and list math behind it. Nothing reads this key any more —
+// the rows stay ON PURPOSE, because an upgraded database still carries them and
+// e2e/trends-saved-views.spec.ts asserts that inert data cannot resurrect the
+// removed chrome. There is no cleanup migration; dead settings data is harmless.
+// (The `trend_pins` KV this block used to seed was folded into `saved_items` by
+// migration 113 — see the saved-items seed below.)
 upsertProfileSetting.run(
   "trend_views",
   JSON.stringify([
     {
       name: "Lipids review",
-      params: { tab: "biomarkers", pins: ["bio:LDL Cholesterol", "bio:ApoB"] },
+      params: { tab: "biomarkers" },
     },
     {
       name: "Cut progress",
@@ -2538,23 +2542,37 @@ upsertProfileSetting.run(
         tab: "body",
         from: daysAgo(120),
         to: daysAgo(0),
-        pins: ["metric:weight", "metric:bodyfat"],
       },
     },
   ])
 );
 
-// ── Starred biomarkers (the pinned-tile side-store) ──────────────────────────
-// The star is name-keyed (starred_biomarkers.canonical_name COLLATE NOCASE); each
-// canonical_name here matches a seeded biomarker that HAS backing medical_records,
-// so the Biomarkers view renders the pinned tiles and the #203/#327 orphan-sweep
-// has real stars to (correctly) leave alone. Distinct from trend_pins above — a
-// separate feature — so seed exercises both.
-const starBiomarker = db.prepare(
-  `INSERT OR IGNORE INTO starred_biomarkers (profile_id, canonical_name) VALUES (1, ?)`
+// ── Saved items (the unified save store, #1456) ──────────────────────────────
+// ONE store behind the ★ star gesture (migration 113 folded the old
+// starred_biomarkers table and trend_pins KV into it). Seeding both kinds keeps every
+// save surface exercised:
+//   • kind='biomarker' — name-keyed (saved_items.key COLLATE NOCASE); each name here
+//     matches a seeded biomarker that HAS backing medical_records, so the Results
+//     status card renders real tiles, Trends Overview renders their chart tiles, the
+//     passport summary includes them, and the #203/#327 orphan sweep has real saves to
+//     (correctly) leave alone.
+//   • kind='trend-metric' — promotion/ordering only; every metric tile renders anyway.
+// `position` is seeded on the first two so the saved-first ordering is exercised.
+const saveItem = db.prepare(
+  `INSERT OR IGNORE INTO saved_items (profile_id, kind, key, position) VALUES (1, ?, ?, ?)`
 );
+saveItem.run("trend-metric", "weight", 0);
+saveItem.run("biomarker", "LDL Cholesterol", 1);
 for (const name of ["ApoB", "hs-CRP", "Lipoprotein(a)"])
-  starBiomarker.run(name);
+  saveItem.run("biomarker", name, null);
+// bootstrapAuth already seeded "weight" as a #1487 standard-metric row when it
+// created profile 1, so the INSERT above was IGNORED and the fixture's curated
+// position never landed. Set it explicitly — this fixture's whole point is that a
+// user-curated metric LEADS the saved row (e2e/saved-star.mobile.spec.ts).
+db.prepare(
+  `UPDATE saved_items SET position = 0
+     WHERE profile_id = 1 AND kind = 'trend-metric' AND key = 'weight'`
+).run();
 
 // ── Passport share link (the public read-only /share/<token> fixture) ────────
 // One live (non-expired, non-revoked) link scoping a sensible subset of the
@@ -2658,6 +2676,13 @@ if (!existingChild) {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(CHILD_NAME)
       .lastInsertRowid
   );
+  // The standard Overview metric seeds (#1487), exactly as the production
+  // create-profile paths write them — this profile is created with raw SQL rather
+  // than through createProfile, so it seeds itself. The set is the same for every
+  // profile: body fat and training volume are dropped when the TILES are built (an
+  // 18-month-old is below the growth-metrics body-fat age), not when they are saved.
+  seedStandardMetricSaves(db, childId);
+
   // ~18 months old: WHO reference (0–24 mo) applies, so height/weight/head-circ
   // all score against the WHO curves and head-circ entry is offered.
   const childBirthdate = shiftDateStr(today(childId), -548);

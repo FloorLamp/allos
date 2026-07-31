@@ -1,19 +1,19 @@
 import fs from "node:fs";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { readZip } from "../lib/zip";
 import { followLink } from "./helpers";
 
 // Full-account export (issue #18): clicking "Export all my data" on the Data →
-// Manage & Export surface downloads ONE non-empty zip that contains the manifest,
+// Manage & export surface downloads ONE non-empty zip that contains the manifest,
 // the FHIR passport, and the per-dataset JSON/CSV files. The companion "Clinical
 // passport (FHIR)" link downloads a parseable FHIR Bundle. Both routes are session-
 // gated and scoped to the active (seeded) profile.
-// Open the Data page's "Manage & Export" section. It's a NavTabs section rendered
+// Open the Data page's "Manage & export" section. It's a NavTabs section rendered
 // server-side from ?section=, so the direct navigation already paints it; clicking
 // the tab (role=tab) confirms it's the selected section.
 async function openManageTab(page: import("@playwright/test").Page) {
   await page.goto("/data?section=manage");
-  await page.getByRole("tab", { name: "Manage & Export" }).click();
+  await page.getByRole("tab", { name: "Manage & export" }).click();
 }
 
 test.describe("Full-account export", () => {

@@ -122,6 +122,90 @@ export function daysOfSupplyForItem(
   );
 }
 
+// ── Shared supply pools (issue #1374) ────────────────────────────────────────
+// One linked item's contribution to a shared bottle's consumption: its own doses/day
+// (the #38 basis rate — actual taken-log where history is thick enough, scheduled
+// estimate otherwise) times its own units-per-dose. `qtyPerDose` deliberately stays
+// PER ITEM: an adult takes 2 tablets from the same bottle a child takes 1 from, so the
+// pool has no units-per-dose of its own.
+export interface PoolConsumer {
+  dosesPerDay: number;
+  qtyPerDose: number;
+}
+
+// Units/day drawn from a shared bottle = the SUM of its linked items' rates. This is
+// the pooled analogue of unitsPerDay and the whole point of the pool: today, two
+// members' items each project against their own private count and both read high.
+// Non-finite / negative contributions are dropped rather than poisoning the sum.
+export function pooledUnitsPerDay(consumers: readonly PoolConsumer[]): number {
+  let total = 0;
+  for (const c of consumers) {
+    const units = unitsPerDay(c.dosesPerDay, c.qtyPerDose);
+    if (Number.isFinite(units) && units > 0) total += units;
+  }
+  return total;
+}
+
+// "≈N days of supply left" for a shared bottle — the SAME daysOfSupplyLeft engine the
+// per-item path uses ("one question, one computation"), fed the summed pooled rate as
+// a units/day figure (so qtyPerDose is 1 here: the per-item units are already folded
+// into pooledUnitsPerDay). Null when the pool tracks no quantity or nothing consumes it.
+export function daysOfSupplyForPool(
+  quantityOnHand: number | null,
+  consumers: readonly PoolConsumer[]
+): number | null {
+  return daysOfSupplyLeft(quantityOnHand, 1, pooledUnitsPerDay(consumers));
+}
+
+// What the linked items get back when a pool is DELETED (the row-ops side-state rule).
+// A pool's quantity is a physical fact about ONE bottle, so:
+//   - exactly ONE linked item  → it takes the whole remaining quantity back. There is
+//     no other claimant, so restoring it invents nothing and a one-member pool can be
+//     unshared losslessly.
+//   - two or more linked items → EVERY item returns to `quantity_on_hand = NULL`
+//     (untracked, the pre-opt-in state). Copying the count onto each item would
+//     recreate the exact phantom-double-supply bug pools exist to fix, and picking a
+//     winner among equals would be arbitrary and silent. The delete confirmation shows
+//     the remaining count so the user can re-enter it on whichever item actually holds
+//     the bottle.
+//   - a pool that tracked nothing (quantity NULL) restores NULL either way.
+// Returns the quantity to write onto each unlinked item (null = untracked).
+export function resolvePoolUnlinkRestore(
+  remaining: number | null,
+  linkedItemCount: number
+): number | null {
+  return linkedItemCount === 1 ? remaining : null;
+}
+
+// Which bottles a caller may SEE in the medicine cabinet — ONE rule, shared by the
+// /supplies page itself and the "N shared bottles" doors its consumer surfaces now
+// carry (#1522, the nav row's replacement). A pool is visible when any ACCESSIBLE
+// profile draws from it, or when NOTHING links it at all: an orphaned bottle names
+// nobody, so nothing is disclosed, and somebody has to be able to clear it. Pure, so
+// the page's list and the header count can never disagree about what "in the cabinet"
+// means. `memberProfileIds` is a pool's raw membership (cross-profile by
+// construction); the caller supplies its already-authorized accessible set.
+export function isPoolVisibleTo(
+  memberProfileIds: readonly number[],
+  accessible: ReadonlySet<number>
+): boolean {
+  return (
+    memberProfileIds.length === 0 ||
+    memberProfileIds.some((id) => accessible.has(id))
+  );
+}
+
+// The label on those cabinet doors (#1522 part C). With bottles to count, the count IS
+// the useful part ("3 shared bottles") and doubles as the discoverability cue the
+// cabinet never had. With none, the link keeps its NAME — "Medicine cabinet", the name
+// deliberately retained once it stopped being a nav sibling of "Medications" — so an
+// empty household still learns the surface exists rather than reading "0 shared
+// bottles". Pure and shared so every door words it identically.
+export function sharedSuppliesLinkLabel(count: number): string {
+  if (count <= 0) return "Medicine cabinet";
+  return `${count} shared ${count === 1 ? "bottle" : "bottles"}`;
+}
+
 // Normalize the raw `quantity_on_hand` form field (opt-in refill tracking): a blank
 // or non-finite entry is NULL (untracked); otherwise the value floored at 0. Shared
 // by the add/update actions AND the #467 loaded-value compare so both sides of that

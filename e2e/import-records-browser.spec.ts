@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink, settledClick } from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
@@ -108,7 +108,7 @@ test.describe("Import detail: tabbed records browser", () => {
     );
     await expect(
       conditions.getByTestId("produced-item").getByRole("link")
-    ).toHaveAttribute("href", "/records/problems");
+    ).toHaveAttribute("href", "/records/problems/conditions");
 
     await page.goto("/import/908?tab=immunizations");
     const imms = page.getByTestId("produced-listing");
@@ -183,6 +183,18 @@ test.describe("Import detail: tabbed records browser", () => {
     // Copy grabs the full raw text and flashes the transient confirmation.
     await viewer.getByTestId("raw-copy").click();
     await expect(viewer.getByTestId("raw-copied")).toBeVisible();
+
+    // Download is FORMAT-AWARE: this document's raw is a CCD, so the button offers
+    // XML and the saved file carries a .xml extension — a hardcoded "Download JSON"
+    // would hand over a .json file containing XML, mislabeling it on disk. The
+    // companion JSON case is asserted in review-inbox.spec.ts.
+    const downloadBtn = viewer.getByTestId("raw-download");
+    await expect(downloadBtn).toHaveText(/Download XML/);
+    const [saved] = await Promise.all([
+      page.waitForEvent("download"),
+      downloadBtn.click(),
+    ]);
+    expect(saved.suggestedFilename()).toBe("extraction-908.xml");
   });
 
   // The destructive verb (#1071 item 5) keeps a confirm, and the confirm names

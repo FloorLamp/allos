@@ -1,11 +1,11 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import {
   expandIntakeWarnings,
   ototoxicWarnings,
   ototoxicWarningRows,
 } from "./intake-warnings-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Hearing / audiology domain (#713 + #717). Two user-visible surfaces the build/
 // typecheck/unit tiers can't prove render:
@@ -26,10 +26,7 @@ const MED = "E2E Ototoxic Gentamicin"; // tokenizes to contain the "gentamicin" 
 const MED_PREFIX = "E2E Ototoxic";
 
 function dbPath(): string {
-  return (
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db")
-  );
+  return workerDbPath();
 }
 
 function cleanup(): void {
@@ -58,8 +55,8 @@ function seed(): void {
     db.pragma("busy_timeout = 5000");
     // Profile 1 is the seeded active profile the e2e login acts as.
     db.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, priority)
-       VALUES (1, ?, 1, 'medication', 'high')`
+      `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
+       VALUES (1, ?, 1, 'medication', 'must')`
     ).run(MED);
   } finally {
     db.close();

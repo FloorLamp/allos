@@ -1,8 +1,14 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledCheck, settledClick } from "./helpers";
-import { E2E_LOGIN_GRANTEDIT, GRANT_EDIT_PROFILE } from "./fixture-logins";
+import { createLoginViaFamily } from "./family-helpers";
+import {
+  DUP_ACCESS_PROFILE,
+  E2E_LOGIN_GRANTEDIT,
+  GRANT_EDIT_PROFILE,
+} from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Family grant-matrix collapse (issue #1412). Settings → Family used to eagerly
 // render O(logins × profiles) grant controls (measured ~8,281 controls / 5 MB HTML
@@ -30,9 +36,7 @@ function grantEditFixture(): {
   profileId: number;
   ownProfileId: number | null;
 } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -50,6 +54,49 @@ function grantEditFixture(): {
   } finally {
     db.close();
   }
+}
+
+// The two DELIBERATELY same-named fixture profiles (#1434). Their ids key the
+// grant-cell testids, and their id ORDER is the order the #534 disambiguation
+// ordinals follow, so the spec can assert "(1)" then "(2)" against real rows.
+function duplicateProfileIds(): number[] {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db
+        .prepare("SELECT id FROM profiles WHERE name = ? ORDER BY id")
+        .all(DUP_ACCESS_PROFILE) as { id: number }[]
+    ).map((r) => r.id);
+  } finally {
+    db.close();
+  }
+}
+
+// Live session rows for a login — the #1434 proof that a grantless sign-in mints
+// NOTHING (the dead end used to leave "2 active sessions" on an unusable login).
+function sessionCountFor(username: string): number {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM sessions s JOIN logins l ON l.id = s.login_id
+            WHERE l.username = ?`
+        )
+        .get(username) as { c: number }
+    ).c;
+  } finally {
+    db.close();
+  }
+}
+
+async function cookielessPage(browser: Browser) {
+  const ctx = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+  });
+  return ctx.newPage();
 }
 
 // Open the grant-edit login's disclosure past the pre-hydration toggle swallow
@@ -162,5 +209,74 @@ test.describe("Family grant matrix collapses to summary rows (#1412)", () => {
     await expect(
       page.getByTestId(`own-profile-${E2E_LOGIN_GRANTEDIT}`)
     ).toHaveValue(target);
+  });
+});
+
+test.describe("Family access is legible and never a dead end (#1434)", () => {
+  test("same-named profiles are disambiguated in the matrix AND the create picker", async ({
+    page,
+  }) => {
+    test.slow();
+    const [firstDup, secondDup] = duplicateProfileIds();
+    expect(
+      secondDup,
+      "two same-named fixture profiles are seeded"
+    ).toBeTruthy();
+
+    await page.goto("/settings/family");
+
+    // The create-login access picker (#1434 part B) offers every profile — with the
+    // #534 ordinals, so the admin can tell the two "Dup Access (e2e)" people apart
+    // BEFORE granting one of them a stranger's record.
+    const picker = page.getByTestId("create-access");
+    await expect(picker).toBeVisible();
+    await expect(picker).toContainText(`${DUP_ACCESS_PROFILE} (1)`);
+    await expect(picker).toContainText(`${DUP_ACCESS_PROFILE} (2)`);
+
+    // Same rule in the grant matrix, where granting the wrong one is costliest.
+    await expandGrantEdit(page);
+    const grantRow = page.getByTestId(`grant-row-${E2E_LOGIN_GRANTEDIT}`);
+    await expect(
+      grantRow.getByTestId(`grant-cell-${E2E_LOGIN_GRANTEDIT}-${firstDup}`)
+    ).toContainText(`${DUP_ACCESS_PROFILE} (1)`);
+    await expect(
+      grantRow.getByTestId(`grant-cell-${E2E_LOGIN_GRANTEDIT}-${secondDup}`)
+    ).toContainText(`${DUP_ACCESS_PROFILE} (2)`);
+    // The grant-edit fixture profile has a unique name, so it stays untouched.
+    await expect(grantRow).toContainText(GRANT_EDIT_PROFILE);
+  });
+
+  test("a member with no grants is badged, and signing in says so instead of bouncing", async ({
+    page,
+    browser,
+  }) => {
+    test.slow();
+    // Spec-owned, per-run-unique login created through the real form with NO profile
+    // selected — the exact login the happy path used to produce silently.
+    const { username, password } = await createLoginViaFamily(page, {
+      role: "member",
+      accessProfileIds: [],
+    });
+
+    // The admin now gets a signal on the login's row (they used to get none).
+    const row = page
+      .getByTestId("login-row")
+      .filter({ has: page.getByText(username, { exact: true }) });
+    await expect(row.getByTestId("login-no-access")).toBeVisible();
+
+    // And the person gets an honest outcome rather than an empty sign-in form.
+    const anon = await cookielessPage(browser);
+    await anon.goto("/login");
+    await anon.fill('input[name="username"]', username);
+    await anon.fill('input[name="password"]', password);
+    await anon.click('button[type="submit"]');
+    await expect(anon.getByTestId("login-error")).toContainText(
+      "no profile access"
+    );
+    await expect(anon).toHaveURL(/\/login/);
+    await anon.context().close();
+
+    // No session was minted for a login that can't reach a page.
+    expect(sessionCountFor(username)).toBe(0);
   });
 });

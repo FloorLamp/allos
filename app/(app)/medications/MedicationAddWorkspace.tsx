@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import MedicationForm from "@/components/MedicationForm";
 import QuickAddMedication from "@/components/QuickAddMedication";
 import type { InteractionItem } from "@/lib/drug-interactions";
@@ -14,6 +15,7 @@ type AddMode = "quick" | "full";
 
 export default function MedicationAddWorkspace({
   subtitle,
+  cabinetCount,
   action,
   allSupplements,
   stackItems,
@@ -25,6 +27,10 @@ export default function MedicationAddWorkspace({
   conditions,
 }: {
   subtitle: string;
+  // Shared bottles the caller can see in the medicine cabinet (#1522). Resolved at
+  // the page's auth boundary (countVisiblePools(scope.ids)) and passed as a plain
+  // number — the cabinet door beside "Add medication" replaced its nav row.
+  cabinetCount: number;
   action: (formData: FormData) => Promise<FormResult>;
   allSupplements: { id: number; name: string }[];
   stackItems: InteractionItem[];
@@ -49,21 +55,31 @@ export default function MedicationAddWorkspace({
         title="Medications"
         subtitle={subtitle}
         action={
-          <button
-            type="button"
-            className={`${open ? "btn-ghost" : "btn"} whitespace-nowrap`}
-            aria-expanded={open}
-            aria-controls="medication-add-panel"
-            data-testid="medication-add-toggle"
-            onClick={() => setOpen((value) => !value)}
-          >
-            {open ? (
-              <IconX className="h-4 w-4" stroke={1.75} />
-            ) : (
-              <IconPlus className="h-4 w-4" stroke={2} />
-            )}
-            {open ? "Close" : "Add medication"}
-          </button>
+          // WRAPS on a phone (#1522 follow-up). A second affordance in this header
+          // does not fit 390px beside "Medications" and its subtitle, and the app
+          // shell clips horizontal overflow — an un-wrapping row would push the Add
+          // button off-screen entirely rather than scroll to it. So the group shrinks
+          // (no `shrink-0`) and wraps between its children: the cabinet door rides
+          // above the button on a phone and beside it from `sm` up. One content tree,
+          // both viewports.
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+            <SharedSuppliesLink count={cabinetCount} />
+            <button
+              type="button"
+              className={`${open ? "btn-ghost" : "btn"} whitespace-nowrap`}
+              aria-expanded={open}
+              aria-controls="medication-add-panel"
+              data-testid="medication-add-toggle"
+              onClick={() => setOpen((value) => !value)}
+            >
+              {open ? (
+                <IconX className="h-4 w-4" stroke={1.75} />
+              ) : (
+                <IconPlus className="h-4 w-4" stroke={2} />
+              )}
+              {open ? "Close" : "Add medication"}
+            </button>
+          </div>
         }
       />
 

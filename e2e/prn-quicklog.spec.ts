@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick } from "./helpers";
 import {
   medicationsToday,
@@ -110,9 +110,24 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   );
 
   // One-tap "Taken now" records a fresh administration NOW → the count rises by one.
-  // settledClick awaits the log Server-Action POST so the count assertion can't race it.
+  //
+  // settledClick is necessary but NOT sufficient on the dashboard: it resolves on any
+  // same-origin POST, and this page fires Server Actions of its own during load, so it
+  // can return before THIS log's POST has even been sent. Worse, the dashboard's route
+  // prefetching aborts and retries in-flight requests under load, which can push the
+  // log POST seconds past the click. The action's own unambiguous completion signal is
+  // its success toast — wait for that, then read the count, so the assertion is ordered
+  // behind the write instead of behind an unrelated POST.
+  //
+  // Both waits carry the 15s budget settledClick itself uses, not the 5s default. This
+  // is the heaviest page in the app: the write round-trips through it and the count is
+  // then server-rendered again by router.refresh(). Under load either step alone can
+  // exceed five seconds, and a slow dashboard must read as slow — not as a lost dose.
   await settledClick(page, item.getByTestId("prn-log-now"));
-  await expect(label).toContainText(`${before + 1} today`);
+  await expect(
+    page.getByRole("status").filter({ hasText: `Logged ${MED}` })
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(label).toContainText(`${before + 1} today`, { timeout: 15_000 });
 
   // A second immediate tap is deduplicated. Make that explicit instead of showing
   // the same success copy as a newly persisted administration.
@@ -121,8 +136,8 @@ test("dashboard quick-log widget logs an administration and updates the count (#
     page.getByRole("status").filter({
       hasText: `${MED} was already logged just now.`,
     })
-  ).toBeVisible();
-  await expect(label).toContainText(`${before + 1} today`);
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(label).toContainText(`${before + 1} today`, { timeout: 15_000 });
 
   // The retro-time affordance reveals the offset / custom-time options.
   await item.getByTestId("prn-log-more").click();
@@ -145,7 +160,12 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   const newestRow = rows.first(); // first-ok: newest row this spec just logged "now" on a newest-first ledger, under CI's sequential workers=1
   await expect(newestRow).toBeVisible();
   await settledClick(page, newestRow.getByTestId("prn-administration-remove"));
+  // Order the count read behind the remove itself, for the same reason as the log above.
+  await expect(
+    page.getByRole("status").filter({ hasText: "Dose removed." })
+  ).toBeVisible({ timeout: 15_000 });
   // Back to the seeded count (the "Dose removed." undo toast is left to expire — the
-  // removal must persist for cleanup, so we do NOT click Undo).
-  await expect(admin).toContainText(`${before} today`);
+  // removal must persist for cleanup, so we do NOT click Undo). Same 15s budget as the
+  // log above: the toast confirms the write, the count additionally awaits the re-render.
+  await expect(admin).toContainText(`${before} today`, { timeout: 15_000 });
 });

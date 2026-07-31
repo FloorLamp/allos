@@ -1,6 +1,11 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { Access } from "../lib/grants";
-import { settledCheck, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  settledCheck,
+  settledClick,
+  settledFill,
+} from "./helpers";
 
 // Shared drivers for the Settings → Family screen (issue #868, phase-2 create-member
 // hardening). Family create/grant buttons are NOT native form submits — each is an
@@ -50,6 +55,15 @@ export interface CreateLoginOpts {
   // Email an invite instead of setting the password out-of-band. Requires `email`
   // and a mail-configured instance (the create-invite checkbox only renders then).
   invite?: boolean;
+  // Create the login with NO password at all (issue #1434): the invite carries the
+  // credential, so the form disables the password field and the action never asks
+  // for one. Only meaningful together with `invite`; the returned `password` is
+  // empty, since nothing can sign in until the invitee spends their token.
+  passwordless?: boolean;
+  // Initial profile access for a MEMBER (issue #1434) — profile ids to check in the
+  // create form's access picker, so the login isn't born into the grantless dead
+  // end. Omit to accept the form's own default (a same-named profile, else none).
+  accessProfileIds?: readonly number[];
 }
 
 // The universal "did the login land" signal: every login (admin OR member) renders a
@@ -78,7 +92,7 @@ export async function createLoginViaFamily(
 ): Promise<Credentials> {
   const role = opts.role ?? "member";
   const username = opts.username ?? `${role}-${Date.now()}-${++familySeq}`;
-  const password = opts.password ?? MEMBER_PASSWORD;
+  const password = opts.passwordless ? "" : (opts.password ?? MEMBER_PASSWORD);
   const row = loginRowFor(page, username);
 
   // The family create button is onClick+router.refresh() (not a form submit), so no
@@ -87,17 +101,29 @@ export async function createLoginViaFamily(
   await expect(async () => {
     await page.goto("/settings/family");
     await settledFill(page, page.getByPlaceholder("Username"), username);
-    await page.getByPlaceholder("Password").fill(password);
+    if (!opts.passwordless) {
+      await page.getByPlaceholder("Password").fill(password);
+    }
     if (opts.email !== undefined) {
       await page.getByPlaceholder("Email (optional)").fill(opts.email);
     }
     if (role !== "member") {
       await page.getByTestId("create-role").selectOption(role);
     }
+    // Initial profile access (#1434) — before the invite toggle, so a passwordless
+    // create still picks its grants while the picker is on screen (it renders for a
+    // member regardless). settledCheck waits for the controlled checkbox's onChange.
+    if (opts.accessProfileIds && role === "member") {
+      for (const id of opts.accessProfileIds) {
+        await settledCheck(page, page.getByTestId(`create-access-${id}`), true);
+      }
+    }
     if (opts.invite) {
       // The invite checkbox is enabled only once a non-empty email is in state (filled
       // above); .check() throws if the click didn't stick, which fails the attempt and
       // re-drives the whole cycle — self-correcting, so no extra guard is needed.
+      // Checking it also DISABLES the password field (the invite carries the
+      // credential), which is why the fill above is skipped for a passwordless create.
       await page.getByTestId("create-invite").check();
     }
     await page.getByRole("button", { name: "Create login" }).click();
@@ -154,7 +180,15 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
   // can interleave into the caller's NEXT goto and hijack it (#1323). Awaiting the switch
   // POST here drains it before the caller navigates; toContainText then confirms it landed.
   await settledClick(page, target);
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
+  // settledClick proved the switch POST completed; what remains is the
+  // revalidatePath("/", "layout") refresh re-rendering the current route before
+  // the trigger shows the new name. On a loaded runner that render can outlast
+  // the default 5s (the dashboard and the merged Trends surface are the heavy
+  // cases). A named ceiling, not a sleep — this still fails if the switch never
+  // lands.
+  await expect(page.getByTestId("user-menu-trigger")).toContainText(name, {
+    timeout: 20_000,
+  });
 }
 
 // Create a fresh profile through Settings → Family, switch the active profile to it,
@@ -194,13 +228,27 @@ export async function createProfileViaFamily(
   }).toPass({ timeout: 45_000 }); // topass-ok: onClick+refresh create, verify-first re-goto (#830)
 
   await switchToProfile(page, name);
-  await page.goto("/");
-  if (page.url().includes("/onboarding")) {
-    await page
-      .getByRole("button", { name: "Set up later, take me to my dashboard" })
-      .click();
-    await expect(page).toHaveURL(/\/$|\/\?/);
-  }
+  // Defer goal-based onboarding so the fresh profile lands on the dashboard. Two
+  // things here are races, and a bare click + single URL assertion caught neither:
+  //   • the deferral button is a CLIENT button, so a tap dispatched before React
+  //     attaches its onClick is silently swallowed (#500/#830) — hydratedClick waits
+  //     for the hydration markers, then clicks exactly once (it's not idempotent to
+  //     re-click, so a retry loop around the click alone would be wrong);
+  //   • the onboarding GATE can bounce "/" straight back to /onboarding if the
+  //     deferral write hasn't committed yet, so the whole goto→defer→assert cycle is
+  //     what retries, not just the assertion.
+  await expect(async () => {
+    await page.goto("/");
+    if (page.url().includes("/onboarding")) {
+      await hydratedClick(
+        page,
+        page.getByRole("button", {
+          name: "Set up later, take me to my dashboard",
+        })
+      );
+    }
+    await expect(page).toHaveURL(/\/$|\/\?/, { timeout: 5_000 });
+  }).toPass({ timeout: 45_000 }); // topass-ok: goto → defer → land is a multi-step cycle whose failure mode is a REDIRECT back to the start, which no single expect can express
   return name;
 }
 

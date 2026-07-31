@@ -6,28 +6,66 @@
 // primary-source choice (issue #14, lib/metric-source-priority) is prepended to
 // the default preference below by the query layer.
 
-import { sourceKey } from "./metric-source-priority";
+import {
+  asSourceResolution,
+  sourceGroupKey,
+  sourceKey,
+  type SourceResolution,
+} from "./metric-source-priority";
+
+// What the resolvers accept: a plain preference list (the instance default order)
+// or the profile's fully resolved selection — a selector order plus its MODE
+// (#1642). A bare list is preference mode, i.e. exactly today's behavior.
+export type SourceSelection = readonly string[] | SourceResolution;
 
 // Default preference order when a day carries the same metric from several
 // sources and the profile hasn't picked a primary one. A manual entry is the
 // user's own correction, so it wins; Health Connect covers the whole day;
 // Oura covers the night/workouts it saw; Strava only its recorded activities.
+//
+// `fitbit-takeout` sits directly BELOW health-connect, and its position is a real
+// decision rather than an append. A Takeout archive and a Health Connect push can
+// describe the SAME night from the SAME watch and still disagree — measured on a
+// real pair: session windows offset by tens of minutes, and stage architecture
+// differing 2–4× on deep/REM, in no consistent direction (Fitbit appears to
+// re-score sleep server-side after the sync that fed Health Connect, so the two
+// are snapshots of an evolving analysis). Neither is obviously "right".
+//
+// Ranking it below health-connect keeps the LIVE stream authoritative by default,
+// so importing an archive never silently rewrites the days a user already had. The
+// per-profile primary-source pick (#14) is how someone deliberately prefers the
+// archive's re-scored record instead — that choice is prepended to this list by the
+// query layer, so it wins without editing the default.
+//
+// Being listed at all is the load-bearing part: pickOneProviderPerDay falls back to
+// "the largest single-source total" for a provider absent from this list, which for
+// sleep would systematically favour the archive purely because it reports longer.
 export const PROVIDER_PREFERENCE = [
   "manual",
   "health-connect",
+  "fitbit-takeout",
   "oura",
   "withings",
   "strava",
 ];
 
 // Collapse per-(date, source) subtotals to one value per day by choosing a single
-// provider — the first present in `preference`, else the largest single-source
+// provider — the first present in `selection`, else the largest single-source
 // total (which for a lone source is just that source, and avoids double-counting
 // two unknown providers).
+//
+// A CLASS selector (#1640) makes its members ONE candidate: their subtotals sum,
+// because the class IS the source for that day (two reports covering the same
+// additive day is not a shape any real ingest produces).
+//
+// In STRICT mode (#1642) the "largest single-source total" fallback is skipped
+// entirely: a day no selector covers yields no point at all, so the series shows
+// an honest gap instead of another source's number.
 export function pickOneProviderPerDay(
   rows: { date: string; source: string | null; value: number }[],
-  preference: string[]
+  selection: SourceSelection
 ): { date: string; value: number }[] {
+  const { order, strict } = asSourceResolution(selection);
   const byDate = new Map<string, Map<string, number>>();
   for (const r of rows) {
     let m = byDate.get(r.date);
@@ -35,12 +73,13 @@ export function pickOneProviderPerDay(
       m = new Map();
       byDate.set(r.date, m);
     }
-    const src = sourceKey(r.source);
+    const src = sourceGroupKey(r.source, order);
     m.set(src, (m.get(src) ?? 0) + r.value);
   }
   const out: { date: string; value: number }[] = [];
   for (const [date, m] of byDate) {
-    const chosen = preference.find((p) => m.has(p));
+    const chosen = order.find((p) => m.has(p));
+    if (chosen == null && strict) continue;
     const value = chosen != null ? m.get(chosen)! : Math.max(...m.values());
     out.push({ date, value });
   }
@@ -85,19 +124,25 @@ export function pickRowsOneOriginPerSourceDay<T>(
 }
 
 // Filter arbitrary per-source rows down to ONE source per day, generically: the
-// first source present in `preference` wins; else the source with the largest
+// first source present in `selection` wins; else the source with the largest
 // summed `weightOf` (defaults to row count — "most coverage"); ties break
 // lexicographically so the pick is deterministic. Row order is preserved.
 // Used by the multi-row readers (sleep stages, HR minutes/daily summary, body
 // metric series) that can't collapse to a single number per day up front.
+//
+// A CLASS selector (#1640) keeps EVERY member's rows for the days it wins — "the
+// documents source" is the whole family, so two scans on one day both survive and
+// the caller's fold averages them exactly as it would two same-day manual rows.
+// In STRICT mode (#1642) an uncovered day keeps NO rows: the honest gap.
 export function pickRowsOneSourcePerDay<T>(
   rows: T[],
-  preference: string[],
+  selection: SourceSelection,
   dateOf: (row: T) => string,
   sourceOf: (row: T) => string | null,
   weightOf: (row: T) => number = () => 1
 ): T[] {
-  // Total weight per (date, source).
+  const { order, strict } = asSourceResolution(selection);
+  // Total weight per (date, source-group).
   const byDate = new Map<string, Map<string, number>>();
   for (const r of rows) {
     const date = dateOf(r);
@@ -106,17 +151,18 @@ export function pickRowsOneSourcePerDay<T>(
       m = new Map();
       byDate.set(date, m);
     }
-    const src = sourceKey(sourceOf(r));
+    const src = sourceGroupKey(sourceOf(r), order);
     m.set(src, (m.get(src) ?? 0) + weightOf(r));
   }
-  // Chosen source per date.
+  // Chosen source per date. A date absent from this map keeps no rows.
   const chosenByDate = new Map<string, string>();
   for (const [date, m] of byDate) {
-    const preferred = preference.find((p) => m.has(p));
+    const preferred = order.find((p) => m.has(p));
     if (preferred != null) {
       chosenByDate.set(date, preferred);
       continue;
     }
+    if (strict) continue;
     let best: string | null = null;
     let bestWeight = -Infinity;
     for (const [src, w] of m) {
@@ -131,6 +177,6 @@ export function pickRowsOneSourcePerDay<T>(
     chosenByDate.set(date, best!);
   }
   return rows.filter(
-    (r) => chosenByDate.get(dateOf(r)) === sourceKey(sourceOf(r))
+    (r) => chosenByDate.get(dateOf(r)) === sourceGroupKey(sourceOf(r), order)
   );
 }

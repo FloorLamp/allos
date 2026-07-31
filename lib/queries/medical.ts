@@ -1,42 +1,42 @@
 import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
-import { biomarkerFamily, BIOMARKER_FAMILIES } from "../canonical-name";
-import { canonicalResolver } from "../canonical-resolve";
-import {
-  getStoredAge,
-  getUserBirthdate,
-  getUserReproductiveStatus,
-  getUserSex,
-} from "../settings";
-import {
-  ageForRecord,
-  computeFlagReconciliation,
-  computeQualitativeFlagChanges,
-} from "../flag-reconcile";
-import { listCyclePeriods } from "../cycle-store";
-import { detectUnitMislabel } from "../reference-range";
-import {
-  TITER_DISTINCTIVE_TOKENS,
-  matchesImmunityMarker,
-  markerNameTokens,
-} from "../titer-match";
-import {
-  titerImmuneStatus,
-  immuneThresholdFor,
-  type TiterStatus,
-  type OverrideKind,
-} from "../immunization-status";
+import { biomarkerFamily } from "../canonical-name";
+import { BIOMARKER_FAMILY_FN, BIOMARKER_PANEL_FN } from "../sql-functions";
+import { panelOrderOfPanelExpr, type PanelId } from "../biomarker-panels";
 import type {
   CanonicalBiomarker,
-  Encounter,
-  Immunization,
   MedicalDocument,
   MedicalFlag,
   MedicalRecord,
 } from "../types";
-import type { PersistInput } from "../import-shape";
-import { encounterKind } from "../encounter-kind";
-import { visitContext, type VisitContext } from "../visit-context";
+export { getCanonicalBiomarker } from "./medical/canonical";
+export {
+  ENCOUNTER_REPRESENTATIVE_IDS,
+  getEncounter,
+  getEncounters,
+  visitContextForEncounter,
+} from "./medical/encounters";
+export {
+  getImmunityTiters,
+  getImmunizationOverride,
+  getImmunizationOverrides,
+  getImmunizations,
+  type ImmunityTiter,
+  type ImmunizationOverrideRow,
+} from "./medical/immunizations";
+export { previewReconcileFlags, reconcileFlags } from "./medical/flags";
+export {
+  getRecordRevisions,
+  getRevisionsByRecord,
+  insertRecordRevision,
+  type RevisionSnapshot,
+} from "./medical/revisions";
+export {
+  detectRecordUnitMislabel,
+  getUnitMislabelReviews,
+  unitMislabelSignalKey,
+  type UnitMislabelReview,
+} from "./medical/unit-mislabel";
 
 // ---- Medical ----
 export type MedicalSortColumn = "name" | "panel" | "date";
@@ -61,7 +61,11 @@ export interface MedicalRecordFilters {
   // browser — meds live on the document view + Supplements & Meds). Rendered as a
   // parameterized `category NOT IN (…)`; an empty/absent list adds no clause.
   excludeCategories?: string[];
-  panel?: string;
+  // The NORMALIZED panel slug (#1502), never the stored free-text heading — the
+  // `?panel=` param is a clinical facet ("show my Lipids"), not a lab-vendor
+  // filter. Rows match on the panel RESOLVED from their canonical name, so the
+  // facet works regardless of what any document's section heading said.
+  panel?: PanelId;
   // Flag-based filter: out-of-range only, or all non-optimal rows.
   range?: RangeFilter;
   // Free-text search matched against name and panel.
@@ -88,34 +92,59 @@ const BIOMARKER_NAME_KEY = biomarkerNameKey();
 // every biomarker surface partitions/matches on so none of them can disagree about
 // what "Vitamin D" is: the dedup partition, the is_latest/current marker, the
 // chart/detail series, and the starred tile all key on THIS instead of the bare
-// per-name key. It is the finite-preimage (#394) realization of the pure
-// biomarkerFamily(): SQL can't call the JS matcher, so each family's member
-// spellings are inlined as an `IN (...)` preimage (from the shared BIOMARKER_FAMILIES
-// data — one source of truth with the JS side) and every other name falls through to
-// the plain display-name key, byte-for-byte the pre-#482 grouping for non-family
-// analytes. Family keys and member strings are hardcoded constants (single-quote
-// escaped), so this is injection-safe. Pass a table alias for a self-join.
-function sqlStringLiteral(s: string): string {
-  return `'${s.replace(/'/g, "''")}'`;
-}
-// The family CASE over an arbitrary name expression — reused both for the records
-// grouping key (over the canonical-or-raw display name) and the star store (over
-// its bare canonical_name column), so both key on the identical family identity.
+// per-name key.
+//
+// It calls the SAME pure biomarkerFamily() the JS surfaces do, through the
+// `biomarker_family()` SQLite user function lib/db.ts registers (see
+// lib/sql-functions.ts) — literally one computation, not two realizations of it.
+// This USED to be a finite-preimage (#394) `CASE WHEN lower(name) IN (<members>)`
+// built from BIOMARKER_FAMILIES, which could only enumerate each family's finite
+// member list and structurally dropped the family's freeform `match` matcher. A
+// stored name caught only by that regex (an un-snapped AI-coined A1c spelling) was
+// then one family to the JS star/retest/dismissal surfaces and its OWN singleton
+// to the partitions below — the same measurement double-counted on one date and
+// markable "current" twice (#1401). Behavior is otherwise unchanged: an enumerated
+// member resolves to the identical `family:<key>` string, and every non-family name
+// still resolves to its own display name (now trimmed on both sides rather than
+// only the JS side), byte-for-byte the pre-#482 grouping for non-family analytes.
+//
+// Reused both for the records grouping key (over the canonical-or-raw display name)
+// and the star store (over its bare `key` column), so both key on the identical
+// family identity. The function name is a hardcoded constant, so this is
+// injection-safe. Pass a table alias for a self-join.
 function familyKeyOfExpr(nameExpr: string): string {
-  const whens = BIOMARKER_FAMILIES.map((fam) => {
-    const inList = fam.members.map(sqlStringLiteral).join(", ");
-    return `WHEN lower(${nameExpr}) IN (${inList}) THEN ${sqlStringLiteral(
-      `family:${fam.key}`
-    )}`;
-  }).join(" ");
-  return `CASE ${whens} ELSE ${nameExpr} END`;
+  return `${BIOMARKER_FAMILY_FN}(${nameExpr})`;
 }
 export function biomarkerFamilyKey(alias = ""): string {
   return familyKeyOfExpr(biomarkerNameKey(alias));
 }
+// The normalized PANEL slug as a SQL expression (#1502), over the same canonical-or-
+// raw display-name key the family grouping uses. A name the taxonomy doesn't know
+// resolves to 'other'. Pass a table alias for a self-join.
+//
+// Like the family key above, it calls the SAME pure panelForCanonicalName() the JS
+// surfaces do, through the `biomarker_panel()` SQLite user function lib/db.ts
+// registers (see lib/sql-functions.ts). This USED to be a generated finite-preimage
+// (#394) `CASE WHEN lower(name) IN (<member spellings>)` over each panel's enumerated
+// members — which inherited the #1401 blind spot one level up (#1629): a stored name
+// caught only by a family's freeform `match` matcher was a family member to the
+// family key but panel 'other' to THIS expression, so the Biomarkers panel facet and
+// the Timeline panel titles could file one reading of a family under its clinical
+// panel and a sibling reading of the same family under "Other". Behavior is otherwise
+// unchanged: every enumerated spelling resolves to the identical slug, and an unknown
+// name still resolves to 'other' (including a NULL name — the resolver maps blank to
+// the fallback exactly as the CASE's ELSE did).
+export function biomarkerPanelKey(alias = ""): string {
+  return `${BIOMARKER_PANEL_FN}(${biomarkerNameKey(alias)})`;
+}
+const BIOMARKER_PANEL_KEY = biomarkerPanelKey();
+// The panel's curated sort order, over the slug the expression above resolves.
+const BIOMARKER_PANEL_ORDER = panelOrderOfPanelExpr(BIOMARKER_PANEL_KEY);
 const BIOMARKER_FAMILY_KEY = biomarkerFamilyKey();
-// The same family identity computed over the star store's canonical_name column.
-const STAR_FAMILY_KEY = familyKeyOfExpr("canonical_name");
+// The same family identity computed over the SAVE store's key column (saved_items.key
+// where kind='biomarker' — the canonical analyte name, #1456), so a save keys on the
+// identical family identity the readings do.
+const SAVED_FAMILY_KEY = familyKeyOfExpr("key");
 
 // Build a "contains" LIKE pattern for free-text search, escaping the SQL wildcards
 // (%, _) and the escape char (\) so a user typing e.g. "50%" or "a_b" matches
@@ -209,8 +238,12 @@ function medicalOrderBy(
   const name = `${BIOMARKER_NAME_KEY} COLLATE NOCASE`;
   // Every non-name sort tie-breaks on the canonical name ascending, then id.
   if (sort === "name") return `${name} ${d}, date DESC, id DESC`;
+  // Panel sort orders by the RESOLVED panel's curated order (#1502) — clinical
+  // sequence, not the alphabetical accident of a slug or a vendor string. The
+  // unresolved `other` bucket stays last in BOTH directions, exactly like the
+  // pre-#1502 "nulls last" rule it replaces.
   if (sort === "panel")
-    return `panel IS NULL, panel COLLATE NOCASE ${d}, ${name}, id`;
+    return `${BIOMARKER_PANEL_KEY} = 'other', ${BIOMARKER_PANEL_ORDER} ${d}, ${name}, id`;
   if (sort === "date") return `date ${d}, ${name}, id`;
   return fallback;
 }
@@ -255,7 +288,12 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
     args.push(...filters.excludeCategories);
   }
   if (filters.panel) {
-    where.push("panel = ?");
+    // Resolved-panel equality, not `panel = ?` on the stored heading. The slug is
+    // a validated PanelId (parsePanelId at the boundary) and the expression is
+    // built from hardcoded constants, so inlining it is injection-safe; it also
+    // makes `?panel=other` mean "analytes the taxonomy doesn't know", which a
+    // bound stored-column compare could never express.
+    where.push(`${BIOMARKER_PANEL_KEY} = ?`);
     args.push(filters.panel);
   }
   const rangeClause = rangeFilterClause(filters.range);
@@ -297,6 +335,10 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
        SELECT *,
               (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
                 AS provider_name,
+              -- The ORDERING clinician (#1404), a separate link from the performing
+              -- lab above, resolved for display the same way.
+              (SELECT p.name FROM providers p WHERE p.id = medical_records.ordering_provider_id)
+                AS ordering_provider_name,
               (${LATEST_IN_GROUP}) AS is_latest FROM medical_records ${clause} ORDER BY ${orderBy}`
     )
     .all(profileId, profileId, ...args) as MedicalRecord[];
@@ -524,7 +566,9 @@ export function getRecordsForDocument(
     .prepare(
       `SELECT *,
               (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
-                AS provider_name
+                AS provider_name,
+              (SELECT p.name FROM providers p WHERE p.id = medical_records.ordering_provider_id)
+                AS ordering_provider_name
          FROM medical_records WHERE ${where.join(" AND ")} ORDER BY ${orderBy}`
     )
     .all(...args) as MedicalRecord[];
@@ -589,27 +633,6 @@ export function getCanonicalAutocomplete(profileId: number): string[] {
   return [...set.values()].sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: "base" })
   );
-}
-
-// Full reference-dataset entry (unit + ranges) for a canonical name, for the
-// detail-page header and chart bands. Case-insensitive (table PK is NOCASE).
-export function getCanonicalBiomarker(
-  name: string
-): CanonicalBiomarker | undefined {
-  const stmt = db.prepare(
-    "SELECT * FROM canonical_biomarkers WHERE name = ? COLLATE NOCASE"
-  );
-  const exact = stmt.get(name) as CanonicalBiomarker | undefined;
-  if (exact) return exact;
-  // Alias-aware fallback: a caller (or a stored row) may pass a legacy spelling or a
-  // bare abbreviation the dataset no longer uses verbatim (e.g. "MCHC" after the
-  // rename to "Mean Corpuscular Hemoglobin Concentration (MCHC)"). Snap it onto the
-  // canonical name first — the same resolution the flag/info/derive paths use — so
-  // every canonical-entry lookup is uniformly robust to a non-canonical name.
-  const snapped = canonicalResolver()(name);
-  return snapped !== name
-    ? (stmt.get(snapped) as CanonicalBiomarker | undefined)
-    : undefined;
 }
 
 // The single most recent record for a canonical name (newest date, id tie-break),
@@ -750,58 +773,92 @@ export function findRecordsByContentIdentity(
     ) as MedicalRecord[];
 }
 
-// Drop any star whose biomarker FAMILY no longer has a backing record (its last
-// reading was deleted or its canonical name changed), so the pinned card can't
-// point at nothing. Family-keyed (#482): a star on "Vitamin D, 25-Hydroxy"
+// Drop any saved biomarker whose FAMILY no longer has a backing record (its last
+// reading was deleted or its canonical name changed), so the status card can't
+// point at nothing. Family-keyed (#482): a save on "Vitamin D, 25-Hydroxy"
 // survives as long as ANY family member (a D2/D3 breakdown) still has a reading,
 // matching the family-collapsed tile. Shared by every path that deletes records.
-export function cleanupOrphanStars(profileId: number): void {
+// Scoped to kind='biomarker' — a `trend-metric` save keys on a metric id, not a
+// biomarker name, and must never be swept by a records-driven de-orphan (#1456).
+export function cleanupOrphanSavedBiomarkers(profileId: number): void {
   db.prepare(
-    `DELETE FROM starred_biomarkers
+    `DELETE FROM saved_items
      WHERE profile_id = ?
-       AND ${STAR_FAMILY_KEY} NOT IN (
+       AND kind = 'biomarker'
+       AND ${SAVED_FAMILY_KEY} NOT IN (
          SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
          WHERE profile_id = ? AND canonical_name IS NOT NULL
        )`
   ).run(profileId, profileId);
 }
 
-// True when THIS biomarker — or any sibling in its #482 family — is starred, so
+// True when THIS biomarker — or any sibling in its #482 family — is saved, so
 // the star toggle reflects the family-collapsed tile (starring "Vitamin D, Total"
-// lights the star on the "Vitamin D3" detail page too). Stars are few, so the
-// family compare is done in JS over the profile's star list.
-export function isBiomarkerStarred(
+// lights the star on the "Vitamin D3" detail page too). Saves are few, so the
+// family compare is done in JS over the profile's saved biomarker list.
+export function isBiomarkerSaved(
   profileId: number,
   canonical: string
 ): boolean {
   const fam = biomarkerFamily(canonical);
-  const stars = db
+  const saved = db
     .prepare(
-      "SELECT canonical_name FROM starred_biomarkers WHERE profile_id = ?"
+      "SELECT key FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'"
     )
-    .all(profileId) as { canonical_name: string }[];
-  return stars.some((s) => biomarkerFamily(s.canonical_name) === fam);
+    .all(profileId) as { key: string }[];
+  return saved.some((s) => biomarkerFamily(s.key) === fam);
 }
 
-// Remove every star in a biomarker's #482 family (the unstar half of the toggle):
-// because a star on any member lights the whole family, un-starring must clear all
-// of them, not just the exact name — else isBiomarkerStarred would still report the
-// family starred and the toggle would appear stuck. Returns rows deleted.
-export function unstarBiomarkerFamily(
+// Save a biomarker for a profile (the star half of the toggle). Idempotent — the
+// store's NOCASE UNIQUE makes a re-save a no-op — and deliberately keyed on the NAME
+// the user starred, not its family key: the family is resolved on READ
+// (isBiomarkerSaved / getSavedBiomarkers), so the stored row stays a real analyte
+// name that a rename can re-key (#203) and a human can read in an export.
+export function saveBiomarker(profileId: number, canonical: string): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+  ).run(profileId, canonical);
+}
+
+// Remove every saved biomarker in a #482 family (the unsave half of the toggle):
+// because a save on any member lights the whole family, un-saving must clear all
+// of them, not just the exact name — else isBiomarkerSaved would still report the
+// family saved and the toggle would appear stuck. Returns rows deleted.
+export function unsaveBiomarkerFamily(
   profileId: number,
   canonical: string
 ): number {
   const fam = biomarkerFamily(canonical);
   const info = db
     .prepare(
-      `DELETE FROM starred_biomarkers
-        WHERE profile_id = ? AND ${STAR_FAMILY_KEY} = ? COLLATE NOCASE`
+      `DELETE FROM saved_items
+        WHERE profile_id = ? AND kind = 'biomarker'
+          AND ${SAVED_FAMILY_KEY} = ? COLLATE NOCASE`
     )
     .run(profileId, fam);
   return info.changes;
 }
 
-export interface StarredBiomarker {
+// Toggle a biomarker's save, returning the resulting state — the write core behind
+// the ★ gesture (auth-blind, profileId-first; the Server Action in
+// app/(app)/saved-actions.ts is the auth boundary). Check-then-act as ONE atomic
+// transaction so two concurrent toggles can't both read the same state and race (two
+// inserts, or an insert lost to a delete). Unsave clears the whole #482 family.
+export function toggleBiomarkerSaved(
+  profileId: number,
+  canonical: string
+): boolean {
+  return writeTx(() => {
+    if (isBiomarkerSaved(profileId, canonical)) {
+      unsaveBiomarkerFamily(profileId, canonical);
+      return false;
+    }
+    saveBiomarker(profileId, canonical);
+    return true;
+  });
+}
+
+export interface SavedBiomarker {
   canonical_name: string;
   latest_value: string | null;
   latest_value_num: number | null;
@@ -823,16 +880,24 @@ export interface StarredBiomarker {
   canonical: CanonicalBiomarker | null;
 }
 
-// Starred biomarkers with their latest reading and the canonical reference
-// entry (ranges/direction). Used by the pinned card on / and /biomarkers.
-export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
+// Saved biomarkers with their latest reading and the canonical reference entry
+// (ranges/direction). The one read behind every biomarker-save surface: the Results →
+// Biomarkers status card, the Trends Overview chart tiles, and the profile passport
+// summary (#1456 — save membership IS summary inclusion; see lib/profile-summary-load).
+//
+// Ordered by the canonical saved order — positioned rows first, then unpositioned ones
+// newest-first — the SQL twin of orderSavedRefs() in lib/saved-items.ts (position is
+// set only by the Trends reorder affordance; a plain star leaves it NULL).
+export function getSavedBiomarkers(profileId: number): SavedBiomarker[] {
   const stars = (
     db
       .prepare(
-        "SELECT canonical_name FROM starred_biomarkers WHERE profile_id = ? ORDER BY created_at DESC"
+        `SELECT key FROM saved_items
+          WHERE profile_id = ? AND kind = 'biomarker'
+          ORDER BY (position IS NULL), position, created_at DESC, id DESC`
       )
-      .all(profileId) as { canonical_name: string }[]
-  ).map((r) => r.canonical_name);
+      .all(profileId) as { key: string }[]
+  ).map((r) => r.key);
   if (stars.length === 0) return [];
 
   // The latest reading, chosen over the DE-DUPED id set so it agrees with the
@@ -840,10 +905,10 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
   // when a manual reading and its imported twin share content-identity, dedup's
   // representative rule (prefer the manual, unflagged row) wins here too, so the
   // tile's flag chip matches the representative the other surfaces show (#381).
-  // Matched by the #482 FAMILY identity, so a star on "Vitamin D, 25-Hydroxy"
+  // Matched by the #482 FAMILY identity, so a save on "Vitamin D, 25-Hydroxy"
   // surfaces the newest reading of ANY family member (a fresh D3 breakdown), the
   // same series the chart shows. Binds profile_id (for DEDUP_IDS_CTE), then
-  // profile_id + the star's family key.
+  // profile_id + the saved name's family key.
   const latestStmt = db.prepare(
     `WITH ${DEDUP_IDS_CTE}
      SELECT * FROM medical_records
@@ -851,9 +916,9 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
      ORDER BY date DESC, id DESC LIMIT 1`
   );
 
-  // Fetch the canonical reference entries for all starred names in one query
+  // Fetch the canonical reference entries for all saved names in one query
   // (the table's PK is COLLATE NOCASE, so IN matches case-insensitively),
-  // rather than a per-star lookup.
+  // rather than a per-save lookup.
   const cbRows = db
     .prepare(
       `SELECT * FROM canonical_biomarkers
@@ -882,627 +947,4 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
       canonical: cb,
     };
   });
-}
-
-// ---- Immunizations ----
-
-// All recorded vaccine doses for a profile, newest first. `vaccine` is a
-// catalog/combo code (or slug); the immunizations page resolves display names
-// and schedule status via lib/immunization-catalog + lib/immunization-status.
-// De-duplicated across sources: the same dose imported from two documents (a
-// comprehensive CCD after a per-visit one) appears ONCE. Content-identity is
-// (profile_id, vaccine, date, dose_label) — the natural key of a physical dose;
-// two docs contributing the same dose share all four. Representative prefers a
-// MANUAL dose (source not a 'document:%' import) over an imported twin, then the
-// most recent id. Delete semantics are untouched: every physical row still lives
-// under its own document source and is cleared with it (clearImportedDocumentRows),
-// so deleting one of two documents leaves the other's dose to represent the group.
-// The deduped CTE binds profile_id first, then the main WHERE binds it again.
-export function getImmunizations(profileId: number): Immunization[] {
-  return db
-    .prepare(
-      `WITH imm_deduped AS (
-         SELECT id FROM (
-           SELECT id, ROW_NUMBER() OVER (
-             PARTITION BY profile_id, vaccine, date, COALESCE(dose_label, '')
-             ORDER BY (source IS NULL OR source NOT LIKE 'document:%') DESC, id DESC
-           ) AS rn
-           FROM immunizations WHERE profile_id = ?
-         ) WHERE rn = 1
-       )
-       SELECT id, date, vaccine, dose_label, notes, source, external_id, created_at,
-              provider_id,
-              (SELECT p.name FROM providers p WHERE p.id = immunizations.provider_id)
-                AS provider_name
-       FROM immunizations
-       WHERE profile_id = ? AND id IN (SELECT id FROM imm_deduped)
-       ORDER BY date DESC, id DESC`
-    )
-    .all(profileId, profileId) as Immunization[];
-}
-
-export interface ImmunizationOverrideRow {
-  vaccine: string; // catalog code the override applies to
-  kind: OverrideKind;
-  reason: string | null;
-  note: string | null;
-  created_at: string;
-}
-
-// All manual per-vaccine status overrides for a profile. Feeds the
-// pure `applyOverride` resolver in the schedule assessment and the detail view's
-// override controls.
-export function getImmunizationOverrides(
-  profileId: number
-): ImmunizationOverrideRow[] {
-  return db
-    .prepare(
-      `SELECT vaccine, kind, reason, note, created_at
-       FROM immunization_overrides WHERE profile_id = ?`
-    )
-    .all(profileId) as ImmunizationOverrideRow[];
-}
-
-// The single override in effect for one vaccine code, or null. Used by the
-// per-vaccine detail view to render its current override state.
-export function getImmunizationOverride(
-  profileId: number,
-  vaccine: string
-): ImmunizationOverrideRow | null {
-  return (db
-    .prepare(
-      `SELECT vaccine, kind, reason, note, created_at
-       FROM immunization_overrides WHERE profile_id = ? AND vaccine = ?`
-    )
-    .get(profileId, vaccine) ?? null) as ImmunizationOverrideRow | null;
-}
-
-export interface ImmunityTiter {
-  marker: string; // biomarker name as stored (canonical or raw)
-  value: string | null;
-  value_num: number | null;
-  unit: string | null;
-  date: string | null;
-  status: TiterStatus; // interpreted immune / non-immune / indeterminate
-}
-
-// Aggregate the profile's immunity/antibody titers: the latest reading per
-// biomarker whose canonical/raw name matches one of the catalog's antibody
-// markers (anti-HBs, MMR/VZV IgG, …), interpreted into an immune/non-immune
-// status. Feeds both the "Immunity titers" section and series-completeness in
-// the schedule assessment.
-export function getImmunityTiters(profileId: number): ImmunityTiter[] {
-  if (TITER_DISTINCTIVE_TOKENS.length === 0) return [];
-  // SQL prefilter on a distinctive disease token to avoid scanning every record;
-  // a true subset match always contains at least one distinctive token, so this
-  // never drops a real titer. Final precision is the JS subset match below.
-  const likeClauses = TITER_DISTINCTIVE_TOKENS.map(
-    () => `${BIOMARKER_NAME_KEY} LIKE ? ESCAPE '\\'`
-  ).join(" OR ");
-  const rows = db
-    .prepare(
-      `SELECT * FROM medical_records
-       WHERE profile_id = ?
-         AND (${likeClauses})
-       ORDER BY date DESC, id DESC`
-    )
-    .all(
-      profileId,
-      ...TITER_DISTINCTIVE_TOKENS.map((t) => likeContains(t))
-    ) as MedicalRecord[];
-
-  // Keep the latest reading per marker (rows already ordered newest-first).
-  const seen = new Set<string>();
-  const out: ImmunityTiter[] = [];
-  for (const r of rows) {
-    const marker = (r.canonical_name?.trim() || r.name).trim();
-    const recordTokens = markerNameTokens(marker);
-    if (!matchesImmunityMarker(recordTokens)) continue;
-    const key = marker.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    // Interpret from the string value, falling back to the numeric value when a
-    // titer was stored numerically (value NULL, value_num set) so a numeric
-    // anti-HBs like 45 still reads "immune" against its threshold.
-    const forStatus =
-      r.value ?? (r.value_num != null ? String(r.value_num) : null);
-    out.push({
-      marker,
-      value: r.value,
-      value_num: r.value_num,
-      unit: r.unit,
-      date: r.date,
-      status: titerImmuneStatus(forStatus, {
-        immuneAtLeast: immuneThresholdFor(marker),
-      }),
-    });
-  }
-  return out;
-}
-
-// Reconcile each record's flag against our canonical ranges: clinical high/low
-// from the reference range (overriding an over-strict or missing lab flag),
-// non-optimal from the optimal band, cleared when optimal — so the stored flag
-// never contradicts the live-computed status. Never touches 'abnormal'
-// (qualitative). Pass `ids` to limit the scan to specific rows (e.g. a
-// just-imported batch); omit to evaluate all eligible rows. Returns the number
-// of rows whose flag changed.
-// The profile-level context both flag passes judge against: sex + birthdate /
-// stored age (age-banded ranges), reproductive status and the cycle log (#718),
-// and the canonical table preloaded as a NOCASE map. Shared by reconcileFlags and
-// its preview twin below so the two can never read different context.
-function flagReconcileProfileContext(profileId: number) {
-  const cbRows = db
-    .prepare("SELECT * FROM canonical_biomarkers")
-    .all() as CanonicalBiomarker[];
-  const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
-  // Alias-aware resolution: the pure core looks a row's canonical_name up by exact
-  // (lowercased) name, so a stored row whose canonical_name is a legacy spelling or
-  // an un-migrated bare abbreviation (e.g. "RDW" before migration 103 runs) would
-  // silently MISS its entry and lose its band. Snap it onto the dataset spelling
-  // first via the shared (cached) resolver — recognized aliases/variants resolve; an
-  // unrecognized name returns unchanged (→ still no match → no flag, exactly as
-  // before). The SAME resolver the derived-index gathering uses, so both read paths
-  // are uniformly alias-aware, and the ~300-entry index is cached per vocabulary
-  // rather than rebuilt per call. Makes a future rename not require a data migration.
-  const resolve = canonicalResolver();
-  return {
-    cbByName,
-    resolve,
-    ctx: {
-      sex: getUserSex(profileId),
-      birthdate: getUserBirthdate(profileId),
-      age: getStoredAge(profileId),
-      reproductiveStatus: getUserReproductiveStatus(profileId),
-      periods: listCyclePeriods(profileId),
-    },
-  };
-}
-
-// The flag values reconcileFlags is allowed to revisit — a derived/range flag. A
-// qualitative 'abnormal'/'immune' etc. from the numeric pass's view is left alone.
-const RECONCILABLE_FLAGS = new Set([
-  "normal",
-  "non-optimal",
-  "non-optimal-high",
-  "non-optimal-low",
-  "high",
-  "low",
-]);
-
-// Preview twin of reconcileFlags: derive the flags the post-commit reconcile WILL
-// write for a NOT-yet-persisted batch of records (the reprocess preview's fresh
-// extraction), mutating each record's `flag` in place. Without this, the preview
-// diff compares post-follow-up persisted rows against pre-follow-up extraction, so
-// every app-derived flag (age-banded vitals, optimal bands, titer "immune") reads
-// as a phantom "flag → none" change on a byte-identical reprocess. Same
-// eligibility gates and the same pure cores (computeFlagReconciliation /
-// computeQualitativeFlagChanges) as reconcileFlags, so preview and commit can't
-// drift.
-export function previewReconcileFlags(
-  profileId: number,
-  records: PersistInput["records"]
-): void {
-  if (records.length === 0) return;
-  const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
-  const numericRows = records.flatMap((r, i) =>
-    r.canonical?.trim() &&
-    r.value_num != null &&
-    (r.flag == null || RECONCILABLE_FLAGS.has(r.flag))
-      ? [
-          {
-            id: i,
-            value_num: r.value_num,
-            unit: r.unit,
-            canonical_name: resolve(r.canonical),
-            flag: r.flag,
-            date: r.date,
-            reference: r.reference_range,
-          },
-        ]
-      : []
-  );
-  const qualRows = records.flatMap((r, i) =>
-    r.value_num == null && (r.category === "lab" || r.category === "biomarker")
-      ? [
-          {
-            id: i,
-            name: resolve(r.canonical?.trim() || r.name),
-            value: r.value,
-            notes: r.notes,
-            reference: r.reference_range,
-            flag: r.flag,
-            loinc: r.loinc,
-          },
-        ]
-      : []
-  );
-  for (const c of [
-    ...computeFlagReconciliation(numericRows, cbByName, ctx),
-    ...computeQualitativeFlagChanges(qualRows),
-  ]) {
-    records[c.id].flag = c.flag as PersistInput["records"][number]["flag"];
-  }
-}
-
-export function reconcileFlags(profileId: number, ids?: number[]): number {
-  // profile_id scopes every row, so an id from another profile in `ids` simply
-  // can't match — the caller's list is never trusted on its own.
-  // The revisitable-flag set is the SAME constant the preview twin gates on
-  // (RECONCILABLE_FLAGS — fixed app-controlled tokens, safe to inline in SQL), so
-  // the two eligibility checks cannot drift.
-  const reconcilable = [...RECONCILABLE_FLAGS].map((f) => `'${f}'`).join(",");
-  let sql = `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
-     WHERE profile_id = ? AND canonical_name IS NOT NULL AND value_num IS NOT NULL
-       AND (flag IS NULL OR flag IN (${reconcilable}))`;
-  const args: number[] = [profileId];
-  if (ids) {
-    if (ids.length === 0) return 0;
-    sql += ` AND id IN (${ids.map(() => "?").join(",")})`;
-    args.push(...ids);
-  }
-  // Sex/age/cycle context + the preloaded canonical map + alias-aware resolve —
-  // shared with the preview twin (flagReconcileProfileContext) so both judge against
-  // identical context AND resolve names the same way.
-  const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
-
-  const rows = (
-    db.prepare(sql).all(...args) as {
-      id: number;
-      value_num: number;
-      unit: string | null;
-      canonical_name: string;
-      flag: string | null;
-      date: string;
-      reference_range: string | null;
-    }[]
-  ).map((r) => ({
-    ...r,
-    canonical_name: resolve(r.canonical_name),
-    reference: r.reference_range,
-  }));
-
-  // The per-row flag-derivation is the pure shared decision (lib/flag-reconcile).
-  const changes = computeFlagReconciliation(rows, cbByName, ctx);
-  // Qualitative pass (#549): the numeric reconcile above bails on value_num IS NULL,
-  // so a qualitative value's extractor-guessed flag is never revisited. Route those
-  // rows through the shared classifier — promote a durable-immunity titer to "immune"
-  // (#544), clear a blunt "abnormal" on a context-neutral attribute like a blood type
-  // (#548 §1) — leaving infection markers + unrecognized values alone. Same profile
-  // scoping and optional id filter as the numeric pass.
-  let qsql = `SELECT id, canonical_name, name, value, notes, reference_range, flag, loinc
-     FROM medical_records
-     WHERE profile_id = ? AND value_num IS NULL AND category IN ('lab','biomarker')`;
-  const qargs: number[] = [profileId];
-  if (ids) {
-    qsql += ` AND id IN (${ids.map(() => "?").join(",")})`;
-    qargs.push(...ids);
-  }
-  const qrows = (
-    db.prepare(qsql).all(...qargs) as {
-      id: number;
-      canonical_name: string | null;
-      name: string;
-      value: string | null;
-      notes: string | null;
-      reference_range: string | null;
-      flag: string | null;
-      loinc: string | null;
-    }[]
-  ).map((r) => ({
-    id: r.id,
-    name: resolve(r.canonical_name?.trim() || r.name),
-    value: r.value,
-    notes: r.notes,
-    reference: r.reference_range,
-    flag: r.flag,
-    loinc: r.loinc,
-  }));
-  const qChanges = computeQualitativeFlagChanges(qrows);
-
-  const setFlag = db.prepare(
-    "UPDATE medical_records SET flag = ? WHERE id = ?"
-  );
-  const clear = db.prepare(
-    "UPDATE medical_records SET flag = NULL WHERE id = ?"
-  );
-  writeTx(() => {
-    for (const c of [...changes, ...qChanges]) {
-      if (c.flag === null) clear.run(c.id);
-      else setFlag.run(c.flag, c.id);
-    }
-  });
-  return changes.length + qChanges.length;
-}
-
-// ---- Unit-mislabel cross-check (issue #761) ----
-
-// The stable suppression key for a dismissed unit-mislabel detection. Id-keyed
-// (record ids never recycle — AUTOINCREMENT), stored in the shared findings-
-// suppression bus (upcoming_dismissals), so a Dismiss survives re-render and the
-// next reconcile without re-surfacing.
-export function unitMislabelSignalKey(recordId: number): string {
-  return `unit-mislabel:${recordId}`;
-}
-
-// One Data → Review card: a numeric lab reading whose stored unit is a probable
-// power-of-ten mislabel of the canonical unit, per detectUnitMislabel. Carries the
-// before/after the card renders and the Apply/Dismiss forms post.
-export interface UnitMislabelReview {
-  id: number;
-  name: string; // display name (canonical when known, else the raw name)
-  value: number;
-  statedUnit: string;
-  correctedUnit: string;
-  statedRange: string;
-  factor: number;
-}
-
-// Detect a probable unit mislabel for ONE stored record (shared by the Review
-// gather below and the Apply write core, so the card, the flag suppression, and
-// the correction all read the SAME detection — "one question, one computation").
-// Loads the record + its canonical entry + the profile's sex/age/status context;
-// returns null when the row isn't a numeric lab with both a stated and canonical
-// range, or the cross-check doesn't fire. Profile-scoped.
-export function detectRecordUnitMislabel(
-  profileId: number,
-  recordId: number
-): (UnitMislabelReview & { canonicalName: string }) | null {
-  const row = db
-    .prepare(
-      `SELECT id, name, canonical_name, value_num, unit, reference_range, date
-         FROM medical_records
-        WHERE id = ? AND profile_id = ?`
-    )
-    .get(recordId, profileId) as
-    | {
-        id: number;
-        name: string;
-        canonical_name: string | null;
-        value_num: number | null;
-        unit: string | null;
-        reference_range: string | null;
-        date: string | null;
-      }
-    | undefined;
-  if (!row || !row.canonical_name || row.value_num == null) return null;
-
-  const cb = getCanonicalBiomarker(row.canonical_name);
-  if (!cb) return null;
-
-  const sex = getUserSex(profileId);
-  const birthdate = getUserBirthdate(profileId);
-  const storedAge = getStoredAge(profileId);
-  const reproductiveStatus = getUserReproductiveStatus(profileId);
-  const age = ageForRecord({ sex, birthdate, age: storedAge }, row.date);
-
-  const hit = detectUnitMislabel(
-    row.reference_range,
-    row.unit,
-    row.value_num,
-    cb,
-    sex,
-    age,
-    reproductiveStatus
-  );
-  if (!hit) return null;
-
-  return {
-    id: row.id,
-    name: row.canonical_name.trim() || row.name,
-    canonicalName: row.canonical_name,
-    value: row.value_num,
-    statedUnit: row.unit as string,
-    correctedUnit: hit.corrected.unit,
-    statedRange: (row.reference_range as string).trim(),
-    factor: hit.factor,
-  };
-}
-
-// The unit-mislabel review cards for a profile (issue #761): every numeric lab
-// reading whose stored unit is a probable power-of-ten mislabel and hasn't been
-// dismissed. One canonical-map + context load, then the shared pure detector per
-// row. Profile-scoped; dismissed detections (upcoming_dismissals) are excluded.
-export function getUnitMislabelReviews(
-  profileId: number
-): UnitMislabelReview[] {
-  const rows = db
-    .prepare(
-      `SELECT id, name, canonical_name, value_num, unit, reference_range, date
-         FROM medical_records
-        WHERE profile_id = ?
-          AND canonical_name IS NOT NULL
-          AND value_num IS NOT NULL
-          AND unit IS NOT NULL
-          AND reference_range IS NOT NULL
-        ORDER BY date DESC, id DESC`
-    )
-    .all(profileId) as {
-    id: number;
-    name: string;
-    canonical_name: string;
-    value_num: number;
-    unit: string;
-    reference_range: string;
-    date: string | null;
-  }[];
-  if (rows.length === 0) return [];
-
-  const dismissed = new Set(
-    (
-      db
-        .prepare(
-          `SELECT signal_key FROM upcoming_dismissals
-            WHERE profile_id = ? AND dismissed_at IS NOT NULL
-              AND signal_key LIKE 'unit-mislabel:%'`
-        )
-        .all(profileId) as { signal_key: string }[]
-    ).map((r) => r.signal_key)
-  );
-
-  const cbByName = new Map(
-    (
-      db
-        .prepare("SELECT * FROM canonical_biomarkers")
-        .all() as CanonicalBiomarker[]
-    ).map((c) => [c.name.toLowerCase(), c])
-  );
-  // Alias-aware, like the flag path: a stored row under a legacy/abbreviation name
-  // ("MCHC" pre-migration-103) must still resolve to its canonical entry, else the
-  // scan skips it and its mislabel card never surfaces.
-  const resolve = canonicalResolver();
-  const sex = getUserSex(profileId);
-  const birthdate = getUserBirthdate(profileId);
-  const storedAge = getStoredAge(profileId);
-  const reproductiveStatus = getUserReproductiveStatus(profileId);
-
-  const out: UnitMislabelReview[] = [];
-  for (const r of rows) {
-    if (dismissed.has(unitMislabelSignalKey(r.id))) continue;
-    const cb = cbByName.get(resolve(r.canonical_name).toLowerCase());
-    if (!cb) continue;
-    const age = ageForRecord({ sex, birthdate, age: storedAge }, r.date);
-    const hit = detectUnitMislabel(
-      r.reference_range,
-      r.unit,
-      r.value_num,
-      cb,
-      sex,
-      age,
-      reproductiveStatus
-    );
-    if (!hit) continue;
-    out.push({
-      id: r.id,
-      name: r.canonical_name.trim() || r.name,
-      value: r.value_num,
-      statedUnit: r.unit,
-      correctedUnit: hit.corrected.unit,
-      statedRange: r.reference_range.trim(),
-      factor: hit.factor,
-    });
-  }
-  return out;
-}
-
-// ---- Encounters / visits ----
-
-// The id of the representative encounter for each distinct visit, collapsing the
-// per-document duplicates two overlapping CCDs produce (each portal export carries
-// the full history, so the same visit is stored once PER uploaded document — see
-// import-persist's source-scoped external_id, which keeps a per-document delete from
-// orphaning another document's copy). This is the SINGLE source of truth for that
-// collapse, shared by the Visits list, the Timeline, and Search so every read
-// surface hides the duplicates identically (the timeline/search once did NOT — the
-// user-visible "duplicate visits" bug).
-//
-// Identity prefers the CCD's own encounter id: the stored external_id is
-// source-scoped as "<document:N>|<ccda:encounter:...>", so stripping the "<source>|"
-// prefix recovers the doc-independent key and the same visit from two uploads
-// collapses even when one copy is thinner (reason/diagnoses filled in only one). A
-// row with no external_id (a manual entry) falls back to a conservative content key
-// (date/end_date/type/class_code/reason), so two genuinely distinct visits on one
-// day stay visible while identical re-imports collapse. Representative prefers a
-// MANUAL row (document_id IS NULL), then the most recent id. Takes one profile_id
-// bind param; storage / per-document delete are untouched.
-export const ENCOUNTER_REPRESENTATIVE_IDS = `
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id, COALESCE(
-        CASE WHEN external_id IS NOT NULL
-             THEN substr(external_id, instr(external_id, '|') + 1) END,
-        date || '|' || COALESCE(end_date, '') || '|' || COALESCE(type, '')
-             || '|' || COALESCE(class_code, '') || '|' || COALESCE(reason, '')
-      )
-      ORDER BY (document_id IS NULL) DESC, id DESC
-    ) AS rn
-    FROM encounters WHERE profile_id = ?
-  ) WHERE rn = 1`;
-
-// The profile's visit history, newest first. Joins the shared providers registry
-// for the attending clinician + facility display names (LEFT JOINs so an
-// unlinked/absent provider just shows blank). Profile-scoped on the encounters row,
-// de-duplicated across documents via ENCOUNTER_REPRESENTATIVE_IDS. The deduped
-// subquery binds profile_id first, then the main WHERE binds it again.
-// cache(): the dashboard's upcoming/preventive fan-out reads the visit history
-// several times per render (window passes over the same deduped set), each a
-// window-partition scan of the encounters table (#386). Single primitive arg, so
-// cache() collapses those to one scan per profile per request.
-export const getEncounters = cache(function getEncounters(
-  profileId: number
-): Encounter[] {
-  return db
-    .prepare(
-      `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
-              e.class_code, e.reason,
-              e.diagnoses, e.provider_id, p.name AS provider_name,
-              e.location_provider_id, l.name AS location_name,
-              l.address AS location_address,
-              e.notes, e.source, e.document_id, e.external_id, e.created_at
-         FROM encounters e
-         LEFT JOIN providers p ON p.id = e.provider_id
-         LEFT JOIN providers l ON l.id = e.location_provider_id
-        WHERE e.profile_id = ? AND e.id IN (${ENCOUNTER_REPRESENTATIVE_IDS})
-        ORDER BY e.date DESC, e.id DESC`
-    )
-    .all(profileId, profileId) as Encounter[];
-});
-
-// A single visit for the detail page (/encounters/[id]). Profile-scoped on BOTH id
-// AND profile_id, so a member can never open another profile's visit by guessing an
-// id. Not deduped — a detail page shows exactly the requested row. Returns null when
-// the id doesn't belong to the profile.
-export function getEncounter(profileId: number, id: number): Encounter | null {
-  return (
-    (db
-      .prepare(
-        `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
-                e.class_code, e.reason,
-                e.diagnoses, e.provider_id, p.name AS provider_name,
-                e.location_provider_id, l.name AS location_name,
-                l.address AS location_address,
-                e.notes, e.source, e.document_id, e.external_id, e.created_at
-           FROM encounters e
-           LEFT JOIN providers p ON p.id = e.provider_id
-           LEFT JOIN providers l ON l.id = e.location_provider_id
-          WHERE e.id = ? AND e.profile_id = ?`
-      )
-      .get(id, profileId) as Encounter | undefined) ?? null
-  );
-}
-
-// Visit context (#1350): this visit's same-provider continuity + same-kind-this-year
-// cadence, for the encounter page's hero. Gathers the subject visit + every OTHER
-// deduped visit, maps each to its coarse kind (#1319), and hands the pure engine the
-// ordinal math. Returns null when the visit doesn't exist or has no continuity to show
-// (a genuine first visit stays silent — the #489 absent-pillar rule).
-export function visitContextForEncounter(
-  profileId: number,
-  encounterId: number
-): VisitContext | null {
-  const current = getEncounter(profileId, encounterId);
-  if (!current) return null;
-  const kindOf = (e: Encounter) =>
-    encounterKind({
-      classCode: e.class_code,
-      code: e.code,
-      codeSystem: e.code_system,
-      type: e.type,
-    });
-  const others = getEncounters(profileId)
-    .filter((e) => e.id !== encounterId)
-    .map((e) => ({
-      date: e.date,
-      providerId: e.provider_id,
-      kind: kindOf(e),
-    }));
-  return visitContext(
-    {
-      date: current.date,
-      providerId: current.provider_id,
-      providerName: current.provider_name,
-      kind: kindOf(current),
-    },
-    others
-  );
 }

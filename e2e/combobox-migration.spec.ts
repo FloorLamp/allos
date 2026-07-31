@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Combobox migration (#1176/#1177): the native <datalist> autocompletes are now the
 // shared Combobox. This drives the three behaviours the migration adds that the native
@@ -14,7 +15,7 @@ import { settledClick } from "./helpers";
 // marker and a raw-connection cleanup runs before AND after, so it only ever touches
 // rows it created and stays idempotent across CI retries. The provider registry is
 // GLOBAL, so the created providers are deleted by name here.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 const TOOTH = "96"; // out of the seeded 1–32 range → collision-free
 const FINDING = "E2EComboFinding";
@@ -165,42 +166,49 @@ test.describe("Combobox migration (#1176/#1177)", () => {
   }) => {
     test.slow();
     await page.goto("/nutrition?tab=supplements");
-    const addCard = page.getByTestId("add-supplement-card");
-    await expect(addCard).toBeVisible();
+    // The add-mode SupplementForm lives behind the "Add supplement" modal now.
+    await page.getByTestId("supplement-add-toggle").click();
+    let addForm = page.getByRole("dialog", { name: "Add supplement" });
+    await expect(addForm).toBeVisible();
 
     // Create a situational supplement keyed to a brand-NEW situation via create-on-type.
-    const nameField = addCard.getByRole("combobox", {
+    const nameField = addForm.getByRole("combobox", {
       name: "Name",
       exact: true,
     });
     await nameField.fill(SUPP);
-    await addCard.getByLabel("When").selectOption("situational");
-    const situation = addCard.getByRole("combobox", {
+    await addForm.getByLabel("When").selectOption("situational");
+    const situation = addForm.getByRole("combobox", {
       name: "Situation",
       exact: true,
     });
     await situation.fill(CUSTOM_SITUATION);
-    await addCard
+    await addForm
       .getByRole("listbox")
       .getByRole("button", { name: new RegExp(`Use .*${CUSTOM_SITUATION}`) })
       .click();
     await settledClick(
       page,
-      addCard.getByRole("button", { name: "Add", exact: true })
+      addForm.getByRole("button", { name: "Add", exact: true })
     );
-    // Add resets the form's Name field on success.
-    await expect(nameField).toHaveValue("");
+    // Add closes the modal on success (the reset-on-reopen contract lives in
+    // supplement-add-reset.spec.ts).
+    await expect(addForm).toHaveCount(0);
 
     // The custom situation is now part of the profile's vocabulary, so re-opening the
     // picker OFFERS it — the datalist's canned-only option source (the #1177 defect)
     // would never surface it. A fuzzy fragment finds it.
-    await nameField.fill("another");
-    await addCard.getByLabel("When").selectOption("situational");
-    await addCard
+    await page.getByTestId("supplement-add-toggle").click();
+    addForm = page.getByRole("dialog", { name: "Add supplement" });
+    await addForm
+      .getByRole("combobox", { name: "Name", exact: true })
+      .fill("another");
+    await addForm.getByLabel("When").selectOption("situational");
+    await addForm
       .getByRole("combobox", { name: "Situation", exact: true })
       .fill("E2EMig");
     await expect(
-      addCard
+      addForm
         .getByRole("listbox")
         .getByRole("button")
         .filter({ hasText: CUSTOM_SITUATION })
@@ -216,7 +224,9 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // replacement must dismiss too (on blur / pointerdown-outside) or its overlay eats
     // the next control's click (the shard-1 `dose-history` interception).
     await page.goto("/nutrition?tab=supplements");
-    const addCard = page.getByTestId("add-supplement-card");
+    // The add-mode SupplementForm lives behind the "Add supplement" modal now.
+    await page.getByTestId("supplement-add-toggle").click();
+    const addCard = page.getByRole("dialog", { name: "Add supplement" });
     await expect(addCard).toBeVisible();
 
     const amount = addCard.getByLabel("Amount");

@@ -170,8 +170,8 @@ function insertMed(
     db
       .prepare(
         `INSERT INTO intake_items
-           (name, kind, condition, priority, active, prescriber, provider_id, notes, source, profile_id)
-         VALUES (?, 'medication', 'daily', 'high', 1, ?, ?, ?, 'manual', ?)`
+           (name, kind, condition, obligation, active, prescriber, provider_id, notes, source, profile_id)
+         VALUES (?, 'medication', 'daily', 'should', 1, ?, ?, ?, 'manual', ?)`
       )
       .run(
         over.name ?? "Amoxicillin",

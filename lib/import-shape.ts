@@ -1,5 +1,7 @@
 import type {
+  AllergyCriticality,
   AllergyStatus,
+  AllergyVerificationStatus,
   AppointmentKind,
   AppointmentStatus,
   ConditionStatus,
@@ -7,7 +9,7 @@ import type {
   MedicalFlag,
   Sex,
 } from "./types";
-import type { ExtractionResult } from "./medical-extract";
+import type { ExtractedConfidence, ExtractionResult } from "./medical-extract";
 import type {
   ImportResult,
   ImportedProvider,
@@ -20,9 +22,20 @@ import {
   type ImportReport,
   type ReconciliationSummary,
 } from "./import-report";
+import {
+  summarizeExtractionConfidence,
+  type ConfidenceItem,
+  type ConfidenceKind,
+} from "./extraction-confidence";
 import canonicalSeed from "./canonical-biomarkers.json";
 import { normalizeCanonicalKey } from "./canonical-name";
-import { toAllergyStatus, toConditionStatus } from "./clinical-parse";
+import {
+  toAllergyCriticality,
+  toAllergyStatus,
+  toAllergyVerificationStatus,
+  toConditionStatus,
+  toImmunizationRoute,
+} from "./clinical-parse";
 import {
   normalizeResultType,
   normalizeSignificance,
@@ -116,6 +129,14 @@ export interface PersistRecord {
   // The performing provider (CCD observation <performer>), resolved into the
   // shared registry and linked via provider_id. Null on the AI path.
   provider: ImportedProvider | null;
+  // The result LIFECYCLE + collection attributes (#1404), when the source states
+  // them: FHIR `Observation.status` on the deterministic path, the printed
+  // "CORRECTED REPORT" / "Fasting: Yes" / "Specimen: Serum" lines on the AI path.
+  // Optional so existing PersistRecord constructors need no change; every adapter
+  // sets them (null when the document doesn't say).
+  result_status?: string | null;
+  fasting?: number | null;
+  specimen?: string | null;
   // Derived medication COURSES, set only on prescription records by
   // the deterministic CCD/FHIR path; null/absent on the AI path (which has no
   // structured period/status). The persist layer creates medication_courses from
@@ -145,6 +166,12 @@ export interface PersistImmunization {
   vaccine: string; // catalog/combo/slug code
   dose_label: string | null;
   notes: string | null;
+  // Administration attributes (#1406). Optional so existing PersistInput literals
+  // (the DB-tier fixtures) need no change; persist reads them with `?? null`.
+  lot_number?: string | null;
+  route?: string | null;
+  site?: string | null;
+  reaction?: string | null;
   external_id: string | null;
   // The administering provider (CCD <performer>), resolved + linked.
   provider: ImportedProvider | null;
@@ -161,8 +188,17 @@ export interface PersistAllergy {
   reaction: string | null;
   severity: string | null;
   status: AllergyStatus;
+  // Safety attributes (#1405), already normalized to the CHECK sets (or null for
+  // unstated). Optional so existing PersistInput literals need no change.
+  criticality?: AllergyCriticality | null;
+  verification_status?: AllergyVerificationStatus | null;
   onset_date: string | null;
   external_id: string | null;
+  // Tier-1 visit link (#1526): the Encounter this AllergyIntolerance referenced
+  // (AllergyIntolerance.encounter in R4/R5). The persist layer resolves it to the local
+  // encounter row and stamps encounter_id, exactly as it does for conditions and
+  // procedures. Null/absent on the AI and CDA paths (neither carries the reference).
+  encounter_external_id?: string | null;
 }
 
 export interface PersistCondition {
@@ -491,6 +527,70 @@ function providerFromName(
 // AI extraction → PersistInput. `fallbackDate` is the caller-resolved date used
 // for results without a real collected_date (document date, else today in the
 // profile's timezone); passed in so this stays pure.
+// Flatten a done extraction into the per-row confidence items the report summary is
+// built from (#1601): one item per row the model emitted, in DOCUMENT order, labelled
+// with the row's own identity (the analyte / condition / substance …) — the same
+// identity the Dropped list uses — so a flagged row can be found on the page.
+//
+// Exported for the pure tier: this is the ONE place the extraction's shapes are turned
+// into confidence items, so the detail card, the Review feed badge, and the tests all
+// rank the same list.
+export function extractionConfidenceItems(
+  result: Extract<ExtractionResult, { status: "done" }>
+): ConfidenceItem[] {
+  const item = (
+    kind: ConfidenceKind,
+    label: string,
+    row: ExtractedConfidence
+  ): ConfidenceItem => ({
+    kind,
+    label,
+    // Already normalized at the extract boundary (normalizeClinicalDomains /
+    // normalizeResults); absent on a legacy replay, which is a legitimate "unknown".
+    confidence: row.confidence ?? null,
+    reason: row.confidence_reason ?? null,
+  });
+  return [
+    ...result.results.map((r) =>
+      item(
+        r.category === "prescription"
+          ? "medication"
+          : r.category === "vitals"
+            ? "vitals"
+            : "lab",
+        r.name,
+        r
+      )
+    ),
+    ...result.immunizations.map((i) => item("immunization", i.vaccine, i)),
+    ...result.conditions.map((c) => item("condition", c.name, c)),
+    ...result.allergies.map((a) => item("allergy", a.substance, a)),
+    ...result.procedures.map((p) => item("procedure", p.name, p)),
+    ...result.encounters.map((e) => item("encounter", e.type ?? "Visit", e)),
+    ...result.familyHistory.map((f) =>
+      item(
+        "family_history",
+        f.relation ? `${f.relation}: ${f.condition}` : f.condition,
+        f
+      )
+    ),
+    ...result.carePlanItems.map((c) => item("care_plan", c.description, c)),
+    ...result.careGoals.map((g) => item("care_goal", g.description, g)),
+    ...(result.genomicVariants ?? []).map((v) =>
+      item("genomic_variant", v.gene, v)
+    ),
+    ...(result.imagingStudies ?? []).map((s) =>
+      item("imaging_study", s.body_region ?? s.modality ?? "Imaging study", s)
+    ),
+    ...(result.opticalPrescriptions ?? []).map((p) =>
+      item("optical_prescription", p.kind ?? "Optical prescription", p)
+    ),
+    ...(result.dentalProcedures ?? []).map((d) =>
+      item("dental_procedure", d.name ?? "Dental record", d)
+    ),
+  ];
+}
+
 export function extractionToPersistInput(
   result: Extract<ExtractionResult, { status: "done" }>,
   fallbackDate: string
@@ -559,6 +659,13 @@ export function extractionToPersistInput(
       external_id: null,
       loinc: null,
       provider: null,
+      // The lifecycle + collection attributes the model read off the page (#1404):
+      // a "CORRECTED REPORT" banner, a "Fasting: Yes" line, a printed specimen.
+      // Null whenever the document doesn't state one (the persist boundary
+      // normalizes an unrecognized word to null rather than guessing).
+      result_status: r.result_status ?? null,
+      fasting: r.fasting ?? null,
+      specimen: r.specimen ?? null,
       // Structured medication period (a single open course from the printed start
       // date) + attribution, when the label carried them (#414); else null and the
       // persist layer's parsePrescription fallback fills what it can.
@@ -602,6 +709,10 @@ export function extractionToPersistInput(
     vaccine: im.vaccine,
     dose_label: im.dose_label,
     notes: im.notes,
+    lot_number: im.lot_number ?? null,
+    route: toImmunizationRoute(im.route),
+    site: im.site ?? null,
+    reaction: im.reaction ?? null,
     external_id: null,
     provider: null,
   }));
@@ -612,6 +723,8 @@ export function extractionToPersistInput(
     reaction: a.reaction,
     severity: a.severity,
     status: toAllergyStatus(a.status),
+    criticality: toAllergyCriticality(a.criticality),
+    verification_status: toAllergyVerificationStatus(a.verification_status),
     onset_date: a.onset_date,
     external_id: null,
   }));
@@ -855,6 +968,13 @@ export function extractionToPersistInput(
     unmappedLoincs: [],
     unresolvedNames,
     reconciliation,
+    // Per-record confidence (#1601): the model's own certainty per row, summarized
+    // and ranked lowest-first for the review surfaces. Null when NO row carried one
+    // (a replay of a pre-#1601 stored extraction), so "the model was sure" stays
+    // distinguishable from "nobody asked".
+    confidence: summarizeExtractionConfidence(
+      extractionConfidenceItems(result)
+    ),
   };
 
   return {
@@ -931,6 +1051,11 @@ export function healthRecordToPersistInput(
     external_id: r.external_id,
     loinc: r.loinc ?? null,
     provider: r.provider ?? null,
+    // FHIR `Observation.status` (#1404) when the bundle stated one; the CCD path
+    // leaves it null (C-CDA's observation statusCode is a completion state, not the
+    // preliminary/corrected/amended result lifecycle, so mapping it would invent a
+    // claim the document never made).
+    result_status: r.result_status ?? null,
     // Derived medication courses ride on prescription records.
     courses: r.courses ?? null,
     // Structured attribution rides on prescription records (#417).
@@ -1010,6 +1135,7 @@ export function healthRecordToPersistInput(
       status: a.status,
       onset_date: a.onset_date,
       external_id: a.external_id,
+      encounter_external_id: a.encounter_external_id ?? null,
     })),
     conditions: (parsed.conditions ?? []).map((c) => ({
       name: c.name,

@@ -13,7 +13,7 @@ import {
 } from "./queries/metrics";
 import {
   getMedicalRecords,
-  getStarredBiomarkers,
+  getSavedBiomarkers,
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
@@ -45,6 +45,7 @@ import {
 import type { MedicationCourse } from "./types";
 import { medicationDoseDetail } from "./medication-list";
 import type { MedicalRecord } from "./types";
+import { isPrn } from "./supplement-schedule";
 
 // Server-side gathering for the profile passport: it runs the
 // individual profile-scoped latest-value queries and hands the raw results to the
@@ -100,7 +101,15 @@ export function getProfileSummary(
     starred: false,
   }));
 
-  const starred: SummaryVital[] = getStarredBiomarkers(profileId).map((s) => ({
+  // THE SAVE→PASSPORT CONTRACT (#1456). A saved biomarker (the ★ star gesture, now
+  // one row in `saved_items` where kind='biomarker') is the user's answer to "this one
+  // matters to me" — and that answer is deliberately load-bearing HERE: every saved
+  // biomarker's latest reading is included in the passport summary's vitals, flagged or
+  // not. This was an undocumented side effect of the old starred_biomarkers store;
+  // unifying the store promoted it to a stated contract, pinned by
+  // lib/__db_tests__/saved-items.test.ts ("a saved biomarker enters the summary vitals").
+  // Changing what `saved` means to this function changes what a shared passport shows.
+  const starred: SummaryVital[] = getSavedBiomarkers(profileId).map((s) => ({
     name: s.canonical_name,
     value:
       s.latest_value ??
@@ -142,7 +151,7 @@ export function getProfileSummary(
       // Emergency Card / passport and the printable list can't drift on dose text.
       const detail = medicationDoseDetail(
         medDoseAmounts.get(s.id) ?? [],
-        s.as_needed === 1,
+        isPrn(s),
         s.product
       );
       return {
@@ -216,6 +225,7 @@ export function getProfileSummary(
     reaction: a.reaction,
     severity: a.severity,
     status: a.status,
+    criticality: a.criticality,
     origin: a.origin,
     evidence: a.evidence
       ? `${a.evidence.marker}${

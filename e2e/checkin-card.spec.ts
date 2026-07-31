@@ -1,6 +1,6 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type Locator } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledCheck, settledClick } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
@@ -9,6 +9,7 @@ import {
   E2E_MEMBER_PASSWORD,
   WELL_SYMPTOM_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The recomposed "How are you today?" check-in card (issues #1314 / #1311 / #1313).
 // Covers the four-section CheckInSection grammar, the merged "What's going on?" chip
@@ -87,7 +88,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // Expand Rate → the detail edits, and the collapsed summary is a formatter over it.
     await card.getByTestId("checkin-section-rate-toggle").click();
     await expect(card.getByTestId("mood-detail")).toBeVisible();
-    await card.getByTestId("mood-energy-3").click();
+    await settledClick(page, card.getByTestId("mood-energy-3"));
     await expect(card.getByTestId("mood-status")).toContainText("energy 3");
   });
 
@@ -103,16 +104,24 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await tapMood(page, card, 3);
     await card.getByTestId("checkin-section-context-toggle").click();
 
-    // The day-factor (today-only) half writes to the mood log's factors. The card is
-    // hydrated (tapMood already round-tripped a write), so a single click is safe;
-    // settle on the server-truth marker.
+    // The day-factor (today-only) half writes to the mood log's factors. The chip fires
+    // a Server Action whose RESULT the next assertion reads, so it goes through
+    // settledClick — helpers.ts decision-tree case 1 (a bare click here was the #1464
+    // flake's exposure).
     const work = card.getByTestId("checkin-day-factor-work");
     await expect(work).toBeVisible();
     await expect(work).toHaveAttribute("aria-pressed", "false");
-    await work.click();
+    await settledClick(page, work);
+    // The marker re-renders from the DASHBOARD's server props, so this waits on a full
+    // RSC refresh of the app's heaviest page — not just the write. The write itself is
+    // already done (settledClick awaited its POST; #1464 confirmed the row always lands,
+    // 9/9 on failing runs), so the only thing left to tolerate is that refresh. Budgeted
+    // like its sibling situation assertion below rather than the 5 s default, which a
+    // loaded runner overshoots — the #1464 flake.
     await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
       "data-factors",
-      "work"
+      "work",
+      { timeout: 15_000 }
     );
 
     // Persisted: reload, re-expand Context, the day chip is still pressed.
@@ -127,9 +136,9 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // toggles active and survives a reload independently of the mood log.
     const travel = card.getByTestId("checkin-situation-Travel");
     await expect(travel).toHaveAttribute("aria-pressed", "false");
-    await travel.click();
+    await settledClick(page, travel);
     await expect(travel).toHaveAttribute("aria-pressed", "true", {
-      timeout: 10_000,
+      timeout: 15_000,
     });
     await page.reload();
     await card.getByTestId("checkin-section-context-toggle").click();
@@ -163,7 +172,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // + revalidate + router.refresh), so it's a form-owned signal immune to the
     // settings page's other POSTs and to any read-after-write timing. THEN reload and
     // confirm the persisted opt-in.
-    await page.goto("/settings/profile");
+    await page.goto("/settings/coaching");
     const optIn = page.getByTestId("anxiety-scale-enabled");
     await settledCheck(page, optIn, true);
     await expect(
@@ -198,9 +207,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
 // The fixture's symptom / mood / coaching rows, reset before each test so --repeat-each
 // starts clean (#868 fixture ownership) — the same direct-DB reset coaching-rest-card uses.
 function resetWellSymptomState(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -275,5 +282,72 @@ test.describe("Well-day symptom logging + burden tilt (#1300)", () => {
       });
     }).toPass({ timeout: 20_000 }); // topass-ok: re-read the reloaded coaching card until the tilt reflects the committed symptom log — idempotent read
     await expect(coachingCard).toContainText("easier session");
+  });
+});
+
+// ---- The auto-paused check-in, made visible (issue #1668) ----
+//
+// The evening reminder auto-pauses after quiet days. The mechanism is right (#992 — a
+// disengaged user must not be nagged), but the SILENCE read as "notifications broke"
+// and there was no in-app trace or way to resume short of remembering to log a mood.
+// The paused state is DERIVED (the ignored streak), never a stored flag, so this drives
+// it by setting that streak directly and asserting the card presents and clears it.
+test.describe("mood check-in auto-pause visibility (#1668)", () => {
+  // Set the profile's ignored-send streak, the state shouldSendMoodCheckin reads.
+  function setIgnoredStreak(profileName: string, count: number): void {
+    const db = new Database(workerDbPath());
+    try {
+      db.pragma("busy_timeout = 5000");
+      const row = db
+        .prepare("SELECT id FROM profiles WHERE name = ?")
+        .get(profileName) as { id: number } | undefined;
+      if (!row) throw new Error(`no profile ${profileName}`);
+      db.prepare(
+        `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'mood_checkin_enabled', '1')
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+      ).run(row.id);
+      db.prepare(
+        `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'mood_checkin_ignored', ?)
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+      ).run(row.id, String(count));
+    } finally {
+      db.close();
+    }
+  }
+
+  test("a paused check-in says so on the card, and Resume clears it", async ({
+    page,
+  }) => {
+    test.slow();
+    // createProfileViaFamily uniquifies the label — use the name it actually made.
+    const profile = await createProfileViaFamily(page, "checkinpause");
+    setIgnoredStreak(profile, 5); // at the auto-pause line
+    await page.goto("/");
+
+    const card = page.getByTestId("how-are-you-card");
+    await expect(card).toBeVisible();
+
+    // The pause is stated — no guilt, no streak language.
+    const banner = card.getByTestId("mood-checkins-paused");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("paused");
+
+    // Resume is one tap, and the banner goes with it (the streak reset is the same
+    // write logging a mood performs).
+    await settledClick(page, card.getByTestId("mood-checkins-resume"));
+    await expect(card.getByTestId("mood-checkins-paused")).toHaveCount(0, {
+      timeout: 20_000, // named ceiling: server action + dashboard re-render
+    });
+  });
+
+  test("a running check-in shows no paused state at all", async ({ page }) => {
+    test.slow();
+    const profile = await createProfileViaFamily(page, "checkinrunning");
+    setIgnoredStreak(profile, 0);
+    await page.goto("/");
+
+    const card = page.getByTestId("how-are-you-card");
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId("mood-checkins-paused")).toHaveCount(0);
   });
 });

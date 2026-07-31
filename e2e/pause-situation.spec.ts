@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick } from "./helpers";
 
 // Pause-during-situation (#1296): the INVERSE situational condition. This spec OWNS its
@@ -16,32 +16,29 @@ test("a pause link holds the item while its situation is active, then resumes", 
   await page.goto("/nutrition?tab=supplements");
 
   // ── Add a daily supplement paused during a unique situation ─────────────────
-  const addCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add supplement" });
-  await addCard.getByLabel("Name").fill(SUPP);
-  await addCard.getByLabel("Pause during situation").fill(SITUATION);
+  await page.getByTestId("supplement-add-toggle").click();
+  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+  await addDialog.getByLabel("Name").fill(SUPP);
+  await addDialog.getByLabel("Pause during situation").fill(SITUATION);
   await settledClick(
     page,
-    addCard.getByRole("button", { name: "Add", exact: true })
+    addDialog.getByRole("button", { name: "Add", exact: true })
   );
 
-  // The item lands. Linking the pause created the situation ROW, so its chip now
-  // exists in the situations bar (starts inactive).
-  const bar = page.getByTestId("situations-bar");
-  const chip = bar.getByRole("button", { name: SITUATION, exact: true });
+  // Linking the pause created the situation row. The dashboard context surface owns
+  // activation; Supplements only consumes the resulting schedule state.
+  await page.goto("/");
+  const checkin = page.getByTestId("how-are-you-card");
+  await checkin.getByTestId("checkin-section-context-toggle").click();
+  const chip = checkin.getByTestId(`checkin-situation-${SITUATION}`);
   await expect(chip).toBeVisible();
   await expect(chip).toHaveAttribute("aria-pressed", "false");
 
   // ── Activate the situation → the item is HELD ───────────────────────────────
   await settledClick(page, chip);
-  await expect(
-    page.getByTestId("situations-bar").getByRole("button", {
-      name: SITUATION,
-      exact: true,
-    })
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(chip).toHaveAttribute("aria-pressed", "true");
 
+  await page.goto("/nutrition?tab=supplements");
   const heldSection = page.getByTestId("held-section");
   await expect(heldSection).toBeVisible();
   await expect(
@@ -50,13 +47,17 @@ test("a pause link holds the item while its situation is active, then resumes", 
   await expect(heldSection.getByText(SUPP)).toBeVisible();
 
   // ── Deactivate → the hold lifts the same day (item leaves the Held section) ──
+  await page.goto("/");
+  const checkinAgain = page.getByTestId("how-are-you-card");
+  await checkinAgain.getByTestId("checkin-section-context-toggle").click();
   await settledClick(
     page,
-    page.getByTestId("situations-bar").getByRole("button", {
-      name: SITUATION,
-      exact: true,
-    })
+    checkinAgain.getByTestId(`checkin-situation-${SITUATION}`)
   );
+  await expect(
+    checkinAgain.getByTestId(`checkin-situation-${SITUATION}`)
+  ).toHaveAttribute("aria-pressed", "false");
+  await page.goto("/nutrition?tab=supplements");
   await expect(page.getByTestId("held-section")).toHaveCount(0);
 
   // ── Clean up: delete the supplement this spec created ───────────────────────

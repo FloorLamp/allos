@@ -6,6 +6,13 @@
 // lib/grants.ts and the deletion guards in lib/family-deletion.ts.
 
 import { grantSignature, type Access } from "@/lib/grants";
+import { plural } from "@/lib/plural";
+import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
+
+// `plural` used to be defined here. It's domain-free copy machinery, so it moved
+// to lib/plural.ts (#1447) — re-exported so this module's existing callers and
+// tests keep importing it from where they always have.
+export { plural };
 
 // The member logins (with their granted profile ids) that a profile deletion
 // would consult — computed from the grant matrix. Admins are excluded (they
@@ -17,11 +24,6 @@ export function memberGrantList(
   return logins
     .filter((a) => a.role === "member")
     .map((a) => ({ username: a.username, profileIds: grants[a.id] ?? [] }));
-}
-
-// Tiny count-aware word picker for the deletion summary line.
-export function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
 }
 
 // The itemized "This erases …" clause for a profile-deletion confirmation, or a
@@ -43,6 +45,59 @@ export function deletionErasesText(
     `${summary.medicalRecords} medical ${plural(summary.medicalRecords, "record", "records")}, ` +
     `and ${summary.documents} ${plural(summary.documents, "document", "documents")}`
   );
+}
+
+// ---- Profile choice labels (issue #1434 part D / the #534 rule) ----
+
+// The label for every profile a grant/access control offers — the ONE place the
+// Family screen turns profile rows into choosable options. Profile names carry no
+// uniqueness constraint, so two "Jordan" profiles otherwise render as identical
+// checkbox rows in exactly the place where granting the wrong one matters most.
+// Runs the same `disambiguateProfileNames` the switcher and household chips use, so
+// a profile reads with the SAME distinguishing ordinal everywhere it can be picked.
+// Order is preserved (the caller's id order); only the label changes.
+export function profileChoiceLabels<T extends { id: number; name: string }>(
+  profiles: readonly T[]
+): { id: number; label: string; profile: T }[] {
+  const labels = disambiguateProfileNames(profiles);
+  return profiles.map((p) => ({
+    id: p.id,
+    label: labels.get(p.id) ?? p.name,
+    profile: p,
+  }));
+}
+
+// The initial-access selection a new member login should default to: the profile
+// that shares the username being typed, when exactly such a profile exists (issue
+// #1434 part B). "Create a login for Jordan" almost always means "…who is the
+// Jordan profile", so the common case needs no extra thought — but an AMBIGUOUS
+// name (two "Jordan" profiles) defaults to NOTHING rather than guessing which
+// person the admin meant. Comparison is the same normalization
+// disambiguateProfileNames uses (case-insensitive, whitespace-collapsed).
+export function defaultAccessSelection<T extends { id: number; name: string }>(
+  username: string,
+  profiles: readonly T[]
+): number[] {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  const key = norm(username);
+  if (!key) return [];
+  const matches = profiles.filter((p) => norm(p.name) === key);
+  return matches.length === 1 ? [matches[0].id] : [];
+}
+
+// Whether adding a profile with this name would duplicate one that already exists
+// (issue #1434 part D companion). Names aren't unique-constrained — and a
+// double-submit during the invite walkthrough silently created two "Jordan"
+// profiles — so the create affordance asks for a soft confirmation first. A
+// deliberate second "Jordan" is still allowed; it just can't happen by accident.
+export function isDuplicateProfileName<T extends { name: string }>(
+  name: string,
+  profiles: readonly T[]
+): boolean {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  const key = norm(name);
+  if (!key) return false;
+  return profiles.some((p) => norm(p.name) === key);
 }
 
 // ---- Grant-matrix row selection (client state, pure transforms) ----

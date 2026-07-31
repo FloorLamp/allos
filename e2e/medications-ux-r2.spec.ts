@@ -1,5 +1,6 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
-import { followLink } from "./helpers";
+import { test, expect } from "./fixtures";
+import { type Page, type Locator } from "@playwright/test";
+import { expandUpcomingAggregates, followLink } from "./helpers";
 import {
   medicationRow,
   refillRunOut,
@@ -45,6 +46,9 @@ test("item 1: Today panel orders scheduled rows by bucket — same order as Upco
 
   // Upcoming derives the SAME order from the shared doseSortKey sortHint.
   await page.goto("/upcoming");
+  // Upcoming folds its dose rows (#1504); the ORDER inside the fold is the same
+  // shared doseSortKey the Today panel uses, which is what this compares.
+  await expandUpcomingAggregates(page.getByRole("main"), "dose");
   await expect(page.getByText(ZETA).first()).toBeVisible(); // first-ok: ZETA is a unique med marker THIS spec created — order-agnostic
   expect(await topOf(page.getByRole("main"), ZETA)).toBeLessThan(
     await topOf(page.getByRole("main"), ALPHA)

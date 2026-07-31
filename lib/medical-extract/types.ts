@@ -2,7 +2,22 @@
 // extraction yields, and the ExtractionResult union the pipeline returns.
 import type { MedicalCategory, MedicalFlag, Sex } from "../types";
 import type { ImportDrop } from "../import-report";
+import type { ExtractionConfidence } from "../extraction-confidence";
 import type { ReconcileReport } from "./reconcile";
+
+// Per-record certainty (#1601), mixed into every extracted record shape below. The
+// model answers a coarse high/medium/low per row, plus a short why for a non-high
+// one, so the review surfaces can put the rows it hedged on FIRST instead of making
+// a reviewer triage a 40-row import linearly.
+//
+// OPTIONAL on purpose (the #709/#702 fixture convention, and the graceful-degradation
+// rule): a keyless/offline extraction, a deterministic CCD/FHIR import, and a stored
+// pre-#1601 extraction all carry no confidence at all. Absent means UNKNOWN — never
+// a synthetic "low" — and nothing gates on it: confidence orders attention only.
+export interface ExtractedConfidence {
+  confidence?: ExtractionConfidence | null;
+  confidence_reason?: string | null;
+}
 
 // Structured prescription fields the model reads straight off a pharmacy label /
 // medication order (#414). Emitted ONLY on `category === 'prescription'` results,
@@ -22,7 +37,7 @@ export interface ExtractedPrescription {
   start_date: string | null; // YYYY-MM-DD the course started, when printed
 }
 
-export interface ExtractedResult {
+export interface ExtractedResult extends ExtractedConfidence {
   category: MedicalCategory;
   panel: string | null;
   name: string;
@@ -40,16 +55,34 @@ export interface ExtractedResult {
   // Optional so existing ExtractedResult constructors (test fixtures) need no
   // change; normalizeResults always sets it (null when absent).
   prescription?: ExtractedPrescription | null;
+  // The result LIFECYCLE + collection attributes a lab report PRINTS (#1404), when
+  // it prints them: a "CORRECTED REPORT" / "Preliminary" banner, a "Fasting: Yes"
+  // line, a "Specimen: Serum" line. All null when the document is silent — an
+  // unstated status is not 'final', and an unstated fasting state is not
+  // "non-fasting". Optional for the same fixture reason as `prescription`;
+  // normalizeResults always sets them.
+  result_status?: string | null;
+  fasting?: number | null;
+  specimen?: string | null;
 }
 
 // One vaccine administration extracted from an immunization record / vaccine
 // card. `vaccine` is the name/brand exactly as printed; it's normalized to a
 // catalog code by lib/immunization-extract (never dropped — slug fallback).
-export interface ExtractedImmunization {
+export interface ExtractedImmunization extends ExtractedConfidence {
   vaccine: string;
   date: string | null; // YYYY-MM-DD
   dose_label: string | null;
   notes: string | null;
+  // Administration attributes printed on a vaccine card / immunization record
+  // (#1406). Raw strings; `route` is mapped onto the CHECK-pinned vocabulary in
+  // import-shape, and anything unrecognized lands as NULL rather than a guess.
+  // OPTIONAL (the #709/#702 fixture convention) so existing done-result fixtures
+  // need no change; the real extract path always sets them.
+  lot_number?: string | null;
+  route?: string | null;
+  site?: string | null;
+  reaction?: string | null;
 }
 
 // The clinical-narrative domains the AI extractor now emits (parity with the
@@ -57,7 +90,7 @@ export interface ExtractedImmunization {
 // stay as the model's raw string (normalized to the CHECK sets in import-shape),
 // dates are already coerced to strict ISO-or-null, and providers/facilities are
 // captured as plain names (resolved into the shared providers registry on persist).
-export interface ExtractedCondition {
+export interface ExtractedCondition extends ExtractedConfidence {
   name: string;
   code: string | null;
   code_system: string | null;
@@ -66,24 +99,29 @@ export interface ExtractedCondition {
   resolved_date: string | null; // YYYY-MM-DD
 }
 
-export interface ExtractedAllergy {
+export interface ExtractedAllergy extends ExtractedConfidence {
   substance: string;
   substance_code: string | null;
   substance_code_system: string | null;
   reaction: string | null;
   severity: string | null;
   status: string | null; // raw clinical status; normalized in import-shape
+  // FHIR criticality / verificationStatus as printed (#1405). Raw strings,
+  // normalized to the CHECK sets in import-shape; unrecognized → NULL (unstated),
+  // never a guessed 'confirmed'. OPTIONAL for the same fixture reason as above.
+  criticality?: string | null;
+  verification_status?: string | null;
   onset_date: string | null; // YYYY-MM-DD
 }
 
-export interface ExtractedProcedure {
+export interface ExtractedProcedure extends ExtractedConfidence {
   name: string;
   code: string | null;
   code_system: string | null;
   date: string | null; // YYYY-MM-DD
 }
 
-export interface ExtractedEncounter {
+export interface ExtractedEncounter extends ExtractedConfidence {
   date: string; // YYYY-MM-DD (required — a dateless encounter is dropped)
   end_date: string | null; // YYYY-MM-DD
   type: string | null;
@@ -95,7 +133,7 @@ export interface ExtractedEncounter {
   notes: string | null;
 }
 
-export interface ExtractedFamilyHistory {
+export interface ExtractedFamilyHistory extends ExtractedConfidence {
   relation: string | null;
   condition: string;
   code: string | null;
@@ -104,7 +142,7 @@ export interface ExtractedFamilyHistory {
   deceased: number | null; // 1/0/null
 }
 
-export interface ExtractedCarePlanItem {
+export interface ExtractedCarePlanItem extends ExtractedConfidence {
   description: string;
   code: string | null;
   code_system: string | null;
@@ -113,7 +151,7 @@ export interface ExtractedCarePlanItem {
   status: string | null; // free-text passthrough (no enum)
 }
 
-export interface ExtractedCareGoal {
+export interface ExtractedCareGoal extends ExtractedConfidence {
   description: string;
   code: string | null;
   code_system: string | null;
@@ -128,7 +166,7 @@ export interface ExtractedCareGoal {
 // anchor is dropped), and the report date is coerced to strict ISO-or-null. Stored
 // factually — the extractor captures WHAT the report concluded, never re-interprets
 // raw calls, and never adds risk editorializing.
-export interface ExtractedGenomicVariant {
+export interface ExtractedGenomicVariant extends ExtractedConfidence {
   gene: string; // HGNC symbol (required)
   variant: string | null; // rsID and/or HGVS
   genotype: string | null;
@@ -148,7 +186,7 @@ export interface ExtractedGenomicVariant {
 // strict ISO-or-null. `impression` is the radiologist's report body, captured
 // verbatim; `indication` is the reason the study was ordered. Image pixels / DICOM
 // are out of scope — the extractor reads the REPORT, never the images.
-export interface ExtractedImagingStudy {
+export interface ExtractedImagingStudy extends ExtractedConfidence {
   modality: string | null; // raw; normalized in import-shape (→ 'other' default)
   body_region: string | null;
   laterality: string | null; // raw; normalized in import-shape
@@ -169,7 +207,7 @@ export interface ExtractedImagingStudy {
 // dates are coerced to strict ISO-or-null. `prescriber` is the optometrist's name,
 // resolved into the shared providers registry on persist. A printed Rx slip is
 // bounded and highly structured — good extraction territory.
-export interface ExtractedOpticalPrescription {
+export interface ExtractedOpticalPrescription extends ExtractedConfidence {
   kind: string | null; // raw ("glasses"/"contacts"/…); normalized in import-shape
   od_sphere: string | null; // right eye; raw dioptre string
   od_cylinder: string | null;
@@ -193,7 +231,7 @@ export interface ExtractedOpticalPrescription {
 // record or after-visit summary (#705). PRE-persist AI shape: `status`/`tooth_system`
 // stay raw (normalized in import-shape via lib/dental); tooth/surface/cdt_code/finding
 // pass through as free text; the date is coerced to strict ISO-or-null.
-export interface ExtractedDentalProcedure {
+export interface ExtractedDentalProcedure extends ExtractedConfidence {
   name: string | null; // the procedure or finding ("Composite filling", "Caries watch")
   status: string | null; // raw ("completed"/"planned"/"watch"/…); normalized downstream
   tooth: string | null; // tooth designation ("14", "#14", "UL6")

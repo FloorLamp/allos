@@ -1,7 +1,12 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState } from "react";
-import { IconChevronRight, IconCopy, IconCheck } from "@tabler/icons-react";
+import {
+  IconChevronRight,
+  IconCopy,
+  IconCheck,
+  IconDownload,
+} from "@tabler/icons-react";
 import {
   sniffRawFormat,
   isLargePayload,
@@ -10,6 +15,7 @@ import {
   jsonCollapsedSummary,
   xmlCollapsedSummary,
   defaultBranchOpen,
+  rawDownload,
   type JsonKind,
 } from "@/lib/raw-data-tree";
 
@@ -270,12 +276,33 @@ async function copyText(text: string): Promise<void> {
   }
 }
 
+// Save `text` to a file. Kept next to copyText: the two are the same affordance at
+// different sizes — copy for a snippet you're pasting, download for a payload you want
+// to keep, diff, or hand to a tool. The object URL is revoked once the click is
+// dispatched so a long-lived page doesn't retain a multi-MB blob per download.
+function downloadText(text: string, filename: string, mime: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function RawDataViewer({
   text,
   testId = "raw-data-viewer",
+  downloadName,
 }: {
   text: string;
   testId?: string;
+  // Base name for the downloaded file, WITHOUT an extension — the extension follows
+  // the sniffed format. Callers pass something identifying (the sync event or document
+  // it came from); omitted, it falls back to a generic stem.
+  downloadName?: string;
 }) {
   const large = isLargePayload(text);
   // baseMode overrides the depth default when the user hits expand/collapse-all;
@@ -366,6 +393,10 @@ export default function RawDataViewer({
   }
 
   const isTree = parsed.mode === "json" || parsed.mode === "xml";
+  // Label/extension follow the RESOLVED render mode, not the raw sniff: XML that
+  // DOMParser rejected has already degraded to "text" above, so it downloads as .txt
+  // rather than claiming to be well-formed XML.
+  const download = rawDownload(parsed.mode, downloadName);
 
   return (
     <div data-testid={testId} className="mt-1 space-y-2">
@@ -406,6 +437,20 @@ export default function RawDataViewer({
               <IconCopy className="h-3.5 w-3.5" /> Copy
             </>
           )}
+        </button>
+        {/* Save-to-file. The Data → Manage exports are plain <a href download> links
+            because a server route generates those files; here the payload is already
+            in memory on the client (the import page hands it in as a prop, with no
+            route to link to), so this builds the file locally instead. Same
+            IconDownload affordance. */}
+        <button
+          type="button"
+          onClick={() => downloadText(text, download.filename, download.mime)}
+          data-testid="raw-download"
+          title={download.filename}
+          className="btn-ghost inline-flex items-center gap-1 text-xs"
+        >
+          <IconDownload className="h-3.5 w-3.5" /> {download.label}
         </button>
       </div>
 

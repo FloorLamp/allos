@@ -44,13 +44,17 @@ export function emptyCounts(): UpsertCounts {
 // to them. Only the value-changing dispositions are recorded — an `unchanged` re-send
 // of the rolling window is deliberately not captured (an hourly push re-states a 48h
 // window whose rows are almost all unchanged; persisting them would explode the
-// store). `target_table` is one of the four user-meaningful tables (hr_minutes has no
+// store). `target_table` is one of the user-meaningful tables (hr_minutes has no
 // row id, activity_routes drills into its parent — both excluded per #1212). Pure
 // data shape, so it lives here in the accounting module the upserts already import;
 // the impure writer is recordSyncRows (connections.ts) and the reader is
 // getSyncRowProvenance (lib/queries/integrations.ts).
 export type ProvenanceTable =
-  "activities" | "body_metrics" | "metric_samples" | "medical_records";
+  | "activities"
+  | "body_metrics"
+  | "metric_samples"
+  | "medical_records"
+  | "practice_logs";
 
 export interface ProvenanceEntry {
   target_table: ProvenanceTable;
@@ -157,6 +161,25 @@ export function summarizeSplit(
     // persisted.
     received: inserted + updated + unchanged + suppressed + edited + s,
   };
+}
+
+// The Review line for a CHUNKED write that failed mid-batch after earlier chunks
+// already committed (#1617 for Fitbit Takeout, #1614 for the Health Connect push).
+// Those chunks are durable by design, so the failure event must say what landed
+// rather than reading as "nothing happened": `changed` is inserted + updated from the
+// committed chunks, and `recovery` is the provider's own lowercase re-run clause (the
+// re-run is always safe — every upsert is idempotent on its natural key). ONE phrasing
+// for both providers so the two partial-failure lines can't drift. Pure.
+export function partialWriteFailureMessage(
+  subject: string,
+  changed: number,
+  recovery: string
+): string {
+  const n = Math.max(0, Math.round(changed));
+  if (n > 0) {
+    return `${subject} stopped after writing ${n} ${n === 1 ? "record" : "records"}. Completed chunks were kept; ${recovery}`;
+  }
+  return `${subject} failed before any records changed; ${recovery}`;
 }
 
 // Compare two rows on a fixed column set, normalizing null/undefined so a missing

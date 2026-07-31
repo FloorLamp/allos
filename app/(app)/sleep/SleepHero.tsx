@@ -27,7 +27,7 @@ const STAGE_META: {
 }[] = [
   { key: "deep", label: "Deep", color: chartSeries.violet },
   { key: "rem", label: "REM", color: chartSeries.rose },
-  { key: "light", label: "Light", color: chartSeries.emerald },
+  { key: "light", label: "Light", color: chartSeries.sky },
   { key: "awake", label: "Awake", color: chartSeries.amber },
 ];
 

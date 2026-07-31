@@ -133,3 +133,98 @@ export function leftRefillTrackedSet(
 export function refillSignalKey(supplementId: number): string {
   return `refill:${supplementId}`;
 }
+
+// ── Shared supply pools (issue #1374) ────────────────────────────────────────
+// A POOLED bottle's low-supply signal is keyed on the POOL, never on a member's item:
+// one bottle is one subject, so one dedupeKey. Every linked member's Upcoming row
+// carries this identical key (each member's dismissal lands on their OWN suppression
+// bus — the bus table is profile-scoped — while the PUSH treats any linked member's
+// active suppression as freezing the whole episode; see lib/notifications/supply-pool).
+export const POOL_REFILL_PREFIX = "pool-refill:";
+export function poolRefillSignalKey(supplyId: number): string {
+  return `${POOL_REFILL_PREFIX}${supplyId}`;
+}
+
+// The pool's episode-dedup marker. It lives in the GLOBAL settings tier, not
+// profile_settings: a pool is household-shared and has no owning profile, and a
+// per-profile marker would let the same bottle re-nudge once per linked member — the
+// exact "N notifications for one bottle" the pool exists to prevent.
+export const POOL_REFILL_MARKER_PREFIX = "notify_last_pool_refill_";
+export function poolRefillMarkerKey(supplyId: number): string {
+  return `${POOL_REFILL_MARKER_PREFIX}${supplyId}`;
+}
+// Parse the pool id back out of a marker key (for the self-healing sweep, #325).
+// Returns NaN for a malformed key; the caller filters those out.
+export function poolRefillIdFromMarker(key: string): number {
+  return Number(key.slice(POOL_REFILL_MARKER_PREFIX.length));
+}
+
+// One linked profile and the logins that MANAGE it (lib/notifications/managing-logins).
+export interface PoolDispatchProfile {
+  profileId: number;
+  loginIds: readonly number[];
+}
+
+// WHICH linked profiles a pool nudge dispatches through — the "one bottle, never N
+// notifications" decision, made purely so it is unit-testable.
+//
+// Delivery is login-scoped (#1072): dispatch(profileId, msg) already fans out to every
+// login that manages THAT profile, deduped by chat id. A pooled bottle spans profiles,
+// so a naive per-linked-profile dispatch would ping the caregiver who manages both kids
+// twice for one bottle. This walks the linked profiles in id order and KEEPS one only
+// when it reaches a managing login no earlier dispatch has already reached. In the
+// ordinary household (both caregivers manage everyone) the first profile covers every
+// recipient and exactly ONE message goes out; in a split-caregiver household the second
+// caregiver still gets their own copy, which is the point — they are a different person,
+// not a duplicate.
+//
+// Residual, stated honestly: with PARTIALLY overlapping caregiver sets (P1 managed by
+// {A,B}, P2 by {B,C}), B is reached twice — profile-granular dispatch cannot express
+// "everyone except B". That shape is rare in a family instance, and the alternative
+// (a login-granular dispatch path) would fork the channel contract every other nudge
+// shares. Profiles with NO managing login are skipped: nothing to deliver.
+export function planPoolDispatchProfiles(
+  linked: readonly PoolDispatchProfile[]
+): number[] {
+  const covered = new Set<number>();
+  const out: number[] = [];
+  for (const p of [...linked].sort((a, b) => a.profileId - b.profileId)) {
+    if (p.loginIds.length === 0) continue;
+    if (p.loginIds.every((id) => covered.has(id))) continue;
+    out.push(p.profileId);
+    for (const id of p.loginIds) covered.add(id);
+  }
+  return out;
+}
+
+// A pool's current supply state, as gathered by the notifier — the pooled twin of
+// RefillCandidate. `name` carries through to the message.
+export interface PoolRefillCandidate {
+  id: number;
+  name: string;
+  daysLeft: number | null;
+  low: boolean;
+}
+
+// Decide which pools to nudge and which stale markers to clear. Identical episode
+// semantics to planRefillNudges (once per low-supply EPISODE, self-healing clear per
+// #325, a suppressed pool frozen rather than cleared) — reusing that engine directly
+// so the pooled and per-item paths can never drift about what "an episode" means.
+export function planPoolRefillNudges(
+  candidates: readonly PoolRefillCandidate[],
+  markedIds: Iterable<number>,
+  suppressedIds: Iterable<number> = []
+): RefillNudgePlan {
+  return planRefillNudges(candidates, markedIds, suppressedIds);
+}
+
+// The suppression/identity key for an "available" (`may`) row on Upcoming (#1505).
+// Keyed on the ITEM id — a may item contributes ONE availability row, not one per
+// dose — and namespaced so dismissing it can never collide with that item's refill
+// signal. Dismissing an availability row is a legitimate "not this, thanks": it is an
+// offer, and an offer you can't decline is a nag.
+export const OFFERED_PREFIX = "available:";
+
+export function offeredSignalKey(itemId: number): string {
+  return `${OFFERED_PREFIX}${itemId}`;
+}

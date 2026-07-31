@@ -13,6 +13,7 @@ import type { ProvenanceEntry } from "@/lib/integrations/sync-log";
 import {
   summarizeSplit,
   dateWindow,
+  partialWriteFailureMessage,
   type UpsertCounts,
 } from "@/lib/integrations/sync-log";
 import {
@@ -21,7 +22,10 @@ import {
   type ParsedPayload,
 } from "@/lib/integrations/health-connect";
 import type { IngestCounts } from "@/lib/integrations/normalize";
-import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
+import {
+  HealthConnectWriteError,
+  ingestHealthConnectPayload,
+} from "@/lib/integrations/health-connect-ingest";
 import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { readBodyCapped } from "@/lib/request-body";
@@ -33,7 +37,7 @@ import {
   overSizeReviewMessage,
   overRecordReviewMessage,
 } from "@/lib/ingest-bounds";
-import { serializeHealthConnectSyncDetails } from "@/lib/integrations/sync-details";
+import { serializeSyncEventDetails } from "@/lib/integrations/sync-details";
 
 // Per-token fixed-window rate limit. A phone exporter pushes every few minutes, so
 // 60 requests / 5 min is generous for legitimate use while capping a runaway or
@@ -216,18 +220,47 @@ export async function POST(req: Request) {
       HEALTH_CONNECT_ID
     ));
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
     log.error("health-connect ingest failed", { err: String(err) });
-    // Best-effort failure event (never rethrows) — the window is known from the
-    // parse that succeeded; counts stay null because the write didn't complete.
+    // Best-effort failure event (never rethrows) — the window is known from the parse
+    // that succeeded. Earlier chunks are COMMITTED by design, so the event reports the
+    // split and provenance of exactly what landed (#1614) instead of null counts that
+    // hide durable rows; the rolled-back chunk contributed neither, because its
+    // provenance sink is discarded with its transaction. `received` is the accounted
+    // portion of this failed push (the split invariant), not a claim that every parsed
+    // row reached the write path.
+    const partial =
+      err instanceof HealthConnectWriteError ? err.committed : null;
+    const tally = partial
+      ? summarizeSplit(partial.split, parsed.skipped)
+      : null;
+    const failure = partialWriteFailureMessage(
+      "Health Connect push",
+      tally ? tally.inserted + tally.updated : 0,
+      "the next push of the rolling window re-covers the rest."
+    );
     const win = payloadWindow(parsed);
-    recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+    const eventId = recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
       ok: false,
       windowStart: win.start,
       windowEnd: win.end,
+      received: tally?.received ?? null,
+      written: tally ? tally.inserted + tally.updated + tally.unchanged : null,
+      inserted: tally?.inserted ?? null,
+      updated: tally?.updated ?? null,
+      unchanged: tally?.unchanged ?? null,
+      suppressed: tally?.suppressed ?? null,
+      edited: tally?.edited ?? null,
+      skipped: tally?.skipped ?? null,
+      details: serializeSyncEventDetails({
+        ...parsed.details,
+        warnings: [failure, ...parsed.details.warnings],
+      }),
       raw_ref: rawRef,
-      error: message,
+      error: failure,
     });
+    // Per-row provenance for the rows that DID commit, so the failure event drills in
+    // like a successful one (#1333). Empty when nothing committed.
+    recordSyncRows(eventId, partial?.provenance ?? []);
     // The real error is logged + stored on the sync event server-side (above); the
     // response body stays GENERIC (issue #478) so raw internals — SQLite constraint
     // text, table names — never reach the bearer-token holder, matching every other
@@ -289,7 +322,7 @@ export async function POST(req: Request) {
     suppressed: tally.suppressed,
     edited: tally.edited,
     skipped: tally.skipped,
-    details: serializeHealthConnectSyncDetails(parsed.details),
+    details: serializeSyncEventDetails(parsed.details),
     raw_ref: rawRef,
   });
   // Per-row provenance drill-in (#1333): link the inserted/updated records to this

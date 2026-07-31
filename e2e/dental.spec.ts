@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // Dental-record CRUD on the Dental section of /records (#705, folded #1042): add a tooth-anchored procedure through the
 // real form, see it in the list with its tooth + status shown, filter by status,
@@ -10,7 +11,7 @@ import Database from "better-sqlite3";
 // a raw-connection cleanup in beforeAll AND afterAll makes the spec idempotent across
 // CI retries — it only ever touches rows it created (dental_procedures + any care-plan
 // follow-up it seeds off them).
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const TOOTH = "97"; // out of the 1–32 seeded range → collision-free marker
 const NAME = "E2EDentalWatch";
 
@@ -60,12 +61,14 @@ test.describe("Dental records — add → view → filter → track recheck → 
     await expect(row).toContainText(`#${TOOTH}`);
     await expect(row).toContainText("watch");
 
-    // Filtering by "Completed" hides it; back to "Watch" shows it again.
-    await list.getByLabel("Filter by status").selectOption("completed");
+    // Filtering by "Completed" hides it; back to "Watch" shows it again. The status
+    // filter is the family's shared FilterPills group since #1449, not a <select>.
+    const dentalFilter = list.getByTestId("dental-status-filter");
+    await dentalFilter.getByRole("button", { name: "Completed" }).click();
     await expect(list.getByRole("row").filter({ hasText: NAME })).toHaveCount(
       0
     );
-    await list.getByLabel("Filter by status").selectOption("watch");
+    await dentalFilter.getByRole("button", { name: "Watch" }).click();
     await expect(list.getByRole("row").filter({ hasText: NAME })).toBeVisible();
 
     // Track a recheck follow-up on it — the row's control turns into a tracked state.
@@ -101,7 +104,17 @@ test.describe("Dental records — add → view → filter → track recheck → 
     // Delete it and confirm it's gone. The confirm click MUST be scoped to the dialog
     // (every row carries a per-row aria-label="Delete" button).
     const survivor = list.getByRole("row").filter({ hasText: NAME });
-    await survivor.getByRole("button", { name: "Delete" }).click();
+    // #1535: the row's Edit and Delete are two bare glyphs sitting side by side,
+    // one of them destructive. Each carries a hover tooltip (`title`) naming what
+    // it acts on, on top of its accessible name, so a sighted user can tell them
+    // apart before clicking. Asserted on the shared RecordTable surface because
+    // every records page inherits this row.
+    const deleteRow = survivor.getByRole("button", { name: "Delete" });
+    await expect(deleteRow).toHaveAttribute("title", "Delete record");
+    await expect(
+      survivor.getByRole("button", { name: "Edit" })
+    ).toHaveAttribute("title", "Edit record");
+    await deleteRow.click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })

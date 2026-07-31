@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { hydratedClick, settledClick } from "./helpers";
 
 // #158: VO2 Max (and the functional fitness markers) gain an age/sex PERCENTILE +
 // FITNESS AGE context, computed from the baked FRIEND/Dodds/etc. norms in
@@ -27,15 +28,17 @@ test("VO2 Max detail shows the age/sex percentile + fitness age (#158)", async (
 test("the functional fitness markers are manually enterable and percentile-contextualized (#158)", async ({
   page,
 }) => {
-  // Log a grip-strength reading via the Trends → Body "Log vitals" quick-add (the
-  // manual-entry machinery the three functional markers were wired into). The date
-  // defaults to today, so a wide biomarkers window includes it.
-  await page.goto("/trends?tab=body");
-  const form = page.getByTestId("vitals-quick-add");
-  await expect(form).toBeVisible();
-  await form.getByLabel("Grip strength (kg)").fill("48");
-  await form.getByRole("button", { name: "Save vitals" }).click();
-  await expect(page.getByText("Vitals saved")).toBeVisible();
+  // Log a grip-strength reading through the guided Fitness check on /training — the
+  // ASSESSMENT-cadence entry surface these three markers moved to in #1486 (they
+  // left the daily measurements form; canonical storage is unchanged, which
+  // lib/__action_tests__/measurements.actions.test.ts pins). The date defaults to
+  // today, so a wide biomarkers window includes it.
+  await page.goto("/training?tab=fitness");
+  await hydratedClick(page, page.getByTestId("fitness-tile-grip"));
+  const modal = page.getByTestId("fitness-entry-grip");
+  await expect(modal).toBeVisible();
+  await modal.getByTestId("fitness-value-grip").fill("48");
+  await settledClick(page, modal.getByTestId("fitness-submit-grip"));
 
   // The reading surfaces on its canonical detail page WITH the percentile card
   // (profile 1 is an adult with a known sex + age).

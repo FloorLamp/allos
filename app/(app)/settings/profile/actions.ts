@@ -27,6 +27,7 @@ import {
   getProfileHomeAssistant,
   setProfileHomeAssistant,
   setExcludedFoodGroups,
+  setProteinGoalLevel,
   isValidTimezone,
   setTimezone,
   setHomeLocation,
@@ -42,7 +43,11 @@ import {
   setMentalHealthShareFull,
   setProfileCrisisResourcesOverride,
   setAnxietyScaleOptIn,
+  setProfileHouseholdRound,
 } from "@/lib/settings";
+import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
+import { buildHouseholdRound } from "@/lib/notifications/household-round";
+import { dispatch } from "@/lib/notifications";
 import { parseCrisisResourcesText } from "@/lib/crisis-resources";
 import { parseCadence } from "@/lib/recommendation-run";
 import { withFindingClosure, formatClosureToast } from "@/lib/finding-closure";
@@ -50,6 +55,7 @@ import { closureFindingSnapshot } from "@/lib/rule-findings";
 import { DATA_QUALITY_PREFIX } from "@/lib/data-quality";
 import { parseHome } from "@/lib/home-location";
 import { parseSkinType } from "@/lib/uv-dose";
+import { parseProteinGoalLevel } from "@/lib/protein";
 import { reconcileFlags } from "@/lib/queries";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import {
@@ -267,7 +273,7 @@ export async function saveTrainingZones(formData: FormData) {
     }
   }
 
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/training");
   revalidatePath("/trends");
 }
 
@@ -289,7 +295,7 @@ export async function saveFreeDays(formData: FormData) {
     .map((v) => Number(String(v)))
     .filter((n) => Number.isInteger(n));
   setFreeDays(profile.id, days);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/health");
   revalidatePath("/trends");
   return { ok: true };
 }
@@ -298,9 +304,29 @@ export async function saveDietaryPreferences(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const slugs = formData.getAll("excluded").map((v) => String(v));
   setExcludedFoodGroups(profile.id, slugs);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/nutrition");
   revalidatePath("/nutrition");
   return { ok: true };
+}
+
+// Protein goal level (#1503) — the training goal that picks the protein g/kg band.
+// The band engine has read `training_goal` since #767 but nothing ever WROTE it, so
+// every profile silently sat on the "active" band; this is the write half. Profile
+// tier (a fact about the tracked person), so the same requireWriteAccess gate as the
+// dietary preferences it sits beside. The submitted value is validated against the
+// accepted vocabulary — an unknown string is refused, never stored to read back as
+// the default.
+export async function saveProteinGoal(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const level = parseProteinGoalLevel(
+    String(formData.get("protein_goal") ?? "")
+  );
+  if (!level) return { ok: false as const, error: "Choose a protein goal." };
+  setProteinGoalLevel(profile.id, level);
+  revalidatePath("/settings/nutrition");
+  revalidatePath("/nutrition");
+  revalidatePath("/");
+  return { ok: true as const };
 }
 
 // Emergency card settings (#42) moved to the Medical surface (/medical/background)
@@ -406,7 +432,7 @@ export async function saveNotificationPrefs(formData: FormData) {
     wakingStartHour: wakingHour("waking_start_hour", WAKING_START_HOUR),
     wakingEndHour: wakingHour("waking_end_hour", WAKING_END_HOUR),
   });
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/notifications");
 }
 
 // The Telegram "send test" is login-scoped as of #1072 (sendTestNotification in
@@ -449,7 +475,7 @@ export async function saveHomeAssistantPrefs(
     secret,
     disabledKinds,
   });
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/notifications");
   return { ok: true };
 }
 
@@ -485,7 +511,7 @@ export async function saveRecommendationCadence(formData: FormData) {
   const { profile } = await requireAdmin();
   const cadence = parseCadence(String(formData.get("recommendation_cadence")));
   setRecommendationCadence(profile.id, cadence);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/coaching");
   return { ok: true };
 }
 
@@ -498,7 +524,7 @@ export async function saveMentalHealthShareFull(formData: FormData) {
     formData.get("mental_health_share_full") === "1" ||
     formData.get("mental_health_share_full") === "on";
   setMentalHealthShareFull(profile.id, on);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/privacy");
   revalidatePath("/");
 }
 
@@ -512,7 +538,7 @@ export async function saveAnxietyScaleOptIn(formData: FormData) {
     formData.get("anxiety_scale_enabled") === "1" ||
     formData.get("anxiety_scale_enabled") === "on";
   setAnxietyScaleOptIn(profile.id, on);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/coaching");
   revalidatePath("/");
 }
 
@@ -524,7 +550,7 @@ export async function saveProfileCrisisResources(formData: FormData) {
     profile.id,
     parseCrisisResourcesText(String(formData.get("crisis_resources") ?? ""))
   );
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/privacy");
   revalidatePath("/crisis-resources");
 }
 
@@ -545,6 +571,71 @@ export async function sendTestHomeAssistant(): Promise<{
           "No Home Assistant webhook configured — enable it and paste your HA webhook URL first.",
       };
     return { ok: true, message: "Sent ✅ — check Home Assistant." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ---- Household dose round (issue #1459) ----
+//
+// The caregiver-subscribed cross-profile reminder: at this profile's schedule slots,
+// the doses due for the OTHER household members it names. Profile-scoped like the rest
+// of this module (requireWriteAccess on the RECEIVING profile — the person subscribing),
+// and the member list it stores is DATA, never a grant: the submitted ids are narrowed
+// here to what is currently offerable, and narrowed AGAIN at send and at button-tap
+// time against live grants. A caregiver therefore cannot widen their reach by editing
+// the form — a forged id is dropped on write and would be refused twice more anyway.
+export async function saveHouseholdRound(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const enabled =
+    formData.get("household_round_enabled") === "on" ||
+    formData.get("household_round_enabled") === "1";
+  const submitted = formData
+    .getAll("household_round_members")
+    .map((v) => Number(v))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  const offerable = new Set(
+    householdRoundOfferableMembers(profile.id).map((m) => m.profileId)
+  );
+  setProfileHouseholdRound(profile.id, {
+    enabled,
+    memberIds: submitted.filter((id) => offerable.has(id)),
+  });
+  revalidatePath("/settings/notifications");
+}
+
+// Send the round as it stands RIGHT NOW to the receiving profile's channels — the §5
+// send-test. Deliberately built over the SAME builder the tick uses (all four slots,
+// so a test outside a slot hour still shows something), so what a caregiver sees here
+// is what the tick would send, not a mock. An empty round reports why rather than
+// sending an empty message.
+export async function sendTestHouseholdRound(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const { profile } = await requireWriteAccess();
+  const round = buildHouseholdRound(profile.id, [
+    "Morning",
+    "Midday",
+    "Evening",
+    "Bedtime",
+  ]);
+  if (!round) {
+    return {
+      ok: false,
+      message:
+        "Nothing to send — no selected member has an unconfirmed scheduled dose right now. (An empty round never sends.)",
+    };
+  }
+  try {
+    const results = await dispatch(profile.id, round);
+    return results.some((r) => r.ok)
+      ? { ok: true, message: "Sent ✅ — check your Telegram." }
+      : {
+          ok: false,
+          message:
+            "No channel accepted it — check that Telegram is enabled for your login on this page.",
+        };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

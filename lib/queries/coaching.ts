@@ -1,12 +1,13 @@
 import { db, today } from "../db";
 import { getMainSleepNightlyMinutes } from "./sleep";
+import { getLatestBodyMetricDailyPoints } from "./metrics";
 import {
   getActivityDates,
   getCardioByActivity,
-  getFrequencyTargetProgress,
   getRecentDatedExercises,
   getStrengthByExercise,
 } from "./training";
+import { getFrequencyTargetProgress } from "./frequency-targets";
 import { getDayLoadInputs, getIntensitySignal } from "./zones";
 import { getWorkoutPresence } from "./presence";
 import { loadingDates } from "../training-zones";
@@ -44,6 +45,8 @@ import {
   type ConditionConsideration,
 } from "../condition-training-considerations";
 import { getReportedBurden } from "./reported-burden";
+import { canDoIndoorActivity, getToleranceEnvelopes } from "./weather-training";
+import { getWeatherDay } from "./weather-situations";
 
 // How many recent nights / days to average for a recovery baseline. Long enough
 // to be a stable personal norm, short enough to reflect the current block.
@@ -86,22 +89,25 @@ export function getSleepSignal(profileId: number): SleepSignal | null {
 }
 
 // The most recent resting HR (bpm) and the recent baseline, or null when none is
-// recorded. Resting HR lives one-per-day in body_metrics, so this reads
-// that column directly (profile-scoped). Baseline is the mean of the prior days
-// in the window (falls back to all when only one reading exists).
+// recorded. Resting HR is NOT one row per day: body_metrics keys on
+// (profile_id, date, source), so a day covered by two devices holds two rows (#14).
+// Reading raw rows with a row LIMIT therefore let ONE date occupy two baseline slots
+// and skewed the spread (#1615), so this asks the SAME question Trends asks — one
+// source-prioritized point per DISTINCT date, through the shared daily fold
+// (getLatestBodyMetricDailyPoints → foldBodyMetricDaily). Points come oldest→newest;
+// `recent` is the newest daily point and the baseline is the mean of the preceding
+// ones (falling back to all when only one date has data). Mirrors getSleepSignal.
 export function getRestingHrSignal(profileId: number): RestingHrSignal | null {
-  const rows = db
-    .prepare(
-      `SELECT resting_hr AS v FROM body_metrics
-        WHERE profile_id = ? AND resting_hr IS NOT NULL
-        ORDER BY date DESC, id DESC LIMIT ?`
-    )
-    .all(profileId, RECOVERY_BASELINE_DAYS) as { v: number }[];
-  if (rows.length === 0) return null;
-  const recent = rows[0].v;
-  const prior = rows.slice(1);
-  const baseline = mean((prior.length ? prior : rows).map((r) => r.v));
-  const baselineSpreadBpm = spread(prior.map((r) => r.v));
+  const points = getLatestBodyMetricDailyPoints(
+    profileId,
+    "resting_hr",
+    RECOVERY_BASELINE_DAYS
+  );
+  if (points.length === 0) return null;
+  const recent = points[points.length - 1].value;
+  const prior = points.slice(0, -1);
+  const baseline = mean((prior.length ? prior : points).map((p) => p.value));
+  const baselineSpreadBpm = spread(prior.map((p) => p.value));
   return {
     recent,
     baseline,
@@ -129,7 +135,11 @@ export function getIllnessCoachingContext(
     openEpisode: openRow != null,
     lastClosed:
       lastClosed && lastClosed.ended_at != null
-        ? { episodeId: lastClosed.id, endDate: lastClosed.ended_at }
+        ? {
+            episodeId: lastClosed.id,
+            endDate: lastClosed.ended_at,
+            startDate: lastClosed.started_at,
+          }
         : null,
   };
 }
@@ -164,6 +174,16 @@ export function gatherCoachingInput(
     // Plan-aware cardio arm (#839): the soonest active endurance plan's calm note, with the
     // illness pause (#837) applied here so an open episode holds the nagging note.
     endurancePlanArm: getEnduranceArm(profileId, todayStr, illness.openEpisode),
+    // Weather context (#1724) — today's conditions plus the tolerance envelopes derived
+    // from THIS profile's own logged sessions. Threaded through the ONE gather so the
+    // Telegram nudge, the dashboard card and the Training overview park the same
+    // activity and disclose the same reason (#221). A profile with no home location or
+    // no cached day yields a null `today`, and the core then does no gating at all.
+    weather: {
+      today: getWeatherDay(profileId, todayStr),
+      envelopes: getToleranceEnvelopes(profileId, todayStr),
+      canDo: (candidate: string) => canDoIndoorActivity(profileId, candidate),
+    },
     routine: getFrequencyTargetProgress(profileId),
     strength: getStrengthByExercise(profileId),
     cardio: getCardioByActivity(profileId, distanceUnit),

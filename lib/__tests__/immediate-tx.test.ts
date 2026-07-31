@@ -27,9 +27,16 @@ const SCAN_DIRS = ["lib", "app", "scripts"];
 //    own BEGIN IMMEDIATE + bounded SQLITE_BUSY retry via runBootTx / `.immediate()`
 //    around the parallel-`next build` boot path (schema-utils.ts) — a different,
 //    already-hardened concurrency contract than the request-path writeTx.
-//  - lib/offline/queue-db.ts calls the browser IndexedDB `db.transaction(store, mode)`
+//  - lib/offline/queue-db.ts and lib/offline/draft-db.ts call the browser IndexedDB
+//    `db.transaction(store, mode)`
 //    — a completely unrelated API that merely shares the method name.
-const ALLOWLIST = new Set<string>(["lib/db.ts", "lib/offline/queue-db.ts"]);
+const ALLOWLIST = new Set<string>([
+  "lib/db.ts",
+  "lib/offline/queue-db.ts",
+  // Same story as queue-db: the browser IndexedDB `db.transaction(store, mode)`,
+  // nothing to do with SQLite write locks (#1699).
+  "lib/offline/draft-db.ts",
+]);
 
 function isAllowlisted(rel: string): boolean {
   return ALLOWLIST.has(rel) || rel.startsWith("lib/migrations/");

@@ -40,6 +40,12 @@ describe("foodEventWindow", () => {
   it("puts a boundary-time (11:00) tap in Midday, consistently for ranking and count", () => {
     expect(foodEventWindow(`${DAY}T11:00:00Z`, TZ, BOUNDS)).toBe("Midday");
   });
+
+  it("prefers an explicit backfilled meal over the later tap time", () => {
+    expect(foodEventWindow(`${DAY}T19:00:00Z`, TZ, BOUNDS, "Morning")).toBe(
+      "Morning"
+    );
+  });
 });
 
 describe("slotServingCounts (#1016)", () => {
@@ -82,5 +88,56 @@ describe("slotServingCounts (#1016)", () => {
     expect(
       slotServingCounts(evs, TZ, BOUNDS, "Midday", DAY).get("fatty_fish")
     ).toBe(2);
+  });
+
+  it("groups an explicitly backfilled meal by meal_slot, not logged_at", () => {
+    const evs: FoodLedgerEvent[] = [
+      {
+        name: "berries",
+        date: "2026-07-11",
+        logged_at: `${DAY}T19:00:00Z`,
+        meal_slot: "Morning",
+      },
+    ];
+    expect(
+      slotServingCounts(evs, TZ, BOUNDS, "Morning", "2026-07-11").get("berries")
+    ).toBe(1);
+    expect(
+      slotServingCounts(evs, TZ, BOUNDS, "Evening", "2026-07-11").get("berries")
+    ).toBeUndefined();
+  });
+
+  // The #1704 regression, pinned at the derivation. A Telegram nudge bakes its window
+  // into the callback token at SEND time; the tap can land in a later window (you open
+  // the morning nudge at lunch). Before the fix the handler stored meal_slot = null, so
+  // the event derived to the TAP's window while the rebuild asked for the TOKEN's — the
+  // button's "(n)" suffix read 0 even though the serving logged. With the token's window
+  // carried explicitly the count follows the button that was pressed.
+  it("counts an explicit-slot event for its OWN window, not the tap-derived one (#1704)", () => {
+    const lateTapOnMorningNudge: FoodLedgerEvent[] = [
+      {
+        name: "berries",
+        date: DAY,
+        logged_at: `${DAY}T12:30:00Z`, // derives Midday
+        meal_slot: "Morning", // but the nudge asserted Morning
+      },
+    ];
+    expect(
+      slotServingCounts(lateTapOnMorningNudge, TZ, BOUNDS, "Morning", DAY).get(
+        "berries"
+      )
+    ).toBe(1);
+    expect(
+      slotServingCounts(lateTapOnMorningNudge, TZ, BOUNDS, "Midday", DAY).get(
+        "berries"
+      )
+    ).toBeUndefined();
+    // And the ranking reads the same derivation, so it agrees about the slot (#221).
+    expect(
+      foodEventsInWindow(lateTapOnMorningNudge, TZ, BOUNDS, "Morning")
+    ).toHaveLength(1);
+    expect(
+      foodEventsInWindow(lateTapOnMorningNudge, TZ, BOUNDS, "Midday")
+    ).toHaveLength(0);
   });
 });

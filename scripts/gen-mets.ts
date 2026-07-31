@@ -51,6 +51,11 @@ const CARDIO_METS: Record<string, MetTiers> = {
   Walking: { easy: 2.8, moderate: 3.5, hard: 5.0 },
   Cycling: { easy: 4.0, moderate: 8.0, hard: 10.0 },
   Swimming: { easy: 6.0, moderate: 8.3, hard: 9.8 },
+  // Open-water swimming runs slightly harder than the same effort in a pool (chop,
+  // sighting, no wall push-offs), so it gets its own entry rather than aliasing pool
+  // swimming. It is a separate catalog name because it is OUTDOOR (#1724) — the flag
+  // that decides parking and conditions stamps — while "Swimming" stays ambiguous.
+  "Open Water Swim": { easy: 6.0, moderate: 8.8, hard: 10.3 },
   Rowing: { easy: 4.8, moderate: 7.0, hard: 8.5 },
   Elliptical: { easy: 4.6, moderate: 5.0, hard: 7.0 },
   "Stair Climber": { easy: 4.0, moderate: 8.0, hard: 9.0 },

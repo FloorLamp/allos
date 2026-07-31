@@ -38,8 +38,10 @@ import { formatGivenAtClockWithRelativeAge } from "@/lib/administration-format";
 import { getMedicationInfo } from "@/lib/medication-info";
 import {
   RefillBadge,
+  SharedSupplyChip,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import type { PoolChipData } from "@/lib/queries/intake";
 import RefillButton from "@/components/medications/RefillButton";
 import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
@@ -73,6 +75,7 @@ import {
 } from "./actions";
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { isPrn } from "@/lib/supplement-schedule";
 
 // One medication, rendered as a card carrying its whole lifecycle: the
 // current dose check-offs, its course history (start/stop dates + reasons), the
@@ -93,6 +96,7 @@ export default function MedicationCard({
   sideEffects,
   strip,
   refillRate,
+  poolChip = null,
   todayStr,
   nowIso,
   trainingRestricted,
@@ -130,6 +134,8 @@ export default function MedicationCard({
   // adherence summary + "≈N days left" badge as the supplement row (#747 parity).
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
+  // The shared-bottle chip when this med draws from a pool (#1374).
+  poolChip?: PoolChipData | null;
   todayStr: string;
   nowIso: string;
   trainingRestricted: boolean;
@@ -274,7 +280,7 @@ export default function MedicationCard({
       amount: dose.amount,
       product: s.product,
       timeOfDay: dose.time_of_day,
-      asNeeded: s.as_needed === 1,
+      asNeeded: isPrn(s),
       timeFormat: formatPrefs.timeFormat,
     })
   );
@@ -295,7 +301,7 @@ export default function MedicationCard({
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
               <RxOtcBadge rx={s.rx} />
-              {s.as_needed === 1 && (
+              {isPrn(s) && (
                 <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                   As Needed
                 </span>
@@ -319,17 +325,21 @@ export default function MedicationCard({
                   Critical
                 </span>
               )}
-              <RefillBadge
-                quantityOnHand={s.quantity_on_hand}
-                qtyPerDose={s.qty_per_dose}
-                refillRate={refillRate}
-                doseCount={doses.length}
-                todayStr={todayStr}
-              />
+              {poolChip ? (
+                <SharedSupplyChip pool={poolChip} />
+              ) : (
+                <RefillBadge
+                  quantityOnHand={s.quantity_on_hand}
+                  qtyPerDose={s.qty_per_dose}
+                  refillRate={refillRate}
+                  doseCount={doses.length}
+                  todayStr={todayStr}
+                />
+              )}
             </div>
             <div className="mt-4">
               <div className="section-label">
-                {s.as_needed === 1 ? "Dose" : "Dose schedule"}
+                {isPrn(s) ? "Dose" : "Dose schedule"}
               </div>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate-700 dark:text-slate-200">
                 {doseLines.length > 0 && doseLines.some(Boolean) ? (
@@ -465,7 +475,7 @@ export default function MedicationCard({
         </div>
 
         {/* A PRN (as-needed) med keeps logging and today's ledger together. */}
-        {current && s.as_needed === 1 && (
+        {current && isPrn(s) && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="prn-administrations"
@@ -538,7 +548,7 @@ export default function MedicationCard({
 
         {/* Today's dose check-offs — a SCHEDULED med only (PRN uses the block above),
           when it's current and due. */}
-        {current && due && s.as_needed !== 1 && doses.length > 0 && (
+        {current && due && !isPrn(s) && doses.length > 0 && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="scheduled-today"
@@ -813,7 +823,7 @@ export default function MedicationCard({
                       amount: dose.amount,
                       product: s.product,
                       timeOfDay: dose.time_of_day,
-                      asNeeded: s.as_needed === 1,
+                      asNeeded: isPrn(s),
                       timeFormat: formatPrefs.timeFormat,
                     }) || "Dose",
                   amount: dose.amount,
@@ -821,7 +831,7 @@ export default function MedicationCard({
                 minDate={historyMinDate}
                 maxDate={historyMaxDate}
                 defaultTime={defaultHistoryTime}
-                asNeeded={s.as_needed === 1}
+                asNeeded={isPrn(s)}
                 onDone={() => setAddingDose(false)}
               />
             ) : null}
@@ -902,7 +912,7 @@ export default function MedicationCard({
                               amount: dose.amount,
                               product: s.product,
                               timeOfDay: dose.time_of_day,
-                              asNeeded: s.as_needed === 1,
+                              asNeeded: isPrn(s),
                               timeFormat: formatPrefs.timeFormat,
                             }) || "Dose",
                           amount: dose.amount,
@@ -910,7 +920,7 @@ export default function MedicationCard({
                         minDate={historyMinDate}
                         maxDate={historyMaxDate}
                         defaultTime={defaultHistoryTime}
-                        asNeeded={s.as_needed === 1}
+                        asNeeded={isPrn(s)}
                         editing={{
                           logId: entry.id,
                           doseId: entry.doseId,

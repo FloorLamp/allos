@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  defaultAccessSelection,
   deletionErasesText,
+  isDuplicateProfileName,
+  profileChoiceLabels,
   grantFormEntries,
   initialGrantSelection,
   loadedGrantSignature,
@@ -110,5 +113,70 @@ describe("loadedGrantSignature (issue #467)", () => {
 
   it("signs no grants as the empty string", () => {
     expect(loadedGrantSignature([], {})).toBe("");
+  });
+});
+
+describe("profileChoiceLabels (issue #1434 / the #534 rule)", () => {
+  const profiles = [
+    { id: 1, name: "Jordan" },
+    { id: 2, name: "Alex" },
+    { id: 3, name: "jordan " },
+  ];
+
+  it("disambiguates same-named profiles wherever a grant can be picked", () => {
+    // Two "Jordan" rows in the grant matrix are the costliest ambiguity on the
+    // screen — they must never render identically.
+    expect(profileChoiceLabels(profiles).map((c) => c.label)).toEqual([
+      "Jordan (1)",
+      "Alex",
+      "jordan  (2)",
+    ]);
+  });
+
+  it("leaves a unique name untouched and preserves the caller's order", () => {
+    const out = profileChoiceLabels([
+      { id: 7, name: "Sam" },
+      { id: 3, name: "Kim" },
+    ]);
+    expect(out).toEqual([
+      { id: 7, label: "Sam", profile: { id: 7, name: "Sam" } },
+      { id: 3, label: "Kim", profile: { id: 3, name: "Kim" } },
+    ]);
+  });
+});
+
+describe("defaultAccessSelection (issue #1434)", () => {
+  const profiles = [
+    { id: 1, name: "Jordan" },
+    { id: 2, name: "Alex" },
+  ];
+
+  it("preselects the profile that shares the username being typed", () => {
+    expect(defaultAccessSelection("jordan", profiles)).toEqual([1]);
+    expect(defaultAccessSelection("  Alex ", profiles)).toEqual([2]);
+  });
+
+  it("selects nothing when the name is ambiguous or unknown", () => {
+    // Guessing between two same-named profiles is exactly the mistake the
+    // disambiguation rule exists to prevent, so the default declines to guess.
+    expect(
+      defaultAccessSelection("jordan", [...profiles, { id: 3, name: "Jordan" }])
+    ).toEqual([]);
+    expect(defaultAccessSelection("casey", profiles)).toEqual([]);
+    expect(defaultAccessSelection("", profiles)).toEqual([]);
+  });
+});
+
+describe("isDuplicateProfileName (issue #1434)", () => {
+  const profiles = [{ name: "Jordan" }, { name: "Alex" }];
+
+  it("flags a name that already exists, ignoring case and spacing", () => {
+    expect(isDuplicateProfileName("jordan", profiles)).toBe(true);
+    expect(isDuplicateProfileName("  Jordan  ", profiles)).toBe(true);
+  });
+
+  it("does not flag a new name or an empty one", () => {
+    expect(isDuplicateProfileName("Casey", profiles)).toBe(false);
+    expect(isDuplicateProfileName("   ", profiles)).toBe(false);
   });
 });

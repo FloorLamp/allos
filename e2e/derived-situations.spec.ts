@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -6,11 +7,13 @@ import {
   E2E_MEMBER_PASSWORD,
   DERIVED_SITU_PERIOD_ITEM,
   DERIVED_SITU_SLEEP_ITEM,
+  DERIVED_SITU_POLLEN_ITEM,
 } from "./fixture-logins";
 
-// Derived situations (issues #1292 Poor sleep, #1298 Period): a situation a situational
-// supplement keys on that is COMPUTED from the profile's own data — a rough last-night
-// sleep session, a logged period day — never a manual chip. The bar renders the derived
+// Derived situations (issues #1292 Poor sleep, #1298 Period, #1726 weather): a situation
+// a situational supplement keys on that is COMPUTED from the profile's own data — a rough
+// last-night sleep session, a logged period day, cached weather that qualifies — never a
+// manual chip. The bar renders the derived
 // state line distinctly (an "Auto" tag), and dueness widens for that context only.
 //
 // Fixture-OWNED per e2e hygiene (#868): runs as E2E_LOGIN_DERIVED in its OWN cookie
@@ -21,7 +24,7 @@ import {
 // read-only (the "Not today" clear behavior is pinned by the DB + action tiers, which
 // can restore between runs; a browser dismiss would not survive --repeat-each).
 
-test.describe("derived situations (#1292/#1298)", () => {
+test.describe("derived situations (#1292/#1298/#1726)", () => {
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
@@ -49,6 +52,24 @@ test.describe("derived situations (#1292/#1298)", () => {
     // The magnesium keyed to Poor sleep is DUE while the derived context holds.
     await expect(
       page.getByText(DERIVED_SITU_SLEEP_ITEM).first() // first-ok: order-agnostic presence of this spec's own fixture item
+    ).toBeVisible();
+  });
+
+  test("weather: a high-pollen day turns the context on with no toggle anywhere", async () => {
+    await page.goto("/nutrition?tab=supplements");
+
+    // The seeded daily series carries a grass-pollen count over the family's entry
+    // bound, so the High pollen situation holds — rendered with the same distinct
+    // "Auto" treatment as the other derived contexts, and non-toggleable.
+    const line = page.getByTestId("derived-weather");
+    await expect(line).toBeVisible();
+    await expect(line).toContainText(/High pollen/);
+    await expect(line).toContainText(/item active/);
+
+    // The quercetin keyed to High pollen is DUE while the context holds — the whole
+    // point: "antihistamine when pollen is high" stops being a manual toggle.
+    await expect(
+      page.getByText(DERIVED_SITU_POLLEN_ITEM).first() // first-ok: order-agnostic presence of this spec's own fixture item
     ).toBeVisible();
   });
 

@@ -23,6 +23,7 @@ import {
   IconReportMedical,
   IconChevronRight,
   IconSalad,
+  IconSparkles,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
@@ -52,8 +53,8 @@ type Leaf = {
   requiresFoodLogging?: boolean;
   // Entries carrying a `relevanceKey` are dropped when the server-resolved
   // relevance bitset (lib/nav-relevance.ts, issue #1042) reads false for that
-  // key. In nav today only Cycle uses it (the data/life-stage gate); the
-  // Vision/Dental data-presence bits from the SAME bitset now gate their folded
+  // key. Cycle, Sleep, Progress photos, and Wellness use it in nav; the
+  // Vision/Dental data-presence bits from the SAME bitset gate their folded
   // /records specialty sections instead. Cosmetic — every gated page still renders
   // on a direct URL.
   relevanceKey?: NavRelevanceKey;
@@ -101,8 +102,19 @@ const RECORDS: Group = {
     { href: "/results", label: "Results", icon: IconChartLine },
     // Supplements left this group for the Nutrition → Supplements tab (#746);
     // Medications kept a Medical-group home of their own. The old combined
-    // "/medicine" surface now redirects to the Supplements tab.
+    // "/medicine" surface was removed outright (#1635) and 404s.
     { href: "/medications", label: "Medications", icon: IconPill },
+    // The household medicine cabinet (/supplies, #1374) is NOT a nav leaf (#1522).
+    // It is a physical-object REGISTRY — bottles that intake items link to — and the
+    // app already navigates to its twin, the /equipment registry, from the consumers
+    // that create and use it rather than from the sidebar. Its old row was worse than
+    // an ordinary one: `requiresMultiProfile` made it materialize unannounced the
+    // moment a second profile was added, wearing the SAME IconPill as the Medications
+    // row directly above it — the one signal that could have told them apart.
+    // Its doors now: the Medications and Nutrition → Supplements headers (with a
+    // count), the shared-bottle chip and the refill section of a linked item, and the
+    // Household header (the cabinet is household-scoped). The ROUTE is unchanged, and
+    // /supplies highlights Medications through NAV_PARENT_ROUTES (lib/nav.ts).
     { href: "/medical/episodes", label: "Illness episodes", icon: IconVirus },
     // Cycle shows when cycle tracking is relevant for the active profile —
     // logged cycles always win; else female + premenopausal (explicit status or
@@ -192,6 +204,18 @@ const entries: Entry[] = [
     // issue #31. The page re-checks the accessible-profile count server-side.
     requiresMultiProfile: true,
   },
+  // Wellness (#1620): a data-gated daily-practice surface beside Longevity,
+  // whose protocol picker shares the same practice targets. Gate = any
+  // practice-scope frequency target OR any practice log (logs-only practices are
+  // a real state). Cosmetic like Sleep/Progress — direct URLs still work, and
+  // the command palette's always-visible "Wellness practices" action preserves
+  // the first-practice creation path.
+  {
+    href: "/wellness",
+    label: "Wellness",
+    icon: IconSparkles,
+    relevanceKey: "wellness",
+  },
   // Longevity took over Protocols' slot in #1042 phase 4: the healthspan-pillar
   // page whose #protocols section absorbed the old Protocols hub (the /protocols
   // URL 308-redirects there). Ungated, exactly as Protocols was.
@@ -228,7 +252,14 @@ function NavLink({ leaf, nested }: { leaf: Leaf; nested: boolean }) {
   const active = isRouteActive(leaf.href, pathname);
   const Icon = leaf.icon;
   return (
-    <Link href={leaf.href} className={leafClass(active, nested)}>
+    // `aria-current` carries what the gradient carries: a screen-reader user is told
+    // which entry is the page they're on, and it gives the orphan-highlight fix
+    // (#1522) a stable, semantic assertion instead of a class-name match.
+    <Link
+      href={leaf.href}
+      aria-current={active ? "page" : undefined}
+      className={leafClass(active, nested)}
+    >
       <Icon className="h-5 w-5 shrink-0" stroke={1.75} />
       {leaf.label}
     </Link>
@@ -339,9 +370,9 @@ export default function Nav({
   // the Food-logging gate stands on its own when a caller doesn't thread it.
   hasIntakeItems?: boolean;
   // The server-resolved relevance bitset (issue #1042) gating entries flagged
-  // with a `relevanceKey` (Cycle in nav; the Vision/Dental bits now gate the
-  // /records specialty sections). Defaults all-true so a caller that doesn't thread
-  // it never over-hides.
+  // with a `relevanceKey` (Cycle/Sleep/Progress/Wellness in nav; the
+  // Vision/Dental bits gate the /records specialty sections). Defaults all-true
+  // so a caller that doesn't thread it never over-hides.
   relevance?: NavRelevance;
 }) {
   const visible = entries.filter((e) =>

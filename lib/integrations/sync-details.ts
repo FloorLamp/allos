@@ -1,4 +1,19 @@
-import type { HealthConnectSyncDetails } from "./health-connect";
+import type { HealthConnectOriginChoice } from "./health-connect";
+
+// The structured `details` JSON every provider's sync event can carry. Started as
+// Health Connect's origin/warning diagnostics and is now the shared event-level
+// channel: Fitbit Takeout writes its partial-failure warning here, and a PULL run
+// that stopped early marks itself `truncated` (#1614) so Review can render it as a
+// partial run rather than a clean success — no schema change, and the marker is as
+// durable as the event row itself.
+export interface SyncEventDetails {
+  warnings: string[];
+  origins: HealthConnectOriginChoice[];
+  // The provider had MORE data than this run took: a page cap or a 429 stopped it,
+  // and the sync cursor was deliberately not advanced so the next run re-covers the
+  // remainder. Absent (rather than false) on an ordinary complete run.
+  truncated?: boolean;
+}
 
 export const MAX_SYNC_DETAILS_CHARS = 4000;
 
@@ -27,12 +42,12 @@ export function metricLabel(metric: string): string {
   );
 }
 
-export function parseHealthConnectSyncDetails(
+export function parseSyncEventDetails(
   raw: string | null
-): HealthConnectSyncDetails | null {
+): SyncEventDetails | null {
   if (!raw) return null;
   try {
-    const value = JSON.parse(raw) as Partial<HealthConnectSyncDetails>;
+    const value = JSON.parse(raw) as Partial<SyncEventDetails>;
     const warnings = Array.isArray(value.warnings)
       ? value.warnings.filter(
           (item): item is string => typeof item === "string"
@@ -40,7 +55,7 @@ export function parseHealthConnectSyncDetails(
       : [];
     const origins = Array.isArray(value.origins)
       ? value.origins.filter(
-          (item): item is HealthConnectSyncDetails["origins"][number] =>
+          (item): item is HealthConnectOriginChoice =>
             !!item &&
             typeof item === "object" &&
             typeof item.date === "string" &&
@@ -50,21 +65,53 @@ export function parseHealthConnectSyncDetails(
             item.ignored.every((origin) => typeof origin === "string")
         )
       : [];
-    return warnings.length || origins.length ? { warnings, origins } : null;
+    const truncated = value.truncated === true;
+    if (!warnings.length && !origins.length && !truncated) return null;
+    return { warnings, origins, ...(truncated ? { truncated: true } : {}) };
   } catch {
     return null;
   }
 }
 
+// Did this sync event stop early with more data upstream (#1614)? Reads the durable
+// `details` marker, so a truncated pull is distinguishable from a clean success on
+// every surface that renders an event. Pure → unit-testable.
+export function isTruncatedSyncEvent(ev: { details?: string | null }): boolean {
+  return parseSyncEventDetails(ev.details ?? null)?.truncated === true;
+}
+
+// The one Review line for a pull that a provider page cap or rate limit cut short.
+// Written into the event's own `details` (never a second event), beside the
+// `truncated` marker the UI badges. The cursor is deliberately NOT advanced on such a
+// run, so the next sync re-covers the window.
+export const TRUNCATED_SYNC_WARNING =
+  "Partial sync — a page cap or rate limit stopped this run early. The next sync picks up where it left off.";
+
+// The serialized `details` payload for a truncated pull run. ONE shape for Strava,
+// Oura, and Withings so their partial runs can't describe themselves differently.
+export function truncatedSyncDetails(): string {
+  return JSON.stringify({
+    warnings: [TRUNCATED_SYNC_WARNING],
+    origins: [],
+    truncated: true,
+  } satisfies SyncEventDetails);
+}
+
 // Bound structured diagnostics while repeatedly serializing the candidate object,
 // so the stored value is always complete JSON. Never slice serialized JSON: that
 // turns a useful prefix into an unparsable value and hides every detail.
-export function serializeHealthConnectSyncDetails(
-  details: HealthConnectSyncDetails,
+export function serializeSyncEventDetails(
+  details: SyncEventDetails,
   maxChars = MAX_SYNC_DETAILS_CHARS
 ): string | null {
-  const bounded: HealthConnectSyncDetails = { warnings: [], origins: [] };
-  const fits = (candidate: HealthConnectSyncDetails) =>
+  const bounded: SyncEventDetails = {
+    warnings: [],
+    origins: [],
+    // The truncation marker is a single boolean and must never be the thing the
+    // char budget drops — it is what the UI badges the run on.
+    ...(details.truncated ? { truncated: true } : {}),
+  };
+  const fits = (candidate: SyncEventDetails) =>
     JSON.stringify(candidate).length <= maxChars;
 
   for (const warning of details.warnings.slice(0, 20)) {
@@ -82,7 +129,8 @@ export function serializeHealthConnectSyncDetails(
     const candidate = { ...bounded, origins: [...bounded.origins, value] };
     if (fits(candidate)) bounded.origins.push(value);
   }
-  if (!bounded.warnings.length && !bounded.origins.length) return null;
+  if (!bounded.warnings.length && !bounded.origins.length && !bounded.truncated)
+    return null;
   return JSON.stringify(bounded);
 }
 
@@ -95,13 +143,11 @@ export function boundSyncDetailsJson(
 ): string | null {
   if (!raw) return null;
   if (raw.length <= maxChars) return raw;
-  const parsed = parseHealthConnectSyncDetails(raw);
-  return parsed ? serializeHealthConnectSyncDetails(parsed, maxChars) : null;
+  const parsed = parseSyncEventDetails(raw);
+  return parsed ? serializeSyncEventDetails(parsed, maxChars) : null;
 }
 
-export function originChoiceLabel(
-  choice: HealthConnectSyncDetails["origins"][number]
-): string {
+export function originChoiceLabel(choice: HealthConnectOriginChoice): string {
   const ignored = choice.ignored.map(originLabel).join(", ");
   return `${metricLabel(choice.metric)}: ${originLabel(choice.chosen)} used · ${ignored} ignored as duplicate`;
 }

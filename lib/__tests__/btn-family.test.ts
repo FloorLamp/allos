@@ -21,16 +21,8 @@ import { fileURLToPath } from "node:url";
 //   - toggle/tab/segmented `? "bg-brand-600 text-white"` fragments (no hover+px),
 //   - icon-only round controls sized with h-/w- (no px),
 //   - `file:bg-brand-600 … hover:file:bg-brand-700` file-input chrome (prefixed).
-// The one intentional pill variant is allowlisted below.
-
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
-
-// Deliberate leaves — true action buttons kept off the .btn family on purpose.
-// SavedViewsBar's "Save" is a compact rounded-full pill inside an h-7 inline
-// mini-form (next to an h-7 text-xs input); the .btn/.btn-sm rectangle would
-// tower over its row. Reviewed under #794 cluster 2 and left as-is.
-const ALLOWLIST = new Set(["components/SavedViewsBar.tsx"]);
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -69,6 +61,8 @@ const PRIMARY_HOVER = /hover:bg-brand-700\b/;
 const DANGER_FILL = /(?<![\w:-])bg-rose-600\b/;
 const DANGER_HOVER = /hover:bg-rose-700\b/;
 const HAS_PADDING = /\bpx-/;
+const RETIRED_PRIMARY = /\bbtn-primary\b/;
+const RETIRED_SECONDARY = /\bbtn-secondary\b/;
 
 function isHandRolledButton(line: string): boolean {
   if (HAS_PADDING.test(line)) {
@@ -79,10 +73,37 @@ function isHandRolledButton(line: string): boolean {
 }
 
 describe("btn family guard (issue #794 cluster 2)", () => {
+  it("no component uses the retired btn-primary alias", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      text.split("\n").forEach((line, i) => {
+        if (RETIRED_PRIMARY.test(line)) offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(
+      offenders,
+      `Use .btn for primary actions; .btn-primary is not part of the ` +
+        `button family:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("no component uses the retired btn-secondary alias", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      text.split("\n").forEach((line, i) => {
+        if (RETIRED_SECONDARY.test(line)) offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(
+      offenders,
+      `Use .btn-ghost for secondary actions; .btn-secondary is not part of ` +
+        `the button family:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
   it("no component hand-rolls a bg-brand-600/bg-rose-600 action button", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {
-      if (ALLOWLIST.has(rel)) continue;
       text.split("\n").forEach((line, i) => {
         if (isHandRolledButton(line)) offenders.push(`${rel}:${i + 1}`);
       });

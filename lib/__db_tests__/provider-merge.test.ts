@@ -56,6 +56,12 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO medical_records (profile_id, date, category, name, provider_id)
      VALUES (?, '2020-01-01', 'lab', 'Glucose', ?)`
   ).run(profileId, providerId);
+  // A reading also carries the ORDERING clinician (#1404), a second link like
+  // imaging's ordering/reading pair — one row per PROVIDER_LINK_COLUMNS entry.
+  db.prepare(
+    `INSERT INTO medical_records (profile_id, date, category, name, ordering_provider_id)
+     VALUES (?, '2020-01-01', 'lab', 'Potassium', ?)`
+  ).run(profileId, providerId);
   db.prepare(
     `INSERT INTO immunizations (profile_id, date, vaccine, provider_id)
      VALUES (?, '2020-01-01', 'mmr', ?)`
@@ -107,6 +113,11 @@ function linkAllTables(profileId: number, providerId: number): number {
   db.prepare(
     `INSERT INTO skin_lesions (profile_id, label, provider_id)
      VALUES (?, 'Left forearm mole', ?)`
+  ).run(profileId, providerId);
+  // Allergies link the clinician who documented the allergy (#1526).
+  db.prepare(
+    `INSERT INTO allergies (profile_id, substance, provider_id)
+     VALUES (?, 'Penicillin', ?)`
   ).run(profileId, providerId);
   // Medication courses link the prescriber of that course (#1204). A child of
   // intake_items (no own profile_id) — attach to the item inserted above.
@@ -179,8 +190,9 @@ describe("getProviderMergeImpact (count-only, global across profiles)", () => {
     // Two encounter rows (attending + facility) per profile → 4 visits total.
     const visits = impact.perTable.find((t) => t.table === "encounters");
     expect(visits?.count).toBe(4);
+    // Two reading rows (performed-by + ordered-by, #1404) per profile → 4 readings.
     const labs = impact.perTable.find((t) => t.table === "medical_records");
-    expect(labs?.count).toBe(2);
+    expect(labs?.count).toBe(4);
     expect(impact.profiles).toBe(2);
   });
 });

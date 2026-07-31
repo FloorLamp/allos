@@ -1,14 +1,15 @@
 // SERVER-ACTION TIER — manual metric_samples writers after migration 081.
 //
 // The origin-aware natural key is an expression index over
-// (profile, metric, source, COALESCE(origin, ''), start_time). Exercise both
-// manual writers against the real migrated schema so a stale explicit UPSERT
-// target cannot make the forms fail at runtime.
+// (profile, metric, source, COALESCE(origin, ''), start_time). Exercise the manual
+// writer against the real migrated schema so a stale explicit UPSERT target cannot
+// make the form fail at runtime. Since #1486 there is ONE such form — the combined
+// "Log measurements" — so both the growth (height / head circ) and the vitals
+// (sleep / HRV) sample paths run through addMeasurements.
 
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { addGrowth } from "@/app/(app)/trends/growth-actions";
-import { addVitals } from "@/app/(app)/trends/vitals-actions";
+import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { getSleepMoodData } from "@/lib/queries";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 
@@ -37,10 +38,10 @@ describe("manual metric samples", () => {
     const profile = createProfile("Growing child", login.id);
     actAs(login, profile);
 
-    await addGrowth(
+    await addMeasurements(
       fd({ date: "2026-07-20", height: "82.5", height_unit: "cm" })
     );
-    await addGrowth(
+    await addMeasurements(
       fd({ date: "2026-07-20", height: "83", height_unit: "cm" })
     );
 
@@ -60,8 +61,12 @@ describe("manual metric samples", () => {
     const profile = createProfile("Vitals reader", login.id);
     actAs(login, profile);
 
-    await addVitals(fd({ date: "2026-07-20", sleep_hours: "7", hrv: "42" }));
-    await addVitals(fd({ date: "2026-07-20", sleep_hours: "7.5", hrv: "45" }));
+    await addMeasurements(
+      fd({ date: "2026-07-20", sleep_hours: "7", hrv: "42" })
+    );
+    await addMeasurements(
+      fd({ date: "2026-07-20", sleep_hours: "7.5", hrv: "45" })
+    );
 
     expect(sampleRows(profile.id)).toEqual([
       {

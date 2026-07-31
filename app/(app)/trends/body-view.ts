@@ -2,12 +2,14 @@
 // parse), the toggle control, and BodySection (visibility classes) so the three
 // agree on the three-state responsive default.
 //
-//   undefined → responsive default: TILES on mobile, the classic STACK on desktop.
-//   "tiles"   → tiles pinned on every viewport.
-//   "all"     → the classic full-chart stack pinned on every viewport.
+//   undefined → TILES on mobile, the classic STACK on desktop.
+//   "tiles"   → tiles on every viewport.
+//   "all"     → still TILES on mobile; the classic STACK on desktop.
 //
-// Both layouts are rendered server-side (one gather feeds both, #221); these classes
-// only toggle which is visible — no client JS, no viewport sniffing.
+// Mobile deliberately has no layout choice: the full stack duplicates the tiles as
+// a very long page, while each tile already links to its focused metric detail.
+// Both layouts remain server-rendered (one gather feeds both, #221); CSS enforces
+// the viewport rule without client JS or viewport sniffing.
 
 export type BodyView = "tiles" | "all" | undefined;
 
@@ -17,14 +19,12 @@ export function parseBodyView(v: string | undefined): BodyView {
 
 // Visibility class for the TILE grid container.
 export function tilesContainerClass(view: BodyView): string {
-  if (view === "all") return "hidden";
   if (view === "tiles") return "";
-  return "md:hidden"; // responsive default: mobile only
+  return "md:hidden"; // "all" and the default still show tiles on mobile
 }
 
-// Visibility class for the classic CHART-STACK container (chips + charts + history).
+// Visibility class for the classic CHART-STACK container (desktop only).
 export function stackContainerClass(view: BodyView): string {
   if (view === "tiles") return "hidden";
-  if (view === "all") return "";
-  return "hidden md:block"; // responsive default: desktop only
+  return "hidden md:block";
 }

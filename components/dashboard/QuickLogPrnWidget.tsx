@@ -8,10 +8,9 @@ import {
   administrationLastDoseLabel,
   formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
-import { redoseWindowStatus } from "@/lib/prn-redose";
+import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
-import { parseUtcSql } from "@/lib/date";
 import type { TimeFormat } from "@/lib/format-date";
 
 // Dashboard quick-log widget for PRN (as-needed) medications (#797). The one-tap
@@ -89,32 +88,18 @@ export function QuickLogPrnContent({
   // elapsed-window "now" must come from the same source (a production no-op). A
   // client-mounted content receives the server's now via nowIso (see prop note).
   const now = nowIso ? new Date(nowIso) : clockNow();
-  // The redose status line (#798), when the med has confirmed interval/max and
+  // The redose status line (#798), when the med has a confirmed interval and
   // something's been logged. Same redoseCardLabel the medications card uses (one
   // computation, so the widget and card never disagree). Marker-agnostic — the card
   // always shows current window state regardless of the one-shot notification marker.
   // Family-widened window math (#1027): the clock/count/max span the ingredient
   // family (an OTC ibuprofen dose holds the Rx item's "Redose OK"), with the
   // "across N items" tail marking a cross-item counter.
-  const redoseStatusFor = (m: PrnMedForQuickLog) => {
-    if (
-      m.minIntervalHours == null ||
-      m.maxDailyCount == null ||
-      !m.familyLastGivenAt
-    ) {
-      return null;
-    }
-    return redoseWindowStatus({
-      minIntervalHours: m.minIntervalHours,
-      maxDailyCount: Math.min(
-        m.maxDailyCount,
-        m.familyMaxDailyCount ?? m.maxDailyCount
-      ),
-      latestGivenAt: parseUtcSql(m.familyLastGivenAt),
-      countToday: m.familyCount,
-      now,
-    });
-  };
+  // The window math is the shared prnQuickLogRedoseStatus (#221): the widget, the
+  // medications list and the Telegram `/dose` list all read one gate, so "the
+  // interval alone answers when the next dose is OK" can't drift between them.
+  const redoseStatusFor = (m: PrnMedForQuickLog) =>
+    prnQuickLogRedoseStatus(m, now);
   const visibleMeds = compact ? meds.slice(0, 3) : meds;
   const remainingMeds = compact ? meds.slice(3) : [];
   const medControl = (m: PrnMedForQuickLog) => {

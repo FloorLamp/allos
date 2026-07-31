@@ -4,6 +4,7 @@
 // intake_items JOIN.
 // Current-schedule reads: the live supplement/medication items, their currently
 // scheduled (non-retired) doses, and the AI suggestions awaiting review.
+import { cadenceLabel, type ItemCadence } from "../../intake-cadence";
 import { db } from "../../db";
 import type {
   Supplement,
@@ -39,7 +40,10 @@ export function getSupplements(profileId: number): Supplement[] {
               (SELECT c.name FROM conditions c
                 WHERE c.id = intake_items.indication_condition_id
                   AND c.profile_id = intake_items.profile_id)
-                AS indication_condition_name
+                AS indication_condition_name,
+              (SELECT ss.name FROM shared_supplies ss
+                WHERE ss.id = intake_items.supply_id)
+                AS supply_name
          FROM intake_items
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
@@ -71,7 +75,10 @@ export function getMedication(
               (SELECT c.name FROM conditions c
                 WHERE c.id = intake_items.indication_condition_id
                   AND c.profile_id = intake_items.profile_id)
-                AS indication_condition_name
+                AS indication_condition_name,
+              (SELECT ss.name FROM shared_supplies ss
+                WHERE ss.id = intake_items.supply_id)
+                AS supply_name
          FROM intake_items
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
@@ -143,4 +150,29 @@ export function getPendingSuggestions(
       "SELECT * FROM intake_item_suggestions WHERE profile_id = ? AND status = 'pending' ORDER BY created_at DESC, id DESC"
     )
     .all(profileId) as SupplementSuggestion[];
+}
+
+// The cadence phrase for the item owning `doseId` ("Mondays", "Every 3 days"), or null
+// when it has no calendar rule (#1602). Profile-scoped through the parent item, so a
+// forged dose id from another profile reads null rather than leaking a schedule.
+//
+// It exists for the OFF-DAY confirm answer: a tap arriving from a frozen Telegram
+// message needs the phrase to say "logged — note: scheduled for Mondays" instead of a
+// bare ✓. Looked up only on that branch, so the ordinary confirm path costs nothing.
+export function getDoseCadenceLabel(
+  profileId: number,
+  doseId: number
+): string | null {
+  const row = db
+    .prepare(
+      `SELECT s.cadence_kind AS cadence_kind,
+              s.cadence_weekdays AS cadence_weekdays,
+              s.cadence_interval_days AS cadence_interval_days,
+              s.cadence_anchor_date AS cadence_anchor_date
+         FROM intake_item_doses d
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE d.id = ? AND s.profile_id = ?`
+    )
+    .get(doseId, profileId) as ItemCadence | undefined;
+  return row ? cadenceLabel(row) : null;
 }

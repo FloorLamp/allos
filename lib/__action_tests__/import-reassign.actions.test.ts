@@ -13,7 +13,13 @@ import {
   reassignDocument,
   deleteMedicalDocument,
 } from "@/app/(app)/medical/document-actions";
-import { getReprocessSnapshot, reconcileFlags } from "@/lib/queries";
+import {
+  getImportLogDocuments,
+  getMedicalDocument,
+  getReprocessSnapshot,
+  reconcileFlags,
+} from "@/lib/queries";
+import { parseImportReport, serializeImportReport } from "@/lib/import-report";
 import {
   immunizationDismissalKey,
   immunizationCodesLosingBacking,
@@ -26,6 +32,7 @@ import { computeImportDiff } from "@/lib/import-diff";
 import type { PersistInput } from "@/lib/import-shape";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { db } from "@/lib/db";
+import { createPortal } from "@/lib/portals";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const DATE = "2020-06-01";
@@ -252,6 +259,37 @@ describe("reassignDocument", () => {
     expect(computeImportDiff(snapshotA, snapshotB).hasChanges).toBe(false);
   });
 
+  it("CARRIES acquired-by provenance across the move (#1748)", async () => {
+    // How a document ARRIVED is a fact about its arrival, not a claim about whose it
+    // is. And the single most likely reason to reassign a portal document is that the
+    // binding sent it to the wrong person — which is exactly when "which portal pushed
+    // this?" is the question being asked. Clearing it here would destroy the audit
+    // trail at the moment it matters most.
+    const portal = createPortal("Reassign Portal");
+    expect(portal.ok).toBe(true);
+    if (!portal.ok) return;
+
+    const admin = createLogin({ role: "admin" });
+    const a = createProfile("REASSIGN-PROV-A");
+    const b = createProfile("REASSIGN-PROV-B");
+    const docId = newDocument(a.id);
+    db.prepare(
+      "UPDATE medical_documents SET acquired_portal_id = ?, extraction_status = 'done' WHERE id = ?"
+    ).run(portal.id, docId);
+    actAs(admin, a);
+
+    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
+    expect(res.status).toBe("done");
+
+    const moved = db
+      .prepare(
+        "SELECT profile_id AS p, acquired_portal_id AS portal FROM medical_documents WHERE id = ?"
+      )
+      .get(docId) as { p: number; portal: number | null };
+    expect(moved.p).toBe(b.id);
+    expect(moved.portal).toBe(portal.id);
+  });
+
   it("writes a medical-document.reassign audit event and preserves a non-null provider_id (#655)", async () => {
     const admin = createLogin({ role: "admin" });
     const a = createProfile("AUD-A");
@@ -295,6 +333,69 @@ describe("reassignDocument", () => {
     expect(ev?.target).toBe(String(docId));
     expect(ev?.detail).toContain(String(a.id));
     expect(ev?.detail).toContain(String(b.id));
+  });
+
+  it("carries the extraction-confidence signal to the destination (#1601)", async () => {
+    // Confidence is persisted on the document's import_report, so a reassign must
+    // move it with the document: the destination's Review feed badges the rows the
+    // extractor hedged on, and the source stops claiming them.
+    const admin = createLogin({ role: "admin" });
+    const a = createProfile("CONF-SRC");
+    const b = createProfile("CONF-DEST");
+    const docId = newDocument(a.id);
+    const input = makeInput();
+    persistDocumentImport(a.id, docId, {
+      ...input,
+      meta: {
+        ...input.meta,
+        importReport: serializeImportReport({
+          drops: [],
+          coverage: [],
+          imported: 2,
+          considered: 2,
+          confidence: {
+            counts: { high: 1, medium: 1, low: 1, unknown: 0 },
+            scrutiny: 2,
+            flags: [
+              {
+                kind: "lab",
+                label: "Confidence Marker 1",
+                confidence: "low",
+                reason: "figure unclear",
+              },
+              {
+                kind: "condition",
+                label: "Sample Condition",
+                confidence: "medium",
+                reason: null,
+              },
+            ],
+          },
+        }),
+      },
+    });
+    actAs(admin, a);
+    expect(
+      getImportLogDocuments(a.id).find((d) => d.id === docId)
+        ?.confidence_scrutiny
+    ).toBe(2);
+
+    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
+    expect(res.status).toBe("done");
+
+    expect(
+      getImportLogDocuments(b.id).find((d) => d.id === docId)
+        ?.confidence_scrutiny
+    ).toBe(2);
+    expect(getImportLogDocuments(a.id).some((d) => d.id === docId)).toBe(false);
+    // The flagged rows themselves crossed intact — the detail card renders the same
+    // ranked list under the destination profile.
+    const moved = getMedicalDocument(b.id, docId)!;
+    expect(
+      parseImportReport(moved.import_report)?.confidence?.flags.map(
+        (f) => f.label
+      )
+    ).toEqual(["Confidence Marker 1", "Sample Condition"]);
   });
 
   it("moves the on-disk file into the destination profile's directory", async () => {

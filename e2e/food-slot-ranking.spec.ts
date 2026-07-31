@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_FOODSLOT, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -17,7 +17,7 @@ const SLOT_LEADER: Record<string, string> = {
   Evening: "berries",
 };
 
-test("the one-tap bar leads with the current slot's group, and the chip matches (#950)", async ({
+test("the one-tap bar order follows every selected meal slot (#950)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -37,17 +37,27 @@ test("the one-tap bar leads with the current slot's group, and the chip matches 
     // The chip label reads the same window (label and ranking share one derivation).
     await expect(chip).toHaveText(slot!);
 
-    // The FIRST food-group row in the bar (encourage tier leads) is the slot's dominant
-    // group — the SAME derivation that labeled the chip ranked the bar (#221).
-    const expectedLead = SLOT_LEADER[slot!];
     const firstRow = page
       .getByTestId("food-log-bar")
-      .locator('[data-testid^="food-group-"]')
+      .locator(
+        '[data-testid^="food-group-"]:not([data-testid="food-group-icon"])'
+      )
       .first(); // first-ok: the TOP-ranked food-group row IS the assertion (deterministic seeded ranking for this spec's own profile)
     await expect(firstRow).toHaveAttribute(
       "data-testid",
-      `food-group-${expectedLead}`
+      `food-group-${SLOT_LEADER[slot!]}`
     );
+
+    // Switching meal cards swaps the quick-log catalog to that meal's independent
+    // learned order; counts and ordering now share the same selected-slot context.
+    for (const meal of ["Morning", "Midday", "Evening"]) {
+      await page.getByTestId(`food-slot-${meal.toLowerCase()}`).click();
+      await expect(chip).toHaveText(meal);
+      await expect(firstRow).toHaveAttribute(
+        "data-testid",
+        `food-group-${SLOT_LEADER[meal]}`
+      );
+    }
   } finally {
     await page.context().close();
   }

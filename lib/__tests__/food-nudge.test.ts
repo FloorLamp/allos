@@ -17,9 +17,11 @@ import {
   FOOD_NUDGE_WINDOWS,
 } from "@/lib/notifications/food-format";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
-import { FOOD_GROUPS, foodGroupSlugs } from "@/lib/food-groups";
+import { FOOD_GROUPS, foodGroupEmoji, foodGroupSlugs } from "@/lib/food-groups";
+import { plainBody } from "@/lib/notifications/rich-text";
 import {
   proteinTodayNudgeLine,
+  proteinTodayNudgeParts,
   proteinIntake,
   proteinTarget,
   type ProteinToday,
@@ -45,8 +47,12 @@ describe("renderFoodNudge", () => {
     );
     expect(logButtons).toHaveLength(FOOD_NUDGE_BUTTON_COUNT);
     // Same groups, same order as the ranked input's head.
+    // Each label leads with the group's catalog glyph (#1710) — the same vocabulary
+    // the tally and the web food bar use.
     expect(logButtons.map((a) => a.label)).toEqual(
-      RANKED_GROUPS.slice(0, FOOD_NUDGE_BUTTON_COUNT).map((g) => g.name)
+      RANKED_GROUPS.slice(0, FOOD_NUDGE_BUTTON_COUNT).map(
+        (g) => `${foodGroupEmoji(g.slug)} ${g.name}`
+      )
     );
     expect(logButtons[0].data).toBe(
       foodLogCallbackData(1, "Morning", DATE, RANKED[0])
@@ -63,8 +69,10 @@ describe("renderFoodNudge", () => {
     const day = new Map<string, number>([[top.slug, 3]]);
     const msg = renderFoodNudge(1, "Midday", DATE, RANKED, slot, day);
     const first = (msg.actions ?? [])[0];
-    expect(first.label).toBe(`${top.name} (1)`); // slot count, not the day's 3
-    expect(msg.body).toContain(`✓ Today: ${top.name} ×3`); // day total, labeled
+    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name} (1)`); // slot count, not the day's 3
+    expect(plainBody(msg.body)).toContain(
+      `✓ Today: ${foodGroupEmoji(top.slug)} ${top.name} ×3`
+    ); // day total, labeled
   });
 
   it("a morning-tapped group shows an UNMARKED button on the midday nudge + a day tally (#1016)", () => {
@@ -79,8 +87,10 @@ describe("renderFoodNudge", () => {
       new Map([[top.slug, 2]]) // day total 2
     );
     const first = (msg.actions ?? [])[0];
-    expect(first.label).toBe(top.name); // no "(n)" — clean at midday
-    expect(msg.body).toContain(`✓ Today: ${top.name} ×2`);
+    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name}`); // no "(n)" — clean at midday
+    expect(plainBody(msg.body)).toContain(
+      `✓ Today: ${foodGroupEmoji(top.slug)} ${top.name} ×2`
+    );
   });
 
   it("appends the #974 protein status line when one is supplied, and equals the gauge figure", () => {
@@ -100,7 +110,6 @@ describe("renderFoodNudge", () => {
       target,
       weeklyAverageGrams: 95,
     };
-    const line = proteinTodayNudgeLine(t);
     const msg = renderFoodNudge(
       1,
       "Morning",
@@ -108,12 +117,12 @@ describe("renderFoodNudge", () => {
       RANKED,
       new Map(),
       new Map(),
-      {
-        proteinLine: line,
-      }
+      { proteinLine: proteinTodayNudgeParts(t) }
     );
-    expect(msg.body).toContain(line);
-    expect(msg.body).toContain("at least 55 g");
+    // The nudge renders the SAME line lib/protein composes for any other surface —
+    // one classification, one set of words (#221).
+    expect(plainBody(msg.body)).toContain(proteinTodayNudgeLine(t));
+    expect(plainBody(msg.body)).toContain("at least 55 g");
     expect(String(Math.round(t.todayGrams))).toBe("55");
   });
 
@@ -126,7 +135,7 @@ describe("renderFoodNudge", () => {
       new Map(),
       new Map()
     );
-    expect(msg.body).not.toMatch(/Protein/);
+    expect(plainBody(msg.body)).not.toMatch(/Protein/);
   });
 
   it("prompts to tap when nothing is logged yet, with no tally", () => {

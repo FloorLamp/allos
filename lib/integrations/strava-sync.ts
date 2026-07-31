@@ -18,6 +18,7 @@ import {
   type ProvenanceEntry,
 } from "./sync-log";
 import { mapStravaActivity } from "./strava";
+import { truncatedSyncDetails } from "./sync-details";
 import { writeRawPayload } from "./raw-log";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
@@ -294,6 +295,11 @@ export async function runStravaSync(
       suppressed: tally.suppressed,
       edited: tally.edited,
       skipped: tally.skipped,
+      // A run the provider cut short (page cap / 429) is NOT a clean success: the
+      // cursor was deliberately not advanced and data is still upstream, so the event
+      // carries a durable `truncated` marker + its Review line (#1614). Ordinary
+      // complete runs write no details at all.
+      details: truncated ? truncatedSyncDetails() : null,
       raw_ref: rawRef,
     });
     recordSyncRows(eventId, provenance);

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { followLink } from "./helpers";
 import { E2E_LOGIN_PREVENTIVE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -106,7 +107,7 @@ test.describe("preventive deep-links per class (#1083)", () => {
     await expect(page.locator("#rec-new-name")).toHaveValue("LDL Cholesterol");
   });
 
-  test("vital → vitals quick-add with the blood-pressure field focused (Record a reading)", async () => {
+  test("vital → the measurements form with the blood-pressure field focused (Record a reading)", async () => {
     test.slow();
     const cta = page
       .getByRole("main")
@@ -114,14 +115,15 @@ test.describe("preventive deep-links per class (#1083)", () => {
     await page.goto("/upcoming");
     await expect(cta).toHaveText(/Record a blood pressure reading/);
 
-    await followCta(
-      "blood_pressure",
-      /\/trends\?tab=vitals&focus=blood-pressure/
-    );
-    // Landed on the vitals ENTRY surface (NOT the biomarkers form, #1076), systolic
-    // focused so a BP reading is one keystroke away.
-    await expect(page.getByTestId("vitals-quick-add")).toBeVisible();
-    await expect(page.locator("#v-systolic")).toBeFocused();
+    await followCta("blood_pressure", /\/trends\?focus=blood-pressure#body/);
+    // Landed on the vitals ENTRY surface (NOT the biomarkers form, #1076) — since
+    // #1486 that is the Body census's combined "Log measurements" form, which
+    // the deep link expands with systolic focused so a BP reading is one keystroke
+    // away. (This project runs at desktop width, where the modal opens;
+    // the phone opens the same form in the #1468 overlay — see
+    // e2e/trends-body-merge.mobile.spec.ts.)
+    await expect(page.getByTestId("measurements-quick-add")).toBeVisible();
+    await expect(page.locator("#m-systolic")).toBeFocused();
   });
 
   test("procedure → procedures add form prefilled with the procedure noun (Log or schedule)", async () => {

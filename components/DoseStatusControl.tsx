@@ -67,9 +67,20 @@ export default function DoseStatusControl({
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
 
-  async function queue(kind: "dose" | "skip-dose", next: "taken" | "skipped") {
+  // `tappedAt` is the moment the user actually pressed the control — captured by the
+  // caller BEFORE the online attempt, so a confirm that falls back to the queue after
+  // a slow failing request still records when the dose was taken, not when we gave up
+  // (#1427). The server validates it; a skip records no intake time, so it carries none.
+  async function queue(
+    kind: "dose" | "skip-dose",
+    next: "taken" | "skipped",
+    tappedAt: Date
+  ) {
     setOptimistic(next);
-    await enqueue(kind, localDate(), { doseId });
+    await enqueue(kind, localDate(tappedAt), {
+      doseId,
+      ...(kind === "dose" ? { clientTakenAt: tappedAt.toISOString() } : {}),
+    });
     toast(
       next === "taken"
         ? "Dose saved offline — will sync when you reconnect."
@@ -100,6 +111,9 @@ export default function DoseStatusControl({
 
   async function apply(target: "taken" | "skipped" | "clear") {
     if (busy) return;
+    // Stamp the tap moment up front: everything below (the online round-trip, its
+    // failure, the queue write) happens after the dose was actually taken.
+    const tappedAt = new Date();
     // Cross-profile writes (#1373) are never queued — the offline replay route carries
     // no target profileId, so it would replay against the acting profile. Go straight
     // online; if the network drops, surface a retry toast rather than mis-target.
@@ -122,7 +136,7 @@ export default function DoseStatusControl({
         });
         return;
       }
-      await queue(target === "taken" ? "dose" : "skip-dose", target);
+      await queue(target === "taken" ? "dose" : "skip-dose", target, tappedAt);
       return;
     }
 
@@ -143,7 +157,11 @@ export default function DoseStatusControl({
         target !== "clear" &&
         shouldQueueOffline(stillOnline, err)
       ) {
-        await queue(target === "taken" ? "dose" : "skip-dose", target);
+        await queue(
+          target === "taken" ? "dose" : "skip-dose",
+          target,
+          tappedAt
+        );
       } else {
         toast("Couldn't update this dose. Try again.", {
           tone: "error",
@@ -160,8 +178,8 @@ export default function DoseStatusControl({
           isTaken
             ? "cursor-default border-brand-600 bg-brand-600 text-white"
             : isSkipped
-              ? "border-black/5 bg-slate-50 text-transparent dark:border-white/5 dark:bg-ink-900/60"
-              : "border-black/10 text-transparent hover:border-brand-400 dark:border-white/10"
+              ? "border-black/5 bg-slate-50 text-slate-300 hover:text-brand-500 dark:border-white/5 dark:bg-ink-900/60 dark:text-slate-600 dark:hover:text-brand-400"
+              : "border-black/10 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-white/10 dark:text-slate-400 dark:hover:text-brand-400"
         }`
       : `${compact ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${
           isTaken

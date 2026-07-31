@@ -1,7 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Per-hit command-palette actions (issue #662): a FOUND entity offers contextual
 // actions routed through the EXISTING gated Server Actions — med → Log dose /
@@ -12,7 +13,7 @@ import { settledClick } from "./helpers";
 // The completing-an-appointment case MUTATES, so it owns a uniquely-titled
 // appointment it creates and deletes (the visits-lifecycle #288 self-cleaning
 // pattern) — never a shared-seed row a neighbor exact-counts.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const APPT_MARKER = "E2E palette complete visit";
 
 function cleanup() {
@@ -36,9 +37,12 @@ test.describe("command palette — per-hit actions (#662)", () => {
     await input.fill("LDL Cholesterol");
 
     const results = page.getByRole("listbox", { name: "Results" });
-    await expect(
-      results.getByText("Biomarkers", { exact: true })
-    ).toBeVisible();
+    // The first palette search on a worker also warms the search route; on a
+    // loaded runner that first fetch can outlast the default 5s. A named ceiling,
+    // not a sleep — this still fails if the hit never arrives.
+    await expect(results.getByText("Biomarkers", { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     const addResult = results
       .getByTestId("palette-hit-action-add-result")
       .first(); // first-ok: the add-result action in the scoped command-palette results — order-agnostic
@@ -72,7 +76,8 @@ test.describe("command palette — per-hit actions (#662)", () => {
       .getByRole("listitem")
       .filter({ hasText: "Sertraline" })
       .first(); // first-ok: filtered to the Sertraline palette result — one match for the searched med
-    await expect(row).toBeVisible();
+    // Same first-search warm-up ceiling as the biomarker hit above.
+    await expect(row).toBeVisible({ timeout: 20_000 });
     await expect(row.getByTestId("palette-hit-action-log-dose")).toBeVisible();
     await expect(row.getByTestId("palette-hit-action-refill")).toBeVisible();
   });

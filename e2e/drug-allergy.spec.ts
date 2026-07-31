@@ -1,6 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_DRUG_ALLERGY,
@@ -8,6 +7,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { allergyWarnings, allergyWarningRows } from "./intake-warnings-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Drug-allergy × medication-stack cross-check (issues #1029, #1092). The dedicated
 // fixture profile records a "Penicillin — hives" allergy and tracks amoxicillin
@@ -21,9 +21,7 @@ import { allergyWarnings, allergyWarningRows } from "./intake-warnings-helpers";
 // isolated (#868), and dismissals are reset before each test so the spec owns its
 // suppression state under --repeat-each.
 
-const DB_PATH =
-  process.env.ALLOS_DB_PATH ??
-  path.join(process.cwd(), "e2e", ".data", "e2e.db");
+const DB_PATH = workerDbPath();
 
 // Clear this fixture profile's allergy-med dismissals so the findings are visible at
 // the start of EVERY test (the drug-interactions.spec reset pattern — a dismissal

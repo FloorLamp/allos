@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 // engines into it (retest ✓, screening ✓, immunization ✗), so an
 // immunocompromised/healthcare-worker/pregnant profile's key vaccines never ranked
 // up. Close it MECHANICALLY so a fourth engine can't be silently left out: every
-// builder in lib/queries/upcoming/generators.ts that EMITS UpcomingItems must
+// builder in lib/queries/upcoming/*.ts that EMITS UpcomingItems must
 // either consult the risk/priority layer (a `*PriorityFor` / `retestModulationFor`
 // call in its body) OR be on a justified allowlist (dose/refill/appointment/goal/
 // training/… where risk-priority is N/A) — each with a one-line reason. A new
@@ -16,7 +16,12 @@ import { fileURLToPath } from "node:url";
 // own source as TEXT (no DB, no network — "pure" in the vitest sense).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const GENERATORS = path.join(REPO, "lib/queries/upcoming/generators.ts");
+const GENERATORS_DIR = path.join(REPO, "lib/queries/upcoming");
+const GENERATOR_FILES = fs
+  .readdirSync(GENERATORS_DIR)
+  .filter((name) => name.endsWith(".ts"))
+  .sort()
+  .map((name) => path.join(GENERATORS_DIR, name));
 
 // Builders that MUST route through the risk/priority layer — each is expected to
 // reference a `*PriorityFor` or `retestModulationFor` call in its body.
@@ -33,11 +38,28 @@ const RISK_AWARE = new Set<string>([
 // due signals.
 const ALLOWLIST: Record<string, string> = {
   doseItems:
-    "scheduled dose for today — user-set mandatory/high/low priority, NOT " +
-    "risk-ranked (#559: supplements are user-prioritized, so the risk engine " +
-    "must not recompute their priority); the only dynamic axis is time-urgency " +
-    "via the existing dose/escalation lattice, not this layer",
+    "scheduled dose for today — the user's own must/should obligation (#559 → " +
+    "#1505), NOT risk-ranked: obligation is DECLARED, so the risk engine must not " +
+    "recompute it; the only dynamic axis is time-urgency via the existing " +
+    "dose/escalation lattice, not this layer",
+  offeredItems:
+    "`may` items on offer today (#1505) — AVAILABILITY, not a due signal at all. " +
+    "It carries no date and no band, renders only inside Upcoming's collapsed " +
+    "disclosure, and is excluded from the page total and the hero; ranking an " +
+    "offer would be ranking something the user owes nothing on",
+  syncRequestItems:
+    "an open portal SYNC REQUEST (#1757) — an ask addressed to a PERSON " +
+    '("run the portal tool on the computer with Mom\'s login"), not a due ' +
+    "signal about the profile's health. Its only ordering axis is the request's " +
+    "own expiry, and its salience is the REASON that raised it (manual > " +
+    "post-visit > staleness), which the supersession rule already resolves to one " +
+    "row per portal login. Risk-ranking portal hygiene would imply a clinical " +
+    "urgency this coaching-tier signal deliberately never claims",
   refillItems: "supply run-out math — not a risk-ranked due signal",
+  poolRefillItems:
+    "shared supply pool run-out math (#1374) — the pooled twin of refillItems, " +
+    "summing every linked member's consumption; still supply arithmetic, not a " +
+    "risk-ranked due signal",
   dietaryLimitItems: "standing UL warning — informational, not risk-ranked",
   prnMaxItems:
     "PRN over-daily-max care finding (#798) — a per-day count vs the user's OWN " +
@@ -67,6 +89,18 @@ const ALLOWLIST: Record<string, string> = {
     "the user's OWN skin-type (Fitzpatrick) MED threshold; a physics-thresholded safety " +
     "note, not a demographic risk-ranked due signal, so it opts out like the other " +
     "med/sun-safety findings",
+  outdoorPlanItems:
+    "outdoor-session planning item (#1724 part 5) \u2014 names the best weather window " +
+    "for a behind outdoor target this week. Its ordering comes from the forecast and " +
+    "the profile's OWN revealed tolerance envelope, not from a demographic risk " +
+    "stratum; it carries no due date and is banded `week` by construction, so there is " +
+    "no priority for the risk layer to modulate",
+  weatherMedItems:
+    "medication/supplement \u00d7 conditions safety note (#1727) \u2014 a curated " +
+    "photosensitizing or heat-risk attribute composed with today's UV / heatwave; the " +
+    "membership is a cited DATASET fact about the drug class and the trigger is the " +
+    "weather, so there is no demographic risk stratum to consult \u2014 it opts out " +
+    "like the other med-safety findings it sits beside",
   medMonitoringItems:
     "medication → required-monitoring-lab bridge (#995) — a med-driven retest clock whose " +
     "cadence + reach tier come from the curated medication-monitoring DATASET (per-entry " +
@@ -118,7 +152,9 @@ function functionBody(src: string, name: string): string {
 }
 
 describe("every Upcoming due-signal builder consumes the risk/priority layer (#553)", () => {
-  const src = fs.readFileSync(GENERATORS, "utf8");
+  const src = GENERATOR_FILES.map((file) => fs.readFileSync(file, "utf8")).join(
+    "\n"
+  );
 
   // Every function declared with an explicit `: UpcomingItem[]` return type is a
   // builder (or an aggregator returning the flat list). A new one that isn't in
@@ -147,12 +183,13 @@ describe("every Upcoming due-signal builder consumes the risk/priority layer (#5
   });
 
   it("each risk-aware builder actually references a priority/modulation call in its body", () => {
-    const priorityCall = /(\w+PriorityFor|retestModulationFor)\s*\(/;
+    const priorityCall =
+      /(\w+PriorityFor|retestModulationFor|biomarkerRetestSignals)\s*\(/;
     for (const name of RISK_AWARE) {
       const body = functionBody(src, name);
       expect(
         priorityCall.test(body),
-        `${name} is marked risk-aware but does not call a *PriorityFor / retestModulationFor helper`
+        `${name} is marked risk-aware but does not call a *PriorityFor / retestModulationFor helper or delegate to the shared biomarker retest signals`
       ).toBe(true);
     }
   });

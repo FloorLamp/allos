@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { expandUpcomingAggregates } from "./helpers";
 import Database from "better-sqlite3";
-import path from "node:path";
 import {
   intakeWarnings,
   expandIntakeWarnings,
@@ -8,6 +8,7 @@ import {
   interactionWarningRows,
   pgxWarnings,
 } from "./intake-warnings-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Drug-/supplement-interaction checking (issue #144). The seed gives profile 1 a
 // known-interacting pair — Warfarin (rxcui-keyed) + Ibuprofen (name-matched), a MAJOR
@@ -43,9 +44,7 @@ test("shows the seeded warfarin + ibuprofen interaction warning on /medications"
 // next repeat. Resetting before each test makes the file own its dismissal state.
 // Short-lived connection, busy timeout so it never contends with the running server (WAL).
 function resetInteractionDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -66,6 +65,9 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
 }) => {
   await page.goto("/upcoming");
   const main = page.getByRole("main");
+  // Interaction + PGx notes fold into one med-safety disclosure (#1504); the rows
+  // keep their own dedupeKey and their own dismiss, so open it and act per row.
+  await expandUpcomingAggregates(main, "med-safety");
 
   // The finding is keyed on the item-id pair (`interaction:<lo>-<hi>`); the seed
   // yields several interacting pairs, so select the warfarin+ibuprofen one by text
@@ -81,8 +83,9 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
 
   // The item's menu is the shared OverflowMenu popover (#281): its trigger is a
   // button, and the panel is portaled to <body> — so the Dismiss item is located
-  // from the page-level menu role, not inside the row. Open, then dismiss.
-  await finding.getByRole("button", { name: "Snooze or dismiss" }).click();
+  // from the page-level menu role, not inside the row. On /upcoming every row has
+  // exactly ONE kebab, labelled "More actions" (#1446). Open, then dismiss.
+  await finding.getByRole("button", { name: "More actions" }).click();
   await page
     .getByRole("menu")
     .getByRole("menuitem", { name: "Dismiss" })

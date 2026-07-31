@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import sharp from "sharp";
 import { loginAs } from "./nav";
@@ -8,6 +9,7 @@ import {
   E2E_MEMBER_PASSWORD,
   PROGRESS_PHOTOS_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Progress photos over the shared photo core (#1119): the native-capture
 // FALLBACK path end to end (CI has no camera, so getUserMedia is denied and
@@ -24,7 +26,7 @@ import {
 // (whose top-level order nav-consolidation.spec.ts pins verbatim) never gains
 // the data-gated entry.
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 function fixtureProfileId(): number {
   const handle = new Database(DB_PATH);
@@ -203,11 +205,16 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     await expect(page.getByTestId("photo-timeline-overlay")).toBeVisible();
     await expect(page.getByTestId("photo-timeline-side")).toHaveCount(0);
 
-    // Delete from the lightbox (confirm dialog accepted) → one photo remains.
+    // Delete from the lightbox through the app confirmation → one photo remains.
     await page.getByTestId("progress-view-grid").click();
     await items.nth(0).click();
-    page.once("dialog", (d) => void d.accept());
-    await settledClick(page, page.getByTestId("photo-lightbox-delete"));
+    await page.getByTestId("photo-lightbox-delete").click();
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete photo" })
+    );
     await expect(items).toHaveCount(1);
   } finally {
     await page.context().close();

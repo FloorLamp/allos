@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useLockBodyScroll } from "./useLockBodyScroll";
 
 // A dependency-free circular image cropper used by the profile photo pickers
-// (Settings → Profile and the Family admin screen). The user drags to pan and
+// (Settings → Health profile and the People & access admin screen). The user drags to pan and
 // uses the slider / mouse wheel to zoom; a circular overlay previews exactly how
 // the avatar will be masked. On confirm it renders the visible square region to
 // a canvas and hands back a cropped image File (never the original), so the

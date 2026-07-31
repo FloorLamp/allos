@@ -1,4 +1,5 @@
-import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
@@ -9,9 +10,11 @@ import {
   E2E_MEMBER_PASSWORD,
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
-import { settledClick } from "./helpers";
+import { expectNoClippedContent, settledClick } from "./helpers";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
+import { workerDbPath, frozenNow } from "./worker-env";
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 interface SleepEditFixture {
   username: string;
@@ -32,10 +35,10 @@ function createSleepEditFixture(
   const handle = new Database(DB_PATH);
   handle.pragma("busy_timeout = 5000");
   try {
-    const manualDate = new Date(Date.now() - 3 * 86_400_000)
+    const manualDate = new Date(frozenNow().getTime() - 3 * 86_400_000)
       .toISOString()
       .slice(0, 10);
-    const importedDate = new Date(Date.now() - 4 * 86_400_000)
+    const importedDate = new Date(frozenNow().getTime() - 4 * 86_400_000)
       .toISOString()
       .slice(0, 10);
     const suffix = `${purpose}-${process.pid}-${testInfo.repeatEachIndex}`;
@@ -49,10 +52,9 @@ function createSleepEditFixture(
             .prepare("SELECT password_hash FROM logins WHERE username = ?")
             .get(E2E_LOGIN_SLEEP_EDIT) as { password_hash: string }
         ).password_hash;
-        profileId = Number(
-          handle
-            .prepare("INSERT INTO profiles (name) VALUES (?)")
-            .run(`${SLEEP_EDIT_PROFILE} ${suffix}`).lastInsertRowid
+        profileId = createFixtureProfile(
+          handle,
+          `${SLEEP_EDIT_PROFILE} ${suffix}`
         );
         loginId = Number(
           handle
@@ -139,9 +141,9 @@ function destroySleepEditFixture(fixture: SleepEditFixture): void {
         handle
           .prepare("DELETE FROM profile_settings WHERE profile_id = ?")
           .run(fixture.profileId);
-        handle
-          .prepare("DELETE FROM profiles WHERE id = ?")
-          .run(fixture.profileId);
+        // The profile row + whatever its CONSTRUCTOR seeded (the #1487 standard
+        // metric saves) — deleting the row directly trips saved_items' FK.
+        destroyFixtureProfile(handle, fixture.profileId);
       })
       .immediate();
   } finally {
@@ -310,7 +312,7 @@ test.describe("Sleep page (#1066)", () => {
     // card. It includes unpaired dates and pages the 60-day window 10 at a time.
     const sleepMoodLog = sleepMoodSection.getByTestId("sleep-mood-log");
     const logHeading = sleepMoodLog.getByRole("heading", {
-      name: "Sleep and Mood Log",
+      name: "Sleep and mood log",
     });
     const logHelper = sleepMoodLog.getByText(
       /^All available sleep, stage, and mood entries, with bedtime supplement context/
@@ -486,7 +488,7 @@ test.describe("Sleep page (#1066)", () => {
       await page.goto("/sleep");
       const emptyLog = page.getByRole("main").getByTestId("sleep-mood-log");
       await expect(
-        emptyLog.getByRole("heading", { name: "Sleep and Mood Log" })
+        emptyLog.getByRole("heading", { name: "Sleep and mood log" })
       ).toBeVisible();
       const emptyHistory = emptyLog.getByTestId("sleep-mood-history");
       await expect(emptyHistory).toBeVisible();
@@ -532,11 +534,22 @@ test.describe("Sleep page (#1066)", () => {
     await expect(async () => {
       await page.mouse.move(5, 5); // leave the chart so the next hover re-enters
       await stageBar.hover();
+      // A 1px nudge AFTER the hover: recharts activates its tooltip on a fresh
+      // mousemove over the chart surface, and a hover that lands where the pointer
+      // already sat emits none — the CI-load failure mode where the wrapper stays
+      // hidden (empty innerText) for the whole budget (#1556 family).
+      const barBox = await stageBar.boundingBox();
+      if (barBox) {
+        await page.mouse.move(
+          barBox.x + barBox.width / 2 + 1,
+          barBox.y + barBox.height / 2 + 1
+        );
+      }
       const txt = (await stageTip.innerText()).trim();
       expect(txt).toContain("h");
       // No raw unit conversion: nowhere a number with 2+ decimals (e.g. 1.5333333).
       expect(txt).not.toMatch(/\d\.\d{2,}/);
-    }).toPass({ timeout: 15_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event
+    }).toPass({ timeout: 30_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is a declared budget for a loaded CI shard (measured empty-tooltip overruns at 15s), not a retry
 
     // SRI trend line: decimals=0 so the tooltip is an INTEGER — like the headline
     // (which is Math.round(sri)), never the raw "87 vs 87.34" mismatch #403 named.
@@ -547,11 +560,21 @@ test.describe("Sleep page (#1066)", () => {
     await expect(async () => {
       await page.mouse.move(5, 5);
       await sriDot.hover();
+      // Same fresh-mousemove nudge as the stage bar above — this loop is where the
+      // CI failures actually landed (empty wrapper for the full budget, twice on
+      // 2026-07-26), and the dot is the smaller hover target.
+      const dotBox = await sriDot.boundingBox();
+      if (dotBox) {
+        await page.mouse.move(
+          dotBox.x + dotBox.width / 2 + 1,
+          dotBox.y + dotBox.height / 2 + 1
+        );
+      }
       const txt = (await sriTip.innerText()).trim();
       expect(txt).toContain("SRI");
       // Integer only — never a fractional SRI in the tooltip.
       expect(txt).not.toMatch(/\d\.\d/);
-    }).toPass({ timeout: 15_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event
+    }).toPass({ timeout: 30_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is a declared budget for a loaded CI shard (measured empty-tooltip overruns at 15s), not a retry
   });
 
   test("clock times follow the login's 12h/24h pref on the hero + consistency strip (#1163)", async ({
@@ -576,7 +599,7 @@ test.describe("Sleep page (#1066)", () => {
       ).toBe(true);
 
       // Flip the login's clock to 12h on Settings → Preferences (autosave on change).
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       await selectAndSave(page, "time-format-select", "12h");
       await expect(page.getByTestId("time-format-select")).toHaveValue("12h");
 
@@ -599,7 +622,7 @@ test.describe("Sleep page (#1066)", () => {
       ).toBe(true);
     } finally {
       // Restore the default so the shared admin login preference doesn't leak.
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       await selectAndSave(page, "time-format-select", "24h");
       await expect(page.getByTestId("time-format-select")).toHaveValue("24h");
     }
@@ -611,24 +634,22 @@ test.describe("Sleep page (#1066)", () => {
     await page.setViewportSize({ width: 320, height: 844 });
     await page.goto("/sleep");
     await expect(page.getByTestId("sleep-hero")).toBeVisible();
-    const layout = await page.evaluate(() => ({
-      noBodyScroll:
-        document.documentElement.scrollWidth <= window.innerWidth + 1,
-      overflowingCards: [...document.querySelectorAll("main .card")].flatMap(
-        (card, index) => {
-          const bounds = card.getBoundingClientRect();
-          return bounds.left >= -1 && bounds.right <= window.innerWidth + 1
-            ? []
-            : [
-                `${index}:${card.getAttribute("data-testid") ?? card.className} (${Math.round(bounds.left)}..${Math.round(bounds.right)})`,
-              ];
-        }
-      ),
-    }));
-    expect(layout).toEqual({
-      noBodyScroll: true,
-      overflowingCards: [],
-    });
+    // Nothing on the page may sit past the right edge (#1543 — the shell clips
+    // horizontal overflow, so a page-level width comparison asserts nothing).
+    await expectNoClippedContent(page);
+    // The blessed guard is right-edge only; the cards additionally must not hang
+    // off the LEFT, which is how a negative-margin row hides its leading column.
+    const cardsOffLeft = await page.evaluate(() =>
+      [...document.querySelectorAll("main .card")].flatMap((card, index) => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.left >= -1
+          ? []
+          : [
+              `${index}:${card.getAttribute("data-testid") ?? card.className} (left ${Math.round(bounds.left)})`,
+            ];
+      })
+    );
+    expect(cardsOffLeft).toEqual([]);
     await expect(page.getByTestId("sleep-add-entry-header")).toHaveCSS(
       "white-space",
       "nowrap"
@@ -778,7 +799,7 @@ test.describe("Sleep segmented merged-night (#1191/#1283)", () => {
   });
 });
 
-test.describe("Sleep and Mood Log historical editing", () => {
+test.describe("Sleep and mood log historical editing", () => {
   test("edits historical mood + duration-only sleep while imported sleep stays read-only", async ({
     browser,
   }, testInfo) => {

@@ -23,7 +23,7 @@ import {
 } from "../mobility-suggest";
 import type { MuscleRegion } from "../lifts";
 import { getLatestMedicalRecordByCanonical } from "./medical";
-import { getFrequencyTargets } from "./training";
+import { getFrequencyTargets } from "./frequency-targets";
 
 // The day's mobility session (its logged move slugs + optional duration), or an empty
 // session when none exists yet.

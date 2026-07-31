@@ -22,8 +22,10 @@ import { medicationEditHref, medicationHref } from "@/lib/hrefs";
 import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import {
   RefillBadge,
+  SharedSupplyChip,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import type { PoolChipData } from "@/lib/queries/intake";
 import RefillButton from "@/components/medications/RefillButton";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import OverflowMenu, {
@@ -36,6 +38,7 @@ import { useToast } from "@/components/Toast";
 import { deleteSupplement } from "@/app/(app)/nutrition/supplement-actions";
 import { restartMedication } from "@/app/(app)/medications/actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { isPrn } from "@/lib/supplement-schedule";
 
 // One medication as a SCANNABLE ROW on the /medications list (#817) — not the old
 // lifecycle card. Name/dose · adherence + refill (#747 parity) · course status ·
@@ -49,6 +52,7 @@ export default function MedicationRow({
   sideEffects,
   strip,
   refillRate,
+  poolChip = null,
   prnRedoseLine = null,
   monitoringNote = null,
   heldBy = null,
@@ -61,6 +65,8 @@ export default function MedicationRow({
   sideEffects: MedicationSideEffect[];
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
+  // The shared-bottle chip when this med draws from a pool (#1374).
+  poolChip?: PoolChipData | null;
   prnRedoseLine?: string | null;
   // The "Requires monitoring: …" note (issue #995) — the curated labs a clinician
   // typically watches while on this drug. Informational; absent for unmonitored meds.
@@ -125,7 +131,7 @@ export default function MedicationRow({
       amount: dose.amount,
       product: med.product,
       timeOfDay: dose.time_of_day,
-      asNeeded: med.as_needed === 1,
+      asNeeded: isPrn(med),
       timeFormat: formatPrefs.timeFormat,
     })
   );
@@ -158,7 +164,7 @@ export default function MedicationRow({
               </span>
             )}
             <RxOtcBadge rx={med.rx} />
-            {med.as_needed === 1 && (
+            {isPrn(med) && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 As Needed
               </span>
@@ -186,13 +192,17 @@ export default function MedicationRow({
                 {unresolved} side effect{unresolved === 1 ? "" : "s"}
               </span>
             )}
-            <RefillBadge
-              quantityOnHand={med.quantity_on_hand}
-              qtyPerDose={med.qty_per_dose}
-              refillRate={refillRate}
-              doseCount={doses.length}
-              todayStr={todayStr}
-            />
+            {poolChip ? (
+              <SharedSupplyChip pool={poolChip} />
+            ) : (
+              <RefillBadge
+                quantityOnHand={med.quantity_on_hand}
+                qtyPerDose={med.qty_per_dose}
+                refillRate={refillRate}
+                doseCount={doses.length}
+                todayStr={todayStr}
+              />
+            )}
           </div>
           <div
             data-testid="medication-dose-summary"

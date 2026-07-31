@@ -14,7 +14,7 @@ import {
   immunizationCodesLosingBacking,
   preventiveDismissalKey,
 } from "../../dismissal-keys";
-import { cleanupOrphanStars, biomarkerFamilyKey } from "../medical";
+import { cleanupOrphanSavedBiomarkers, biomarkerFamilyKey } from "../medical";
 
 // The profile's snooze/dismiss rows, keyed by signal_key (a Finding's dedupeKey)
 // for O(1) lookup during filtering. This is the shared read behind BOTH the
@@ -89,7 +89,7 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
 // a vaccine code), so a dismissal left behind after its subject is deleted/renamed
 // silently re-attaches to a later subject that reuses the same key (AGENTS.md #224:
 // "names and codes DO recycle"). These helpers clear/re-key those rows at the
-// delete/rename seams, mirroring cleanupOrphanStars on the star store. Each is
+// delete/rename seams, mirroring cleanupOrphanSavedBiomarkers on the save store. Each is
 // profile-scoped.
 
 // Drop biomarker retest dismissals (`biomarker:<family>`) AND flagged-result
@@ -101,7 +101,7 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
 // is de-orphaned only when NO family member has a reading left, and a stale
 // legacy per-name flag row (from before #564) is de-orphaned here too (its suffix
 // isn't in the family-key set). A dismissal with no matching reading can never fire
-// again, so removing it is a pure de-orphan (mirrors cleanupOrphanStars).
+// again, so removing it is a pure de-orphan (mirrors cleanupOrphanSavedBiomarkers).
 // 11 = length('biomarker:') + 1; 16 = length('biomarker-flag:') + 1.
 export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
   db.prepare(
@@ -124,47 +124,50 @@ export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
   ).run(profileId, profileId);
 }
 
-// One call that sweeps BOTH name-keyed biomarker side-stores — the star pins
-// (starred_biomarkers) and the retest/flag dismissals (upcoming_dismissals) — of
-// any row whose backing readings are all gone. Both stores key on a REUSABLE
-// canonical name, so every operation that removes readings (a record delete, a
-// document delete/reprocess/reassign) can orphan either one, and a name that later
-// recycles silently re-attaches the stale pin/snooze (AGENTS.md row-ops: "names and
-// codes DO recycle" — the #203/#283 class). The per-record edit/delete paths already
-// swept both, but the document-level resets swept only stars (#327); bundling the
+// One call that sweeps BOTH name-keyed biomarker side-stores — the biomarker SAVES
+// (saved_items where kind='biomarker', #1456) and the retest/flag dismissals
+// (upcoming_dismissals) — of any row whose backing readings are all gone. Both stores
+// key on a REUSABLE canonical name, so every operation that removes readings (a record
+// delete, a document delete/reprocess/reassign) can orphan either one, and a name that
+// later recycles silently re-attaches the stale save/snooze (AGENTS.md row-ops: "names
+// and codes DO recycle" — the #203/#283 class). The per-record edit/delete paths already
+// swept both, but the document-level resets swept only saves (#327); bundling the
 // two here means the next document-level operation can't clean one and forget the
 // other (same disease as the import-footprint two-lists rule). Profile-scoped.
 export function cleanupOrphanBiomarkerKeyedState(profileId: number): void {
-  cleanupOrphanStars(profileId);
+  cleanupOrphanSavedBiomarkers(profileId);
   cleanupOrphanBiomarkerDismissals(profileId);
 }
 
-// Re-key a biomarker's star + retest/flag dismissals when its canonical name is
-// renamed: the user's pin/snooze intent follows the reading to its new name rather
+// Re-key a biomarker's SAVE + retest/flag dismissals when its canonical name is
+// renamed: the user's save/snooze intent follows the reading to its new name rather
 // than orphaning under the old (manifestations 3 & 4). UPDATE OR IGNORE so a
-// collision with an existing star/dismissal already under the new name is a no-op;
-// the caller then runs the orphan sweeps to drop any leftover old row. The star
-// store matches COLLATE NOCASE (as its writers do); the dismissal keys are already
-// lowercased. The `biomarker-flag:` key (the hero's flagged-result dismissal,
-// issue #283) rides the same lifecycle.
+// collision with an existing save/dismissal already under the new name is a no-op;
+// the caller then runs the orphan sweeps to drop any leftover old row. The save
+// store's `key` is COLLATE NOCASE (as the star store's canonical_name was); the
+// dismissal keys are already lowercased. The `biomarker-flag:` key (the hero's
+// flagged-result dismissal, issue #283) rides the same lifecycle.
+//
+// Scoped to kind='biomarker' (#1456): the unified store also holds `trend-metric`
+// saves keyed by metric id, and a biomarker rename must never touch those.
 export function migrateRenamedBiomarker(
   profileId: number,
   oldName: string,
   newName: string
 ): void {
   db.prepare(
-    `UPDATE OR IGNORE starred_biomarkers
-        SET canonical_name = ?
-      WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE`
+    `UPDATE OR IGNORE saved_items
+        SET key = ?
+      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
   ).run(newName, profileId, oldName);
-  // If the rename COLLIDED with an existing pin under the new name (UPDATE OR
-  // IGNORE left the old row), drop the now-redundant old star. Before #482 the
+  // If the rename COLLIDED with an existing save under the new name (UPDATE OR
+  // IGNORE left the old row), drop the now-redundant old save. Before #482 the
   // family-blind orphan sweep dropped it (the old name lost its backing on rename);
   // the family-aware sweep keeps a same-family sibling backed, so the collapse has
-  // to be explicit here — a rename must never leave two pins on one family.
+  // to be explicit here — a rename must never leave two saves on one family.
   db.prepare(
-    `DELETE FROM starred_biomarkers
-      WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE`
+    `DELETE FROM saved_items
+      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
   ).run(profileId, oldName);
   const rekey = db.prepare(
     `UPDATE OR IGNORE upcoming_dismissals

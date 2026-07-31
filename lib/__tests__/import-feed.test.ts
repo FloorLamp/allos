@@ -130,10 +130,39 @@ describe("feedItemView — sync", () => {
 
   it("marks a failed sync with the error tone", () => {
     const v = feedItemView(
-      syncEntry(sync({ ok: 0, error: "token refresh failed" })),
+      syncEntry(
+        sync({
+          ok: 0,
+          inserted: null,
+          updated: null,
+          unchanged: null,
+          written: null,
+          error: "token refresh failed",
+        })
+      ),
       providerName
     );
     expect(v.tone).toBe("error");
+    expect(v.detail).toBe("import failed");
+  });
+
+  it("retains the committed split on a failed chunked archive import", () => {
+    const v = feedItemView(
+      syncEntry(
+        sync({
+          ok: 0,
+          provider: "fitbit-takeout",
+          inserted: 3,
+          updated: 1,
+          unchanged: 0,
+          written: 4,
+          error: "Takeout import stopped after writing 4 records.",
+        })
+      ),
+      providerName
+    );
+    expect(v.tone).toBe("error");
+    expect(v.detail).toBe("import failed · 3 new · 1 changed");
   });
 });
 
@@ -351,5 +380,46 @@ describe("feedItemView — sync-quiet", () => {
     expect(v.detailMuted).toBe(true);
     // Key is stable/unique per provider + newest id.
     expect(v.key).toBe("sync-quiet:health-connect:3");
+  });
+});
+
+describe("feedItemView — extraction-confidence badge (#1601)", () => {
+  it("carries the scrutiny count for a done document", () => {
+    const v = feedItemView(
+      documentEntry(doc({ confidence_scrutiny: 3 })),
+      providerName
+    );
+    expect(v.scrutiny).toBe(3);
+    // The badge is additive — the produced-count detail is untouched.
+    expect(v.detail).toBe("12 items");
+  });
+
+  it("is 0 when the document carries no confidence signal", () => {
+    // A deterministic import, a keyless extraction, and any pre-#1601 document all
+    // land here: no badge, and never a fabricated 0-vs-unknown distinction on screen.
+    expect(feedItemView(documentEntry(doc()), providerName).scrutiny).toBe(0);
+    expect(
+      feedItemView(documentEntry(doc({ confidence_scrutiny: 0 })), providerName)
+        .scrutiny
+    ).toBe(0);
+  });
+
+  it("never badges an in-flight or failed document", () => {
+    // A stale report from a previous attempt must not put "N to check" next to
+    // "import failed" / "extracting…" — there is nothing reviewable yet.
+    for (const status of ["processing", "pending", "failed", "skipped"]) {
+      const v = feedItemView(
+        documentEntry(
+          doc({ extraction_status: status, confidence_scrutiny: 4 })
+        ),
+        providerName
+      );
+      expect(v.scrutiny, status).toBe(0);
+    }
+  });
+
+  it("is 0 for every non-document stream", () => {
+    expect(feedItemView(syncEntry(sync()), providerName).scrutiny).toBe(0);
+    expect(feedItemView(jobEntry(job()), providerName).scrutiny).toBe(0);
   });
 });

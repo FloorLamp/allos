@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -15,11 +15,19 @@ test.describe("Server error log access gate (#596)", () => {
     test.slow();
 
     await page.goto("/settings/errors");
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-    // The admin-only tab is present …
-    await expect(page.getByRole("link", { name: "Errors" })).toBeVisible();
+    // #1462: pages are topic GROUPS, so the heading names the group (it used to be a
+    // generic "Settings" over a tab strip).
+    await expect(
+      page.getByRole("heading", { name: "Logs & audit" })
+    ).toBeVisible();
+    // The admin-only sub-page entry is present …
+    await expect(
+      page
+        .getByTestId("settings-subpage-nav")
+        .getByRole("link", { name: "Errors" })
+    ).toBeVisible();
     // … the error surface renders …
-    await expect(page.getByText(/Server error log/)).toBeVisible();
+    await expect(page.getByText(/Unexpected exceptions/)).toBeVisible();
     await expect(page.getByTestId("error-log")).toBeVisible();
     // … and the seeded synthetic error (see e2e/seed-events.ts) is listed.
     await expect(

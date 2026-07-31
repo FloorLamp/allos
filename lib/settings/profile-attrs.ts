@@ -28,6 +28,11 @@ import {
 } from "../situations";
 import { syncOpenIllnessEpisode } from "../illness-episode-store";
 import { DEFAULT_FITNESS_RETEST_DAYS } from "../fitness-retest";
+import {
+  parseProteinGoalLevel,
+  resolveProteinGoalLevel,
+  type ProteinGoalLevel,
+} from "../protein";
 import { zipToHome } from "../home-location";
 import { parseSkinType, type FitzpatrickType } from "../uv-dose";
 import { getHomeLocation, setHomeLocation } from "./location";
@@ -441,10 +446,13 @@ export function getMetricSourcePriority(
 // Set (or clear, with null/"") the primary source for one metric. The metric key
 // is validated by the CALLER (the server action allowlists COMPARABLE_METRICS);
 // the source id is shape-checked here so a forged post can't store a blob.
+// `strict` (#1642) elects "only this source" — no fallback on days it didn't
+// cover; it is meaningless without a source and is dropped along with one.
 export function setMetricSourcePriorityEntry(
   profileId: number,
   metric: string,
-  source: string | null
+  source: string | null,
+  strict = false
 ): void {
   if (source != null && source !== "" && !isValidSourceId(source)) {
     throw new Error(`Invalid source id: ${source}`);
@@ -452,7 +460,8 @@ export function setMetricSourcePriorityEntry(
   const next = withMetricSource(
     getMetricSourcePriority(profileId),
     metric,
-    source
+    source,
+    strict
   );
   if (Object.keys(next).length === 0) {
     deleteProfileSetting(profileId, METRIC_SOURCE_PRIORITY_KEY);
@@ -503,6 +512,46 @@ export function setExcludedFoodGroups(
     return;
   }
   setProfileSetting(profileId, EXCLUDED_FOOD_GROUPS_KEY, JSON.stringify(norm));
+}
+
+// ---- Protein goal level (issue #1503) — profile scope, no migration ----------
+// The training goal that picks the protein g/kg band (lib/protein GOAL_BANDS). Stored
+// under the `training_goal` key the adequacy gather has always READ — it was a
+// forward-compat hook nothing ever wrote, so every profile silently got the "active"
+// band no matter what phase they were actually in. PROFILE tier: it is a fact about the
+// data subject (what this person is training for), not a display preference of a login.
+//
+// One read function for every surface (#221): the gather, the Settings picker, and the
+// onboarding seeding all resolve the level through this, so "unset" can only mean one
+// band. The write stores the CANONICAL level string, so a value read back always
+// round-trips to the level that was picked.
+
+const TRAINING_GOAL_KEY = "training_goal";
+
+// The profile's effective protein goal level — the stored pick, or the documented
+// default when unset/unrecognized.
+export function getProteinGoalLevel(profileId: number): ProteinGoalLevel {
+  return resolveProteinGoalLevel(
+    getProfileSetting(profileId, TRAINING_GOAL_KEY)
+  );
+}
+
+// Whether this profile has EXPLICITLY picked a goal (as opposed to riding the default).
+// The onboarding seeding uses it so it never overwrites a pick the person already made.
+export function hasProteinGoalLevel(profileId: number): boolean {
+  return (
+    parseProteinGoalLevel(getProfileSetting(profileId, TRAINING_GOAL_KEY)) !==
+    null
+  );
+}
+
+// Store the profile's protein goal level. Takes an already-validated level (the action
+// parses the submitted string through parseProteinGoalLevel and refuses anything else).
+export function setProteinGoalLevel(
+  profileId: number,
+  level: ProteinGoalLevel
+): void {
+  setProfileSetting(profileId, TRAINING_GOAL_KEY, level);
 }
 
 export interface ProfileAdoption {

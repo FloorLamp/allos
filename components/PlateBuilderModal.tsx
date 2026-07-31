@@ -378,6 +378,7 @@ export default function PlateBuilderModal({
             onClick={onClose}
             className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
             aria-label="Close"
+            title="Close"
           >
             <IconX className="h-5 w-5" />
           </button>
@@ -439,7 +440,7 @@ export default function PlateBuilderModal({
                   type="button"
                   onClick={createBar}
                   disabled={saving}
-                  className="btn disabled:opacity-50"
+                  className="btn"
                 >
                   {saving ? "Saving…" : "Create bar"}
                 </button>
@@ -546,7 +547,7 @@ export default function PlateBuilderModal({
             type="button"
             onClick={handleUse}
             disabled={saving || (creating ? !newBarValid : total <= 0)}
-            className="btn disabled:opacity-50"
+            className="btn"
           >
             Use this
           </button>

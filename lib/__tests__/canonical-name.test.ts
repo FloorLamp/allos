@@ -12,6 +12,7 @@ import {
   HEMOGLOBIN_A1C_FAMILY,
   BIOMARKER_FAMILIES,
   biomarkerFamily,
+  biomarkerFamilyAnchor,
   biomarkerRetestIdentity,
   canonicalAliases,
   isGarbageCanonical,
@@ -296,6 +297,54 @@ describe("biomarkerFamily (unified identity — #482)", () => {
       for (const member of fam.members) {
         expect(biomarkerFamily(member)).toBe(`family:${fam.key}`);
       }
+    }
+  });
+
+  it("names every family by its ANCHOR, whichever member is newest (#1394/#1395)", () => {
+    // The label / curated-rule key must not drift with which member happens to be a
+    // profile's newest reading: an eAG-representative A1c family still resolves to
+    // "Hemoglobin A1c", which is what the diabetes risk rule matches on.
+    for (const name of [
+      "Hemoglobin A1c",
+      "HbA1c",
+      "Estimated Average Glucose",
+      "eAG",
+      "HbA1c (Whole Blood)",
+    ]) {
+      expect(biomarkerFamilyAnchor(name)).toBe("Hemoglobin A1c");
+    }
+    for (const name of [
+      "Vitamin D, 25-Hydroxy",
+      "Vitamin D",
+      "Vitamin D, Total",
+      "25-OH Vitamin D",
+    ]) {
+      expect(biomarkerFamilyAnchor(name)).toBe("Vitamin D, 25-Hydroxy");
+    }
+    // Keyed on the IDENTITY family, NOT the wider retest clock: a D2/D3 fraction is
+    // its OWN series with its own band, so it keeps its own name and its own link
+    // even though it shares the total's redraw clock (#1193).
+    expect(biomarkerFamilyAnchor("Vitamin D3, 25-Hydroxy")).toBe(
+      "Vitamin D3, 25-Hydroxy"
+    );
+    // A non-family analyte is its own anchor (trimmed), so this is a no-op for it.
+    expect(biomarkerFamilyAnchor("  LDL Cholesterol  ")).toBe(
+      "LDL Cholesterol"
+    );
+    expect(biomarkerFamilyAnchor("")).toBe("");
+    expect(biomarkerFamilyAnchor(null)).toBe("");
+  });
+
+  it("every family anchor is a real dataset name inside its own family", () => {
+    const vocab = new Set(
+      (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers.map(
+        (b) => b.name.toLowerCase()
+      )
+    );
+    for (const fam of BIOMARKER_FAMILIES) {
+      expect(vocab.has(fam.anchor.toLowerCase())).toBe(true);
+      expect(biomarkerFamily(fam.anchor)).toBe(`family:${fam.key}`);
+      expect(biomarkerFamilyAnchor(fam.anchor)).toBe(fam.anchor);
     }
   });
 

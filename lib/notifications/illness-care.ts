@@ -52,9 +52,11 @@ const MARKER_PREFIX = "notify_last_illnesscare_";
 const markerKey = (dedupeKey: string) => `${MARKER_PREFIX}${dedupeKey}`;
 const dedupeKeyFromMarker = (key: string) => key.slice(MARKER_PREFIX.length);
 
-// Render ONE illness-care finding's nudge — the fact + the cited line + the source +
-// the mandatory "not medical advice" tail (the #798 discipline: cite, never
-// generate; never "you should", never a diagnosis). A deep-link "View episode"
+// Render ONE illness-care finding's nudge — the fact + the cited line + the source
+// (the #798 discipline: cite, never generate; never "you should", never a diagnosis).
+// The messages carry NO "not medical advice" tail, and tests pin that absence; this
+// comment used to promise one, which made the docs lie about the copy (#1722 item 9,
+// owner-decided: fix the comment, not the copy). A deep-link "View episode"
 // button (when a public URL is configured) is the only affordance — no state-change
 // buttons (there is nothing idempotent to toggle), following the two-way principle.
 export function renderIllnessCareMessage(

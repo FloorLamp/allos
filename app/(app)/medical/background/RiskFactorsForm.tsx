@@ -80,7 +80,7 @@ export default function RiskFactorsForm({
       // Anchor target for the data-quality risk-attributes CTA (#1146):
       // /records/care/overview#risk-factors lands on THIS form, not the page top.
       id="risk-factors"
-      className="card max-w-lg scroll-mt-24 space-y-4"
+      className="card scroll-mt-24 space-y-4"
       data-testid="risk-factors"
     >
       <div className="flex items-center justify-between">

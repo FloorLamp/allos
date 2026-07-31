@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #516 — a documented POSITIVE durable-immunity antibody titer (hep A/B surface
 // Ab, MMR/varicella IgG) is durable evidence and should never nag "retest overdue" on
 // the flat 365-day clock, the way genomics never goes stale. The e2e fixture

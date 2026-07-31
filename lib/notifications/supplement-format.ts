@@ -13,8 +13,8 @@ import {
 } from "../food-drug-interactions";
 import {
   FOOD_TIMING_LABELS,
-  PRIORITY_ORDER,
-  doseReminderNotifies,
+  OBLIGATION_ORDER,
+  isPushedIntake,
   type TimeBucket,
 } from "../supplement-schedule";
 import { parseRxcuiIngredients } from "../rxnorm";
@@ -94,7 +94,7 @@ export function doseSendSlot(
 // body lines AND buttons — while medications are never gated (safety tier).
 // In-app surfaces don't route through this; dueness is untouched.
 export function notifiableWindowDoses(entries: WindowDose[]): WindowDose[] {
-  return entries.filter((e) => doseReminderNotifies(e.supp));
+  return entries.filter((e) => isPushedIntake(e.supp));
 }
 
 // The noun a reminder/summary uses for its items, chosen from the ACTUAL kinds in
@@ -137,12 +137,21 @@ export interface WindowDose {
   supp: Supplement;
   taken: boolean;
   skipped: boolean;
+  // This item is currently a DEMOTION CANDIDATE (#1505 part 2) — sustainedly untaken
+  // past the detection threshold. When true the dose's button row grows a third
+  // button, ⤓ May, alongside Take and Skip.
+  //
+  // The suggestion RIDES this reminder rather than sending its own: a send exists
+  // here already, for its own reasons, and "no suggestion-initiated sends" is a hard
+  // rule. It is also why the escape hatch reaches a tap-only user at all — the person
+  // most likely to be ignoring the item is the one who never opens the app.
+  demotable?: boolean;
   adherence: AdherenceSummary;
 }
 
 function byPriority(a: WindowDose, b: WindowDose): number {
   return (
-    PRIORITY_ORDER[a.supp.priority] - PRIORITY_ORDER[b.supp.priority] ||
+    OBLIGATION_ORDER[a.supp.obligation] - OBLIGATION_ORDER[b.supp.obligation] ||
     a.supp.name.localeCompare(b.supp.name)
   );
 }
@@ -182,7 +191,7 @@ function doseLine(
     ? "✅ "
     : e.skipped
       ? "⏭ "
-      : e.supp.priority === "mandatory"
+      : e.supp.obligation === "must"
         ? "🔴 "
         : "• ";
   const tail: string[] = [];
@@ -289,7 +298,7 @@ function doseSessionActions(
       data: `all:${profileId}:${slot}:${date}`,
     });
   }
-  for (const { dose, supp } of pending) {
+  for (const { dose, supp, demotable } of pending) {
     const row = `dose:${dose.id}`;
     actions.push({
       label: `✅ ${supp.name}`,
@@ -301,6 +310,18 @@ function doseSessionActions(
       data: `skip:${profileId}:${dose.id}:${supp.id}:${date}`,
       row,
     });
+    // Take / Skip / DEMOTE (#1505 part 2). Present only past the detection threshold,
+    // and governed SOLELY by detection state — a dismissal of the in-app card does
+    // NOT remove it (owner-decided), because the page dismissal says "not now, on this
+    // screen" while this button is the only escape hatch a tap-only user has. It
+    // disappears when adherence recovers or the user accepts.
+    if (demotable) {
+      actions.push({
+        label: "⤓ May",
+        data: `demote:${profileId}:${supp.id}:${date}`,
+        row,
+      });
+    }
   }
   return actions;
 }

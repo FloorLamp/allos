@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
@@ -41,6 +42,7 @@ import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import { dismissTrainingObservation } from "@/app/(app)/training/actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
+import EquipmentQuickAdd, { categoryForVariant } from "./EquipmentQuickAdd";
 import { stepRpe, fmtRpe, rpeSummaryText } from "@/lib/rpe";
 import {
   dispWeight,
@@ -53,12 +55,8 @@ import {
   IconBarbell,
   IconAlertTriangle,
   IconCheck,
-  IconInfoCircle,
   IconTrendingDown,
 } from "@tabler/icons-react";
-import { getExerciseGuide } from "@/lib/exercise-guides";
-import ModalShell from "@/components/ModalShell";
-import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import {
   partIntent,
   partTotal,
@@ -116,12 +114,16 @@ function BrandedCheckbox({
 // seeds a working rating. The rating rides onto the set's declared intent — it
 // never replaces target reps / to-failure.
 //
-// SIZED TO THE OPTIONS COLUMN: the whole control fits the row's w-16 (64px)
-// options column (w-4 + w-7 + w-4 + borders = 62px), stacked above the warmup/
-// remove buttons — it must never widen that column, because the weight/reps
-// inputs' tap-target width is a pinned ergonomics contract (#337; the
+// SIZED TO THE OPTIONS COLUMN FROM `sm` UP: the whole control fits the row's
+// w-16 (64px) options column (w-4 + w-7 + w-4 + borders = 62px), stacked above
+// the warmup/remove buttons — it must never widen that column, because the
+// weight/reps inputs' tap-target width is a pinned ergonomics contract (#337; the
 // entry-ergonomics spec asserts the weight input keeps ≥64px). An optional,
 // blank-by-default control shrinks first; the load/reps inputs never do.
+//
+// BELOW `sm` there is no options column to fit (#1612): the set's identity and its
+// options share one horizontal toolbar row of their own, so the ± targets take the
+// 44px phone minimum there instead of the 16px-wide desktop sliver.
 function RpeStepper({
   value,
   onChange,
@@ -142,7 +144,7 @@ function RpeStepper({
         tabIndex={-1}
         onClick={() => onChange(stepRpe(value, -1))}
         aria-label="Decrease RPE"
-        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+        className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
         −
       </button>
@@ -162,7 +164,7 @@ function RpeStepper({
         tabIndex={-1}
         onClick={() => onChange(stepRpe(value, 1))}
         aria-label="Increase RPE"
-        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+        className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
         +
       </button>
@@ -187,6 +189,7 @@ export default function StrengthSets({
   currentActivityId,
   editedDate,
   equipmentList,
+  onEquipmentCreated,
   showBodyweightPrompt,
   bwInput,
   bwSaving,
@@ -222,6 +225,9 @@ export default function StrengthSets({
   // The edited session's date in edit mode (else null): drops later sessions.
   editedDate: string | null;
   equipmentList: Equipment[];
+  // Append a just-created implement to the editor's local equipment state (#1611),
+  // so the row is pickable on every part of this open activity without a reload.
+  onEquipmentCreated: (equipment: Equipment) => void;
   showBodyweightPrompt: boolean;
   bwInput: string;
   bwSaving: boolean;
@@ -248,17 +254,13 @@ export default function StrengthSets({
 }) {
   const formatPrefs = useFormatPrefs();
   const p = part;
-  // The how-to guide for the current lift (#734). Catalog lifts have one; a
-  // custom (non-catalog) lift resolves to undefined, so the ⓘ affordance simply
-  // doesn't render. The overlay reuses the SAME guide section the exercise detail
-  // panel embeds — one guide component, never a second exercise surface.
-  const [guideOpen, setGuideOpen] = useState(false);
   // Plateau hints dismissed in this session (#923) — an optimistic local hide so the
   // inline hint vanishes on tap while the shared-bus write persists it everywhere else.
   const [dismissedPlateaus, setDismissedPlateaus] = useState<Set<string>>(
     () => new Set()
   );
-  const guide = getExerciseGuide(p.name);
+  // Whether the in-form equipment quick-add is open (#1611).
+  const [addingEquipment, setAddingEquipment] = useState(false);
   // Recent attempts as a reference — shown when logging fresh AND while editing
   // (issue #188). The current session is always excluded (`currentActivityId`),
   // so a session never appears in its own "Recent": in create that's the
@@ -269,8 +271,18 @@ export default function StrengthSets({
   // Canonical, variant-collapsed key so a typed variant ("Barbell Curl") finds
   // its merged history keyed under the base (#331).
   const hist = p.name.trim() ? history[exerciseHistoryKey(p.name)] : undefined;
+  // …then narrowed to the LOAD CONTEXT actually selected on this part (#1610). Two
+  // registry machines serialize as the same exact exercise name, so the merged
+  // history alone would show the home machine's 80 kg while the hotel machine is
+  // selected. Filtering on the equipment LANE only (not the exact variant) keeps the
+  // panel the movement-wide reference #331 made it, while a machine with no history
+  // yet correctly shows nothing rather than another machine's ghost. For a profile
+  // that owns no strength equipment every session is in the same (unassigned) lane,
+  // so this is a no-op.
+  const inLane = (s: { equipmentId?: number | null }) =>
+    (s.equipmentId ?? null) === (p.equipmentId ?? null);
   const recent = recentSessionsForForm(
-    hist?.sessions,
+    hist?.sessions.filter(inLane),
     currentActivityId,
     isEdit ? editedDate : null
   );
@@ -282,16 +294,21 @@ export default function StrengthSets({
   const past = !isEdit
     ? hist?.sessions.filter((s) => s.activityId !== currentActivityId)
     : undefined;
-  // Seed off the prior session of the EXACT variant the user is entering
-  // (`p.name`), falling back to the newest session overall — the merged history
-  // (#331) interleaves implements, and a per-hand dumbbell load is a different
-  // progression from a barbell total (#393). pickSeedSessions is the same ONE
+  // Seed off the prior session of the EXACT variant the user is entering (`p.name`)
+  // ON THE SELECTED IMPLEMENT (`p.equipmentId`, #1610) — the merged history (#331)
+  // interleaves implements, a per-hand dumbbell load is a different progression from
+  // a barbell total (#393), and two registry machines logged under one exact name are
+  // different progressions again. A load context with no history seeds NOTHING rather
+  // than borrowing another machine's numbers. pickSeedSessions is the same ONE
   // decision getStrengthByExercise's lastSessionBest/lastSessionSets use, so the
   // seed is implement-appropriate identically on both surfaces. Two same-day
   // activities are still one session (as in getStrengthByExercise) — the anchor
   // plus every working set so progression judges the session, not the single
   // best set (#330).
-  const seed = hist && past?.length ? pickSeedSessions(past, p.name) : [];
+  const seed =
+    hist && past?.length
+      ? pickSeedSessions(past, p.name, p.equipmentId ?? null)
+      : [];
   const seedSets = seed.flatMap((s) => s.sets);
   const seedBase = seed[0]?.baseKg ?? 0;
   // Deload-week shave (#923): a lift that resolves (variant-collapsed via
@@ -363,13 +380,17 @@ export default function StrengthSets({
       ? buildSuggestion(sideSets(seedSets, "right"))
       : null;
   // The active plateau finding for this lift, if any (#923) — matched by the canonical
-  // exerciseHistoryKey so a typed variant finds its merged plateau. It yields to the
-  // deload rationale on a deload week (the plateau→deload cross-link already de-dupes this
-  // advice at the findings layer, lib/rule-findings), and to an in-session dismissal.
+  // exerciseHistoryKey so a typed variant finds its merged plateau, AND by the load
+  // context selected on the part (#1610) so the home machine's stall isn't reported
+  // against the hotel machine. It yields to the deload rationale on a deload week (the
+  // plateau→deload cross-link already de-dupes this advice at the findings layer,
+  // lib/rule-findings), and to an in-session dismissal.
   const plateauHint =
     p.name.trim() !== ""
       ? (plateauHints.find(
-          (h) => h.exerciseKey === exerciseHistoryKey(p.name)
+          (h) =>
+            h.exerciseKey === exerciseHistoryKey(p.name) &&
+            (h.equipmentId ?? null) === (p.equipmentId ?? null)
         ) ?? null)
       : null;
   const showPlateauHint =
@@ -458,6 +479,29 @@ export default function StrengthSets({
   // barbell lift (the "Barbell" variant chip, or plain lifts like Back Squat).
   const selectedEq = equipmentList.find((e) => e.id === p.equipmentId);
   const showPlate = isBarbell(selectedEq?.category) || isBarbellLift(p.name);
+  // Select a custom implement on this part, matching the lift NAME (and therefore
+  // its strength grouping) to the implement's type: a Barbell/Machine implement
+  // composes that variant, "Other" falls back to the base lift. `created` carries a
+  // row that isn't in `equipmentList` yet — the just-created one (#1611), since the
+  // parent's state update hasn't reached this render.
+  const selectEquipment = (id: number | null, created?: Equipment) => {
+    if (id != null) {
+      const v = variantOf(p.name);
+      if (v) {
+        const row =
+          created?.id === id ? created : equipmentList.find((x) => x.id === id);
+        const cat = (row?.category ?? "").trim().toLowerCase();
+        const wantEquip =
+          cat === "barbell" ? "Barbell" : cat === "machine" ? "Machine" : null;
+        const name =
+          wantEquip !== null && v.group.equipment.includes(wantEquip)
+            ? composeVariant(v.group, wantEquip)
+            : v.group.name;
+        if (name !== p.name) onUpdatePartName(name);
+      }
+    }
+    onUpdatePart({ equipmentId: id });
+  };
   // Small button that opens the plate builder for a specific weight field.
   const plateButton = (si: number, field: "weight" | "weightRight") => (
     <button
@@ -504,7 +548,8 @@ export default function StrengthSets({
     ghostReps?: number | null,
     onGhostFocus?: () => void,
     onEnter?: () => void,
-    segmented = false
+    segmented = false,
+    testId?: string
   ) => {
     if (!timed) {
       return (
@@ -512,6 +557,7 @@ export default function StrengthSets({
           type="number"
           min="1"
           inputMode="numeric"
+          data-testid={testId}
           value={value}
           onChange={(e) => onChange(stripNonPositive(e.target.value))}
           onFocus={onGhostFocus}
@@ -530,7 +576,9 @@ export default function StrengthSets({
           placeholder={ghostReps != null ? String(ghostReps) : "reps"}
           className={
             segmented
-              ? "number-no-spinner min-w-0 w-full border-y-0 border-r border-l-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+              ? // Divider on BOTH sides now that the reps stepper is symmetric
+                // (#1524: − input +), exactly like the weight stepper's input.
+                "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
               : `input bg-white dark:bg-ink-900 ${blocked ? blockedField : ""}`
           }
         />
@@ -541,6 +589,7 @@ export default function StrengthSets({
       <input
         type="text"
         inputMode="numeric"
+        data-testid={testId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="m:ss"
@@ -569,33 +618,11 @@ export default function StrengthSets({
     );
   return (
     <>
-      {/* A "How to" affordance for the current lift (#734) — shown only when a
-          catalog guide exists (custom lifts have none). Opens the shared guide
-          section in an overlay, scoped to the selected implement. */}
-      {guide && (
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setGuideOpen(true)}
-            data-testid="exercise-guide-open"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-          >
-            <IconInfoCircle className="h-4 w-4" />
-            How to
-          </button>
-        </div>
-      )}
-      {guideOpen && guide && (
-        <ModalShell
-          title={`How to: ${p.name}`}
-          onClose={() => setGuideOpen(false)}
-        >
-          <ExerciseGuideSection
-            name={p.name}
-            equipment={variantOf(p.name)?.equipment ?? null}
-          />
-        </ModalShell>
-      )}
+      {/* The "How to" affordance for this lift (#734) now rides in the part
+          header's action toolbar (ActivityPartsList), which also owns the
+          overlay state — it used to consume a mostly empty right-aligned row of
+          its own here, which is exactly the row a phone could least afford
+          (#1613). */}
       {showBodyweightPrompt && (
         <div className="mt-2 rounded-md border border-brand-200 bg-brand-50 px-2.5 py-2 text-xs dark:border-brand-900 dark:bg-brand-950/40">
           <div className="font-medium text-slate-600 dark:text-slate-300">
@@ -616,98 +643,119 @@ export default function StrengthSets({
               type="button"
               onClick={onSaveBodyweight}
               disabled={bwSaving || !(Number(bwInput) > 0)}
-              className="btn shrink-0 disabled:opacity-50"
+              className="btn shrink-0"
             >
               {bwSaving ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
       )}
-      {(variant || defaultEq || equipmentList.length > 0) && (
-        <div
-          className={`mt-2 flex flex-wrap items-center gap-1.5 ${
-            fault === "equipment"
-              ? `-mx-1.5 -my-1 rounded-lg px-1.5 py-1 ${blockedRing}`
-              : ""
-          }`}
-        >
-          {variant &&
-            variant.group.equipment.map((eq) => {
-              // A variant equipment and a custom implement are mutually
-              // exclusive, so a variant chip is active only when no custom
-              // implement is chosen.
-              const active = variant.equipment === eq && p.equipmentId == null;
-              return (
-                <button
-                  key={eq}
-                  type="button"
-                  onClick={() => {
-                    onUpdatePartName(composeVariant(variant.group, eq));
-                    onUpdatePart({ equipmentId: null });
-                  }}
-                  className={chipCls(active)}
-                >
-                  {eq}
-                </button>
-              );
-            })}
-          {/* This lift's default implement — click to clear any custom
+      {/* The equipment row is UNGATED (#1611): it used to render only when the lift
+          had a variant/default implement or the profile already owned equipment,
+          which hid the only door to the registry from exactly the users who needed
+          it — a profile with no strength gear, and a traveller who must register the
+          hotel machine mid-workout. */}
+      <div
+        className={`mt-2 flex flex-wrap items-center gap-1.5 ${
+          fault === "equipment"
+            ? `-mx-1.5 -my-1 rounded-lg px-1.5 py-1 ${blockedRing}`
+            : ""
+        }`}
+      >
+        {variant &&
+          variant.group.equipment.map((eq) => {
+            // A variant equipment and a custom implement are mutually
+            // exclusive, so a variant chip is active only when no custom
+            // implement is chosen.
+            const active = variant.equipment === eq && p.equipmentId == null;
+            return (
+              <button
+                key={eq}
+                type="button"
+                onClick={() => {
+                  onUpdatePartName(composeVariant(variant.group, eq));
+                  onUpdatePart({ equipmentId: null });
+                }}
+                className={chipCls(active)}
+              >
+                {eq}
+              </button>
+            );
+          })}
+        {/* This lift's default implement — click to clear any custom
               implement and use the default; highlighted while it's active. */}
-          {defaultEq && (
-            <button
-              type="button"
-              onClick={() => onUpdatePart({ equipmentId: null })}
-              title="Use the default equipment"
-              className={chipCls(p.equipmentId == null)}
-            >
-              {defaultEq}
-            </button>
-          )}
-          {/* User-defined implement: a compact dropdown sharing the chip row.
+        {defaultEq && (
+          <button
+            type="button"
+            onClick={() => onUpdatePart({ equipmentId: null })}
+            title="Use the default equipment"
+            className={chipCls(p.equipmentId == null)}
+          >
+            {defaultEq}
+          </button>
+        )}
+        {/* User-defined implement: a compact dropdown sharing the chip row.
               Selecting one drops any variant equipment (resets to the base). */}
-          {equipmentList.length > 0 && (
-            <select
-              value={p.equipmentId ?? ""}
-              onChange={(e) => {
-                const id = e.target.value ? Number(e.target.value) : null;
-                if (id != null) {
-                  // Match the name (and strength grouping) to the implement's
-                  // type: a Barbell/Machine implement composes that variant,
-                  // "Other" falls back to the base lift.
-                  const v = variantOf(p.name);
-                  if (v) {
-                    const cat = (
-                      equipmentList.find((x) => x.id === id)?.category ?? ""
-                    )
-                      .trim()
-                      .toLowerCase();
-                    const wantEquip =
-                      cat === "barbell"
-                        ? "Barbell"
-                        : cat === "machine"
-                          ? "Machine"
-                          : null;
-                    const name =
-                      wantEquip !== null &&
-                      v.group.equipment.includes(wantEquip)
-                        ? composeVariant(v.group, wantEquip)
-                        : v.group.name;
-                    if (name !== p.name) onUpdatePartName(name);
-                  }
-                }
-                onUpdatePart({ equipmentId: id });
-              }}
-              className={chipCls(p.equipmentId != null)}
-            >
-              <option value="">Equipment</option>
-              {equipmentList.map((eq) => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        {equipmentList.length > 0 && (
+          <select
+            value={p.equipmentId ?? ""}
+            data-testid="strength-equipment-select"
+            onChange={(e) =>
+              selectEquipment(e.target.value ? Number(e.target.value) : null)
+            }
+            className={chipCls(p.equipmentId != null)}
+          >
+            <option value="">Equipment</option>
+            {equipmentList.map((eq) => (
+              <option key={eq.id} value={eq.id}>
+                {eq.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {/* Compact in-form creation (#1611) — the travel-workout path. Registering
+            the hotel machine here keeps the in-progress sets intact AND gives it a
+            distinct equipment id, which is what makes its history/seed separate from
+            the home machine's (#1610). */}
+        {!addingEquipment && (
+          <button
+            type="button"
+            onClick={() => setAddingEquipment(true)}
+            data-testid="strength-equipment-add"
+            className={chipCls(false)}
+          >
+            + Equipment
+          </button>
+        )}
+        {/* Full management stays on /equipment, opened in a NEW TAB so the workout
+            is never interrupted — the same door ActivityEquipmentPicker renders for
+            non-strength activities (#592). */}
+        <Link
+          href="/equipment"
+          target="_blank"
+          data-testid="strength-equipment-link"
+          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
+          {equipmentList.length === 0 ? "Add equipment →" : "Manage equipment"}
+        </Link>
+      </div>
+      {addingEquipment && (
+        <EquipmentQuickAdd
+          // Default the category from the lift's built-in variant when it's
+          // unambiguous ("Machine Chest Press" → Machine); otherwise the field is
+          // empty and required rather than guessed.
+          defaultCategory={categoryForVariant(variant?.equipment ?? defaultEq)}
+          unit={units.weightUnit}
+          onCreated={(eq) => {
+            // Editor-local state gains the row (so every OTHER part of this same
+            // open activity can pick it too) and the current part selects it
+            // immediately — no reopen, no re-entered sets.
+            onEquipmentCreated(eq);
+            selectEquipment(eq.id, eq);
+            setAddingEquipment(false);
+          }}
+          onCancel={() => setAddingEquipment(false)}
+        />
       )}
       {recent.length > 0 && (
         <div
@@ -943,18 +991,27 @@ export default function StrengthSets({
       )}
       {/* On phones, keep the set schema immediately below the sticky exercise
           picker while long sessions scroll. Desktop has room to keep the whole
-          editor context visible, so the row returns to normal flow there. */}
+          editor context visible, so the row returns to normal flow there.
+          `--set-schema-top` is published by the part container (ActivityPartsList),
+          because the phone header is one row taller when it carries an action
+          toolbar (#1613) and this row has to clear it.
+
+          Below `sm` the row shows ONLY the value schema — `Weight (unit) × Reps`,
+          aligned to the steppers under it (#1612). The `Set` / `Options` headings
+          are desktop table furniture: on a phone each set states its own identity
+          in its toolbar row, so repeating them here only bought a second detached
+          band of headings. */}
       <div
         data-testid="set-column-headings"
-        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
+        className="sticky top-[var(--set-schema-top)] z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
       >
-        <span className="w-12 shrink-0">Set</span>
+        <span className="hidden w-12 shrink-0 sm:block">Set</span>
         {!timed && !isBodyweight(p.name) ? (
-          <div className="flex min-w-0 flex-1 items-center gap-2 text-center">
+          <div className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-center">
             {p.perSide && <span className="w-4 shrink-0" aria-hidden />}
             <span
               data-testid="weight-column-heading"
-              className="min-w-20 flex-1 basis-0"
+              className="min-w-[7rem] flex-1 basis-0"
             >
               Weight ({units.weightUnit})
             </span>
@@ -964,26 +1021,45 @@ export default function StrengthSets({
             </span>
             <span
               data-testid="reps-column-heading"
-              className="min-w-20 flex-1 basis-0"
+              className="min-w-[7rem] flex-1 basis-0"
             >
               Reps
             </span>
           </div>
         ) : (
-          <span className="flex-1 text-center">
+          <span className="flex-1 basis-0 text-center">
             {timed ? "Hold time" : "Reps"}
           </span>
         )}
-        <span className="w-16 shrink-0 text-right">Options</span>
+        <span className="hidden w-16 shrink-0 text-right sm:block">
+          Options
+        </span>
       </div>
       <div className="mt-2 space-y-2">
         {p.sets.map((s, si) => (
-          <div key={si} className="flex items-start gap-2">
-            <span className="w-12 shrink-0 pt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+          // TWO ROWS BELOW `sm`, one table row from `sm` up (#1612). The wrap
+          // ordering is unchanged — identity + options on the first line, the
+          // values `order-last basis-full` on the second — but the options
+          // container is a horizontal toolbar on a phone instead of a 64px
+          // two-line column, so the first line reads as ONE compact band
+          // ("Set 3 … RPE W ×") tied to the values directly under it, rather
+          // than the three disconnected bands #1450's wrap left behind.
+          <div
+            key={si}
+            data-testid={`set-row-${si + 1}`}
+            className="flex flex-wrap items-start gap-x-2 gap-y-1 sm:flex-nowrap sm:gap-2"
+          >
+            <span
+              data-testid={`set-label-${si + 1}`}
+              className="w-12 shrink-0 self-center text-xs font-medium text-slate-500 sm:self-start sm:pt-2 dark:text-slate-400"
+            >
               Set {si + 1}
             </span>
             {p.perSide ? (
-              <div className="flex-1 space-y-1.5">
+              <div
+                data-testid={`set-values-${si + 1}`}
+                className="order-last basis-full flex-1 space-y-1.5 sm:order-none sm:basis-0"
+              >
                 {(["", "Right"] as const).map((_, sideIdx) => {
                   const isRight = sideIdx === 1;
                   const sideW = isRight ? s.weightRight : s.weight;
@@ -998,7 +1074,7 @@ export default function StrengthSets({
                       {!timed && !isBodyweight(p.name) ? (
                         <div
                           data-testid="weight-stepper"
-                          className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                          className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                             flags.weight
                               ? blockedField
                               : "border-black/10 dark:border-white/10"
@@ -1085,12 +1161,23 @@ export default function StrengthSets({
                       {!timed ? (
                         <div
                           data-testid="reps-stepper"
-                          className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                          className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                             flags.effort
                               ? blockedField
                               : "border-black/10 dark:border-white/10"
                           }`}
                         >
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() =>
+                              stepReps(si, isRight ? "repsRight" : "reps", -1)
+                            }
+                            aria-label="Decrease reps"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                          >
+                            −
+                          </button>
                           {effortInput(
                             sideR,
                             (v) =>
@@ -1135,13 +1222,16 @@ export default function StrengthSets({
                 })}
               </div>
             ) : (
-              <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div
+                data-testid={`set-values-${si + 1}`}
+                className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-none sm:basis-0"
+              >
                 {!timed && !isBodyweight(p.name) ? (
                   <div
                     data-testid={
                       si === 0 ? "set1-weight-stepper" : "weight-stepper"
                     }
-                    className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                    className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                       sideFlags(s.weight, s.reps, s.duration).weight
                         ? blockedField
                         : "border-black/10 dark:border-white/10"
@@ -1161,7 +1251,7 @@ export default function StrengthSets({
                       step="0.5"
                       min="0"
                       inputMode="decimal"
-                      data-testid={si === 0 ? "set1-weight" : undefined}
+                      data-testid={`set${si + 1}-weight`}
                       value={s.weight}
                       onChange={(e) =>
                         onUpdateSet(si, {
@@ -1198,7 +1288,7 @@ export default function StrengthSets({
                     step="0.5"
                     min="0"
                     inputMode="decimal"
-                    data-testid={si === 0 ? "set1-weight" : undefined}
+                    data-testid={`set${si + 1}-weight`}
                     value={s.weight}
                     onChange={(e) =>
                       onUpdateSet(si, {
@@ -1233,12 +1323,26 @@ export default function StrengthSets({
                     data-testid={
                       si === 0 ? "set1-reps-stepper" : "reps-stepper"
                     }
-                    className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                    className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                       sideFlags(s.weight, s.reps, s.duration).effort
                         ? blockedField
                         : "border-black/10 dark:border-white/10"
                     }`}
                   >
+                    {/* Reps steps −/+ symmetrically with weight and RPE (#1524):
+                        the decrement was simply missing, so a mis-tapped rep count
+                        could only be fixed by editing the field by hand. Same
+                        h-9 w-7 tap target the row's other steppers use (#337);
+                        stepReps clamps at 0. */}
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => stepReps(si, "reps", -1)}
+                      aria-label="Decrease reps"
+                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                    >
+                      −
+                    </button>
                     {effortInput(
                       s.reps,
                       (v) => onUpdateSet(si, { reps: v }),
@@ -1248,7 +1352,8 @@ export default function StrengthSets({
                         ? () => onApplySuggestion(ghost)
                         : undefined,
                       canAddSet ? onAddSet : undefined,
-                      true
+                      true,
+                      `set${si + 1}-reps`
                     )}
                     <button
                       type="button"
@@ -1274,13 +1379,18 @@ export default function StrengthSets({
                 )}
               </div>
             )}
-            <div className="flex w-16 shrink-0 flex-col items-end gap-1">
+            <div
+              data-testid={`set-options-${si + 1}`}
+              className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:w-16 sm:flex-col sm:items-end"
+            >
               {/* Optional per-set RPE selector (#743) — shown for rep-based sets
                 (a timed hold's effort is its duration). Blank by default; the
                 rating rides onto the set without replacing target reps. Stacked
                 INSIDE the same w-16 options column the row always had — widening
                 this column shrinks the weight/reps inputs below their pinned
-                #337 tap-target width (see RpeStepper's sizing note). */}
+                #337 tap-target width (see RpeStepper's sizing note). Below `sm`
+                the column unrolls into one horizontal band on the set's toolbar
+                row (#1612), where there is room for full-size targets. */}
               {!timed && (
                 <RpeStepper
                   value={s.rpe}
@@ -1288,7 +1398,7 @@ export default function StrengthSets({
                   testId={si === 0 ? "set1-rpe" : undefined}
                 />
               )}
-              <div className="flex items-start justify-end gap-1">
+              <div className="flex items-center justify-end gap-1 sm:items-start">
                 {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
                 set (both sides of a per-side set share it). */}
@@ -1306,7 +1416,7 @@ export default function StrengthSets({
                   aria-label={
                     s.warmup ? "Unmark warmup set" : "Mark warmup set"
                   }
-                  className={`mt-1 flex h-8 w-7 shrink-0 items-center justify-center rounded text-xs font-bold ${
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded text-xs font-bold sm:mt-1 sm:h-8 sm:w-7 ${
                     s.warmup
                       ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
                       : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
@@ -1318,8 +1428,10 @@ export default function StrengthSets({
                   <button
                     type="button"
                     onClick={() => onRemoveSet(si)}
-                    className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                    data-testid={`set-remove-${si + 1}`}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                     aria-label="Remove set"
+                    title="Remove set"
                   >
                     <IconX className="h-4 w-4" />
                   </button>

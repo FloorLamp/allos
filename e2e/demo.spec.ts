@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Demo-mode surfaces (#181, #278). Runs (via the "demo" project) against the demo
 // webServer booted with ALLOS_DEMO_MODE=1, unauthenticated — it drives the demo
 // login itself. Asserts the flag effects a browser can see: the persistent
@@ -51,7 +50,7 @@ test("the demo user can sign in, sees the banner, and uploads are disabled", asy
   // able to lock other visitors out. The active-sessions list stays readable
   // (asserted visible, which also proves the page rendered before the absence
   // assertions below mean anything).
-  await page.goto("/settings");
+  await page.goto("/settings/account");
   await expect(
     page.getByRole("heading", { name: "Active sessions" })
   ).toBeVisible();

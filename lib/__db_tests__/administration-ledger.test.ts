@@ -35,11 +35,11 @@ import {
 import type { Supplement } from "@/lib/types";
 
 // A minimal daily supplement for the pure strip computation (isDueOn reads only
-// condition / situation / as_needed).
+// condition / situation / obligation).
 const DAILY_SUPP = {
   condition: "daily",
   situation: null,
-  as_needed: 0,
+  obligation: "should",
 } as unknown as Supplement;
 
 const ANCHOR = "2026-07-15"; // arbitrary strip anchor; the strip is pure over dates
@@ -66,6 +66,10 @@ function seedScheduledHistory(mem: Database.Database): {
   const itemId = Number(
     mem
       .prepare(
+        // schemaAt(40) builds the PRE-041 schema, which predates the #1505 collapse
+        // — the column there is still `priority`. This fixture deliberately models
+        // the old world, so it names the old column; the migration under test is what
+        // carries it forward.
         `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
          VALUES (1, 'Vitamin D', 1, 'supplement', 'daily', 'high')`
       )
@@ -122,11 +126,12 @@ function stripOf(
 ) {
   return supplementAdherenceStrip(
     DAILY_SUPP,
-    doseIds,
+    doseIds.map((id) => ({ id })),
     lastNDates(ANCHOR, 14),
     new Set(),
     () => new Set(),
-    indexTakenByDose(rows)
+    indexTakenByDose(rows),
+    "UTC"
   );
 }
 
@@ -198,8 +203,8 @@ function seedPrnMed(quantityOnHand: number | null = 10): {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, product, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
-         VALUES (?, 'Ibuprofen', 'Children''s oral suspension (100 mg / 5 mL)', 1, 'medication', 'daily', 'high', 1, ?, 1)`
+           (profile_id, name, product, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Ibuprofen', 'Children''s oral suspension (100 mg / 5 mL)', 1, 'medication', 'daily', 'may', ?, 1)`
       )
       .run(profileId, quantityOnHand).lastInsertRowid
   );
@@ -239,8 +244,8 @@ describe("markDoseTaken — one-per-day preserved without the UNIQUE constraint 
     const itemId = Number(
       db
         .prepare(
-          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, quantity_on_hand, qty_per_dose)
-           VALUES (?, 'Lisinopril', 1, 'medication', 'daily', 'high', 30, 1)`
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Lisinopril', 1, 'medication', 'daily', 'should', 30, 1)`
         )
         .run(profileId).lastInsertRowid
     );
@@ -404,8 +409,8 @@ describe("getAdministrationsForItemsOnDate — batched, same output as per-item 
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
-           VALUES (?, 'Acetaminophen', 1, 'medication', 'daily', 'high', 1, 10, 1)`
+             (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Acetaminophen', 1, 'medication', 'daily', 'may', 10, 1)`
         )
         .run(profileId).lastInsertRowid
     );
@@ -418,8 +423,8 @@ describe("getAdministrationsForItemsOnDate — batched, same output as per-item 
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
-           VALUES (?, 'Loratadine', 1, 'medication', 'daily', 'high', 1, 10, 1)`
+             (profile_id, name, active, kind, condition, obligation, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Loratadine', 1, 'medication', 'daily', 'may', 10, 1)`
         )
         .run(profileId).lastInsertRowid
     );

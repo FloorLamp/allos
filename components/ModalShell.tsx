@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
+import { useFocusTrap } from "./useFocusTrap";
 
 // Accessible modal chrome, extracted from the pattern in ConfirmDialog.tsx so
 // content modals don't re-implement (and drift on) the a11y wiring: a portal +
@@ -13,14 +14,6 @@ import { IconX } from "@tabler/icons-react";
 //
 // Pass initialFocusRef to focus a specific field on open (e.g. a search input)
 // instead of the first focusable element (which would be the Close button).
-
-function focusablesIn(panel: HTMLElement): HTMLElement[] {
-  return Array.from(
-    panel.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    )
-  ).filter((el) => el.offsetParent !== null);
-}
 
 export default function ModalShell({
   title,
@@ -38,54 +31,9 @@ export default function ModalShell({
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
-  // Read onClose through a ref so the focus/keydown effects can run once on
-  // mount without depending on its identity. Consumers routinely pass an inline
-  // arrow that changes every render; an effect keyed on it would re-run on every
-  // keystroke and yank focus back to the first field mid-typing.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  // Initial focus — once, on mount. Prefer the consumer's requested element,
-  // then the first focusable (skipping past nothing — it's the Close button by
-  // DOM order), then the panel itself.
-  useEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-    (initialFocusRef?.current ?? focusablesIn(panel)[0] ?? panel).focus();
-  }, [initialFocusRef]);
-
-  // Escape-to-close + Tab focus trap. Registered once; reads the latest onClose
-  // through the ref so a consumer re-render (e.g. typing) never re-runs this.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const panel = panelRef.current;
-      if (!panel) return;
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onCloseRef.current();
-        return;
-      }
-      if (e.key !== "Tab") return;
-      const els = focusablesIn(panel);
-      if (els.length === 0) {
-        e.preventDefault();
-        panel.focus();
-        return;
-      }
-      const first = els[0];
-      const last = els[els.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || active === panel)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  // Initial focus, Escape-to-close and the Tab trap all live in the ONE shared
+  // hook (components/useFocusTrap.ts) — the bottom sheet is its second consumer.
+  useFocusTrap({ panelRef, onClose, initialFocusRef });
 
   return createPortal(
     <div
@@ -113,6 +61,7 @@ export default function ModalShell({
             onClick={onClose}
             className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
             aria-label="Close"
+            title="Close"
           >
             <IconX className="h-5 w-5" />
           </button>

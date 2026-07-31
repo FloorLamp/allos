@@ -8,6 +8,7 @@ import type { TimeFormat } from "@/lib/format-date";
 import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import { formatGivenAtClockWithRelativeAge } from "@/lib/administration-format";
 import type { MedCardData } from "./med-data";
+import { isPrn } from "@/lib/supplement-schedule";
 
 // The Today panel that LEADS the Medications page (#817): the daily-use job first.
 // Scheduled meds due today get their dose check-offs (the shared tri-state
@@ -62,7 +63,7 @@ export default function MedicationsTodayPanel({
   canWrite?: boolean;
 }) {
   const dueScheduled = scheduled.filter(
-    (d) => d.med.as_needed !== 1 && d.due && d.doses.length > 0
+    (d) => !isPrn(d.med) && d.due && d.doses.length > 0
   );
   // PRN log rows are a pure write affordance; a read-only board omits them.
   const showPrn = canWrite && prnToday.length > 0;
@@ -73,7 +74,7 @@ export default function MedicationsTodayPanel({
     dueScheduled.map((d) => ({
       id: d.med.id,
       name: d.med.name,
-      priority: d.med.priority,
+      obligation: d.med.obligation,
       stack: d.med.stack,
       doses: d.doses.map((dose) => ({
         id: dose.id,

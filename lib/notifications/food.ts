@@ -15,7 +15,7 @@ import {
 } from "../queries";
 import { getPublicUrl, getUserAge } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
-import { proteinTodayNudgeLine } from "../protein";
+import { proteinTodayNudgeParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
   foodOptInCallbackData,
@@ -59,7 +59,10 @@ export function buildFoodNudge(
   // Today-vs-goal protein status line (#974) from the SAME gather the gauge reads (#221).
   // Null when there's no target or no protein data — the renderer then omits the line.
   const pt = getProteinToday(profileId);
-  let proteinLine = pt ? proteinTodayNudgeLine(pt) : null;
+  // Gathered as PARTS (#1710) so the "reached / below" conclusion is decided once in
+  // lib/protein and the renderer only decides emphasis.
+  let proteinLine: ReturnType<typeof proteinTodayNudgeParts> | string | null =
+    pt ? proteinTodayNudgeParts(pt) : null;
   // A protein-tracker with no target (no bodyweight) still gets a day-grams line when
   // they've logged protein today, so the "+Xg protein" button's contribution is visible and
   // distinct from the food-serving tally (#1073). getProteinLoggedGrams is a raw stored

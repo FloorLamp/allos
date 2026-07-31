@@ -86,10 +86,10 @@ describe("offline replay — the mood flow (#28/#992)", () => {
       { valence: 4, energy: null, anxiety: null, factors: [], note: null },
       p
     );
-    expect(applyIntent(p, intent)).toBe("done");
+    expect(applyIntent(p, intent)).toEqual({ status: "done" });
     expect(alreadyReplayed(p, intent.key)).toBe(true);
     // The triple-fire race: the same key replayed again is a no-op.
-    expect(applyIntent(p, intent)).toBe("duplicate");
+    expect(applyIntent(p, intent)).toEqual({ status: "duplicate" });
     expect(getMoodLogs(p)).toHaveLength(1);
   });
 
@@ -101,7 +101,7 @@ describe("offline replay — the mood flow (#28/#992)", () => {
       { valence: 9, energy: null, anxiety: null, factors: [], note: null },
       p
     );
-    expect(applyIntent(p, intent)).toBe("rejected");
+    expect(applyIntent(p, intent)).toEqual({ status: "rejected" });
     expect(alreadyReplayed(p, intent.key)).toBe(false);
     expect(getMoodLogs(p)).toEqual([]);
   });

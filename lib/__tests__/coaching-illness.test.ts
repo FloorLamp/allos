@@ -95,6 +95,9 @@ describe("illnessCoachingMode — the hold/ease-back decision (#837)", () => {
       expect(illnessCoachingMode(ctx, TODAY)).toEqual({
         mode: "ease-back",
         easeBackEpisodeId: 42,
+        // #1722 item 7: the ramp reports the closing episode's length so the
+        // re-entry note can name it. Null here — this fixture records no start.
+        easeBackEpisodeDays: null,
       });
     }
   });

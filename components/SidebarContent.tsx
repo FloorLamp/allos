@@ -7,8 +7,10 @@ import { openGlobalSearch } from "@/components/CommandPalette";
 import Wordmark from "@/components/Wordmark";
 import UserMenu from "@/components/UserMenu";
 import LogActivityButton from "@/components/LogActivityButton";
+import FrequentPages from "@/components/FrequentPages";
 import JournalCalendar from "@/components/JournalCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
+import WhatsNewLink from "@/components/WhatsNewLink";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
 import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
@@ -45,6 +47,7 @@ export default function SidebarContent({
   relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
   readOnly = false,
+  whatsNewUnseen = false,
   onNavigate,
   onClose,
 }: {
@@ -84,6 +87,12 @@ export default function SidebarContent({
   // The active profile is shared with this login as READ-ONLY (issue #33); shows
   // a "read-only" badge in the profile menu. Server-side enforcement is authority.
   readOnly?: boolean;
+  // The bundled release notes hold something this LOGIN hasn't opened (issue
+  // #1421) — resolved once by the layout from the ONE pure comparison
+  // (hasUnseenNotes) and threaded through the shared content so both viewports
+  // show the same calm dot. Defaults false so a caller that doesn't thread it
+  // never over-hints.
+  whatsNewUnseen?: boolean;
   onNavigate?: () => void;
   onClose?: () => void;
 }) {
@@ -97,6 +106,7 @@ export default function SidebarContent({
           <button
             type="button"
             aria-label="Close menu"
+            title="Close menu"
             onClick={onClose}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750"
           >
@@ -123,6 +133,12 @@ export default function SidebarContent({
         </kbd>
       </button>
       {!restricted && <LogActivityButton onClick={onNavigate} />}
+      {/* Most-visited shortcuts (issue #1416, section E3). Client-side visit
+      counts in localStorage — no schema change, no server round-trip — and it
+      lives in the SHARED content, so the desktop sidebar and the mobile drawer
+      offer the same jumps. Renders nothing until a page clears the "this is a
+      habit" floor, so a fresh login sees no empty section. */}
+      <FrequentPages onNavigate={onNavigate} />
       <JournalCalendar activeDates={activityDates} />
       <Nav
         restricted={restricted}
@@ -177,13 +193,20 @@ export default function SidebarContent({
         the mobile drawer (the responsive-surfaces rule) — the one always-reachable
         pointer to the app's medical-disclaimer posture, replacing the ~40 inline
         banners that used to hand-write it. */}
-        <Link
-          href="/disclaimer"
-          onClick={onNavigate}
-          className="px-2 text-xs text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
-        >
-          Disclaimer
-        </Link>
+        {/* "What's new" sits with the version hash and the Disclaimer link (issue
+        #1421): the bundled release notes answer "what did that pull bring?", and a
+        subtle dot appears until this login has opened them. Calm by design — a
+        display affordance only, never a notification or a finding. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-xs text-slate-500 dark:text-slate-400">
+          <WhatsNewLink unseen={whatsNewUnseen} onNavigate={onNavigate} />
+          <Link
+            href="/disclaimer"
+            onClick={onNavigate}
+            className="underline-offset-2 transition hover:text-slate-700 hover:underline dark:hover:text-slate-200"
+          >
+            Disclaimer
+          </Link>
+        </div>
       </div>
     </>
   );

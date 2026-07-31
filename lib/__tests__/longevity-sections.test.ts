@@ -8,7 +8,7 @@ import {
   type NamedBiomarkerReading,
   type PillarInputs,
   type PillarKey,
-} from "@/lib/healthspan-pillars";
+} from "@/lib/longevity-pillars";
 import { longevitySections, PROTOCOLS_ANCHOR } from "@/lib/longevity";
 import { bioAgeDelta } from "@/lib/bio-age";
 import type { CanonicalBiomarker } from "@/lib/types";

@@ -24,8 +24,8 @@ function seedAcetaminophenFor(age: number): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority)
-         VALUES (?, 'Acetaminophen', 1, 'medication', 'daily', 'high')`
+           (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, 'Acetaminophen', 1, 'medication', 'daily', 'should')`
       )
       .run(profileId).lastInsertRowid
   );

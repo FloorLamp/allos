@@ -1,105 +1,422 @@
 # AGENTS.md
 
-This file provides guidance to coding agents (Claude Code, etc.) working in this repository. `CLAUDE.md` is a symlink to this file.
+This is the operating guide for coding agents working in this repository.
+`CLAUDE.md` is a symlink to this file.
 
-## Overview
+## Product and access model
 
-**Allos** (from _allostasis_ — stability through change) is a **multi-user, login-gated** health tracking and coaching app. Next.js 16 (App Router, Server Actions) with a synchronous **better-sqlite3** backend. Tracks activities (strength/cardio/sport), body metrics, goals, supplements & medications, and a full **medical passport** — labs/biomarkers, conditions, allergies, procedures, family history, immunizations, visits/appointments, and care plans/goals — surfaced across a day-by-day **Timeline**, **Trends** (Body/Fitness/Biomarkers/Insights), and an **Upcoming**/notifications view, with optional Claude-powered insights, medical-document extraction, and health-record import (MyChart CCD/XDM, SMART Health Cards, Epic/Apple Health FHIR bundles).
+**Allos** is a multi-user, login-gated health tracking and coaching app built
+with Next.js 16 App Router, Server Actions, and synchronous `better-sqlite3`.
+It covers training, body metrics, nutrition, supplements and medications, a
+medical passport, Timeline, Trends, Upcoming, notifications, imports, and
+optional Claude-powered analysis.
 
-**Logins vs profiles.** These are distinct (logins were formerly called accounts):
+The live Trends tabs are **Overview, Fitness, Nutrition, and Insights** — four
+since #1644 merged the Body tab into Overview, and permanent by owner ruling
+(there is no all-tabs endpoint; a fifth merge needs a new decision). The Overview
+landing surface is a trending digest, then the cross-domain **starred grid** (the
+only curated area — nothing renders there unconditionally), then the **body
+census**, which streams under its own `Suspense` boundary so the head never waits
+on it. `lib/trends-tabs.ts` owns the tab set; `lib/trends-sections.ts` owns the
+landing surface's two anchors. A body deep link is `trendsSectionHref("body")` →
+`/trends#body`; `?tab=body` is retired with no shim (it falls through to the
+default view, which renders that census). Labs, imaging, and genomics live under
+Medical → Results, not a Trends tab.
 
-- **Profiles** are the _data subjects_ — the people whose activities/biomarkers/etc. are tracked. Every per-profile table carries a `profile_id`. A profile needs no login.
-- **Logins** are the _login identities_ (username + scrypt-hashed password). Role is `admin` or `member`. **Admins** can act as (and see) **every** profile and reach the admin screens; **members** see only the profiles granted to them via `login_profiles`. A grant matrix links member logins to profiles; admins bypass grants in code.
-- A session (DB row, keyed by the SHA-256 of a random cookie token) has an **active profile** — the one the login is currently acting as. The header switcher (`components/UserMenu.tsx` → `setActiveProfile`) changes it; members only see their granted profiles, admins see all.
+### Logins and profiles are different
 
-**Auth layer.** `lib/auth.ts` owns sessions: `requireSession()` (redirects to `/login`), `requireAdmin()` (redirects members to `/`), `getCurrentSession()`, `getAccessibleProfiles()`, `setActiveProfile()`, and session teardown (`destroyLoginSessions`, `destroyOtherSessionsForCurrent`). Passwords are scrypt via `lib/password.ts` — `hashPassword()` (async, for request paths: login create/reset, change-own-password), `hashPasswordSync()` (bootstrap/seed only), `verifyPassword()` (async). The **bootstrap admin** login + profile 1 are created on first boot from `ADMIN_USERNAME` (default `admin`) / `ADMIN_PASSWORD` (random + logged once if unset) — see `bootstrapAuth()` in `lib/migrations/boot-tasks.ts` (it runs as a per-boot task, not from `lib/db.ts`).
+- A **profile** is a data subject. Every profile-owned table carries
+  `profile_id`; a profile does not need a login.
+- A **login** is an authentication identity with an `admin` or `member` role.
+  Members reach profiles through `login_profiles`; admins can reach every
+  profile.
+- A session has one active profile. The header switcher changes it through
+  `setActiveProfile()`.
+- A login may designate an accessible profile as its own through
+  `logins.own_profile_id`. Caregiver-only logins may leave this unset.
 
-**Middleware gate.** `middleware.ts` is a _coarse, non-authoritative_ Edge check for cookie **presence** only (Edge can't open SQLite); it slides the cookie lifetime and redirects obvious anonymous requests. The real check is always `requireSession()`/`getCurrentSession()` in Node code. Public (session-free) paths are a small allowlist: `/login`, `/api/health`, the token-authed Health Connect ingest, the token-authed `.ics` calendar feed (`/api/calendar/*`), the secret-authed Telegram webhook, public share links (`/share/*`), and metadata icons. **The Strava OAuth callback is NOT public** — the redirect carries the session cookie (SameSite=Lax) and the handler binds tokens to the session's active profile, so it requires a live session.
+`lib/auth.ts` owns sessions and access checks. Request paths use the async
+scrypt helpers in `lib/password.ts`; the synchronous hash helper is for
+bootstrap and seed work only. The bootstrap admin and first profile are created
+by `bootstrapAuth()` in `lib/migrations/boot-tasks.ts`, not by `lib/db.ts`.
 
-**profileId-first + the scoping rule.** Business-logic functions take `profileId` as their first argument; actions/pages resolve it from `requireSession().profile.id`. **Every SQL statement touching a profile-owned table MUST filter by `profile_id`** (child tables reach it via a JOIN to their parent). This is enforced by a pure source-scanning test, `lib/__tests__/profile-scoping.test.ts`, which fails the build if an owned-table `.prepare(...)` omits `profile_id`; the handful of legitimate exceptions live in its allowlist with justifications. Admin/global tables (logins, profiles, login_profiles, sessions, global settings) are intentionally _not_ profile-scoped and aren't covered by that test.
+`middleware.ts` is only a coarse Edge check for cookie presence. Node code must
+still call `requireSession()`, `requireAdmin()`, or the appropriate write-access
+gate. Keep the session-free route list centralized in `lib/public-paths.ts`;
+do not duplicate it in middleware or documentation.
 
-**ProfileScope + profileIds-list-first (the cross-profile analog, #1095).** Single-profile is the common case (`requireSession()` + profileId-first). A **cross-profile** surface (household dashboard/history, family calendar, episodes index, household dose cards, reassign pickers) resolves its access ONCE at the boundary via **`requireScope()`** (`lib/scope.ts`) — a `ProfileScope` carrying `actingProfileId`, `ids` (the accessible set's ids — the ONLY legitimate `IN`-list source), disambiguated `profiles` (#534), a per-profile `access` map, and the #1096/#1013 shape hooks (`viewIds` defaulting to `[actingProfileId]`; `ownProfileId` null until #1013). It changes **no** access semantics: `ids`/`access` are exactly `accessibleProfilesForLogin`/`accessForProfile`, and writes still target ONE profile through `requireProfileWriteAccess`; a scope value is **data, not an auth check**. The convention (the app-wide promotion of household-history's module-local contract): **a cross-profile reader takes the already-resolved `ids: number[]` as its first argument and never imports `lib/auth`** — pages/actions resolve via `requireScope()`. Set-based `WHERE profile_id IN (…)` is allowed for FLAT record lists via **`profileIdsIn(ids)`** (`lib/cross-profile.ts`, bound params never interpolated) but ONLY inside a **registered cross-profile module** (`CROSS_PROFILE_SQL_MODULES`) — the profile-scoping test's companion rule fails CI on a `profile_id IN` statement anywhere else. Per-profile context (`today()`/timezone, week mode, dueness windows, age gates) stays per-profile-composed (the loop assembly), never evaluated in another member's context. `stampSubjects(scope, items)` resolves disambiguated names/avatars once. Convert existing surfaces as they're next touched, not big-bang.
+### Profile scoping
+
+Single-profile business functions take `profileId` as their first argument.
+Pages and actions resolve it at the auth boundary. Every SQL statement touching
+a profile-owned table must filter by `profile_id`; child tables scope through a
+join to their parent. `lib/__tests__/profile-scoping.test.ts` enforces this, and
+legitimate exceptions require a documented allowlist entry.
+
+Cross-profile pages resolve `requireScope()` once and pass the resulting
+`ProfileScope` down as data. It contains:
+
+- `actingProfileId`
+- persisted, access-validated `viewIds`
+- the accessible `ids` and disambiguated `profiles`
+- access by profile
+- the access-validated `ownProfileId`, or `null`
+
+A cross-profile reader takes the already-authorized `ids: number[]` as its
+first argument and does not import `lib/auth`. Set-based
+`WHERE profile_id IN (…)` SQL must use `profileIdsIn(ids)` inside a module
+registered in `CROSS_PROFILE_SQL_MODULES`. Per-profile context such as timezone,
+age gates, and week mode is still evaluated separately for each profile.
+`ProfileScope` is data, not a substitute for a write authorization check.
 
 ## Commands
 
+Node 24 is required and pinned in `.nvmrc`.
+
 ```bash
-npm run dev          # dev server at http://localhost:3000 (creates data/allos.db on first run)
-npm run seed         # load ~3 weeks of realistic sample data
-npm run build        # production build (runs tsc; this is the CI/deploy gate)
-npm run lint         # eslint (flat config: eslint.config.mjs)
-npm run typecheck    # tsc --noEmit
-npm test             # vitest run (all lib tests)
-npm run test:watch   # vitest watch mode
-npm run test:db:coverage # DB+action tier under its own coverage floor (vitest.db.config.ts)
-npm run test:e2e     # playwright browser tests (boots the app on an isolated seeded DB)
-npm run format       # prettier --write .
-npm run format:check # prettier --check . (enforced in CI)
+npm run dev              # development server on http://localhost:3000
+npm run seed             # realistic sample data
+npm run build            # production build and TypeScript gate
+npm run lint             # ESLint
+npm run typecheck        # tsc --noEmit
+
+npm test                 # pure unit tests
+npm run test:watch       # pure unit tests in watch mode
+npm run test:coverage    # pure unit tests with their coverage floor
+npm run test:db          # DB integration and Server Action tests
+npm run test:db:coverage # DB/action tests with their coverage floor
+npm run test:e2e         # Playwright browser tests
+
+npm run format           # Prettier write
+npm run format:check     # Prettier check
+npm run schema:dump      # print the migrated sqlite_master schema
 ```
 
-Run a single test file / test:
+Run an individual pure test with:
 
 ```bash
 npx vitest run lib/__tests__/strength.test.ts
 npx vitest run -t "estimate1RM"
 ```
 
-Node 24 is required (pinned via `.nvmrc`; `nvm use`). CI (`.github/workflows/ci.yml`) runs two parallel jobs on every PR: a `check` job (`npm audit` — non-blocking; `phi-scan`; `format:check`; `lint`; `typecheck`; `test:coverage` — the coverage-gated pure unit run; `test:db:coverage` — the DB+action tier under its OWN coverage floor, #672) and the browser tier: an `e2e-changed` job (the PR's changed specs at `--repeat-each=3`, zero retries; skips when no spec changed — shared-infra blast radius is covered by the sharded matrix, which runs the whole suite on every non-docs PR) plus a 4-way sharded `e2e` matrix (the full Playwright suite, one shard per fresh runner). A separate manually-dispatched workflow (`.github/workflows/e2e-full.yml`) runs the whole suite on demand against any branch at `--retries=0` — the fresh-runner replacement for local full-suite gates. The pre-commit hook runs `prettier` (via lint-staged) and `phi-scan --staged` on staged files.
+CI runs formatting, lint, type checking, PHI scanning, a non-blocking full
+dependency audit plus a blocking high-severity audit gate, both coverage-gated
+test tiers, changed Playwright specs repeated three times at zero retries, and
+the full browser suite in four shards. Documentation-only changes skip the
+browser matrix. `.github/workflows/e2e-full.yml` provides the manually
+dispatched full-suite census. Pre-commit runs Prettier through lint-staged and
+`phi-scan --staged`.
 
 ## Architecture
 
-**Layering.** Business logic lives in `lib/` and is consumed by App Router pages/components under `app/`. The `@/*` import alias maps to the repo root (see `tsconfig.json`; mirrored in `vitest.config.ts`).
+Business logic lives in `lib/`; App Router pages, route handlers, and Server
+Actions live in `app/`; shared UI lives in `components/`. The `@/*` alias maps
+to the repository root.
 
-- `lib/db.ts` — the SQLite connection + `createDb()` boot orchestration. Exports a singleton `db` (reused across dev hot-reloads) and `today()`. **The schema is applied by a versioned migration runner (#119), not re-applied on every boot.** `createDb()` calls `runMigrations(db)` (`lib/migrations/runner.ts`) then `bootTasks(db)` (`lib/migrations/boot-tasks.ts`). The runner uses SQLite's `PRAGMA user_version`: ordered, **append-only** migrations in `lib/migrations/versions/` (`001-baseline.ts`, `002-*.ts`, … listed in `versions/index.ts`), each run once in its own `BEGIN IMMEDIATE` transaction, with an in-transaction version re-read as the authoritative dedup for parallel `next build` workers. **Migration 001 ("baseline") is a clean apply of the current schema** — every table with its final columns, CHECKs, and index set, all `CREATE ... IF NOT EXISTS` — so a fresh DB builds the whole schema and an existing up-to-date DB replays it as a pure no-op; both get stamped to `user_version = 1`. The pre-runner legacy upgrade machinery (rename shims, `addColumnIfMissing`, the `ENUM_CHECKS` reconcile, profile-scoping rebuilds, settings-flag one-shots, data backfills) was **removed**, not frozen — all deployments are assumed current, and upgrading from an older release requires stepping through the last pre-runner release first. A checked-in **hash manifest** (`lib/migrations/manifest.json`) makes shipped migration files immutable in CI (fix ⇒ append a corrective migration, never edit); a **downgrade guard** fails boot with a clear error (pointing at `scripts/restore.ts`) when a rolled-back image meets a newer DB. `npm run schema:dump` prints the current `sqlite_master`. The DB lives at `data/allos.db` (gitignored); delete it to start fresh. `migrate(db)` is still exported as a NON-version-gated wrapper (baseline apply + bootTasks) used by the DB-tier tests. **Per-boot tasks stay OUTSIDE the runner** in `bootTasks`, re-running every start: `bootstrapAuth`, `seedCanonicalBiomarkers` + `reconcileFlagsIfCanonicalChanged` (re-sync canonical ranges/flags on a range edit that ships with no schema change), stuck-extraction/import cleanup, and `seedTimezoneFromEnv`.
-  - **How to make a schema change now**: **new table / new column** → append a migration with the `CREATE TABLE` / `ALTER TABLE … ADD COLUMN`. **Grow an enum `CHECK`** → append a rebuild migration (create→copy→drop→rename with the new CHECK). **One-shot data move** → append a migration (runs exactly once by version — no settings flag). **Table/key rebuild** → append a migration. **Add/enforce a foreign key** → append a rebuild migration too (SQLite can't attach a FK to an existing column); the runner applies every migration with `foreign_keys` disabled and restores it after, so a FK-parent table can be dropped and recreated without cascade-wiping its children (null any dangling link before adding its FK). Never edit `001-baseline.ts` or any shipped migration (the manifest fails CI); a new profile-owned table also goes into `lib/owned-tables.ts` (see its header). Every nullable link column (`provider_id`/`document_id`/`equipment_id`/`location_provider_id`) now carries a real `REFERENCES` FK on all DB populations — the fresh-vs-legacy divergence where a column added by the old additive `ALTER TABLE` was a bare `INTEGER` was converged by migration 006 (issue #95). **Observation-shaped domain? Reuse a store, don't mint a table (#860/#944).** A NEW domain that records dated per-subject readings (a symptom, a body/device measurement, a vital/biomarker) REUSES an existing observation store — `symptom_logs` (a vocabulary extension), `metric_samples`, `body_metrics`, or `medical_records` — rather than adding a parallel table; the #714 cycle-symptom precedent (per-day cycle symptoms are a vocabulary extension of `symptom_logs`, phase membership derived by date, no second symptom store) is the shape to copy. The observation tables stay UN-merged (#860 rejected the merge), but the shared behaviors are substrate-by-convention helpers every ingest/read path calls instead of re-implementing: the **edit lock** (`isEditLocked`, #133), the **source-dedup split** (`classifyUpsert`/`tallyUpsert` in `lib/integrations/sync-log.ts`, #14), and **latest-per-group** (`latestByGroup` in `lib/latest-per-group.ts`, keyed on the domain's #482 identity function) — each pinned by the `lib/__tests__/observation-substrate.test.ts` boundary guard, so a new importer that hand-rolls one fails CI.
-- `lib/queries.ts` — the read/derive layer. It is now a thin re-export **barrel**: the implementation is split into ~21 domain modules under `lib/queries/` (a partial list: `training.ts`, `metrics.ts`, `medical.ts`, `clinical.ts`, `appointments.ts`, `intake.ts`, `integrations.ts`, `imports.ts`, `coaching.ts`, `search.ts`, `upcoming.ts`, …), but everything is still re-exported from `@/lib/queries`, so import paths and export names are unchanged. Most pages pull their data from here. `training.ts` (the largest module) is itself a barrel now (#126): its implementation lives in `lib/queries/training/` (`activities.ts`, `goals.ts`, `strength.ts`, `cardio.ts`, plus a private `common.ts` of shared helpers); `upcoming.ts` is likewise its own barrel over `lib/queries/upcoming/` (`generators.ts`, etc. — #316). (The profile-scoping test walks all of `lib/`, so the split submodules stay covered; its per-file allowlist points at the `lib/queries/*.ts` paths.)
-- `lib/types.ts` — shared domain types; the source of truth for record shapes.
-- `app/**/actions.ts` — `"use server"` Server Actions handle all writes; they convert user-entered values to canonical units and `revalidatePath()` afterward. Pages are Server Components that read via `lib/queries.ts` and pass data to client components.
+- `lib/db.ts` opens SQLite and orchestrates boot.
+- `lib/types.ts` is the source of truth for shared record shapes.
+- `lib/queries.ts` is a compatibility barrel over domain modules in
+  `lib/queries/`.
+- `app/**/actions.ts` owns request-boundary writes, validation, unit conversion,
+  authorization, and cache revalidation.
 
-**Settings tiers (`lib/settings.ts` — now a thin barrel re-exporting `lib/settings/*`, #317).** Three key/value stores, resolved at the boundary from the session's ids: **global** `settings` (bot token + telegram mode, public URL, AI toggles, migration flags, instance-default timezone), **per-login** `login_settings` (unit display prefs — weight/distance), **per-profile** `profile_settings` (sex, birthdate/age, timezone, notification schedule + telegram enable/chat-id target, active situations). New-profile timezone is seeded from the global instance default. Don't put per-person data in global `settings`. The **settings UI mirrors these tiers as tabs** (see Admin UI): **Preferences** (`/settings`, login), **Profile** (`/settings/profile`, active profile), **Server** (`/settings/server`, global — admin-only). Global mutations (`saveAiSettings`, `savePublicUrl`, `saveTelegramBotConfig`, `registerTelegramWebhook`, `saveInstanceTimezone` in `app/(app)/settings/actions.ts`) each call `requireAdmin()`; the profile/login actions call `requireSession()`. The notification API is split: `setProfileTelegram` (per-profile enable/chat-id) vs `setTelegramBotConfig` (global token + mode).
+Server Components normally read through the query layer and pass data to client
+components. SQL remains inline through `db.prepare(...)`; there is no
+repository or ORM layer.
 
-**Admin UI.** `SettingsTabs` renders the tab strip: **Preferences | Profile** for everyone, plus **Family | Server | AI logs | Errors | Audit** for admins only (Equipment was formerly a tab here; it moved to the top-level `/equipment` registry — issue #343 — so it's no longer a settings surface) (members never see the admin tabs, and each admin page also calls `requireAdmin()` so a direct URL redirects members). **Errors** (`app/(app)/settings/errors/`) surfaces the persisted server error log (issue #596): every unexpected `error` funneled through `createLogger()` — an unhandled Server Action exception, a route 500, a crashed fire-and-forget task — is appended to gitignored `data/logs/errors.jsonl` and shown newest-first (time, scope, acting profile, message, redacted+capped detail) with an admin-only Clear button. The funnel is a sink registered on `lib/log.ts` by the fs-backed `lib/error-log.ts` (pulled onto the Node boot path via `lib/db.ts` so `log.ts` stays Edge-safe — the Edge middleware never loads fs); the acting login/profile is tagged from the shared `lib/log-context.ts` store (`withAiLogContext`'s store, generalized), null for background ticks. Clients still see the generic `"internal error"` (#478) — the cause lands in this log only. Pure rotation/truncation/redaction/parse logic is `lib/error-log-format.ts` (tested in `lib/__tests__/error-log-format.test.ts`). **Server** (`app/(app)/settings/server/`) holds the global config — public app URL, Telegram bot token + mode + register-webhook, AI toggles, instance-default timezone. **Family** (`app/(app)/settings/family/`) manages profiles (create/rename/**delete**), logins (create with role, reset password → destroys that login's sessions, **delete**), and the login×profile grant matrix (admins shown as implicit-all, not editable); its actions surface the `logins.username` NOCASE-unique constraint as a friendly error, and grant-set diffing is the pure `lib/grants.ts` (tested in `lib/__tests__/grants.test.ts`). **Deletion** (also admin-only): `deleteLogin` removes a login (sessions/grants/login_settings, refusing the last admin; deleting your own login tears down your session and redirects to `/login`) but never a profile — the data subjects outlive logins. `deleteProfile` is destructive: in one transaction it deletes child rows via their parents (`exercise_sets`, `intake_item_doses`/`_logs`/`_pairs`) then every owned + key-rebuilt table by `profile_id` (explicit deletes by design — the owned tables' `profile_id` FKs carry no ON DELETE action), nulls `sessions.active_profile_id`, and drops the `profiles` row; medical files + the profile photo are unlinked on disk afterward (path-contained). It refuses the last profile, warns which members lose their only grant, and requires typing the profile name to confirm. Guard rails: nothing on the boot path recreates a deleted profile 1 (`bootstrapAuth` only runs when NO logins exist); the Health Connect env-token fallback maps to profile 1 only while it exists; `seed.ts` aborts if profile 1 is gone. Pure decision logic (`canDeleteLogin`/`canDeleteProfile`/`membersLosingAllAccess`) is `lib/family-deletion.ts` (tested in `lib/__tests__/family-deletion.test.ts`). **Preferences** (`/settings`) is login-scoped (unit prefs + change-own-password, which verifies the current password then signs out the login's _other_ sessions); **Profile** (`/settings/profile`) is active-profile-scoped (sex, birthdate/age, timezone, per-profile Telegram enable/chat-id + schedule + send-test) and its heading names the active profile.
+Modules are named after the surface they serve. The Longevity page (`/longevity`)
+reads through `lib/queries/longevity.ts` over the pure `lib/longevity-pillars.ts`;
+"healthspan" remains the domain term for that model and stays in the persisted
+dashboard widget id `healthspan-pillars`.
 
-**Units.** Canonical storage is always **kilograms and kilometers**; times in seconds/minutes. User weight/distance unit preferences live per-login in `login_settings` (`lib/settings.ts`). Convert at the boundaries only — `toKg`/`toKm` on write (in actions), `kgTo`/`kmTo`/`fmt*` on display (`lib/units.ts`). Never store display units.
+### Database and migrations
 
-**Biomarker flags.** Reference/optimal ranges come from `lib/canonical-biomarkers.json` (generated — see `scripts/gen-canonical-biomarkers.ts`). Out-of-range flags are computed by `reconciledFlag()` in `lib/reference-range.ts`, and are **re-derived on boot when the canonical ranges change**: `lib/canonical-flags-version.ts` produces a signature that the boot tasks (`lib/migrations/boot-tasks.ts`) compare against a stored version to decide whether to recompute flags for existing records. When editing ranges/flag logic, that versioning gate is what propagates changes to already-stored data.
+`createDb()` runs `runMigrations(db)` and then `bootTasks(db)`. Migrations in
+`lib/migrations/versions/` are ordered, append-only, and keyed by
+`PRAGMA user_version`. Migration 001 is the frozen clean baseline from the
+runner's introduction; a fresh database reaches the current schema by applying
+that baseline and every later migration. The hash manifest makes shipped
+migrations immutable.
 
-**AI.** `lib/ai.ts` (insights) and `lib/medical-extract.ts` / `lib/workout-extract.ts` (document extraction) call Claude via `@anthropic-ai/sdk`. Model config is in `lib/ai-client.ts` (`HEALTH_AI_MODEL`, default `claude-sonnet-5`). The medical-document **pipeline** (upload → extract → reprocess → reassign → delete) was split out per route (#318): the humble record-CRUD form stays in `app/(app)/medical/actions.ts`, the pipeline server actions live in the sibling `app/(app)/medical/document-actions.ts`, and the shared ingest/extract engine (`ingestMedicalUpload`/`runExtraction`/`reprocessOne`, plus the upload `MAX_BYTES` gate) is `lib/medical-pipeline.ts`. Everything degrades gracefully without `ANTHROPIC_API_KEY` (offline summary; documents stored but not extracted). Every AI call and its outcome is appended to `data/logs/ai.jsonl` via `lib/ai-log.ts`. Because the log mixes extraction content across profiles, each event is tagged with the acting `loginId`/`profileId` (request-context callers wrap the work in `withAiLogContext()`, which propagates through fire-and-forget extractions via `AsyncLocalStorage`; background/notify contexts leave the tags null), and the **Settings → AI logs** tab + its SSE stream are **admin-only**. New medical uploads are stored per-profile under `data/uploads/medical/<profileId>/` (older flat files keep their stored path — it's per-row); the file-serve route scopes by `id AND profile_id`, and content-hash dedup is per-profile.
+For every schema change:
 
-**Integrations** (`lib/integrations/`) are declarative — `registry.ts` lists the providers (push-based Health Connect ingest, Strava, Oura, Withings, an outbound `calendar-feed`; Garmin planned). The load-bearing invariants (full sync semantics + design history: `docs/internals/integrations-sync.md`): ingest/sync must stay **idempotent** — dedup on natural keys (time windows) and never overwrite manually entered rows; every sync appends an `integration_sync_events` row (`recordSyncEvent`) carrying an insert/update/unchanged split (SELECT-before-compare in the `normalize.ts` upserts); the **user-edit lock** (#133) — an `edited` flag on imported `activities`/`body_metrics`/`medical_records` rows, set by the app's edit paths (`isEditLocked`) — makes the keyed upserts skip a hand-corrected row (counted `unchanged`) so it survives the next rolling-window push; the **Data → Review** tab and the profile-menu badge surface the recent-imports feed and any failing provider.
+- Add a new table or column with a new migration.
+- Grow a `CHECK` enum or add a foreign key with a rebuild migration.
+- Put one-shot data moves in a migration, not a settings flag.
+- Never edit `001-baseline.ts` or another shipped migration.
+- Add a new profile-owned table to `lib/owned-tables.ts`.
+- Null dangling links before rebuilding a table to enforce a foreign key.
 
-**Notifications** (`lib/notifications/`) deliver over three channels — Telegram, Web Push, and a Home Assistant webhook — from an hourly tick (`npm run notify`), deduped per day/slot in the profile's DB-stored timezone. The load-bearing invariants (full architecture + design history: `docs/internals/notifications.md`): tick nudges split into **bus-gated nudges** (refill/preventive/workout — each consults the shared findings-suppression bus over `upcoming_dismissals`, keyed by the SAME `dedupeKey` as its Upcoming twin, so "dismiss once, silence everywhere"; a suppressed item is a third "frozen" state that holds it out of both the send set and the marker-clear set) and **safety reminders** (scheduled dose reminders + missed-dose escalation — DELIBERATELY never bus-gated; a page dismissal must never silence a possibly-critical medication signal). Suppression is ONE decision — `isHiddenUnderPolicy` in `lib/lifecycle.ts` (#942) over a shared `LifecycleSuppressionPolicy` (`normal` / `snooze-only` / `safety-ungated`); missed-dose escalation is the first lifecycle tenant, declaring `safety-ungated` (`ESCALATION_SUPPRESSION_POLICY`) — the #449 carve-out as data, so `isHiddenUnderPolicy` can never hide it. A failed send sets the channel-aware delivery-health marker — now a first-class **lifecycle row** (`notify_lifecycle`, migration 061; `getNotifyError`/`lib/notifications/delivery-marker.ts`), not the old `notify_last_error*` settings keys — surfaced on Settings → Server and driven by the shared set/clear/**freeze** `decideMarker` machine (`lib/notifications/delivery-status.ts`), cleared only by a healthy dispatch that actually attempted that channel. Inline buttons follow the two-way principle (one idempotent, low-risk state change with an existing server function, else deep-link), carry ids only, and every handler answers from a typed outcome union — never unconditionally confirm. Every outbound Telegram write routes through the ONE chokepoint `lib/notifications/telegram.ts` (limits, attribution, escaping, delivery accounting), the sole importer of the raw primitives in `telegram-api.ts` — enforced by the source-scan test `lib/__tests__/telegram-chokepoint.test.ts`; a new sender must go through the chokepoint.
+The runner applies migrations in individual immediate transactions, guards
+against a newer database being opened by older code, and temporarily disables
+foreign-key enforcement for safe SQLite table rebuilds. Per-boot work such as
+auth bootstrap, canonical biomarker reconciliation, cleanup, and timezone
+seeding belongs in `boot-tasks.ts`, outside the versioned runner.
 
-**Health endpoint (#131, `app/api/health`).** The unauthenticated Docker healthcheck returns HTTP **503** (`status: "degraded"`, coarse `reason`) for `db-failed` (unreadable DB), `write-failed` (non-writable `data/`), `integrity-failed` (the **cached** weekly live-DB `integrity_check` verdict `backup_live_integrity_ok=0` — the endpoint never runs the PRAGMA itself, keeping it cheap for uptime pollers), or `backup-stale` (backups enabled and the newest snapshot older than `backup_staleness_hours`, default 48h; a never-backed-up instance is not flagged). The pure composition is `buildHealthStatus()` in `lib/health-status.ts`; the body stays coarse (no paths/versions/PHI) since it's public.
+See `docs/versioned-migrations-spec.md` for the design and history.
 
-**Supplements & medications** share the one `intake_items` table (`kind` = `'supplement' | 'medication'`) so the dose/schedule/adherence/escalation/refill machinery serves both. **Surfaces (#746):** supplements live on **Nutrition → Supplements** (`/nutrition?tab=supplements`, a URL-driven tab of the Food | Supplements umbrella), medications on a standalone **Medications** page (`/medications`, in the Medical nav group); the old combined `/medicine` route **permanently redirects** to the Supplements tab (old Telegram/push deep links carry it forever). It is a UI/route split only — one table, one set of write cores (shared dose/item CRUD in `app/(app)/nutrition/supplement-actions.ts`, medication-lifecycle in `app/(app)/medications/actions.ts`), one findings bus. Cross-kind interaction (#144) + PGx (#710) warnings render on BOTH surfaces via the shared `components/IntakeWarnings.tsx` over the same `dedupeKey`s (dismiss once, silence both); UL/RDA stack checks stay on the Supplements tab. The kind→surface seam is the one helper `intakeHref(kind)` in `lib/hrefs.ts`. The load-bearing invariants (full domain doc + design history: `docs/internals/supplements.md`): a PRN (`as_needed`) med is never scheduled-due; **dose edits never destroy or rewrite adherence history** — doses update in place by id (in-flight Telegram buttons stay valid), a removed dose with logs is **retired** (`intake_item_doses.retired = 1`) rather than hard-deleted, and every confirm snapshots the amount onto the log; `markDoseTaken` returns a typed `DoseTakenOutcome` and refuses retired doses/paused items — handlers must answer from the outcome, never unconditionally confirm. Dueness for workout-conditioned items keys on the PREDICTED training day (#558) on surfacing paths only (adherence history keeps logged reality; `daily` stays unconditional). There is NO dynamic priority engine (#559): the user's `mandatory/high/low` is a static, user-owned sort — context gates dueness, it never invents priority — which is why supplement `doseItems` is a documented exemption on the #553 risk-layer allowlist (`lib/__tests__/upcoming-risk-layer.test.ts`).
+### Observation-shaped data
 
-## Conventions
+A new dated reading or observation should reuse an existing store:
+`symptom_logs`, `metric_samples`, `body_metrics`, or `medical_records`. Do not
+create a parallel table for a vocabulary extension.
 
-- Tests are **pure logic only** (no DB/network) and live in `lib/__tests__/*.test.ts` — vitest is configured to only include those. Logic you want to test should be extracted into a pure `lib/` function.
-- **DB integration tests are a separate tier.** Tests that open a real (in-memory) SQLite handle live in `lib/__db_tests__/*.test.ts`, run via `npm run test:db` (own `vitest.db.config.ts`, excluded from `npm test`), and are gated in CI. This tier exercises the real schema + query layer: the fresh boot and its no-op replay (`migrate.test.ts`), the migration runner's version/stamp/downgrade semantics (`runner.test.ts`), and the query/action suites against a seeded fixture.
-- **Server-action write-path tests are a fourth tier.** `lib/__action_tests__/*.actions.test.ts` drive real Server Actions (the `app/**/actions.ts` write paths) against the same in-memory SQLite handle, with `lib/__action_tests__/setup.ts` mocking the auth boundary (`requireSession`/`requireWriteAccess`/`accessForProfile`) and Next's `revalidatePath`. They run under the SAME `npm run test:db` config (`vitest.db.config.ts` includes both `lib/__db_tests__/**` and `lib/__action_tests__/**`). Add one when a Server Action gains new write behavior or an auth/scoping gate — the pure tier can't see those, and the "pure logic only" rule below applies to `lib/__tests__` specifically, not to this tier.
-- **Every findings builder ships a DB-tier test over a realistic fixture (#448).** A _findings builder_ — anything in `lib/rule-findings.ts` (or a future equivalent) that GATHERS DB state and hands it to a pure detection engine — carries one DB-tier test (`lib/__db_tests__/`) that seeds a realistic fixture and asserts the **end-to-end finding output**, same standing as "every UI feature ships a browser test." This exists because every confirmed #45-engine defect lived in the builder's INPUT LAYER, which the pure tier structurally can't see (it takes pre-gathered arrays): the adherence window ignoring dose lifetime (#430), the plateau series bypassing the canonical `exerciseHistoryKey` (#432), goal pacing fed raw all-source rows instead of the deduped daily series (#433), the anomaly detector fed cross-source/out-and-back rows (#434). The engines all had solid boundary-pinning pure tests — and shipped the bug anyway. `lib/__db_tests__/rule-findings-builders.test.ts` is the pattern (one fixture per builder + a reflection guard asserting every builder-emitted `dedupeKey` parses against the known-prefix registry `lib/rule-finding-prefixes.ts`, so a new engine can't ship an un-guardable key namespace). A new findings engine adds its prefix to that registry and its own fixture test.
-- **Browser e2e is a third tier — always add one for a UI feature.** Playwright specs in `e2e/*.spec.ts` boot the real Next app against an **isolated seeded SQLite DB** (`ALLOS_DB_PATH` override → `e2e/.data/`, never a dev `data/allos.db`) and drive it in Chromium; run via `npm run test:e2e` (`playwright.config.ts`), gated in CI as a 4-way sharded `e2e` matrix plus the `e2e-changed` scrutiny job (both parallel to `check`; an on-demand full-suite workflow, `e2e-full.yml`, covers pre-merge gates for big branches). The webServer resets + runs `scripts/seed.ts` then `e2e/seed-events.ts` for deterministic fixtures, and an `auth.setup.ts` project logs in once so specs start authenticated. Locally it uses `next dev` (no prior build needed) and auto-uses the pre-installed Chromium (`PLAYWRIGHT_BROWSERS_PATH`); CI builds and runs `next start` after `npx playwright install chromium`. **Any change with a rendered UI surface must ship a browser test** (or extend `smoke.spec.ts`) — build/typecheck/unit coverage doesn't prove a page renders. Prefer stable `data-testid` hooks and the seeded fixtures over brittle text/pixel assertions. **Suite hygiene (#868, `docs/internals/e2e-hygiene.md`):** a spec OWNS its fixtures — a dedicated fixture login/profile (`e2e/fixture-logins.ts`, the #809 `EMPTY_TRAINING` precedent) or a create-and-clean block — and NEVER exact-count-asserts a SHARED-seed row (a neighbor's write or a retry breaks it); settled interactions go through the ONE module `e2e/helpers.ts` — `settledClick` (awaits the Server-Action POST) / `followLink` (retries a nav past the pre-hydration swallow) / a plain retrying `expect`, with `toPass()` a commented last resort — never `waitForLoadState("networkidle")` or `waitForTimeout`, and never a NEW unmarked `.first()` on a shared surface (all three frozen + fail-on-new by the pure guard `lib/__tests__/e2e-hygiene.test.ts`; a reviewed spec-owned-fixture `.first()` carries a same-line `first-ok: <why>` comment). CI runs the PR's changed specs at `--repeat-each=3 --retries=0` so retry-masking can't land a flaky spec, and the whole suite now runs at **`retries: 0`** end-to-end (`playwright.config.ts`) — a flake fails the run loudly instead of shipping green on a retry. (The pass-on-retry flake report `scripts/e2e-flake-report.mjs` stays wired for the on-demand `e2e-full.yml` census dispatched at `--retries=1`, where it still measures retry-tolerated flakes; at the default `retries: 0` it reports clean.)
-- Reach for `lib/db.ts`'s `db` directly in Server Actions/queries; there is no repository/ORM abstraction — SQL is written inline with `db.prepare(...)`.
-- **Every write transaction is IMMEDIATE; use `writeTx`, never a raw `db.transaction` (#468).** Three processes write `allos.db` (the web app, the hourly notify tick, the poll sidecar), and a plain `db.transaction(fn)` is DEFERRED: it opens a read snapshot and only tries for the write lock at its FIRST write, and that upgrade — if another connection committed since the snapshot opened — throws `SQLITE_BUSY` _immediately_, NOT covered by `busy_timeout`. So every mutating transaction goes through `writeTx(fn)` (`lib/db.ts`, `BEGIN IMMEDIATE` — takes the write lock up front so a competing writer waits it out), and a read-only multi-statement snapshot uses `readTx(fn)` (DEFERRED, never writes). A source-scan test (`lib/__tests__/immediate-tx.test.ts`) fails CI if any module under `lib`/`app`/`scripts` opens a raw `db.transaction(` (allowlist: the `writeTx`/`readTx` defs, the migration layer's own `runBootTx`/`.immediate()` retry, and `lib/offline/queue-db.ts`'s unrelated IndexedDB method). The migration runner already uses IMMEDIATE + bounded retry; `.immediate()` nesting is safe (better-sqlite3 turns a nested transaction into a SAVEPOINT and ignores the access mode).
-- **Edit forms are last-write-wins by design; counter-like and access-control fields are the exceptions (#467).** Two write-granted logins (or two tabs) sharing a grant can clobber each other's edits, and for a family-scale app that's acceptable for ordinary fields (activities, medical records, conditions, goals, profile settings). But a field that a _concurrent process_ also mutates, or that carries access-control weight, gets stronger treatment: **`quantity_on_hand`** is a sub-resource compare-and-set — the form submits the value it LOADED with, and `updateSupplement` only honors the submitted value when it differs from the loaded one, so a dose confirm (incl. the poll sidecar) decrementing supply mid-edit isn't undone (`resolveOnHandWrite`, `lib/refill.ts`); **`setGrants`** uses optimistic concurrency — the form submits a `grantSignature` of the grants it loaded, and the action re-reads current grants under the write lock and refuses (friendly reload) when they differ, so a stale form can't silently revoke another admin's fresh grant (`grantSignature`, `lib/grants.ts`). The next counter-like or authz field gets the same treatment; ordinary co-editable fields stay last-write-wins.
-- **Settings autosave on blur; records use explicit submit (#794).** The Settings cards persist each field on blur/change through `useSaveStatus`/`SaveStatus` (with `useFlushOnHide` blurring the focused field on `visibilitychange` so a backgrounded tab doesn't drop the edit); every other record form uses an explicit submit button — don't add blur-saving outside Settings.
-- **Notes render through `<NotesText>` and page width through `<PageContainer>` (#794).** Free-text notes go through `components/NotesText.tsx` (`whitespace-pre-wrap break-words`; guarded by `lib/__tests__/notes-text.test.ts` — a bare `{x.notes}` JSX child fails CI), and a page that self-caps its content width uses `components/PageContainer.tsx`'s named widths (`form`/`reading`/`full`) instead of a hand-written `max-w-*` literal.
-- **New API route handlers return the `{ ok: false, error }` JSON error shape (#478).** Existing routes carry four coexisting conventions (that JSON shape, bare text, `?error=` redirects, and the health endpoint's status object) and aren't worth churning, but a NEW route handler should use the JSON `{ ok: false, error: "..." }` body with the right status. Keep the `error` string GENERIC on a 500 (`"internal error"`) — log/store the real cause server-side; never leak SQLite constraint text, table names, or stack internals to the caller.
-- Prettier + ESLint (`npm run lint` → the ESLint CLI over `eslint.config.mjs`, a flat config; not `next lint`) are enforced; run `npm run format` before committing to avoid CI failures.
-- **Keep `README.md` current with user-visible changes.** It's the human-facing self-hosting doc — when a nav item, route, Settings tab, integration, or env var changes, update the matching README reference in the same PR (the same way seed must track new domains). Stale navigation directions are a recurring bug (see the Body Metrics/Insights/Integrations consolidation).
-- **Every `docs/` spec carries a `Status:` line at the top — keep it honest.** Use `Status: draft` (unbuilt proposal), `Status: partial (<what shipped>)`, or `Status: shipped`, and update it **in the PR that changes the spec's truth** — the same discipline as the README-currency rule, applied to specs. A spec whose status inverts reality is worse than none: a reader (or an agent) builds against the wrong thing (see #480 — the HA appliance spec read "draft" while its notification-channel scope-out was the only part shipped, and the versioned-migrations spec still said "draft" long after it shipped). Verify each `Status:` claim against the code before writing it.
-- **No real PHI in the repo — ever.** Test fixtures and seed data MUST be **synthetic or obfuscated**: obviously-fictional names (`Test Patient`, `Ada Lovelace`-style), synthetic SSNs/MRNs/NPIs/phones (use the reserved `555-01xx` range)/addresses, and fictional providers/clinics — never copy a real patient/provider record (names, DOBs, NPIs, phones, street addresses, real clinic names) into a fixture, even one derived from a real source document. Real patient records, the SQLite DB (`data/*.db`), medical uploads (`data/uploads/**`), and the AI log (`data/logs/ai.jsonl`) are all gitignored (`/data`) and must never be committed. PHI must never reach a commit, PR, or issue. When adding a health-record fixture, preserve the codes/units/shape the test exercises but keep every identifying value clearly fake. This is enforced automatically by a pure structural scanner, `lib/phi-scan.ts` (run via `npm run phi-scan`), wired into both the pre-commit hook (staged files) and CI (whole tree): it flags Luhn-valid NPIs (that aren't all-same/sequential), dialable non-`555` US phones, and valid-shaped SSNs — high-signal patterns that synthetic fixtures pass. If a provably-synthetic value trips it, add a `phi-scan-ok` comment on that line or a glob to `.phiignore`; never obfuscate a real value — remove it from history. An optional, gitignored `.phi-denylist` (absent by default) can list real names/orgs to also catch.
-- **Responsive surfaces share one content component; never author into a single branch of a `hidden md:*` / `md:hidden` pair.** The desktop sidebar and mobile drawer both render `components/SidebarContent.tsx` (drawer-only behavior is opt-in via props), so a feature added there appears on every viewport. Anything added to a responsive surface must go into its shared content component — hand-mirrored branches drift (that's how the mobile drawer silently lacked the profile switcher/logout).
-- **One question, one computation.** A value or recommendation shown on more than one surface (page, dashboard widget, Telegram message) gets ONE pure `lib/` computation; the surfaces are formatters over its result, and a test pins that the same fixture yields the same answer everywhere. The good precedents: the Telegram morning digest's **Today** section is a formatter over the SAME `collectUpcoming` model the Upcoming page and the dashboard hero read (#1108 — a page dismiss silences the digest too), and the weekly-recap card + notification share `lib/weekly-recap.ts`. Hand-mirrored second engines drift — that's how the Telegram workout nudge and the coaching widget came to disagree about "what should I train today" (#221), how streak math got copy-pasted into coaching (#222), and how "this week" grew two definitions (#223). Same disease as the responsive-surfaces rule, one level up.
-- **`lib/` write cores are auth-blind; Server Actions are the only auth boundary.** A write function extracted into `lib/` takes `profileId` as its first argument (the profileId-first convention) and never imports `lib/auth` — no `requireSession`/`requireWriteAccess` below the action layer. The calling action keeps the whole gate shape: `requireWriteAccess()`/`requireAdmin()` → parse/validate → lib write core → `revalidatePath`. Every extracted write core gets an action-tier test (`lib/__action_tests__/`) driven through its action, because the write-access scanner only sees action modules — moving logic out of an action must never move the auth check (or its test coverage) with it. When splitting action files, group by auth tier so each module's gate is uniform and the scanner's per-file view stays trivially auditable (#319).
-- **Internal links are typed `AppRoute`; helpers only for rule-carrying links (#285).** Every href-carrying model field and component prop that holds an INTERNAL route is typed `AppRoute` (the `lib/hrefs.ts` alias over Next's `typedRoutes`-generated `Route`), so a dead pathname — a page removed in a consolidation, the #283 class — is a `tsc`/`npm run build` error; external URLs stay `string`. `lib/hrefs.ts` holds the only href HELPERS, and one exists ONLY where the link encodes a RULE that is (or is about to be) duplicated — `biomarkerViewHref` (canonical-gating), `timelineDayHref`/`dataSectionHref` (param shape), `integrationDetailHref` (which providers have a page), `intakeHref(kind)`/`nutritionTabHref`/`MEDICATIONS_HREF` (the #746 kind→surface seam: a supplement deep-links to Nutrition → Supplements, a medication to `/medications`), and the dynamic-route widening helpers (`importHref`/`encounterHref`/… — a dynamic route isn't assignable to `AppRoute` without one). A static one-off link stays a plain literal, now compile-checked. `currentPathHref` is the one escape hatch, for `usePathname()`-derived query links only.
-- **Row operations carry their side-state.** Any operation that absorbs, moves, or deletes a row (merge, reassign, delete, undo/restore) must also handle everything keyed to that row: (a) **children and link rows** are re-parented or nulled, never silently cascade-dropped (an activity merge must move `exercise_sets` to the keeper — #199; a delete must null `equipment_id`-style links or the FK throws); (b) **undo inverts the side effects**, not just the row — folded fields, recorded pair decisions, supply decrements, and captured FK links that may since have died all need restore-time handling (#200, #202); (c) **string-keyed state is cleaned or re-keyed** when its subject is deleted or renamed — dismissal `dedupeKey`s, `starred_biomarkers.canonical_name`, pair signatures, `notify_last_*` markers. Integer ids never recycle (every table is AUTOINCREMENT) so id-keyed leftovers are dead rows; **names and codes DO recycle**, so name-keyed leftovers become wrong suppression (#203).
-- **The import footprint has one source of truth.** Every table a document import writes must appear in ALL of: `clearImportedDocumentRows` (delete/reprocess), the `reassignDocument` move set, and the `extracted_count` tally — and the lists are bound by tests so they can't drift. A table added to one but not the others is how reassign stranded four tables cross-profile with an FK-500 on delete (#201) and how the import toast showed "0 records" for a successful encounter import (#212).
-- **Findings reach is a two-tier policy — decide it on purpose (#449).** The **care tier** (preventive findings, drug-interaction/dietary-limit items) is _push_: Upcoming + the non-hideable dashboard **Needs attention** hero + the Telegram nudge. The **coaching tier** (the observational builders aggregated by `collectCoachingFindings`) is _calm_: its own tab + the hideable dashboard rollup — never a notification, never the hero. Every surface renders the SAME `Finding` with the SAME `dedupeKey` through the shared dismissal bus. A new engine joins a tier deliberately (builder into `collectCoachingFindings`, prefix into `RULE_FINDING_PREFIXES`) — full policy and reasoning: `docs/internals/findings.md`.
-- **Label by the attribute that differs; anchor any A/B affordance to an on-element marker, never screen position (#531/#532/#533/#534).** A label built from ONE identity dimension (a row's `source`, a provider's `name`, a document's collapsed "Document" family, a profile's `name`) stops distinguishing the moment two items share it — which is exactly when a picker/merge/delete-confirm needs it most. Label by the attribute that DIFFERS with an id/ordinal/badge fallback (`disambiguationLabels`, `providerDisambigLabel`, `disambiguateProfileNames`, per-`s.key` doc colors), and give each distinct entity its own stable color, never one family color. When you fall back to A/B or 1/2, render the badge ON the element it names — a **spatial** disambiguator (left/right) assumes a layout the responsive grid (`sm:grid-cols-2`, single-column below) doesn't guarantee, so it's correct in only one viewport.
-- **One identity per subject, shared across surfaces (the identity-family convention, #482).** When several stored names/codes answer ONE question — total/D2/D3 vitamin D, A1c ↔ eAG, an exercise and its variants (Barbell Curl/Curl), a combo vaccine and its component codes, a combination drug and its ingredient CUIs — there is exactly ONE pure identity function that collapses them, and EVERY surface keys on it: the dedup partition, the series/is_latest grouping, the starred/pinned store, the retest/plateau clock, and the `dedupeKey` of any dismissal. The precedent to copy is `biomarkerFamily()` (`lib/canonical-name.ts`): a small, well-justified family table with an **exclusion discipline** (distinct assays/fractions/specimens/metabolites stay APART — over-collapsing grants a wrong "all-clear"), a **finite-preimage** (`IN (...)`) SQL realization (#394) where SQL can't call the JS matcher (`biomarkerFamilyKey()` in `lib/queries/medical.ts`), and a **name-keyed re-key** so a star/dismiss on one member covers the family and doesn't drift as which member is newest (`biomarkerDismissalKey`). A new name-keyed signal in any domain reaches for its domain's identity function instead of the raw name (the still-open twin is `training-obs:plateau:<name>` vs `exerciseHistoryKey`, #432) — a hand-rolled second grouping is the "one question, one computation" disease at the identity layer.
+Every observation ingest and read path must use the shared substrate:
+
+- `isEditLocked` so sync cannot overwrite a manual correction
+- `classifyUpsert` and `tallyUpsert` for inserted/updated/unchanged accounting
+- `latestByGroup` with the domain's canonical identity function
+
+`lib/__tests__/observation-substrate.test.ts` guards this boundary.
+
+### Settings and units
+
+Settings have three storage tiers:
+
+- global `settings`: server-wide configuration such as provider credentials,
+  bot configuration, public URL, AI configuration, and instance defaults
+- `login_settings`: display preferences and delivery channels that belong to a
+  person/device, including Telegram enablement, chat ID, and push preferences
+- `profile_settings`: health facts, timezone, schedules, content preferences,
+  and other data-subject settings
+
+The UI is topic-first, not tier-first. `lib/settings-groups.ts` is the single
+registry for Settings navigation. `adminOnly` hides navigation but never
+replaces `requireAdmin()` on the page or action.
+
+Settings → Notifications is intentionally mixed-scope: delivery channels are
+login-scoped, schedules and message content are primarily profile-scoped, and
+the instance Telegram bot configuration is server-scoped. Save login Telegram
+configuration through `saveLoginTelegram`; the old profile-scoped Telegram
+channel keys were retired by migration 105.
+
+Canonical storage uses kilograms, kilometers, and the documented time units.
+Convert only at the boundaries: `toKg`/`toKm` on write and the helpers in
+`lib/units.ts` on display. Unit preferences belong to the login.
+
+### Biomarkers and AI
+
+Canonical biomarker ranges come from `lib/canonical-biomarkers.json`.
+`reconciledFlag()` derives flags, and the boot tasks use
+`lib/canonical-flags-version.ts` to reprocess existing records when canonical
+ranges or flag logic change.
+
+AI insights and extraction use `@anthropic-ai/sdk`. The default
+`HEALTH_AI_MODEL` is `claude-sonnet-5`. Missing credentials must degrade
+gracefully. Medical document ingestion is orchestrated by
+`lib/medical-pipeline.ts`; extraction internals are exposed through
+`lib/medical-extract.ts`.
+
+AI events go to `data/logs/ai.jsonl` with login/profile context when available.
+The viewer is admin-only under Settings → Logs & audit → AI logs. Medical
+uploads are stored per profile, served with both row ID and `profile_id`
+scoping, and deduplicated per profile.
+
+See `docs/ai.md` for provider, logging, and extraction details.
+
+### Integrations
+
+`lib/integrations/registry.ts` is the provider registry. Current entries include
+Health Connect, Strava, Oura, Withings, Fitbit Takeout, Weather & UV, Calendar
+feed, and the planned Garmin integration.
+
+Sync and import behavior must remain idempotent:
+
+- deduplicate on natural source keys
+- never overwrite a manually edited imported row
+- record every sync with inserted/updated/unchanged counts
+- keep Data → Review and its failure badge consistent with sync events
+
+See `docs/internals/integrations-sync.md`.
+
+### Notifications
+
+The hourly notification tick can deliver through Telegram, Web Push, and Home
+Assistant. It evaluates dates and slots in each profile's stored timezone.
+
+Refill, preventive, and workout nudges share the Upcoming suppression bus and
+use the same `dedupeKey` as their visible finding. Dose reminders and missed-dose
+escalations are safety signals and must never be silenced by an Upcoming
+dismissal. Suppression policy flows through `isHiddenUnderPolicy`.
+
+Delivery health is stored in `notify_lifecycle` and follows the shared
+set/clear/freeze decision in `lib/notifications/delivery-status.ts`. Clear an
+error only after a healthy dispatch actually attempted the affected channel.
+All outbound Telegram writes go through `lib/notifications/telegram.ts`; it is
+the only module allowed to import the raw Telegram API primitives.
+
+Inline notification actions carry IDs only and return typed outcomes. Never
+confirm success unconditionally when the underlying write can refuse or no-op.
+
+See `docs/internals/notifications.md`.
+
+### Supplements and medications
+
+Supplements and medications share `intake_items`; do not split their common
+dose, adherence, refill, interaction, or warning machinery. Supplements render
+at `/nutrition?tab=supplements`; medications render at `/medications`. The
+former combined `/medicine` route is gone and 404s. Use `intakeHref(kind)` for
+kind-to-surface links.
+
+One user-owned field, **`obligation`** (`must`/`should`/`may`), decides push and
+adherence; it replaced both `priority` and `as_needed` in migration 124. `must`
+reminds and escalates, `should` reminds and counts but never escalates, `may` has
+no dueness at all — never pushed, never missed, tracked in the ledger and always
+one tap away. `kind` decides CLINICAL identity (which safety engine, which
+surface, passport inclusion), not pushability; medications default to `must` and
+moving one lower needs an explicit consequence-stating confirm.
+
+Important invariants:
+
+- A `may` item is never scheduled-due (it absorbed PRN).
+- Editing a dose must not rewrite adherence history.
+- A removed dose with logs is retired rather than deleted.
+- Confirming a dose snapshots the amount onto the log.
+- `markDoseTaken` may refuse retired doses or paused items; callers render its
+  typed outcome.
+- Obligation is declared only, forever: context gates dueness but never invents
+  obligation, and nothing writes the field without a user action. The demotion
+  engine detects and SUGGESTS; the user's tap is the write.
+- A `may` item is COLLAPSED on aggregates, never filtered out — removing it would
+  make an accepted demotion indistinguishable from a deletion.
+
+See `docs/internals/supplements.md`.
+
+### Health endpoint
+
+`app/api/health` is public and deliberately coarse. It returns 503 for database,
+write, cached-integrity, or configured backup-staleness failures without
+exposing paths, versions, or health data. Keep status composition in
+`lib/health-status.ts`; the endpoint itself must stay cheap.
+
+## Testing conventions
+
+The repository has three execution tiers:
+
+1. Pure tests in `lib/__tests__/` run through `npm test`. They do not open a
+   database or use the network.
+2. DB and Server Action tests in `lib/__db_tests__/` and
+   `lib/__action_tests__/` run together through `npm run test:db`.
+3. Browser tests in `e2e/*.spec.ts` run through Playwright against isolated,
+   seeded SQLite databases.
+
+Extract pure decision logic into `lib/`. Add a DB-tier test for SQL, migrations,
+query composition, or a Server Action write/auth path. Every findings builder
+must have a realistic DB fixture that asserts its end-to-end output and
+registered dedupe-key prefix.
+
+Every rendered UI feature must add or extend a browser test. The E2E harness
+seeds a template once, gives each worker its own database and `next start`
+server, and freezes the run's clock. Specs import `test` and `expect` from
+`./fixtures`, use `workerDbPath()` for direct SQLite access, and use
+`frozenNow()` instead of wall-clock time.
+
+Use stable test IDs and the settled interaction helpers in `e2e/helpers.ts`.
+Do not add `waitForTimeout`, `networkidle`, or an unmarked `.first()` on a shared
+surface. A test owns its fixture data and must not exact-count shared seed rows.
+Do not write redundant assertions or defensive assert checks for conditions
+already proven by types or prior control flow.
+See `docs/internals/e2e-hygiene.md`.
+
+## Implementation conventions
+
+### Writes and concurrency
+
+- Use `writeTx`, never raw `db.transaction`, for application writes. It begins
+  `IMMEDIATE`, retries only transaction acquisition, and keeps callbacks
+  synchronous.
+- Use `readTx` when several reads must share one snapshot.
+- Ordinary edit forms are last-write-wins. Counter-like, lifecycle, and
+  access-control fields need atomic transitions or compare-and-swap.
+- `lib/` write cores are auth-blind. They take `profileId` first and never import
+  `lib/auth`; the Server Action performs authorization and validation.
+- Server Action records pass serializable data only. Do not return a
+  `better-sqlite3` row proxy to a client component.
+
+### Forms and UI
+
+- Settings autosave on blur/change through the existing save-status helpers.
+  Record forms use explicit submission.
+- Free-text notes render through `<NotesText>`.
+- An icon-only button carries both `aria-label` (specific accessible name) and
+  `title` (short hover tooltip); `lib/__tests__/icon-button-tooltip-scan.test.ts`
+  enforces it.
+- Pages that cap width use `<PageContainer>` and its named widths — never a
+  hand-written `mx-auto max-w-*` and never a `max-w-*` smuggled through its
+  `className`; `lib/__tests__/page-width-scan.test.ts` enforces it and reads
+  the vocabulary out of the component.
+- Responsive variants share one content component; do not maintain separate
+  desktop/mobile copies of the same feature.
+- Chart colors come from `lib/chart-colors.ts`, and charts use the shared
+  scaffolding in `components/chart-scaffold.tsx`. See
+  `docs/internals/charts.md`.
+
+### Routes and APIs
+
+- New route-handler errors use `{ ok: false, error }` with an appropriate status.
+  HTTP 500 messages shown to clients stay generic; log the detailed cause through
+  `createLogger()`.
+- Internal route fields and props use `AppRoute`. Add an href helper only when
+  it owns routing policy; otherwise use the typed literal.
+  `lib/__tests__/typed-route-props.test.ts` fails any `href`/`…Href` field
+  left as `string`, with an allowlist for external URLs and live pathnames.
+- A directory under `app/(app)/` implies a served route. Components and Server
+  Actions for a surface live under the route that renders them (or in
+  `components/` when several surfaces share them) — never under the name of a
+  route that no longer exists.
+- `revalidatePath` takes a plain string, so `typedRoutes` cannot check it. Every
+  target must be a real route; `lib/__tests__/nav-routes.test.ts` sweeps them,
+  including array fan-outs.
+- Removing or merging a route does not earn a compatibility redirect. The legacy
+  redirect table was deleted in #1635 and `next.config.js` ships none; a retired
+  URL 404s, and adding a redirect back is a per-case product decision, not the
+  default. Auth-flow and tab-default redirects are current-IA plumbing, not
+  compatibility shims, and stay.
+
+### Shared behavior and data integrity
+
+- One question gets one computation. If pages, widgets, and notifications show
+  the same value, they format one pure `lib/` result.
+- Row merge, reassign, delete, and restore operations must also handle children,
+  nullable links, provenance, tombstones, saved/dismissed side-state, and
+  filesystem artifacts.
+- Every table written by document import must stay represented in imported-row
+  cleanup, document reassignment, and extracted-count accounting.
+- Identity families use one canonical pure function everywhere (movement facts
+  key on `exerciseHistoryKey`; load-sensitive strength facts on
+  `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,
+  which SQL reaches through the `biomarker_family()` user function). Labels must
+  include the attribute that actually distinguishes otherwise identical choices.
+- Findings have an explicit reach policy: care findings may reach Upcoming,
+  attention surfaces, and notifications; coaching findings stay in calm,
+  hideable surfaces. See `docs/internals/findings.md` — which also holds the **attention doctrine**:
+  the surface taxonomy (system-initiated sends / rendered aggregates /
+  user-initiated access), the contact-consent rule (the system may reduce contact
+  unilaterally, never increase it or rewrite user-owned state), which domains can
+  carry an obligation at all, and the right-sizing family every "the system
+  noticed X" suggestion belongs to.
+
+## Repository hygiene
+
+- Run Prettier before handing off changes; ESLint uses the flat
+  `eslint.config.mjs`.
+- Keep matching docs current in the same change as a feature, route, setting, or
+  integration.
+- Every `docs/*-spec.md` file has an honest top-level `Status:` line:
+  `draft`, `partial (...)`, or `shipped`.
+- Never put real PHI in the repository. Fixtures must use clearly fictional or
+  reserved data. `phi-scan` runs in CI and pre-commit, but the scanner is not a
+  substitute for review.
+- When adding a domain, update seed data and the relevant registries, import
+  cleanup lists, navigation, and tests together.
 
 ## Deploy
 
-Production runs as a Docker container; `docker-compose.yml` pulls a prebuilt image from GHCR (`ghcr.io/floorlamp/allos`). `.github/workflows/deploy.yml` builds and publishes the image on push to `main`; deploying is a manual/host-scheduled `docker compose pull && up -d` on the box (the old self-hosted-runner deploy job was removed). Persistent data (DB, uploads, AI log) lives under `/app/data`, bind-mounted from `DATA_DIR` — keep it **outside the checkout**. See README "Deploy with Docker" for full setup.
+Production runs in Docker. `docker-compose.yml` pulls
+`ghcr.io/floorlamp/allos`; `.github/workflows/deploy.yml` publishes `latest`
+and commit-SHA tags on pushes to `main` and on manual dispatch. Deployment on
+the host is a manual or scheduled `docker compose pull && docker compose up -d`.
+
+Persistent data lives under `/app/data`, bind-mounted from `DATA_DIR`. Keep that
+directory outside the checkout. See README **Quick start with Docker** for the
+operator setup.

@@ -28,7 +28,7 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
   }
 
   return (
-    <div ref={formRef} className="card mt-6 max-w-lg space-y-5">
+    <div ref={formRef} className="card space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           AI automation
@@ -84,7 +84,7 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
           The ceiling on cadence-driven AI runs (supplement suggestions + daily
           insight) for any one profile in a day. Scheduled cadence already caps
           at one run per day; this backstops upload/manual bursts. Set each
-          profile’s cadence on its Profile tab.
+          profile’s cadence under Coaching & AI.
         </p>
       </div>
     </div>

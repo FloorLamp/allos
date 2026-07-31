@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // The finding follow-up loop (#700): an incidental imaging finding → a tracked,
 // LEGIBLE follow-up on Upcoming → a resolution OFFER when a later study lands →
@@ -11,7 +12,7 @@ import { settledClick } from "./helpers";
 // linked care_plan_items follow-ups BEFORE the imaging_studies FK parents) makes the
 // spec idempotent across CI retries — it only ever touches rows it created. All
 // settled interactions go through e2e/helpers.ts (settledClick / followLink).
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const REGION = "E2EFUPCHEST";
 const SOURCE_IMPRESSION = "6 mm RLL nodule E2EFUP";
 
@@ -40,6 +41,8 @@ async function addStudy(
   opts: { date: string; impression: string }
 ) {
   await page.goto("/results/imaging");
+  // Entry lives behind "+ Add imaging study" since #1499 section C.
+  await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
   const form = page.getByTestId("imaging-study-form");
   await expect(form).toBeVisible();
   await form.getByLabel("Modality").selectOption("ct");

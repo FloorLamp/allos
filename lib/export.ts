@@ -209,8 +209,8 @@ type DoseRow = {
 
 // Parent intake_items read (supplements + medications). The page reader appends
 // LIMIT/OFFSET; both filter profile_id directly.
-const ITEMS_SELECT = `SELECT id, name, kind, brand, product, condition, priority, situation,
-          stack, active, critical, as_needed, prescriber, pharmacy, rx_number,
+const ITEMS_SELECT = `SELECT id, name, kind, brand, product, condition, obligation, situation,
+          stack, active, critical, prescriber, pharmacy, rx_number,
           quantity_on_hand, notes
    FROM intake_items WHERE profile_id = ?`;
 // Dose-schedule read, scoped to the profile through the intake_items JOIN. The
@@ -482,8 +482,20 @@ export const DATASETS: ExportDataset[] = [
     key: "immunizations",
     label: "Immunizations",
     table: "immunizations",
-    columns: ["date", "vaccine", "dose_label", "notes"],
-    select: `SELECT id, date, vaccine, dose_label, notes
+    columns: [
+      "date",
+      "vaccine",
+      "dose_label",
+      "notes",
+      // Administration attributes (#1406) — exactly the fields a school / travel /
+      // camp / employer form asks for, so a portable export must carry them.
+      "lot_number",
+      "route",
+      "site",
+      "reaction",
+    ],
+    select: `SELECT id, date, vaccine, dose_label, notes,
+              lot_number, route, site, reaction
        FROM immunizations WHERE profile_id = ? ORDER BY date DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM immunizations WHERE profile_id = ?`,
   }),
@@ -619,12 +631,11 @@ export const DATASETS: ExportDataset[] = [
       "brand",
       "product",
       "condition",
-      "priority",
+      "obligation",
       "situation",
       "stack",
       "active",
       "critical",
-      "as_needed",
       "prescriber",
       "pharmacy",
       "rx_number",
@@ -691,10 +702,16 @@ export const DATASETS: ExportDataset[] = [
       "reaction",
       "severity",
       "status",
+      // Safety attributes (#1405). `reaction`/`severity` above stay the CACHED first
+      // manifestation; the full graded list rides the FHIR passport's
+      // AllergyIntolerance.reaction[] rather than being flattened into a CSV cell.
+      "criticality",
+      "verification_status",
       "onset_date",
       "notes",
     ],
-    select: `SELECT id, substance, reaction, severity, status, onset_date, notes
+    select: `SELECT id, substance, reaction, severity, status,
+              criticality, verification_status, onset_date, notes
        FROM allergies WHERE profile_id = ? ORDER BY substance`,
     countSql: `SELECT COUNT(*) AS n FROM allergies WHERE profile_id = ?`,
   }),
@@ -918,8 +935,8 @@ export const DATASETS: ExportDataset[] = [
     key: "immunization_overrides",
     label: "Immunization overrides",
     table: "immunization_overrides",
-    columns: ["vaccine", "kind", "reason", "note"],
-    select: `SELECT id, vaccine, kind, reason, note
+    columns: ["vaccine", "kind", "reason", "exemption_type", "note"],
+    select: `SELECT id, vaccine, kind, reason, exemption_type, note
        FROM immunization_overrides WHERE profile_id = ? ORDER BY vaccine`,
     countSql: `SELECT COUNT(*) AS n FROM immunization_overrides WHERE profile_id = ?`,
   }),
@@ -1008,8 +1025,8 @@ export const DATASETS: ExportDataset[] = [
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
-    columns: ["date", "group_key", "logged_at"],
-    select: `SELECT id, date, group_key, logged_at
+    columns: ["date", "group_key", "logged_at", "meal_slot"],
+    select: `SELECT id, date, group_key, logged_at, meal_slot
        FROM food_log_events WHERE profile_id = ? ORDER BY logged_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),

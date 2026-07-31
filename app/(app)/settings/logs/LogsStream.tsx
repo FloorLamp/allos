@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { AiEvent, AiStatus } from "@/lib/ai-log";
 import ScrollFade from "@/components/ScrollFade";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatTimestamp } from "@/lib/format-date";
 
 const MAX_ROWS = 500;
 
@@ -12,14 +14,10 @@ const STATUS_BADGE: Record<AiStatus, string> = {
   failed: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
 };
 
-function fmtTime(iso: string): string {
-  // Local time; the column header notes the timezone is the server's TZ.
-  return new Date(iso).toLocaleString();
-}
-
 // Renders the AI event table and live-streams new events via SSE. Seeded with
 // the server-rendered `initial` events so it works without JS too.
 export default function LogsStream({ initial }: { initial: AiEvent[] }) {
+  const formatPrefs = useFormatPrefs();
   const [events, setEvents] = useState<AiEvent[]>(initial);
   const [live, setLive] = useState(false);
   const seen = useRef<Set<string>>(new Set(initial.map((e) => e.id)));
@@ -65,7 +63,7 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th">Time</th>
+                  <th className="th whitespace-nowrap">Time (UTC)</th>
                   <th className="th">Feature</th>
                   <th className="th">Status</th>
                   <th className="th">Tier</th>
@@ -81,14 +79,13 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
                     key={e.id}
                     className="border-b border-black/5 align-top dark:border-white/10"
                   >
-                    <td
-                      className="td whitespace-nowrap text-slate-500 dark:text-slate-400"
-                      // toLocaleString() renders in the server's locale/TZ on the
-                      // server and the browser's on the client, so the first
-                      // client render can differ — suppress the expected mismatch.
-                      suppressHydrationWarning
-                    >
-                      {fmtTime(e.time)}
+                    {/* Read as UTC through the shared formatter (#1448), so the
+                        server render and the first client render are byte-identical
+                        — the toLocaleString() this replaced rendered the server's
+                        zone on the server and the browser's on the client, which is
+                        why this cell needed suppressHydrationWarning. */}
+                    <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
+                      {formatTimestamp(e.time, formatPrefs, { zone: "utc" })}
                     </td>
                     <td className="td">{e.feature}</td>
                     <td className="td">
@@ -109,7 +106,7 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
                     </td>
                     <td className="td whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
                       {e.usage
-                        ? `${e.usage.in.toLocaleString()} / ${e.usage.out.toLocaleString()}`
+                        ? `${e.usage.in.toLocaleString("en-US")} / ${e.usage.out.toLocaleString("en-US")}`
                         : "—"}
                     </td>
                     <td className="td">

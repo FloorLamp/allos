@@ -95,11 +95,21 @@ export const METRIC_BOUNDS: Record<string, MetricBound> = {
   // are display-only, engine-inert vendor numbers (never a synthesis input).
   oura_sleep_score: { min: 0, max: 100 },
   oura_readiness_score: { min: 0, max: 100 },
+  // Fitbit's own 0–100 daily scores, the same vendor-score stance as Oura's above
+  // (#1069): stored as what the source said, rendered attributed, feeding no engine.
+  fitbit_sleep_score: { min: 0, max: 100 },
+  fitbit_readiness_score: { min: 0, max: 100 },
 
   // ---- metric_samples: HRV (point) ----
   // RMSSD is a few ms in severe autonomic dysfunction up to ~200 ms in the very
   // relaxed; 0–2000 stays generous while rejecting a runaway magnitude.
   hrv_ms: { min: 0, max: 2000 },
+  // Skin temperature VARIATION from the device's rolling personal baseline, °C. The
+  // only SIGNED metric in this map — a negative delta is the normal cool-night case,
+  // so the usual `min: 0` floor would silently drop half the distribution. Trackers
+  // report roughly ±2 °C; ±15 rejects only sensor-fault garbage (the classic 900),
+  // per the conservative-envelope rule.
+  skin_temp_delta_c: { min: -15, max: 15 },
 
   // ---- metric_samples: sleep (minutes) ----
   // No sleep SESSION exceeds 24 h; every stage is bounded by the same 0–1440.
@@ -194,6 +204,20 @@ export const METRIC_ROUND_DP: Record<string, number> = {
   sugar_g: 1,
   sodium_g: 1,
   fiber_g: 1,
+  // sleep stages (min) → 2dp / ~0.6 s. These are stored per STAGE and summed by the
+  // read layer, so they are deliberately sub-minute: rounding each stage to a whole
+  // minute inflated the night's breakdown past its own session total (the Fitbit-exporter payload audit).
+  // 2dp bounds the stored precision — a stage of arbitrary seconds (47 s → 0.78) can't
+  // leak a 17-digit float — while keeping the worst-case summed drift across a
+  // 60-stage night under a second. `sleep_min` itself stays a whole-minute session
+  // total: it is one value, not a summed series, so it has nothing to accumulate.
+  sleep_deep_min: 2,
+  sleep_rem_min: 2,
+  sleep_light_min: 2,
+  sleep_awake_min: 2,
+  // skin temperature variation (°C from personal baseline) → 2dp. Trackers report
+  // 1dp (+0.6, −0.1); 2dp keeps headroom without leaking a float.
+  skin_temp_delta_c: 2,
 };
 
 // Round a canonical value to its metric's registered storage precision. An

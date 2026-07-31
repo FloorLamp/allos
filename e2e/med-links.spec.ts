@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // #1051 med↔prescriber + #1052 med↔indication display. Read-only over the deterministic
@@ -32,7 +32,7 @@ test("medication detail shows the linked prescriber and 'For:' indication", asyn
 test("condition list shows 'Treated with:' the linked medication", async ({
   page,
 }) => {
-  await page.goto("/records/problems");
+  await page.goto("/records/problems/conditions");
   const treated = page
     .getByTestId("condition-treated-with")
     .filter({ hasText: "Sertraline" });

@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // Provider merge picker + confirm disambiguation (issue #532). seed-events plants
 // two organizations that share the name "E2E Duplicate Lab" (distinct identifiers +
@@ -7,7 +8,7 @@ import Database from "better-sqlite3";
 // them by the differing field, not the byte-identical name. We open the picker and
 // the confirm and CANCEL — the two labs are unlinked, and we never confirm, so the
 // shared fixture is untouched.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 // Both providers named "E2E Duplicate Lab", ordered by id (a → b).
 function dupLabIds(): { a: number; b: number } {

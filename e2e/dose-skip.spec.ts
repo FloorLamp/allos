@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // The web dose check-off is a TAKEN / SKIPPED / CLEAR tri-state (#232): a
 // deliberate skip is a first-class decision, distinct from a silent miss, with
 // its own control beside the ✅ take. This drives the whole cycle in the real app
@@ -14,13 +13,12 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   await page.goto("/nutrition?tab=supplements");
 
   // ── Create a single daily Morning dose ──────────────────────────────────────
-  const addCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add supplement" });
-  await addCard.getByLabel("Name").fill(NAME);
-  await addCard.getByLabel("Amount").first().fill("15 mg"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
-  await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
-  await addCard.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByTestId("supplement-add-toggle").click();
+  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+  await addDialog.getByLabel("Name").fill(NAME);
+  await addDialog.getByLabel("Amount").first().fill("15 mg"); // first-ok: the add modal's first dose-row field
+  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add modal's first dose-row field
+  await addDialog.getByRole("button", { name: "Add", exact: true }).click();
 
   const row = page
     .locator("section")

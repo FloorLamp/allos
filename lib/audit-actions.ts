@@ -13,6 +13,11 @@ export const AUDIT_ACTIONS = {
   loginSuccess: "login.success",
   loginFailure: "login.failure",
   loginThrottled: "login.throttled",
+  // A sign-in that verified its credentials (and any second factor) but was refused
+  // because the login can reach NO profile (issue #1434). Recorded so a grantless
+  // member's failed attempts are visible to the admin who forgot to grant one —
+  // the old behavior minted a session and silently bounced, leaving no trail.
+  loginNoAccess: "login.no-profile-access",
   logout: "login.logout",
   passwordChange: "login.password-change",
   passwordReset: "login.password-reset",

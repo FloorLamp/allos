@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
-import path from "node:path";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./nav";
+import { workerDbPath } from "./worker-env";
 
 // Preventive visits/screenings in Upcoming (issues #82 + #86). The seeded
 // profile 1 is a ~40-year-old with a birthdate (scripts/seed.ts), so the pure
@@ -83,15 +83,13 @@ const PROFILE_ID = 1;
 
 // Reset the preventive/appointment state these tests mutate back to its
 // seeded-empty baseline, directly on the isolated e2e SQLite file. The app and
-// this helper resolve the SAME database — the webServer boots against
-// ALLOS_DB_PATH, defaulting to e2e/.data/e2e.db (see playwright.config.ts) — and
-// the seed creates none of these rows, so removing them wholesale is safe and
+// this helper resolve the SAME database — workerDbPath() is this worker's copy of
+// the seeded template, which is exactly what its server booted against (#1538) —
+// and the seed creates none of these rows, so removing them wholesale is safe and
 // returns the DB to its seeded state. Opened on its own short-lived connection
 // with a busy timeout so it never contends with the running server (WAL).
 function resetPreventiveFixture(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -223,9 +221,11 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     const screening = main.getByTestId(SCREENING_KEY);
     await expect(screening).toBeVisible();
 
-    // Open the row's override menu (the shared OverflowMenu popover, portaled to
-    // <body> — #281) and choose "Not applicable" from the page-level menu.
-    await screening.getByLabel("Not applicable or declined").click();
+    // Open the row's ONE overflow menu (#1446 merged the preventive overrides into
+    // it, so there is no separate "Not applicable or declined" kebab) — the shared
+    // OverflowMenu popover, portaled to <body> (#281) — and choose "Not applicable"
+    // from the page-level menu.
+    await screening.getByLabel("More actions").click();
     await page
       .getByRole("menu")
       .getByRole("menuitem", { name: "Not applicable" })
@@ -246,9 +246,10 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await expect(depression).toBeVisible();
     await expect(depression).toContainText("Depression screening");
 
-    // Declining it (the override affordance) hides it and it stays hidden. The
-    // menu panel is portaled to <body> (#281), so locate it page-level.
-    await depression.getByLabel("Not applicable or declined").click();
+    // Declining it (the override affordance, now inside the row's single overflow
+    // menu — #1446) hides it and it stays hidden. The menu panel is portaled to
+    // <body> (#281), so locate it page-level.
+    await depression.getByLabel("More actions").click();
     await page
       .getByRole("menu")
       .getByRole("menuitem", { name: "Declined" })

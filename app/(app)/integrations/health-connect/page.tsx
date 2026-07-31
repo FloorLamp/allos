@@ -132,10 +132,10 @@ export default async function HealthConnectPage() {
                   Tap <strong>Sync Now</strong> to test. Imported weight, body
                   fat, and resting HR appear under{" "}
                   <Link
-                    href="/trends?tab=body"
+                    href="/trends#body"
                     className="text-brand-700 underline dark:text-brand-400"
                   >
-                    Body Metrics
+                    Body metrics
                   </Link>
                   ; workouts under{" "}
                   <Link
@@ -153,7 +153,7 @@ export default async function HealthConnectPage() {
                 Connect sync in a food tracker (MyFitnessPal, Cronometer, Lose
                 It!, Yazio, …) and your logged macros land on{" "}
                 <Link
-                  href="/trends?tab=body"
+                  href="/trends#body"
                   className="text-brand-700 underline dark:text-brand-400"
                 >
                   Trends → Body → Macros

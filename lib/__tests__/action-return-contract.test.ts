@@ -26,29 +26,31 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 // module to this surface means adding it here — and inheriting the no-bare-return
 // contract. (journal/actions.ts already carries the SaveActivityOutcome contract via
 // #332; it is covered by its own tests.)
+// Paths are relative to the repo root. The record-domain action modules moved out
+// of their old dead-route directories in #1636 and now sit under the route that
+// actually renders them.
 const MODULES = [
-  "allergies",
-  "conditions",
-  "procedures",
-  "encounters",
-  "immunizations",
-  "family-history",
-  "care-goals",
-  "care-plan",
-  "medical",
-  "goals",
-  "protocols",
-  "upcoming",
-  "trends",
-]
-  .map((m) => path.join("app", "(app)", m, "actions.ts"))
+  ["records", "problems", "allergies", "actions.ts"],
+  ["records", "problems", "conditions", "actions.ts"],
+  ["records", "history", "procedures", "actions.ts"],
+  ["encounters", "actions.ts"],
+  ["immunizations", "actions.ts"],
+  ["records", "care", "overview", "family-history-actions.ts"],
+  ["records", "care", "overview", "care-goal-actions.ts"],
+  ["records", "care", "overview", "care-plan-actions.ts"],
+  ["medical", "actions.ts"],
+  ["training", "goal-actions.ts"],
+  ["protocols", "actions.ts"],
+  ["upcoming", "actions.ts"],
+  ["trends", "actions.ts"],
   // Appointments merged into the Visits page (#288): their write actions live in
   // encounters/appointment-actions.ts now, not their own route's actions.ts.
-  .concat(path.join("app", "(app)", "encounters", "appointment-actions.ts"))
+  ["encounters", "appointment-actions.ts"],
   // The former /medicine action module split by kind (#746): shared supplement/
   // dose CRUD under nutrition, medication-lifecycle under medications.
-  .concat(path.join("app", "(app)", "nutrition", "supplement-actions.ts"))
-  .concat(path.join("app", "(app)", "medications", "actions.ts"));
+  ["nutrition", "supplement-actions.ts"],
+  ["medications", "actions.ts"],
+].map((parts) => path.join("app", "(app)", ...parts));
 
 // Length-preserving neutralizer: blanks the contents of line/block comments and
 // string/template literals (keeping newlines) so brace-matching and the bare-return

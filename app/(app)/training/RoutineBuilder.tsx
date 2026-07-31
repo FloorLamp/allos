@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { IconPlus, IconX, IconTrash } from "@tabler/icons-react";
 import type { MuscleRegion } from "@/lib/lifts";
 import { REGION_SCOPES } from "@/lib/lifts";
@@ -10,6 +10,8 @@ import Combobox from "@/components/Combobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { createRoutineAction, updateRoutineAction } from "./actions";
+import DraftRestoreBanner from "@/components/DraftRestoreBanner";
+import { useFormDraft } from "@/components/useFormDraft";
 
 // A single slot being authored. Sets/reps are kept as strings for the controlled
 // number inputs; they're parsed + validated on submit. `draft` is the in-progress
@@ -83,6 +85,26 @@ export default function RoutineBuilder({
   );
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
+
+  const formRef = useRef<HTMLFormElement>(null);
+  // Local draft (#1699). A routine is authored entirely in React state — the whole
+  // thing is serialized into one `routine` field at submit — so `extra` carries it.
+  const draftExtra = useMemo(
+    () => ({ name, cycleWeeks, days }),
+    [name, cycleWeeks, days]
+  );
+  type RoutineDraft = typeof draftExtra;
+  const draft = useFormDraft<RoutineDraft>({
+    formKey: "routine",
+    recordId: editRoutine?.id ?? null,
+    formRef,
+    extra: draftExtra,
+    onRestore: (d) => {
+      setName(d.name);
+      setCycleWeeks(d.cycleWeeks);
+      setDays(d.days);
+    },
+  });
 
   // Immutably update one day, re-deriving its focus from the current slots unless the
   // user has manually touched the focus chips.
@@ -197,16 +219,20 @@ export default function RoutineBuilder({
       setError(result.error);
       return;
     }
+    // Saved — drop the local copy (#1699).
+    draft.clear();
     toast(editRoutine ? "Routine updated" : "Routine created");
     onDone?.();
   }
 
   return (
     <form
+      ref={formRef}
       action={submit}
       className="mt-4 space-y-5"
       data-testid="routine-builder"
     >
+      <DraftRestoreBanner draft={draft} noun="routine" />
       {error && (
         <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
           {error}
@@ -274,6 +300,7 @@ export default function RoutineBuilder({
                 <button
                   type="button"
                   aria-label={`Remove ${day.label || `day ${di + 1}`}`}
+                  title="Remove day"
                   onClick={() => setDays((ds) => ds.filter((_, i) => i !== di))}
                   className="shrink-0 text-slate-400 hover:text-rose-500"
                 >
@@ -338,6 +365,7 @@ export default function RoutineBuilder({
                             <button
                               type="button"
                               aria-label={`Remove ${c}`}
+                              title="Remove exercise"
                               onClick={() =>
                                 patchSlot(di, si, (s) => ({
                                   ...s,
@@ -358,6 +386,7 @@ export default function RoutineBuilder({
                       <button
                         type="button"
                         aria-label={`Remove slot ${si + 1}`}
+                        title="Remove slot"
                         onClick={() =>
                           patchDay(di, (d) => ({
                             ...d,

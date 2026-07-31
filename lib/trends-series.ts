@@ -7,7 +7,7 @@
 // through an already profile-scoped query, so the scoping guard is unaffected.
 
 import {
-  getBodyMetricDailySeries,
+  getLogicalBodyMetricDailySeries,
   getVolumeByDate,
   getBiomarkerSeriesWithDerived,
   getUsedCanonicalNamesWithDerived,
@@ -17,6 +17,7 @@ import {
   getAppointments,
   getProtocolWindows,
 } from "./queries";
+import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import {
   getUnitPrefs,
   getUserSex,
@@ -39,15 +40,32 @@ import {
   parseLooseValue,
 } from "./reference-range";
 import { convertToCanonical, sameUnit } from "./unit-conversions";
-import { ALL_ROWS, filterSeriesByRange } from "./trends";
-import { bioPinKey, metricPinKey } from "./trend-pins";
+import {
+  ALL_ROWS,
+  filterSeriesByRange,
+  outOfWindowAgeLabel,
+  outOfWindowLatest,
+} from "./trends";
+import {
+  BODY_METRIC_META,
+  bodyMetricSlugForSavedId,
+  resolveBodyMetricUnit,
+  savedMetricIdForBodySlug,
+} from "./trends-body-metrics";
+import { fullBodyMetricSeries } from "./body-metric-series";
+import { activeRangeLabel } from "./trends-context";
+import { bioSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
 import type { DateRange } from "./timeline-format";
-import { biomarkerViewHref, type AppRoute } from "./hrefs";
+import { biomarkerViewHref, metricDetailHref, type AppRoute } from "./hrefs";
 
 export interface TrendSeries {
   key: string; // "metric:weight" | "bio:LDL Cholesterol" — also the pin key
   label: string;
+  // Registry-owned compact label for phone tiles. Full `label` remains the chart
+  // and detail title; biomarkers omit this because their canonical name is the
+  // only honest label.
+  shortLabel?: string;
   // Display-unit suffix used in captions/tiles ("%", " bpm", " kg", " mg/dL"), or
   // "" when the metric has none.
   unit: string;
@@ -66,6 +84,17 @@ export interface TrendSeries {
   // 2% is a real weight move but noise for training volume. Read by summarizeTrends
   // as DigestSeries.minPctChange; undefined falls back to the digest default.
   minPctChange?: number;
+  // The sparse-series fallback (#1485 G), set ONLY when `points` is empty and the
+  // series has history behind the window: the latest reading, pre-formatted in the
+  // series' own unit, with the age label that marks it as outside the window. Never
+  // a plottable point — a renderer must show it AS a stale value (text + age), never
+  // draw it on the line, or the tile claims a five-month-old number is current.
+  outsideWindow?: {
+    date: string;
+    text: string;
+    age: string;
+    rangeLabel: string;
+  } | null;
 }
 
 export interface TrendOption {
@@ -83,6 +112,7 @@ export { deCollideColor, BIO_COLORS } from "./trend-colors";
 interface MetricDef {
   id: string; // "weight" — the metricPinKey suffix
   label: string;
+  shortLabel?: string;
   unit: string;
   color: string;
   href: AppRoute;
@@ -98,37 +128,41 @@ interface MetricDef {
 const METRIC_DEFS: MetricDef[] = [
   {
     id: "weight",
-    label: "Weight",
+    label: BODY_METRIC_META.weight.title,
+    shortLabel: BODY_METRIC_META.weight.label,
     unit: "",
-    color: "#16a34a",
-    href: "/trends?tab=body",
-    decimals: 1,
+    color: BODY_METRIC_META.weight.color,
+    href: metricDetailHref("weight"),
+    decimals: BODY_METRIC_META.weight.decimals,
     minPctChange: 0.02, // a 2% weight change is already meaningful
   },
   {
     id: "bodyfat",
-    label: "Body fat",
-    unit: "%",
-    color: "#a855f7",
-    href: "/trends?tab=body",
-    decimals: 1,
+    label: BODY_METRIC_META["body-fat"].title,
+    shortLabel: BODY_METRIC_META["body-fat"].label,
+    unit: BODY_METRIC_META["body-fat"].unit,
+    color: BODY_METRIC_META["body-fat"].color,
+    href: metricDetailHref("body-fat"),
+    decimals: BODY_METRIC_META["body-fat"].decimals,
     // default 0.05
   },
   {
     id: "resting_hr",
-    label: "Resting heart rate",
-    unit: " bpm",
-    color: "#fb923c",
-    href: "/trends?tab=body",
-    decimals: 0,
+    label: BODY_METRIC_META["resting-hr"].title,
+    shortLabel: BODY_METRIC_META["resting-hr"].label,
+    unit: BODY_METRIC_META["resting-hr"].unit,
+    color: BODY_METRIC_META["resting-hr"].color,
+    href: metricDetailHref("resting-hr"),
+    decimals: BODY_METRIC_META["resting-hr"].decimals,
     minPctChange: 0.05, // resting HR is fairly stable; 5% is a genuine shift
   },
   {
     id: "volume",
-    label: "Training volume",
+    label: "Training Volume",
+    shortLabel: "Training Volume",
     unit: "",
     color: "#0ea5e9",
-    href: "/training",
+    href: "/training?tab=analyze",
     decimals: 0,
     restricted: true,
     minPctChange: 0.15, // training volume swings hugely session-to-session
@@ -152,23 +186,29 @@ export function buildMetricSeries(
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
-      // Weight / body-fat / resting-HR all read through getBodyMetricDailySeries
-      // (the one-source-per-day reconciled series the Body tab charts, #14/#395),
-      // NOT raw all-source rows — so a two-device day can't double back the line
-      // and the tile's latest agrees with the deduped Body chart. Series is already
+      // Weight / body-fat / resting-HR all read through the logical series: the
+      // one-source-per-day body_metrics data the Body tab charts (#14/#395), plus
+      // legacy medical-record dates only when body_metrics has no value. A
+      // two-device day therefore can't double back the line. Series is already
       // oldest→newest in canonical units.
       case "weight":
-        return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(
-          (p) => ({ date: p.date, value: dispWeight(p.value, wu) })
-        );
+        return getLogicalBodyMetricDailySeries(
+          profileId,
+          "weight",
+          ALL_ROWS
+        ).map((p) => ({ date: p.date, value: dispWeight(p.value, wu) }));
       case "bodyfat":
-        return getBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).map(
-          (p) => ({ date: p.date, value: round(p.value, 1) })
-        );
+        return getLogicalBodyMetricDailySeries(
+          profileId,
+          "body_fat",
+          ALL_ROWS
+        ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
       case "resting_hr":
-        return getBodyMetricDailySeries(profileId, "resting_hr", ALL_ROWS).map(
-          (p) => ({ date: p.date, value: Math.round(p.value) })
-        );
+        return getLogicalBodyMetricDailySeries(
+          profileId,
+          "resting_hr",
+          ALL_ROWS
+        ).map((p) => ({ date: p.date, value: Math.round(p.value) }));
       case "volume":
         return getVolumeByDate(profileId).map((v) => ({
           date: v.date,
@@ -182,8 +222,9 @@ export function buildMetricSeries(
   return METRIC_DEFS.filter(
     (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
   ).map((d) => ({
-    key: metricPinKey(d.id),
+    key: metricSeriesKey(d.id),
     label: d.label,
+    shortLabel: d.shortLabel,
     unit: d.id === "weight" || d.id === "volume" ? weightUnitSuffix : d.unit,
     color: d.color,
     href: d.href,
@@ -195,17 +236,57 @@ export function buildMetricSeries(
   }));
 }
 
-// Build one biomarker's series windowed to `range`, mirroring the biomarker detail
-// page's charting: chart in the canonical unit when the biomarker has one
+// Rebuild a saved Body metric that is not one of the original standard Overview
+// series. Metric-detail pages can star every registered Body slug; this is the
+// corresponding read path that makes that saved row a real Overview tile.
+export function buildSavedBodyMetricSeries(
+  profileId: number,
+  loginId: number,
+  savedId: string,
+  range: DateRange,
+  todayStr: string
+): TrendSeries | null {
+  const slug = bodyMetricSlugForSavedId(savedId);
+  if (!slug) return null;
+  const meta = BODY_METRIC_META[slug];
+  const weightUnit = getUnitPrefs(loginId).weightUnit;
+  return {
+    key: metricSeriesKey(savedMetricIdForBodySlug(slug)),
+    label: meta.title,
+    shortLabel: meta.label,
+    unit: resolveBodyMetricUnit(meta, weightUnit),
+    color: meta.color,
+    href: metricDetailHref(slug),
+    kind: "metric",
+    decimals: meta.decimals,
+    points: filterSeriesByRange(
+      fullBodyMetricSeries(slug, profileId, weightUnit, todayStr),
+      range
+    ),
+    range: null,
+  };
+}
+
+// One biomarker's FULL (un-windowed) plot: the numeric points in the unit the tile
+// and chart will label, plus the effective reference range. Mirrors the biomarker
+// detail page's charting: chart in the canonical unit when the biomarker has one
 // (converting every convertible reading and carrying the effective reference
 // range), else fall back to the latest reading's unit and its parsed lab range.
-// Censored readings ("<0.10") are plotted at their limit. Returns null when there
-// are no numeric readings to chart.
-export function buildBiomarkerSeries(
+// Censored readings ("<0.10") are plotted at their limit.
+//
+// Extracted from buildBiomarkerSeries (#1485 G) so the windowed chart and the
+// sparse-series fallback resolve unit + conversion through the SAME path — a
+// fallback that formatted the raw stored value would print a different unit than
+// the tile's own chart for exactly the analytes it exists to serve.
+function biomarkerPlot(
   profileId: number,
-  canonical: string,
-  range: DateRange
-): TrendSeries | null {
+  canonical: string
+): {
+  rows: ReturnType<typeof getBiomarkerSeriesWithDerived>;
+  points: { date: string; value: number }[];
+  unit: string | null;
+  rng: { low: number | null; high: number | null } | null;
+} | null {
   const series = getBiomarkerSeriesWithDerived(profileId, canonical);
   if (series.length === 0) return null;
   const cb = getCanonicalBiomarker(canonical);
@@ -251,19 +332,118 @@ export function buildBiomarkerSeries(
     if (parsed) rng = { low: parsed.low ?? null, high: parsed.high ?? null };
   }
 
-  const windowed = filterSeriesByRange(points, range);
+  return { rows: series, points, unit, rng };
+}
+
+// Build one biomarker's series windowed to `range`. Returns null when there are no
+// numeric readings to chart IN THAT WINDOW — the contract Compare and the digest
+// read (an empty overlay/chip is correct for both). The Overview tile takes the
+// sparse-aware path below instead.
+export function buildBiomarkerSeries(
+  profileId: number,
+  canonical: string,
+  range: DateRange
+): TrendSeries | null {
+  const plot = biomarkerPlot(profileId, canonical);
+  if (!plot) return null;
+
+  const windowed = filterSeriesByRange(plot.points, range);
   if (windowed.length === 0) return null;
 
   return {
-    key: bioPinKey(canonical),
+    key: bioSeriesKey(canonical),
     label: canonical,
-    unit: unit ? ` ${unit}` : "",
+    unit: plot.unit ? ` ${plot.unit}` : "",
     color: bioColor(canonical),
     href: biomarkerViewHref(canonical),
     kind: "biomarker",
     decimals: 1,
     points: windowed,
-    range: rng,
+    range: plot.rng,
+  };
+}
+
+const BIO_TILE_DECIMALS = 1;
+
+// How an out-of-window reading prints on a tile. Numeric readings go through the
+// SAME unit the chart would have labelled; a reading with no numeric value at all
+// (a genotype like "e3/e4" — starred, and real in the seed) prints its stored text
+// with its own unit, because "the latest reading" is still the honest answer for a
+// qualitative analyte even though nothing can be plotted.
+function outOfWindowText(
+  point: { date: string; value: number } | null,
+  row: { date: string; value: string | null; unit: string | null } | undefined,
+  unit: string | null
+): { date: string; text: string } | null {
+  if (point && (!row || point.date >= row.date)) {
+    return {
+      date: point.date,
+      text: `${round(point.value, BIO_TILE_DECIMALS)}${unit ? ` ${unit}` : ""}`,
+    };
+  }
+  const raw = row?.value?.trim();
+  if (!row || !raw) return null;
+  return { date: row.date, text: `${raw}${row.unit ? ` ${row.unit}` : ""}` };
+}
+
+// The Overview tile for a SAVED biomarker (#1456: always rendered, so its ★ stays
+// reachable at any window). Never null — it resolves to one of three honest states:
+//
+//   • readings in the window → the real windowed series (identical to
+//     buildBiomarkerSeries);
+//   • no readings in the window but history behind it → an empty-points tile
+//     carrying `outsideWindow`, the latest reading + its age (#1485 G). With 90D as
+//     the default window this is the COMMON case for an annual lab, and the old
+//     "No data in this range" threw away the one number the user came for;
+//   • never measured (or nothing renderable) → the #1456 placeholder, unchanged.
+//
+// The out-of-window reading is deliberately NOT merged into `points`: it is carried
+// beside them so the renderer must mark it as outside the window rather than plot a
+// stale value on the line.
+export function buildSavedBiomarkerTile(
+  profileId: number,
+  canonical: string,
+  range: DateRange,
+  todayStr: string
+): TrendSeries {
+  const plot = biomarkerPlot(profileId, canonical);
+  if (!plot) return placeholderBiomarkerTile(canonical);
+
+  const windowed = filterSeriesByRange(plot.points, range);
+  const base: TrendSeries = {
+    key: bioSeriesKey(canonical),
+    label: canonical,
+    unit: plot.unit ? ` ${plot.unit}` : "",
+    color: bioColor(canonical),
+    href: biomarkerViewHref(canonical),
+    kind: "biomarker",
+    decimals: BIO_TILE_DECIMALS,
+    points: windowed,
+    range: plot.rng,
+  };
+  if (windowed.length > 0) return base;
+
+  // Nothing in the window: fall back to the newest reading behind it. Both the
+  // numeric series and the raw rows are consulted — `outOfWindowLatest` gates on
+  // the same "no points in this window" question for each, so a qualitative-only
+  // analyte still resolves.
+  const latestPoint = outOfWindowLatest(plot.points, range);
+  const latestRow = outOfWindowLatest(plot.rows, range);
+  const reading = outOfWindowText(
+    latestPoint,
+    latestRow ?? undefined,
+    plot.unit
+  );
+  if (!reading) return { ...base, points: [], unit: base.unit || "" };
+  return {
+    ...base,
+    points: [],
+    outsideWindow: {
+      date: reading.date,
+      text: reading.text,
+      age: outOfWindowAgeLabel(reading.date, todayStr),
+      rangeLabel: activeRangeLabel(range, todayStr),
+    },
   };
 }
 
@@ -274,7 +454,7 @@ export function buildBiomarkerSeries(
 // tile so it slots into the Pinned section and TrendMiniCard shows its empty state.
 export function placeholderBiomarkerTile(canonical: string): TrendSeries {
   return {
-    key: bioPinKey(canonical),
+    key: bioSeriesKey(canonical),
     label: canonical,
     unit: "",
     color: bioColor(canonical),
@@ -297,17 +477,17 @@ export function listCompareOptions(
   const metrics = METRIC_DEFS.filter(
     (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
   ).map((d) => ({
-    key: metricPinKey(d.id),
+    key: metricSeriesKey(d.id),
     label: d.label,
     kind: "metric" as const,
   }));
-  const biomarkers = getUsedCanonicalNamesWithDerived(profileId).map(
-    (name) => ({
-      key: bioPinKey(name),
+  const biomarkers = getUsedCanonicalNamesWithDerived(profileId)
+    .filter((name) => bodyMetricKindForBiomarker(name) == null)
+    .map((name) => ({
+      key: bioSeriesKey(name),
       label: name,
       kind: "biomarker" as const,
-    })
-  );
+    }));
   return { metrics, biomarkers };
 }
 
@@ -384,6 +564,7 @@ export function buildDigestSeries(
 ): TrendSeries[] {
   const out = buildMetricSeries(profileId, loginId, range, restricted);
   for (const name of getUsedCanonicalNamesWithDerived(profileId)) {
+    if (bodyMetricKindForBiomarker(name) != null) continue;
     const s = buildBiomarkerSeries(profileId, name, range);
     if (s) out.push(s);
   }

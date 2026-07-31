@@ -8,7 +8,10 @@ import {
   trainingBalanceSignalKey,
   trainingBalanceLegacyKey,
   staleExerciseSignalKey,
+  staleExerciseLegacyKey,
   plateauSignalKey,
+  plateauLegacyKey,
+  plateauLevelAnchor,
   TRAINING_OBS_PREFIX,
   MIN_PUSH_PULL_SETS,
   type ExerciseSetCount,
@@ -213,5 +216,107 @@ describe("isPlateau / detectPlateaus", () => {
     ]) {
       expect(k.startsWith(TRAINING_OBS_PREFIX)).toBe(true);
     }
+  });
+});
+
+// ---- Dismissal-key identity (#1399 + #1610) --------------------------------
+//
+// The plateau/stale finding SERIES has grouped on exerciseHistoryKey since #432, but
+// the dedupeKey that SUPPRESSES the finding was built from the raw display name
+// (`exercise.trim().toLowerCase()`). Two consequences #482/#203 warn about:
+// dismissing "Barbell Curl"'s plateau did not silence the same lift logged as
+// "Curl", and the key drifted as which variant spelling was the group's newest
+// display name. Both keys now follow exactly the identity their series groups on.
+
+describe("observation dismissal keys follow the series identity (#1399)", () => {
+  const today = "2026-03-01";
+  const daysAgo = (n: number) => {
+    const d = new Date(Date.UTC(2026, 2, 1) - n * 86_400_000);
+    return d.toISOString().slice(0, 10);
+  };
+  const flatAt = (level: number): DatedPoint[] =>
+    [42, 35, 28, 21, 14, 7, 0].map((n, i) => ({
+      date: daysAgo(n),
+      value: level + (i % 2 === 0 ? 0.2 : -0.2),
+    }));
+
+  it("keys a plateau on the variant-collapsed movement, not the raw name", () => {
+    // A plateau dismissed while the lift was called "Barbell Curl" stays suppressed
+    // when the same lift is next logged as "Curl" — one dismissal, one plateau.
+    expect(plateauSignalKey("Barbell Curl", "20")).toBe(
+      plateauSignalKey("Curl", "20")
+    );
+    expect(plateauLegacyKey("Dumbbell Curl")).toBe(plateauLegacyKey("Curl"));
+    // …and the key no longer contains the raw display name it used to drift with.
+    expect(plateauLegacyKey("Barbell Curl")).not.toContain("barbell curl");
+  });
+
+  it("keys a stale exercise on the movement too", () => {
+    expect(staleExerciseSignalKey("Barbell Curl", "2026-02")).toBe(
+      staleExerciseSignalKey("Curl", "2026-02")
+    );
+    expect(staleExerciseLegacyKey("Barbell Curl")).not.toContain(
+      "barbell curl"
+    );
+  });
+
+  it("still separates two genuinely different movements", () => {
+    expect(plateauSignalKey("Bench Press", "20")).not.toBe(
+      plateauSignalKey("Deadlift", "20")
+    );
+    expect(staleExerciseLegacyKey("Bench Press")).not.toBe(
+      staleExerciseLegacyKey("Deadlift")
+    );
+  });
+
+  it("gives each LOAD CONTEXT its own plateau key and names it in the copy (#1610)", () => {
+    const out = detectPlateaus(
+      [
+        {
+          exercise: "Machine Chest Press",
+          equipmentId: 7,
+          equipment: "Home chest press",
+          points: flatAt(100),
+        },
+        {
+          exercise: "Machine Chest Press",
+          equipmentId: 8,
+          equipment: "Hotel chest press",
+          points: flatAt(50),
+        },
+      ],
+      today
+    );
+    expect(out).toHaveLength(2);
+    // Two machines are two signals: distinct dedupe keys, so dismissing one leaves
+    // the other live, and neither can overwrite the other on the findings bus.
+    expect(new Set(out.map((o) => o.key)).size).toBe(2);
+    expect(new Set(out.map((o) => o.legacyKey)).size).toBe(2);
+    // The copy NAMES the implement so the two findings are tellable apart.
+    const home = out.find((o) => o.equipmentId === 7)!;
+    expect(home.title).toContain("Home chest press");
+    expect(home.detail).toContain("Home chest press");
+    // …and the key is exactly the identity the series was grouped on.
+    expect(home.key).toBe(
+      plateauSignalKey("Machine Chest Press", plateauLevelAnchor(100), 7)
+    );
+  });
+
+  it("keeps the unassigned lane distinct from every machine", () => {
+    expect(plateauSignalKey("Bench Press", "20", null)).not.toBe(
+      plateauSignalKey("Bench Press", "20", 7)
+    );
+  });
+
+  it("leaves a movement-wide series' copy and key implement-free", () => {
+    // A series gathered without load contexts (the pre-#1610 shape) reads as the
+    // unassigned lane: no implement in the title, no equipment in the key.
+    const out = detectPlateaus(
+      [{ exercise: "Bench Press", points: flatAt(100) }],
+      today
+    );
+    expect(out[0].title).toBe("Bench Press has plateaued");
+    expect(out[0].equipmentId).toBeNull();
+    expect(out[0].key).toBe(plateauSignalKey("Bench Press", "20", null));
   });
 });

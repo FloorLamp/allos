@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  elapsedLabel,
   escalationsDue,
   renderEscalationMessage,
   type EscalationCandidate,
@@ -13,6 +14,7 @@ const candidate = (
   supplementName: "Lisinopril",
   amount: "10 mg",
   window: "Morning",
+  kind: "supplement",
   slotHour: 8,
   escalateAfterMin: 120,
   escalateChatId: null,
@@ -208,6 +210,8 @@ describe("renderEscalationMessage", () => {
         supplementName: "Lisinopril",
         amount: "10 mg",
         window: "Morning",
+        kind: "medication",
+        unconfirmedMinutes: 160,
         escalateChatId: null,
       },
       3,
@@ -229,6 +233,8 @@ describe("renderEscalationMessage", () => {
         amount: "160 mg",
         product: "Children's oral suspension (160 mg / 5 mL)",
         window: "Evening",
+        kind: "medication",
+        unconfirmedMinutes: 120,
         escalateChatId: null,
       },
       3,
@@ -246,6 +252,8 @@ describe("renderEscalationMessage", () => {
         supplementName: "Vitamin D",
         amount: null,
         window: "Evening",
+        kind: "supplement",
+        unconfirmedMinutes: 120,
         escalateChatId: null,
       },
       3,
@@ -254,10 +262,10 @@ describe("renderEscalationMessage", () => {
     expect(msg.body).not.toContain("(");
   });
 
-  // The two caregiver buttons (#233): ✅ Confirmed taken (esctake token) and 👍
-  // I'm on it (escack token), carrying profile/dose/supp ids + the day — never a
-  // name — so a late tap resolves the right dose on the right date.
-  it("carries the ✅ confirm and 👍 ack buttons with id-only tokens", () => {
+  // The THREE caregiver buttons (#233 + #1716): ✅ Confirmed taken (esctake), ⏭ Skip
+  // (escskip) and 👍 I'm on it (escack), carrying profile/dose/supp ids + the day —
+  // never a name — so a late tap resolves the right dose on the right date.
+  it("carries the ✅ confirm, ⏭ skip and 👍 ack buttons with id-only tokens", () => {
     const msg = renderEscalationMessage(
       "Mom",
       {
@@ -266,6 +274,8 @@ describe("renderEscalationMessage", () => {
         supplementName: "Lisinopril",
         amount: "10 mg",
         window: "Morning",
+        kind: "medication",
+        unconfirmedMinutes: 160,
         escalateChatId: null,
       },
       3,
@@ -273,9 +283,82 @@ describe("renderEscalationMessage", () => {
     );
     expect(msg.actions?.map((a) => a.data)).toEqual([
       "esctake:3:7:10:2026-07-11",
+      "escskip:3:7:10:2026-07-11",
       "escack:3:7:10:2026-07-11",
     ]);
-    // Both share one row so they render side by side.
+    // All three share one row so they render side by side.
     expect(new Set(msg.actions?.map((a) => a.row))).toEqual(new Set(["esc"]));
+    // No deep link without a configured public URL — the buttons still stand.
+    expect(msg.actions?.some((a) => a.url)).toBe(false);
+  });
+
+  // #1716 §3: the message states the fact that made it fire. The elapsed time was
+  // already computed to DECIDE the send; the body never said it.
+  it("states how long the dose has been unconfirmed, and the slot", () => {
+    const msg = renderEscalationMessage(
+      "Mom",
+      {
+        doseId: 7,
+        supplementId: 10,
+        supplementName: "Warfarin",
+        amount: "5 mg",
+        window: "Morning",
+        kind: "medication",
+        unconfirmedMinutes: 160,
+        escalateChatId: null,
+      },
+      3,
+      "2026-07-11"
+    );
+    expect(msg.body).toBe(
+      "Warfarin (5 mg) — morning slot, unconfirmed for 2h 40m."
+    );
+  });
+
+  it("carries a kind-aware deep link when a public URL is configured", () => {
+    const med = renderEscalationMessage(
+      "Mom",
+      {
+        doseId: 7,
+        supplementId: 10,
+        supplementName: "Warfarin",
+        amount: "5 mg",
+        window: "Morning",
+        kind: "medication",
+        unconfirmedMinutes: 160,
+        escalateChatId: null,
+      },
+      3,
+      "2026-07-11",
+      "https://allos.example/"
+    );
+    expect(med.actions?.at(-1)?.url).toBe("https://allos.example/medications");
+    const supp = renderEscalationMessage(
+      "Mom",
+      {
+        doseId: 7,
+        supplementId: 10,
+        supplementName: "Vitamin D",
+        amount: null,
+        window: "Bedtime",
+        kind: "supplement",
+        unconfirmedMinutes: 60,
+        escalateChatId: null,
+      },
+      3,
+      "2026-07-11",
+      "https://allos.example"
+    );
+    expect(supp.actions?.at(-1)?.url).toContain("/nutrition");
+  });
+});
+
+describe("elapsedLabel", () => {
+  it("reads in the redose formatter's register and invents no precision", () => {
+    expect(elapsedLabel(160)).toBe("2h 40m");
+    expect(elapsedLabel(180)).toBe("3h");
+    expect(elapsedLabel(45)).toBe("45m");
+    expect(elapsedLabel(0)).toBe("0m");
+    expect(elapsedLabel(-5)).toBe("0m");
   });
 });

@@ -39,13 +39,20 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 //
 // GLOBAL tables are intentionally absent, so a statement touching only one of them
 // is never flagged: logins, profiles, login_profiles, sessions, login_attempts,
-// global settings, canonical_biomarkers, and — added later — `providers`.
+// global settings, canonical_biomarkers, `providers`, and — added later —
+// `shared_supplies`.
 // The providers registry is shared across the whole family/instance (a family sees
 // one "Quest Diagnostics"), modeled like logins/profiles: the per-record LINK
 // (immunizations/medical_records/intake_items.provider_id) lives on a profile-owned
 // row and is therefore covered by the rule via those tables, but the shared
 // `providers` row it points at is global and its data layer (lib/providers-db) is
 // deliberately not profile-scoped.
+// `shared_supplies` (#1374) is the same shape one domain over — the household medicine
+// cabinet. A family owns ONE bottle of ibuprofen, so the bottle row is instance-shared,
+// carries no profile_id, and stays out of OWNED_TABLES; the per-record LINK
+// (`intake_items.supply_id`) lives on a profile-owned row and IS covered through that
+// table, while its data layer (lib/queries/intake/supply-pool) is deliberately not
+// profile-scoped.
 const OWNED_RE = new RegExp(`\\b(${OWNED_TABLES.join("|")})\\b`);
 
 // Statements that legitimately touch an owned table without profile_id, keyed by
@@ -53,12 +60,110 @@ const OWNED_RE = new RegExp(`\\b(${OWNED_TABLES.join("|")})\\b`);
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
-    file: "lib/queries/medical.ts",
+    file: "app/(app)/supplies/actions.ts",
+    includes: "SELECT profile_id FROM intake_items WHERE id = ?",
+    why: "requireItemWriteAccess (#1374): the ONE lookup that RESOLVES which profile an item belongs to so the action can gate on it — filtering by profile_id here would presuppose the answer. Reads only the id→profile_id mapping and immediately feeds it to requireProfileWriteAccess; the gate is the protection, not the filter (the app/(app)/gate-item.ts shape)",
+  },
+  {
+    file: "app/api/symptom-video/[id]/route.ts",
+    includes:
+      "SELECT profile_id, stored_path, poster_path, mime_type FROM symptom_videos WHERE id = ?",
+    why: "the symptom-clip serve route (#1696): the ONE lookup that RESOLVES which profile a clip belongs to so the handler can gate on THAT profile (canAccessProfile — the grants set), matching the episode page that renders the strip and resolves it across ACCESSIBLE profiles (#879). Filtering by profile_id here would presuppose the answer, and pinning it to the ACTIVE profile is the bug: a caregiver's clips 404'd. The gate is the protection, not the filter (the app/(app)/gate-item.ts shape) — nothing about the row is observable before it, and an inaccessible profile's clip is refused identically to a nonexistent id",
+  },
+  {
+    file: "app/api/symptom-photo/[id]/route.ts",
+    includes:
+      "SELECT profile_id, stored_path, mime_type FROM symptom_photos WHERE id = ?",
+    why: "the symptom-photo serve route (#1696): the same resolve-the-owner-then-gate lookup as the clip route above, for the photo strip that renders on the SAME cross-profile episode page",
+  },
+  {
+    file: "lib/queries/intake/supply-pool.ts",
+    includes:
+      "FROM intake_items i LEFT JOIN intake_item_doses d ON d.item_id = i.id AND d.retired = 0 WHERE i.supply_id = ?",
+    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so membership and its child dose labels are cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), with dose amounts carried only to disambiguate actionable member labels; the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering",
+  },
+  {
+    file: "lib/queries/intake/supply-pool.ts",
+    includes:
+      "UPDATE intake_items SET supply_id = NULL, quantity_on_hand = ? WHERE id = ? AND profile_id = ?",
+    why: "deleteSharedSupply (#1374): unlinks each member row it just read from poolMembers — the statement itself IS profile-scoped (id AND profile_id); listed only because the surrounding function's membership read is the cross-profile one above",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT pi.profile_id AS profileId, pi.portal_id AS portalId, pi.account_id AS accountId FROM portal_identities pi WHERE pi.account_id = ? AND pi.patient_label = ? AND pi.ignored = 0 AND pi.profile_id IS NOT NULL",
+    why: "resolvePortalIdentity (#1739): the ONE lookup that RESOLVES which profile to gate on; the gate is the protection, the resolved id is immediately intersected with the token's write set. Filtering by profile_id here would presuppose the answer the acquirer is asking for. An identity that resolves to a profile the pushing token cannot write is refused exactly as loudly as an unbound one",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "FROM portal_identities pi JOIN portals p ON p.id = pi.portal_id JOIN portal_accounts a ON a.id = pi.account_id",
+    why: "listPortalIdentities (#1739): the administrative 'which patient goes where' view is cross-profile BY NATURE — its whole job is to show bindings across the household so a misfiled one is visible. It carries identifiers and labels only (no health data), and the rendering surface filters to the viewer's accessible set before display. IGNORED rows carry no profile_id at all (the migration-131 CHECK), so there is nothing to filter them by",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?",
+    why: "writeBinding (#1739): re-reads the id of the row the adjacent ON CONFLICT upsert just wrote, keyed on the UNIQUE(portal_id, account_id, patient_label) index. The INSERT itself names profile_id and the caller authorized it; this reads back only the surrogate key",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT 1 FROM portal_identities WHERE account_id = ? AND patient_label = ?",
+    why: "recordPendingForAccount (#1739): asks only whether this (login, label) has ALREADY BEEN ANSWERED — bound or ignored — so an identity a run rediscovers every hour is not re-offered as pending. It is an existence probe on the external identity key; it reads no profile_id and returns no row data, and the pending table it guards carries no profile at all",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT profile_id AS profileId FROM portal_identities WHERE id = ?",
+    why: "portalIdentityProfile (#1747): the ONE lookup that RESOLVES which profile a binding points at so the unbind action can gate on THAT profile rather than on a profile id the same client post supplied — filtering by profile_id here would presuppose the answer. It reads the id→profile_id mapping and nothing else, feeds it straight to requireProfileWriteAccess, and the delete that follows IS profile-scoped (id AND profile_id, a compare-and-swap). The gate is the protection, not the filter (the app/(app)/gate-item.ts shape)",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT profile_id AS profileId, ignored FROM portal_identities WHERE id = ?",
+    why: "portalIdentityState (#1739): the same resolve-the-owner lookup as portalIdentityProfile, plus whether the row is IGNORED — an ignored binding has no profile by CHECK, so the action must be able to tell 'gone' from 'has no profile to authorize against' before choosing its gate. Reads only those two fields and immediately feeds the profile to requireProfileWriteAccess",
+  },
+  {
+    file: "lib/portals.ts",
+    includes: "DELETE FROM portal_identities WHERE id = ? AND ignored = 1",
+    why: "unignorePortalIdentity (#1739): removes an IGNORED binding, which by the migration-131 CHECK carries NO profile_id — there is literally nothing to scope by, which is why the statement scopes by `ignored = 1` instead. That predicate is the protection: this path can never touch a live binding, so it cannot become a back door around the profile gate the normal unbind takes",
+  },
+  {
+    file: "lib/portals.ts",
+    includes: "DELETE FROM portal_identities WHERE portal_id = ?",
+    why: "deletePortal (#1739): dropping a PORTAL removes every binding on it regardless of profile — that is the operation. The FK cascade would also fire; this runs explicitly so the teardown holds with foreign_keys off",
+  },
+  {
+    file: "lib/portals.ts",
+    includes: "DELETE FROM portal_identities WHERE account_id = ?",
+    why: "deletePortalAccount (#1739): dropping a portal LOGIN removes every binding keyed to it regardless of profile — the same operation one level down, and the same FK-cascade-plus-explicit-delete posture as deletePortal",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "UPDATE medical_documents SET acquired_portal_id = NULL WHERE acquired_portal_id = ?",
+    why: "deletePortal (#1748): dropping a PORTAL clears the acquired-by link on every document that names it, regardless of profile — that is the operation, exactly like the portal_identities cleanup beside it. The FK's ON DELETE SET NULL would also fire; this runs explicitly so the teardown holds with foreign_keys off. It writes ONLY the provenance column (never profile_id, never content), and the documents themselves are untouched",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "UPDATE integration_sync_events SET portal_id = NULL, account_id = NULL WHERE portal_id = ?",
+    why: "deletePortal (#1739): clears the identity stamp on every sync event that named the removed portal, across profiles — same operation and same reasoning as the document provenance null above. It writes only the two identity columns; the event history itself (counts, ok, timestamps) is untouched",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "UPDATE integration_sync_events SET account_id = NULL WHERE account_id = ?",
+    why: "deletePortalAccount (#1739): the same identity-stamp clear one level down, for a removed portal LOGIN",
+  },
+  {
+    file: "lib/queries/medical/flags.ts",
     includes: "UPDATE medical_records SET flag = ? WHERE id = ?",
     why: "reconcileFlags: the ids are produced by a profile-scoped SELECT in the same function",
   },
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/flags.ts",
     includes: "UPDATE medical_records SET flag = NULL WHERE id = ?",
     why: "reconcileFlags: ids come from a profile-scoped SELECT",
   },
@@ -151,6 +256,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 038 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — its de-dupe/UPDATE/DELETE statements below are all profile_id-scoped",
   },
   {
+    file: "lib/migrations/versions/123-practice-target-unique.ts",
+    includes:
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'frequency_targets'",
+    why: "migration 123 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — mirrors migration 038",
+  },
+  {
     file: "lib/migrations/versions/042-symptom-logs.ts",
     includes: "UPDATE situations SET illness_type = 1 WHERE name = 'Illness'",
     why: "migration 042 (#799) one-shot backfill: defaults the illness_type flag ON for the SHARED built-in 'Illness' situation across ALL profiles by canonical name — a vocabulary default, not a per-profile read; every runtime situations statement stays profile_id-scoped",
@@ -188,9 +299,19 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 074 (#1018): the unit-respell UPDATE ([degF]/°F → degF, value untouched), keyed the same way",
   },
   {
+    file: "lib/migrations/versions/115-metric-sample-edit-lock.ts",
+    includes: "PRAGMA table_info(metric_samples)",
+    why: "migration 115 (#1488) ADD COLUMN guard: a schema-shape PRAGMA (does `edited` already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
+  },
+  {
     file: "lib/migrations/versions/075-extraction-completed-at.ts",
     includes: "PRAGMA table_info(medical_documents)",
     why: "migration 075 (#1022) ADD COLUMN guard: a schema-shape PRAGMA (does extraction_completed_at already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
+  },
+  {
+    file: "lib/migrations/versions/116-food-event-meal-slot.ts",
+    includes: "PRAGMA table_info(food_log_events)",
+    why: "migration 116 ADD COLUMN guard: schema-shape introspection so the non-version-gated migrate() replay no-ops — reads column metadata, never food events",
   },
   {
     file: "lib/migrations/versions/090-medical-record-category-classes.ts",
@@ -221,18 +342,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "UPDATE medical_records SET canonical_name = ? WHERE canonical_name = ? COLLATE NOCASE",
     why: "migration 103 one-shot canonical-name rename: a bare-abbreviation biomarker name (e.g. 'RDW') is a GLOBAL vocabulary identity, not per-profile data, so the acronym→'Full Name (ABBR)' rewrite applies to every profile's rows by value — profile_id is deliberately absent. Pure value substitution (same analyte keeps its identity); reads no row across profiles.",
   },
-  {
-    file: "lib/migrations/versions/103-canonical-name-abbreviation-consolidation.ts",
-    includes:
-      "UPDATE OR IGNORE starred_biomarkers SET canonical_name = ? WHERE canonical_name = ? COLLATE NOCASE",
-    why: "migration 103 (see above): the same global rename applied to the passport pins, again by vocabulary value across all profiles; OR IGNORE guards the (profile_id, canonical_name) PK against a pre-existing new-name pin.",
-  },
-  {
-    file: "lib/migrations/versions/103-canonical-name-abbreviation-consolidation.ts",
-    includes:
-      "DELETE FROM starred_biomarkers WHERE canonical_name = ? COLLATE NOCASE",
-    why: "migration 103 (see above): drops the now-redundant OLD-name pin left after an OR IGNORE collision — a global vocabulary cleanup by canonical name, not a per-profile read.",
-  },
   // ── Positional-rule (#1208 fix 1) additions ─────────────────────────────────
   // These NAME profile_id (so they passed the old "profile_id-anywhere" check) but
   // only outside a WHERE/ON predicate — a select-list column or a GROUP BY key — so
@@ -261,6 +370,17 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes:
       "SELECT id, profile_id, scope_value FROM frequency_targets WHERE scope_kind = 'food_group'",
     why: "migration 038 one-shot GLOBAL dedupe read: enumerates every profile's food-group frequency targets to collapse duplicates before adding the UNIQUE index — profile_id is carried in the select-list to re-key the dedupe per owner; the UPDATE/DELETE it drives are profile_id-scoped (already allowlisted above).",
+  },
+  {
+    file: "lib/migrations/versions/123-practice-target-unique.ts",
+    includes:
+      "SELECT id, profile_id, scope_value FROM frequency_targets WHERE scope_kind = 'practice'",
+    why: "migration 123 one-shot GLOBAL dedupe read: enumerates every profile's practice targets to collapse normalized-identity duplicates before adding the UNIQUE index — profile_id is carried into the per-owner keeper map, and every mutation it drives is profile-scoped.",
+  },
+  {
+    file: "lib/migrations/versions/123-practice-target-unique.ts",
+    includes: "SELECT id, profile_id, practice FROM practice_logs ORDER BY id",
+    why: "migration 123 one-shot GLOBAL log reconciliation: enumerates practice logs with their profile_id, resolves each against that profile's keeper map, and re-keys each mutation by id AND profile_id; histories never cross profiles.",
   },
   {
     file: "lib/migrations/versions/109-health-connect-token-hash.ts",
@@ -315,12 +435,12 @@ const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
 // profile-scoped and listed with a justification.
 const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/flags.ts",
     expr: "sql",
     why: "reconcileFlags: `sql` starts from a base string that includes WHERE profile_id = ?",
   },
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/flags.ts",
     expr: "qsql",
     why: "reconcileFlags qualitative pass (#549): `qsql` starts from a base string that includes WHERE profile_id = ?",
   },
@@ -698,6 +818,29 @@ function tablesDeclaringProfileId(dbSrc: string): Set<string> {
   return out;
 }
 
+// Tables a later migration DROPS and never recreates — they are no longer part of the
+// schema, so they must not be expected in OWNED_TABLES even though their (frozen,
+// un-editable) CREATE block still sits in an earlier migration's source. The first
+// case is `starred_biomarkers`, folded into `saved_items` by migration 113 (#1456).
+//
+// A table-REBUILD (create scratch → copy → DROP original → RENAME scratch into place)
+// also emits a DROP, so a dropped name that is later RENAMEd back into existence is
+// NOT retired — that subtraction is what keeps the ~20 rebuild migrations from
+// silently emptying the derived set.
+function tablesDroppedForGood(dbSrc: string): Set<string> {
+  // Comment lines are skipped: migration 006's PROSE discusses "a DROP TABLE
+  // intake_items", and a table must never be retired by a sentence about it.
+  const code = dbSrc
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+    .join("\n");
+  const dropped = new Set<string>();
+  for (const m of code.matchAll(/DROP TABLE (?:IF EXISTS )?(\w+)/g))
+    dropped.add(m[1]);
+  for (const m of code.matchAll(/RENAME TO (\w+)/g)) dropped.delete(m[1]);
+  return dropped;
+}
+
 // profile_id-bearing tables that are intentionally NOT per-profile-OWNED data
 // subjects: the login×profile GRANT MATRIX and the per-profile SETTINGS TIER. They
 // carry a profile_id FK but hold no health data and are deleted EXPLICITLY by
@@ -723,8 +866,13 @@ describe("owned-table set: single source of truth (no drift)", () => {
     for (const t of NON_OWNED_PROFILE_ID_TABLES)
       expect(declared.has(t)).toBe(true);
 
+    const retired = tablesDroppedForGood(dbSrc);
+    // Sanity: the retirement rule must not be swallowing live tables (every rebuild
+    // migration also emits a DROP, and those names come back via RENAME TO).
+    expect([...retired].sort()).toEqual(["starred_biomarkers"]);
+
     const derivedOwned = [...declared]
-      .filter((t) => !NON_OWNED_PROFILE_ID_TABLES.has(t))
+      .filter((t) => !NON_OWNED_PROFILE_ID_TABLES.has(t) && !retired.has(t))
       .sort();
     // The schema-derived owned set MUST equal OWNED_TABLES. A new profile_id table
     // added to a migration but forgotten in OWNED_TABLES lands in `derivedOwned`

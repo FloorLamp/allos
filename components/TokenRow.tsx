@@ -12,11 +12,19 @@ import { IconCopy, IconCheck, IconEye, IconEyeOff } from "@tabler/icons-react";
 // WRAPS (`break-all`) instead of scrolling: the value stays fully visible and
 // the buttons stay reachable no matter how narrow the viewport or how long a
 // production hostname gets.
-export function CopyButton({ value }: { value: string }) {
+export function CopyButton({
+  value,
+  testid,
+}: {
+  value: string;
+  testid?: string;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
+      data-testid={testid}
+      title="Copy to clipboard"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);
@@ -71,6 +79,7 @@ export function TokenRow({
             onClick={() => setShown((s) => !s)}
             className="inline-flex shrink-0 items-center rounded-md border border-black/10 p-1.5 text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
             aria-label={shown ? "Hide" : "Reveal"}
+            title={shown ? "Hide" : "Reveal"}
           >
             {shown ? (
               <IconEyeOff className="h-4 w-4" />

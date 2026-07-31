@@ -13,12 +13,12 @@ import {
   IconBarbell,
   IconSparkles,
   IconClipboardList,
+  IconPlugConnected,
   IconPlugConnectedX,
   IconInbox,
   IconArrowBackUp,
   IconBellOff,
   IconInfoCircle,
-  IconCalendarPlus,
   IconCalendarCheck,
   IconClipboardPlus,
   IconArrowRight,
@@ -34,6 +34,9 @@ import { today } from "@/lib/db";
 import {
   collectMultiProfileAttention,
   collectMultiProfileSuppressed,
+  collectMultiProfileOffered,
+  collectMultiProfileDoseProgress,
+  type ProfiledOfferedItem,
   type ProfiledSuppressedEntry,
 } from "@/lib/queries";
 import { type MemberSection, type AttentionPageGroup } from "@/lib/attention";
@@ -57,11 +60,19 @@ import {
   upcomingDueText,
   type UpcomingDomain,
 } from "@/lib/upcoming";
+import {
+  aggregateLabel,
+  bandShowsDoseProgress,
+  planBandRender,
+  sumDoseProgress,
+  EMPTY_DOSE_PROGRESS,
+  type AggregateKind,
+  type DoseDayProgress,
+} from "@/lib/upcoming-aggregate";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Avatar from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
-import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
-import PreventiveOverrideMenu from "./PreventiveOverrideMenu";
+import UpcomingRowMenu, { RowActionChips, type RowAction } from "./RowActions";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import ExplainFinding from "@/components/ExplainFinding";
 import {
@@ -71,10 +82,12 @@ import {
   restoreItem,
   markPreventiveDone,
   markCarePlanDone,
+  overridePreventive,
   resolveFollowUp,
   dismissMultiviewHintAction,
 } from "./actions";
-import { confirmConditionSuggestion } from "@/app/(app)/conditions/actions";
+import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
+import PracticeLogButton from "./PracticeLogButton";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +95,7 @@ export const dynamic = "force-dynamic";
 // domains plus the unified model's "something's off" signals (issue #524).
 const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   dose: IconPill,
+  available: IconPill,
   "prn-max": IconPill,
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
@@ -94,6 +108,9 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "dental-safety": IconAlertTriangle,
   ototoxic: IconAlertTriangle,
   "uv-exposure": IconSun,
+  // A med × conditions safety note (#1727) — the same alert glyph the other curated
+  // med-safety notes carry; the sun icon belongs to the dose-based UV finding.
+  "weather-med": IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,
   screening: IconMicroscope,
@@ -109,6 +126,9 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "mental-health": IconStethoscope,
   "biomarker-flag": IconFlask,
   integration: IconPlugConnectedX,
+  // An open portal sync request (#1757) — the same plug family as a broken sync, but
+  // connected: nothing is wrong, a person just needs to run the tool.
+  "portal-sync": IconPlugConnected,
   review: IconInbox,
 };
 
@@ -155,6 +175,15 @@ export default async function UpcomingPage(props: {
   const model = collectMultiProfileAttention(viewIds, units);
   const total = model.total;
   const suppressed = collectMultiProfileSuppressed(viewIds, units);
+  // `may` items on offer today (#1505) — availability, deliberately NOT folded into
+  // `total`. The headline count answers "what do I owe"; folding an offer into it
+  // would recreate the exact inflation this model removes.
+  const offered = collectMultiProfileOffered(viewIds);
+  // Today's dose progress per in-view member (#1504) — the denominator the collapsed
+  // dose aggregate prints so the fold states how much of the day is already done,
+  // not just how many rows it hid. `may` items are in neither number: they were
+  // never owed, and they live in their own disclosure above.
+  const doseProgressByProfile = collectMultiProfileDoseProgress(viewIds);
 
   // Per-member "today" for correct relative due-text on each merged row, and the
   // per-item subject identity (#534) resolved ONCE through the shared stampSubjects
@@ -233,6 +262,12 @@ export default async function UpcomingPage(props: {
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              // By-person: the member's OWN progress, so the fraction describes the
+              // rows in THIS section rather than the whole household.
+              doseProgress={
+                doseProgressByProfile.get(section.profileId) ??
+                EMPTY_DOSE_PROGRESS
+              }
             />
           ))}
         </div>
@@ -249,6 +284,9 @@ export default async function UpcomingPage(props: {
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              // Interleaved: the band merges every in-view member, so its fraction
+              // sums the same members.
+              doseProgress={sumDoseProgress(doseProgressByProfile.values())}
             />
           ))}
           {multi && model.emptyMemberIds.length > 0 && (
@@ -259,6 +297,8 @@ export default async function UpcomingPage(props: {
           )}
         </div>
       )}
+
+      {offered.length > 0 && <AvailableSection items={offered} />}
 
       {suppressed.length > 0 && (
         <SuppressedSection
@@ -301,6 +341,7 @@ function GroupSection({
   multi,
   actingProfileId,
   subjectByProfile,
+  doseProgress,
 }: {
   group: AttentionPageGroup;
   idAnchor?: boolean;
@@ -310,7 +351,28 @@ function GroupSection({
   multi: boolean;
   actingProfileId: number;
   subjectByProfile: Map<number, SubjectInfo>;
+  // The dose progress this presentation's band may print (#1504) — the sum over the
+  // in-view members for the merged band, one member's own for a by-person section.
+  doseProgress: DoseDayProgress;
 }) {
+  // The band's render plan (#1504): safety rows first and individual, then the
+  // band's own comparator order with each fold class replaced by one disclosure at
+  // the position of its first row. Purely presentational — every node below still
+  // renders the SAME item objects through the SAME <Row>.
+  const nodes = planBandRender(group.items as ProfiledUpcomingItem[]);
+  const progress = bandShowsDoseProgress(group.kind) ? doseProgress : null;
+  const renderRow = (item: ProfiledUpcomingItem) => (
+    <Row
+      key={`${item.profileId}:${item.key}`}
+      item={item}
+      now={nowByProfile.get(item.profileId) ?? now}
+      tone={GROUP_TONE[group.kind]}
+      multi={multi}
+      chipRow={chipRows === true}
+      actingProfileId={actingProfileId}
+      subject={multi ? (subjectByProfile.get(item.profileId) ?? null) : null}
+    />
+  );
   return (
     <section id={idAnchor ? group.kind : undefined}>
       <h2
@@ -322,22 +384,83 @@ function GroupSection({
         </span>
       </h2>
       <div className="card space-y-1 p-2">
-        {(group.items as ProfiledUpcomingItem[]).map((item) => (
-          <Row
-            key={`${item.profileId}:${item.key}`}
-            item={item}
-            now={nowByProfile.get(item.profileId) ?? now}
-            tone={GROUP_TONE[group.kind]}
-            multi={multi}
-            chipRow={chipRows === true}
-            actingProfileId={actingProfileId}
-            subject={
-              multi ? (subjectByProfile.get(item.profileId) ?? null) : null
-            }
-          />
-        ))}
+        {nodes.map((node) =>
+          node.node === "item" ? (
+            renderRow(node.item)
+          ) : (
+            <AggregateDisclosure
+              key={`aggregate:${group.kind}:${node.kind}`}
+              kind={node.kind}
+              band={group.kind}
+              count={node.items.length}
+              progress={node.kind === "dose" ? progress : null}
+              tone={GROUP_TONE[group.kind]}
+            >
+              {node.items.map(renderRow)}
+            </AggregateDisclosure>
+          )
+        )}
       </div>
     </section>
+  );
+}
+
+// One folded class inside a band (issue #1504) — the ALWAYS-PRESENT compaction.
+//
+// A plain <details>, so it works pre-hydration and holds NO persisted state: it is
+// collapsed on every visit by design (stateless — two visits, two people, and the
+// digest all see the same page). The summary carries the count unconditionally, so
+// the cost of not expanding is always priced; there is no dismiss and no path that
+// hides presence.
+//
+// The children are the ordinary rows, unchanged — confirm buttons, per-item
+// snooze/dismiss and their `dedupeKey`s, and each row's own WriteTarget all survive
+// the fold, because folding is a rendering decision and identity is not (#1496).
+function AggregateDisclosure({
+  kind,
+  band,
+  count,
+  progress,
+  tone,
+  children,
+}: {
+  kind: AggregateKind;
+  band: PageGroupKind;
+  count: number;
+  progress: DoseDayProgress | null;
+  tone: string;
+  children: React.ReactNode;
+}) {
+  const Icon = kind === "dose" ? IconPill : IconAlertTriangle;
+  return (
+    <details
+      data-testid={`upcoming-aggregate-${kind}`}
+      data-band={band}
+      className="group rounded-lg"
+    >
+      <summary
+        data-testid={`upcoming-aggregate-summary-${kind}`}
+        className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+      >
+        <Icon
+          className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+          stroke={1.75}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate font-medium text-slate-800 dark:text-slate-100">
+          {aggregateLabel(kind, count, progress)}
+        </span>
+        <span
+          className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
+        >
+          <span className="group-open:hidden">Show</span>
+          <span className="hidden group-open:inline">Hide</span>
+        </span>
+      </summary>
+      <div className="mt-1 space-y-1 border-l-2 border-black/5 pl-2 dark:border-white/10">
+        {children}
+      </div>
+    </details>
   );
 }
 
@@ -353,6 +476,7 @@ function MemberBlock({
   multi,
   actingProfileId,
   subjectByProfile,
+  doseProgress,
 }: {
   section: MemberSection;
   subject: SubjectInfo | null;
@@ -361,6 +485,7 @@ function MemberBlock({
   multi: boolean;
   actingProfileId: number;
   subjectByProfile: Map<number, SubjectInfo>;
+  doseProgress: DoseDayProgress;
 }) {
   const name = subject?.name ?? `Profile ${section.profileId}`;
   return (
@@ -400,6 +525,7 @@ function MemberBlock({
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              doseProgress={doseProgress}
             />
           ))}
         </div>
@@ -494,6 +620,7 @@ function MultiviewHint() {
           type="submit"
           data-testid="multiview-hint-dismiss"
           aria-label="Dismiss hint"
+          title="Dismiss hint"
           className="flex h-6 w-6 items-center justify-center rounded-full text-brand-500 transition hover:bg-brand-100 dark:hover:bg-brand-500/20"
         >
           <IconX className="h-4 w-4" stroke={2} />
@@ -528,7 +655,7 @@ function DemographicsNudge({
         <div>
           Add a birthdate to enable preventive visit &amp; screening reminders.{" "}
           <Link
-            href="/settings/profile"
+            href="/settings/health"
             className="font-medium underline hover:no-underline"
           >
             Set it in Profile settings
@@ -564,7 +691,7 @@ function DemographicsNudge({
                   <span className="font-medium">{name}</span>
                   {isActing && (
                     <Link
-                      href="/settings/profile"
+                      href="/settings/health"
                       className="underline hover:no-underline"
                     >
                       — set it in Profile settings
@@ -609,43 +736,55 @@ function SubjectChip({ subject }: { subject: SubjectInfo }) {
   );
 }
 
-// Inline controls for a due preventive visit/screening row (issue #82): a fast
-// "Mark done" (records a satisfaction dated today, like a dose "mark taken") plus
-// an override menu to mark the rule Declined or Not applicable — either hides it.
-// The override menu is the shared OverflowMenu-based popover (issue #281).
-function PreventiveControls({
-  ruleKey,
-  profileId,
-}: {
-  ruleKey: string;
-  profileId: number;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <form
-        action={async (fd) => {
-          "use server";
-          await markPreventiveDone(fd);
-        }}
-      >
-        <input type="hidden" name="rule_key" value={ruleKey} />
-        <input type="hidden" name="profile_id" value={profileId} />
-        <SubmitButton
-          pendingLabel="…"
-          className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          Mark done
-        </SubmitButton>
-      </form>
-      <PreventiveOverrideMenu ruleKey={ruleKey} />
-    </div>
-  );
-}
-
 // The collapsed "Snoozed & dismissed" section — the COMPLETE window over the
 // findings-suppression bus (issue #1151), now cross-profile (#1096): each row's
 // Restore targets the ITEM's own profile (profile_id threaded), never the acting
 // one.
+// The COLLAPSED "available" disclosure (issue #1505). A `may` item has no obligation,
+// so it is not work — but removing it outright would make an accepted demotion look
+// like a deletion, and would hide the one place a tap-only user browses. So it
+// collapses instead: closed by default, counted on the summary, one tap from its
+// item. The shape follows the Snoozed & dismissed disclosure directly below it, which
+// is the same "present but not pressing" idea.
+//
+// Deliberately NOT banded, NOT dated, and NOT part of the page total.
+function AvailableSection({ items }: { items: ProfiledOfferedItem[] }) {
+  return (
+    <details className="mt-8" data-testid="available-section">
+      <summary className="cursor-pointer section-label">
+        Available when you want them{" "}
+        <span className="text-slate-500 dark:text-slate-400">
+          ({items.length})
+        </span>
+      </summary>
+      <div className="card mt-2 space-y-1 p-2">
+        {items.map((item) => (
+          <Link
+            key={`${item.profileId}:${item.key}`}
+            href={item.href ?? "/medications"}
+            data-testid="available-row"
+            className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-ink-750"
+          >
+            <IconPill
+              className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+              stroke={1.75}
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium text-slate-600 dark:text-slate-300">
+                {item.title}
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {item.dueText ?? "Available"}
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function SuppressedSection({
   items,
   multi,
@@ -788,6 +927,150 @@ function Row({
   // presentation that renders chips (interleaved; by-person names the subject in its
   // member header instead).
   const showChip = chipRow && subjectChipVisible({ multi, isActing });
+  const dueText = upcomingDueText(item, now);
+
+  // The row's SECONDARY actions, built ONCE (issue #1446). RowActionChips renders
+  // them inline at `sm`+; below `sm` the very same descriptors render as items in
+  // the row's single overflow menu, so the phone layout can't wrap four or five
+  // chips into an orphaned trailing line. One list, two presenters — never two
+  // hand-mirrored authorings (the responsive-surfaces rule).
+  const actions: RowAction[] = [];
+  if (actionVisible && item.doseId != null) {
+    actions.push({
+      id: "mark-taken",
+      kind: "submit",
+      label: "Mark taken",
+      toast: "Marked taken",
+      fields: { dose_id: item.doseId, profile_id: item.profileId },
+      action: async (fd) => {
+        "use server";
+        await markTaken(fd);
+      },
+    });
+  }
+  if (item.bookHref) {
+    actions.push({
+      id: "book",
+      kind: "link",
+      label: "Book",
+      href: item.bookHref,
+      icon: "book",
+    });
+  }
+  if (actionVisible && item.preventiveRuleKey != null) {
+    actions.push({
+      id: "preventive-done",
+      kind: "submit",
+      label: "Mark done",
+      toast: "Marked done",
+      fields: { rule_key: item.preventiveRuleKey, profile_id: item.profileId },
+      action: async (fd) => {
+        "use server";
+        await markPreventiveDone(fd);
+      },
+    });
+  }
+  if (actionVisible && item.carePlanItemId != null) {
+    actions.push({
+      id: "careplan-done",
+      kind: "submit",
+      label: "Mark done",
+      toast: "Marked done",
+      fields: {
+        care_plan_item_id: item.carePlanItemId,
+        profile_id: item.profileId,
+      },
+      action: async (fd) => {
+        "use server";
+        await markCarePlanDone(fd);
+      },
+    });
+  }
+  // Condition suggestion (issue #685): an inline confirm that adds the suggested
+  // problem-list condition. confirmConditionSuggestion targets the ACTING profile, so
+  // the item declares writeTarget "acting" and the shared affordance gate
+  // (actionVisible) offers this ONLY on the acting profile's own row — never a
+  // wrong-target write on another member's row (#1096 / #1327 fix 5).
+  if (actionVisible && item.conditionSuggestion != null) {
+    actions.push({
+      id: "add-condition",
+      kind: "submit",
+      label: "Add to conditions",
+      icon: "clipboard-plus",
+      toast: "Added to conditions",
+      fields:
+        item.conditionSuggestion.code != null
+          ? {
+              name: item.conditionSuggestion.name,
+              code: item.conditionSuggestion.code,
+            }
+          : { name: item.conditionSuggestion.name },
+      action: async (fd) => {
+        "use server";
+        await confirmConditionSuggestion(fd);
+      },
+    });
+  }
+
+  // Per-item snooze/dismiss — the dismissal writes to the ITEM's own profile
+  // (profile_id threaded), never the acting one (#1096). This is item-scoped
+  // suppression (correct cross-profile even on a non-acting row), so it gates on the
+  // subject's write access — NOT the acting-targeted actionVisible — so you may snooze
+  // another member's finding. Omitted on a read-only-granted row.
+  const suppression =
+    subjectCanWrite && isItemSuppressibleFlag(item)
+      ? {
+          signalKey: item.key,
+          profileId: item.profileId,
+          snoozeOnly: item.carePersistent === true,
+          snoozeAction: async (fd: FormData) => {
+            "use server";
+            await snoozeItem(fd);
+          },
+          dismissAction: async (fd: FormData) => {
+            "use server";
+            await dismissItem(fd);
+          },
+        }
+      : null;
+
+  const preventiveRuleKey =
+    actionVisible && item.preventiveRuleKey != null
+      ? item.preventiveRuleKey
+      : undefined;
+  // The concrete next action for a preventive screening (#1083): a deep-link CTA
+  // naming exactly what to do — "Complete the AUDIT-C", "Record your LDL Cholesterol
+  // result". Only screening items carry an actionLabel; a visit's action is the "Book"
+  // affordance. It stays INLINE at every width (it is the row's primary call to
+  // action) and is glued to the overflow trigger below, so the trigger can never wrap
+  // onto a line by itself (#1446).
+  const cta =
+    item.actionLabel != null && item.preventiveRuleKey != null ? (
+      <Link
+        href={item.href}
+        data-testid={`upcoming-cta-${item.key}`}
+        className="flex min-w-0 items-center gap-1 truncate rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+      >
+        <IconArrowRight className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
+        <span className="truncate">{item.actionLabel}</span>
+      </Link>
+    ) : null;
+
+  const hasFollowUp = actionVisible && item.followUpResolve != null;
+  const hasExplain = item.reasons != null && item.reasons.length > 0;
+  // The row has a kebab exactly when something lives behind it at DESKTOP width
+  // too (overrides / snooze). That's also the only case where the secondary chips
+  // may fold away below `sm` — otherwise they'd have nowhere to fold to.
+  const hasMenu = preventiveRuleKey != null || suppression != null;
+  const hasTrailing =
+    item.scheduled === true ||
+    hasFollowUp ||
+    hasExplain ||
+    cta != null ||
+    hasMenu ||
+    actions.length > 0 ||
+    (actionVisible && item.practiceTargetId != null);
+
   return (
     <div
       data-testid={`upcoming-item-${item.key}`}
@@ -796,8 +1079,8 @@ function Row({
       // row past the viewport (where the shell's overflow-x-clip hides them).
       className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
     >
-      {/* Row head: icon + title (+ subject chip). `basis-full` on phones makes the head
-          OWN the first line, so the trailing due-text/actions WRAP beneath it (#1063)
+      {/* Row head: icon + status + title (+ subject chip). `basis-full` on phones makes
+          the head OWN the first line, so the trailing actions WRAP beneath it (#1063)
           instead of shrinking the flex-1 title to an ellipsis ("Cardiology follow-up" →
           "C…" at 390px — issue #1327 fix 1). On sm+ the head is flex-1 and, inside it,
           the chip sits in a fixed-width aligned slot beside the title (a stable column
@@ -809,6 +1092,18 @@ function Row({
           stroke={1.75}
         />
         <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+          {/* Status ("Overdue" / "3 days left" / "Scheduled") as a LEADING, fixed-width
+              column (#1446). It used to sit after the title and right-align against the
+              variable-width action pills, so its x-position jumped by hundreds of pixels
+              from row to row and the band's most scannable fact was unscannable. Leading
+              + `sm:w-28` pins it to one x for every row in the card. */}
+          <div
+            data-testid="upcoming-status"
+            title={dueText}
+            className={`shrink-0 truncate text-xs font-medium sm:w-28 ${tone}`}
+          >
+            {dueText}
+          </div>
           <div className="min-w-0 sm:flex-1">
             <Link
               href={item.href}
@@ -829,163 +1124,71 @@ function Row({
           )}
         </div>
       </div>
-      <div className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}>
-        {upcomingDueText(item, now)}
-      </div>
-      {actionVisible && item.doseId != null && (
-        <form
-          action={async (fd) => {
-            "use server";
-            await markTaken(fd);
-          }}
-          className="shrink-0"
+
+      {/* The trailing control line. Below `sm` it takes a line of its own
+          (`basis-full`) and is right-aligned, so the row is two clean bands rather
+          than a free-wrapping chip soup (#1446). */}
+      {hasTrailing && (
+        <div
+          data-testid="upcoming-row-actions"
+          className="flex basis-full items-center justify-end gap-1 sm:basis-auto sm:justify-start"
         >
-          <input type="hidden" name="dose_id" value={item.doseId} />
-          <input type="hidden" name="profile_id" value={item.profileId} />
-          <SubmitButton
-            pendingLabel="…"
-            className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-          >
-            Mark taken
-          </SubmitButton>
-        </form>
-      )}
-      {item.scheduled && (
-        <span
-          data-testid="scheduled-badge"
-          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-900 dark:text-emerald-400"
-        >
-          <IconCalendarCheck className="h-3.5 w-3.5" stroke={1.75} />
-          Scheduled
-        </span>
-      )}
-      {/* The concrete next action for a preventive screening (#1083): a deep-link
-          CTA naming exactly what to do — "Complete the AUDIT-C", "Record your LDL
-          Cholesterol result", "Log or schedule a colonoscopy" — pointing at the
-          prefilled form (item.href). Only screening items carry an actionLabel; a
-          visit's action is the "Book" affordance below. */}
-      {item.actionLabel && item.preventiveRuleKey != null && (
-        <Link
-          href={item.href}
-          data-testid={`upcoming-cta-${item.key}`}
-          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          <IconArrowRight className="h-3.5 w-3.5" stroke={1.75} />
-          {item.actionLabel}
-        </Link>
-      )}
-      {item.bookHref && (
-        <Link
-          href={item.bookHref}
-          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          <IconCalendarPlus className="h-3.5 w-3.5" stroke={1.75} />
-          Book
-        </Link>
-      )}
-      {actionVisible && item.preventiveRuleKey != null && (
-        <PreventiveControls
-          ruleKey={item.preventiveRuleKey}
-          profileId={item.profileId}
-        />
-      )}
-      {actionVisible && item.carePlanItemId != null && (
-        <form
-          action={async (fd) => {
-            "use server";
-            await markCarePlanDone(fd);
-          }}
-          className="shrink-0"
-        >
-          <input
-            type="hidden"
-            name="care_plan_item_id"
-            value={item.carePlanItemId}
-          />
-          <input type="hidden" name="profile_id" value={item.profileId} />
-          <SubmitButton
-            pendingLabel="…"
-            className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-          >
-            Mark done
-          </SubmitButton>
-        </form>
-      )}
-      {/* Condition suggestion (issue #685): an inline confirm that adds the suggested
-      problem-list condition. confirmConditionSuggestion targets the ACTING profile, so
-      the item declares writeTarget "acting" and the shared affordance gate
-      (actionVisible) shows this ONLY on the acting profile's own row — never a
-      wrong-target write on another member's row (#1096 / #1327 fix 5). */}
-      {actionVisible && item.conditionSuggestion != null && (
-        <form
-          action={async (fd) => {
-            "use server";
-            await confirmConditionSuggestion(fd);
-          }}
-          className="shrink-0"
-        >
-          <input
-            type="hidden"
-            name="name"
-            value={item.conditionSuggestion.name}
-          />
-          {item.conditionSuggestion.code != null && (
-            <input
-              type="hidden"
-              name="code"
-              value={item.conditionSuggestion.code}
+          {item.scheduled && (
+            <span
+              data-testid="scheduled-badge"
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-900 dark:text-emerald-400"
+            >
+              <IconCalendarCheck className="h-3.5 w-3.5" stroke={1.75} />
+              Scheduled
+            </span>
+          )}
+          {/* Finding follow-up resolution offer (issue #700): a matching later record
+              landed, so offer the outcome (resolved / stable / changed) confirm-first.
+              Kept inline at every width — a care-tier resolution must not become a
+              thing you have to go looking for in a menu (#449). */}
+          {hasFollowUp && item.followUpResolve != null && (
+            <FollowUpResolveControls
+              action={async (fd) => {
+                "use server";
+                await resolveFollowUp(fd);
+              }}
+              carePlanItemId={item.followUpResolve.carePlanItemId}
+              resolvingRecordId={item.followUpResolve.resolvingRecordId}
+              profileId={item.profileId}
             />
           )}
-          <SubmitButton
-            pendingLabel="…"
-            className="flex items-center gap-1 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-          >
-            <IconClipboardPlus className="h-3.5 w-3.5" stroke={1.75} />
-            Add to conditions
-          </SubmitButton>
-        </form>
-      )}
-      {/* Finding follow-up resolution offer (issue #700): a matching later record
-      landed, so offer the outcome (resolved / stable / changed) confirm-first. */}
-      {actionVisible && item.followUpResolve != null && (
-        <FollowUpResolveControls
-          action={async (fd) => {
-            "use server";
-            await resolveFollowUp(fd);
-          }}
-          carePlanItemId={item.followUpResolve.carePlanItemId}
-          resolvingRecordId={item.followUpResolve.resolvingRecordId}
-          profileId={item.profileId}
-        />
-      )}
-      {/* "Why is this flagged?" (issue #878, Phase 1): narrate the item's OWN carried
-      reasons. Read-only, so it's shown regardless of write access. */}
-      {item.reasons != null && item.reasons.length > 0 && (
-        <ExplainFinding
-          title={item.title}
-          detail={item.detail}
-          reasons={item.reasons}
-        />
-      )}
-      {/* Per-item snooze/dismiss popover — the dismissal writes to the ITEM's own
-      profile (profile_id threaded), never the acting one (#1096). This is item-scoped
-      suppression (correct cross-profile even on a non-acting row), so it gates on the
-      subject's write access — NOT the acting-targeted actionVisible — so you may snooze
-      another member's finding. Hidden on a read-only-granted row. */}
-      {subjectCanWrite && isItemSuppressibleFlag(item) && (
-        <SnoozeDismissMenu
-          signalKey={item.key}
-          profileId={item.profileId}
-          snoozeOnly={item.carePersistent === true}
-          snoozeAction={async (fd) => {
-            "use server";
-            await snoozeItem(fd);
-          }}
-          dismissAction={async (fd) => {
-            "use server";
-            await dismissItem(fd);
-          }}
-        />
+          {/* "Why is this flagged?" (issue #878, Phase 1): narrate the item's OWN
+              carried reasons. Read-only, so it's shown regardless of write access. */}
+          {hasExplain && item.reasons != null && (
+            <ExplainFinding
+              title={item.title}
+              detail={item.detail}
+              reasons={item.reasons}
+            />
+          )}
+          {actionVisible && item.practiceTargetId != null && (
+            <PracticeLogButton
+              targetId={item.practiceTargetId}
+              profileId={item.profileId}
+            />
+          )}
+          <RowActionChips actions={actions} fold={hasMenu} />
+          {/* The primary CTA and the row's ONE overflow trigger, glued into a single
+              nowrap group so a wrap can never strand the "⋯" alone on its own line
+              (#1446). */}
+          <div className="flex min-w-0 shrink-0 items-center gap-1">
+            {cta}
+            <UpcomingRowMenu
+              folded={hasMenu ? actions : []}
+              preventiveRuleKey={preventiveRuleKey}
+              overrideAction={async (fd) => {
+                "use server";
+                await overridePreventive(fd);
+              }}
+              suppression={suppression}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

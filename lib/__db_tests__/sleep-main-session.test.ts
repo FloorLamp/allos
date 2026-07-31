@@ -23,6 +23,7 @@ import {
   getSleepSessions,
   getMainSleepNightlyMinutes,
   getLastNightSummary,
+  getSleepSummaryInRange,
   getMetricDailyTotals,
   getSleepMoodData,
   getSleepRegularity,
@@ -169,6 +170,56 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
     expect(summary.durationMin).toBe(270); // 4h30 asleep, not the 5h window
     expect(summary.bedMinutes).toBe(23 * 60);
     expect(summary.wakeMinutes).toBe(4 * 60);
+  });
+});
+
+describe("historical sleep range summary", () => {
+  it("summarizes the latest night inside the range, not the global latest night", () => {
+    const rangeProfileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('SleepRange')").run()
+        .lastInsertRowid
+    );
+    setTimezone(rangeProfileId, "UTC");
+    upsertMetricSamples(
+      rangeProfileId,
+      [
+        session(
+          "sleep_min",
+          "2024-01-14",
+          480,
+          "2024-01-13T23:00:00Z",
+          "2024-01-14T07:00:00Z"
+        ),
+        session(
+          "sleep_min",
+          "2024-01-15",
+          420,
+          "2024-01-14T23:30:00Z",
+          "2024-01-15T06:30:00Z"
+        ),
+        session(
+          "sleep_min",
+          "2026-07-20",
+          360,
+          "2026-07-19T23:30:00Z",
+          "2026-07-20T05:30:00Z"
+        ),
+      ],
+      "health-connect"
+    );
+
+    expect(getLastNightSummary(rangeProfileId)?.wakeDay).toBe("2026-07-20");
+    expect(
+      getSleepSummaryInRange(rangeProfileId, {
+        from: "2024-01-01",
+        to: "2024-01-31",
+      })
+    ).toMatchObject({
+      wakeDay: "2024-01-15",
+      durationMin: 420,
+      baselineAvgMin: 480,
+      deltaMin: -60,
+    });
   });
 });
 
@@ -477,8 +528,8 @@ describe("bedtime supplements on the Sleep page", () => {
 
     const insertItem = db.prepare(
       `INSERT INTO intake_items
-         (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-       VALUES (?, ?, 1, ?, 'daily', 'high', 0, ?)`
+         (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, ?, 1, ?, 'daily', 'should', ?)`
     );
     const createdAt = `${shiftDateStr(sleepDate, -7)} 00:00:00`;
     const magnesiumId = Number(
@@ -576,8 +627,8 @@ describe("bedtime supplements on the Sleep page", () => {
       db
         .prepare(
           `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-           VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'high', 0, ?)`
+             (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, 'Magnesium', 1, 'supplement', 'daily', 'should', ?)`
         )
         .run(historyProfileId, `${shiftDateStr(oldestSleepDate, -1)} 00:00:00`)
         .lastInsertRowid
@@ -630,8 +681,8 @@ describe("bedtime supplements on the Sleep page", () => {
     );
     const insertItem = db.prepare(
       `INSERT INTO intake_items
-         (profile_id, name, active, kind, condition, priority, as_needed, created_at)
-       VALUES (?, ?, ?, 'supplement', 'daily', 'high', 0, ?)`
+         (profile_id, name, active, kind, condition, obligation, created_at)
+         VALUES (?, ?, ?, 'supplement', 'daily', 'should', ?)`
     );
     const createdAt = `${shiftDateStr(sleepDate, -7)} 00:00:00`;
     const pausedId = Number(

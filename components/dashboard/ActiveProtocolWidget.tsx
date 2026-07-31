@@ -4,10 +4,10 @@ import WidgetHeader from "./WidgetHeader";
 import type { ActiveProtocolSummary } from "@/lib/queries/protocols";
 import {
   ACTIVE_PROTOCOLS_CAP,
-  capDashboardList,
+  capActionableDashboardList,
 } from "@/lib/dashboard-widgets";
 import { practiceCadenceText, PRACTICE_PLENTY_TEXT } from "@/lib/practice";
-import LogPracticeButton from "@/app/(app)/protocols/LogPracticeButton";
+import ProtocolLogButton from "@/app/(app)/protocols/ProtocolLogButton";
 
 // Active protocols (issue #660, opt-in via Customize). Each ongoing N-of-1
 // experiment as a compact row: days elapsed, this-week practice adherence, and the
@@ -36,7 +36,11 @@ export default function ActiveProtocolWidget({
   // Standard list-widget cap + overflow link (#1219): this was the one list widget
   // mapping ALL its rows; the rest beyond the cap stay one click away on the
   // protocols surface.
-  const { shown, overflow } = capDashboardList(protocols, ACTIVE_PROTOCOLS_CAP);
+  const { shown, overflow } = capActionableDashboardList(
+    protocols,
+    ACTIVE_PROTOCOLS_CAP,
+    (protocol) => protocol.practice != null
+  );
   return (
     <div className="card" data-testid="active-protocols">
       <WidgetHeader title="Active protocols" href="/longevity#protocols" />
@@ -88,14 +92,12 @@ export default function ActiveProtocolWidget({
               </div>
             )}
 
-            {/* One-tap logging for a wellness practice (#1259) — the count is the
-                summary's this-week distinct-day tally; the button reports today's own
-                running count from its outcome. */}
-            {p.adherence?.practiceName && (
-              <LogPracticeButton
-                practice={p.adherence.practiceName}
-                todayCount={0}
-                atCeiling={p.adherence.atCeiling}
+            {p.practice && (
+              <ProtocolLogButton
+                practice={p.practice}
+                ongoing
+                todayCount={p.practiceTodayCount}
+                atCeiling={p.adherence?.atCeiling ?? false}
               />
             )}
 

@@ -12,7 +12,10 @@ import { setWeekMode } from "@/lib/settings";
 import {
   logPracticeSession,
   getPracticeDayCount,
+  getPracticeSessions,
   getFrequencyTargetProgress,
+  getWellnessPractices,
+  getTrackedPractices,
   collectUpcoming,
   dismissFinding,
 } from "@/lib/queries";
@@ -21,7 +24,14 @@ import {
   behindPractices,
   buildPracticeReminder,
 } from "@/lib/notifications/practices";
+import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { OWNED_TABLES } from "@/lib/owned-tables";
+import {
+  createWellnessPractice,
+  untrackWellnessPractice,
+  updateWellnessPractice,
+} from "@/lib/practice-store";
+import { practiceIdentity } from "@/lib/practice";
 
 function makeProfile(name: string): number {
   return Number(
@@ -39,10 +49,12 @@ function practiceTarget(
   return Number(
     db
       .prepare(
-        `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, per_week_max)
-         VALUES (?, 'practice', ?, ?, ?)`
+        `INSERT INTO frequency_targets
+           (profile_id, scope_kind, scope_value, scope_identity, per_week, per_week_max)
+         VALUES (?, 'practice', ?, ?, ?, ?)`
       )
-      .run(profileId, name, floor, ceiling).lastInsertRowid
+      .run(profileId, name, practiceIdentity(name), floor, ceiling)
+      .lastInsertRowid
   );
 }
 
@@ -53,6 +65,60 @@ describe("practice_logs store + range progress (#1259)", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("makes Wellness relevant for either target-backed or logs-only practices (#1620)", () => {
+    const empty = makeProfile("wellness-nav-empty");
+    expect(getNavRelevance(empty).wellness).toBe(false);
+
+    const logsOnly = makeProfile("wellness-nav-logs");
+    logPracticeSession(logsOnly, "Meditation", "2026-06-17");
+    expect(getNavRelevance(logsOnly).wellness).toBe(true);
+
+    const targetOnly = makeProfile("wellness-nav-target");
+    practiceTarget(targetOnly, "Breathwork", 3, null);
+    expect(getNavRelevance(targetOnly).wellness).toBe(true);
+  });
+
+  it("retiring a practice keeps its logs-only card and removes Upcoming, nudge, and dismissal state (#1621)", () => {
+    const pid = makeProfile("wellness-retire");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    const tid = practiceTarget(pid, "Meditation", 3, null);
+    logPracticeSession(pid, "Meditation", t);
+
+    expect(collectUpcoming(pid, t).map((item) => item.key)).toContain(
+      `practice:${tid}`
+    );
+    expect(behindPractices(pid).map((item) => item.targetId)).toContain(tid);
+    dismissFinding(pid, `practice:${tid}`);
+
+    expect(untrackWellnessPractice(pid, tid)).toEqual({
+      kind: "untracked",
+      targetId: tid,
+    });
+    expect(getPracticeSessions(pid, "Meditation")).toHaveLength(1);
+    expect(getWellnessPractices(pid)).toMatchObject([
+      {
+        name: "Meditation",
+        targetId: null,
+        perWeek: null,
+        sessionCount: 1,
+      },
+    ]);
+    expect(collectUpcoming(pid, t).map((item) => item.key)).not.toContain(
+      `practice:${tid}`
+    );
+    expect(behindPractices(pid)).toEqual([]);
+    expect(buildPracticeReminder(pid)).toBeNull();
+    expect(
+      db
+        .prepare(
+          `SELECT 1 FROM upcoming_dismissals
+            WHERE profile_id = ? AND signal_key = ?`
+        )
+        .get(pid, `practice:${tid}`)
+    ).toBeUndefined();
   });
 
   it("two same-day sessions are TWO rows but ONE adherence day", () => {
@@ -74,6 +140,102 @@ describe("practice_logs store + range progress (#1259)", () => {
     )!;
     expect(prog.count).toBe(1);
     expect(prog.met).toBe(false);
+  });
+
+  it("case/whitespace variants share one target identity and one history", () => {
+    const pid = makeProfile("identity");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    const tid = practiceTarget(pid, "Sauna", 3, 5);
+    logPracticeSession(pid, " sauna ", t);
+    logPracticeSession(pid, "SAUNA", shiftDateStr(t, -1));
+
+    const progress = getFrequencyTargetProgress(pid).find(
+      (p) => p.target.id === tid
+    );
+    expect(progress?.count).toBe(2);
+    expect(getPracticeDayCount(pid, "Sauna", t)).toBe(1);
+    expect(getPracticeSessions(pid, "sAuNa")).toHaveLength(2);
+  });
+
+  it("database uniqueness follows practice identity within one profile (#1623)", () => {
+    const owner = makeProfile("practice-identity-owner");
+    const other = makeProfile("practice-identity-other");
+    practiceTarget(owner, "Sauna ritual", 3, null);
+
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (?, 'practice', ' SAUNA\tRITUAL ', ?, 4)`
+        )
+        .run(owner, practiceIdentity(" SAUNA\tRITUAL "))
+    ).toThrow(/UNIQUE/i);
+
+    expect(() => practiceTarget(other, "SAUNA RITUAL", 4, null)).not.toThrow();
+  });
+
+  it("refuses to rename a target onto a logs-only practice history (#1618)", () => {
+    const pid = makeProfile("rename-collision");
+    const created = createWellnessPractice(pid, "Sauna", 3, null);
+    expect(created.kind).toBe("saved");
+    if (created.kind !== "saved") throw new Error("practice was not created");
+
+    logPracticeSession(pid, "Sauna", "2026-06-15");
+    logPracticeSession(pid, "Meditation", "2026-06-14");
+    logPracticeSession(pid, "Meditation", "2026-06-16");
+
+    expect(
+      updateWellnessPractice(pid, created.targetId, "Meditation", 3, null)
+    ).toEqual({ kind: "duplicate" });
+    expect(getPracticeSessions(pid, "Sauna")).toHaveLength(1);
+    expect(getPracticeSessions(pid, "Meditation")).toHaveLength(2);
+    expect(
+      getWellnessPractices(pid).map((practice) => ({
+        name: practice.name,
+        targetId: practice.targetId,
+        sessionCount: practice.sessionCount,
+      }))
+    ).toEqual([
+      { name: "Meditation", targetId: null, sessionCount: 2 },
+      { name: "Sauna", targetId: created.targetId, sessionCount: 1 },
+    ]);
+  });
+
+  it("allows a case-only rename within one practice identity (#1618)", () => {
+    const pid = makeProfile("rename-same-identity");
+    const created = createWellnessPractice(pid, "sauna", 3, null);
+    expect(created.kind).toBe("saved");
+    if (created.kind !== "saved") throw new Error("practice was not created");
+    logPracticeSession(pid, " SAUNA ", "2026-06-16");
+
+    expect(
+      updateWellnessPractice(pid, created.targetId, "Sauna", 3, null)
+    ).toEqual({ kind: "saved", targetId: created.targetId });
+    expect(getWellnessPractices(pid)).toMatchObject([
+      {
+        identity: "sauna",
+        name: "Sauna",
+        targetId: created.targetId,
+        sessionCount: 1,
+      },
+    ]);
+    expect(getPracticeSessions(pid, "sauna")).toHaveLength(1);
+  });
+
+  it("supports protocol-windowed and unbounded session history", () => {
+    const pid = makeProfile("windowed-history");
+    logPracticeSession(pid, "Meditation", "2026-06-01");
+    logPracticeSession(pid, "Meditation", "2026-06-10");
+    logPracticeSession(pid, "Meditation", "2026-07-01");
+    expect(
+      getPracticeSessions(pid, "Meditation", 50, {
+        start: "2026-06-05",
+        end: "2026-06-30",
+      }).map((session) => session.date)
+    ).toEqual(["2026-06-10"]);
+    expect(getPracticeSessions(pid, "Meditation")).toHaveLength(3);
   });
 
   it("range semantics: floor drives met, ceiling flips atCeiling (calm 'plenty')", () => {
@@ -147,6 +309,8 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     const item = items.find((i) => i.key === `practice:${tid}`)!;
     expect(item.domain).toBe("practice");
     expect(item.dueText).toBe("1/3–5 this week");
+    expect(item.href).toBe("/wellness");
+    expect(item.practiceTargetId).toBe(tid);
   });
 
   it("the nudge builder fires only when behind, and honors the suppression bus", () => {
@@ -163,6 +327,14 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     expect(
       msg.actions?.some((a) => a.data === `pdone:${pid}:${tid}:e2e0`)
     ).toBe(true);
+
+    // #1718: the nudge carries a deep link and a real, routable kind, so it is honest
+    // on Web Push and Home Assistant (which strip the "✓ Done" buttons) instead of
+    // telling those users to "tap when you've done a session".
+    const linked = buildPracticeReminder(pid, "e2e0", "https://allos.example")!;
+    expect(linked.actions?.at(-1)?.url).toBe("https://allos.example/wellness");
+    expect(linked.kind).toBe("practice");
+    expect(String(linked.body)).not.toMatch(/\btap\b/i);
 
     // Dismiss the Upcoming twin → the push is held (dismiss once, silence everywhere).
     dismissFinding(pid, `practice:${tid}`);
@@ -181,5 +353,81 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     logPracticeSession(pid, "Journaling", shiftDateStr(t, -2));
     expect(behindPractices(pid)).toEqual([]);
     expect(buildPracticeReminder(pid)).toBeNull();
+  });
+});
+
+// The quick surfaces' practice list (#1633): the shared read behind BOTH the
+// quick-entry overlay's row and the command palette's finite preimage. It is
+// deliberately narrower than getWellnessPractices — tracked only, no heatmap — so its
+// boundaries need pinning where the page aggregate's don't overlap them.
+describe("getTrackedPractices — the quick surfaces' list (#1633)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-17T12:00:00Z")); // a Wednesday
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("offers TRACKED practices only — history alone never re-lists an untracked one", () => {
+    const pid = makeProfile("tracked-only");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    practiceTarget(pid, "Sauna", 3, null);
+    // Logged for months, then untracked: the card and the history stay (the page
+    // aggregate still folds it in), but a quick surface offering it again would
+    // quietly undo the untrack.
+    logPracticeSession(pid, "Journaling", t);
+
+    expect(getTrackedPractices(pid).map((p) => p.name)).toEqual(["Sauna"]);
+    expect(getWellnessPractices(pid).map((p) => p.name)).toEqual([
+      "Journaling",
+      "Sauna",
+    ]);
+  });
+
+  it("counts the week and TODAY across every spelling of one identity", () => {
+    const pid = makeProfile("tracked-counts");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    practiceTarget(pid, "Cold plunge", 3, null);
+    logPracticeSession(pid, "COLD PLUNGE", t);
+    logPracticeSession(pid, "cold  plunge", t); // same day, second session
+    logPracticeSession(pid, "Cold plunge", shiftDateStr(t, -2));
+
+    const [row] = getTrackedPractices(pid);
+    expect(row).toMatchObject({
+      identity: practiceIdentity("Cold plunge"),
+      name: "Cold plunge", // the target's spelling wins
+      perWeek: 3,
+      // Adherence counts DAYS (two sessions today are one adherence day)…
+      countThisWeek: 2,
+      // …while today's tally counts SESSIONS, which is what the tap needs to show.
+      todayCount: 2,
+      atCeiling: false,
+    });
+  });
+
+  it("reports the calm at-ceiling state rather than hiding the row", () => {
+    const pid = makeProfile("tracked-ceiling");
+    setWeekMode(pid, "rolling");
+    const t = today(pid);
+    practiceTarget(pid, "Sauna", 2, 3);
+    for (const d of [0, -1, -2])
+      logPracticeSession(pid, "Sauna", shiftDateStr(t, d));
+
+    const [row] = getTrackedPractices(pid);
+    expect(row).toMatchObject({ countThisWeek: 3, atCeiling: true });
+    // Still offered: a dose-limited practice is never PUSHED toward more, but the user
+    // asking to log one is user-initiated access, and removing the row would be the
+    // system rewriting their intent.
+    expect(getTrackedPractices(pid)).toHaveLength(1);
+  });
+
+  it("is profile-scoped", () => {
+    const mine = makeProfile("tracked-mine");
+    const theirs = makeProfile("tracked-theirs");
+    practiceTarget(theirs, "Sauna", 3, null);
+    expect(getTrackedPractices(mine)).toEqual([]);
   });
 });

@@ -26,6 +26,10 @@ import {
   type IntakeSendSlot,
   type ReminderWindow,
 } from "../lib/notifications/supplements";
+import {
+  buildHouseholdRound,
+  householdRoundMarkerKey,
+} from "../lib/notifications/household-round";
 import { buildWorkoutTargetReminder } from "../lib/notifications/workouts";
 import { buildPracticeReminder } from "../lib/notifications/practices";
 import { buildFoodNudge } from "../lib/notifications/food";
@@ -48,6 +52,7 @@ import {
   getTimezone,
   getTelegramBotConfig,
   getAuditRetentionMonths,
+  getPublicUrl,
 } from "../lib/settings";
 import { getUpdates, telegramChannel } from "../lib/notifications/telegram";
 import {
@@ -62,11 +67,15 @@ import {
 } from "../lib/notifications/workout-presence";
 import { flushPostWorkoutDispatches } from "../lib/notifications/post-workout-queue";
 import { runRefills } from "../lib/notifications/refill";
+import { runPoolRefills } from "../lib/notifications/supply-pool";
 import { runPreventive } from "../lib/notifications/preventive";
 import { runIllnessCare } from "../lib/notifications/illness-care";
 import { runEaseBack } from "../lib/notifications/ease-back";
 import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
-import { runDigest } from "../lib/notifications/digest-data";
+import {
+  refreshDigestOfferTail,
+  runDigest,
+} from "../lib/notifications/digest-data";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
@@ -92,6 +101,7 @@ import { runStravaSync } from "../lib/integrations/strava-sync";
 import { runOuraSync } from "../lib/integrations/oura-sync";
 import { runWithingsSync } from "../lib/integrations/withings-sync";
 import { runWeatherSync } from "../lib/integrations/weather-sync";
+import { evaluateSyncRequests } from "../lib/portal-requests";
 
 const log = createLogger("notify");
 
@@ -337,6 +347,47 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       if (delivered) {
         for (const s of built.slots)
           setProfileSetting(profile.id, `notify_last_supp_${s}`, date);
+      }
+    }
+  }
+
+  // ── Household dose round (#1459) ──────────────────────────────────────────
+  // The caregiver-subscribed CROSS-PROFILE twin of the reminder above: at THIS
+  // profile's slots, the doses due for the OTHER household members they explicitly
+  // subscribed to, each with an inline confirm. It rides the same tick and the same
+  // schedule slots but keeps its OWN per-day markers, so a receiver whose personal
+  // reminder already fired this slot still gets the round (and vice versa).
+  //
+  // Each member's due set is computed in THAT member's own context — their timezone's
+  // today(), their situations, their dueness — never in the receiver's (#1095). The
+  // members' own reminders and their missed-dose escalation are completely untouched:
+  // this is additive, and escalation is deliberately NOT aggregated here (§4).
+  //
+  // The PreWorkout pseudo-slot is deliberately excluded: it is workout-relative to the
+  // RECEIVER, which says nothing about when another member's doses are due.
+  const householdSlotsDue: IntakeSendSlot[] = [];
+  for (const w of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
+    const slotHour = sched.supplementHours[w];
+    if (
+      slotHour != null &&
+      slotDue(slotHour, hour) &&
+      getProfileSetting(profile.id, householdRoundMarkerKey(w)) !== date
+    )
+      householdSlotsDue.push(w);
+  }
+  if (householdSlotsDue.length > 0) {
+    // Returns null for an empty round (nothing due for any subscribed member) — a
+    // caregiver is never pinged just to be told there is nothing to do.
+    const round = buildHouseholdRound(profile.id, householdSlotsDue);
+    if (round) {
+      const { delivered, failed } = await send(
+        profile.id,
+        prefixMessage(round, prefix)
+      );
+      if (failed) anyFailed = true;
+      if (delivered) {
+        for (const s of householdSlotsDue)
+          setProfileSetting(profile.id, householdRoundMarkerKey(s), date);
       }
     }
   }
@@ -591,17 +642,25 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // Pace-aware wellness-practice nudge (#1259): waking-window, once per profile-local
   // day, BUS-GATED coaching-tier. buildPracticeReminder returns null when nothing is
   // behind OR every behind target's `practice:<id>` Upcoming twin is dismissed/snoozed
-  // (the frozen state — no marker set, so un-dismissing resumes the lifecycle). Gated on
-  // Telegram being deliverable: the defining feature is the "Done ✓" button, and a
+  // (the frozen state — no marker set, so un-dismissing resumes the lifecycle). A
   // practice target only exists once the user created a practice protocol (that IS the
   // opt-in). NEVER safety-tier — a missed session is not a missed medication.
+  //
+  // No longer gated on Telegram (#1718): the message now carries a deep link and copy
+  // that names no affordance a channel strips, so it is honest on every channel. The
+  // old gate also failed at the both-channels case it was written for — it let a
+  // Telegram+push profile through and then dispatched a buttonless push telling the
+  // user to "tap when you've done a session".
   if (
     waking &&
-    telegramChannel.isConfigured(profile.id) &&
     getProfileSetting(profile.id, "notify_last_practice") !== date
   ) {
     try {
-      const built = buildPracticeReminder(profile.id);
+      const built = buildPracticeReminder(
+        profile.id,
+        undefined,
+        getPublicUrl()
+      );
       if (built) {
         const msg = prefixMessage(built, prefix);
         const { delivered, failed } = await send(profile.id, msg);
@@ -684,7 +743,12 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     getProfileSetting(profile.id, "notify_last_digest") !== date
   ) {
     try {
-      const dg = await runDigest(profile.id, profile.name, date);
+      const dg = await runDigest(
+        profile.id,
+        profile.name,
+        date,
+        coachingInput()
+      );
       if (dg.failed) anyFailed = true;
     } catch (e) {
       log.error("digest failed", {
@@ -693,6 +757,20 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       });
       anyFailed = true;
     }
+  }
+
+  // Keep today's digest offer tail (#1505) labelled for the slot we are ACTUALLY in.
+  // Runs every tick, outside the digest's own hour gate, and is silent by
+  // construction: at most one keyboard EDIT, which Telegram does not notify on. It
+  // no-ops entirely when the slot hasn't turned over, so the ordinary tick pays
+  // nothing for it. Never allowed to fail the tick — a stale label is cosmetic.
+  try {
+    await refreshDigestOfferTail(profile.id);
+  } catch (e) {
+    log.info("digest tail refresh failed (ignored)", {
+      profile: profile.id,
+      err: e instanceof Error ? e.message : String(e),
+    });
   }
 
   // Weekly recap (#32): once a week, on the chosen weekday at weeklyRecapHour
@@ -748,6 +826,30 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
 async function tick() {
   const profiles = allProfiles();
   let anyFailed = false;
+
+  // Portal sync requests (#1757): GLOBAL, once per tick, and deliberately BEFORE the
+  // per-profile loop so an ask raised this hour is already visible to today's digest
+  // rather than waiting a day.
+  //
+  // Not inside the loop, because a request is about a portal LOGIN, not a person: one
+  // login covering three people would otherwise be evaluated three times and the
+  // supersession rule would be asked to sort out a race it should never have seen. It
+  // writes ROWS ONLY — no send, ever. The nudge itself is the Upcoming item the request
+  // produces and the digest line that item's own banding yields, which is the whole
+  // reach this feature is allowed (coaching tier: portal hygiene is never a safety
+  // signal). Best-effort: raising an ask must never fail a tick that has medication
+  // reminders to deliver.
+  try {
+    const raised = evaluateSyncRequests((profileId) => today(profileId));
+    if (raised.staleness > 0 || raised.postVisit > 0) {
+      log.info("portal sync requests raised", raised);
+    }
+  } catch (e) {
+    log.error("portal sync-request evaluation failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
   for (const p of profiles) {
     try {
       if (await tickProfile(p)) anyFailed = true;
@@ -758,6 +860,33 @@ async function tick() {
       });
       anyFailed = true;
     }
+  }
+
+  // Shared supply pools (#1374): GLOBAL, once per tick — deliberately NOT inside the
+  // per-profile loop. A pooled bottle is ONE subject with ONE episode marker, so a
+  // per-profile pass would nudge the same bottle once per linked member (the exact bug
+  // pools exist to fix). Delivery still rides the login-scoped fan-out: the pass picks
+  // the minimum set of linked profiles that reaches every managing login. Waking-window
+  // and profile-local-date decisions stay per-profile-composed (the callbacks below),
+  // never evaluated in another member's context.
+  try {
+    const pr = await runPoolRefills(
+      (profileId) => today(profileId),
+      (profileId) => {
+        const s = getNotifySchedule(profileId);
+        return inWakingWindow(
+          hourInTz(getTimezone(profileId), new Date()),
+          s.wakingStartHour,
+          s.wakingEndHour
+        );
+      }
+    );
+    if (pr.failed) anyFailed = true;
+  } catch (e) {
+    log.error("shared supply pool check failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+    anyFailed = true;
   }
 
   // Nightly SQLite backup (#131): global, so it runs once per tick (not per

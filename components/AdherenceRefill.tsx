@@ -1,6 +1,8 @@
-import { IconFlame } from "@tabler/icons-react";
+import Link from "next/link";
+import { IconChevronRight, IconFlame } from "@tabler/icons-react";
 import {
   adherenceSummary,
+  adherenceSummaryVisibility,
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
 import {
@@ -10,6 +12,7 @@ import {
   runOutDateStr,
   type DoseRate,
 } from "@/lib/refill";
+import { SUPPLIES_HREF } from "@/lib/hrefs";
 import { formatMonthDay } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
@@ -77,20 +80,78 @@ export function RefillBadge({
   );
 }
 
+// The shared-bottle chip (#1374). REPLACES the per-item RefillBadge when the item
+// draws from a pool — a linked item has no private count, and the honest number is the
+// POOLED one ("≈9 days across everyone"), because this member's doses are only part of
+// the drain. Shared by the supplement row and the medication row/card so all three read
+// the same computation. Renders nothing when the item isn't pooled.
+export function SharedSupplyChip({
+  pool,
+}: {
+  pool: {
+    supplyId: number;
+    name: string;
+    daysLeft: number | null;
+    memberCount: number;
+    low: boolean;
+  } | null;
+}) {
+  if (!pool) return null;
+  const across = pool.memberCount > 1 ? " across everyone" : "";
+  const days =
+    pool.daysLeft == null
+      ? null
+      : pool.daysLeft <= 0
+        ? `out of supply${across}`
+        : `≈${pool.daysLeft} day${pool.daysLeft === 1 ? "" : "s"}${across}`;
+  return (
+    <Link
+      href={SUPPLIES_HREF}
+      data-testid="shared-supply-chip"
+      className={`inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-medium underline-offset-2 hover:underline ${
+        pool.low
+          ? "text-amber-700 dark:text-amber-300"
+          : "text-brand-700 dark:text-brand-400"
+      }`}
+      title={`Shared supply — ${pool.name}, drawn from by ${pool.memberCount} tracked item${
+        pool.memberCount === 1 ? "" : "s"
+      }`}
+    >
+      <span>
+        {pool.low ? "Low · " : ""}Shared bottle
+        {days ? ` · ${days}` : ""}
+      </span>
+      <IconChevronRight
+        className="h-3.5 w-3.5"
+        stroke={1.75}
+        aria-hidden="true"
+      />
+    </Link>
+  );
+}
+
 // Recent-adherence summary line — a streak + percentage + skipped count over the
 // last 14 days (#313), shared by the supplement ROW and the medication CARD
 // (#747 parity). adherenceSummary is the shared computation; this is a pure
 // formatter. Renders nothing when there's nothing to report (no due day counted
 // and no deliberate skip).
-export function AdherenceSummaryLine({ strip }: { strip: AdherenceDot[] }) {
+export function AdherenceSummaryLine({
+  strip,
+  noteworthyOnly = false,
+}: {
+  strip: AdherenceDot[];
+  noteworthyOnly?: boolean;
+}) {
   const adherence = adherenceSummary(strip);
-  if (!(adherence.pct !== null || adherence.skippedDays > 0)) return null;
+  const visibility = adherenceSummaryVisibility(adherence, noteworthyOnly);
+  if (!visibility.show) return null;
   return (
     <div
+      data-testid="adherence-summary"
       className="mt-1.5 flex items-center gap-1.5 text-xs"
       title="Adherence over the last 14 days"
     >
-      {adherence.streak >= 2 && (
+      {visibility.showStreak && (
         <>
           <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
             <IconFlame
@@ -99,22 +160,27 @@ export function AdherenceSummaryLine({ strip }: { strip: AdherenceDot[] }) {
             />
             {adherence.streak}-day streak
           </span>
-          <span
-            aria-hidden="true"
-            className="text-slate-300 dark:text-slate-600"
-          >
-            ·
-          </span>
+          {(visibility.showDetail || visibility.showSkipped) && (
+            <span
+              aria-hidden="true"
+              className="text-slate-300 dark:text-slate-600"
+            >
+              ·
+            </span>
+          )}
         </>
       )}
-      {adherence.pct !== null && (
+      {visibility.showDetail && adherence.pct !== null && (
         <span className="text-slate-500 dark:text-slate-400">
-          {adherence.pct}% adherence
+          {Number.isInteger(adherence.takenDays + adherence.partialDays * 0.5)
+            ? adherence.takenDays + adherence.partialDays * 0.5
+            : (adherence.takenDays + adherence.partialDays * 0.5).toFixed(1)}
+          /{adherence.applicableDays} due days followed · {adherence.pct}%
         </span>
       )}
-      {adherence.skippedDays > 0 && (
+      {visibility.showSkipped && (
         <>
-          {adherence.pct !== null && (
+          {visibility.showDetail && (
             <span
               aria-hidden="true"
               className="text-slate-300 dark:text-slate-600"

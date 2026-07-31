@@ -538,12 +538,29 @@ export function distinguishVitaminDIsoform(
 export interface BiomarkerFamily {
   // The stable family key (unprefixed). biomarkerFamily() returns `family:<key>`.
   key: string;
-  // Lowercased member spellings — the finite SQL preimage. A stored row whose
-  // display name (canonical-or-raw) lowercases into this set is a family member.
+  // The family's ANCHOR spelling: the canonical dataset name that answers the
+  // family's question, and the one a surface should NAME the family by. Which
+  // member happens to be a profile's newest reading is an accident of how a lab
+  // ordered its lines, so a label, a copy line, or a curated-rule lookup keyed on
+  // that member drifts row by row — the A1c family reads "Estimated Average
+  // Glucose" whenever the eAG line lands with the higher id, and the diabetes risk
+  // rule (which targets "hemoglobin a1c") then fails to tighten the cadence
+  // (#1394/#1395). Resolve through biomarkerFamilyAnchor() instead. Must be a real
+  // canonical dataset name that is itself a member of this family (pinned by test).
+  anchor: string;
+  // Lowercased member spellings — the family's enumerated vocabulary. A stored row
+  // whose display name (canonical-or-raw) lowercases into this set is a family
+  // member. Still the finite preimage (#394) the PANEL taxonomy realizes in SQL
+  // (lib/biomarker-panels.panelMemberSpellings) and the corpus the JS↔SQL parity
+  // tests pin — but no longer the family KEY's only SQL realization (see `match`).
   members: string[];
-  // Optional JS-only matcher for freeform spellings the SQL preimage can't list
-  // (e.g. "25-OH Vitamin D3 (Cholecalciferol)"). SQL surfaces rely on the finite
-  // member list; the retest generator (pure JS) gets the full regex coverage.
+  // Freeform matcher for spellings an enumeration can't list (e.g.
+  // "25-OH Vitamin D3 (Cholecalciferol)", an AI-coined A1c name that escaped
+  // snapCanonicalName). This is NOT JS-only: the SQL family key calls
+  // biomarkerFamily() through the `biomarker_family()` user function
+  // (lib/sql-functions.ts), so the dedup / is_latest partitions honour the regex
+  // exactly like the star, retest, and dismissal surfaces do (#1401). Keep it as
+  // tight as `members` — a name it accepts is folded into the family EVERYWHERE.
   match?: (lowerName: string) => boolean;
 }
 
@@ -582,6 +599,7 @@ export const HEMOGLOBIN_A1C_FAMILY = "hemoglobin-a1c";
 export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
   {
     key: VITAMIN_D_25OH_FAMILY,
+    anchor: "Vitamin D, 25-Hydroxy",
     // IDENTITY scope (#1193): the TOTAL 25-OH storage marker's spellings ONLY. The
     // D2/D3 fractions are DELIBERATELY EXCLUDED here (they were folded in by #482 —
     // an over-collapse: the family key drives the cross-source dedup partition, the
@@ -611,6 +629,7 @@ export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
   },
   {
     key: HEMOGLOBIN_A1C_FAMILY,
+    anchor: "Hemoglobin A1c",
     members: [
       "hemoglobin a1c",
       "hba1c",
@@ -629,10 +648,12 @@ export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
 // The identity of a biomarker name: its `family:<key>` when the name belongs to a
 // registered family, else the trimmed name itself (its own singleton identity).
 // This is the ONE grouping every biomarker surface keys on so they can't disagree
-// about what "Vitamin D" is. Returns "" for empty input. Non-family names are
-// returned unchanged (only case is folded downstream) so the JS result and the
-// SQL biomarkerFamilyKey() CASE-ELSE (which returns the raw display name) agree
-// under a COLLATE NOCASE compare.
+// about what "Vitamin D" is — including the SQL surfaces, which call THIS function
+// through the `biomarker_family()` user function (lib/sql-functions.ts) rather than
+// re-realizing it as an enumerated CASE that could only see `members` (#1401).
+// Returns "" for empty input. Non-family names are returned trimmed-but-unchanged
+// (only case is folded downstream), so a JS-derived key and the SQL key agree under
+// a COLLATE NOCASE compare.
 export function biomarkerFamily(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return "";
@@ -643,6 +664,27 @@ export function biomarkerFamily(name: string | null | undefined): string {
     }
   }
   return trimmed;
+}
+
+const FAMILY_BY_IDENTITY: ReadonlyMap<string, BiomarkerFamily> = new Map(
+  BIOMARKER_FAMILIES.map((f) => [`family:${f.key}` as string, f])
+);
+
+// The name to LABEL a biomarker identity by: its family's anchor spelling when the
+// name belongs to a registered family, else the trimmed name itself. Use this
+// wherever a surface names, or looks a curated rule up by, the analyte a group of
+// readings stands for — a title, a copy line, a risk-rule match — so the answer
+// doesn't drift with which member happens to be the newest reading (#1394/#1395).
+//
+// Deliberately keyed on the IDENTITY family (biomarkerFamily), NOT the wider retest
+// identity: a vitamin-D D2/D3 fraction shares the total's redraw CLOCK but is its
+// own series with its own band, so it keeps its own name and its own link. The A1c
+// ↔ eAG family is one identity, so an eAG-representative nudge correctly names (and
+// matches curated rules as) "Hemoglobin A1c". Returns "" for empty input.
+export function biomarkerFamilyAnchor(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "";
+  return FAMILY_BY_IDENTITY.get(biomarkerFamily(trimmed))?.anchor ?? trimmed;
 }
 
 // The RETEST-clock grouping key (#1193). BROADER than biomarkerFamily's identity

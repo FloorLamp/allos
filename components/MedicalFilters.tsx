@@ -1,27 +1,37 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { IconX } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
 import RecordSearch from "./RecordSearch";
 import RangeFilterSelect from "./RangeFilterSelect";
 import CategoryFilterSelect from "./CategoryFilterSelect";
+import PanelFilterSelect from "./PanelFilterSelect";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import type { PanelId } from "@/lib/biomarker-panels";
 
-// Filter bar for the medical records table: a category dropdown, the All/
-// Non-optimal/Out-of-range "show" filter, and (when set) a clearable panel chip.
+// Filter bar for the medical records table: a category dropdown, the clinical
+// PANEL dropdown (#1502), and the All/Non-optimal/Out-of-range "show" filter.
 // Each control navigates via query params, preserving the others (including the
 // active sort, which lives in `sort`/`dir`).
+//
+// The panel control was a clearable CHIP that only ever appeared after clicking a
+// Panel cell — the right affordance when the value was an unpredictable free-text
+// vendor string with no enumerable set. With a closed taxonomy it becomes a
+// first-class dropdown beside Category: the facet is now discoverable ("show my
+// Lipids") instead of reachable only by finding a row that happens to carry it.
 export default function MedicalFilters({
   category,
   panel,
+  panels,
   range,
   q,
   current,
 }: {
   category?: string;
-  panel?: string;
+  panel?: PanelId;
+  // The panel options to offer, resolved server-side (#1581 section D) — the
+  // taxonomy minus the panels this surface's category scope can never surface.
+  panels: readonly PanelId[];
   range?: string;
   q?: string;
   current?: boolean;
@@ -44,7 +54,10 @@ export default function MedicalFilters({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-4">
+    <div
+      className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-4"
+      data-testid="medical-filters"
+    >
       <RecordSearch q={q} />
 
       {/* Biomarkers browser: never offer 'prescription' — meds aren't listed
@@ -53,6 +66,8 @@ export default function MedicalFilters({
         value={category}
         categories={BIOMARKER_CATEGORIES}
       />
+
+      <PanelFilterSelect value={panel} panels={panels} />
 
       <RangeFilterSelect value={range} />
 
@@ -67,17 +82,6 @@ export default function MedicalFilters({
         />
         <span className="font-medium">Current values only</span>
       </label>
-
-      {panel ? (
-        <Link
-          href={qs({ panel: undefined })}
-          className="badge inline-flex items-center gap-1 bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
-          title="Clear panel filter"
-        >
-          Panel: {panel}
-          <IconX className="h-4 w-4" />
-        </Link>
-      ) : null}
     </div>
   );
 }

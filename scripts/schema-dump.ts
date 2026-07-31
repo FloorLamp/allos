@@ -11,6 +11,7 @@
 //
 // No data/allos.db is touched; nothing is written to disk.
 
+import "./load-env";
 import Database from "better-sqlite3";
 import { runMigrations } from "../lib/migrations/runner";
 

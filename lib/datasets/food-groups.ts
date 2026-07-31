@@ -53,3 +53,50 @@ export function foodGroupSlugs(): string[] {
 export function foodGroupName(slug: string): string {
   return foodGroupBySlug(slug)?.name ?? slug;
 }
+
+// ---- One emoji per group (issue #1710) ----
+//
+// The 3×2 Telegram button grid and the tally line were a wall of same-weight words; a
+// glyph per group is what makes them scannable at a glance. ONE catalog (#221), used by
+// the Telegram nudge (buttons AND tally) and the web food bar alike, so the two surfaces
+// speak one vocabulary.
+//
+// Chosen to be unambiguous at small size and to avoid near-duplicates across the full
+// set; `datasets-food-groups.test.ts` pins that every catalog slug has exactly one entry
+// and that no two groups share a glyph.
+const FOOD_GROUP_EMOJI: Readonly<Record<string, string>> = {
+  fatty_fish: "🐟",
+  lean_fish: "🐠",
+  shellfish: "🦐",
+  leafy_greens: "🥬",
+  cruciferous: "🥦",
+  other_vegetables: "🥕",
+  legumes: "🫘",
+  nuts_seeds: "🥜",
+  whole_grains: "🌾",
+  fruit: "🍎",
+  berries: "🫐",
+  fermented: "🥒",
+  poultry: "🍗",
+  eggs: "🥚",
+  dairy: "🧀",
+  red_meat: "🥩",
+  tubers: "🥔",
+  water: "💧",
+  processed_meat: "🌭",
+  refined_grains: "🍞",
+  fried_food: "🍟",
+  added_sugar: "🍬",
+  sugary_drinks: "🥤",
+  alcohol: "🍷",
+};
+
+// The glyph for a slug, or "" for a retired/unknown one — the same refusal posture as
+// foodGroupBySlug, so a missing emoji degrades to no emoji rather than a placeholder.
+export function foodGroupEmoji(slug: string): string {
+  const canonical = matcher.match(slug)?.slug ?? slug;
+  return FOOD_GROUP_EMOJI[canonical] ?? "";
+}
+
+// The catalog map itself, for the reflection test and any surface iterating groups.
+export { FOOD_GROUP_EMOJI };

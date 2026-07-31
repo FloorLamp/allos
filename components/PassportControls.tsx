@@ -200,6 +200,7 @@ export default function PassportControls({
                   onClick={copy}
                   className="btn-ghost shrink-0"
                   aria-label="Copy link"
+                  title="Copy link"
                 >
                   {copied ? (
                     <IconCheck className="h-4 w-4" stroke={1.75} />

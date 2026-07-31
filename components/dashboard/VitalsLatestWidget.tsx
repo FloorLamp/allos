@@ -60,7 +60,7 @@ export default function VitalsLatestWidget({
   const { bp, restingHr } = model;
   return (
     <div className="card" data-testid="vitals-latest-widget">
-      <WidgetHeader title="Latest vitals" href="/trends?tab=vitals" />
+      <WidgetHeader title="Latest vitals" href="/trends#body" />
       <div className="flex items-start gap-3">
         <IconHeartbeat
           className="mt-1 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400"

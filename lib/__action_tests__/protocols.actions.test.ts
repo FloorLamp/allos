@@ -2,8 +2,8 @@
 //
 // Covers create (outcome-key set stored as JSON + situation activation), end
 // (sets end_date + inverts the situation activation), delete (row + side-state),
-// and profile scoping. redirect() is mocked to a no-op since it's the last
-// statement of create/delete.
+// and profile scoping. create returns its detail destination to the client (so
+// production create/delete navigation does not depend on thrown redirect sentinels.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -11,7 +11,10 @@ import { db } from "@/lib/db";
 import {
   createProtocol,
   updateProtocol,
+  updateProtocolOutcomes,
   endProtocol,
+  resumeProtocol,
+  runProtocolAgain,
   deleteProtocol,
 } from "@/app/(app)/protocols/actions";
 import { getProtocols, getFrequencyTargets } from "@/lib/queries";
@@ -40,6 +43,7 @@ function protocolForm(fields: {
   intake_item_id?: number | "";
   practice_type?: string;
   practice_per_week?: number | string;
+  practice_per_week_max?: number | string;
 }): FormData {
   const form = new FormData();
   if (fields.id != null) form.set("id", String(fields.id));
@@ -57,6 +61,8 @@ function protocolForm(fields: {
     form.set("practice_type", fields.practice_type);
   if (fields.practice_per_week != null)
     form.set("practice_per_week", String(fields.practice_per_week));
+  if (fields.practice_per_week_max != null)
+    form.set("practice_per_week_max", String(fields.practice_per_week_max));
   return form;
 }
 
@@ -65,8 +71,8 @@ function seedIntakeItem(profileId: number, name = "Creatine"): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-         VALUES (?, ?, 1, 'supplement', 'daily', 'low')`
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'should')`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -75,7 +81,7 @@ function seedIntakeItem(profileId: number, name = "Creatine"): number {
 describe("createProtocol", () => {
   it("stores the protocol with a normalized outcome-key set and activates the situation", async () => {
     const { profile } = seedActor();
-    await createProtocol(
+    const result = await createProtocol(
       protocolForm({
         name: "Creatine 5 g/day",
         start_date: "2026-05-01",
@@ -88,6 +94,10 @@ describe("createProtocol", () => {
         ],
       })
     );
+    expect(result).toMatchObject({
+      ok: true,
+      redirectTo: expect.stringMatching(/^\/protocols\/\d+$/),
+    });
 
     const rows = getProtocols(profile.id);
     expect(rows).toHaveLength(1);
@@ -102,6 +112,73 @@ describe("createProtocol", () => {
     // The hub revalidates the Longevity page (its #protocols section, #1042
     // phase 4).
     expect(revalidate).toHaveBeenCalledWith("/longevity");
+  });
+});
+
+describe("updateProtocolOutcomes", () => {
+  it("updates and clears only the normalized outcome set", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Creatine trial",
+        start_date: "2026-05-01",
+        end_date: "2026-05-31",
+        notes: "Keep training stable",
+        situation: "Creatine loading",
+        outcome_keys: ["metric:weight"],
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+
+    const result = await updateProtocolOutcomes(
+      protocolForm({
+        id: original.id,
+        outcome_keys: [
+          "metric:resting_hr",
+          "metric:resting_hr",
+          "biomarker:Apolipoprotein B",
+          "junk",
+        ],
+      })
+    );
+    expect(result).toEqual({ ok: true });
+    expect(getProtocols(profile.id)[0]).toMatchObject({
+      name: "Creatine trial",
+      start_date: "2026-05-01",
+      end_date: "2026-05-31",
+      notes: "Keep training stable",
+      situation: "Creatine loading",
+      outcomeKeys: ["metric:resting_hr", "biomarker:Apolipoprotein B"],
+    });
+    expect(revalidate).toHaveBeenCalledWith(`/protocols/${original.id}`);
+
+    await updateProtocolOutcomes(protocolForm({ id: original.id }));
+    expect(getProtocols(profile.id)[0].outcomeKeys).toEqual([]);
+  });
+
+  it("cannot update another profile's protocol", async () => {
+    const { login, profile: owner } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Owner protocol",
+        outcome_keys: ["metric:weight"],
+      })
+    );
+    const protocol = getProtocols(owner.id)[0];
+    const other = createProfile("Other subject", login.id);
+
+    actAs(login, other);
+    expect(
+      await updateProtocolOutcomes(
+        protocolForm({
+          id: protocol.id,
+          outcome_keys: ["metric:resting_hr"],
+        })
+      )
+    ).toEqual({ ok: false, error: "Couldn't find that protocol." });
+
+    actAs(login, owner);
+    expect(getProtocols(owner.id)[0].outcomeKeys).toEqual(["metric:weight"]);
   });
 });
 
@@ -159,6 +236,155 @@ describe("endProtocol", () => {
     const after = getProtocols(profile.id)[0];
     expect(after.end_date).not.toBeNull();
     expect(getActiveSituations(profile.id)).not.toContain("Sauna block");
+  });
+});
+
+describe("protocol restart lifecycle", () => {
+  it("resumes a recently ended protocol in place and reactivates its situation", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Sauna block",
+        start_date: "2026-05-01",
+        situation: "Sauna block",
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+
+    await endProtocol(protocolForm({ id: original.id }));
+    expect(getActiveSituations(profile.id)).not.toContain("Sauna block");
+
+    expect(await resumeProtocol(protocolForm({ id: original.id }))).toEqual({
+      ok: true,
+    });
+    const resumed = getProtocols(profile.id)[0];
+    expect(resumed.id).toBe(original.id);
+    expect(resumed.end_date).toBeNull();
+    expect(getActiveSituations(profile.id)).toContain("Sauna block");
+  });
+
+  // #1652: the row write and the situation reactivation are ONE transition. Force
+  // the situation half to fail and the resume must not survive on its own — a
+  // protocol reading "Ongoing" with its situational supplements off is a state the
+  // user cannot see or self-correct (an active protocol is no longer resumable).
+  // The failure is injected with a temp trigger rather than a module mock so the
+  // real write path, and the real transaction boundary, are what gets tested.
+  it("rolls the whole resume back when reactivating the situation fails", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Cold block",
+        start_date: "2026-05-01",
+        situation: "Cold block",
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+    await endProtocol(protocolForm({ id: original.id }));
+    const endedOn = getProtocols(profile.id)[0].end_date;
+    expect(endedOn).not.toBeNull();
+
+    db.exec(
+      `CREATE TEMP TRIGGER block_activate BEFORE UPDATE ON situations
+         WHEN NEW.active = 1
+         BEGIN SELECT RAISE(ABORT, 'situation activation refused'); END`
+    );
+    try {
+      await expect(
+        resumeProtocol(protocolForm({ id: original.id }))
+      ).rejects.toThrow(/situation activation refused/);
+    } finally {
+      db.exec("DROP TRIGGER block_activate");
+    }
+
+    // Both halves are back where they started.
+    expect(getProtocols(profile.id)[0].end_date).toBe(endedOn);
+    expect(getActiveSituations(profile.id)).not.toContain("Cold block");
+
+    // …and the protocol is still resumable, so the retry succeeds intact.
+    expect(await resumeProtocol(protocolForm({ id: original.id }))).toEqual({
+      ok: true,
+    });
+    expect(getProtocols(profile.id)[0].end_date).toBeNull();
+    expect(getActiveSituations(profile.id)).toContain("Cold block");
+  });
+
+  it("starts an expired protocol as a new run and preserves its history", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Red light block",
+        start_date: "1999-12-01",
+        end_date: "2000-01-01",
+        notes: "Morning sessions",
+        situation: "Recovery block",
+        outcome_keys: ["metric:weight"],
+        practice_type: "cardio",
+        practice_per_week: 3,
+        practice_per_week_max: 5,
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+    const originalTargetId = original.frequency_target_id;
+
+    const result = await runProtocolAgain(protocolForm({ id: original.id }));
+    expect(result).toMatchObject({
+      ok: true,
+      redirectTo: expect.stringMatching(/^\/protocols\/\d+$/),
+    });
+
+    const rows = getProtocols(profile.id);
+    expect(rows).toHaveLength(2);
+    const historical = rows.find((row) => row.id === original.id)!;
+    const restarted = rows.find((row) => row.id !== original.id)!;
+    expect(historical.end_date).toBe("2000-01-01");
+    expect(restarted).toMatchObject({
+      name: "Red light block",
+      end_date: null,
+      notes: "Morning sessions",
+      situation: "Recovery block",
+      outcomeKeys: ["metric:weight"],
+      owns_frequency_target: 1,
+    });
+    expect(restarted.start_date).not.toBe("1999-12-01");
+    expect(restarted.frequency_target_id).not.toBe(originalTargetId);
+    // The historical target remains addressable from the original protocol but
+    // no longer participates in weekly progress/reminders.
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?"
+        )
+        .get(profile.id)
+    ).toEqual({ n: 2 });
+    expect(getFrequencyTargets(profile.id)).toHaveLength(1);
+    expect(getActiveSituations(profile.id)).toContain("Recovery block");
+  });
+
+  it("runs an expired food-habit protocol again without violating target uniqueness", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Fatty fish block",
+        start_date: "1999-12-01",
+        end_date: "2000-01-01",
+        practice_type: "food_group:fatty_fish",
+        practice_per_week: 2,
+      })
+    );
+    const original = getProtocols(profile.id)[0];
+    const originalTargetId = original.frequency_target_id;
+
+    const result = await runProtocolAgain(protocolForm({ id: original.id }));
+    expect(result).toMatchObject({ ok: true });
+
+    const rows = getProtocols(profile.id);
+    const restarted = rows.find((row) => row.id !== original.id)!;
+    expect(restarted.frequency_target_id).toBe(originalTargetId);
+    expect(restarted.owns_frequency_target).toBe(1);
+    expect(
+      rows.find((row) => row.id === original.id)?.owns_frequency_target
+    ).toBe(0);
+    expect(getFrequencyTargets(profile.id)).toHaveLength(1);
   });
 });
 

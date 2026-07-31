@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #474: a silent-return validation guard + a trusting form used to produce a false
 // "Saved ✓" toast over lost data. The ImmunizationForm's vaccine Combobox has no
 // client-side required check, so submitting it blank hit updateImmunization/

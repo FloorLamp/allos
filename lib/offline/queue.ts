@@ -13,6 +13,11 @@
 // CAPTURED raw fields + date so a late replay lands on the day the user logged it
 // (issue #28, point 5), never the replay date.
 
+// Type-only (fully erased at build, so this module stays runtime-dependency-free):
+// the dose write cores' typed answer, which the replay disposition below maps onto
+// the queue's own vocabulary.
+import type { DoseTakenOutcome } from "@/lib/types";
+
 export type FlowKind = "dose" | "skip-dose" | "body-metric" | "vitals" | "mood";
 
 export const FLOW_KINDS: readonly FlowKind[] = [
@@ -31,6 +36,13 @@ export const FLOW_KINDS: readonly FlowKind[] = [
 // the client's local date at capture time.
 export interface DosePayload {
   doseId: number;
+  // The instant the user actually TAPPED (ISO), captured at tap and stamped onto the
+  // log's given_at when the replay lands (#1427) — a dose taken in a hospital waiting
+  // room at 08:12 must not read as taken at 19:40 when the phone finds signal again.
+  // The server VALIDATES it (lib/dose-log-window's resolveQueuedTakenAt) and falls
+  // back to the replay instant when it's unusable. OPTIONAL: absent on an intent
+  // queued before this shipped, and unused by "skip-dose" (a skip records no intake).
+  clientTakenAt?: string;
 }
 
 // Body-metric quick-add — the raw display-unit fields exactly as the form submits
@@ -56,9 +68,18 @@ export interface VitalsPayload {
   tempUnit: string | null;
   sleepHours: string | null;
   hrv: string | null;
-  gripStrength: string | null;
-  chairStand: string | null;
-  balance: string | null;
+  // The optional "HH:MM" reading time a temperature carries for the fever curve
+  // (#800/#843) — captured so a replayed reading keeps its clock time.
+  temperatureTime?: string | null;
+  // The three #158 functional-fitness markers. OPTIONAL since #1486: they left the
+  // daily measurements form for the guided Fitness check (assessment cadence), so a
+  // NEW queued intent never carries them — but an intent queued before the upgrade
+  // still sits in IndexedDB, and the replay must keep accepting it. The server core
+  // (insertVitals) is unchanged and still stores them under the same canonical
+  // names, so an old queued entry replays exactly as it would have.
+  gripStrength?: string | null;
+  chairStand?: string | null;
+  balance?: string | null;
 }
 
 // Mood check-in (issue #992) — the captured raw fields of the daily wellbeing
@@ -297,6 +318,79 @@ export function describeIntent(intent: QueuedIntent): string {
   };
   return `${label[intent.flow]} · ${intent.date}`;
 }
+
+// ── dose replay: honoring the typed outcome (#1427) ──────────────────────────
+//
+// The queued dose flows replay through the SAME write cores every other confirm path
+// uses (markDoseTaken / markDoseSkipped), which answer with a typed DoseTakenOutcome
+// rather than a boolean — precisely so a tap on a dose that has since been retired,
+// or whose item was paused, is never acknowledged as "Logged" (the two-way principle,
+// `docs/internals/supplements.md`). A replay is exactly that situation with a longer
+// gap, so the outcome must reach the USER: this maps it onto the queue's own
+// disposition vocabulary, and every refusal carries the reason the dead-letter panel
+// shows.
+//
+//   • logged / skipped                  → done (the write landed)
+//   • the SAME resolution already stands → done, idempotently. A confirm that finds
+//     the dose already taken is already-done, not a duplicate log — the whole point
+//     of a set-to intent.
+//   • the OTHER resolution stands        → rejected. A queued ✅ must not be reported
+//     as applied when the day is recorded as skipped (and vice versa); the set-to
+//     intent deliberately doesn't overwrite, so the honest answer is "we couldn't
+//     apply this", with the payload preserved for review (#280 + #475).
+//   • stale-dose / inactive              → rejected with the real reason.
+//
+// Pure, so the whole mapping is unit-tested rather than inferred from the route.
+export function classifyDoseReplay(
+  flow: "dose" | "skip-dose",
+  outcome: DoseTakenOutcome
+): { status: "done" | "rejected"; reason?: string } {
+  const taking = flow === "dose";
+  switch (outcome) {
+    case "logged":
+    case "skipped":
+      return { status: "done" };
+    case "already-taken":
+      return taking
+        ? { status: "done" }
+        : {
+            status: "rejected",
+            reason:
+              "This dose is already recorded as taken, so the offline skip wasn't applied.",
+          };
+    case "already-skipped":
+      return taking
+        ? {
+            status: "rejected",
+            reason:
+              "This dose is already recorded as skipped, so the offline confirm wasn't applied.",
+          }
+        : { status: "done" };
+    case "inactive":
+      return {
+        status: "rejected",
+        reason: taking
+          ? "This item is paused, so the dose wasn't logged."
+          : "This item is paused, so the skip wasn't recorded.",
+      };
+    case "stale-dose":
+    default:
+      return {
+        status: "rejected",
+        reason:
+          "This dose is no longer on the schedule (it was removed or changed), so it couldn't be saved.",
+      };
+  }
+}
+
+// The refusal shown when a queued dose entry sat unsent past the dose-log date window
+// — the write cores bound how far a log may land from the profile's today (#614), so
+// a very stale queue entry can't silently backdate a medication record. Split out from
+// the generic stale-dose reason because the remedy is different: the dose still
+// exists, it's the ENTRY that's too old, and the medication's dose history is where a
+// deliberate retro entry belongs.
+export const STALE_QUEUED_DOSE_REASON =
+  "This dose entry is too old to log automatically. Re-enter it from the medication's dose history.";
 
 // Is this HTTP status the "session expired / not authorized" signal? On it the
 // flush keeps EVERY entry queued and prompts the user to log in — a queued write is

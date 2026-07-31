@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   cycleTrackingRelevant,
   DEFAULT_NAV_RELEVANCE,
+  wellnessTrackingRelevant,
   type CycleRelevanceInput,
 } from "../nav-relevance";
 
@@ -114,5 +115,34 @@ describe("cycleTrackingRelevant", () => {
 describe("DEFAULT_NAV_RELEVANCE", () => {
   it("is all-true so an un-threaded caller never over-hides", () => {
     expect(Object.values(DEFAULT_NAV_RELEVANCE).every(Boolean)).toBe(true);
+  });
+});
+
+describe("wellnessTrackingRelevant", () => {
+  it("shows Wellness for a target-backed practice", () => {
+    expect(
+      wellnessTrackingRelevant({
+        hasPracticeTargets: true,
+        hasPracticeLogs: false,
+      })
+    ).toBe(true);
+  });
+
+  it("shows Wellness for a logs-only profile with no target (#1620)", () => {
+    expect(
+      wellnessTrackingRelevant({
+        hasPracticeTargets: false,
+        hasPracticeLogs: true,
+      })
+    ).toBe(true);
+  });
+
+  it("hides Wellness only when neither half of the practice store has data", () => {
+    expect(
+      wellnessTrackingRelevant({
+        hasPracticeTargets: false,
+        hasPracticeLogs: false,
+      })
+    ).toBe(false);
   });
 });

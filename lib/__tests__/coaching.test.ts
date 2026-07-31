@@ -1084,13 +1084,14 @@ describe("restRecommendation", () => {
     expect(rest?.detail).toContain("4 days in a row");
   });
 
-  // Anti-drift pin (#222): the overtraining nudge and the dashboard StreakWidget
-  // must read the SAME consecutive-day count. Coaching now calls currentStreak
-  // (the widget's source) directly, so prove they agree on the same fixture — if
-  // one ever forks, the number in the nudge copy stops matching currentStreak.
-  it("counts the streak the same way the dashboard widget does (currentStreak)", () => {
+  // Anti-drift pin (#222/#1398): the overtraining nudge's "trained N days in a row"
+  // is the STRICT consecutive-day count, and coaching calls currentStreak directly
+  // rather than re-deriving it — so prove they agree on the same fixture. (The
+  // user-facing "streak" is a different question with a different engine: #1398's
+  // rest-tolerant activityStreak. Different label, different number, on purpose.)
+  it("counts consecutive days the same way currentStreak does", () => {
     const dates = consecutiveDates(TODAY, 5);
-    const widgetStreak = currentStreak(TODAY, dates); // StreakWidget's source
+    const widgetStreak = currentStreak(TODAY, dates); // the strict consecutive run
     const rest = restRecommendation(input({ trainingDates: dates }), th);
     expect(rest?.id).toBe("rest-overtraining");
     expect(rest?.detail).toContain(`${widgetStreak} days in a row`);

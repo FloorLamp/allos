@@ -35,6 +35,19 @@ import { runWithingsSync } from "@/lib/integrations/withings-sync";
 import { runStravaSync } from "@/lib/integrations/strava-sync";
 import { runOuraSync } from "@/lib/integrations/oura-sync";
 import { getLatestSyncEvent } from "@/lib/queries";
+import { isTruncatedSyncEvent } from "@/lib/integrations/sync-details";
+
+// A run a provider cut short (page cap / 429) must be DISTINGUISHABLE from a clean
+// success in Review (#1614): its event stays ok:1 — the rows it did fetch landed and
+// nothing is broken — but carries a durable `truncated` marker plus its Review line,
+// which is what the Connected-sources card badges "partial" on. Asserted identically
+// for all three pull providers so their partial runs can't drift apart.
+function expectTruncatedEvent(profileId: number, provider: string): void {
+  const ev = getLatestSyncEvent(profileId, provider)!;
+  expect(ev.ok).toBe(1);
+  expect(isTruncatedSyncEvent(ev)).toBe(true);
+  expect(String(ev.details)).toContain("Partial sync");
+}
 
 function newProfile(name: string): number {
   return Number(
@@ -216,6 +229,9 @@ describe("runWithingsSync orchestrator", () => {
     expect(ev.updated).toBe(0);
     expect(ev.unchanged).toBe(0);
     expect(ev.written).toBe(W_EXPECTED_ROWS);
+    // A COMPLETE run carries no truncation marker, so Review renders it green (#1614).
+    expect(ev.details).toBeNull();
+    expect(isTruncatedSyncEvent(ev)).toBe(false);
 
     // A second identical run re-fetches the trailing window and dedups every row on
     // its natural key → all-unchanged (idempotence). The echoed updatetime equals the
@@ -314,6 +330,8 @@ describe("runWithingsSync orchestrator", () => {
     // re-fetches the whole window rather than stranding un-synced measurements.
     expect(getWithingsCursor(p)).toBe(before);
     expect(getWithingsCursor(p)).toBe(0);
+    // …and the event says PARTIAL rather than reading as a clean success (#1614).
+    expectTruncatedEvent(p, "withings");
   });
 
   it("the user-edit lock holds through the full orchestrator (#133)", async () => {
@@ -487,6 +505,7 @@ describe("runStravaSync orchestrator", () => {
     // Cursor stopped at ACT_1 — strictly before ACT_2's start.
     expect(getStravaCursor(p)).toBe(startSec(STRAVA_ACT_1));
     expect(getStravaCursor(p)).toBeLessThan(startSec(STRAVA_ACT_2));
+    expectTruncatedEvent(p, "strava");
   });
 });
 
@@ -627,5 +646,6 @@ describe("runOuraSync orchestrator", () => {
     expect(getOuraCursor(p)).toBeNull();
     // A transient 429 must never flip the connection out of connected.
     expect(statusOf(p, "oura")).toBe("connected");
+    expectTruncatedEvent(p, "oura");
   });
 });

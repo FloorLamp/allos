@@ -8,19 +8,52 @@ export function PageHeader({
   title,
   subtitle,
   action,
+  compactBelowSm = false,
+  actionAlign = "end",
+  className = "",
 }: {
   title: string;
   subtitle?: React.ReactNode;
   action?: React.ReactNode;
+  // Give up the whole heading band below `sm` (issue #1485 F, following the #1413
+  // dashboard precedent): the title goes `sr-only` and the subtitle is dropped, so
+  // the phone spends nothing on read-once copy while AT still hears the page's one
+  // h1. For a surface whose own chrome already answers "where am I" — Trends' F
+  // context bar names the tab AND the window on the line above the charts — and
+  // where the subtitle is orientation prose nobody reads twice. Off by default:
+  // most pages have nothing else naming them, and a heading-less page is a real
+  // loss there. Desktop is byte-identical either way.
+  compactBelowSm?: boolean;
+  actionAlign?: "start" | "end";
+  className?: string;
 }) {
+  // Compact below `md` (issue #1416, section A/D): a phone gives the heading a
+  // smaller share of a much shorter screen, so the title drops to text-xl and
+  // the gap to the content below halves. Desktop is unchanged. One tokenized
+  // change here reaches all ~50 pages that render this — the reason the ad-hoc
+  // <h1> pages were converted rather than restyled in place.
   return (
-    <div className="mb-6 flex items-end justify-between gap-4">
+    <div
+      className={`flex ${
+        actionAlign === "start" ? "items-start" : "items-end"
+      } justify-between gap-4 md:mb-6 ${
+        compactBelowSm ? "sm:mb-4" : "mb-4"
+      } ${className}`}
+    >
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        <h1
+          className={`text-xl font-bold text-slate-900 md:text-2xl dark:text-slate-100 ${
+            compactBelowSm ? "sr-only sm:not-sr-only" : ""
+          }`}
+        >
           {title}
         </h1>
         {subtitle && (
-          <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <div
+            className={`mt-1 text-sm text-slate-500 dark:text-slate-400 ${
+              compactBelowSm ? "hidden sm:block" : ""
+            }`}
+          >
             {subtitle}
           </div>
         )}
@@ -61,21 +94,40 @@ export function StatCard({
 // (#812): when the copy names a destination ("Log an activity…", "…in Settings →
 // Profile"), pass the link instead of leaving the user to navigate by hand — the
 // href is `AppRoute`, so a dead pathname is a `tsc` error (#285).
+//
+// `actions` is the SAME affordance for a surface fed by several independent
+// sources (#1410): the Timeline fills from activities, body metrics and imported
+// documents, and naming only one of them would be arbitrary. Pass one or the
+// other — `action` is the single-destination shorthand, and a caller supplying
+// both simply gets the singular one appended last. Every href stays `AppRoute`.
 export function EmptyState({
   message,
   action,
+  actions,
+  testId,
 }: {
   message: string;
   action?: { href: AppRoute; label: string };
+  actions?: ReadonlyArray<{ href: AppRoute; label: string }>;
+  // Optional stable hook for a surface whose empty state is itself the feature under
+  // test (the Timeline's, #1410) — the panel is otherwise addressable only by its
+  // copy, which is exactly the thing such a test is asserting.
+  testId?: string;
 }) {
+  const links = [...(actions ?? []), ...(action ? [action] : [])];
   return (
-    <div className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400">
+    <div
+      data-testid={testId}
+      className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
+    >
       {message}
-      {action && (
-        <div className="mt-4">
-          <Link href={action.href} className="btn btn-sm">
-            {action.label} →
-          </Link>
+      {links.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          {links.map((link) => (
+            <Link key={link.href} href={link.href} className="btn btn-sm">
+              {link.label} →
+            </Link>
+          ))}
         </div>
       )}
     </div>

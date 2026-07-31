@@ -5,7 +5,10 @@ import type { MemberTimeline } from "./timeline-multi";
 import { encounterTypeDisplay } from "./encounter-kind";
 import { vaccineDisplayName } from "./immunization-catalog";
 import { medicationCourseEvents } from "./medication-history";
-import { ENCOUNTER_REPRESENTATIVE_IDS } from "./queries/medical";
+import {
+  biomarkerPanelKey,
+  ENCOUNTER_REPRESENTATIVE_IDS,
+} from "./queries/medical";
 import {
   CONDITION_REPRESENTATIVE_IDS,
   ALLERGY_REPRESENTATIVE_IDS,
@@ -19,6 +22,7 @@ import {
   countTone,
   dateFromCreatedAt,
   journalActivityHref,
+  medicalGroupLabel,
   medicalRecordHref,
   parseDetailItems,
   protocolTimelineEvents,
@@ -56,6 +60,10 @@ import {
 } from "./illness-episode";
 import { episodeHeadline } from "./illness-episode-format";
 import { episodeHref } from "./hrefs";
+
+// The #1502 panel slug as SQL, built once (the finite-preimage CASE is a large
+// literal — building it per call would rebuild it on every timeline read).
+const BIOMARKER_PANEL_KEY = biomarkerPanelKey();
 
 export interface TimelineOptions {
   category?: TimelineEvent["category"];
@@ -264,7 +272,7 @@ function collectEvents(
     const activityBounds = exact("date");
     const activities = db
       .prepare(
-        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, notes, source, components
+        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, end_time, notes, source, components
            FROM activities
           WHERE profile_id = ?${restrictedActivityTypeClause(
             restricted
@@ -281,6 +289,7 @@ function collectEvents(
       distance_km: number | null;
       intensity: string | null;
       start_time: string | null;
+      end_time: string | null;
       notes: string | null;
       source: string | null;
       components: string | null;
@@ -310,6 +319,15 @@ function collectEvents(
           detail: a.notes,
           href: journalActivityHref(a.id),
           sortTime: a.start_time,
+          // The raw local window inputs for the intraday panel's workout block
+          // (#1068) — resolved through the canonical activityWindow(), so an
+          // activity with no start (or no derivable end) simply has no block.
+          clockWindow: {
+            date: a.date,
+            start_time: a.start_time,
+            end_time: a.end_time,
+            duration_min: a.duration_min,
+          },
           meta: a.source ? [a.source] : undefined,
           detailItems: setSummaries.get(a.id),
           iconType: a.type,
@@ -354,7 +372,7 @@ function collectEvents(
         title: "Body metrics logged",
         subtitle: compactList(meta, 3),
         detail: b.notes,
-        href: "/trends?tab=body",
+        href: "/trends#body",
         meta: b.source && b.source !== "manual" ? [b.source] : undefined,
       },
       options
@@ -362,9 +380,38 @@ function collectEvents(
   }
 
   const medicalBounds = exact("date");
+  // Medical events group by the NORMALIZED panel (#1502), not the document's
+  // free-text heading. That heading is provenance in practice — the seeded corpus
+  // titles a draw "Quest Diagnostics results" / "LabCorp results" — so the feed
+  // named the lab instead of saying what was measured. The group key is now the
+  // panel slug resolved from each row's canonical name (the finite-preimage
+  // BIOMARKER_PANEL_KEY, so JS and SQL can't disagree), which splits a multi-panel
+  // draw into per-panel events: "Lipids results — 6 results, 1 out of range"
+  // beside "Complete blood count results". Per-panel counts and tone are the point
+  // — one flagged lipid diluted across a 24-marker vendor group was unreadable.
+  //
+  // A row the taxonomy doesn't know (an un-canonicalized analyte the extractor
+  // coined) resolves to 'other'; rather than titling it "Other results", those
+  // rows fall back to EXACTLY the pre-#1502 key — the stored free-text panel, then
+  // the category — so nothing regresses for un-canonicalized data and the stored
+  // `panel` column keeps its provenance role (it is never rewritten).
+  //
+  // The event id embeds this group key. It is computed per request and never
+  // persisted (no dismissal, saved item, URL, or localStorage entry keys on it —
+  // medical events carry no clock time, so they produce no intraday anchor
+  // either), so re-keying it needs no #203 migration.
   const medicalGroups = db
     .prepare(
-      `SELECT date, COALESCE(NULLIF(TRIM(panel), ''), category) AS panel,
+      `WITH med AS (
+         SELECT *,
+                ${BIOMARKER_PANEL_KEY} AS panel_id,
+                COALESCE(NULLIF(TRIM(panel), ''), category) AS panel_fallback
+           FROM medical_records
+          WHERE profile_id = ?${medicalBounds.clause}
+       )
+       SELECT date, panel_id, panel_fallback,
+              CASE WHEN panel_id <> 'other' THEN panel_id ELSE panel_fallback END
+                AS group_key,
               COUNT(*) AS count,
               SUM(CASE WHEN flag IN ('high','low','abnormal') THEN 1 ELSE 0 END) AS abnormal_count,
               SUM(CASE WHEN flag LIKE 'non-optimal%' THEN 1 ELSE 0 END) AS nonoptimal_count,
@@ -381,15 +428,16 @@ function collectEvents(
               MAX(COALESCE(NULLIF(TRIM(canonical_name), ''), name)) AS first_name,
               MAX(document_id) AS document_id,
               MAX(source) AS source
-         FROM medical_records
-        WHERE profile_id = ?${medicalBounds.clause}
-        GROUP BY date, COALESCE(NULLIF(TRIM(panel), ''), category), document_id
+         FROM med
+        GROUP BY date, group_key, document_id
         ORDER BY date DESC
         LIMIT ?`
     )
     .all(profileId, ...medicalBounds.params, perTableLimit) as {
     date: string;
-    panel: string;
+    panel_id: string;
+    panel_fallback: string;
+    group_key: string;
     count: number;
     abnormal_count: number;
     nonoptimal_count: number;
@@ -406,10 +454,10 @@ function collectEvents(
     pushLimited(
       events,
       {
-        id: `medical:${m.date}:${m.panel}:${m.document_id ?? "manual"}`,
+        id: `medical:${m.date}:${m.group_key}:${m.document_id ?? "manual"}`,
         date: m.date,
         category: "medical",
-        title: `${m.panel} results`,
+        title: `${medicalGroupLabel(m.panel_id, m.panel_fallback)} results`,
         subtitle: `${m.count} result${m.count === 1 ? "" : "s"}${abnormal ? `, ${abnormal} out of range` : nonoptimal ? `, ${nonoptimal} non-optimal` : ""}`,
         detail: compactList(names, 5),
         href: medicalRecordHref(m.document_id, names, m.first_name),
@@ -664,7 +712,7 @@ function collectEvents(
         title: c.name,
         subtitle: resolved ? "Resolved condition" : `${c.status} condition`,
         detail: c.notes,
-        href: "/records/problems",
+        href: "/records/problems/conditions",
         sortTime: timeFromCreatedAt(c.created_at, tz),
         tone: resolved ? "good" : "default",
       },
@@ -711,7 +759,7 @@ function collectEvents(
           3
         ),
         detail: a.notes,
-        href: "/records/problems",
+        href: "/records/problems/allergies",
         sortTime: timeFromCreatedAt(a.created_at, tz),
         tone: a.status === "active" ? "warn" : "default",
       },

@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -9,6 +9,7 @@ import {
   E2E_MEMBER_PASSWORD,
   FORM_PLATEAU_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Issue #923 — the strength editor's two clickable fill paths + inline plateau hint,
 // each driven against its OWN dedicated fixture (#868 hygiene):
@@ -39,9 +40,7 @@ async function pickActivity(page: Page, name: string) {
 // against the shared seeded DB (the resetPreventiveFixture pattern from #206). Scoped to
 // this fixture profile so it never touches profile 1's Skullcrusher plateau dismissals.
 function resetFormPlateauDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -198,6 +197,11 @@ test("a plateaued lift shows the inline plateau hint (#923)", async ({
   }
 });
 
+// Training-watch rows on Training → Overview: the capped-open slice and the "show
+// all" overflow slice carry different testids since the #1496 rollup, and a finding
+// can legitimately be in either.
+const TRAINING_FINDING_ITEM = /^training-findings(-more)?-item$/;
+
 test("dismissing the form's plateau hint silences it on Training → Overview (#923)", async ({
   browser,
 }) => {
@@ -207,13 +211,16 @@ test("dismissing the form's plateau hint silences it on Training → Overview (#
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    // The Training-watch card shows the Skullcrusher plateau to begin with.
+    // The Training-watch card shows the Skullcrusher plateau to begin with. Since
+    // #1496 that card caps at three rows + a "show all" disclosure, so match BOTH the
+    // open rows and the overflow ones — the assertion is about the finding existing,
+    // not about which slice of the cap it happened to land in.
     await page.goto("/training?tab=overview");
     await expect(
       page
-        .getByTestId("training-findings-item")
+        .getByTestId(TRAINING_FINDING_ITEM)
         .filter({ hasText: "Skullcrusher" })
-    ).toBeVisible();
+    ).toHaveCount(1);
 
     // Dismiss it from the FORM's inline hint (same dedupeKey → shared suppression bus).
     await openNewActivity(page);
@@ -228,7 +235,7 @@ test("dismissing the form's plateau hint silences it on Training → Overview (#
     await page.goto("/training?tab=overview");
     await expect(
       page
-        .getByTestId("training-findings-item")
+        .getByTestId(TRAINING_FINDING_ITEM)
         .filter({ hasText: "Skullcrusher" })
     ).toHaveCount(0);
   } finally {

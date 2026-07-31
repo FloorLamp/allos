@@ -56,6 +56,38 @@ const DAYS_PER_YEAR = 365.25;
 
 export type TrajectoryRule = "approaching" | "persistent" | "velocity";
 
+// The dedupeKey namespace every trajectory finding is minted under, kept beside the
+// parser below so construction and parse can never drift apart.
+export const TRAJECTORY_KEY_PREFIX = "trajectory:";
+
+const TRAJECTORY_RULES: readonly TrajectoryRule[] = [
+  "approaching",
+  "persistent",
+  "velocity",
+];
+
+/**
+ * Recover the analyte + rule from a `trajectory:<analyte>:<rule>` dedupeKey.
+ *
+ * The Results-hub rollup (#1499 section B) folds an analyte's trajectory findings
+ * into ONE row and needs the analyte's name WITHOUT re-parsing a rendered title or
+ * minting a second key grammar — the same need `parseMuscleVolumeKey` serves the
+ * #1496 Training rollup. The rule is read off the LAST segment (canonical analyte
+ * names may themselves contain a colon), and an unknown/foreign key returns null so
+ * a caller renders it as an ordinary row rather than throwing.
+ */
+export function parseTrajectoryKey(
+  dedupeKey: string
+): { analyte: string; rule: TrajectoryRule } | null {
+  if (!dedupeKey.startsWith(TRAJECTORY_KEY_PREFIX)) return null;
+  const rest = dedupeKey.slice(TRAJECTORY_KEY_PREFIX.length);
+  const cut = rest.lastIndexOf(":");
+  if (cut <= 0) return null;
+  const rule = rest.slice(cut + 1);
+  if (!TRAJECTORY_RULES.includes(rule as TrajectoryRule)) return null;
+  return { analyte: rest.slice(0, cut), rule: rule as TrajectoryRule };
+}
+
 // A plain, already-resolved [low, high] band in the SAME unit as the points
 // (nulls = open bound). The caller resolves sex/age/status into these numbers so
 // the engine stays pure.
@@ -194,7 +226,7 @@ function baseFinding(
 > {
   return {
     domain: "trajectory",
-    dedupeKey: `trajectory:${input.analyte}:${rule}`,
+    dedupeKey: `${TRAJECTORY_KEY_PREFIX}${input.analyte}:${rule}`,
     // Shared analyte-level acknowledgment with the biomarker FLAG (#564): the flag
     // and the trajectory are two views of one concern about one analyte, so a
     // dismiss on EITHER records this one family-level key and both go quiet. The

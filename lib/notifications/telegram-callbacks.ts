@@ -2,8 +2,8 @@
 // the webhook route and the getUpdates poller both delegate here, so both paths
 // get identical profile-scoping and verification.
 
-import crypto from "node:crypto";
 import {
+  getDoseCadenceLabel,
   markDoseTaken,
   markDoseSkipped,
   recordPreventiveDone,
@@ -13,9 +13,6 @@ import {
   getDoseEscalateChatId,
   escalationAckState,
   logAdministration,
-  logPracticeByTargetId,
-  getPrnMedicationsForQuickLog,
-  getIntakeItemName,
 } from "../queries";
 import { today } from "../db";
 import { shiftDateStr } from "../date";
@@ -26,29 +23,14 @@ import {
   setFoodTelegramPrompted,
   getUserAge,
 } from "../settings";
-import { getProfileNameById } from "../profile-summary-load";
-import { administrationOutcomeText } from "../administration-format";
 import { logFoodServingCore } from "../food-log-write";
 import { addProteinGramsCore } from "../protein-log-write";
-import { logSymptomCore } from "../symptom-log-write";
-import { upsertMoodLog } from "../offline/writes";
-import { getMoodOnDate } from "../queries/mood";
-import { moodFace, moodLabel } from "../mood";
-import { logTemperatureCore } from "../temperature-log";
-import { getSymptomLogOrder, getCustomSymptomNames } from "../queries";
-import { symptomLabel, symptomSlugs, SYMPTOMS } from "../symptoms";
-import { currentEpisodeForProfile } from "../illness-episode";
-import { isTaskConfigured } from "../ai-resolve";
-import { mapSymptomText } from "../symptom-text-map";
-import { profileAgeMonths } from "../settings";
-import { inlineTempRedFlagNote } from "../temp-red-flag";
-import { queueTempRedFlagDispatch } from "./temp-red-flag";
-import { fmtTemp } from "../units";
-import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
 import { refillSignalKey } from "../refill-nudge";
 import { escalationMarkerKey } from "./escalate";
+import { resolveHouseholdTapAccess } from "./household-round-access";
+import { householdMemberLabel } from "./household-round";
 import {
   type AllCallback,
   type EscalationCallback,
@@ -60,10 +42,16 @@ import {
   type PreventiveTapOutcome,
   type RefillCallback,
   type RefillTapOutcome,
+  type HouseholdDoseCallback,
   type TakeCallback,
   OUTDATED_MESSAGE_TEXT,
+  householdStaleDateAnswerText,
+  householdTapAnswerText,
+  householdTapRefusalText,
+  parseHouseholdDoseCallback,
   escalationAckAnswerText,
   escalationAckCloseText,
+  escalationSkipCloseText,
   escalationTakeCloseText,
   foodLogAnswerText,
   foodOptInAnswerText,
@@ -71,6 +59,7 @@ import {
   foodProteinAnswerText,
   foodStaleDateAnswerText,
   foodTapDateGuard,
+  tapDateGuard,
   keyboardDoseFootprint,
   parseAllCallback,
   parseEscalationCallback,
@@ -80,12 +69,14 @@ import {
   parseFoodProteinCallback,
   parsePreventiveCallback,
   parsePrnLogCallback,
+  parseOfferTailCallback,
+  parseDemoteCallback,
   parsePracticeDoneCallback,
-  practiceDoneAnswerText,
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
   parseMoodCheckinCallback,
+  parseMoodKeepCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
   parseTempReply,
@@ -139,6 +130,38 @@ import {
 import type { TelegramMessage } from "./telegram-api";
 import { resolveTelegramRecipients } from "./fan-out";
 import type { NotificationAction } from "./types";
+import type { DoseTakenOutcome } from "../types";
+export {
+  handleDoseCommand,
+  handleIncomingMessage,
+  handleSymptomCommand,
+  handleSymptomTextIntake,
+  handleTempCommand,
+  handleTempReply,
+} from "./telegram-quick-log";
+import {
+  handleMoodTap,
+  handleMoodKeepTap,
+  handlePracticeDoneTap,
+  handlePrnLogTap,
+  handleOfferTailTap,
+  handleDemoteTap,
+  handleSymptomPick,
+  handleSymptomSeverity,
+} from "./telegram-quick-log";
+
+// The cadence phrase for an OFF-DAY confirm, or null on every other outcome (#1602).
+// Gated on the outcome so the ordinary confirm path never pays for the lookup, and
+// centralized here so both tap sites answer an off-cadence log identically.
+function offDayCadence(
+  profileId: number,
+  doseId: number,
+  outcome: DoseTakenOutcome
+): string | null {
+  return outcome === "logged-off-day"
+    ? getDoseCadenceLabel(profileId, doseId)
+    : null;
+}
 
 // "⏰ Remind later" on a preventive nudge snoozes the finding a week out — the item
 // isn't urgent, so a short reprieve without losing it. Refill "📦 Ordered" snoozes
@@ -192,6 +215,16 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // Household dose round (#1459): a caregiver's cross-profile confirm. Parsed BEFORE
+  // the generic paths because its token names two profiles and resolves its own
+  // access edge (chat → receiving profile → member write grant), not the shared
+  // chat→profile resolution a single-subject tap uses.
+  const household = parseHouseholdDoseCallback(cq.data);
+  if (household) {
+    await handleHouseholdDoseTap(cq, household);
+    return;
+  }
+
   // Stale-workout nudge (#1205): 🏁 Finish workout / 🗑 Discard — resolve a quiet
   // live draft in place through the shared finish/discard cores.
   const workoutFinish = parseWorkoutFinishCallback(cq.data);
@@ -227,6 +260,24 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // ⤓ May (#1505 part 2): accept the demotion suggestion riding this reminder. The
+  // one obligation write the notification layer can make — user-initiated, downward,
+  // and through the same compare-and-swap core the in-app card uses.
+  const demote = parseDemoteCallback(cq.data);
+  if (demote) {
+    await handleDemoteTap(cq, demote);
+    return;
+  }
+
+  // The digest's offer tail (#1505): expand/collapse the "Log other…" button in
+  // place. Checked BEFORE the prn: log tokens because the expanded keyboard is made
+  // of those, and a tail tap must never be mistaken for a log.
+  const offerTail = parseOfferTailCallback(cq.data);
+  if (offerTail) {
+    await handleOfferTailTap(cq, offerTail);
+    return;
+  }
+
   // PRN administration logging (#797): a "💊 <med>" button from the /dose command
   // logs one as-needed administration NOW.
   const prn = parsePrnLogCallback(cq.data);
@@ -251,6 +302,14 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // "Keep daily check-ins" (#1668): the confirm-to-KEEP affordance the final reminder
+  // carries before the auto-pause takes effect.
+  const moodKeep = parseMoodKeepCallback(cq.data);
+  if (moodKeep) {
+    await handleMoodKeepTap(cq, moodKeep);
+    return;
+  }
+
   // Symptom quick-log (#859 item 5): a "<symptom>" button opens a severity picker;
   // a severity button logs the symptom-day.
   const symPick = parseSymptomPickCallback(cq.data);
@@ -264,466 +323,15 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // Unknown/malformed token: ack so the client stops the spinner, do nothing.
-  await answerCallbackQuery(cq.id);
+  // Unknown/malformed token — a button from a message whose token shape has since
+  // been retired. Nothing is written, so answer honestly rather than silently (#1716).
+  await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
 }
 
 // A per-render nonce carried in a PRN log button's callback_data — the "dedup
 // token". It doesn't itself enforce dedup (logAdministration's short-window guard
 // does that, since a PRN log is not idempotent); it keeps a redelivered identical
 // callback distinguishable and each rendered button unique.
-function prnLogToken(): string {
-  return crypto.randomBytes(4).toString("hex");
-}
-
-// `/dose` command (#797): list the chat's active PRN (as-needed) medications, each
-// as a one-tap "💊 <med>" button that logs an administration now. A chat can map to
-// several profiles (a family chat), so buttons for a multi-profile chat are prefixed
-// with the profile name; the callback token carries the profile id (re-checked
-// against the chat on tap). Sends through the chokepoint (sendTelegramMessage).
-export async function handleDoseCommand(
-  message: TelegramMessage
-): Promise<void> {
-  const text = (message.text ?? "").trim();
-  // Match "/dose" or "/dose@botname" (any trailing args are ignored in v1).
-  if (!/^\/dose(@\w+)?(\s|$)/i.test(text)) return;
-  const chatId = message.chat?.id;
-  if (chatId == null) return;
-
-  const profileIds = getProfilesByTelegramChatId(String(chatId));
-  if (profileIds.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "Log a PRN dose",
-      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
-    });
-    return;
-  }
-
-  const multi = profileIds.length > 1;
-  const actions: NotificationAction[] = [];
-  for (const pid of profileIds) {
-    const prefix = multi ? `${getProfileNameById(pid) ?? "Profile"}: ` : "";
-    for (const m of getPrnMedicationsForQuickLog(pid)) {
-      const dose = formatMedicationDoseProduct(m.amount, m.product);
-      actions.push({
-        label: `💊 ${prefix}${m.name}${dose ? ` · ${dose}` : ""}${m.count > 0 ? ` (${m.count} today)` : ""}`,
-        data: `prn:${pid}:${m.id}:${prnLogToken()}`,
-      });
-    }
-  }
-
-  if (actions.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "Log a PRN dose",
-      body: "No as-needed medications are set up. Add one under Medications in the app.",
-    });
-    return;
-  }
-
-  await sendTelegramMessage(chatId, {
-    title: "Log a PRN dose",
-    body: "Tap a medication to record a dose now:",
-    actions,
-  });
-}
-
-// A PRN log button tap: log one administration NOW for the named item, scoped to the
-// profile resolved from the chat (never the token's profile id on its own). Answers
-// from the typed AdministrationOutcome — never an unconditional "Logged" (the
-// markDoseTaken contract) — and deliberately leaves the /dose message + buttons in
-// place so the user can log again later (a PRN med is given multiple times a day).
-async function handlePrnLogTap(
-  cq: TelegramCallbackQuery,
-  token: PrnLogCallback
-): Promise<void> {
-  const chatId = cq.message?.chat?.id;
-  const profileId =
-    chatId != null
-      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
-      : null;
-  if (profileId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
-    return;
-  }
-  const outcome = logAdministration(profileId, token.itemId);
-  const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
-  await answerCallbackQuery(cq.id, administrationOutcomeText(outcome, name));
-}
-
-// A practice "Done ✓" tap (#1259): log one session NOW for the tapped target's practice,
-// scoped to the profile resolved from the chat (never the token's profile id alone).
-// Answers from the typed PracticeLogOutcome — never an unconditional confirm (a session
-// log is not idempotent) — and CONSUMES the tapped button so a stale message can't
-// double-log; sibling practice buttons survive so the nudge stays usable.
-async function handlePracticeDoneTap(
-  cq: TelegramCallbackQuery,
-  token: PracticeDoneCallback
-): Promise<void> {
-  const chatId = cq.message?.chat?.id;
-  const profileId =
-    chatId != null
-      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
-      : null;
-  if (profileId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
-    return;
-  }
-  const outcome = logPracticeByTargetId(profileId, token.targetId);
-  await answerCallbackQuery(cq.id, practiceDoneAnswerText(outcome));
-
-  const messageId = cq.message?.message_id;
-  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
-  if (chatId == null || messageId == null || rows.length === 0) return;
-  const remaining = removeButton(rows, cq.data as string);
-  if (remaining.length === 0) {
-    await closeMessage(
-      chatId,
-      messageId,
-      replacementWithTitle(
-        cq.message?.text,
-        outcome.kind === "logged" ? "Logged ✅" : OUTDATED_MESSAGE_TEXT
-      )
-    );
-  } else {
-    await updateMessageKeyboard(chatId, messageId, remaining);
-  }
-}
-
-// The profile's top symptoms for the quick-log grid: its recency-ranked logged
-// symptoms, falling back to a handful of common curated symptoms for a profile that
-// hasn't logged any yet. Capped so the grid stays tappable.
-const SYMPTOM_GRID_CAP = 8;
-function symptomGridKeys(profileId: number): string[] {
-  const ranked = getSymptomLogOrder(profileId).slice(0, SYMPTOM_GRID_CAP);
-  if (ranked.length > 0) return ranked;
-  return SYMPTOMS.slice(0, SYMPTOM_GRID_CAP).map((s) => s.slug);
-}
-
-// `/symptom` command (#859 item 5): list the chat's profiles' ranked symptoms, each a
-// one-tap button that opens a severity picker. A multi-profile chat prefixes buttons
-// with the profile name; the callback token carries the profile id (re-checked on tap).
-export async function handleSymptomCommand(
-  message: TelegramMessage
-): Promise<void> {
-  const text = (message.text ?? "").trim();
-  if (!/^\/symptoms?(@\w+)?(\s|$)/i.test(text)) return;
-  const chatId = message.chat?.id;
-  if (chatId == null) return;
-
-  const profileIds = getProfilesByTelegramChatId(String(chatId));
-  if (profileIds.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "Log a symptom",
-      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
-    });
-    return;
-  }
-
-  const multi = profileIds.length > 1;
-  const actions: NotificationAction[] = [];
-  for (const pid of profileIds) {
-    const prefix = multi ? `${getProfileNameById(pid) ?? "Profile"}: ` : "";
-    for (const slug of symptomGridKeys(pid)) {
-      actions.push({
-        label: `${prefix}${symptomLabel(slug)}`,
-        data: `symp:${pid}:${slug}`,
-      });
-    }
-  }
-
-  await sendTelegramMessage(chatId, {
-    title: "Log a symptom",
-    body: "Tap a symptom, then choose how bad it is:",
-    actions,
-  });
-}
-
-// A symptom button tap: replace the grid with a severity picker for the chosen symptom.
-async function handleSymptomPick(
-  cq: TelegramCallbackQuery,
-  token: SymptomPickCallback
-): Promise<void> {
-  const chatId = cq.message?.chat?.id;
-  const messageId = cq.message?.message_id;
-  const profileId =
-    chatId != null
-      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
-      : null;
-  if (profileId == null || chatId == null || messageId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
-    return;
-  }
-  const label = symptomLabel(token.slug);
-  const actions: NotificationAction[] = [1, 2, 3, 4].map((sev) => ({
-    label: SYMPTOM_SEVERITY_LABELS[sev],
-    data: `symsev:${profileId}:${sev}:${token.slug}`,
-    row: "sev",
-  }));
-  await rebuildMessage(profileId, chatId, messageId, {
-    title: `Log a symptom: ${label}`,
-    body: "How bad is it?",
-    actions,
-  });
-  await answerCallbackQuery(cq.id);
-}
-
-// A severity button tap: log the symptom-day and answer from the typed outcome (never
-// an unconditional confirm — the markDoseTaken contract). Closes the picker on success.
-// A mood check-in face tap (#992). Runs the SAME upsertMoodLog core as the
-// dashboard card and the offline replay (idempotent per profile+date — which also
-// resets the reminder's ignored counter, re-arming an auto-paused check-in), and
-// answers from the write's actual outcome — never an unconditional confirm. A tap
-// on a day that ALREADY has a check-in (e.g. an old message tapped after logging
-// in-app) carries the stored expand fields along so it only changes the valence.
-async function handleMoodTap(
-  cq: TelegramCallbackQuery,
-  token: MoodCheckinCallback
-): Promise<void> {
-  const chatId = cq.message?.chat?.id;
-  const messageId = cq.message?.message_id;
-  const profileId =
-    chatId != null
-      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
-      : null;
-  if (profileId == null || chatId == null || messageId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
-    return;
-  }
-  const existing = getMoodOnDate(profileId, token.date);
-  const ok = upsertMoodLog(profileId, token.date, {
-    valence: token.valence,
-    energy: existing?.energy ?? null,
-    anxiety: existing?.anxiety ?? null,
-    factors: existing?.factors ?? [],
-    note: existing?.notes ?? null,
-  });
-  if (!ok) {
-    await answerCallbackQuery(cq.id, "Couldn't log that check-in.");
-    return;
-  }
-  const label = moodLabel(token.valence);
-  await answerCallbackQuery(cq.id, `Logged: ${label}`);
-  await closeMessage(
-    chatId,
-    messageId,
-    `${moodFace(token.valence)} Logged — ${label}. Thanks for checking in.`
-  );
-}
-
-async function handleSymptomSeverity(
-  cq: TelegramCallbackQuery,
-  token: SymptomSeverityCallback
-): Promise<void> {
-  const chatId = cq.message?.chat?.id;
-  const messageId = cq.message?.message_id;
-  const profileId =
-    chatId != null
-      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
-      : null;
-  if (profileId == null || chatId == null || messageId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
-    return;
-  }
-  const outcome = logSymptomCore(
-    profileId,
-    token.slug,
-    token.severity,
-    today(profileId)
-  );
-  if (outcome.kind === "invalid") {
-    await answerCallbackQuery(cq.id, "Couldn't log that symptom.");
-    return;
-  }
-  const label = symptomLabel(outcome.symptom);
-  const sevLabel =
-    SYMPTOM_SEVERITY_LABELS[outcome.severity] ?? String(outcome.severity);
-  await answerCallbackQuery(
-    cq.id,
-    `Logged: ${label} (${sevLabel.toLowerCase()})`
-  );
-  await closeMessage(chatId, messageId, `✅ Logged ${label} — ${sevLabel}.`);
-}
-
-// `/temp` command (#859 item 5): prompt the chat to REPLY with a reading. The prompt
-// body carries a "(#temp:<profileId>)" marker per profile, so the reply
-// (handleTempReply) attributes without any server-side pending state. A multi-profile
-// chat gets one named prompt each.
-export async function handleTempCommand(
-  message: TelegramMessage
-): Promise<void> {
-  const text = (message.text ?? "").trim();
-  if (!/^\/temp(erature)?(@\w+)?(\s|$)/i.test(text)) return;
-  const chatId = message.chat?.id;
-  if (chatId == null) return;
-
-  const profileIds = getProfilesByTelegramChatId(String(chatId));
-  if (profileIds.length === 0) {
-    await sendTelegramMessage(chatId, {
-      title: "Log a temperature",
-      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
-    });
-    return;
-  }
-
-  const multi = profileIds.length > 1;
-  for (const pid of profileIds) {
-    const who = multi ? `${getProfileNameById(pid) ?? "Profile"}'s ` : "";
-    await sendTelegramMessage(chatId, {
-      title: "Log a temperature",
-      body:
-        `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
-        `(add C or F to be explicit). ${tempReplyMarker(pid)}`,
-    });
-  }
-}
-
-// A reply to a `/temp` prompt (#859 item 5): resolve the profile from the prompt's
-// marker, parse the value + unit from the reply body, log it, and answer honestly from
-// the typed TemperatureLogOutcome — with the single-reading red-flag note when the
-// reading crosses one. Returns whether the message was a temp reply (so the message
-// dispatcher can stop). Never unconditionally confirms.
-export async function handleTempReply(
-  message: TelegramMessage
-): Promise<boolean> {
-  const chatId = message.chat?.id;
-  const replyText = message.reply_to_message?.text;
-  const markedProfile = parseTempReplyMarker(replyText);
-  if (chatId == null || markedProfile == null) return false;
-
-  // Only honor the marker when the profile is actually reachable from this chat.
-  const profileIds = getProfilesByTelegramChatId(String(chatId));
-  if (!profileIds.includes(markedProfile)) {
-    await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
-      body: "That profile isn't linked to this chat anymore.",
-    });
-    return true;
-  }
-
-  const parsed = parseTempReply(message.text);
-  if (!parsed) {
-    await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
-      body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
-    });
-    return true;
-  }
-
-  const date = today(markedProfile);
-  const outcome = logTemperatureCore(
-    markedProfile,
-    parsed.value,
-    parsed.unit,
-    date
-  );
-  if (outcome.kind === "invalid") {
-    await sendTelegramMessage(chatId, {
-      title: "Temperature not logged",
-      body: outcome.error,
-    });
-    return true;
-  }
-  // Event-driven red-flag push (#1025): a crossing reading dispatches the
-  // co-caregiver nudge NOW (fire-and-forget, quiet-hours exempt like redose); the
-  // per-finding marker + bus own dedup, so the logger's own toast below and the
-  // push can't double-nag.
-  queueTempRedFlagDispatch(markedProfile, outcome.degF);
-  const redFlag = inlineTempRedFlagNote(
-    outcome.degF,
-    profileAgeMonths(markedProfile, date)
-  );
-  const feverNote = outcome.flag === "high" ? " — fever" : "";
-  await sendTelegramMessage(chatId, {
-    title: `Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
-    body: redFlag ?? "Logged.",
-  });
-  return true;
-}
-
-// The ONE inbound text-message dispatcher (webhook + poller both call this): a reply to
-// a temp prompt first, then the slash commands. Keeps routing in one place so both
-// transports behave identically.
-export async function handleIncomingMessage(
-  message: TelegramMessage
-): Promise<void> {
-  if (await handleTempReply(message)) return;
-  await handleSymptomCommand(message);
-  await handleTempCommand(message);
-  await handleDoseCommand(message);
-  // Free-text symptom intake (#877): a plain sentence during an open episode maps onto
-  // the vocabulary and replies with confirm buttons — runs AFTER the command handlers
-  // (which no-op on non-command text) and only when a temp reply didn't claim it.
-  await handleSymptomTextIntake(message);
-}
-
-// Free-text symptom intake (issue #877): map a plain-text message onto the symptom
-// vocabulary via the Light tier and reply with per-symptom confirm buttons that reuse
-// the existing severity handler (suggest-only — nothing logs until a button is tapped).
-// Deliberately conservative so ordinary chat isn't hijacked: only fires for a
-// SINGLE-profile chat with an OPEN illness episode, and only when the Light tier is
-// configured. Returns true when it took over the message.
-export async function handleSymptomTextIntake(
-  message: TelegramMessage
-): Promise<boolean> {
-  const text = (message.text ?? "").trim();
-  if (!text || text.startsWith("/")) return false;
-  const chatId = message.chat?.id;
-  if (chatId == null) return false;
-  if (!isTaskConfigured("symptom-map")) return false;
-
-  // One profile per chat only — a plain sentence carries no profile token, so a
-  // multi-profile chat can't be safely attributed (never guess whose symptom it is).
-  const profileIds = getProfilesByTelegramChatId(String(chatId));
-  if (profileIds.length !== 1) return false;
-  const profileId = profileIds[0];
-
-  // Gate on an open illness episode so chit-chat isn't parsed as symptoms.
-  if (!currentEpisodeForProfile(profileId)) return false;
-
-  const outcome = await mapSymptomText(text, {
-    slugs: symptomSlugs(),
-    labels: Object.fromEntries(SYMPTOMS.map((s) => [s.slug, s.label])),
-    customNames: getCustomSymptomNames(profileId),
-  });
-  if (outcome.status !== "ok") return false;
-
-  // Confirm buttons only for CURATED slugs — their callback data is colon-safe. Custom
-  // proposals + unmapped fragments are named in the body for the user to add in-app.
-  const curated = outcome.mapping.symptoms.filter((s) => !s.isCustom);
-  if (curated.length === 0) return false;
-  const actions: NotificationAction[] = curated.map((s) => ({
-    label: `${symptomLabel(s.slug)} — ${SYMPTOM_SEVERITY_LABELS[s.severity] ?? s.severity}`,
-    data: `symsev:${profileId}:${s.severity}:${s.slug}`,
-  }));
-
-  const extras: string[] = [];
-  if (outcome.mapping.temperature) {
-    const t = outcome.mapping.temperature;
-    extras.push(`🌡 Temperature ${t.value}°${t.unit} — log it with /temp.`);
-  }
-  const notMapped = [
-    ...outcome.mapping.symptoms.filter((s) => s.isCustom).map((s) => s.label),
-    ...outcome.mapping.unmapped,
-  ];
-  if (notMapped.length > 0) {
-    extras.push(`Not mapped: ${notMapped.join(", ")} — add these in the app.`);
-  }
-
-  await sendTelegramMessage(chatId, {
-    title: "Log these symptoms?",
-    body:
-      "Tap each to confirm — nothing is logged until you do." +
-      (extras.length ? `\n${extras.join("\n")}` : ""),
-    actions,
-  });
-  return true;
-}
-
-// Drop the tapped button's WHOLE row and, when it was the last row, replace the
-// message text with a closing line (buttons gone). Shared by the preventive and
-// refill handlers, whose per-item rows each resolve one item. Mirrors the dose
-// handler's keyboard-rebuild discipline: only act when the message actually had
-// buttons, so an absent keyboard can't overwrite the text.
 async function consumeRow(
   cq: TelegramCallbackQuery,
   closingText: string
@@ -808,7 +416,7 @@ async function handlePreventiveTap(
       ? resolveTapProfile(pv, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const outcome = applyPreventiveTap(profileId, pv);
@@ -847,7 +455,7 @@ async function handleRefillTap(
       ? resolveTapProfile(rf, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const outcome = applyRefillTap(profileId, rf);
@@ -871,7 +479,7 @@ async function handleEscalationTap(
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   // The chats authorized to act on this escalation: every chat the escalation could
@@ -887,7 +495,24 @@ async function handleEscalationTap(
   ];
   const profileId = resolveEscalationTap(esc, String(chatId), authorizedChats);
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+
+  if (esc.action === "skip") {
+    // ⏭ Skip → markDoseSkipped, the SAME write the dose reminder's skip performs, so
+    // the ledger cannot tell the two apart (#1716). A skip is a decision: it ends the
+    // escalation loop through the existing skippedDoseIds gate rather than needing a
+    // marker of its own. Never an unconditional confirm — an already-taken or stale
+    // dose is answered by the status that actually stands.
+    const outcome = markDoseSkipped(
+      profileId,
+      esc.doseId,
+      esc.suppId,
+      esc.date
+    );
+    await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome));
+    await replaceMessage(cq, escalationSkipCloseText(outcome));
     return;
   }
 
@@ -898,7 +523,10 @@ async function handleEscalationTap(
     // status that actually stands — the toast and the replacement body come from
     // the same outcome so they can't disagree.
     const outcome = markDoseTaken(profileId, esc.doseId, esc.suppId, esc.date);
-    await answerCallbackQuery(cq.id, tapAnswerText(outcome));
+    await answerCallbackQuery(
+      cq.id,
+      tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome))
+    );
     await replaceMessage(cq, escalationTakeCloseText(outcome));
     return;
   }
@@ -1012,9 +640,12 @@ async function handleDoseTap(
       : null;
   if (profileId == null) {
     // A chat that maps to no configured profile (or a token minted for a
-    // profile that doesn't share this chat): ack to stop Telegram retrying,
-    // then do nothing.
-    await answerCallbackQuery(cq.id);
+    // profile that doesn't share this chat): write nothing and SAY SO (#1716). A
+    // silent ack stops the spinner and reads as success — on the safety tier that
+    // means a caregiver believing a critical dose is confirmed when nothing was
+    // logged. Every refusal answers the same honest text the seven sibling handlers
+    // already used.
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
 
@@ -1029,7 +660,9 @@ async function handleDoseTap(
       : markDoseSkipped(profileId, tap.doseId, tap.suppId, tap.date);
   await answerCallbackQuery(
     cq.id,
-    kind === "take" ? tapAnswerText(outcome) : tapSkipAnswerText(outcome)
+    kind === "take"
+      ? tapAnswerText(outcome, offDayCadence(profileId, tap.doseId, outcome))
+      : tapSkipAnswerText(outcome)
   );
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -1091,6 +724,91 @@ async function handleDoseTap(
   }
 }
 
+// A household-round confirm (#1459): a caregiver taps "✓ Ada · Vitamin D3" in their
+// OWN chat to log a dose for ANOTHER profile. The two-way principle's qualifying case
+// exactly — one idempotent, low-risk state change through an existing server function
+// (markDoseTaken) — so it earns a button rather than a deep link.
+//
+// The access edge is re-resolved HERE, at tap time, never trusted from send time: the
+// stored subscription is data, the live grants are the authority. A refusal answers
+// honestly and writes nothing; a permitted tap answers from markDoseTaken's typed
+// outcome, so a retired dose, a paused item or an already-taken dose each get their
+// own truthful toast instead of a reflexive ✓.
+async function handleHouseholdDoseTap(
+  cq: TelegramCallbackQuery,
+  tap: HouseholdDoseCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  if (chatId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const access = resolveHouseholdTapAccess(String(chatId), tap);
+  if (access.kind !== "allowed") {
+    // Nothing was written. Say which of the three gates closed, and leave the
+    // keyboard alone — the button may become valid again (a re-granted member), and
+    // silently consuming it would strand the caregiver with no way to confirm.
+    await answerCallbackQuery(cq.id, householdTapRefusalText(access));
+    return;
+  }
+
+  // DATE GUARD (#1719), belt-and-braces with the send-time keyboard rotation. The
+  // token carries the member's SEND-TIME date, so a tap on a round that survived into
+  // the next morning would confirm a dose against YESTERDAY — for someone else's
+  // medication. Compared against the MEMBER's today, never the receiver's, because a
+  // round can legitimately span two calendar dates in a mixed-timezone household.
+  // Nothing is written and the keyboard is left alone (the same posture as an access
+  // refusal: a stale button is not a forged one).
+  if (
+    tapDateGuard(tap.date, today(tap.memberProfileId)).kind === "stale-date"
+  ) {
+    await answerCallbackQuery(cq.id, householdStaleDateAnswerText(tap.date));
+    return;
+  }
+
+  // The write runs under the MEMBER's profile id — the same scope the in-app
+  // cross-profile confirm uses (requireProfileWriteAccess(targetProfile) →
+  // applyDoseStatus) — and markDoseTaken independently re-verifies the
+  // dose → item → profile chain, so a forged id cannot cross profiles here.
+  // `tap.date` is the MEMBER's own profile-local day, stamped at send time.
+  const outcome = markDoseTaken(
+    tap.memberProfileId,
+    tap.doseId,
+    tap.itemId,
+    tap.date
+  );
+  await answerCallbackQuery(
+    cq.id,
+    householdTapAnswerText(
+      householdMemberLabel(tap.receiverProfileId, tap.memberProfileId),
+      outcome
+    )
+  );
+
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  const messageId = cq.message?.message_id;
+  if (messageId == null || rows.length === 0) return;
+  // Consume ONLY the tapped button — a row here is one MEMBER, so dropping the row
+  // would take that member's other doses down with it. When the last one goes, close
+  // the message with text that matches the truth: "All done" only if this tap actually
+  // resolved its dose.
+  const remaining = removeButton(rows, cq.data as string);
+  if (remaining.length === 0) {
+    await closeMessage(
+      chatId,
+      messageId,
+      replacementWithTitle(
+        cq.message?.text,
+        tapResolved(outcome)
+          ? "Household round done 💊✅"
+          : OUTDATED_MESSAGE_TEXT
+      )
+    );
+  } else {
+    await updateMessageKeyboard(chatId, messageId, remaining);
+  }
+}
+
 // Mark every pending dose in the tapped session's window taken in one tap. The
 // window + date are baked into the token, so a late tap still logs to the right
 // day. Profile resolution and the per-dose verification mirror a single "taken"
@@ -1106,7 +824,7 @@ async function handleAllTaken(
       ? resolveTapProfile(all, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
 
@@ -1196,7 +914,7 @@ async function handleFoodLog(
       ? resolveTapProfile(food, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   // Belt-and-suspenders cross-date guard (#947): a stale keyboard from a previous day
@@ -1209,7 +927,23 @@ async function handleFoodLog(
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(food.date));
     return;
   }
-  const outcome = logFoodServingCore(profileId, food.group, food.date);
+  // Pass the NUDGE'S OWN window as the explicit meal slot (#1704). The callback token
+  // asserts the window the user is logging for — it was baked in at send time — so the
+  // explicit slot is MORE honest than one derived from the tap instant: a 21:30 tap on
+  // the dinner nudge really was dinner. Omitting it stored meal_slot = null, so
+  // foodEventWindow re-derived the window from WHEN the tap landed; a tap past the
+  // nudge's slot boundary then bucketed into the later window while the rebuild asked
+  // for `food.window`, and the button's "(n)" suffix rendered 0 even though the serving
+  // logged correctly (it still showed in the day tally). With the slot carried
+  // explicitly the count matches the button pressed, and the #950 ranking + #1016
+  // counts stay consistent because both read the same foodEventWindow derivation.
+  const outcome = logFoodServingCore(
+    profileId,
+    food.group,
+    food.date,
+    undefined,
+    food.window
+  );
   await answerCallbackQuery(cq.id, foodLogAnswerText(outcome, food.group));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -1248,14 +982,24 @@ async function handleFoodProtein(
       ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   if (foodTapDateGuard(token.date, today(profileId)).kind === "stale-date") {
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(token.date));
     return;
   }
-  const outcome = addProteinGramsCore(profileId, token.date, token.grams);
+  // The protein sibling of the #1704 omission. Its button carries the SAME #1016
+  // slot-scoped "(n)" suffix (#1379), read from the __protein__ ledger row, so a tap
+  // outside the nudge's window derived a later slot and lost the count exactly like a
+  // food-group tap. The token's window is the asserted one, so pass it explicitly.
+  const outcome = addProteinGramsCore(
+    profileId,
+    token.date,
+    token.grams,
+    undefined,
+    token.window
+  );
   await answerCallbackQuery(cq.id, foodProteinAnswerText(outcome, token.grams));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -1293,7 +1037,7 @@ async function handleFoodMore(
     messageId == null ||
     rows.length === 0
   ) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   const current = countVisibleFoodButtons(rows);
@@ -1322,7 +1066,7 @@ async function handleFoodOptIn(
       ? resolveTapProfile(opt, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
   setProfileFoodTelegram(profileId, opt.enable);

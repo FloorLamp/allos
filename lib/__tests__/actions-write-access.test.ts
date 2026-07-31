@@ -54,6 +54,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#1333): resolves one sync event's per-row provenance (getSyncRowProvenance) for the Connected-sources drill-in — profile-scoped read, writes nothing, so login-scoped requireSession() is the right gate",
   },
   {
+    file: "app/(app)/quick-entry-actions.ts",
+    fn: "loadQuickEntry",
+    why: "read-only (#1468): gathers the props for the quick-entry overlay's forms (unit prefs, the day's food servings + ordered catalog, today's due doses) — every WRITE still goes through the mounted form's own gated action (addMeasurements / logFoodServing / markTaken), so login-scoped requireSession() is the right gate",
+  },
+  {
     file: "app/(app)/search-actions.ts",
     fn: "runGlobalSearch",
     why: "read-only: cross-domain search of the active profile",
@@ -69,7 +74,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#878): narrates a finding's OWN reason payload via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
   },
   {
-    file: "app/(app)/journal/actions.ts",
+    file: "app/(app)/training/activity-actions.ts",
     fn: "loadJournalPage",
     why: "read-only: fetches an older window of the active profile's Journal feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
   },
@@ -90,6 +95,21 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "login-scoped: dismisses the caller's OWN one-time multi-view discoverability hint (a 'seen' flag in login_settings, #1327), not profile-owned data — same shape as saveUnitPrefs, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI flag)",
   },
   {
+    file: "app/(app)/actions.ts",
+    fn: "saveAttentionHeroCollapsed",
+    why: "login-scoped: stores the caller's OWN dashboard hero collapse preference (a display-density flag in login_settings, #1413), not profile-owned data — same shape as saveUnitPrefs/dismissMultiviewHintAction, so requireSession() is the right gate. Deliberately NOT requireWriteAccess: a read-only viewer of someone else's profile still gets to choose how tall the card is on their own screen. It cannot hide the hero or its count (#449) — the stored flag is one input to attentionHeroState, which ignores it entirely for a safety-locked hero",
+  },
+  {
+    file: "app/(app)/actions.ts",
+    fn: "dismissRecentlyResolved",
+    why: "login-scoped: stores the caller's OWN hide of a 'Recently resolved — reopen?' line (a JSON id set in login_settings, #1548), not profile-owned data — same shape as saveAttentionHeroCollapsed, so requireSession() is the right gate. Deliberately NOT requireWriteAccess: a read-only caregiver may still tidy their own dashboard, and the hide is per-login so a co-caregiver's copy is untouched. The episode id IS authorized here — getAccessibleProfiles() feeds the auth-blind write core, which refuses any id outside that set's reopen-eligible ids; it can never reopen, close, or re-window an episode",
+  },
+  {
+    file: "app/(app)/whats-new/actions.ts",
+    fn: "markWhatsNewSeenAction",
+    why: "login-scoped: records that the caller's OWN login has opened the bundled release notes (a date marker in login_settings, #1421), not profile-owned data — same shape as saveUnitPrefs/dismissMultiviewHintAction, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI marker)",
+  },
+  {
     file: "app/(app)/settings/actions.ts",
     fn: "changeOwnPassword",
     why: "login-scoped: changes the caller's own password (demo-gated, #278)",
@@ -99,6 +119,54 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/settings/actions.ts",
     fn: "saveOwnProfile",
     why: "login-scoped: sets the caller's OWN login's own-profile association (an association, not an access grant — #1013); demo-gated so the shared demo login can't relabel everyone's self",
+    gate: "requireLoginWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "bindIdentityAction",
+    why: "cross-profile write (#1739): binds a portal patient label to a TARGET profile, which is not necessarily the session's active one — binding grandma's portal patient to grandma's profile from your own session is the normal case, so requireWriteAccess() (which checks only the ACTIVE profile) is the wrong gate. It calls requireProfileWriteAccess(profileId) instead: the #31 cross-profile guard, which refuses in demo mode, asserts the caller can REACH the target, and asserts WRITE on it — strictly stronger here than the active-profile check",
+    gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "unbindIdentityAction",
+    why: "cross-profile write (#1739): removing a binding changes where that patient's future records go (namely nowhere — they are refused), the same class of decision as creating one, so it takes the same requireProfileWriteAccess gate on the profile the binding currently points at. That profile is RESOLVED FROM THE ROW server-side, never read from the post (#1747): gating on a client-supplied profile id authorized nothing, because nothing tied it to the binding actually being deleted. An IGNORED binding has no profile by CHECK, so that branch takes the any-profile-write gate and a delete scoped to `ignored = 1`",
+    gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "bindPendingIdentityAction",
+    why: "cross-profile write (#1739): the one-tap version of bindIdentityAction — it binds a REPORTED-but-unplaced portal identity to a TARGET profile, taking the (login, patient label) off the pending row server-side so the caller cannot retype them into a subtly different key. Same class of write, same gate: requireProfileWriteAccess(profileId) on the target, not requireWriteAccess() on the session's active profile",
+    gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "ignorePendingIdentityAction",
+    why: "pending-list write that ROUTES NOTHING (#1739): it records 'never sync this portal patient' as a binding with NO profile (the migration-131 CHECK makes ignored+profile unrepresentable). There is therefore no target profile for requireProfileWriteAccess, and requireWriteAccess would assert the session's ACTIVE profile, which is unrelated to a portal login. It calls the local requireAnyProfileWriteAccess() instead: session + demo refusal + WRITE on at least one reachable profile — the same population the bind picker serves. Member-visible by owner ruling; a read-only caregiver still cannot silence an identity",
+    gate: "requireAnyProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "dismissPendingIdentityAction",
+    why: "pending-list write that ROUTES NOTHING (#1739): clears one prompt row and nothing else — the identity returns if the tool reports it again. Same gate and same reasoning as ignorePendingIdentityAction: no profile to target, so requireAnyProfileWriteAccess()",
+    gate: "requireAnyProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "requestSyncAction",
+    why: "portal-login write that ROUTES NOTHING (#1757): it raises a SYNC REQUEST keyed to a portal LOGIN — an ask that somebody run the companion tool — and the row carries no profile_id and cannot (the same request covers every patient bound under that login). There is therefore no target for requireProfileWriteAccess, and requireWriteAccess would assert the session's ACTIVE profile, which is unrelated to a portal login. Same gate and same population as the pending-list actions beside it: requireAnyProfileWriteAccess() — session + demo refusal + WRITE on at least one reachable profile, i.e. someone who could act on the records a run would bring in. A read-only caregiver cannot raise one",
+    gate: "requireAnyProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/settings/token-actions.ts",
+    fn: "createApiTokenAction",
+    why: "login-scoped (#1734): mints an API token on the caller's OWN login — a way to PRESENT that login, not profile-owned data, and it grants no access the login doesn't already have (every bearer route re-derives profile reach through accessForProfile at request time). requireWriteAccess() would be the wrong gate twice: it checks the ACTIVE profile, and it would refuse a read-only caregiver their own credentials. Demo-gated so the shared public demo login can't mint a credential that outlives the visit",
+    gate: "requireLoginWriteAccess",
+  },
+  {
+    file: "app/(app)/settings/token-actions.ts",
+    fn: "revokeApiTokenAction",
+    why: "login-scoped (#1734): revokes an API token — the caller's own, or any token when the caller is an admin (who can already delete the whole login). Same tier as revokeSessionAction, and demo-gated so one visitor can't revoke another's",
     gate: "requireLoginWriteAccess",
   },
   {
@@ -259,6 +327,38 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "confirmDoseAction",
     why: "acts on a NON-active target profile; gates via requireProfileWriteAccess(targetId), which asserts the target is accessible AND write — the active-profile requireWriteAccess() would authorize the wrong profile",
   },
+  // --- Shared supply pools (issue #1374) — a `shared_supplies` row is household-
+  // shared and has NO owning profile, so the active-profile requireWriteAccess()
+  // would authorize the wrong subject. Pool EDITS gate on the pool's MEMBERSHIP
+  // (requirePoolWriteAccess: write access to ≥1 linked profile, falling back to
+  // requireProfileWriteAccess for the refusal path, and to requireWriteAccess for an
+  // orphaned pool that links nobody); LINK/UNLINK gate on the ITEM's own profile
+  // (requireItemWriteAccess → requireProfileWriteAccess). ---
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "listSharedSupplyOptions",
+    why: "read-only (#1374): lists the shared bottles the caller's accessible profiles already draw from (plus member-less orphans) for the item form's picker; writes nothing, so the requireScope()/requireSession() boundary is the right gate",
+  },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "updatePoolAction",
+    why: "#1374: edits a household-shared pool with no owning profile; gates via requirePoolWriteAccess(poolId) → write access to at least ONE linked profile (requireProfileWriteAccess on the refusal path)",
+  },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "deletePoolAction",
+    why: "#1374: deletes a household-shared pool; same requirePoolWriteAccess(poolId) membership gate as updatePoolAction",
+  },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "linkItemAction",
+    why: "#1374: links a NON-active profile's item into a shared bottle; gates via requireItemWriteAccess(itemId) → requireProfileWriteAccess(itemProfileId), so the item's own profile authorizes it",
+  },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "unlinkItemAction",
+    why: "#1374: unlinks the ITEM's row from its pool; same requireItemWriteAccess(itemId) → requireProfileWriteAccess(itemProfileId) gate as linkItemAction",
+  },
   // --- Multi-view Upcoming per-item writes (issue #1096) — each row carries its
   // OWN profileId, so the write must target the ITEM's profile, not the acting one.
   // All gate through the shared gateItemProfile() helper, which calls
@@ -312,82 +412,82 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // requireWriteAccess() for a single-view form. The paired add* action keeps its plain
   // requireWriteAccess() (a new row always lands on the acting profile). ---
   {
-    file: "app/(app)/conditions/actions.ts",
+    file: "app/(app)/records/problems/conditions/actions.ts",
     fn: "updateCondition",
     why: "multi-view (#1328): edits the ITEM's condition via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/conditions/actions.ts",
+    file: "app/(app)/records/problems/conditions/actions.ts",
     fn: "deleteCondition",
     why: "multi-view (#1328): deletes the ITEM's condition via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/allergies/actions.ts",
+    file: "app/(app)/records/problems/allergies/actions.ts",
     fn: "updateAllergy",
     why: "multi-view (#1328): edits the ITEM's allergy via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/allergies/actions.ts",
+    file: "app/(app)/records/problems/allergies/actions.ts",
     fn: "deleteAllergy",
     why: "multi-view (#1328): deletes the ITEM's allergy via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/procedures/actions.ts",
+    file: "app/(app)/records/history/procedures/actions.ts",
     fn: "updateProcedure",
     why: "multi-view (#1328): edits the ITEM's procedure via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/procedures/actions.ts",
+    file: "app/(app)/records/history/procedures/actions.ts",
     fn: "deleteProcedure",
     why: "multi-view (#1328): deletes the ITEM's procedure via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/family-history/actions.ts",
+    file: "app/(app)/records/care/overview/family-history-actions.ts",
     fn: "updateFamilyHistory",
     why: "multi-view (#1328): edits the ITEM's family-history entry via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/family-history/actions.ts",
+    file: "app/(app)/records/care/overview/family-history-actions.ts",
     fn: "deleteFamilyHistory",
     why: "multi-view (#1328): deletes the ITEM's family-history entry via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/care-plan/actions.ts",
+    file: "app/(app)/records/care/overview/care-plan-actions.ts",
     fn: "updateCarePlanItem",
     why: "multi-view (#1328): edits the ITEM's care-plan item via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/care-plan/actions.ts",
+    file: "app/(app)/records/care/overview/care-plan-actions.ts",
     fn: "deleteCarePlanItem",
     why: "multi-view (#1328): deletes the ITEM's care-plan item via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/care-goals/actions.ts",
+    file: "app/(app)/records/care/overview/care-goal-actions.ts",
     fn: "updateCareGoal",
     why: "multi-view (#1328): edits the ITEM's health goal via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/care-goals/actions.ts",
+    file: "app/(app)/records/care/overview/care-goal-actions.ts",
     fn: "deleteCareGoal",
     why: "multi-view (#1328): deletes the ITEM's health goal via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/genomics/actions.ts",
+    file: "app/(app)/results/genomics/actions.ts",
     fn: "updateGenomicVariant",
     why: "multi-view (#1328): edits the ITEM's genomic variant via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/genomics/actions.ts",
+    file: "app/(app)/results/genomics/actions.ts",
     fn: "deleteGenomicVariant",
     why: "multi-view (#1328): deletes the ITEM's genomic variant via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/imaging/actions.ts",
+    file: "app/(app)/results/imaging/actions.ts",
     fn: "updateImagingStudy",
     why: "multi-view (#1328): edits the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/imaging/actions.ts",
+    file: "app/(app)/results/imaging/actions.ts",
     fn: "deleteImagingStudy",
     why: "multi-view (#1328): deletes the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
@@ -412,17 +512,17 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // read-only-granted / ungranted member is bounced). No profile_id (a CREATE, or a
   // single-view form) falls back to requireWriteAccess() on the acting profile. ---
   {
-    file: "app/(app)/journal/actions.ts",
+    file: "app/(app)/training/activity-actions.ts",
     fn: "saveActivity",
     why: "multi-view (#1330): creates on the acting profile, or edits the ITEM's activity on its subject profile, via gateItemProfile() → requireProfileWriteAccess(itemProfileId); login is read only for the viewer's unit prefs",
   },
   {
-    file: "app/(app)/journal/actions.ts",
+    file: "app/(app)/training/activity-actions.ts",
     fn: "deleteActivity",
     why: "multi-view (#1330): deletes the ITEM's activity on its subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   {
-    file: "app/(app)/journal/actions.ts",
+    file: "app/(app)/training/activity-actions.ts",
     fn: "mergeActivities",
     why: "multi-view (#1330): folds a same-profile same-day pair on the ITEM's subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId); cross-profile pairs are refused by the AND profile_id re-check",
   },

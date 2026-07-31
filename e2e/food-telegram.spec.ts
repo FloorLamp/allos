@@ -1,12 +1,12 @@
-import { test, expect } from "@playwright/test";
-import { settledCheck, settledFill } from "./helpers";
+import { test, expect } from "./fixtures";
+import { settledCheck, settledCheckSave, settledFill } from "./helpers";
 
 // Settings → Notifications after the login-scoping move (issue #1072). Runs
 // authenticated as admin acting as the seeded profile 1 (shared storageState).
 // Covers the re-homed surfaces:
 //   • the LOGIN Telegram channel ("Telegram (your chat)") — enable + chat id + save;
-//   • the per-SUBJECT food-logging opt-in, now always visible under "Reminders &
-//     schedule" (no longer gated behind the per-profile Telegram toggle);
+//   • the per-SUBJECT food-logging opt-in, which #1462 §6 moved onto the food row of
+//     the consolidated (autosaving) "Message kinds" card;
 //   • the per-(login, profile) mute toggle.
 // BLAST RADIUS: it toggles the login channel + food + mute, then RESETS them at the
 // end, leaving the shared fixture as found. No bot token is configured in the e2e DB,
@@ -34,16 +34,13 @@ test.describe("notification settings — login-scoped channels (issue #1072)", (
     await tgCard.getByRole("button", { name: "Save" }).click();
     await expect(tgCard.getByLabel("Saved")).toBeVisible();
 
-    // --- Food opt-in (Reminders & schedule) — always visible, per-subject ---
-    const scheduleCard = page.locator(".card", {
-      has: page.getByRole("heading", { name: "Reminders & schedule" }),
-    });
+    // --- Food opt-in (Message kinds → Food-log nudges) — per-subject ---
+    const kindsCard = page.getByTestId("notification-kinds");
+    await expect(kindsCard).toBeVisible();
     const foodToggle = page.getByTestId("food-telegram-enabled");
     await expect(foodToggle).toBeVisible();
     await expect(foodToggle).not.toBeChecked(); // off by default
-    await settledCheck(page, foodToggle, true);
-    await scheduleCard.getByRole("button", { name: "Save" }).click();
-    await expect(scheduleCard.getByLabel("Saved")).toBeVisible();
+    await settledCheckSave(page, foodToggle, true, kindsCard);
 
     // --- Per-(login, profile) mute ---
     const muteToggle = page.getByTestId("profile-notify-mute");
@@ -61,9 +58,12 @@ test.describe("notification settings — login-scoped channels (issue #1072)", (
 
     // Reset the shared fixture: mute off, food off, chat cleared, Telegram off.
     await settledCheck(page, page.getByTestId("profile-notify-mute"), false);
-    await settledCheck(page, page.getByTestId("food-telegram-enabled"), false);
-    await scheduleCard.getByRole("button", { name: "Save" }).click();
-    await expect(scheduleCard.getByLabel("Saved")).toBeVisible();
+    await settledCheckSave(
+      page,
+      page.getByTestId("food-telegram-enabled"),
+      false,
+      kindsCard
+    );
     await settledFill(page, page.getByTestId("login-telegram-chat-id"), "");
     await settledCheck(page, page.getByTestId("login-telegram-enabled"), false);
     await tgCard.getByRole("button", { name: "Save" }).click();

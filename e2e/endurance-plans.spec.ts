@@ -1,7 +1,9 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { E2E_LOGIN_ENDURANCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { frozenNow } from "./worker-env";
 
 // Endurance event plans on the Training overview (issue #839): create a race plan and the
 // Event-plans bar renders the recomputed this-week trajectory (target vs actual volume +
@@ -16,7 +18,7 @@ import { E2E_LOGIN_ENDURANCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // A future event date (~16 weeks out) as YYYY-MM-DD, so the plan is comfortably feasible.
 function futureEventDate(): string {
-  const d = new Date();
+  const d = frozenNow();
   d.setUTCDate(d.getUTCDate() + 112);
   return d.toISOString().slice(0, 10);
 }
@@ -99,7 +101,7 @@ test.describe("endurance event plans (#839)", () => {
     // This login owns its own dedicated prefs; restore km before the test ends
     // so --repeat-each starts from the same state.
     try {
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       const distanceSelect = page.getByTestId("distance-unit-select");
       await distanceSelect.selectOption("mi");
       await expect(page.getByLabel("Saved")).toBeVisible();
@@ -111,7 +113,7 @@ test.describe("endurance event plans (#839)", () => {
       await expect(eventItem).toContainText("6.21 mi");
       await expect(eventItem).not.toContainText("10 km");
     } finally {
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       await page.getByTestId("distance-unit-select").selectOption("km");
       await expect(page.getByLabel("Saved")).toBeVisible();
     }

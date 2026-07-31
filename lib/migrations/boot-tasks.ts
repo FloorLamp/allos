@@ -13,6 +13,7 @@ import {
   initialOnboardingState,
   serializeOnboardingState,
 } from "../onboarding";
+import { seedStandardMetricSaves } from "../standard-metric-seeds";
 import { runBootTx } from "./schema-utils";
 import { clockOverride } from "../clock";
 import { createLogger } from "../log";
@@ -275,6 +276,31 @@ export function bootstrapAuth(db: Database.Database) {
       prof.lastInsertRowid,
       serializeOnboardingState(initialOnboardingState())
     );
+    // The standard Overview metric tiles as default-saved rows (issue #1487). New
+    // profiles are seeded at CREATION — never per-boot, which would resurrect a
+    // metric the user deliberately unstarred; migration 114 covers the profiles
+    // that predate this. Same set for every profile: the age gates stay a
+    // render-time filter (see lib/standard-metric-seeds.ts).
+    //
+    // Guarded on the table existing, for the same reason the own_profile_id write
+    // above is guarded on its column: a partial-schema test harness may run
+    // bootTasks against a database built only up to some earlier migration (the
+    // migration-006 FK-integrity fixture stops long before 113 created saved_items).
+    // On every real boot the runner has already brought the schema current.
+    // The table name is a BOUND PARAMETER, not a literal — the same shape migration
+    // 113's tableExists() uses. It also keeps this schema probe out of the
+    // profile-scoping scanner's sights, which reads owned-table names out of SQL
+    // text and would otherwise (correctly, for a data query) demand a profile_id
+    // filter on a statement that reads no profile data at all.
+    const savedItemsReady =
+      db
+        .prepare(
+          `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
+        )
+        .get("saved_items") != null;
+    if (savedItemsReady) {
+      seedStandardMetricSaves(db, Number(prof.lastInsertRowid));
+    }
   });
   try {
     runBootTx(create);

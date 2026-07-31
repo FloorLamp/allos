@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import LineChartCard from "@/components/LineChartCard";
 import StackedBarCard from "@/components/StackedBarCard";
+import SegmentedControl from "@/components/SegmentedControl";
 import { chartSeries } from "@/lib/chart-colors";
 import { formatHm, sleepTrendRangeWindows } from "@/lib/sleep-summary";
 
@@ -85,7 +86,7 @@ export default function SleepTrendsSection({
                 : {
                     value: average,
                     label: "Average",
-                    color: chartSeries.emerald,
+                    color: chartSeries.sky,
                   }
             }
           />
@@ -112,7 +113,7 @@ export default function SleepTrendsSection({
             series={[
               { key: "deep", label: "Deep", color: chartSeries.violet },
               { key: "rem", label: "REM", color: chartSeries.rose },
-              { key: "light", label: "Light", color: chartSeries.emerald },
+              { key: "light", label: "Light", color: chartSeries.sky },
               { key: "awake", label: "Awake", color: chartSeries.amber },
             ]}
           />
@@ -152,33 +153,21 @@ export default function SleepTrendsSection({
           </p>
         </div>
         {hasAvailableData && (
-          <div
-            className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-ink-800"
-            aria-label="Duration and stages range"
-          >
-            {windows.map((window) => {
-              return (
-                <button
-                  key={window.value}
-                  type="button"
-                  onClick={() => setRange(window.value)}
-                  aria-pressed={range === window.value}
-                  disabled={!window.hasAdditionalData}
-                  data-testid={`sleep-trend-range-${window.value}`}
-                  data-observation-count={
-                    window.duration.length + window.stages.length
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                    range === window.value
-                      ? "bg-white text-slate-900 shadow-sm dark:bg-ink-700 dark:text-slate-100"
-                      : "text-slate-500 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:text-slate-100 dark:disabled:hover:text-slate-400"
-                  }`}
-                >
-                  {window.value} days
-                </button>
-              );
-            })}
-          </div>
+          <SegmentedControl
+            options={windows.map((window) => ({
+              value: window.value,
+              label: `${window.value} days`,
+              disabled: !window.hasAdditionalData,
+              testId: `sleep-trend-range-${window.value}`,
+              dataAttributes: {
+                "data-observation-count":
+                  window.duration.length + window.stages.length,
+              },
+            }))}
+            value={range}
+            onChange={setRange}
+            ariaLabel="Duration and stages range"
+          />
         )}
       </div>
 

@@ -92,6 +92,18 @@ export function zonedDateParts(
   };
 }
 
+// An "HH:MM" wall-clock string as minutes since local midnight (0..1439) — the
+// companion decoder for `zonedDateParts`'s `hhmm`, so a caller that needs the
+// current profile-local minute-of-day has ONE place to get it rather than
+// re-splitting the string (this had already been hand-rolled twice: privately in
+// lib/sleep-summary.ts and inline in lib/food-slot.ts's foodSlotForHhmm).
+// Malformed input folds to 0 rather than throwing or yielding NaN — every caller
+// is a time-window comparison where NaN would silently disable the window.
+export function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = String(hhmm).split(":");
+  return (Number(h) || 0) * 60 + (Number(m) || 0);
+}
+
 // The minute-resolution wall-clock stamp ('YYYY-MM-DDTHH:MM') of an instant in the
 // given IANA timezone — the profile-local minute an absolute timestamp is
 // attributed to. This is the identity of an `hr_minutes.ts` bucket: intraday HR is
@@ -177,7 +189,15 @@ export function daysBetweenDateStr(a: string, b: string): number | null {
   return Math.round((tb - ta) / 86400000);
 }
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const WEEKDAYS_SHORT = [
+  "Sun",
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+] as const;
 
 // Weekday (0=Sun … 6=Sat) of an instant in the given timezone.
 export function weekdayInTz(tz: string, d: Date = new Date()): number {
@@ -185,7 +205,7 @@ export function weekdayInTz(tz: string, d: Date = new Date()): number {
     timeZone: tz,
     weekday: "short",
   }).format(d);
-  return WEEKDAYS.indexOf(short);
+  return WEEKDAYS_SHORT.indexOf(short as (typeof WEEKDAYS_SHORT)[number]);
 }
 
 // Hour of day (0–23) of an instant in the given timezone. Some ICU builds emit

@@ -10,9 +10,9 @@ import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { Notice } from "@/components/Notice";
-import CarePlanForm from "@/app/(app)/care-plan/CarePlanForm";
-import CarePlanList from "@/app/(app)/care-plan/CarePlanList";
-import { addCarePlanItem } from "@/app/(app)/care-plan/actions";
+import CarePlanForm from "@/app/(app)/records/care/overview/CarePlanForm";
+import CarePlanList from "@/app/(app)/records/care/overview/CarePlanList";
+import { addCarePlanItem } from "@/app/(app)/records/care/overview/care-plan-actions";
 
 // Care plan (former /care-plan index, #1042 phase 6): the profile's planned /
 // ordered future care, soonest first — now the #care-plan section of /records.

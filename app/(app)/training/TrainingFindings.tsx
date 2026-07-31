@@ -1,4 +1,3 @@
-import { IconBarbell } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getFindingSuppressions } from "@/lib/queries";
@@ -7,7 +6,7 @@ import {
   buildTrainingObservationFindings,
   buildMuscleVolumeFindings,
 } from "@/lib/rule-findings";
-import FindingsList from "@/components/FindingsList";
+import TrainingWatchCard from "./TrainingWatchCard";
 import { dismissTrainingObservation } from "./actions";
 
 // Training-balance observations (issue #45, domain 4) for the Training → Overview
@@ -18,6 +17,12 @@ import { dismissTrainingObservation } from "./actions";
 // NOT a "what to train" recommendation (that's the next-workout card). Each can be
 // dismissed through the shared findings-bus suppression store; nothing renders when
 // none are firing.
+//
+// #1496: the per-muscle shortfalls render as ONE expandable rollup row and the card
+// caps at three rows + "show all" (TrainingWatchCard over the pure
+// lib/training-findings-rollup). Rendering only — the engines, the dedupeKeys and the
+// dismiss action below are untouched, so a dismiss inside the rollup is still the
+// same item-wise write to the shared bus.
 export default async function TrainingFindings() {
   const { profile } = await requireSession();
   const now = today(profile.id);
@@ -30,15 +35,9 @@ export default async function TrainingFindings() {
     now
   );
   return (
-    <FindingsList
+    <TrainingWatchCard
       findings={findings}
       dismissAction={dismissTrainingObservation}
-      heading="Training watch"
-      subtitle="Patterns worth a look from your recent training."
-      icon={
-        <IconBarbell className="h-4 w-4 shrink-0 text-amber-500" stroke={2} />
-      }
-      testid="training-findings"
     />
   );
 }

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // #1076: the biomarker surfaces scope to labs, and the physiologic vitals gain a
@@ -32,22 +32,15 @@ test("the Biomarkers browser lists labs but not a re-homed instrument score (#10
   ).toHaveCount(0);
 });
 
-test("the Trends Vitals section renders the physiologic vitals (#1076)", async ({
+test("the Trends Body section's vitals block renders the physiologic vitals (#1076/#1486)", async ({
   page,
 }) => {
-  // Reachable via the tab strip.
-  await page.goto("/trends?tab=body");
-  await followLink(
-    page,
-    page.getByRole("tab", { name: "Vitals" }),
-    /tab=vitals/
-  );
-  const vitals = page.getByTestId("trends-vitals");
-  await expect(vitals).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Vitals" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  // Reachable at its anchor — the Vitals tab retired into Body (#1486) and Body
+  // itself into the Overview landing surface (#1644), so the census is a section of
+  // the default view and its FIRST chart block is the vitals.
+  await page.goto("/trends#body");
+  const body = page.getByTestId("trends-body");
+  await expect(body).toBeVisible();
   // The seeded blood-pressure readings render their chart card.
-  await expect(vitals.getByTestId("vitals-blood-pressure")).toBeVisible();
+  await expect(body.getByTestId("vitals-systolic")).toBeVisible();
 });

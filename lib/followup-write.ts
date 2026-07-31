@@ -1,6 +1,6 @@
 // Auth-BLIND write cores for the finding follow-up chain (issue #700). profileId-
 // first, never imports lib/auth — the calling Server Actions
-// (app/(app)/imaging/actions.ts, app/(app)/upcoming/actions.ts) own the auth gate.
+// (app/(app)/results/imaging/actions.ts, app/(app)/upcoming/actions.ts) own the auth gate.
 // Every statement is profile-scoped (WHERE … AND profile_id, and the source/resolving
 // study existence is re-checked under profile_id) so a tampered id can't reach or
 // resolve another profile's row. All mutations go through writeTx (#468).

@@ -20,10 +20,7 @@ export default function AiTierSettings({
   light: TierConfigView;
 }) {
   return (
-    <div
-      className="card mt-6 max-w-lg space-y-6"
-      data-testid="ai-tier-settings"
-    >
+    <div className="card space-y-6" data-testid="ai-tier-settings">
       <div>
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           AI providers
@@ -32,10 +29,10 @@ export default function AiTierSettings({
           Two tiers, each its own provider. <strong>Heavy</strong> handles
           document extraction and sees your uploaded records — pin it to a local
           endpoint for zero external egress. <strong>Light</strong> handles
-          narratives, suggestions, and coverage blurbs; when it&rsquo;s unset it
-          falls back to Heavy. With neither configured, every AI feature
-          degrades to its offline summary. Backups of <code>data/</code> carry
-          these keys, same as the bot token.
+          narratives, suggestions, and coverage blurbs; when it’s unset it falls
+          back to Heavy. With neither configured, every AI feature degrades to
+          its offline summary. Backups of <code>data/</code> carry these keys,
+          same as the bot token.
         </p>
       </div>
 

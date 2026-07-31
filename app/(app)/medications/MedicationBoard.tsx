@@ -139,6 +139,7 @@ export default function MedicationBoard({
                   sideEffects={m.sideEffects}
                   strip={m.strip}
                   refillRate={m.refillRate}
+                  poolChip={m.poolChip}
                   prnRedoseLine={m.prnRedoseLine}
                   monitoringNote={m.monitoringNote}
                   heldBy={m.heldBy}
@@ -180,6 +181,7 @@ export default function MedicationBoard({
                 sideEffects={m.sideEffects}
                 strip={m.strip}
                 refillRate={m.refillRate}
+                poolChip={m.poolChip}
                 prnRedoseLine={m.prnRedoseLine}
                 todayStr={data.todayStr}
                 canWrite={isActing}

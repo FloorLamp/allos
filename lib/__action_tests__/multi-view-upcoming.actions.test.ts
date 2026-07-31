@@ -32,8 +32,8 @@ function seedDose(profileId: number): number {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, condition, priority, active, source, quantity_on_hand)
-         VALUES (?, 'Vitamin D', 'daily', 'high', 1, 'manual', 30)`
+           (profile_id, name, condition, obligation, active, source, quantity_on_hand)
+         VALUES (?, 'Vitamin D', 'daily', 'should', 1, 'manual', 30)`
       )
       .run(profileId).lastInsertRowid
   );

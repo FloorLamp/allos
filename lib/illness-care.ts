@@ -219,13 +219,15 @@ export function detectIllnessCareFindings(
 
 // The self-contained secondary line every non-Finding surface shows (Upcoming item,
 // Telegram nudge): the fact + line, then the source, then the mandatory
-// "informational, not medical advice" tail. The Finding envelope keeps the source +
-// tail in its own `evidence` slot instead (see the builder).
+// The Finding envelope keeps the source in its own `evidence` slot instead (see the
+// builder). Neither carries a "not medical advice" tail — the copy never had one and
+// tests pin its absence; the promise that used to sit in this comment was stale
+// (#1722 item 9, owner-decided: fix the comment, not the copy).
 export function illnessCareFullDetail(f: IllnessCareFinding): string {
   return `${f.detail} Source: ${f.source}`;
 }
 
-// The Finding.evidence line: the source + the non-negotiable disclaimer tail.
+// The Finding.evidence line: the source.
 export function illnessCareEvidence(f: IllnessCareFinding): string {
   return `Source: ${f.source}`;
 }

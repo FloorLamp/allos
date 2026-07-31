@@ -98,14 +98,21 @@ export function householdPresenceChip(p: WorkoutPresence): string | null {
   return `mid-workout · ${p.sinceMin} min`;
 }
 
-// Whether an activity row is a COMPLETED session — vs a live/unfinished draft —
-// for the delayed post-workout dispatch's fire-time verification (#1154 §B).
+// Whether an activity row is a COMPLETED session — vs a live/unfinished draft.
 // Completed = an end is known (end_time, or start + a positive duration), OR the
 // row carries no start_time at all (an untimed retroactive log is inherently
 // finished — there is no live session without a start). The only NON-completed
 // shape is a started-but-unended, duration-less row: the live-draft signature
-// computeWorkoutPresence reads as `active`. Pure, so the fire-time guard (a
-// finish that was undone must not send) is unit-pinnable.
+// computeWorkoutPresence reads as `active`.
+//
+// This is the ONE answer to "is this row finished?" (#221): both the delayed
+// post-workout dispatch's fire-time verification (#1154 §B) and the `active`
+// classifier below consult it, so they can never disagree. They DID disagree —
+// #1441: the active loop tested only `end_time`, so a completed manual log
+// (start_time defaulted to now, no end_time, duration_min 30 — the shape the
+// New-activity form itself blesses as finished) held the live dock for 90 minutes
+// and fired the 45-minute "Still working out?" nag. Pure, so both the fire-time
+// guard and the presence matrix are unit-pinnable.
 export function isCompletedSessionRow(row: {
   start_time: string | null;
   end_time: string | null;
@@ -167,7 +174,12 @@ export function computeWorkoutPresence(
     // completed activity (it can be `finished`, never `active`) even if the
     // provider gave it no end_time.
     if (row.source) continue;
-    if (!row.start_time || row.end_time) continue;
+    // A COMPLETED row is never live (#1441) — the same isCompletedSessionRow the
+    // delayed-dispatch guard uses, so "finished" has one definition. A finished
+    // row with no end_time still has an end instant (start + duration), so it
+    // falls through to the `finished` classifier below and reads as the #924
+    // post-session recap instead of a ticking dock.
+    if (isCompletedSessionRow(row)) continue;
     const touch = lastTouchMs(row);
     if (touch == null) continue;
     const quietMin = (nowMs - touch) / 60_000;

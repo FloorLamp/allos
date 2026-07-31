@@ -317,7 +317,7 @@ export function conditionItem(row: {
     title: row.name,
     detail: detailLine(row.status, row.code),
     date: row.onset_date,
-    href: "/records/problems",
+    href: "/records/problems/conditions",
   };
 }
 
@@ -333,7 +333,7 @@ export function allergyItem(row: {
     title: row.substance,
     detail: detailLine(row.reaction, row.severity, row.status),
     date: null,
-    href: "/records/problems",
+    href: "/records/problems/allergies",
   };
 }
 
@@ -582,7 +582,7 @@ export function bodyItems(
         b.resting_hr != null ? `Resting HR ${b.resting_hr} bpm` : null
       ),
       date: b.date,
-      href: "/trends?tab=body",
+      href: "/trends#body",
     });
   }
   for (const h of rows.heights) {
@@ -591,7 +591,7 @@ export function bodyItems(
       title: "Height",
       detail: `${h.value} cm`,
       date: h.date,
-      href: "/trends?tab=body",
+      href: "/trends#body",
     });
   }
   for (const h of rows.headCircs) {
@@ -600,7 +600,7 @@ export function bodyItems(
       title: "Head circumference",
       detail: `${h.value} cm`,
       date: h.date,
-      href: "/trends?tab=body",
+      href: "/trends#body",
     });
   }
   return items.sort((a, b) =>

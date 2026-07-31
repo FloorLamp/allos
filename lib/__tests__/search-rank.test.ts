@@ -198,6 +198,99 @@ describe("clinical passport domains (#19)", () => {
   });
 });
 
+// #1595: the second-generation entity domains (the provider directory, the
+// specialty/result record types, illness episodes, protocols, wellness practices,
+// equipment) joined the fan-out. Like the #19 set they must be labelled, ordered, and
+// ranked identically — and the pre-existing domains must keep their relative order so
+// an existing reader's muscle memory survives the insertion.
+describe("second-generation entity domains (#1595)", () => {
+  const ADDED: SearchDomain[] = [
+    "provider",
+    "imaging",
+    "genomic",
+    "episode",
+    "dental",
+    "skin",
+    "protocol",
+    "practice",
+    "equipment",
+  ];
+
+  it("every added domain is ordered and labelled", () => {
+    for (const d of ADDED) {
+      expect(SEARCH_DOMAIN_ORDER).toContain(d);
+      expect(SEARCH_DOMAIN_LABELS[d]).toBeTruthy();
+    }
+  });
+
+  it("orders every declared domain exactly once", () => {
+    const labelled = Object.keys(SEARCH_DOMAIN_LABELS) as SearchDomain[];
+    expect([...SEARCH_DOMAIN_ORDER].sort()).toEqual([...labelled].sort());
+    expect(new Set(SEARCH_DOMAIN_ORDER).size).toBe(SEARCH_DOMAIN_ORDER.length);
+  });
+
+  it("keeps the original domains in their established relative order", () => {
+    const original: SearchDomain[] = [
+      "biomarker",
+      "document",
+      "condition",
+      "allergy",
+      "procedure",
+      "immunization",
+      "encounter",
+      "appointment",
+      "activity",
+      "supplement",
+      "family-history",
+      "care-plan",
+      "care-goal",
+      "goal",
+      "page",
+    ];
+    expect(SEARCH_DOMAIN_ORDER.filter((d) => original.includes(d))).toEqual(
+      original
+    );
+  });
+
+  it("keeps the results family together, ahead of the record surfaces", () => {
+    const idx = (d: SearchDomain) => SEARCH_DOMAIN_ORDER.indexOf(d);
+    expect(idx("imaging")).toBe(idx("biomarker") + 1);
+    expect(idx("genomic")).toBe(idx("imaging") + 1);
+    // Pages stay last: a jump-to-page entry never outranks a real record.
+    expect(idx("page")).toBe(SEARCH_DOMAIN_ORDER.length - 1);
+  });
+
+  it("ranks an exact entity name above a substring one (like every other domain)", () => {
+    const out = sortHits(
+      [
+        hit({ domain: "protocol", title: "Sauna block v2", key: "p-prefix" }),
+        hit({ domain: "protocol", title: "Sauna block", key: "p-exact" }),
+        hit({ domain: "protocol", title: "Winter sauna block", key: "p-sub" }),
+      ],
+      "sauna block"
+    );
+    expect(out.map((h) => h.key)).toEqual(["p-exact", "p-prefix", "p-sub"]);
+  });
+
+  it("groups added-domain hits into their own domains in canonical order", () => {
+    const groups = rankAndGroup(
+      [
+        hit({ domain: "equipment", title: "Trap bar", key: "eq1" }),
+        hit({ domain: "imaging", title: "MRI Left Knee", key: "im1" }),
+        hit({ domain: "provider", title: "Northgate Clinic", key: "pr1" }),
+        hit({ domain: "skin", title: "Freckled mole", key: "sk1" }),
+      ],
+      ""
+    );
+    expect(groups.map((g) => g.domain)).toEqual([
+      "imaging",
+      "provider",
+      "skin",
+      "equipment",
+    ]);
+  });
+});
+
 describe("flattenHits", () => {
   it("walks groups top-to-bottom into one nav order", () => {
     const groups = rankAndGroup(

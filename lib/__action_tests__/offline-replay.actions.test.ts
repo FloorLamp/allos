@@ -13,10 +13,15 @@
 //   (d) a LEGACY unstamped intent falls back to the active profile (backward compat).
 
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { POST } from "@/app/api/offline-replay/route";
 import { createLogin, createProfile, actAs } from "./harness";
-import type { QueuedIntent } from "@/lib/offline/queue";
+import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
+import {
+  STALE_QUEUED_DOSE_REASON,
+  type QueuedIntent,
+} from "@/lib/offline/queue";
 
 let keySeq = 0;
 function uniqueKey(): string {
@@ -152,7 +157,9 @@ describe("offline replay — profile attribution (issue #599)", () => {
         .run(itemB).lastInsertRowid
     );
 
-    const date = "2026-07-10";
+    // Today-anchored: the dose write cores bound how far a log may land from the
+    // profile's today (#614), and since #1427 the replay rides those same cores.
+    const date = today(profileB.id);
     const { body } = await replay([
       {
         key: uniqueKey(),
@@ -211,5 +218,224 @@ describe("offline replay — profile attribution (issue #599)", () => {
     const { body } = await replay([bodyMetricIntent(undefined, notes)]);
     expect(body.results?.[0].status).toBe("done");
     expect(bodyMetricsFor(profileA.id, notes)).toBe(1);
+  });
+});
+
+// ── #1427: the queued dose confirm rides the SHARED write core ────────────────
+//
+// Driven end-to-end through the route (cookie-authed, real grant matrix, real DB),
+// because the whole point of the change is that the replay is no longer a private
+// offline writer: it goes through markDoseTaken, so it inherits that core's typed
+// refusals (retired dose, PAUSED item, the other resolution already standing) and
+// its per-(dose,date) idempotency — and those refusals must reach the client with a
+// reason, never be reported as synced.
+describe("offline replay — dose confirms (issue #1427)", () => {
+  function seedItem(
+    profileId: number,
+    opts: { active?: number; quantityOnHand?: number | null } = {}
+  ): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, active, kind, quantity_on_hand, qty_per_dose)
+           VALUES (?, ?, ?, 'medication', ?, 1)`
+        )
+        .run(
+          profileId,
+          `Replay Med ${uniqueKey()}`,
+          opts.active ?? 1,
+          opts.quantityOnHand ?? null
+        ).lastInsertRowid
+    );
+  }
+
+  function seedDose(itemId: number, retired = 0): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, retired)
+           VALUES (?, '1 tab', 'morning', 'any', 0, ?)`
+        )
+        .run(itemId, retired).lastInsertRowid
+    );
+  }
+
+  function doseIntent(
+    doseId: number,
+    profileId: number,
+    date: string,
+    clientTakenAt?: string
+  ) {
+    return {
+      key: uniqueKey(),
+      flow: "dose" as const,
+      date,
+      capturedAt: new Date().toISOString(),
+      payload: { doseId, ...(clientTakenAt ? { clientTakenAt } : {}) },
+      profileId,
+      attempts: 0,
+    };
+  }
+
+  function logFor(doseId: number, date: string) {
+    return db
+      .prepare(
+        "SELECT status, amount, given_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, date) as
+      | { status: string; amount: string | null; given_at: string | null }
+      | undefined;
+  }
+
+  it("lands the confirm stamped with the CAPTURED tap time, not the replay time", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`TakenAt ${uniqueKey()}`);
+    actAs(admin, profile);
+    const itemId = seedItem(profile.id, { quantityOnHand: 12 });
+    const doseId = seedDose(itemId);
+    const date = today(profile.id);
+    // Local midnight of the log's own day: inside the day in the profile timezone and
+    // (bar the first instant of the day) hours before the replay, so a stored given_at
+    // matching it could not have come from the server's own clock.
+    const tapped = zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00");
+
+    const { body } = await replay([
+      doseIntent(doseId, profile.id, date, tapped.toISOString()),
+    ]);
+    expect(body.results?.[0].status).toBe("done");
+
+    const log = logFor(doseId, date);
+    expect(log?.status).toBe("taken");
+    expect(log?.amount).toBe("1 tab"); // amount snapshotted from the dose row at replay
+    expect(log?.given_at).toBe(utcSqlString(tapped));
+    // Supply moved through the same core, exactly once.
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT quantity_on_hand AS q FROM intake_items WHERE id = ?"
+          )
+          .get(itemId) as { q: number }
+      ).q
+    ).toBe(11);
+  });
+
+  it("surfaces the PAUSED-item refusal instead of silently confirming", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`Paused ${uniqueKey()}`);
+    actAs(admin, profile);
+    const itemId = seedItem(profile.id, { active: 0, quantityOnHand: 5 });
+    const doseId = seedDose(itemId);
+    const date = today(profile.id);
+
+    const { body } = await replay([doseIntent(doseId, profile.id, date)]);
+    expect(body.results?.[0].status).toBe("rejected");
+    expect(body.results?.[0].reason).toMatch(/paused/i);
+    expect(logFor(doseId, date)).toBeUndefined();
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT quantity_on_hand AS q FROM intake_items WHERE id = ?"
+          )
+          .get(itemId) as { q: number }
+      ).q
+    ).toBe(5);
+  });
+
+  it("surfaces the retired-dose refusal with a reason", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`Retired ${uniqueKey()}`);
+    actAs(admin, profile);
+    const doseId = seedDose(seedItem(profile.id), 1);
+    const date = today(profile.id);
+
+    const { body } = await replay([doseIntent(doseId, profile.id, date)]);
+    expect(body.results?.[0].status).toBe("rejected");
+    expect(body.results?.[0].reason).toMatch(/no longer on the schedule/i);
+    expect(logFor(doseId, date)).toBeUndefined();
+  });
+
+  it("resolves an already-confirmed dose as already-done, never a second log", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`Idempotent ${uniqueKey()}`);
+    actAs(admin, profile);
+    const itemId = seedItem(profile.id, { quantityOnHand: 9 });
+    const doseId = seedDose(itemId);
+    const date = today(profile.id);
+
+    const first = doseIntent(doseId, profile.id, date);
+    expect((await replay([first])).body.results?.[0].status).toBe("done");
+    // The SAME idempotency key (a racing flush / Background Sync) → duplicate.
+    expect((await replay([first])).body.results?.[0].status).toBe("duplicate");
+    // A DIFFERENT key for the same dose+day (a re-tap queued while still offline) is
+    // already-done: settled, not dead-lettered, and not a duplicate log row.
+    const { body } = await replay([doseIntent(doseId, profile.id, date)]);
+    expect(body.results?.[0].status).toBe("done");
+    expect(body.results?.[0].reason).toBeUndefined();
+
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+          )
+          .get(doseId, date) as { n: number }
+      ).n
+    ).toBe(1);
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT quantity_on_hand AS q FROM intake_items WHERE id = ?"
+          )
+          .get(itemId) as { q: number }
+      ).q
+    ).toBe(8);
+  });
+
+  it("refuses to overwrite a deliberate skip, and says why", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`Skipped ${uniqueKey()}`);
+    actAs(admin, profile);
+    const itemId = seedItem(profile.id);
+    const doseId = seedDose(itemId);
+    const date = today(profile.id);
+    db.prepare(
+      "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
+    ).run(doseId, itemId, date);
+
+    const { body } = await replay([doseIntent(doseId, profile.id, date)]);
+    expect(body.results?.[0].status).toBe("rejected");
+    expect(body.results?.[0].reason).toMatch(/already recorded as skipped/i);
+    expect(logFor(doseId, date)?.status).toBe("skipped");
+  });
+
+  it("rejects a dose id belonging to ANOTHER profile, writing nothing", async () => {
+    const admin = createLogin();
+    const mine = createProfile(`Mine ${uniqueKey()}`);
+    const theirs = createProfile(`Theirs ${uniqueKey()}`);
+    actAs(admin, mine);
+    const foreignDose = seedDose(seedItem(theirs.id));
+    const date = today(mine.id);
+
+    // Stamped to MY profile, but the dose is someone else's — the core's ownership
+    // check (via the dose row's own item) refuses it.
+    const { body } = await replay([doseIntent(foreignDose, mine.id, date)]);
+    expect(body.results?.[0].status).toBe("rejected");
+    expect(logFor(foreignDose, date)).toBeUndefined();
+  });
+
+  it("dead-letters an entry that outlived the dose-log window rather than backdating it", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`Stale ${uniqueKey()}`);
+    actAs(admin, profile);
+    const doseId = seedDose(seedItem(profile.id));
+    const longAgo = shiftDateStr(today(profile.id), -30);
+
+    const { body } = await replay([doseIntent(doseId, profile.id, longAgo)]);
+    expect(body.results?.[0].status).toBe("rejected");
+    expect(body.results?.[0].reason).toBe(STALE_QUEUED_DOSE_REASON);
+    expect(logFor(doseId, longAgo)).toBeUndefined();
   });
 });

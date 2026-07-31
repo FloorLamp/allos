@@ -20,7 +20,7 @@ import {
 } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useWeekStart } from "@/components/WeekStartProvider";
-import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
+import { formatDateWithYear, daysRemainingLabel } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // Styled, theme-consistent replacement for <input type="date">. The browser's
@@ -195,6 +195,7 @@ export default function DateField({
     <div
       className="relative"
       ref={ref}
+      data-escape-layer={open ? "true" : undefined}
       // Keep Escape from bubbling to a parent modal/dialog when the picker is open.
       onKeyDown={(e) => {
         if (e.key === "Escape" && open) {
@@ -216,7 +217,7 @@ export default function DateField({
         data-testid={testId}
         id={id}
         type="text"
-        value={validISO(val) ? formatLongDate(val, formatPrefs) : val}
+        value={validISO(val) ? formatDateWithYear(val, formatPrefs) : val}
         required={required}
         autoFocus={autoFocus}
         placeholder={placeholder}
@@ -225,7 +226,18 @@ export default function DateField({
         autoComplete="off"
         onChange={(e) => setVal(e.target.value)}
         onFocus={() => setOpen(true)}
-        className={`input pr-10 ${inputClassName}`}
+        // The field renders the vocabulary's year-bearing short form ("Jul 24,
+        // 2026") rather than formatLongDate's "Friday, July 24" (issue #1450
+        // cluster A / #1448): ~20% narrower, and dated, which a date being EDITED
+        // always wants. `pr-9` (not pr-10) matches the calendar button's real
+        // reach — a 1rem glyph inset 0.5rem — returning 4px to the value.
+        //
+        // Deliberately NO min-width: date fields sit inside layouts with their own
+        // pinned geometry (the activity editor's Date/Duration/Start/End are one
+        // equal-width row, #188), so a floor here would break those instead. Where
+        // a date genuinely could not fit, the CONTAINER was too narrow and is
+        // widened at the container (components/ListRailLayout.tsx).
+        className={`input pr-9 ${inputClassName}`}
       />
       {/* The visible field can show a friendly date, so the ISO value is
           submitted via a hidden input for uncontrolled (name) usage. */}
@@ -234,6 +246,7 @@ export default function DateField({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Open calendar"
+        title="Open calendar"
         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
       >
         <svg
@@ -260,6 +273,7 @@ export default function DateField({
           <div
             ref={popRef}
             data-testid="date-field-calendar"
+            data-escape-layer="true"
             style={{
               position: "fixed",
               top: pos?.top ?? 0,
@@ -304,6 +318,7 @@ export default function DateField({
                   type="button"
                   onClick={() => shift(-1)}
                   aria-label="Previous month"
+                  title="Previous month"
                   className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronLeft className="h-4 w-4" />
@@ -312,6 +327,7 @@ export default function DateField({
                   type="button"
                   onClick={() => shift(1)}
                   aria-label="Next month"
+                  title="Next month"
                   className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronRight className="h-4 w-4" />

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getStarredBiomarkers } from "@/lib/queries";
+import { getSavedBiomarkers } from "@/lib/queries";
 import {
   rangeBadge,
   RANGE_BADGE_META,
@@ -18,15 +18,27 @@ import {
 import { ageFromBirthdate } from "@/lib/date";
 import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
+import { PHONE_STARRED_TILE_CAP, splitAtPhoneCap } from "@/lib/phone-fold";
 import BiomarkerScale from "./BiomarkerScale";
+import PhoneFold from "./PhoneFold";
 
-// Pinned card of the user's starred biomarkers, shown at the top of /biomarkers
-// and on the dashboard. Each tile links to the biomarker detail page and shows
+// Pinned card of the user's starred biomarkers, shown at the top of Results →
+// Biomarkers — its one card surface. (The comment used to claim a dashboard render
+// too; nothing on the dashboard has ever imported this. The Trends Overview did
+// render it until #1455 dropped it there, where it collided with the trend_pins
+// chart grid.) Each tile links to the biomarker detail page and shows
 // the latest value, an optimal-status chip (when known), and a sparkline.
 // Renders nothing when no biomarkers are starred.
 //
-// Multi-view (#1331): the starred lens is PER PROFILE (starred_biomarkers is
-// name-keyed per profile), so a caregiver viewing several members sees one labeled
+// PHONE FOLD (#1578): one tile per star at 390px is an UNBOUNDED card sitting above
+// an index — the more analytes you pin, the further the first panel header falls off
+// the first screen. Below `sm` the tiles past PHONE_STARRED_TILE_CAP fold behind a
+// "Show all N starred" toggle; from `sm` up every tile renders in the same one grid
+// it always did (PhoneFold's folded slot is `display: contents` there), so the
+// desktop card is unchanged and there is no second tile tree.
+//
+// Multi-view (#1331): the starred lens is PER PROFILE (a save is one `saved_items`
+// row per profile, name-keyed), so a caregiver viewing several members sees one labeled
 // card per member — pass that member's `profileId` + `subjectLabel`. Every range /
 // flag / staleness judgment then resolves in THAT member's own demographic context
 // (its sex, birthdate/age, reproductive status), never the acting profile's. Default
@@ -41,7 +53,7 @@ export default async function StarredBiomarkers({
   subjectLabel?: string;
 }) {
   const pid = profileId ?? (await requireSession()).profile.id;
-  const starred = getStarredBiomarkers(pid);
+  const starred = getSavedBiomarkers(pid);
   if (starred.length === 0) return null;
   const sex = getUserSex(pid);
   // Reproductive status (female physiology only) overrides the age proxy for the
@@ -55,6 +67,90 @@ export default async function StarredBiomarkers({
     (birthdate && date ? ageFromBirthdate(birthdate, date) : null) ??
     storedAge ??
     null;
+
+  // ONE tile renderer, used for both sides of the phone fold — the shown tiles and
+  // the folded ones are the same authored element, never two trees.
+  const tile = (b: (typeof starred)[number]) => {
+    // Status from the latest value — exact, or an inexact-but-bounded reading
+    // ("<0.10") judged at its limit.
+    const latestNum =
+      b.latest_value_num ?? parseLooseValue(b.latest_value)?.value ?? null;
+    const age = ageOn(b.latest_date);
+    const badge = rangeBadge(
+      convertToCanonical(latestNum, b.latest_unit, b.canonical),
+      b.canonical,
+      sex,
+      age,
+      reproductiveStatus
+    );
+    const meta = RANGE_BADGE_META[badge];
+    // Judge staleness on the latest RECORD's category (not the canonical entry's),
+    // matching the detail page and table — so a genomics result fires the never-stale
+    // rule here too (#381), and an immune-positive durable-immunity titer is exempt on
+    // the tile too (#516).
+    const stale = isBiomarkerStale(
+      b.latest_date,
+      b.latest_category,
+      today(pid),
+      undefined,
+      {
+        name: b.canonical_name,
+        flag: b.latest_flag,
+        value: b.latest_value,
+        notes: b.latest_notes,
+        reference: b.latest_reference_range,
+      }
+    );
+    const ageDays = b.latest_date
+      ? daysBetween(b.latest_date, today(pid))
+      : null;
+    const relative =
+      ageDays == null
+        ? "no readings"
+        : ageDays <= 0
+          ? "today"
+          : `${humanizeAge(ageDays)} ago`;
+    return (
+      <Link
+        key={b.canonical_name}
+        href={`/biomarkers/view?name=${encodeURIComponent(b.canonical_name)}`}
+        data-testid="starred-tile"
+        className="rounded-lg border border-black/5 p-3 transition hover:border-brand-200 hover:shadow-sm dark:border-white/10"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+            {b.canonical_name}
+          </span>
+          {badge !== "unknown" && (
+            <span className={`badge shrink-0 ${meta.chip}`}>{meta.label}</span>
+          )}
+        </div>
+        <div className="mt-2">
+          <BiomarkerScale
+            b={b}
+            sex={sex}
+            age={age}
+            status={reproductiveStatus}
+          />
+        </div>
+        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          {relative}
+          {stale && (
+            <span
+              className="ml-1.5 text-amber-600 dark:text-amber-400"
+              title="Over a year old — consider retesting"
+            >
+              · ⏳ stale
+            </span>
+          )}
+        </div>
+      </Link>
+    );
+  };
+
+  // The phone split. `folded` is empty when the reader has few enough stars that the
+  // card was never the problem — PhoneFold then draws no toggle.
+  const { shown, folded } = splitAtPhoneCap(starred, PHONE_STARRED_TILE_CAP);
 
   return (
     <div
@@ -77,88 +173,17 @@ export default async function StarredBiomarkers({
           ({starred.length})
         </span>
       </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {starred.map((b) => {
-          // Status from the latest value — exact, or an inexact-but-bounded
-          // reading ("<0.10") judged at its limit.
-          const latestNum =
-            b.latest_value_num ??
-            parseLooseValue(b.latest_value)?.value ??
-            null;
-          const age = ageOn(b.latest_date);
-          const badge = rangeBadge(
-            convertToCanonical(latestNum, b.latest_unit, b.canonical),
-            b.canonical,
-            sex,
-            age,
-            reproductiveStatus
-          );
-          const meta = RANGE_BADGE_META[badge];
-          // Judge staleness on the latest RECORD's category (not the canonical
-          // entry's), matching the detail page and table — so a genomics result
-          // fires the never-stale rule here too (#381), and an immune-positive
-          // durable-immunity titer is exempt on the tile too (#516).
-          const stale = isBiomarkerStale(
-            b.latest_date,
-            b.latest_category,
-            today(pid),
-            undefined,
-            {
-              name: b.canonical_name,
-              flag: b.latest_flag,
-              value: b.latest_value,
-              notes: b.latest_notes,
-              reference: b.latest_reference_range,
-            }
-          );
-          const ageDays = b.latest_date
-            ? daysBetween(b.latest_date, today(pid))
-            : null;
-          const relative =
-            ageDays == null
-              ? "no readings"
-              : ageDays <= 0
-                ? "today"
-                : `${humanizeAge(ageDays)} ago`;
-          return (
-            <Link
-              key={b.canonical_name}
-              href={`/biomarkers/view?name=${encodeURIComponent(b.canonical_name)}`}
-              className="rounded-lg border border-black/5 p-3 transition hover:border-brand-200 hover:shadow-sm dark:border-white/10"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
-                  {b.canonical_name}
-                </span>
-                {badge !== "unknown" && (
-                  <span className={`badge shrink-0 ${meta.chip}`}>
-                    {meta.label}
-                  </span>
-                )}
-              </div>
-              <div className="mt-2">
-                <BiomarkerScale
-                  b={b}
-                  sex={sex}
-                  age={age}
-                  status={reproductiveStatus}
-                />
-              </div>
-              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                {relative}
-                {stale && (
-                  <span
-                    className="ml-1.5 text-amber-600 dark:text-amber-400"
-                    title="Over a year old — consider retesting"
-                  >
-                    · ⏳ stale
-                  </span>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+      <PhoneFold
+        testId={
+          profileId != null ? `starred-fold-${profileId}` : "starred-fold"
+        }
+        containerClassName="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        showLabel={`Show all ${starred.length} starred`}
+        hideLabel="Show fewer"
+        folded={folded.map(tile)}
+      >
+        {shown.map(tile)}
+      </PhoneFold>
     </div>
   );
 }

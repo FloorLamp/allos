@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import { FitnessPictogram } from "@/components/fitness-pictograms";
 import { useWakeLock } from "@/components/useWakeLock";
+import { useHaptics } from "@/components/useHaptics";
 import { formatSeconds } from "@/lib/duration";
 import {
   IDLE_TIMER,
@@ -68,6 +69,7 @@ export default function FitnessTestTimer({
   const announcedFinalRef = useRef(false);
   const [announce, setAnnounce] = useState("");
   const audioRef = useRef<AudioContext | null>(null);
+  const haptic = useHaptics();
 
   // Keep the screen awake only while the takeover is open (holding a plank / a stance).
   useWakeLock(expanded);
@@ -99,12 +101,10 @@ export default function FitnessTestTimer({
     } catch {
       // AudioContext unavailable/blocked — the visual "Time" cue stands in.
     }
-    try {
-      navigator.vibrate?.([120, 60, 120]);
-    } catch {
-      // Vibration API absent (desktop) — no-op.
-    }
-  }, []);
+    // Same shared double-pulse the rest timer ends on (#1422) — one pattern table, one
+    // reduced-motion gate, not a second hand-copied literal.
+    haptic("timer-complete");
+  }, [haptic]);
 
   const finish = useCallback(() => {
     const at = Date.now();
@@ -197,7 +197,7 @@ export default function FitnessTestTimer({
           type="button"
           onClick={openTakeover}
           data-testid={`${base}-launch`}
-          className="btn-secondary flex w-full items-center justify-center gap-2 py-2.5 text-sm font-semibold"
+          className="btn-ghost flex w-full items-center justify-center gap-2 py-2.5 text-sm font-semibold"
         >
           <IconPlayerPlayFilled className="h-4 w-4" />
           {started
@@ -233,6 +233,7 @@ export default function FitnessTestTimer({
           onClick={() => setExpanded(false)}
           data-testid={`${base}-collapse`}
           aria-label="Collapse timer"
+          title="Collapse timer"
           className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
         >
           <IconX className="h-6 w-6" />
@@ -271,6 +272,7 @@ export default function FitnessTestTimer({
               onClick={pause}
               data-testid={`${base}-pause`}
               aria-label="Pause"
+              title="Pause timer"
               className="flex h-12 w-12 items-center justify-center rounded-full border border-black/10 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
             >
               <IconPlayerPauseFilled className="h-6 w-6" />
@@ -282,6 +284,7 @@ export default function FitnessTestTimer({
               onClick={reset}
               data-testid={`${base}-reset`}
               aria-label="Reset"
+              title="Reset timer"
               className="flex h-12 w-12 items-center justify-center rounded-full border border-black/10 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
             >
               <IconRotateClockwise className="h-6 w-6" />

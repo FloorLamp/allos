@@ -34,6 +34,8 @@
 //     and validates those directly.
 
 import type { Route } from "next";
+import type { PanelId } from "./biomarker-panels";
+import type { GrowthMetric } from "./growth";
 import type { IntegrationId } from "./types/integrations";
 import type { SupplementKind } from "./types/intake";
 
@@ -59,6 +61,12 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 // The standalone Medications page (#746) — medications left the old combined
 // /medicine surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
+
+// The household medicine cabinet — the shared supply pools registry (#1374). ONE
+// household-level surface for both kinds (the #746 split is per-ITEM; a shared bottle
+// has no kind of its own), so every shared-bottle chip, pooled low-supply finding, and
+// pool nudge deep-links here rather than to a kind page.
+export const SUPPLIES_HREF: AppRoute = "/supplies";
 
 // The Illness episodes index (#856), which BECAME the cross-profile care-trail surface
 // (#1373 Part 2): the view-set banner drives whose data shows, a `?kind=` toggle drives
@@ -98,6 +106,13 @@ export function intakeHref(kind: SupplementKind): AppRoute {
 // Query-rule helpers
 // --------------------------------------------------------------------------
 
+// The biomarkers LIST route: where `biomarkerViewHref` falls back when there is
+// no canonical name to chart, and (since #1447) where a PARAMLESS
+// /biomarkers/view redirects — that route can only render a degenerate empty
+// page, and this helper already owns "no name ⇒ the list". One constant so the
+// link rule and the redirect can never point at different places.
+export const BIOMARKERS_LIST_HREF: AppRoute = "/results/biomarkers";
+
 // Deep-link to a biomarker's chart on /biomarkers/view, or the list when there's
 // nothing to chart. The RULE (was duplicated, wrong in one place — #283 bug 5):
 // the view page resolves `?name=` as the CANONICAL name, so only a canonicalized
@@ -117,7 +132,16 @@ export function biomarkerViewHref(
   const name = canonical || rawName?.trim();
   return canonical && name
     ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-    : "/results/biomarkers";
+    : BIOMARKERS_LIST_HREF;
+}
+
+// The biomarkers list FILTERED to one normalized panel (#1502). A rule-carrying
+// helper because the `?panel=` facet now encodes a controlled SLUG (not the old
+// free-text heading) on the post-#1079 list route, and two lanes emit it — the
+// Panel cell in BiomarkersTable and the "see the whole panel" link on biomarker
+// detail. One encoding so they can't drift onto different routes or param shapes.
+export function panelFilterHref(panel: PanelId): AppRoute {
+  return `/results/biomarkers?panel=${encodeURIComponent(panel)}`;
 }
 
 // The biomarker ADD-FORM deep link: Results › Biomarkers with the add form
@@ -192,6 +216,8 @@ const INTEGRATION_DETAIL_ROUTES: Partial<Record<IntegrationId, AppRoute>> = {
   withings: "/integrations/withings",
   weather: "/integrations/weather",
   "calendar-feed": "/integrations/calendar-feed",
+  "fitbit-takeout": "/integrations/fitbit-takeout",
+  "patient-portals": "/integrations/patient-portals",
 };
 
 export function integrationDetailHref(id: IntegrationId): AppRoute | null {
@@ -251,6 +277,20 @@ export function medicationEditHref(id: number): AppRoute {
   return `${medicationHref(id)}?action=edit` as AppRoute;
 }
 
+// An equipment registry detail page (#343) — the gear's usage history. Used as DATA
+// (a search hit's typed destination, #1595), where a bare literal cannot carry the
+// dynamic-route widening cast a `<Link href>` gets for free.
+export function equipmentHref(id: number): AppRoute {
+  const href: Route<`/equipment/${number}`> = `/equipment/${id}`;
+  return href as AppRoute;
+}
+
+// Where wellness PRACTICES live — the same address the Upcoming `practice:<id>` item
+// and the search hit already point at. The ONE encoding of that seam (#285's
+// rule-carrying link), so the practice nudge's deep link (#1718) can't drift from the
+// item it is the push twin of.
+export const PRACTICES_HREF: AppRoute = "/wellness";
+
 // A protocol (training/care protocol) detail page.
 export function protocolHref(id: number): AppRoute {
   const href: Route<`/protocols/${number}`> = `/protocols/${id}`;
@@ -263,15 +303,39 @@ export function immunizationHref(vaccine: string): AppRoute {
   return href as AppRoute;
 }
 
-// A body-metric detail page (#1067 Phase 2) — the per-metric surface for a Trends →
-// Body sparkline tile (`/trends/metric/weight`, `/trends/metric/steps`, …), the
-// biomarker-view pattern applied to body metrics. The slug is a stable
-// BodyMetricSlug (see lib/trends-body-metrics); a dynamic route needs the widening
-// cast. Typed `string` (not the slug union) to avoid a hrefs ↔ trends-body-metrics
-// import cycle — the page validates the slug against the registry.
-export function bodyMetricHref(kind: string): AppRoute {
+// A metric DETAIL page (#1067 Phase 2, generalized by #1488) — the per-metric
+// full-depth surface (`/trends/metric/weight`, `/trends/metric/steps`,
+// `/trends/metric/mood`, …): the biomarker-view pattern applied to body metrics,
+// and since #1488 the tap-through destination EVERY full-size Trends chart of a
+// registered kind points at. The slug is a stable BodyMetricSlug (see
+// lib/trends-body-metrics); a dynamic route needs the widening cast. Typed `string`
+// (not the slug union) to avoid a hrefs ↔ trends-body-metrics import cycle — the
+// page validates the slug against the registry, and `chart-detail-href.test.ts`
+// pins that every kind the registry declares resolves there.
+export function metricDetailHref(kind: string): AppRoute {
   const href: Route<`/trends/metric/${string}`> = `/trends/metric/${kind}`;
   return href as AppRoute;
+}
+
+// The composite WHO/CDC growth-percentile detail surface. It is deliberately not
+// a metric slug: one view switches among height, weight, BMI, and head circumference.
+export const GROWTH_TRENDS_HREF = "/trends/growth" as AppRoute;
+
+// Each growth measure is a separate chart while sharing one pediatric detail page.
+// The hash lands a tile/full-chart header on that measure instead of dropping the
+// reader at the top of a four-chart page.
+export function growthTrendsHref(
+  metric: GrowthMetric,
+  range?: { from?: string; to?: string }
+): AppRoute {
+  const params = new URLSearchParams();
+  if (range?.from) params.set("from", range.from);
+  if (range?.to) params.set("to", range.to);
+  // An explicitly supplied empty range means All time; no range argument means
+  // the destination's normal default.
+  if (range && !range.from && !range.to) params.set("range", "all");
+  const query = params.toString();
+  return `/trends/growth${query ? `?${query}` : ""}#growth-${metric}` as AppRoute;
 }
 
 // The illness-episode detail page (issue #856). The slug is the STABLE episode row id

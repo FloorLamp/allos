@@ -171,3 +171,58 @@ export function shouldSendMoodCheckin(input: {
   if (input.alreadyLoggedToday) return false;
   return input.ignoredCount < MOOD_CHECKIN_AUTOPAUSE_DAYS;
 }
+
+// ---- Announcing the pause (issue #1668) ----
+//
+// The auto-pause was INVISIBLE: reminders simply stopped, which reads as "notifications
+// broke", and there was no in-app trace of the paused state or way to resume short of
+// remembering to log a mood. The mechanism itself is right (#992: a disengaged user
+// must not be nagged) — this is a visibility gap, not a doctrine violation.
+//
+// CONFIRM-TO-KEEP, not suggest-and-confirm. A "tap to pause?" question is
+// self-defeating for contact REDUCTION: if ignoring it keeps reminders coming, the
+// disengaged user is nagged forever (the exact harm #992 forbids); if ignoring it
+// pauses anyway, the confirmation is theater. Consent gates apply to STARTING contact
+// and CHANGING user state — never to stopping contact. So the final reminder announces
+// the pause and offers to KEEP it going; ignoring lets the pause proceed exactly as
+// today, now as informed silence.
+
+// Whether THIS send is the last one before the hold takes effect — i.e. the streak is
+// one short of the auto-pause line, so bumping it after this send reaches it.
+export function isFinalMoodCheckin(ignoredCount: number): boolean {
+  return ignoredCount === MOOD_CHECKIN_AUTOPAUSE_DAYS - 1;
+}
+
+// Whether the reminder is currently HELD by the auto-pause. Derived state, never a
+// stored flag: `enabled` stays true and the hold lifts the moment a mood is logged, so
+// the in-app "paused" presentation reads this rather than a second source of truth.
+export function isMoodCheckinPaused(input: {
+  enabled: boolean;
+  ignoredCount: number;
+}): boolean {
+  return input.enabled && input.ignoredCount >= MOOD_CHECKIN_AUTOPAUSE_DAYS;
+}
+
+// The extra line the final reminder carries. No guilt, no streak language — the #992 /
+// #716 sensitivity contract, which the no-gamification guard test keeps authoritative.
+export const MOOD_CHECKIN_PAUSE_NOTICE =
+  "No pressure — I'll pause these until you next log.";
+
+// The in-app paused-state copy, shared by the dashboard card and the mood settings row
+// so the two can't describe the same derived state differently.
+export const MOOD_CHECKIN_PAUSED_LABEL = "Check-ins paused after quiet days";
+
+// The ONE keep/resume decision (#1668), shared by the Telegram button and the in-app
+// Resume action. Pure: the caller supplies the current state and performs the reset on
+// a "kept" outcome, so both entry points answer identically and neither invents its own
+// idea of what a resume means.
+export function decideMoodKeep(input: {
+  enabled: boolean;
+  ignoredCount: number;
+}): MoodKeepDecision {
+  if (!input.enabled) return "not-enabled";
+  // A streak already at zero means a logged mood re-armed it — the auto-resume path.
+  return input.ignoredCount > 0 ? "kept" : "already-active";
+}
+
+export type MoodKeepDecision = "kept" | "already-active" | "not-enabled";

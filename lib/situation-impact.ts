@@ -7,9 +7,18 @@
 // Window source decision (#1360): situation_events is DECLARED-only — only a user-toggled
 // situation writes dated start/stop transitions (see docs/internals/supplements.md: "derived
 // chart annotations stay declared-only"). A DERIVED situation (#1292 Poor sleep, #1298
-// Period) writes NO transitions, so it contributes NO windows and never yields an impact
-// card. Analytics ride the same declared window source the chart annotations + adherence
-// strip already read (situationHistoryResolver), never a re-derived span.
+// Period) writes NO transitions, so it contributes NO windows through THIS module and never
+// yields an impact card from the log. Analytics ride the same declared window source the
+// chart annotations + adherence strip already read (situationHistoryResolver), never a
+// re-derived span.
+//
+// The WEATHER situations (#1726) are the documented exception, and they do not weaken the
+// rule: the reason a derived situation contributes no windows is that a per-day verdict
+// ("last night was rough") leaves no span anyone can reconstruct. A heatwave does — it is a
+// run of days in a cached meteorological series, recomputed identically every time. So
+// weatherSituationWindows (lib/weather-situations.ts) produces those windows from the
+// PREDICATE rather than from a log, and feeds them to the same buildSituationImpact below.
+// Nothing is written either way; the builder is window-source-agnostic by construction.
 
 import { shiftDateStr } from "./date";
 import { sameSituation } from "./situations";

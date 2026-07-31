@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #478: a recipient opening a revoked/expired/mistyped share link must land
 // on the friendly, styled "no longer active" page — NOT Next's bare unstyled 404.
 // A nonexistent token exercises the exact same notFound() path a revoked link takes

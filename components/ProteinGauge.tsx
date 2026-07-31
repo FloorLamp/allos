@@ -1,4 +1,4 @@
-import { proteinBasisPhrase, type ProteinToday } from "@/lib/protein";
+import type { ProteinToday } from "@/lib/protein";
 
 // The protein band gauge (issue #974): one horizontal scale showing THREE numbers at a
 // glance — today so far (the primary filled bar), this week's daily average (a thin
@@ -15,7 +15,13 @@ function g(n: number): string {
   return String(Math.round(n));
 }
 
-export default function ProteinGauge({ today }: { today: ProteinToday }) {
+export default function ProteinGauge({
+  today,
+  periodLabel = "Today",
+}: {
+  today: ProteinToday;
+  periodLabel?: string;
+}) {
   const { todayGrams, target, weeklyAverageGrams } = today;
 
   // Scale 0 → ~1.2× the band ceiling, widened so a big today/weekly value never overflows.
@@ -38,6 +44,7 @@ export default function ProteinGauge({ today }: { today: ProteinToday }) {
     ? today.todayIntake.basis !== "tracked"
     : true;
   const todayValueLabel = `${isFloor ? "at least " : ""}${g(todayGrams)} g`;
+  const compactTodayValue = `${isFloor ? "≥" : ""}${g(todayGrams)}g`;
 
   return (
     <div data-testid="protein-gauge" className="mt-1">
@@ -46,7 +53,7 @@ export default function ProteinGauge({ today }: { today: ProteinToday }) {
       <div
         className="relative h-8 w-full overflow-hidden rounded-md bg-slate-100 dark:bg-ink-800"
         role="img"
-        aria-label={`Protein today ${todayValueLabel}, goal ${g(target.gramsLow)} to ${g(target.gramsHigh)} grams${
+        aria-label={`Protein ${periodLabel.toLowerCase()} ${todayValueLabel}, goal ${g(target.gramsLow)} to ${g(target.gramsHigh)} grams${
           weeklyAverageGrams != null
             ? `, usual ${g(weeklyAverageGrams)} grams a day`
             : ""
@@ -55,6 +62,10 @@ export default function ProteinGauge({ today }: { today: ProteinToday }) {
         {/* Goal band — the shaded target zone. */}
         <div
           data-testid="protein-gauge-band"
+          // The band's absolute grams, so a test can assert the goal setting (#1503)
+          // actually moved the target rather than only its rendered width.
+          data-grams-low={Math.round(target.gramsLow)}
+          data-grams-high={Math.round(target.gramsHigh)}
           className="absolute inset-y-0 bg-emerald-200/60 dark:bg-emerald-800/40"
           style={{ left: `${bandLeft}%`, width: `${bandWidth}%` }}
         />
@@ -77,21 +88,21 @@ export default function ProteinGauge({ today }: { today: ProteinToday }) {
         )}
       </div>
 
-      {/* Legend (#945 colloquial-first): the three values named. */}
-      <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+      {/* Compact legend: the full phrasing remains in the gauge's aria-label. */}
+      <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-sky-500/70" />
-          <dt>Today so far</dt>
+          <dt>{periodLabel}</dt>
           <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
-            · {todayValueLabel}
+            {compactTodayValue}
           </dd>
         </div>
         {weeklyAverageGrams != null && (
           <div className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-0.5 bg-slate-600 dark:bg-slate-200" />
-            <dt>Usual</dt>
+            <dt>Avg</dt>
             <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
-              · ~{g(weeklyAverageGrams)} g/day
+              ~{g(weeklyAverageGrams)}g
             </dd>
           </div>
         )}
@@ -99,16 +110,10 @@ export default function ProteinGauge({ today }: { today: ProteinToday }) {
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-200/80 dark:bg-emerald-800/60" />
           <dt>Goal</dt>
           <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
-            · {g(target.gramsLow)}–{g(target.gramsHigh)} g
+            {g(target.gramsLow)}–{g(target.gramsHigh)}g
           </dd>
         </div>
       </dl>
-      {today.todayIntake && today.todayIntake.basis !== "tracked" && (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Today so far is a floor from your{" "}
-          {proteinBasisPhrase(today.todayIntake.basis)}.
-        </p>
-      )}
     </div>
   );
 }

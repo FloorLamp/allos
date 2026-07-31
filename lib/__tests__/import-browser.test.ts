@@ -221,7 +221,10 @@ describe("row shapers", () => {
         onset_date: null,
         code: "I10",
       })
-    ).toMatchObject({ href: "/records/problems", detail: "active · I10" });
+    ).toMatchObject({
+      href: "/records/problems/conditions",
+      detail: "active · I10",
+    });
     expect(
       allergyItem({
         id: 1,
@@ -230,7 +233,10 @@ describe("row shapers", () => {
         severity: "moderate",
         status: "active",
       })
-    ).toMatchObject({ href: "/records/problems", title: "Penicillin" });
+    ).toMatchObject({
+      href: "/records/problems/allergies",
+      title: "Penicillin",
+    });
     expect(
       immunizationItem({
         id: 1,
@@ -306,7 +312,7 @@ describe("bodyItems (merged Body tab)", () => {
     expect(items[0].detail).toBe("178 cm");
     // Every merged row lands on the Body trends tab.
     expect(new Set(items.map((i) => i.href))).toEqual(
-      new Set(["/trends?tab=body"])
+      new Set(["/trends#body"])
     );
   });
 });

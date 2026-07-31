@@ -2,19 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { chartActivityRamp } from "@/lib/chart-colors";
 import type { HeatmapCell, WorkoutHeatmap } from "@/lib/workout-heatmap";
 
 // Single-letter weekday labels indexed by 0=Sun … 6=Sat.
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 
-// Color bucket per intensity level (0 = none … 4 = 4+ sessions). Emerald ramp,
-// theme-aware; level 0 is a neutral empty cell.
+// Color bucket per intensity level (0 = none … 4 = 4+ sessions), from the ONE
+// blessed activity ramp (issue #1445). This used to be a hand-rolled emerald
+// ladder copied into three surfaces — invisible to the hex scan, because a
+// Tailwind class is not a hex, which is exactly how it drifted.
 const LEVEL_CLASS = [
-  "bg-slate-100 dark:bg-ink-800",
-  "bg-emerald-200 dark:bg-emerald-900",
-  "bg-emerald-300 dark:bg-emerald-700",
-  "bg-emerald-400 dark:bg-emerald-600",
-  "bg-emerald-500 dark:bg-emerald-400",
+  chartActivityRamp.emptyClass,
+  ...chartActivityRamp.stepClasses,
 ];
 
 function cellSummary(cell: HeatmapCell): string {

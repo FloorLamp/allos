@@ -1,8 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openTempEntry } from "./symptom-helpers";
+import {
+  hydratedClick,
+  settledClick,
+  settledFill,
+  settledSelectSave,
+} from "./helpers";
 
 // Temperature-unit login preference (#857). Body temperature is stored canonically in
-// °F; the login picks °F or °C under Settings → Preferences and every temperature
+// °F; the login picks °F or °C under Settings → Display & units and every temperature
 // surface follows. This drives the real Settings select and confirms a °C login sees °C
 // on the dashboard symptom card's temperature entry + fever toast, and (#1019) on the
 // temperature RED-FLAG finding the Upcoming page renders — the one temperature surface
@@ -16,15 +22,21 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
 }) => {
   test.slow(); // settings → dashboard → two logs → /upcoming is a long path
   try {
-    // Toggle the preference to Celsius on Settings → Preferences (autosave on change).
-    await page.goto("/settings");
-    const select = page.getByTestId("temperature-unit-select");
-    await expect(select).toBeVisible();
-    await select.selectOption("C");
-    // Wait for the autosave to LAND before reloading — the units card's SaveStatus
-    // shows a "Saved" check once the server action resolves (the write is committed).
-    // Reloading before this races the async save (that's what dropped the pref).
-    await expect(page.getByLabel("Saved")).toBeVisible();
+    // Toggle the preference to Celsius on Settings → Display & units, which autosaves
+    // on change. settledSelectSave both waits for hydration (a pre-hydration
+    // selectOption on a CONTROLLED select is reverted and never fires onChange —
+    // #1188) and returns only once no save is still in flight in that card, so the
+    // reload below can't abort the write (the PR #586 class).
+    await page.goto("/settings/display");
+    const unitsCard = page.locator("div.card", {
+      has: page.getByTestId("temperature-unit-select"),
+    });
+    await settledSelectSave(
+      page,
+      page.getByTestId("temperature-unit-select"),
+      "C",
+      unitsCard
+    );
 
     // It persists across a full reload.
     await page.reload();
@@ -34,12 +46,17 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
     await page.goto("/");
     const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
     await expect(bar).toBeVisible();
-    await bar.getByTestId("temp-quick-toggle").click();
+    // The entry toggle is a pure client disclosure — hydratedClick so the tap can't be
+    // swallowed in the hydration window (#500/#830), which would leave the input
+    // unmounted and the save below with nothing to submit.
+    await hydratedClick(page, bar.getByTestId("temp-quick-toggle"));
     await expect(bar.getByTestId("temp-quick-unit")).toHaveValue("C");
 
-    // Logging a reading confirms it in °C via the fever toast (fmtTemp).
-    await bar.getByTestId("temp-quick-input").fill("38");
-    await bar.getByTestId("temp-quick-save").click();
+    // Logging a reading confirms it in °C via the fever toast (fmtTemp). settledFill
+    // lands the value in React state and settledClick awaits the log action's POST, so
+    // the toast assertion runs against a completed write rather than a lost click.
+    await settledFill(page, bar.getByTestId("temp-quick-input"), "38");
+    await settledClick(page, bar.getByTestId("temp-quick-save"));
     await expect(page.getByText(/Temperature logged/i)).toContainText("°C");
 
     // #1019: log a red-flag crossing (40.3 °C == 104.5 °F, hyperpyrexia) and the
@@ -47,8 +64,8 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
     // login's °C pref — the cited source label ("104°F or higher") stays verbatim.
     // The entry collapses after a save, so re-open it (the shared helper).
     await openTempEntry(bar);
-    await bar.getByTestId("temp-quick-input").fill("40.3");
-    await bar.getByTestId("temp-quick-save").click();
+    await settledFill(page, bar.getByTestId("temp-quick-input"), "40.3");
+    await settledClick(page, bar.getByTestId("temp-quick-save"));
     await expect(
       page.getByText(/Temperature logged: 40\.3 °C/).first() // first-ok: the confirmation for the temperature THIS spec just logged — order-agnostic
     ).toBeVisible();
@@ -61,9 +78,15 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
     await expect(redFlagItem).not.toContainText("104.5 °F");
   } finally {
     // Restore °F so the shared login preference doesn't bleed into other specs.
-    await page.goto("/settings");
-    await page.getByTestId("temperature-unit-select").selectOption("F");
-    await expect(page.getByLabel("Saved")).toBeVisible();
+    await page.goto("/settings/display");
+    await settledSelectSave(
+      page,
+      page.getByTestId("temperature-unit-select"),
+      "F",
+      page.locator("div.card", {
+        has: page.getByTestId("temperature-unit-select"),
+      })
+    );
     await expect(page.getByTestId("temperature-unit-select")).toHaveValue("F");
   }
 });

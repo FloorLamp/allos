@@ -11,28 +11,28 @@ import { timeBucket, TIME_BUCKETS } from "../supplement-schedule";
 // tier of the comparator is exercised. Deliberately shuffled so an alphabetical
 // (title-only) sort would give the WRONG answer — the #297 bug.
 const FIXTURE: DoseDayEntry[] = [
-  { timeOfDay: "bedtime", priority: "low", stack: null, name: "Melatonin" },
-  { timeOfDay: "morning", priority: "low", stack: null, name: "Zinc" },
-  { timeOfDay: "morning", priority: "mandatory", stack: null, name: "Aspirin" },
+  { timeOfDay: "bedtime", obligation: "may", stack: null, name: "Melatonin" },
+  { timeOfDay: "morning", obligation: "may", stack: null, name: "Zinc" },
+  { timeOfDay: "morning", obligation: "must", stack: null, name: "Aspirin" },
   {
     timeOfDay: "with dinner",
-    priority: "high",
+    obligation: "should",
     stack: null,
     name: "Magnesium",
   },
   {
     timeOfDay: "morning",
-    priority: "high",
+    obligation: "should",
     stack: "D3 + K2",
     name: "Vitamin K2",
   },
   {
     timeOfDay: "morning",
-    priority: "high",
+    obligation: "should",
     stack: "D3 + K2",
     name: "Vitamin D3",
   },
-  { timeOfDay: "morning", priority: "high", stack: null, name: "Fish Oil" },
+  { timeOfDay: "morning", obligation: "should", stack: null, name: "Fish Oil" },
 ];
 
 describe("doseSortKey / compareDoseDay", () => {
@@ -70,13 +70,13 @@ describe("doseSortKey / compareDoseDay", () => {
   it("sort key is a stable string usable as a lexical tiebreak", () => {
     const a: DoseDayEntry = {
       timeOfDay: "morning",
-      priority: "high",
+      obligation: "should",
       stack: null,
       name: "Fish Oil",
     };
     const b: DoseDayEntry = {
       timeOfDay: "bedtime",
-      priority: "mandatory",
+      obligation: "must",
       stack: null,
       name: "Aspirin",
     };

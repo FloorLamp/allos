@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 // #734 — the static how-to guide (content layer + accessor from #733) surfaced in
 // the ONE per-exercise surface, `ExerciseDetailPanel`, as a "How to" section, plus
 // an ⓘ entry point in the strength set editor that opens the SAME shared guide
@@ -27,15 +27,15 @@ async function pickActivity(page: Page, name: string) {
 test("the exercise detail panel shows a How-to guide for a catalog lift, and none for a custom lift (#734)", async ({
   page,
 }) => {
-  // Trends → Fitness renders the Strength explorer + exercise detail panel (same
-  // host strength-standards.spec.ts drives). The desktop side panel is visible at
-  // the 1280-wide e2e viewport.
-  await page.goto("/trends?tab=fitness");
+  // Training → Analyze renders the per-exercise detail panel (same host
+  // strength-standards.spec.ts drives, and its home since #1492 moved the
+  // full-history explorers off the Trends Fitness lens). The desktop side panel is
+  // visible at the 1280-wide e2e viewport.
+  await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   const main = page.getByRole("main");
 
   // A COVERED catalog lift → the panel carries the "How to" section with setup
   // steps and the medical disclaimer.
-  await main.getByRole("cell", { name: /Back Squat/ }).click();
   const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
   await expect(guide).toContainText("How to");
@@ -46,11 +46,14 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
 
   // A custom (non-catalog) strength exercise → NO how-to section (the accessor
   // returns undefined, so the section renders nothing).
-  await main.getByRole("cell", { name: /E2E Dismiss Press/ }).click();
+  await page.goto(
+    "/training?tab=analyze&kind=strength&item=E2E%20Dismiss%20Press"
+  );
   // The panel itself still renders (the est-1RM stat proves it swapped); the
   // guide section is simply absent.
-  await expect(main.getByText("Est. 1RM").first()).toBeVisible(); // first-ok: asserts an Est. 1RM readout renders — order-agnostic presence
-  await expect(main.getByTestId("exercise-guide")).toHaveCount(0);
+  const custom = page.getByRole("main");
+  await expect(custom.getByText("Est. 1RM").first()).toBeVisible(); // first-ok: asserts an Est. 1RM readout renders — order-agnostic presence
+  await expect(custom.getByTestId("exercise-guide")).toHaveCount(0);
 });
 
 test("the strength set editor's ⓘ opens the shared guide overlay for a catalog lift (#734)", async ({

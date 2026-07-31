@@ -1,8 +1,10 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { settledClick } from "./helpers";
 import { followLink, openCommandPalette } from "./nav";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Clear the coaching "Snooze" snooze so the #39 test starts UNSNOOZED on every
 // repeat (#868 fixture ownership). `snoozeCoaching` writes a persistent
@@ -12,9 +14,7 @@ import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 // admin's active profile 1 and the coaching namespace. Short-lived connection +
 // busy timeout so it never contends with the running server on the WAL DB.
 function resetCoachingSnooze(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -43,6 +43,21 @@ const ROUTES = [
   "/settings",
 ];
 
+// The app shell renders ONE of two navigation surfaces depending on viewport, so
+// the "this is the app, not a Next error boundary" anchor has to follow suit
+// (issue #1420 — this spec now runs in the `mobile` project too): the desktop
+// sidebar is `hidden md:flex` (app/(app)/layout.tsx) and MobileNav's top bar is
+// `md:hidden`, and the drawer holding the sidebar's links isn't even mounted
+// until the hamburger is tapped. Below the Tailwind `md` breakpoint (768px) the
+// anchor is that hamburger; at desktop widths it stays the sidebar's Data link
+// (exact:true avoids the Import tab's provider links that also contain "Data").
+function appShellAnchor(page: Page): Locator {
+  const width = page.viewportSize()?.width ?? Number.POSITIVE_INFINITY;
+  return width < 768
+    ? page.getByRole("button", { name: "Open menu" })
+    : page.getByRole("link", { name: "Data", exact: true });
+}
+
 // #181: with ALLOS_DEMO_MODE unset (the default webServer env), demo mode is fully
 // inert — the persistent demo banner must be absent on both the login page and an
 // authenticated page, and the login page shows no demo-credentials card. The
@@ -60,12 +75,9 @@ for (const route of ROUTES) {
   test(`renders ${route}`, async ({ page }) => {
     const resp = await page.goto(route);
     expect(resp?.status(), `HTTP status for ${route}`).toBeLessThan(400);
-    // The shared sidebar (Data nav link) proves the app shell rendered rather
-    // than a Next error boundary / 500 page. exact:true avoids matching the
-    // Import tab's provider links that also contain "Data".
-    await expect(
-      page.getByRole("link", { name: "Data", exact: true })
-    ).toBeVisible();
+    // The viewport's navigation surface proves the app shell rendered rather
+    // than a Next error boundary / 500 page (see appShellAnchor).
+    await expect(appShellAnchor(page)).toBeVisible();
     await expect(page.getByText("Application error")).toHaveCount(0);
   });
 }
@@ -89,9 +101,27 @@ test("dashboard coaching 'Snooze' snoozes the top recommendation (#39)", async (
     ?.trim();
   expect(original).toBeTruthy();
 
-  await card.getByTestId("coaching-snooze").click();
-  // The snoozed recommendation is no longer shown as the widget's suggestion.
-  await expect(card.getByText(original!, { exact: true })).toHaveCount(0);
+  // settledClick, not a bare .click() (#1513): Snooze submits a Server Action, and a
+  // tap that lands before the form hydrates is swallowed — the POST never happens and
+  // the assertion below then reads a state that never changed. Measured 3-of-4 locally
+  // under isolation; the #1400/#1464 class, caught latent rather than in CI.
+  await settledClick(page, card.getByTestId("coaching-snooze"));
+  // settledClick arms a same-origin POST wait, which the app-wide toaster polls can
+  // satisfy instead of this action's own request (#1437) — so hold on the action's OWN
+  // durable completion marker before reading the result: SubmitButton renders its
+  // `pendingLabel` ("…") for exactly as long as the transition is pending, and a
+  // bystander poll cannot fake that. It resolves whether the widget re-renders with
+  // the next recommendation or falls back to empty (the card locator then matches
+  // nothing, which is a count of 0 either way).
+  await expect(card.getByText("…", { exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  // The snoozed recommendation is no longer shown as the widget's suggestion. The
+  // dashboard is the app's heaviest server render, so the revalidated-RSC hand-off
+  // gets the heavy-page budget too (the #1306 class) rather than the default 5s.
+  await expect(card.getByText(original!, { exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  });
 });
 
 // #40: derived clinical indices are computed at read time from the seeded lipid /
@@ -186,9 +216,22 @@ test("biological-age hero is absent for a child profile (#209)", async ({
     // Switch to profile 2 ("Riley (child)") via its household chip, then confirm the
     // switch by the user-menu naming the new profile.
     await page.goto("/");
-    await page.getByRole("main").getByTestId("household-chip-2").click();
+    // Same class as the Snooze above (#1513): the chip is a Server-Action form submit
+    // whose RESULT this asserts, so wait for the action's POST rather than assuming a
+    // pre-hydration tap landed.
+    await settledClick(
+      page,
+      page.getByRole("main").getByTestId("household-chip-2")
+    );
+    // The switch's own completion marker, on the heavy-page budget (#1306): the chip
+    // posts openProfileAction and redirects back to the dashboard, and settledClick's
+    // same-origin POST wait can be satisfied by an app-wide toaster poll instead of
+    // that action (#1437) — so the switch can still be in flight when this reads. The
+    // retry IS the wait; it just needs longer than the default 5s on the app's
+    // heaviest server render.
     await expect(page.getByTestId("user-menu-trigger")).toContainText(
-      "Riley (child)"
+      "Riley (child)",
+      { timeout: 15_000 }
     );
 
     // On the child's Biomarkers page the hero is not rendered at all.
@@ -204,7 +247,10 @@ test("biological-age hero is absent for a child profile (#209)", async ({
 // #19: the global (Cmd-K) command palette now fans out over the clinical passport,
 // so an allergy substance is findable. Seed documents a Penicillin allergy; opening
 // the palette and typing "penicillin" must surface it under the Allergies group and
-// link to /allergies. Proves the new search domains wire end-to-end (query → server
+// link to the Allergies pane. Since #1449 that is the LEAF pane
+// (/records/problems/allergies), not the old stacked Problems route — the hit lands
+// ON the allergy list instead of above a stack. Proves the search domains wire
+// end-to-end (query → server
 // action → ranked group → rendered hit).
 test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async ({
   page,
@@ -218,11 +264,15 @@ test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async (
   // The result list is the palette's listbox; scope to it so the sidebar's own
   // "Allergies" nav link can't satisfy the assertions.
   const results = page.getByRole("listbox", { name: "Results" });
-  await expect(results.getByText("Allergies", { exact: true })).toBeVisible();
+  // The debounced server search can outlive the default assertion budget under
+  // full-shard contention; wait on the result itself rather than network quiet.
+  await expect(results.getByText("Allergies", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
   const hit = results.getByRole("option", { name: /Penicillin/i });
-  // Selecting it navigates to the Problems pane (Conditions + Allergies).
-  await followLink(page, hit.first(), /\/records\/problems$/); // first-ok: the command-palette Penicillin allergy result — order-agnostic
-  await expect(page).toHaveURL(/\/records\/problems$/);
+  // Selecting it navigates to Problems › Allergies, the pane that owns the record.
+  await followLink(page, hit.first(), /\/records\/problems\/allergies$/); // first-ok: the command-palette Penicillin allergy result — order-agnostic
+  await expect(page).toHaveURL(/\/records\/problems\/allergies$/);
 });
 
 // #38: a refill-tracked supplement (seed sets Magnesium Glycinate's on-hand

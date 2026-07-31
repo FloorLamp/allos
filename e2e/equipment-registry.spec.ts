@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink, openCommandPalette } from "./nav";
 
 // Equipment registry (issue #343): equipment moved out of Settings into a
@@ -98,7 +98,10 @@ test.describe("Equipment registry (#343)", () => {
     await input.fill("sauna");
     const results = page.getByRole("listbox", { name: "Results" });
     const hit = results.getByRole("option", { name: "Equipment", exact: true });
-    await expect(hit).toBeVisible();
+    // First-search warm-up ceiling (same as palette-actions.spec.ts): the debounced
+    // search action costs 4-7s on a cold server under CI load, past the 5s default.
+    // Not a sleep — this still fails if the hit never arrives.
+    await expect(hit).toBeVisible({ timeout: 20_000 });
     await followLink(page, hit.first(), /\/equipment$/); // first-ok: the command-palette "sauna" search resolves to the single Equipment page result
     await expect(page).toHaveURL(/\/equipment$/);
     await expect(

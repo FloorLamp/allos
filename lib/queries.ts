@@ -7,9 +7,12 @@
 // lib/, so the split submodules are still scanned — its per-file allowlist points
 // at the new lib/queries/*.ts paths where the moved statements now live.
 export * from "./queries/metrics";
+export * from "./queries/logical-outcomes";
 export * from "./queries/substance";
 export * from "./queries/sleep";
+export * from "./queries/frequency-targets";
 export * from "./queries/training";
+export * from "./queries/wellness";
 export * from "./queries/mobility";
 export * from "./queries/endurance";
 export * from "./queries/presence";
@@ -22,6 +25,8 @@ export * from "./queries/symptoms";
 export * from "./queries/mood";
 export * from "./queries/mood-anxiety";
 export * from "./queries/medical";
+export * from "./queries/biomarker-options";
+export * from "./queries/saved";
 export * from "./queries/visit-links";
 export * from "./queries/med-links";
 export * from "./queries/derived";
@@ -39,7 +44,7 @@ export * from "./queries/integrations";
 export * from "./queries/protocols";
 export * from "./queries/situation-impact";
 export * from "./queries/equipment";
-export * from "./queries/healthspan";
+export * from "./queries/longevity";
 export * from "./queries/sun";
 export * from "./queries/providers";
 export * from "./queries/affiliations";
@@ -47,10 +52,12 @@ export * from "./queries/nav-relevance";
 export * from "./queries/derived-situations";
 export * from "./queries/data-quality";
 export * from "./queries/surgery-bridge";
+export * from "./queries/intraday";
+export * from "./queries/trends-context";
 // The shared, GLOBAL providers registry — not profile-scoped, but
 // re-exported here so pages read it through the familiar @/lib/queries surface.
 export * from "./providers-db";
-// Wellness-practice session store (#1259): the one-tap write core + day/week reads live
-// in the top-level lib module; re-exported here so the `@/lib/queries` surface carries it
-// (the notify callback + the query consumers import from queries).
+// Wellness write cores retain their historical barrel exports. Read names now come
+// from queries/wellness above, so the domain has one public read surface (#1622).
 export * from "./practice-log";
+export * from "./practice-store";

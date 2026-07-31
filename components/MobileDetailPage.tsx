@@ -80,6 +80,7 @@ export default function MobileDetailPage({
           type="button"
           onClick={onClose}
           aria-label="Close details"
+          title="Close details"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
         >
           <IconX className="h-5 w-5" />

@@ -1,8 +1,16 @@
-// Per-section header used inside a STACKED Health-record pane (#1079). A stacked
-// pane (Problems = Conditions + Allergies; Care › Overview = Background + Family
-// history + Care plan + Health goals) renders its 2–4 sections with their existing
-// headers so each is distinguishable; a SOLO pane needs no header (the tab strip
-// names it) and uses `SectionSubtitle` for its descriptive line instead.
+// Per-section header used inside a STACKED Health-record pane (#1079). Care ›
+// Overview (Background + Family history + Care plan + Health goals) is the one
+// remaining stacked pane — Problems un-stacked into two panes in #1449 — and
+// renders its four sections with these headers so each is distinguishable; a SOLO
+// pane needs no header (the tab strip names it) and uses `SectionSubtitle` for its
+// descriptive line instead.
+//
+// Scale (#1449, cluster B): `text-lg font-semibold`, deliberately BELOW the page
+// h1 that `PageHeader` draws (`text-xl`/`md:text-2xl` bold) and above a card's
+// `font-semibold` h3. It used to be `text-2xl font-bold` — identical weight to the
+// page title — so Care › Overview read as five competing h1s on one scroll with no
+// hierarchy to tell you which one named the page. The rule this encodes: exactly
+// one h1-scale heading per page, and it is the PageHeader.
 
 export function SectionHeader({
   id,
@@ -14,8 +22,8 @@ export function SectionHeader({
   subtitle: string;
 }) {
   return (
-    <div id={id} className="mb-6 scroll-mt-24">
-      <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+    <div id={id} className="mb-4 scroll-mt-24">
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
         {title}
       </h2>
       <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">

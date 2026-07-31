@@ -21,17 +21,28 @@
 
 import {
   getFoodNudgePointer,
+  getHouseholdRoundPointer,
+  setHouseholdRoundPointer,
   getLoginTelegramDisabledKinds,
   getTelegramBotConfig,
+  getTimezone,
+  setDigestTailPointer,
   setFoodNudgePointer,
 } from "../settings";
+import { today } from "../db";
+import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
-import type { NotificationChannel, NotificationMessage } from "./types";
+import type {
+  DispatchOptions,
+  NotificationChannel,
+  NotificationMessage,
+} from "./types";
 import { prefixMessage } from "./types";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
 import { resolveTelegramRecipients } from "./fan-out";
 import { foodNudgePointerFromMessage } from "./food-nudge-pointer";
+import { householdRoundPointerFromMessage } from "./household-round-pointer";
 import {
   editMessageReplyMarkupRaw,
   editMessageTextRaw,
@@ -62,16 +73,24 @@ export {
 
 export const telegramChannel: NotificationChannel = {
   id: "telegram",
-  isConfigured(profileId: number) {
+  isConfigured(profileId: number, opts?: DispatchOptions) {
     // Login-scoped channel fan-out (issue #1072): a message ABOUT this profile is
     // deliverable when the bot is configured AND at least one MANAGING login has an
     // enabled Telegram chat (and hasn't muted this profile). The channel resolves N
     // recipients now, not one profile chat.
     const { telegramBotToken } = getTelegramBotConfig();
     if (!telegramBotToken) return false;
+    // An EXPLICIT chat override (#615's escalate_chat_id, routed through dispatch by
+    // #1716) is deliverable on its own: the caregiver chat was configured for this
+    // item and does not depend on the profile having any managing-login recipient.
+    if (opts?.telegramChatIds?.length) return true;
     return resolveTelegramRecipients(profileId).length > 0;
   },
-  async send(profileId: number, msg: NotificationMessage) {
+  async send(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ) {
     // Fan the message out to every managing login's chat (deduped by chat id, so a
     // shared family group gets ONE copy). Each recipient is gated by ITS login's
     // Telegram disabled-kinds set (#928, now login-scoped per #1072) — a kind a
@@ -81,6 +100,19 @@ export const telegramChannel: NotificationChannel = {
     // always allowed. Enforced HERE, inside the chokepoint, so the gate can't be
     // bypassed by a raw-primitive send. A send throw for ANY recipient propagates so
     // dispatch() marks the channel failed and the slot can retry.
+    // An explicit chat override REPLACES the fan-out for this send (#615/#1716): the
+    // targets are raw chat ids, not logins, so the per-login disabled-kinds gate below
+    // does not apply to them — the chat was named for exactly this item, and a
+    // per-login mute of a chat that isn't a login's is meaningless. Deduped so a
+    // repeated id can't double-send. A throw still propagates, so dispatch() records
+    // the delivery outcome for an override send exactly as for a fan-out send.
+    const override = opts?.telegramChatIds;
+    if (override?.length) {
+      for (const chatId of Array.from(new Set(override))) {
+        await sendMessageRaw(chatId, msg);
+      }
+      return;
+    }
     const recipients = resolveTelegramRecipients(profileId);
     for (const { loginId, chatId } of recipients) {
       if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginId)))
@@ -97,6 +129,22 @@ export const telegramChannel: NotificationChannel = {
       // is gated on Telegram deliverability and is overwhelmingly single-chat).
       if (msg.kind === "food" && messageId != null)
         await rotateFoodNudgePointer(profileId, chatId, messageId, msg);
+      // The HOUSEHOLD ROUND needs the identical rotation (#1719) and never had it:
+      // its confirm tokens carry each member's SEND-TIME date, so a surviving round
+      // keyboard from an earlier day logs a dose to YESTERDAY — for someone else's
+      // medication. It shares `kind: "dose"` with the ordinary slot reminder, so the
+      // round is identified by its `hh:` tokens, never by kind (which would strip a
+      // plain dose reminder's keyboard too). Same strictly-best-effort posture.
+      if (messageId != null)
+        await rotateHouseholdRoundPointer(profileId, chatId, messageId, msg);
+      // A DIGEST carrying the offer tail (#1505) records its message id for the same
+      // class of reason: the tail's label names the slot it opens into, so the tick
+      // has to re-label it at each boundary — which needs the message to edit. Same
+      // chokepoint placement and same strictly-best-effort posture as the food
+      // pointer above; a bookkeeping failure must never turn a delivered digest into
+      // a failed one.
+      if (msg.kind === "digest" && messageId != null && msg.actions?.length)
+        recordDigestTailPointer(profileId, chatId, messageId);
     }
   },
 };
@@ -138,6 +186,75 @@ async function rotateFoodNudgePointer(
     // Any unexpected error (a settings write throw, etc.) stays swallowed — the send
     // succeeded and this bookkeeping must never turn a delivery into a failure.
     log.info("food nudge: pointer rotation failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+// After a household round sends, strip the PREVIOUS round's keyboard and record the
+// new message as the pointer (#1719) — the #947 mechanism, one message class over. A
+// no-op for any message that isn't a round. Best-effort throughout for the same
+// reasons as the food rotation: Telegram refuses edits on old messages, the delivery
+// already succeeded, and a bookkeeping failure must never look like a broken channel.
+async function rotateHouseholdRoundPointer(
+  profileId: number,
+  chatId: string | number,
+  messageId: number,
+  msg: NotificationMessage
+): Promise<void> {
+  const pointer = householdRoundPointerFromMessage(
+    msg,
+    chatId,
+    messageId,
+    today(profileId)
+  );
+  if (!pointer) return;
+  try {
+    const prev = getHouseholdRoundPointer(profileId);
+    if (
+      prev &&
+      !(String(prev.chatId) === String(chatId) && prev.messageId === messageId)
+    ) {
+      await editMessageReplyMarkupRaw(prev.chatId, prev.messageId, []).catch(
+        (e) => {
+          log.info(
+            "household round: previous keyboard strip failed (ignored)",
+            {
+              profile: profileId,
+              err: e instanceof Error ? e.message : String(e),
+            }
+          );
+        }
+      );
+    }
+    setHouseholdRoundPointer(profileId, pointer);
+  } catch (e) {
+    log.info("household round: pointer rotation failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+// Store the just-sent digest's message id so the tick can re-label its offer tail at
+// the next slot boundary (#1505). Best-effort: a settings-write throw is swallowed —
+// the digest was delivered, and the worst case of a missing pointer is a tail whose
+// label goes stale until tomorrow's digest.
+function recordDigestTailPointer(
+  profileId: number,
+  chatId: string | number,
+  messageId: number
+): void {
+  try {
+    setDigestTailPointer(profileId, {
+      chatId,
+      messageId,
+      date: today(profileId),
+      renderedAt: zonedDateParts(getTimezone(profileId), new Date()).hhmm,
+    });
+  } catch (e) {
+    log.info("digest tail: pointer store failed (ignored)", {
       profile: profileId,
       err: e instanceof Error ? e.message : String(e),
     });

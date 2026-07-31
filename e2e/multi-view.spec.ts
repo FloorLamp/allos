@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick, followLink, expectNoClippedContent } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -37,6 +37,7 @@ import {
   MVBIO_SELF_ANALYTE,
   MVBIO_RO_ANALYTE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Multi-profile viewing (issue #1096): the profile-menu view toggles + the thin
 // persistent view strip + multi-view Upcoming with subject chips + a cross-profile
@@ -51,9 +52,7 @@ import {
 // already taken. Short-lived connection with a busy timeout so it never contends with
 // the running server on the WAL DB.
 function resetMultiFixture(): { ownerId: number; sharedId: number } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -87,9 +86,7 @@ function resetMultiFixture(): { ownerId: number; sharedId: number } {
 // re-run/retry would otherwise never see the hint. Same short-lived busy-timeout
 // connection as resetMultiFixture.
 function resetMultiviewHint(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -250,6 +247,80 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     await page.context().close();
   });
 
+  test("the view strip reads as bar content at 390px: no card frame, chips uncipped (issue #1539)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = resetMultiFixture();
+
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await enterMultiView(page, sharedId);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/upcoming");
+
+    const strip = page.getByTestId("profile-view-strip");
+    await expect(strip).toBeVisible();
+    await expect(page.getByTestId(`view-chip-${ownerId}`)).toBeVisible();
+    await expect(page.getByTestId(`view-chip-${sharedId}`)).toBeVisible();
+
+    // No card frame below `md`: the band the strip lives in is the surface, so the
+    // strip itself carries neither border nor background of its own. Two
+    // translucent layers used to stack here and page content bled through.
+    const frame = await strip.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { border: s.borderTopWidth, bg: s.backgroundColor };
+    });
+    expect(frame.border, "the strip still draws a card border at 390px").toBe(
+      "0px"
+    );
+    expect(frame.bg, "the strip still tints itself at 390px").toBe(
+      "rgba(0, 0, 0, 0)"
+    );
+
+    // The label is not PAINTED — it used to spend 41% of the row restating what the
+    // chips beside it already say — but it stays in the accessibility tree, so a
+    // screen reader still hears it.
+    const label = await page.getByTestId("view-strip-label").boundingBox();
+    expect(label, "the label should still be in the tree").not.toBeNull();
+    expect(label!.width, "the label is still painted at 390px").toBeLessThan(4);
+    await expect(strip).toContainText("Viewing 2 profiles");
+
+    // …so the chips now start at the strip's left edge (past only the IconUsers and
+    // its gap) instead of 146px into a 356px row. Containment, not a pixel budget
+    // (#868): the assertion is "the chips get the row", not "the row is N px".
+    const stripBox = await strip.boundingBox();
+    const firstChip = await page
+      .getByTestId(`view-chip-${ownerId}`)
+      .boundingBox();
+    expect(stripBox, "the strip should be laid out").not.toBeNull();
+    expect(firstChip, "the first chip should be laid out").not.toBeNull();
+    expect(
+      firstChip!.x - stripBox!.x,
+      "the label is still pushing the chips right"
+    ).toBeLessThan(40);
+
+    // The strip itself is a working overflow-x:auto container that fits the
+    // viewport — the blessed element-level clip check (#1063).
+    await expectNoClippedContent(page);
+
+    // Desktop is out of scope and stays a card in the reading column.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/upcoming");
+    const desktopFrame = await page
+      .getByTestId("profile-view-strip")
+      .evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(desktopFrame).not.toBe("0px");
+    const desktopLabel = await page
+      .getByTestId("view-strip-label")
+      .boundingBox();
+    expect(desktopLabel!.width).toBeGreaterThan(40);
+
+    await page.context().close();
+  });
+
   test("by-person toggle groups the merged list under per-member headers (issue #1327 fix 2)", async ({
     browser,
   }) => {
@@ -326,9 +397,7 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
 
 // Resolve the two multi fixture profile ids (spec-owned, so a name lookup is stable).
 function multiProfileIds(): { ownerId: number; sharedId: number } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -360,7 +429,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
 
     // Single view (acting = owner): owner's condition shows, no strip, no chips, and the
     // shared profile's condition is absent — the byte-identical regression bar.
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/conditions");
     await expect(
       page.getByText(MULTI_OWNER_CONDITION, { exact: false })
     ).toBeVisible();
@@ -384,7 +453,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
       page.getByText(MULTI_SHARED_CONDITION, { exact: false })
     ).toBeVisible();
     // Scope the chip check to the shared condition's own row (Conditions + Allergies
-    // both render on /records/problems, so the shared chip appears on more than one row).
+    // both render on the Conditions pane, so the shared chip appears on more than one row).
     const sharedConditionRow = page
       .locator("tr")
       .filter({ hasText: MULTI_SHARED_CONDITION });
@@ -408,7 +477,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/allergies");
     // The stored "Recorded allergies" table (single view: owner only, no chip). Scope to
     // the table row — the substance also appears in the merged "Known allergies" card.
     await expect(
@@ -485,9 +554,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
 // profile) so a re-run/retry starts clean, and return the two profile ids.
 function resetMultiJournal(): { ownerId: number; sharedId: number } {
   const { ownerId, sharedId } = multiProfileIds();
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -506,9 +573,7 @@ function resetMultiJournal(): { ownerId: number; sharedId: number } {
 // Count the owner's activities carrying the shared activity's title — nonzero only
 // after a "Log again" landed the shared card's session on the acting (owner) profile.
 function ownerCopiesOfSharedActivity(ownerId: number): number {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -650,9 +715,7 @@ test.describe("Multi-view Training Journal (issue #1330)", () => {
 
 // Resolve the two timeline fixture profile ids (spec-owned, so a name lookup is stable).
 function timelineProfileIds(): { eastId: number; westId: number } {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -902,9 +965,7 @@ test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
 // repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
 test.describe("Medications multi-view regimen boards (issue #1373)", () => {
   function mvMedsIds(): { selfId: number; roId: number } {
-    const dbPath =
-      process.env.ALLOS_DB_PATH ??
-      path.join(process.cwd(), "e2e", ".data", "e2e.db");
+    const dbPath = workerDbPath();
     const db = new Database(dbPath);
     try {
       db.pragma("busy_timeout = 5000");
@@ -1005,9 +1066,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
 // repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
 test.describe("Multi-view Biomarkers table (issue #1331)", () => {
   function mvBioIds(): { selfId: number; roId: number } {
-    const dbPath =
-      process.env.ALLOS_DB_PATH ??
-      path.join(process.cwd(), "e2e", ".data", "e2e.db");
+    const dbPath = workerDbPath();
     const db = new Database(dbPath);
     try {
       db.pragma("busy_timeout = 5000");

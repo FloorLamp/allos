@@ -3,6 +3,7 @@ import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
@@ -42,21 +43,32 @@ import {
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   CONDITIONS,
-  PRIORITIES,
+  OBLIGATIONS,
   FOOD_TIMINGS,
   parseDosage,
   spreadDoseTimes,
   collapsePrnDoses,
 } from "@/lib/supplement-schedule";
+import {
+  CADENCE_KINDS,
+  normalizeWeekdays,
+  type CadenceKind,
+} from "@/lib/intake-cadence";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type {
   FoodTiming,
   PairRelation,
   SupplementCondition,
   SupplementKind,
-  SupplementPriority,
+  IntakeObligation,
 } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
+import { demoteIntakeObligation } from "@/lib/intake-obligation-write";
+import {
+  DEMOTION_PREFIX,
+  DEMOTION_OUTCOME_TEXT,
+  demotionItemIdFromKey,
+} from "@/lib/supplement-demotion";
 import { dismissFinding } from "@/lib/queries";
 import { SURGERY_BRIDGE_PREFIX } from "@/lib/surgery-bridge";
 import { poorSleepOverrideKey } from "@/lib/derived-situations";
@@ -84,12 +96,53 @@ function fields(formData: FormData) {
   )
     ? (conditionRaw as SupplementCondition)
     : "daily";
-  const priorityRaw = String(formData.get("priority") ?? "high");
-  const priority: SupplementPriority = PRIORITIES.includes(
-    priorityRaw as SupplementPriority
+  // The item's KIND is read before its obligation because the med guardrail depends
+  // on it (see below): kind is clinical identity, and a medication's default is the
+  // one obligation that carries a safety net.
+  const kindEarly: SupplementKind =
+    formData.get("kind") === "medication" ? "medication" : "supplement";
+  const obligationRaw = String(
+    formData.get("obligation") ??
+      (kindEarly === "medication" ? "must" : "should")
+  );
+  // A `may` item is PRN-shaped by construction (#1505 collapsed obligation into it), so
+  // the old separate as-needed checkbox is gone: choosing May IS choosing as-needed.
+  const obligation: IntakeObligation = OBLIGATIONS.includes(
+    obligationRaw as IntakeObligation
   )
-    ? (priorityRaw as SupplementPriority)
-    : "high";
+    ? (obligationRaw as IntakeObligation)
+    : kindEarly === "medication"
+      ? "must"
+      : "should";
+  // CALENDAR cadence (#1602) — orthogonal to `condition` above and to `obligation`.
+  // Each branch keeps ONLY its own fields so a user who tries weekly, picks days, then
+  // switches back to daily doesn't leave a stale weekday list that would silently
+  // re-narrow the schedule if the kind were ever changed back by another path.
+  const cadenceKindRaw = String(formData.get("cadence_kind") ?? "daily");
+  const cadenceKind: CadenceKind = CADENCE_KINDS.includes(
+    cadenceKindRaw as CadenceKind
+  )
+    ? (cadenceKindRaw as CadenceKind)
+    : "daily";
+  const cadenceWeekdays =
+    cadenceKind === "weekly"
+      ? normalizeWeekdays(
+          String(formData.get("cadence_weekdays") ?? "")
+            .split(",")
+            .map((x) => Number(x.trim()))
+            .filter((n) => Number.isInteger(n))
+        )
+      : null;
+  const cadenceIntervalRaw = Number(formData.get("cadence_interval_days"));
+  const cadenceIntervalDays =
+    cadenceKind === "interval" &&
+    Number.isInteger(cadenceIntervalRaw) &&
+    cadenceIntervalRaw >= 1
+      ? cadenceIntervalRaw
+      : null;
+  const anchorRaw = String(formData.get("cadence_anchor_date") ?? "").trim();
+  const cadenceAnchorDate =
+    cadenceKind === "interval" && isRealIsoDate(anchorRaw) ? anchorRaw : null;
   const situation = condition === "situational" ? str("situation") : null;
   // The INVERSE situational link (issue #1296) — "pause this item WHILE X is active".
   // Independent of `condition`: a plain `daily` medication can be held during
@@ -120,11 +173,11 @@ function fields(formData: FormData) {
   const perDoseRaw = Number(formData.get("qty_per_dose"));
   const qtyPerDose =
     Number.isFinite(perDoseRaw) && perDoseRaw > 0 ? perDoseRaw : 1;
-  // Medication identity. kind = 'medication' reveals the
-  // prescriber/pharmacy/Rx + as-needed fields; the medication-only columns are
-  // cleared for a plain supplement so a kind flip can't leave stale data.
-  const kind: SupplementKind =
-    formData.get("kind") === "medication" ? "medication" : "supplement";
+  // Medication identity (CLINICAL, #1505): kind = 'medication' reveals the
+  // prescriber/pharmacy/Rx fields; the medication-only columns are cleared for a
+  // plain supplement so a kind flip can't leave stale data. Kind no longer decides
+  // pushability — obligation does.
+  const kind: SupplementKind = kindEarly;
   const isMed = kind === "medication";
   const prescriber = isMed ? str("prescriber") : null;
   const pharmacy = isMed ? str("pharmacy") : null;
@@ -143,11 +196,11 @@ function fields(formData: FormData) {
         : prescriber || rxNumber
           ? 1
           : 0;
-  const asNeeded =
-    isMed &&
-    (formData.get("as_needed") === "1" || formData.get("as_needed") === "on")
-      ? 1
-      : 0;
+  // PRN shape follows the obligation, not a second flag (#1505): `may` IS as-needed.
+  // Unlike the old checkbox this is not medication-only — a `may` supplement
+  // (magnesium, a preworkout) has exactly the same amount-only, take-when-you-want
+  // shape, and pretending otherwise is what made "low priority" incoherent.
+  const isPrn = obligation === "may";
   // PRN redose notice (issue #798). Only a PRN medication carries these; a non-PRN
   // item clears them so a kind/PRN flip can't leave a stale notice armed. The
   // interval/max are the user-CONFIRMED label numbers (pre-filled from
@@ -157,14 +210,14 @@ function fields(formData: FormData) {
   // fire, so it isn't stored as "on").
   const intervalRaw = Number(formData.get("min_interval_hours"));
   const minIntervalHours =
-    asNeeded && Number.isFinite(intervalRaw) && intervalRaw > 0
+    isPrn && Number.isFinite(intervalRaw) && intervalRaw > 0
       ? intervalRaw
       : null;
   const maxRaw = Number(formData.get("max_daily_count"));
   const maxDailyCount =
-    asNeeded && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
+    isPrn && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
   const redoseNotice =
-    asNeeded &&
+    isPrn &&
     minIntervalHours != null &&
     maxDailyCount != null &&
     (formData.get("redose_notice") === "1" ||
@@ -182,12 +235,16 @@ function fields(formData: FormData) {
     ? serializeRxcuiIngredients(parseRxcuiIngredients(str("rxcui_ingredients")))
     : null;
   return {
+    cadenceKind,
+    cadenceWeekdays,
+    cadenceIntervalDays,
+    cadenceAnchorDate,
     notes: str("notes"),
     brand: str("brand"),
     product: str("product"),
     stack: str("stack"),
     condition,
-    priority,
+    obligation,
     situation,
     pauseSituation,
     critical: critical ? 1 : 0,
@@ -200,7 +257,7 @@ function fields(formData: FormData) {
     pharmacy,
     rxNumber,
     rx,
-    asNeeded,
+    isPrn,
     minIntervalHours,
     maxDailyCount,
     redoseNotice,
@@ -229,6 +286,11 @@ interface DoseInput {
   amount: string | null;
   time_of_day: string | null;
   food_timing: FoodTiming;
+  // Per-row calendar (#1602), already normalized by parseDoses: a canonical weekday
+  // CSV (or null) and an inclusive validity window.
+  weekdays: string | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 // Parse the doses JSON the form submits. Always returns at least one dose so a
@@ -246,19 +308,44 @@ function parseDoses(formData: FormData): DoseInput[] {
     amount: strOrNull(d?.amount),
     time_of_day: strOrNull(d?.time_of_day),
     food_timing: FOOD_TIMINGS.includes(d?.food_timing) ? d.food_timing : "any",
+    // Per-row calendar (#1602). normalizeWeekdays drops anything out of range and
+    // canonicalizes the order, so an equivalent re-submission stores identically and a
+    // no-op edit never looks like a change. A malformed date is dropped to null rather
+    // than stored — an unparseable window would read as "no window", and storing it
+    // would leave a value that looks like a rule but constrains nothing.
+    weekdays: normalizeWeekdays(
+      Array.isArray(d?.weekdays)
+        ? d.weekdays.map((x: unknown) => Number(x))
+        : []
+    ),
+    start_date: isRealIsoDate(d?.start_date) ? d.start_date : null,
+    end_date: isRealIsoDate(d?.end_date) ? d.end_date : null,
   }));
   return out.length
     ? out
-    : [{ amount: null, time_of_day: null, food_timing: "any" }];
+    : [
+        {
+          amount: null,
+          time_of_day: null,
+          food_timing: "any",
+          weekdays: null,
+          start_date: null,
+          end_date: null,
+        },
+      ];
 }
 
 // Stamp created_at so the adherence-pattern window starts at the dose's real birth,
 // not the parent item's (#430). SQLite forbids datetime('now') as an ADD COLUMN
-// default, so the write path sets it explicitly.
+// default, so the write path sets it explicitly — from the CLOCK SEAM (sqlNow,
+// #1534), because doseAdherenceSince truncates this stamp to a calendar DAY
+// (`.slice(0, 10)`) and compares it against a `today()`-derived window.
 const insertDoseStmt = () =>
   db.prepare(
-    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
-     VALUES (?,?,?,?,?, datetime('now'))`
+    `INSERT INTO intake_item_doses
+       (item_id, amount, time_of_day, food_timing, sort, created_at,
+        weekdays, start_date, end_date)
+     VALUES (?,?,?,?,?,?,?,?,?)`
   );
 
 // Insert a fresh set of doses for a supplement (used on add + accept). Must run
@@ -269,11 +356,26 @@ function insertDoses(
     amount: string | null;
     time_of_day: string | null;
     food_timing: FoodTiming;
+    // Optional so the AI-suggestion accept path — which has no calendar to offer —
+    // still type-checks and simply inserts an unrestricted row (#1602).
+    weekdays?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
   }[]
 ) {
   const ins = insertDoseStmt();
   doses.forEach((d, i) =>
-    ins.run(suppId, d.amount, d.time_of_day, d.food_timing, i)
+    ins.run(
+      suppId,
+      d.amount,
+      d.time_of_day,
+      d.food_timing,
+      i,
+      sqlNow(),
+      d.weekdays ?? null,
+      d.start_date ?? null,
+      d.end_date ?? null
+    )
   );
 }
 
@@ -339,17 +441,17 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
   if (
     f.kind === "medication" &&
     hasStartedOn &&
-    ((!f.asNeeded && !startedOnRaw) ||
+    ((!f.isPrn && !startedOnRaw) ||
       (!!startedOnRaw &&
         (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
   ) {
     return formError(
-      f.asNeeded
+      f.isPrn
         ? "Enter a valid start date that isn't in the future."
         : "Enter a start date that isn't in the future."
     );
   }
-  const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
+  const doses = collapsePrnDoses(parseDoses(formData), f.isPrn);
   const pairs = parsePairs(formData);
   // Prescriber (#1051 semantics decision (a)): provider_id is the prescribing
   // INDIVIDUAL. The picker resolves-or-creates against the registry as an INDIVIDUAL
@@ -385,23 +487,30 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
     const pauseSituationId = f.pauseSituation
       ? resolveSituationId(profile.id, f.pauseSituation)
       : null;
+    // created_at is bound from the CLOCK SEAM (sqlNow, #1534) rather than left to the
+    // column's `datetime('now')` default: an intake item's created_at is read as a
+    // calendar DAY — `date(created_at)` seeds a medication course's started_on and
+    // decides episode membership (getEpisodeMedReconciliation), and
+    // doseAdherenceSince truncates it — all against `today()`-derived windows.
     const info = db
       .prepare(
         `INSERT INTO intake_items
-           (name, notes, condition, priority, brand, product, situation, situation_id,
+           (name, notes, condition, obligation, brand, product, situation, situation_id,
             pause_situation_id, stack,
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
-            kind, prescriber, pharmacy, rx_number, rx, as_needed,
+            kind, prescriber, pharmacy, rx_number, rx,
             min_interval_hours, max_daily_count, redose_notice,
-            rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+            rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id,
+            created_at,
+            cadence_kind, cadence_weekdays, cadence_interval_days, cadence_anchor_date)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?,?,?,?,?)`
       )
       .run(
         name,
         f.notes,
         f.condition,
-        f.priority,
+        f.obligation,
         f.brand,
         f.product,
         f.situation,
@@ -418,7 +527,6 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.pharmacy,
         f.rxNumber,
         f.rx,
-        f.asNeeded,
         f.minIntervalHours,
         f.maxDailyCount,
         f.redoseNotice,
@@ -426,7 +534,12 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.rxcuiIngredients,
         providerId,
         indicationConditionId,
-        profile.id
+        profile.id,
+        sqlNow(),
+        f.cadenceKind,
+        f.cadenceWeekdays,
+        f.cadenceIntervalDays,
+        f.cadenceAnchorDate
       );
     const suppId = Number(info.lastInsertRowid);
     insertDoses(suppId, doses);
@@ -438,8 +551,8 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
       ensureMedicationCourse(
         profile.id,
         suppId,
-        hasStartedOn ? startedOnRaw || null : f.asNeeded ? null : todayStr,
-        !!f.asNeeded && (!hasStartedOn || !startedOnRaw)
+        hasStartedOn ? startedOnRaw || null : f.isPrn ? null : todayStr,
+        f.isPrn && (!hasStartedOn || !startedOnRaw)
       );
     }
   });
@@ -462,12 +575,12 @@ export async function updateSupplement(
   if (
     f.kind === "medication" &&
     hasStartedOn &&
-    ((!f.asNeeded && !startedOnRaw) ||
+    ((!f.isPrn && !startedOnRaw) ||
       (!!startedOnRaw &&
         (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
   ) {
     return formError(
-      f.asNeeded
+      f.isPrn
         ? "Enter a valid start date that isn't in the future."
         : "Enter a start date that isn't in the future."
     );
@@ -489,7 +602,7 @@ export async function updateSupplement(
   ) {
     return formError("Enter an end date that isn't in the future.");
   }
-  const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
+  const doses = collapsePrnDoses(parseDoses(formData), f.isPrn);
   const pairs = parsePairs(formData);
   // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
   // concurrently-decremented counter, so we compare-and-set against this instead of
@@ -579,21 +692,23 @@ export async function updateSupplement(
       : null;
     db.prepare(
       `UPDATE intake_items
-         SET name = ?, notes = ?, condition = ?, priority = ?, brand = ?,
+         SET name = ?, notes = ?, condition = ?, obligation = ?, brand = ?,
              product = ?, situation = ?, situation_id = ?, pause_situation_id = ?,
              stack = ?,
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
-             kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?, as_needed = ?,
+             kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?,
              min_interval_hours = ?, max_daily_count = ?, redose_notice = ?,
              rxcui = ?, rxcui_ingredients = ?, provider_id = ?,
-             indication_condition_id = ?
+             indication_condition_id = ?,
+             cadence_kind = ?, cadence_weekdays = ?,
+             cadence_interval_days = ?, cadence_anchor_date = ?
        WHERE id = ? AND profile_id = ?`
     ).run(
       name,
       f.notes,
       f.condition,
-      f.priority,
+      f.obligation,
       f.brand,
       f.product,
       f.situation,
@@ -610,7 +725,6 @@ export async function updateSupplement(
       f.pharmacy,
       f.rxNumber,
       f.rx,
-      f.asNeeded,
       f.minIntervalHours,
       f.maxDailyCount,
       f.redoseNotice,
@@ -618,6 +732,10 @@ export async function updateSupplement(
       f.rxcuiIngredients,
       providerId,
       indicationConditionId,
+      f.cadenceKind,
+      f.cadenceWeekdays,
+      f.cadenceIntervalDays,
+      f.cadenceAnchorDate,
       id,
       profile.id
     );
@@ -644,29 +762,52 @@ export async function updateSupplement(
     // (evening → morning) restarts the adherence-pattern window so the engine
     // stops re-accusing the OLD slot, but a pure amount/food edit leaves the
     // dose's lifetime — and its miss history — where it was. `IS NOT` compares
-    // NULL-safely.
+    // NULL-safely. The new stamp comes from the CLOCK SEAM (sqlNow, #1534) —
+    // doseAdherenceSince truncates it to a calendar DAY and compares it against a
+    // `today()`-derived window, so a real-clock stamp drifts a day across midnight.
     const upd = db.prepare(
       `UPDATE intake_item_doses
           SET amount = ?, time_of_day = ?, food_timing = ?, sort = ?,
-              updated_at = CASE WHEN time_of_day IS NOT ? THEN datetime('now')
+              weekdays = ?, start_date = ?, end_date = ?,
+              updated_at = CASE WHEN time_of_day IS NOT ? THEN ?
                                 ELSE updated_at END
         WHERE id = ? AND item_id = ? AND retired = 0`
     );
     const keptIds: number[] = [];
     doses.forEach((d, i) => {
       if (d.id) {
+        // NOTE the calendar columns are NOT part of the updated_at trigger above: a
+        // re-time restarts the adherence-pattern window, but narrowing a dose to
+        // Mondays or closing its window changes WHICH DAYS it is due, not the identity
+        // of the slot — and resetting the window would erase the very history the
+        // change is meant to be judged against. Adherence history is never rewritten
+        // by an edit (#1602 keeps that invariant by construction).
         upd.run(
           d.amount,
           d.time_of_day,
           d.food_timing,
           i,
+          d.weekdays ?? null,
+          d.start_date ?? null,
+          d.end_date ?? null,
           d.time_of_day,
+          sqlNow(),
           d.id,
           id
         );
         keptIds.push(d.id);
       } else {
-        const info = ins.run(id, d.amount, d.time_of_day, d.food_timing, i);
+        const info = ins.run(
+          id,
+          d.amount,
+          d.time_of_day,
+          d.food_timing,
+          i,
+          sqlNow(),
+          d.weekdays ?? null,
+          d.start_date ?? null,
+          d.end_date ?? null
+        );
         keptIds.push(Number(info.lastInsertRowid));
       }
     });
@@ -696,7 +837,7 @@ export async function updateSupplement(
         profile.id,
         id,
         hasStartedOn ? startedOnRaw || null : null,
-        !!f.asNeeded && hasStartedOn && !startedOnRaw
+        !!f.isPrn && hasStartedOn && !startedOnRaw
       );
       if (hasStartedOn && hasCourseId) {
         db.prepare(
@@ -798,17 +939,21 @@ function applyDoseStatus(
 
     if (!existing) {
       // A taken check-off stamps given_at = now (the tap moment ≈ intake time), so
-      // the med card's "last …" line has a time; a skip records no intake.
+      // the med card's "last …" line has a time; a skip records no intake. The stamp
+      // is the CLOCK SEAM's (sqlNow, #1534), not SQL's real clock: `date` above came
+      // from `today()`, and a row whose given_at lands on a different calendar day
+      // than its own `date` column is self-contradicting (the #1460 window's premise).
       db.prepare(
         `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, given_at)
-         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN datetime('now') ELSE NULL END)`
+         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN ? ELSE NULL END)`
       ).run(
         doseId,
         dose.item_id,
         date,
         target === "taken" ? dose.amount : null,
         target,
-        target
+        target,
+        sqlNow()
       );
       if (target === "taken") decrementSupply(profileId, dose.item_id);
       return;
@@ -1087,7 +1232,7 @@ export async function acceptSuggestion(
         time_of_day: string | null;
         food_timing: FoodTiming;
         condition: string;
-        priority: string;
+        obligation: string;
         brand: string | null;
         product: string | null;
         situation: string | null;
@@ -1107,23 +1252,30 @@ export async function acceptSuggestion(
       s.condition === "situational" && s.situation
         ? resolveSituationId(profile.id, s.situation)
         : null;
+    // created_at is bound from the CLOCK SEAM (sqlNow, #1534) rather than left to the
+    // column's `datetime('now')` default: an intake item's created_at is read as a
+    // calendar DAY — `date(created_at)` seeds a medication course's started_on and
+    // decides episode membership (getEpisodeMedReconciliation), and
+    // doseAdherenceSince truncates it — all against `today()`-derived windows.
     const info = db
       .prepare(
         `INSERT INTO intake_items
-           (name, notes, condition, priority, brand, product, situation, situation_id, stack, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,'manual',?)`
+           (name, notes, condition, obligation, brand, product, situation, situation_id, stack, source, profile_id,
+            created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,'manual',?,?)`
       )
       .run(
         s.name,
         s.rationale,
         s.condition,
-        s.priority,
+        s.obligation,
         s.brand,
         s.product,
         s.situation,
         situationId,
         null,
-        profile.id
+        profile.id,
+        sqlNow()
       );
     const suppId = Number(info.lastInsertRowid);
     insertDoses(
@@ -1157,7 +1309,7 @@ export async function dismissSuggestion(
 
 // Look up RxNorm candidates for a free-text name (issue #144) — the ONLY network
 // egress of the interaction feature, and it sends just the term (no PHI). Called
-// from the item form's "Find RxNorm code" affordance; the user CONFIRMS a candidate,
+// from the item form's standardized-ingredient affordance; the user CONFIRMS a candidate,
 // which fills the hidden `rxcui` field saved by add/updateSupplement. Degrades to []
 // (name-only matching) on any timeout/error. requireWriteAccess gates it to a
 // session with write access; nothing is stored here.
@@ -1194,6 +1346,53 @@ export async function dismissAdherencePattern(
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith(ADHERENCE_PREFIX))
     return formError("Couldn't dismiss that observation.");
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/nutrition");
+  return formOk();
+}
+
+// Accept a priority DEMOTION SUGGESTION (issue #1505 part 2): re-tag a high/mandatory
+// supplement the user has effectively stopped taking as `low` — tracked, never pushed.
+//
+// THIS TAP IS THE PRIORITY WRITE. The detector only ever suggests; nothing in the
+// system demotes on its own (#559 — priority is the user's declaration). The write
+// core is auth-blind and returns a typed outcome, which is surfaced verbatim rather
+// than confirmed unconditionally: accepting a stale card for a paused or already-low
+// item legitimately refuses, and the caller must say so (the inline-action rule).
+//
+// The suggestion's finding is also dismissed on success, so the accepted card leaves
+// the page immediately rather than lingering until the next detection window closes.
+export async function acceptDemotionSuggestion(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  // Namespace guard, exactly like every other finding action: this action can only
+  // ever act on a demotion-suggestion key. The item id is DERIVED from that one key
+  // rather than posted alongside it, so an accept can never target an item its own
+  // suggestion wasn't about.
+  const itemId = demotionItemIdFromKey(dedupeKey);
+  if (itemId == null) return formError("Couldn't update that item.");
+
+  const outcome = demoteIntakeObligation(profile.id, itemId);
+  if (outcome !== "demoted") return formError(DEMOTION_OUTCOME_TEXT[outcome]);
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/nutrition");
+  revalidatePath("/upcoming");
+  revalidatePath("/");
+  return formOk();
+}
+
+// Dismiss a priority DEMOTION SUGGESTION without acting on it — the calm half of the
+// coaching-tier contract. Hides it through the shared findings-bus suppression store,
+// guarded to the demotion namespace; profile-scoped via dismissFinding.
+export async function dismissDemotionSuggestion(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(DEMOTION_PREFIX))
+    return formError("Couldn't dismiss that suggestion.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/nutrition");
   return formOk();

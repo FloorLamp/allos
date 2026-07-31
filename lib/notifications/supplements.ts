@@ -28,10 +28,11 @@ import { situationHistoryResolver } from "../trend-annotations";
 import {
   adherenceSummary,
   doseStrip,
+  doseWindowSince,
   indexTakenByDose,
 } from "../supplement-adherence";
 import {
-  isDueOn,
+  doseDueOn,
   isPostWorkoutReady,
   timeBucket,
 } from "../supplement-schedule";
@@ -48,6 +49,10 @@ import {
 } from "./supplement-format";
 import { preWorkoutSlotHour } from "./schedule";
 import type { NotificationMessage } from "./types";
+import { isPrn } from "../supplement-schedule";
+import { demotionCandidateItemIds } from "../rule-findings";
+import { collapsedOfferAction } from "./offer-tail";
+import { getOfferedIntakeForSlot } from "../queries/intake";
 
 export type { ReminderWindow, IntakeSendSlot };
 
@@ -75,7 +80,7 @@ function preWorkoutTimed(profileId: number): boolean {
 // no active `anytime` pre_workout dose to time.
 export function getPreWorkoutSlotHour(profileId: number): number | null {
   const preSupps = getSupplements(profileId).filter(
-    (s) => s.active && !s.as_needed && s.condition === "pre_workout"
+    (s) => s.active && !isPrn(s) && s.condition === "pre_workout"
   );
   if (preSupps.length === 0) return null;
   const ids = new Set(preSupps.map((s) => s.id));
@@ -126,6 +131,7 @@ function gatherWindowDoses(
   const isForToday = date === today(profileId);
   const nowMinutes = isForToday ? currentMinutesOfDay(profileId) : null;
   const ctx = {
+    date,
     isWorkoutDay: activitiesToday.length > 0,
     // Derived context (#1292/#1298) widens the active set for TODAY only (a surfacing
     // path); a past-day reminder scores against the declared set (the history resolver
@@ -148,16 +154,30 @@ function gatherWindowDoses(
   // column window lines up with getSupplementLogsInRange's own today-anchored
   // range and with adherenceSummary's "last column is today, still pending" rule.
   const windowDates = lastNDates(today(profileId), ADHERENCE_DAYS);
+  const tz = getTimezone(profileId);
   const workoutDays = new Set(getActivityDates(profileId));
   const takenByDose = indexTakenByDose(
     getSupplementLogsInRange(profileId, ADHERENCE_DAYS)
+  );
+
+  // The demotion candidates for THIS profile, resolved once per gather rather than
+  // per dose (the detector reads a 30-day window per item — doing it inside the loop
+  // would re-read the same ledger for every slot).
+  const demotableItemIds = demotionCandidateItemIds(
+    profileId,
+    today(profileId)
   );
 
   const entries: WindowDose[] = [];
   for (const dose of doses) {
     const supp = suppById.get(dose.item_id);
     if (!supp) continue;
-    if (!isDueOn(supp, ctx)) continue;
+    // The CALENDAR gate on the SEND path (#1602): a weekly med's reminder fires on its
+    // on-days only, and an out-of-window taper row stops reminding without being
+    // retired. This is the half that makes the whole feature safe to use — the item can
+    // stay `must` (reminders + missed-dose escalation intact) precisely because the
+    // machinery can now say "not today" instead of the user having to silence it.
+    if (!doseDueOn(supp, dose, ctx)) continue;
     if (
       doseSendSlot(
         supp.condition,
@@ -169,10 +189,15 @@ function gatherWindowDoses(
     // A dose is "due" on a past date when its supplement was due that day
     // (workout/situational logic); situations are only known as of now.
     const dd = takenByDose.get(dose.id);
+    // Clamp the window to the dose's lifetime (#430/#1442) before summarizing it:
+    // a fixed lookback over a med added this morning is all pre-existence days,
+    // and scoring them would make the very first reminder announce "0% adherence".
+    const since = doseWindowSince(supp.created_at, dose.created_at, dd, tz);
     const strip = doseStrip(
-      windowDates,
+      since ? windowDates.filter((d) => d >= since) : windowDates,
       (d) =>
-        isDueOn(supp, {
+        doseDueOn(supp, dose, {
+          date: d,
           isWorkoutDay: workoutDays.has(d),
           activeSituations: situationsOn(d),
         }),
@@ -185,6 +210,11 @@ function gatherWindowDoses(
       taken: taken.has(dose.id),
       skipped: skipped.has(dose.id),
       adherence: adherenceSummary(strip),
+      // Ride-the-nag (#1505 part 2): a ⤓ May button appears on this dose's row only
+      // while the item is a live demotion candidate. Detection state alone governs
+      // it — an in-app dismissal deliberately does NOT remove it, because for a
+      // tap-only user this is the only escape hatch that ever reaches them.
+      demotable: demotableItemIds.has(supp.id),
     });
   }
   return entries;
@@ -234,15 +264,29 @@ export function buildIntakeReminderForSlots(
   // is pending, so no reminder goes out (a skip stops re-nudging like a take).
   const all = parts.flatMap((p) => p.entries);
   if (all.every((e) => e.taken || e.skipped)) return null;
-  return {
-    message: renderMergedIntakeMessage(
-      profileId,
-      parts,
-      date,
-      getUserAge(profileId)
-    ),
-    slots: parts.map((p) => p.slot),
-  };
+  const message = renderMergedIntakeMessage(
+    profileId,
+    parts,
+    date,
+    getUserAge(profileId)
+  );
+  // RIDE-ALONG (#1505 Part 1, class 3). A reminder that is going out anyway for this
+  // slot's must/should doses carries a More… row exposing the SAME slot's `may`
+  // items. Convenience only — the digest tail is the guaranteed path — and inherently
+  // slot-correct, because the reminder IS the slot.
+  //
+  // It costs no send: the message already exists. That is the only reason it is
+  // allowed to exist at all ("a suggestion may only decorate a send that exists for
+  // its own reasons").
+  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+  if (offered.length > 0) {
+    message.actions = [
+      ...(message.actions ?? []),
+      collapsedOfferAction(profileId, date, nowHhmm, offered.length),
+    ];
+  }
+  return { message, slots: parts.map((p) => p.slot) };
 }
 
 // Reminder for supplements due in one slot today, or null when nothing is due —

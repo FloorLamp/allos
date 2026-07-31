@@ -102,7 +102,7 @@ export const GOAL_PACE_PREFIX = "goal-pace:";
 // Per-goal off-pace finding, keyed by goal id (ids never recycle → a stale dismissal
 // is a dead row, not wrong suppression). The key deliberately does NOT encode the
 // target date — RE-TARGETING is a new pacing question, so updateGoal clears this
-// dismissal on a target change (app/(app)/goals/actions.ts, #436/#203) rather than
+// dismissal on a target change (app/(app)/training/goal-actions.ts, #436/#203) rather than
 // baking the date into the key.
 export function goalPaceSignalKey(goalId: number): string {
   return `${GOAL_PACE_PREFIX}goal:${goalId}`;

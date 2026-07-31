@@ -124,7 +124,7 @@ export default function ImportDetailActions({
               onClick={onReimportFromRaw}
               disabled={deleting || reimporting}
               data-testid="reimport-from-raw"
-              className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-ghost inline-flex items-center gap-1.5 text-sm"
             >
               <IconRefresh className="h-4 w-4" />
               {reimporting ? "Re-applying…" : "Re-apply saved extraction"}
@@ -147,7 +147,7 @@ export default function ImportDetailActions({
           onClick={onDelete}
           disabled={deleting || reimporting}
           data-testid="delete-document"
-          className="btn-ghost inline-flex items-center gap-1.5 text-sm text-rose-600 hover:text-rose-700 disabled:opacity-50 dark:text-rose-400"
+          className="btn-ghost inline-flex items-center gap-1.5 text-sm text-rose-600 hover:text-rose-700 dark:text-rose-400"
         >
           <IconTrash className="h-4 w-4" />
           {deleting ? "Deleting…" : "Delete"}

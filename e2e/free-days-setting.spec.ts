@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { settledCheck } from "./helpers";
 import { E2E_LOGIN_SUN, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -20,7 +20,7 @@ test.describe("Free days setting (#1241)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/settings/profile");
+      await member.goto("/settings/health");
 
       const card = member.getByTestId("free-days-form");
       await expect(card).toBeVisible();

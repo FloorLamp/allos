@@ -19,7 +19,7 @@ import {
   suggestSymptomsFromText,
   logSymptom,
   logTemperature,
-} from "@/app/(app)/symptoms/actions";
+} from "@/app/(app)/symptom-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { toolMessage, fakeClient } from "../__db_tests__/ai-fake-client";
 

@@ -32,8 +32,12 @@ export function renderPreventiveMessage(
   deepLinkBase = ""
 ): NotificationMessage {
   const who = profileName ? `${profileName} — ` : "";
+  // The body used to read "<name>: Overdue" under a title that already named the
+  // screening (#1722 item 3) — the name twice, and the one fact a reader wants (since
+  // WHEN) nowhere. The body now carries what the title lacks: the state plus the
+  // gather's own detail line, and no name repetition.
   const tag = item.status === "overdue" ? "Overdue" : "Due";
-  const extra = item.detail ? ` — ${item.detail}` : "";
+  const detail = item.detail?.trim();
   const row = `pv:${item.ruleKey}`;
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] = [];
@@ -56,7 +60,7 @@ export function renderPreventiveMessage(
   );
   return {
     title: `🩺 Preventive care: ${who}${item.name}`,
-    body: `${item.name}: ${tag}${extra}`,
+    body: detail ? `${tag} — ${detail}` : tag,
     actions,
     kind: "preventive",
   };

@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { encounterHref, MEDICATIONS_HREF, type AppRoute } from "../hrefs";
+import { biomarkerNameKey } from "./medical";
 
 // PER-PROFILE activity reads for the provider detail/index pages (issue #275).
 //
@@ -172,6 +173,92 @@ export function getProviderActivityTotal(
   );
 }
 
+// One provider's linked-record count for the ACTIVE profile, as the global search
+// needs it (#1595): which providers appear in THIS profile's record at all, and how
+// many rows each one is on. Same question as getProviderActivityTotal — asked once
+// for every provider instead of once per provider — so the two must agree by
+// construction: every table counted above is a branch of the UNION ALL below, and a
+// db-tier test pins the two readers against each other.
+//
+// Why search needs it: the registry itself is GLOBAL (a family shares one "Quest
+// Diagnostics"), so a bare `providers` scan would return clinicians this profile has
+// never seen — noise in the palette, and worse in grounded Q&A, where a citation must
+// be one of the person's OWN records. So the fan-out searches only the providers this
+// profile's records actually name. Browsing the whole registry stays the directory's
+// job (/records/care/providers lists every provider with a per-profile count).
+export interface ProviderRecordCount {
+  providerId: number;
+  records: number;
+}
+
+export function getProviderRecordCounts(
+  profileId: number
+): ProviderRecordCount[] {
+  const rows = db
+    .prepare(
+      `SELECT provider_id AS providerId, COUNT(*) AS records FROM (
+         SELECT provider_id FROM encounters
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT location_provider_id AS provider_id FROM encounters
+           WHERE profile_id = ? AND location_provider_id IS NOT NULL
+             AND (provider_id IS NULL OR provider_id != location_provider_id)
+         UNION ALL
+         SELECT provider_id FROM medical_records
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT provider_id FROM intake_items
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT provider_id FROM immunizations
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT provider_id FROM procedures
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT provider_id FROM care_plan_items
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT provider_id FROM appointments
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT ordering_provider_id AS provider_id FROM imaging_studies
+           WHERE profile_id = ? AND ordering_provider_id IS NOT NULL
+         UNION ALL
+         SELECT reading_provider_id AS provider_id FROM imaging_studies
+           WHERE profile_id = ? AND reading_provider_id IS NOT NULL
+             AND (ordering_provider_id IS NULL
+                  OR ordering_provider_id != reading_provider_id)
+         UNION ALL
+         SELECT provider_id FROM optical_prescriptions
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT provider_id FROM dental_procedures
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+         UNION ALL
+         SELECT provider_id FROM skin_lesions
+           WHERE profile_id = ? AND provider_id IS NOT NULL
+       )
+       GROUP BY provider_id`
+    )
+    .all(
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId,
+      profileId
+    ) as ProviderRecordCount[];
+  return rows;
+}
+
 // The relationship strip. firstSeen is the earliest dated activity across the
 // dated clinical tables; lastVisit the latest encounter; nextAppointment the
 // soonest still-scheduled appointment on/after `todayDate`.
@@ -263,9 +350,13 @@ export function getProviderLabs(
   profileId: number,
   providerId: number
 ): ProviderActivityItem[] {
+  // The canonical name is the DISPLAY name (#1501): `name` is the raw string the
+  // lab delivered ("URIC ACID"), `canonical_name` is the vocabulary's clean,
+  // deliberately-cased text. biomarkerNameKey is the shared COALESCE every other
+  // analyte-listing surface keys on.
   const rows = db
     .prepare(
-      `SELECT id, date, name, category FROM medical_records
+      `SELECT id, date, ${biomarkerNameKey()} AS name, category FROM medical_records
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY date DESC, id DESC`
     )

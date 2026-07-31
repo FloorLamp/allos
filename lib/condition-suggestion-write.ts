@@ -7,6 +7,7 @@
 // row. Suggest-only (#560): this runs ONLY on an explicit user confirm, never on ingest.
 
 import { db, writeTx } from "./db";
+import { sqlNow } from "./clock";
 import { conditionCollapseKey } from "./icd10";
 import { ICD10_SYSTEM, hasIcd10Code } from "./icd10";
 
@@ -45,10 +46,11 @@ export function addSuggestedConditionCore(
     const info = db
       .prepare(
         `INSERT OR IGNORE INTO conditions
-           (name, code, code_system, status, source, external_id, profile_id)
-         VALUES (?, ?, ?, 'active', 'result', ?, ?)`
+           (name, code, code_system, status, source, external_id, profile_id, created_at)
+         VALUES (?, ?, ?, 'active', 'result', ?, ?, ?)`
       )
-      .run(name, code, codeSystem, externalId, profileId);
+      // created_at from the clock seam (#1534) — the Timeline day fallback.
+      .run(name, code, codeSystem, externalId, profileId, sqlNow());
     // OR IGNORE could no-op under a race; re-read to return the authoritative id.
     if (info.changes === 0) {
       const row = db

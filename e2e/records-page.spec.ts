@@ -1,28 +1,29 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { followLink } from "./helpers";
+import { expectNoClippedContent, followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The Health record surface (#1079): the 14 medical sections as two-level tabs —
 // group tab → section sub-tab → one pane — superseding the #1042 stacked-section
 // page. Grouping (FINALIZED): History (Visits · Procedures · Immunizations),
-// Problems (one stacked pane: Conditions + Allergies), Care (Overview stacked:
+// Problems (Conditions · Allergies — un-stacked into two panes by #1449), Care (Overview stacked:
 // Background + Family history + Care plan + Health goals · Providers solo),
 // Specialty (Vision · Dental · Skin · Mental health · Substance use; Vision/Dental
 // data-gated, Substance use life-stage-gated to adults — #1174/#1175). The
 // core rule: a pane renders ONE section, except a curated set of LIGHT sections may
 // share a stacked pane; heavy sections (the Immunizations chart, the Visits list,
 // the Providers directory) are NEVER stacked. Bare `/records` → `/records/history/
-// visits`. Removed index routes 308-redirect to the owning pane; DETAIL routes
-// survive.
+// visits`. The removed index routes now 404 (#1635 dropped the compatibility
+// table); DETAIL routes survive.
 //
 // Fixture hygiene (#868): read-only against the shared seeded admin profile
 // (profile 1 owns conditions/allergies/immunizations/providers/optical/dental via
 // scripts/seed.ts). Presence-only assertions — never exact counts of shared-seed
 // rows.
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 test("bare /records redirects to History › Visits and renders the Visits list (#1079)", async ({
   page,
@@ -87,16 +88,110 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   await expect(page.getByTestId("records-providers")).toBeVisible();
   await expect(page.getByTestId("records-background")).toHaveCount(0);
 
-  // Problems is a single stacked pane (no secondary strip): Conditions + Allergies.
+  // Problems is a normal two-pane group since #1449 — it was the family's one
+  // stacked outlier, and the pill sub-tabs are what let its sections stop naming
+  // themselves with page-scale in-page headings.
   await followLink(
     page,
     groups.getByRole("link", { name: "Problems" }),
-    /\/records\/problems$/
+    /\/records\/problems\/conditions$/
   );
+  const problemSubs = page.getByTestId("records-sub-tabs");
+  await expect(
+    problemSubs.getByRole("link", { name: "Conditions" })
+  ).toBeVisible();
+  await expect(
+    problemSubs.getByRole("link", { name: "Allergies" })
+  ).toBeVisible();
+  // One pane at a time: Conditions renders alone, Allergies is a sub-tab away.
   await expect(page.getByTestId("records-conditions")).toBeVisible();
+  await expect(page.getByTestId("records-allergies")).toHaveCount(0);
+
+  await followLink(
+    page,
+    problemSubs.getByRole("link", { name: "Allergies" }),
+    /\/records\/problems\/allergies$/
+  );
   await expect(page.getByTestId("records-allergies")).toBeVisible();
-  // A single-pane group shows no secondary strip.
-  await expect(page.getByTestId("records-sub-tabs")).toHaveCount(0);
+  await expect(page.getByTestId("records-conditions")).toHaveCount(0);
+
+  // The bare group route forwards to its first pane, like History and Care.
+  await page.goto("/records/problems");
+  await expect(page).toHaveURL(/\/records\/problems\/conditions$/);
+});
+
+// #1449 cluster C: the family had grown FOUR controls for "narrow this list" —
+// filled pills on Problems, a "Show" + <select> on Immunizations, an "All statuses"
+// <select> on Skin and Dental. One affordance now, the outline pill group, and each
+// state is a real URL where the filter rides a query param.
+test("list surfaces share ONE filter affordance — outline pills, no dropdown (#1449)", async ({
+  page,
+}) => {
+  await page.goto("/records/problems/conditions");
+  const condFilter = page.getByTestId("conditions-filter");
+  await expect(condFilter).toBeVisible();
+  for (const label of ["All", "Active", "Resolved"]) {
+    await expect(condFilter.getByRole("link", { name: label })).toBeVisible();
+  }
+  // Filtering is a navigation, and the chosen pill marks itself current.
+  await followLink(
+    page,
+    condFilter.getByRole("link", { name: "Active" }),
+    /\/records\/problems\/conditions\?cond=active$/
+  );
+  await expect(
+    page.getByTestId("conditions-filter").getByRole("link", { name: "Active" })
+  ).toHaveAttribute("aria-current", "true");
+
+  // Immunizations: the same pill group, and no <select> left behind.
+  await page.goto("/records/history/immunizations");
+  const vaxFilter = page.getByTestId("immunization-status-filter");
+  await expect(vaxFilter).toBeVisible();
+  await expect(vaxFilter.getByRole("link", { name: "All" })).toBeVisible();
+  await expect(
+    vaxFilter.getByRole("link", { name: "Needs attention" })
+  ).toBeVisible();
+  // Scoped to the FILTER, exactly like the Skin case below: a form field is not a
+  // filter affordance, and the add/edit dose form legitimately carries its own
+  // <select> (the #1406 route picker). The invariant this test owns is "no filter
+  // dropdown", not "no <select> anywhere on the pane".
+  await expect(vaxFilter.locator("select")).toHaveCount(0);
+
+  // Skin: a client-state list, so buttons rather than links — same pills either way.
+  // (Only the FILTER is pinned here: the per-row edit forms below legitimately keep
+  // their <select>s — a form field is not a filter affordance.)
+  await page.goto("/records/specialty/skin");
+  const skinFilter = page.getByTestId("skin-status-filter");
+  await expect(skinFilter).toBeVisible();
+  await expect(skinFilter.getByRole("button", { name: "All" })).toBeVisible();
+  await expect(skinFilter.locator("select")).toHaveCount(0);
+});
+
+// #1449 layout kin: the CDC schedule grid has more age columns than a phone has
+// pixels. It used to squeeze them to slivers and clip the right edge silently; it
+// must now scroll INSIDE its own container, leaving the page body itself free of
+// horizontal scroll (the wide-content rule).
+test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/records/history/immunizations");
+  const grid = page.getByTestId("cdc-schedule-grid");
+  await expect(grid).toBeVisible();
+
+  const overflow = await grid.evaluate((el) => ({
+    scrollable: el.scrollWidth > el.clientWidth,
+    overflowX: getComputedStyle(el).overflowX,
+  }));
+  expect(overflow.scrollable).toBe(true);
+  expect(overflow.overflowX).toBe("auto");
+
+  // …and the grid's width is CONTAINED: every element's right edge inside the
+  // viewport unless it sits in a scroller that itself fits (which is exactly the
+  // grid's own container, asserted above). The page-level width comparison this
+  // replaces could not fail (#1543) — the app shell clips the overflow, so the
+  // document never reports itself wider than the viewport, in either direction.
+  await expectNoClippedContent(page);
 });
 
 test("the five specialty sub-tabs render for the seeded profile, with their forms + crisis line (#1079)", async ({
@@ -203,45 +298,6 @@ test("a no-data profile hides the Vision/Dental sub-tabs AND its route re-gates 
   } finally {
     await page.context().close();
   }
-});
-
-test("the removed index routes 308-redirect to their owning panes (#1079)", async ({
-  page,
-}) => {
-  // Request-level assertion — no per-route Chromium navigation. Each old route points
-  // at the pane that now owns its section.
-  const redirects = [
-    { from: "/conditions", to: "/records/problems" },
-    { from: "/allergies", to: "/records/problems" },
-    { from: "/procedures", to: "/records/history/procedures" },
-    { from: "/immunizations", to: "/records/history/immunizations" },
-    { from: "/family-history", to: "/records/care/overview" },
-    { from: "/encounters", to: "/records/history/visits" },
-    { from: "/providers", to: "/records/care/providers" },
-    { from: "/care-plan", to: "/records/care/overview" },
-    { from: "/care-goals", to: "/records/care/overview" },
-    { from: "/medical/background", to: "/records/care/overview" },
-    { from: "/vision", to: "/records/specialty/vision" },
-    { from: "/dental", to: "/records/specialty/dental" },
-    { from: "/skin", to: "/records/specialty/skin" },
-    { from: "/medical/instruments", to: "/records/specialty/mental-health" },
-    // Coverage gaps relocated to Data → Coverage (#1086).
-    { from: "/coverage", to: "/data?section=coverage" },
-  ];
-  for (const r of redirects) {
-    const res = await page.request.get(r.from, { maxRedirects: 0 });
-    expect(res.status(), r.from).toBe(308);
-    expect(res.headers()["location"], r.from).toBe(r.to);
-  }
-
-  // Query strings ride through — the Visits Book-CTA deep link keeps its prefill.
-  const withQuery = await page.request.get("/encounters?new=1&title=Physical", {
-    maxRedirects: 0,
-  });
-  expect(withQuery.status()).toBe(308);
-  expect(withQuery.headers()["location"]).toBe(
-    "/records/history/visits?new=1&title=Physical"
-  );
 });
 
 test("detail routes survive and their back-links point at the owning panes (#1079)", async ({

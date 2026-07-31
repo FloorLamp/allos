@@ -1,6 +1,6 @@
-// Server-side write cores for the three offline-queueable quick-log flows (issue
-// #28). These are the SINGLE implementation of each write: both the online Server
-// Action (app/(app)/trends/body-actions.ts, vitals-actions.ts, medicine/actions.ts)
+// Server-side write cores for the offline-queueable quick-log flows (issue #28).
+// These are the SINGLE implementation of each write: both the online Server Action
+// (app/(app)/trends/measurement-actions.ts + body-actions.ts, medicine/actions.ts)
 // and the offline replay route (app/api/offline-replay) call them, so a replayed
 // write runs byte-for-byte the same validation + persistence the live form does —
 // there is no second, drift-prone copy of the rules. Callers own their own
@@ -10,109 +10,85 @@
 // Every statement here filters by profile_id (child tables reach it via their
 // parent), per the repo scoping rule.
 
-import { db, writeTx } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
+import { isDoseDateAccepted } from "@/lib/dose-log-window";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
 import { normalizeVitalsInput, type VitalsRawInput } from "@/lib/vitals-input";
+import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import {
-  decrementSupply,
   addCanonicalNames,
+  markDoseSkipped,
+  markDoseTaken,
   reconcileFlags,
 } from "@/lib/queries";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
 import { normalizeMoodInput } from "@/lib/mood";
 import { resetMoodCheckinIgnored } from "@/lib/settings";
-import type {
-  FlowKind,
-  QueuedIntent,
-  DosePayload,
-  BodyMetricPayload,
-  VitalsPayload,
-  MoodPayload,
+import {
+  classifyDoseReplay,
+  STALE_QUEUED_DOSE_REASON,
+  type FlowKind,
+  type QueuedIntent,
+  type DosePayload,
+  type BodyMetricPayload,
+  type VitalsPayload,
+  type MoodPayload,
 } from "@/lib/offline/queue";
 
-// ── dose confirm ──────────────────────────────────────────────────────────────
+// ── dose confirm / skip ───────────────────────────────────────────────────────
 
-// Set-to-taken for one dose on one date. Idempotent: inserts the per-(dose,date)
-// log only when absent (the UNIQUE(dose_id,date) natural key), and decrements
-// on-hand supply ONLY on a real insert — so replaying the same confirm never
-// double-logs or double-decrements. Verifies the dose belongs to a supplement the
-// profile owns (the id is untrusted), using the row's own item_id. Returns
-// {ok:false} when the dose isn't owned or the date is malformed (a permanent
-// rejection); {ok:true, inserted} otherwise.
-export function confirmDoseTaken(
+// Apply a queued dose confirm or skip through the SHARED write core (#1427).
+//
+// There is NO offline-specific dose write. markDoseTaken / markDoseSkipped are the
+// one implementation every confirm path goes through — the page tri-state's sibling,
+// the dashboard hero, the household cockpit, the Telegram ✅/⏭ taps — and a replayed
+// tap is just a late tap, so it runs the identical rules: profile-scoped ownership
+// from the dose row's own item_id, the retired-dose and PAUSED-ITEM refusals, the
+// per-(dose,date) idempotency exists-check under BEGIN IMMEDIATE, the amount snapshot,
+// and the single supply decrement. (This replaced a parallel pair of offline-only
+// writers that had drifted: they never checked `active`, so a replay could silently
+// log — and burn supply for — a medication the user had deliberately paused.)
+//
+// The core's typed DoseTakenOutcome is HONORED rather than collapsed to a boolean:
+// classifyDoseReplay turns it into the queue's disposition + the reason the user sees,
+// so a refusal reaches the dead-letter panel instead of being reported as synced.
+// `clientTakenAt` (confirm only) is the captured tap moment; the core validates it.
+function applyDoseIntent(
   profileId: number,
-  doseId: number,
+  flow: "dose" | "skip-dose",
+  payload: DosePayload,
   date: string
-): { ok: boolean; inserted: boolean } {
+): { status: "done" | "rejected"; reason?: string } {
+  const doseId = payload?.doseId;
   if (!Number.isInteger(doseId) || doseId <= 0 || !isRealIsoDate(date)) {
-    return { ok: false, inserted: false };
+    return { status: "rejected" };
   }
-  // A dose retired by an edit while the confirm sat in the offline queue is a
-  // permanent rejection, same as a deleted one — its history must stay frozen.
-  const dose = db
-    .prepare(
-      `SELECT item_id, amount FROM intake_item_doses
-       WHERE id = ? AND retired = 0
-         AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
-    )
-    .get(doseId, profileId) as
-    { item_id: number; amount: string | null } | undefined;
-  if (!dose) return { ok: false, inserted: false };
-  const existing = db
-    .prepare("SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?")
-    .get(doseId, date);
-  if (existing) return { ok: true, inserted: false };
-  // Amount snapshotted at confirm time (matches toggleTaken/markDoseTaken).
-  db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, item_id, date, amount) VALUES (?,?,?,?)"
-  ).run(doseId, dose.item_id, date, dose.amount);
-  decrementSupply(profileId, dose.item_id);
-  return { ok: true, inserted: true };
-}
-
-// Set-to-skipped for one dose on one date (issue #232) — the offline sibling of
-// confirmDoseTaken, mirroring the Telegram markDoseSkipped. Idempotent on the same
-// per-(dose,date) natural key: inserts a status='skipped' log (amount NULL) only
-// when NO row exists — never overwriting an already-taken or already-skipped dose
-// (a taken→skipped change is an explicit online toggle, never a replayed
-// overwrite). A skipped dose consumes nothing, so on-hand supply is untouched.
-// Verifies the dose belongs to a supplement the profile owns; a retired dose is a
-// permanent rejection like a deleted one. Returns {ok:false} on a bad payload,
-// {ok:true, inserted} otherwise.
-export function skipDose(
-  profileId: number,
-  doseId: number,
-  date: string
-): { ok: boolean; inserted: boolean } {
-  if (!Number.isInteger(doseId) || doseId <= 0 || !isRealIsoDate(date)) {
-    return { ok: false, inserted: false };
+  // Distinguish "the entry sat in the queue too long" from "the dose is gone" for the
+  // user-facing reason ONLY — the same pure predicate the core gates on, so the two
+  // can't drift. The core still enforces it (it answers stale-dose either way).
+  if (!isDoseDateAccepted(today(profileId), date)) {
+    return { status: "rejected", reason: STALE_QUEUED_DOSE_REASON };
   }
-  const dose = db
-    .prepare(
-      `SELECT item_id FROM intake_item_doses
-       WHERE id = ? AND retired = 0
-         AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
-    )
-    .get(doseId, profileId) as { item_id: number } | undefined;
-  if (!dose) return { ok: false, inserted: false };
-  const existing = db
-    .prepare("SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?")
-    .get(doseId, date);
-  if (existing) return { ok: true, inserted: false };
-  db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
-  ).run(doseId, dose.item_id, date);
-  // Deliberately no decrementSupply: a skipped dose consumes nothing.
-  return { ok: true, inserted: true };
+  const outcome =
+    flow === "dose"
+      ? markDoseTaken(
+          profileId,
+          doseId,
+          null,
+          date,
+          payload.clientTakenAt ? new Date(payload.clientTakenAt) : undefined
+        )
+      : markDoseSkipped(profileId, doseId, null, date);
+  return classifyDoseReplay(flow, outcome);
 }
 
 // ── body-metric quick-add ───────────────────────────────────────────────────────
 
 export interface BodyMetricWrite {
   date: string;
-  weight: string; // raw, in `weightUnit`
+  weight: string | null; // raw, in `weightUnit`; nullable for body-fat/HR detail entry
   weightUnit: WeightUnit;
   bodyFatPct: string | null;
   restingHr: string | null;
@@ -125,26 +101,29 @@ function numOrNull(v: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Persist one body-metrics row. Mirrors the addBodyMetric action's guards exactly:
-// reject a non-ISO date or a missing/non-finite weight (never write a NaN weight_kg
-// or an impossible date), skip non-finite optional numbers rather than storing NaN,
-// and convert the raw weight to canonical kg via the captured unit. Returns false on
-// a rejected input, true on a successful insert.
+// Persist one body-metrics row. At least ONE measurement is required, but weight is
+// not: body_fat_pct and resting_hr are nullable columns and metric-detail entry can
+// record either independently. A present weight is still validated and converted
+// to canonical kg exactly as before.
 export function insertBodyMetric(
   profileId: number,
   w: BodyMetricWrite
 ): boolean {
-  if (!isRealIsoDate(w.date) || String(w.weight).trim() === "") return false;
-  const weight = Number(w.weight);
-  if (!Number.isFinite(weight)) return false;
+  if (!isRealIsoDate(w.date)) return false;
+  const weightRaw = String(w.weight ?? "").trim();
+  const weight = weightRaw === "" ? null : Number(weightRaw);
+  if (weight != null && !Number.isFinite(weight)) return false;
+  const bodyFat = numOrNull(w.bodyFatPct);
+  const restingHr = numOrNull(w.restingHr);
+  if (weight == null && bodyFat == null && restingHr == null) return false;
   db.prepare(
     `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, profile_id)
      VALUES (?,?,?,?,?,?)`
   ).run(
     w.date,
-    toKg(weight, w.weightUnit),
-    numOrNull(w.bodyFatPct),
-    numOrNull(w.restingHr),
+    weight == null ? null : toKg(weight, w.weightUnit),
+    bodyFat,
+    restingHr,
     w.notes && w.notes.trim() ? w.notes.trim() : null,
     profileId
   );
@@ -221,6 +200,40 @@ export function insertVitals(
   return true;
 }
 
+// ── growth (height / head circumference) ───────────────────────────────────────
+
+// Persist a manual height / head-circumference measurement. Moved here from the
+// retired `app/(app)/trends/growth-actions.ts` when the standalone growth form
+// folded into the combined "Log measurements" form (#1486): the growth fields are
+// now life-stage-gated rows of ONE form served by ONE action, so its write core
+// belongs beside the other two quick-log cores rather than in a per-form action
+// module. Auth-blind + profileId-first, like its neighbours.
+//
+// Height and head circumference have a single home in metric_samples (metrics
+// 'height_cm' / 'head_circumference_cm') — the SAME place the document-extraction
+// writers land them — so a manually entered value feeds the WHO/CDC growth charts
+// and the height/head-circ Body charts identically to an imported reading. A point
+// metric uses a fixed midnight start, so the natural key (profile_id, metric,
+// source='manual', origin=NULL, start_time) is stable across re-entries: logging
+// the same date again CORRECTS that day rather than stacking a second point.
+// Returns false on a rejected/empty input, true on a successful write.
+export function insertGrowth(
+  profileId: number,
+  date: string,
+  raw: GrowthInputRaw
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const normalized = normalizeGrowthInput(raw);
+  if ("error" in normalized) return false;
+  if (normalized.samples.length === 0) return false;
+  writeTx(() => {
+    for (const s of normalized.samples) {
+      upsertManualSample(profileId, s.metric, date, s.value);
+    }
+  });
+  return true;
+}
+
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
 
 // Persist one daily wellbeing check-in — the SINGLE write core shared by the
@@ -269,6 +282,40 @@ export function upsertMoodLog(
   return true;
 }
 
+// Correct or remove ONE past check-in, from the mood detail page's readings table
+// (issue #1488, absorbing #1397). Before this, `upsertMoodLog` was the only mood
+// write there was: today's mood was correctable by re-tapping, but a mis-tapped
+// "1 — awful" on a PAST day sat in the trend permanently, and the only editor was a
+// dialog reachable solely for days that already had a sleep record.
+//
+// Both live HERE, beside the upsert, because mood is store-private (#992): the ONE
+// write core owns every mutation of the table, so no engine elsewhere names it.
+// Profile-scoped by the WHERE clause; return false when nothing matched (a wrong id,
+// or another profile's row).
+export function updateMoodValence(
+  profileId: number,
+  id: number,
+  valence: number
+): boolean {
+  // The same 1-5 scale the pure normalizeMoodInput guard enforces on insert; a
+  // correction may not smuggle in an off-scale value the check-in couldn't produce.
+  if (!Number.isInteger(valence) || valence < 1 || valence > 5) return false;
+  const info = db
+    .prepare(
+      `UPDATE mood_logs SET valence = ?, updated_at = datetime('now')
+        WHERE id = ? AND profile_id = ?`
+    )
+    .run(valence, id, profileId);
+  return info.changes > 0;
+}
+
+export function deleteMoodLog(profileId: number, id: number): boolean {
+  const info = db
+    .prepare(`DELETE FROM mood_logs WHERE id = ? AND profile_id = ?`)
+    .run(id, profileId);
+  return info.changes > 0;
+}
+
 // ── idempotency ledger ──────────────────────────────────────────────────────────
 
 // Has this idempotency key already been applied for this profile? Consulted before
@@ -315,31 +362,49 @@ export function sweepReplayedKeys(
 // The terminal outcome of applying one queued intent: "done" (written now),
 // "duplicate" (key already applied — no-op), or "rejected" (payload permanently
 // invalid). A transient failure is NOT represented here — the underlying write /
-// transaction throws, and the route maps that to a retryable "error".
+// transaction throws, and the route maps that to a retryable "error". A rejection
+// may carry a `reason` — the honest, user-facing explanation the dead-letter panel
+// shows (#1427: a paused item / retired dose / too-old entry each say so, instead of
+// the generic "couldn't validate this entry").
 export type ReplayApplied = "done" | "duplicate" | "rejected";
+
+export interface ReplayOutcome {
+  status: ReplayApplied;
+  reason?: string;
+}
 
 // Apply one queued intent for `profileId`, exactly once. The idempotency-key check
 // and the write run in ONE transaction: a key already present short-circuits to
 // "duplicate"; a rejected payload commits nothing and records no key; a successful
 // write records the key so any later flush of the same key is a no-op. Real DB
-// errors propagate (the caller treats them as retryable).
+// errors propagate (the caller treats them as retryable). (The dose flows' own write
+// cores open a nested writeTx — better-sqlite3 turns that into a SAVEPOINT, so the
+// whole intent still commits or rolls back as one.)
 export function applyIntent(
   profileId: number,
   intent: QueuedIntent
-): ReplayApplied {
-  let outcome: ReplayApplied = "rejected";
+): ReplayOutcome {
+  let outcome: ReplayOutcome = { status: "rejected" };
   writeTx(() => {
     if (alreadyReplayed(profileId, intent.key)) {
-      outcome = "duplicate";
+      outcome = { status: "duplicate" };
       return;
     }
     let ok = false;
-    if (intent.flow === "dose") {
-      const p = intent.payload as DosePayload;
-      ok = confirmDoseTaken(profileId, p.doseId, intent.date).ok;
-    } else if (intent.flow === "skip-dose") {
-      const p = intent.payload as DosePayload;
-      ok = skipDose(profileId, p.doseId, intent.date).ok;
+    if (intent.flow === "dose" || intent.flow === "skip-dose") {
+      // The dose flows answer from the shared core's typed outcome, so a refusal
+      // keeps its reason instead of collapsing to a bare false.
+      const applied = applyDoseIntent(
+        profileId,
+        intent.flow,
+        intent.payload as DosePayload,
+        intent.date
+      );
+      if (applied.status === "rejected") {
+        outcome = applied;
+        return;
+      }
+      ok = true;
     } else if (intent.flow === "body-metric") {
       const p = intent.payload as BodyMetricPayload;
       ok = insertBodyMetric(profileId, {
@@ -377,15 +442,15 @@ export function applyIntent(
       });
     } else {
       // Unknown flow — treat as a permanent rejection (client drops it).
-      outcome = "rejected";
+      outcome = { status: "rejected" };
       return;
     }
     if (!ok) {
-      outcome = "rejected";
+      outcome = { status: "rejected" };
       return;
     }
     recordReplayKey(profileId, intent.key, intent.flow);
-    outcome = "done";
+    outcome = { status: "done" };
   });
   return outcome;
 }

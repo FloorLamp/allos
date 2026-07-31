@@ -9,11 +9,20 @@ import { db, today } from "./db";
 import { writeTx } from "./db";
 import { daysBetweenDateStr, isRealIsoDate } from "./date";
 import { normalizePracticeName } from "./practice";
-import type { PracticeLog, PracticeLogOutcome } from "./types";
+import type {
+  PracticeLogOutcome,
+  PracticeSessionMutationOutcome,
+} from "./types";
+import { writeImportTombstoneForRow } from "./integrations/tombstones";
+import {
+  getPracticeDayCount,
+  getPracticeSession,
+  getPracticeSpellings,
+} from "./queries/wellness";
 
 // A far-off (forged) date can't land a misdated session row (the #614 dose-log posture);
 // a legitimate late correction within the window still logs to its own day.
-const PRACTICE_LOG_DATE_WINDOW_DAYS = 30;
+export const PRACTICE_LOG_DATE_WINDOW_DAYS = 30;
 
 function isPracticeDateAccepted(profileId: number, date: string): boolean {
   if (!isRealIsoDate(date)) return false;
@@ -21,21 +30,23 @@ function isPracticeDateAccepted(profileId: number, date: string): boolean {
   return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
 }
 
-// Distinct sessions logged for a (practice, date). The day's RUNNING COUNT, reported by
-// the outcome so a surface can say "logged — 2nd session today" (the PRN widget shape).
-export function getPracticeDayCount(
+// An imported historical session may be far outside the new-log window but still
+// needs ordinary correction. Accept a date near that existing row as well as the
+// normal today-relative window; this keeps forged edits bounded without making an
+// old session impossible to save even when its date is unchanged.
+function isPracticeEditDateAccepted(
   profileId: number,
-  practice: string,
-  date: string
-): number {
-  const name = normalizePracticeName(practice);
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM practice_logs
-        WHERE profile_id = ? AND practice = ? AND date = ?`
-    )
-    .get(profileId, name, date) as { n: number };
-  return row.n;
+  currentDate: string,
+  nextDate: string
+): boolean {
+  if (!isRealIsoDate(nextDate)) return false;
+  if (isPracticeDateAccepted(profileId, nextDate)) return true;
+  const diff = daysBetweenDateStr(currentDate, nextDate);
+  return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
+}
+
+function inClause(values: readonly string[]): string {
+  return values.map(() => "?").join(", ");
 }
 
 // One-tap log a practice session. NOT idempotent — multi-session days are the point
@@ -77,23 +88,36 @@ export function logPracticeSession(
   });
 }
 
-// The profile's logged sessions for a practice, newest first. Used by the detail /
-// session-history surfaces (and tests). Bounded by the caller.
-export function getPracticeSessions(
+export function updatePracticeSession(
   profileId: number,
-  practice: string,
-  limit = 50
-): PracticeLog[] {
-  const name = normalizePracticeName(practice);
-  return db
-    .prepare(
-      `SELECT id, practice, date, time, duration_min, notes, created_at
-         FROM practice_logs
-        WHERE profile_id = ? AND practice = ?
-        ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
-        LIMIT ?`
-    )
-    .all(profileId, name, limit) as PracticeLog[];
+  id: number,
+  input: {
+    date: string;
+    time?: string | null;
+    durationMin?: number | null;
+    notes?: string | null;
+  }
+): PracticeSessionMutationOutcome {
+  const current = getPracticeSession(profileId, id);
+  if (!current) return { kind: "not-found" };
+  if (!isPracticeEditDateAccepted(profileId, current.date, input.date))
+    return { kind: "invalid-date" };
+  const time =
+    input.time && /^\d{2}:\d{2}$/.test(input.time) ? input.time : null;
+  const durationMin =
+    input.durationMin != null &&
+    Number.isFinite(input.durationMin) &&
+    input.durationMin > 0
+      ? Math.round(input.durationMin)
+      : null;
+  const notes = input.notes?.trim() || null;
+  db.prepare(
+    `UPDATE practice_logs
+        SET date = ?, time = ?, duration_min = ?, notes = ?, edited = 1
+      WHERE id = ? AND profile_id = ?`
+  ).run(input.date, time, durationMin, notes, id, profileId);
+  const session = getPracticeSession(profileId, id);
+  return session ? { kind: "updated", session } : { kind: "not-found" };
 }
 
 // Log a session against a practice frequency TARGET id (the Telegram Done button path,
@@ -116,9 +140,47 @@ export function logPracticeByTargetId(
 }
 
 // Delete one logged session by id (a correction). Profile-scoped so a leaked id no-ops.
-export function deletePracticeSession(profileId: number, id: number): void {
-  db.prepare("DELETE FROM practice_logs WHERE id = ? AND profile_id = ?").run(
-    id,
-    profileId
-  );
+export function deletePracticeSession(
+  profileId: number,
+  id: number
+): PracticeSessionMutationOutcome {
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT external_id FROM practice_logs WHERE id = ? AND profile_id = ?`
+      )
+      .get(id, profileId) as { external_id: string | null } | undefined;
+    if (!row) return { kind: "not-found" };
+    writeImportTombstoneForRow(profileId, "practice_logs", row);
+    const info = db
+      .prepare("DELETE FROM practice_logs WHERE id = ? AND profile_id = ?")
+      .run(id, profileId);
+    return info.changes === 1 ? { kind: "deleted", id } : { kind: "not-found" };
+  });
+}
+
+// Re-key every stored spelling in one identity family after a practice rename.
+// The target id is stable; the event rows follow the display name so history never
+// becomes orphaned. Returns the number of log rows changed.
+export function renamePracticeSessions(
+  profileId: number,
+  from: string,
+  to: string
+): number {
+  const next = normalizePracticeName(to);
+  if (!next) return 0;
+  const spellings = getPracticeSpellings(profileId, from);
+  if (spellings.length === 0) return 0;
+  const info = db
+    .prepare(
+      `UPDATE practice_logs
+          SET practice = ?,
+              edited = CASE
+                WHEN external_id IS NOT NULL AND practice <> ? THEN 1
+                ELSE edited
+              END
+        WHERE profile_id = ? AND practice IN (${inClause(spellings)})`
+    )
+    .run(next, next, profileId, ...spellings);
+  return info.changes;
 }

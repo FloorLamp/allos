@@ -70,8 +70,18 @@ import {
   type DataQualityGap,
 } from "./data-quality";
 import { situationHistoryResolver } from "./trend-annotations";
+import { getIntakeHistory } from "./intake-history";
+import {
+  detectDemotionCandidates,
+  demotionItemIdFromKey,
+  DEMOTION_WINDOW_DAYS,
+  type DemotionInput,
+} from "./supplement-demotion";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
+import { prolongedBleedingObservations } from "./cycle-observation";
+import { listCyclePeriods } from "./cycle-store";
+import { isPrn } from "./supplement-schedule";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import {
   fitnessRetestDue,
@@ -186,7 +196,7 @@ import {
   indexTakenByDose,
   stripWithoutTrailingPending,
 } from "./supplement-adherence";
-import { isDueOn, timeBucket } from "./supplement-schedule";
+import { doseDueOn, timeBucket } from "./supplement-schedule";
 
 // ---- #449: the unified coaching-findings collection -------------------------
 
@@ -398,6 +408,7 @@ export function collectCoachingFindings(
     ...buildBodyHygieneFindings(profileId, today, wu, prefs),
     ...buildGoalPacingFindings(profileId, today),
     ...buildAdherencePatternFindings(profileId, today),
+    ...buildDemotionSuggestionFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
     ...buildSubstanceUseFindings(profileId),
@@ -410,10 +421,14 @@ export function collectCoachingFindings(
     ...buildMobilitySuggestionFindings(profileId, today),
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
-    // Appended LAST (#1045): the structural data-quality gaps join the coaching rollup
-    // (so a decline rides the shared bus and silences the dedicated widget too), but
-    // stay behind the observational domains in rollup order so the dashboard "Coaching
-    // observations" slice keeps leading with training/body patterns.
+    ...buildCycleBleedingFindings(profileId, today),
+    // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
+    // set (so a decline rides the shared bus and silences every surface), behind the
+    // observational domains. NOTE (#1533): the order is no longer load-bearing for the
+    // dashboard rollup — the rollup now excludes families that have their own dashboard
+    // widget (FINDING_DASHBOARD_HOME), so gaps don't render there at all while the Data
+    // quality widget is on. This order still shapes the coaching TAB, which is the
+    // legitimate catch-all and shows everything.
     ...buildDataQualityFindings(profileId),
   ];
 }
@@ -460,7 +475,7 @@ export function buildMoodFindings(profileId: number, today: string): Finding[] {
       evidence:
         "From your own daily check-ins — a subjective self-rating, not a screen " +
         "or a diagnosis.",
-      actionHref: "/trends?tab=body",
+      actionHref: "/trends#body",
       actionLabel: "View mood trend",
     },
   ];
@@ -519,7 +534,7 @@ export function buildSleepMoodBridgeFindings(
       evidence:
         "Co-occurrence in your own data — sleep and mood often move together. " +
         "Not a causal claim and not a diagnosis.",
-      actionHref: "/trends?tab=body",
+      actionHref: "/trends#body",
       actionLabel: "View trends",
     },
   ];
@@ -654,6 +669,38 @@ export function buildOralHealthFindings(profileId: number): Finding[] {
       actionLabel: "Dental care",
     },
   ];
+}
+
+// ---- Prolonged bleeding (#1682 fix b) --------------------------------------
+
+// A calm note for a recorded period at or past PROLONGED_PERIOD_DAYS bleeding days.
+// The write path deliberately STORES such a period unrefused — refusing it would make
+// the app unable to record a genuine emergency — so the observation is how the app says
+// what it noticed. COACHING tier by hard product contract (#449): it joins
+// collectCoachingFindings, its dedupeKey (`cycle-bleeding:<period_start>`,
+// CYCLE_BLEEDING_PREFIX registered) rides the shared suppression bus, and it NEVER
+// notifies / never reaches the hero — cycle carries no obligation, and a body-state
+// observation must never arrive as a push. Reads the SAME profile-scoped period history
+// every cycle surface derives from (listCyclePeriods), so the note and the recorded row
+// can't disagree about a period's length. No owned SQL added here.
+export function buildCycleBleedingFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  return prolongedBleedingObservations(listCyclePeriods(profileId), today).map(
+    (obs) => ({
+      domain: "cycle-bleeding",
+      dedupeKey: obs.dedupeKey,
+      title: obs.title,
+      detail: obs.detail,
+      // Calm, observational — never an alarm, never a push (coaching tier).
+      tone: "info",
+      evidence:
+        "Recorded from your own period log — informational, not a diagnosis.",
+      actionHref: "/medical/cycles",
+      actionLabel: "View cycle log",
+    })
+  );
 }
 
 // ---- Nutrition input (#580): behind-target food-habit observations --------
@@ -813,9 +860,15 @@ export function buildTrainingObservationFindings(
   const setCounts = getExerciseSetCountsSince(profileId, since);
   // detectPlateaus only inspects points within the trailing PLATEAU_WINDOW_DAYS, so
   // bound the (otherwise all-history) rep-bearing scan to that same window (#389).
+  // byLoadContext (#1610): one series per (movement, registry implement), so a home
+  // chest press and a hotel chest press are never averaged into one fabricated flat
+  // slope — and their findings carry distinct dedupe keys, so dismissing one leaves
+  // the other live.
   const e1rmSeries = getExerciseE1rmSeries(
     profileId,
-    shiftDateStr(today, -PLATEAU_WINDOW_DAYS)
+    shiftDateStr(today, -PLATEAU_WINDOW_DAYS),
+    undefined,
+    { byLoadContext: true }
   );
 
   const observations: TrainingObservation[] = [];
@@ -854,6 +907,10 @@ export function buildTrainingObservationFindings(
 // key namespace: this reuses detectPlateaus and its `training-obs:plateau:…` key exactly.
 export interface PlateauFormHint {
   exerciseKey: string;
+  // The LOAD CONTEXT the plateau was measured in (#1610) — the registry equipment id,
+  // or null for the unassigned lane. The form matches BOTH this and exerciseKey, so
+  // selecting the hotel machine doesn't inherit the home machine's plateau hint.
+  equipmentId: number | null;
   dedupeKey: string;
   supersedes: string;
   // The rendered one-liner (#1203) — the SHARED plateau-break advice (same ~10%
@@ -873,7 +930,9 @@ export function buildActivePlateauHints(
 ): PlateauFormHint[] {
   const e1rmSeries = getExerciseE1rmSeries(
     profileId,
-    shiftDateStr(today, -PLATEAU_WINDOW_DAYS)
+    shiftDateStr(today, -PLATEAU_WINDOW_DAYS),
+    undefined,
+    { byLoadContext: true }
   );
   const cycle = getRoutineCycleStatus(profileId, today);
   const upcomingDeload =
@@ -891,6 +950,7 @@ export function buildActivePlateauHints(
     .filter((o) => o.exercise && activeKeys.has(o.key))
     .map((o) => ({
       exerciseKey: exerciseHistoryKey(o.exercise!),
+      equipmentId: o.equipmentId,
       dedupeKey: o.key,
       supersedes: o.legacyKey,
       hintText: plateauInlineHint(o.exercise!),
@@ -984,7 +1044,7 @@ function weightAnomalyToFinding(
     evidence: a.suspectedUnitError
       ? "Possible kg/lb mix-up"
       : "Possible scale glitch",
-    actionHref: "/trends?tab=body",
+    actionHref: "/trends#body",
     actionLabel: "Review in Body metrics",
   };
 }
@@ -1091,7 +1151,7 @@ export function buildGoalPacingFindings(
         `best preserves muscle. Easing off a little protects lean mass and makes ` +
         `the loss easier to sustain.`,
       tone: "caution",
-      actionHref: "/trends?tab=body",
+      actionHref: "/trends#body",
       actionLabel: "See weight trend",
     });
   }
@@ -1151,7 +1211,7 @@ export function buildAdherencePatternFindings(
   for (const d of doses) {
     const supp = suppById.get(d.item_id);
     // Only active, scheduled (non-PRN) items produce due days to miss.
-    if (!supp || !supp.active || supp.as_needed) continue;
+    if (!supp || !supp.active || isPrn(supp)) continue;
     const status = takenByDose.get(d.id);
     // Clamp the window to the dose's lifetime (#430): a day before the dose
     // existed with its current schedule is not a "miss" it defeated the
@@ -1167,7 +1227,8 @@ export function buildAdherencePatternFindings(
       doseStrip(
         windowDates,
         (date) =>
-          isDueOn(supp, {
+          doseDueOn(supp, d, {
+            date,
             isWorkoutDay: workoutDays.has(date),
             activeSituations: situationsOn(date),
           }),
@@ -1193,6 +1254,58 @@ export function buildAdherencePatternFindings(
   }
 
   return detectAdherencePatterns(inputs).map(adherencePatternToFinding);
+}
+
+// ---- Domain: priority demotion suggestions (coaching tier, issue #1505) ----
+
+// A calm, dismissible SUGGESTION that a high/mandatory SUPPLEMENT the profile has
+// effectively stopped taking be re-tagged `low` — "tracked, never pushed" — with the
+// user's tap as the only priority write (#559 intact; see lib/supplement-demotion for
+// the full contract and the medication/PRN/paused/cold-start exclusions).
+//
+// COACHING tier (#449) by hard product contract: it joins collectCoachingFindings,
+// rides the shared suppression bus under DEMOTION_PREFIX, renders on the Supplements
+// page and the calm dashboard rollup — and NEVER becomes a notification. Nagging
+// someone about a supplement they have chosen not to take is precisely the failure
+// mode this whole issue exists to remove, so it must not arrive as a push.
+//
+// Reads through the ONE shared item-level history gather (getIntakeHistory), the same
+// evidence the digest deltas read, so the suggestion and the digest can never
+// disagree about a day. No owned SQL.
+export function buildDemotionSuggestionFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const inputs: DemotionInput[] = getIntakeHistory(
+    profileId,
+    today,
+    DEMOTION_WINDOW_DAYS
+  ).map(({ item, strip, existedWholeWindow }) => ({
+    itemId: item.id,
+    name: item.name,
+    kind: item.kind,
+    obligation: item.obligation,
+    asNeeded: Boolean(isPrn(item)),
+    active: Boolean(item.active),
+    strip,
+    existedWholeWindow,
+    // Episode anchor = the current year (#436): a lapse that recurs a year after
+    // being dismissed re-surfaces instead of being silenced forever.
+    periodAnchor: today.slice(0, 4),
+  }));
+
+  return detectDemotionCandidates(inputs).map((c) => ({
+    domain: "demote-obligation",
+    dedupeKey: c.key,
+    supersedes: c.legacyKey,
+    title: c.title,
+    detail: c.detail,
+    // Calm FYI — an observation about the user's own log, never an alarm.
+    tone: "info" as const,
+    evidence: `${c.takenDays} of ${c.occurrences} scheduled days over the last ${DEMOTION_WINDOW_DAYS} days`,
+    actionHref: nutritionTabHref("supplements"),
+    actionLabel: "Open supplements",
+  }));
 }
 
 // ---- Domain: sun exposure (coaching tier only, issue #571) ----------------
@@ -1261,4 +1374,24 @@ export function buildSunExposureFindings(
       actionLabel: "View biomarkers",
     },
   ];
+}
+
+// The item ids that are live demotion candidates right now (#1505 part 2) — the SAME
+// detection the page card renders, exposed as a set so the reminder builder can add
+// its ⤓ May button without re-deriving the threshold.
+//
+// Deliberately NOT bus-filtered: a page dismissal hides the CARD, not the button
+// (owner-decided). The two surfaces answer different questions — "not on this screen"
+// versus "is there still an escape hatch" — and conflating them would take the only
+// affordance a tap-only user has away on a tap they made somewhere else entirely.
+export function demotionCandidateItemIds(
+  profileId: number,
+  today: string
+): Set<number> {
+  const ids = new Set<number>();
+  for (const f of buildDemotionSuggestionFindings(profileId, today)) {
+    const id = demotionItemIdFromKey(f.dedupeKey);
+    if (id != null) ids.add(id);
+  }
+  return ids;
 }

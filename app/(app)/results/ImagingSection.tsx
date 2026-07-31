@@ -10,10 +10,12 @@ import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import { today } from "@/lib/db";
 import { cumulativeDose } from "@/lib/radiation-dose";
-import ImagingStudyForm from "@/app/(app)/imaging/ImagingStudyForm";
-import ImagingStudyList from "@/app/(app)/imaging/ImagingStudyList";
-import RadiationDoseCard from "@/app/(app)/imaging/RadiationDoseCard";
-import { addImagingStudy } from "@/app/(app)/imaging/actions";
+import ImagingStudyForm from "@/app/(app)/results/imaging/ImagingStudyForm";
+import AddEntryPanel from "@/components/AddEntryPanel";
+import ListRailLayout from "@/components/ListRailLayout";
+import ImagingStudyList from "@/app/(app)/results/imaging/ImagingStudyList";
+import RadiationDoseCard from "@/app/(app)/results/imaging/RadiationDoseCard";
+import { addImagingStudy } from "@/app/(app)/results/imaging/actions";
 
 // The former /imaging index page body (#1042 phase 5), now the #imaging section
 // of /results. Imaging studies: the profile's structured radiology studies —
@@ -53,30 +55,39 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <CreateVisitFromRecord
-            profileId={profileId}
-            offers={createVisitOffersList}
-          />
-          <RadiationDoseCard cum={dose} pediatric={pediatric} />
-          <ImagingStudyList
-            items={studies}
-            followUps={followUps}
-            multiView={
-              multi ? { actingProfileId: scope.actingProfileId } : undefined
-            }
-          />
-        </div>
-
-        <div className="min-w-0 space-y-4">
-          <ImagingStudyForm action={addImagingStudy} />
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Allos stores the imaging report, not the images themselves (DICOM is
-            out of scope).
-          </p>
-        </div>
-      </div>
+      <ListRailLayout
+        rail={
+          <>
+            {/* Entry behind "+ Add imaging study" (#1499 section C — the #1497
+            rare-cadence rule): a radiology study is a few-times-a-year event, so
+            the form costs one button until it is wanted. */}
+            <AddEntryPanel
+              testId="add-imaging-panel"
+              panelId="add-imaging-panel-body"
+              label="Add imaging study"
+            >
+              <ImagingStudyForm action={addImagingStudy} />
+            </AddEntryPanel>
+            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+              Allos stores the imaging report, not the images themselves (DICOM
+              is out of scope).
+            </p>
+          </>
+        }
+      >
+        <CreateVisitFromRecord
+          profileId={profileId}
+          offers={createVisitOffersList}
+        />
+        <RadiationDoseCard cum={dose} pediatric={pediatric} />
+        <ImagingStudyList
+          items={studies}
+          followUps={followUps}
+          multiView={
+            multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+        />
+      </ListRailLayout>
     </ProviderOptionsProvider>
   );
 }

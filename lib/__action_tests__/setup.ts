@@ -33,7 +33,8 @@ vi.mock("next/cache", () => ({
 // imports it lazily (async) so it reads the live binding on every call — a test's
 // actAs() takes effect on the next requireSession().
 vi.mock("@/lib/auth", async () => {
-  const { getActingSession } = await import("./session-state");
+  const { getActingSession, peekActingSession } =
+    await import("./session-state");
   const { db } = await import("@/lib/db");
   // Demo-mode guard (#181): the mock applies the SAME pure predicate the real
   // requireWriteAccess() uses, reading process.env.ALLOS_DEMO_MODE each call, so a
@@ -126,8 +127,42 @@ vi.mock("@/lib/auth", async () => {
     // so they're inert spies — tests assert the DB writes, not the eviction.
     destroyOtherSessionsForCurrent: vi.fn(async () => {}),
     revokeSession: vi.fn(),
-    getCurrentSession: () => getActingSession(),
+    // The NON-throwing read (prod returns null for an anonymous request), so a
+    // route handler's "no session" branch is testable: a test calls
+    // clearActingSession() and asserts the handler's own refusal.
+    getCurrentSession: () => peekActingSession(),
     getAccessibleProfiles,
+    // Faithful to prod accessibleProfilesForLogin: the session-FREE reader, resolving
+    // an ARBITRARY login's role + grants from the temp DB (not the acting session's).
+    // Actions that resolve some OTHER login's reach need this — e.g. the #1459
+    // household round, whose offer set is "the profiles the receiving profile's own
+    // login can write". Same rule as accessibleProfiles(): admins reach every profile,
+    // members only their granted set.
+    accessibleProfilesForLogin: (loginId: number) => {
+      const acct = db
+        .prepare("SELECT role FROM logins WHERE id = ?")
+        .get(loginId) as { role: string } | undefined;
+      if (!acct) return [];
+      const rows =
+        acct.role === "admin"
+          ? (db.prepare("SELECT id, name FROM profiles ORDER BY id").all() as {
+              id: number;
+              name: string;
+            }[])
+          : (db
+              .prepare(
+                `SELECT p.id, p.name FROM profiles p
+                   JOIN login_profiles lp ON lp.profile_id = p.id
+                  WHERE lp.login_id = ? ORDER BY p.id`
+              )
+              .all(loginId) as { id: number; name: string }[]);
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        photo_path: null,
+        photo_version: 0,
+      }));
+    },
     // Faithful to prod accessForProfile: admins are implicit all-write; a member
     // resolves the REAL grant row from the temp DB, with anything other than an
     // explicit 'read' reading as 'write' (the permissive legacy default).

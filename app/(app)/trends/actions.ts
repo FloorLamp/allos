@@ -4,20 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWriteAccess } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import {
-  getTrendPins,
-  setTrendPins,
-  getTrendViews,
-  setTrendViews,
-} from "@/lib/settings";
-import { togglePin } from "@/lib/trend-pins";
-import {
-  addView,
-  deleteView,
-  findView,
-  viewToQuery,
-  type TrendViewParams,
-} from "@/lib/trend-views";
 import { generateInsight, saveInsight } from "@/lib/ai";
 import { generateRecapNarrative } from "@/lib/ai-narrative";
 import { withAiLogContext } from "@/lib/ai-log";
@@ -110,80 +96,19 @@ export async function dismissBodyHygiene(
   return formOk();
 }
 
-// Pin / unpin a Trends-Overview tile for the active profile.
-// The pin key ("metric:weight" | "bio:LDL Cholesterol") toggles in the per-profile
-// `trend_pins` list; pinned tiles render first on the Overview. profileId is
-// resolved from the session — any login acting as the profile may pin (it's
-// per-profile data), so this is requireWriteAccess, not requireAdmin.
-export async function toggleTrendPin(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const key = String(formData.get("key") ?? "").trim();
-  if (!key) return formError("Couldn't find that tile.");
-  setTrendPins(profile.id, togglePin(getTrendPins(profile.id), key));
-  revalidatePath("/trends");
-  return formOk();
-}
+// `saveTrendsCardOrder` / `resetTrendsCardOrder` lived here until #1643. They wrote
+// #1490's per-tab arrangement blob and never gained a UI caller, so the Body tab's
+// arrangement now runs on the ONE store the ★ already writes (`saved_items`): the
+// star toggle is app/(app)/saved-actions.ts `toggleSavedItem`, the sequence is its
+// `reorderSaved`, and lib/trends-card-rank.ts `bodyCardOrder` composes pinned-first
+// over the ranked remainder. There is no second arrangement action to keep in step.
 
-// Read the hub's current URL state off the submitted form into a params bag. The
-// client injects the live ?from/to/tab/cmpA/cmpB/cmpn values as hidden inputs, so
-// a saved view captures exactly what the user is looking at. The pins snapshot is
-// taken server-side from the profile's current trend_pins (not the form), so it
-// can't be forged.
-function paramsFromForm(formData: FormData, pins: string[]): TrendViewParams {
-  const s = (k: string): string | undefined => {
-    const v = String(formData.get(k) ?? "").trim();
-    return v || undefined;
-  };
-  return {
-    from: s("from"),
-    to: s("to"),
-    tab: s("tab"),
-    cmpA: s("cmpA"),
-    cmpB: s("cmpB"),
-    cmpn: String(formData.get("cmpn") ?? "") === "1",
-    pins,
-  };
-}
-
-// Saved views. Save the current hub state under a name for
-// the active profile — per-profile data, so requireWriteAccess (any login acting as
-// the profile may save), not requireAdmin. Re-saving the same name overwrites it.
-export async function saveTrendView(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return formError("Name your view.");
-  const params = paramsFromForm(formData, getTrendPins(profile.id));
-  setTrendViews(
-    profile.id,
-    addView(getTrendViews(profile.id), { name, params })
-  );
-  revalidatePath("/trends");
-  return formOk();
-}
-
-// Delete a saved view by name.
-export async function deleteTrendView(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return formError("Couldn't find that view.");
-  setTrendViews(profile.id, deleteView(getTrendViews(profile.id), name));
-  revalidatePath("/trends");
-  return formOk();
-}
-
-// Apply a saved view: restore its pins snapshot (when it captured one) and redirect
-// to the hub with the view's range/tab/compare params — reusing the SAME URL
-// vocabulary the DateRangeControl / CompareControls already read. Unknown name is a
-// no-op back to /trends.
-export async function applyTrendView(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const name = String(formData.get("name") ?? "").trim();
-  const view = name ? findView(getTrendViews(profile.id), name) : null;
-  if (!view) redirect("/trends");
-  if (view.params.pins) {
-    setTrendPins(profile.id, view.params.pins);
-    revalidatePath("/trends");
-  }
-  const qs = viewToQuery(view.params);
-  redirect(qs ? `/trends?${qs}` : "/trends");
-}
+// `saveTrendView` / `deleteTrendView` / `applyTrendView` (and their `paramsFromForm`
+// helper) lived here until #1653. The Trends overhaul deleted `SavedViewsBar` and
+// its render call, so the Views strip and its "Save current" button were the only
+// entry points into them and nothing reached them any more — leaving three
+// still-POSTable Server Actions reading and writing a `trend_views` blob no surface
+// showed. The pure list math (lib/trend-views.ts) and the `getTrendViews` /
+// `setTrendViews` settings accessors went with them; the stored rows are simply
+// inert. e2e/trends-saved-views.spec.ts keeps the browser guard that neither those
+// rows nor anything else brings the strip back.

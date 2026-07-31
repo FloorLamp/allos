@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   boundSyncDetailsJson,
+  isTruncatedSyncEvent,
   MAX_SYNC_DETAILS_CHARS,
   originChoiceLabel,
-  parseHealthConnectSyncDetails,
-  serializeHealthConnectSyncDetails,
+  parseSyncEventDetails,
+  serializeSyncEventDetails,
+  TRUNCATED_SYNC_WARNING,
+  truncatedSyncDetails,
 } from "@/lib/integrations/sync-details";
 
 describe("Health Connect sync details", () => {
   it("parses safe diagnostics and formats known origin package names", () => {
-    const parsed = parseHealthConnectSyncDetails(
+    const parsed = parseSyncEventDetails(
       JSON.stringify({
         warnings: ["heart_rate records were all skipped"],
         origins: [
@@ -29,8 +32,8 @@ describe("Health Connect sync details", () => {
   });
 
   it("ignores malformed or empty stored details", () => {
-    expect(parseHealthConnectSyncDetails("not json")).toBeNull();
-    expect(parseHealthConnectSyncDetails("{}")).toBeNull();
+    expect(parseSyncEventDetails("not json")).toBeNull();
+    expect(parseSyncEventDetails("{}")).toBeNull();
   });
 
   it("bounds structured arrays while preserving valid JSON", () => {
@@ -43,12 +46,10 @@ describe("Health Connect sync details", () => {
         ignored: [`com.example.ignored.${index}.${"y".repeat(300)}`],
       })),
     };
-    const raw = serializeHealthConnectSyncDetails(details)!;
+    const raw = serializeSyncEventDetails(details)!;
     expect(raw.length).toBeLessThanOrEqual(MAX_SYNC_DETAILS_CHARS);
     expect(() => JSON.parse(raw)).not.toThrow();
-    expect(parseHealthConnectSyncDetails(raw)?.origins.length).toBeGreaterThan(
-      0
-    );
+    expect(parseSyncEventDetails(raw)?.origins.length).toBeGreaterThan(0);
   });
 
   it("defensively reserializes an oversized direct-caller value", () => {
@@ -64,5 +65,62 @@ describe("Health Connect sync details", () => {
     const bounded = boundSyncDetailsJson(raw)!;
     expect(bounded.length).toBeLessThanOrEqual(MAX_SYNC_DETAILS_CHARS);
     expect(() => JSON.parse(bounded)).not.toThrow();
+  });
+});
+
+// The truncation marker (#1614): a pull stopped by a page cap / rate limit rides the
+// SAME details JSON, so a partial run is distinguishable from a clean success without
+// a schema change.
+describe("truncated pull marker", () => {
+  it("round-trips the marker and its Review line", () => {
+    const raw = truncatedSyncDetails();
+    const parsed = parseSyncEventDetails(raw);
+    expect(parsed?.truncated).toBe(true);
+    expect(parsed?.warnings).toEqual([TRUNCATED_SYNC_WARNING]);
+    expect(isTruncatedSyncEvent({ details: raw })).toBe(true);
+  });
+
+  it("treats a complete run, an absent details value, and junk as not truncated", () => {
+    expect(isTruncatedSyncEvent({ details: null })).toBe(false);
+    expect(isTruncatedSyncEvent({})).toBe(false);
+    expect(isTruncatedSyncEvent({ details: "not json" })).toBe(false);
+    expect(
+      isTruncatedSyncEvent({
+        details: JSON.stringify({ warnings: ["ordinary"], origins: [] }),
+      })
+    ).toBe(false);
+    // Only a literal `true` marks the run — a stray string must not badge it.
+    expect(
+      isTruncatedSyncEvent({
+        details: JSON.stringify({
+          warnings: [],
+          origins: [],
+          truncated: "yes",
+        }),
+      })
+    ).toBe(false);
+  });
+
+  it("survives the char-budget bounding even when the warnings are dropped", () => {
+    const raw = serializeSyncEventDetails(
+      {
+        warnings: ["a very long warning ".repeat(50)],
+        origins: [],
+        truncated: true,
+      },
+      60
+    )!;
+    expect(raw.length).toBeLessThanOrEqual(60);
+    expect(parseSyncEventDetails(raw)?.truncated).toBe(true);
+  });
+
+  it("serializes a marker-only payload instead of collapsing it to null", () => {
+    const raw = serializeSyncEventDetails({
+      warnings: [],
+      origins: [],
+      truncated: true,
+    });
+    expect(raw).not.toBeNull();
+    expect(parseSyncEventDetails(raw)?.truncated).toBe(true);
   });
 });

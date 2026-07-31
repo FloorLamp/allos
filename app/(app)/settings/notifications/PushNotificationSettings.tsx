@@ -151,7 +151,7 @@ export default function PushNotificationSettings() {
   }
 
   return (
-    <div className="card mt-6 max-w-lg space-y-4" data-testid="push-settings">
+    <div className="card space-y-4" data-testid="push-settings">
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Web Push notifications
       </h2>

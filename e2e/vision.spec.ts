@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Optical-prescription CRUD on the Vision section of /records (#697, folded #1042): add a structured Rx through the real
 // form, see it in the list with its per-eye sphere shown, edit it, then delete it.
@@ -11,7 +12,7 @@ import { settledClick } from "./helpers";
 // idempotent across CI retries — it only ever touches rows it created (a create-and-
 // clean block, the same pattern the imaging spec uses). The marker sphere (-6.25) is
 // far from any seeded value so it can't collide with the seed's progression rows.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const MARKER = -6.25;
 // The transposition test's marker is the CANONICAL (stored) sphere both of its
 // notations transpose to — cleanup keys on what actually lands in the DB (#1036).

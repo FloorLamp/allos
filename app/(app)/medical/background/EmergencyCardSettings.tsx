@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
@@ -69,22 +68,20 @@ export default function EmergencyCardSettings({
       className="card mt-6 max-w-lg space-y-5"
     >
       <div className="flex items-center justify-between">
+        {/* "Card settings", not "Emergency card" (#1449, cluster D): since #1087
+            put this card INSIDE the Passport's "Emergency card" section, the old
+            title repeated the heading right above it and its blurb repeated that
+            section's sentence verbatim — and "Open the card" linked to the page it
+            was already on. It now names the one thing it is: the settings. */}
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Emergency card
+          Card settings
         </h2>
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        A terse, printable summary of allergies, active medications, conditions,
-        blood type, and who to call.{" "}
-        <Link
-          href="/profile#emergency"
-          className="text-brand-600 hover:underline dark:text-brand-400"
-        >
-          Open the card
-        </Link>
-        .
+        Choose whether to keep an offline copy on this device, and set the blood
+        type and emergency contact the card shows.
       </p>
 
       <label className="flex items-start gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">

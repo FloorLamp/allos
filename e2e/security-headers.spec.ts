@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Global security headers (issue #21). The non-CSP header set is configured in
 // next.config.js `headers()`; the Content-Security-Policy is emitted per-request
 // by middleware.ts (issue #595, step 3 — nonce'd script-src) and /share/* layers
@@ -70,8 +69,8 @@ test("login page carries the global security headers", async ({ page }) => {
 test("authenticated app page carries the global security headers", async ({
   page,
 }) => {
-  // storageState (auth.setup.ts) starts this spec logged in, so "/" renders the
-  // dashboard rather than redirecting to /login.
+  // The per-worker storageState (e2e/fixtures.ts) starts this spec logged in, so
+  // "/" renders the dashboard rather than redirecting to /login.
   const resp = await page.goto("/");
   expect(resp!.status()).toBeLessThan(400);
   expectGlobalHeaders(resp!.headers());

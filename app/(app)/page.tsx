@@ -25,6 +25,7 @@ import {
   getHealthspanPillars,
   getLastNightSummary,
   getSleepRegularity,
+  typicalWakeTime,
   getPrnMedicationsForQuickLog,
   getActiveProtocolSummaries,
   getWorkoutPresence,
@@ -79,17 +80,27 @@ import {
   getLoginTelegram,
   getSituations,
   getActiveSituations,
+  getAttentionHeroCollapsed,
+  getRecentlyResolvedDismissed,
 } from "@/lib/settings";
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
 import { hasConnectedDataSource } from "@/lib/integrations/connections";
 import { dispWeight } from "@/lib/units";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, hhmmToMinutes, zonedDateParts } from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
-import { resolveWidgetList } from "@/lib/dashboard-widgets";
+import {
+  findingsForDashboardHome,
+  resolveWidgetList,
+  rollupCoachingFindings,
+} from "@/lib/dashboard-widgets";
+import { rankNowCards, NOW_CARD_IDS } from "@/lib/now-strip";
+import { getNotifySchedule } from "@/lib/settings/notifications";
 import { getIllnessHeroUi } from "@/lib/settings";
+import { getMoodCheckinIgnored, getProfileMoodCheckin } from "@/lib/settings";
+import { isMoodCheckinPaused } from "@/lib/mood";
 import { onboardingNeedsSetup } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import { PageHeader } from "@/components/ui";
@@ -97,6 +108,7 @@ import DashboardGrid, {
   type GridWidget,
 } from "@/components/dashboard/DashboardGrid";
 import NeedsAttentionHero from "@/components/dashboard/NeedsAttentionHero";
+import NowStrip, { type NowStripCard } from "@/components/dashboard/NowStrip";
 import HouseholdStrip, {
   type HouseholdStripEntry,
 } from "@/components/dashboard/HouseholdStrip";
@@ -107,7 +119,7 @@ import RecentlyResolvedReopen, {
   type RecentlyResolvedItem,
 } from "@/components/dashboard/RecentlyResolvedReopen";
 import { reopenEligibleEpisodeForProfile } from "@/lib/illness-episode-store";
-import IllnessCockpitBody from "./symptoms/IllnessCockpitBody";
+import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import {
   currentEpisodeForProfile,
   openEpisodeForProfile,
@@ -127,7 +139,6 @@ import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
 import CoachingWidget from "@/components/dashboard/CoachingWidget";
 import CoachingObservations from "@/components/dashboard/CoachingObservations";
 import DataQualityWidget from "@/components/dashboard/DataQualityWidget";
-import { DATA_QUALITY_PREFIX } from "@/lib/data-quality";
 import WeeklyRecapWidget from "@/components/dashboard/WeeklyRecapWidget";
 import RecentLabsWidget, {
   type RecentLabRow,
@@ -147,21 +158,22 @@ import VitalsLatestWidget, {
 import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
-import SymptomLogBar from "./symptoms/SymptomLogBar";
+import SymptomLogBar from "../../components/illness/SymptomLogBar";
 import { SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
-import { saveDashboardLayout, saveIllnessHeroState } from "./actions";
 import {
-  episodeHref,
-  encounterHref,
-  EPISODES_HREF,
-  type AppRoute,
-} from "@/lib/hrefs";
+  dismissRecentlyResolved,
+  saveAttentionHeroCollapsed,
+  saveDashboardLayout,
+  saveIllnessHeroState,
+} from "./actions";
+import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySick } from "@/lib/household-history";
+import { visibleRecentlyResolved } from "@/lib/recently-resolved";
 
 export const dynamic = "force-dynamic";
 
@@ -294,6 +306,12 @@ export default async function Dashboard() {
   );
   const eligible = new Set(list.map((w) => w.def.id));
   const has = (id: string) => eligible.has(id);
+  // Eligibility is not visibility: `list` deliberately carries the widgets the profile
+  // has toggled OFF too, so Customize can preview one without a round-trip. Anything
+  // that asks "is this card actually on the person's dashboard right now?" — e.g. the
+  // #1533 finding-home split — must read the saved `visible` flag, not `has`.
+  const shown = new Set(list.filter((w) => w.visible).map((w) => w.def.id));
+  const showsWidget = (id: string) => shown.has(id);
 
   // Illness hero (issue #858): every accessible OPEN illness episode as a per-patient
   // cockpit, over the SAME #801 assembly the timeline/detail/share surfaces use (one
@@ -386,8 +404,14 @@ export default async function Dashboard() {
   // episodeReopenEligibility rule the detail page uses). Cross-profile aware like the hero
   // (#858) — each row reopens that member's episode via its profileId. Calm/dismissible,
   // never the attention hero (#449). Names disambiguated across the accessible set (#531).
+  //
+  // Filtered SERVER-SIDE against the viewer's stored dismissals (#1548): the X used to
+  // be client state only, so a hidden line came back on the next reload. The client
+  // component still hides optimistically, but this list is now the truth — and it is
+  // also what decides where the household-history promo goes (#1549), which is why the
+  // filter has to happen here rather than in the browser.
   const reopenNames = disambiguateProfileNames(accessible);
-  const recentlyResolved: RecentlyResolvedItem[] = accessible
+  const recentlyResolvedAll: RecentlyResolvedItem[] = accessible
     .map((p) => ({ p, ep: reopenEligibleEpisodeForProfile(p.id) }))
     .filter(
       (
@@ -406,6 +430,10 @@ export default async function Dashboard() {
       profile: p,
       episodeHref: episodeHref(ep.id),
     }));
+  const recentlyResolved = visibleRecentlyResolved(
+    recentlyResolvedAll,
+    getRecentlyResolvedDismissed(login.id)
+  );
 
   // Contextual promotion of the merged household history (issue #1009 Ask 2): a CALM
   // link that surfaces near the illness hero when any accessible member is currently or
@@ -414,9 +442,22 @@ export default async function Dashboard() {
   // hero reads — never a second "who's sick" derivation — via isHouseholdRecentlySick.
   // It is a link, NOT a notification and NOT a finding (no dedupeKey, no bus): it appears
   // because it's useful and disappears on its own.
+  //
+  // The PREDICATE is unchanged by #1549; only its PLACEMENT is now contextual. The
+  // reopen window (7 days) is a strict subset of this one (14), so a standalone block
+  // stacked a third household-shaped band under the reopen lines in every just-
+  // recovered state, and floated context-free in the 8–14-day tail once the illness
+  // hero that justified "surfaces near the hero" was gone. So the link renders as a row
+  // of whichever household band is already on screen — ONE render, never two:
+  //   • reopen lines visible → the reopen band's footer;
+  //   • otherwise (the tail, or every line dismissed) → the household strip's label row.
   const promoteHouseholdHistory =
     accessible.length > 1 &&
     isHouseholdRecentlySick(accessible.map((p) => p.id));
+  const promoInReopenBand =
+    promoteHouseholdHistory && recentlyResolved.length > 0;
+  const promoInHouseholdStrip =
+    promoteHouseholdHistory && recentlyResolved.length === 0;
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
   // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
@@ -539,10 +580,16 @@ export default async function Dashboard() {
   // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE
   // collectCoachingFindings computation (data-quality joins it, #1045), filtered
   // through the SAME findings-bus store — so a dismiss on either widget (or a tab)
-  // drops the finding out for free. The rollup renders every active coaching finding;
-  // the data-quality widget renders just the `data-quality:` slice (leverage-ranked,
-  // top-3). Data-quality gaps are appended LAST in collectCoachingFindings, so the
-  // rollup's lead stays the observational patterns. No push, no hero slot for either.
+  // drops the finding out for free.
+  //
+  // They render DISJOINT slices of it (#1533). The data-quality widget is that
+  // family's dedicated dashboard home (FINDING_DASHBOARD_HOME); the rollup is the
+  // catch-all for families that have no dashboard home of their own — which is
+  // exactly its #449 charter, "reach for findings that render only on their own
+  // tabs". So the two cards can never show the same gap twice, and the rollup's
+  // count/overflow are computed over what it actually renders. Hiding the Data
+  // quality widget drops its family straight back into the rollup, so a hidden card
+  // never silently costs a finding its dashboard reach.
   const activeCoaching =
     has("coaching-observations") || has("data-quality")
       ? activeFindings(
@@ -557,10 +604,10 @@ export default async function Dashboard() {
         )
       : [];
   const coachingObservations = has("coaching-observations")
-    ? activeCoaching
+    ? rollupCoachingFindings(activeCoaching, showsWidget)
     : [];
   const dataQualityFindings = has("data-quality")
-    ? activeCoaching.filter((f) => f.dedupeKey.startsWith(DATA_QUALITY_PREFIX))
+    ? findingsForDashboardHome(activeCoaching, "data-quality")
     : [];
 
   // weekly-recap — the last seven days, rule-based (no AI). Same gather as the
@@ -796,7 +843,7 @@ export default async function Dashboard() {
             icon={IconHeartbeat}
             message="No blood pressure or resting heart rate yet. Log a reading to see it here at a glance."
             ctaLabel="Log a reading"
-            ctaHref="/trends?tab=vitals"
+            ctaHref="/trends#body"
           />
         );
       case "sleep-last-night":
@@ -902,6 +949,12 @@ export default async function Dashboard() {
                 : null
             }
             activeEpisode={activeSick}
+            // The evening reminder's auto-pause, surfaced (#1668) — derived from the
+            // same ignored streak shouldSendMoodCheckin reads, never a stored flag.
+            checkinsPaused={isMoodCheckinPaused({
+              enabled: getProfileMoodCheckin(profile.id),
+              ignoredCount: getMoodCheckinIgnored(profile.id),
+            })}
             medsSlot={
               checkinPrnMeds.length > 0 ? (
                 <QuickLogPrnContent
@@ -972,12 +1025,85 @@ export default async function Dashboard() {
         : renderWidget(def.id),
   }));
 
+  // ── The "Now" strip (issue #1413, section A) ────────────────────────────────
+  // A RANKER over signals other features already compute (#221) — nothing below
+  // reads a new health fact. Every window is minute-of-day in the PROFILE's
+  // timezone (#1186/#450), resolved once here rather than in the client.
+  const nowMinutes = hhmmToMinutes(
+    zonedDateParts(getTimezone(profile.id), clockNow()).hhmm
+  );
+  // The existing mealtime-shaped anchors: the profile's intake reminder slots.
+  // NOT the food log — `food_log_events.logged_at` is TAP time, documented as
+  // explicitly not eating time, so deriving a meal distribution from it would be
+  // the new engine this issue's scope guard forbids.
+  const nowSlots = getNotifySchedule(profile.id).supplementHours;
+  const nowMealAnchors = [nowSlots.Morning, nowSlots.Midday, nowSlots.Evening]
+    .filter((h): h is number => h != null)
+    .map((h) => h * 60);
+
+  // What the strip is ALLOWED to promote: a grid widget the user still has visible
+  // AND that has something to render, or the standalone recap card under the same
+  // gate the page already uses for it. The clock never overrides a hide preference.
+  //
+  // `emptyIds` is excluded deliberately: a data-aware widget with no data yet is
+  // still "available" — it renders an ONBOARDING CTA rather than content — and
+  // promoting that would put a "connect a source" prompt at the top of the page
+  // every mealtime. That is precisely the filler card lib/now-strip.ts refuses.
+  const gridPromotable = new Set(
+    gridWidgets
+      .filter((w) => w.visible && w.available && !emptyIds.has(w.id))
+      .map((w) => w.id)
+  );
+  const nowEligible = NOW_CARD_IDS.filter((id) =>
+    id === "session-recap" ? showRecapCard : gridPromotable.has(id)
+  );
+  // Eligibility already excludes the empty case above, so reaching this point
+  // means the sleep widget has a fresh last-night summary to show.
+  const nowFreshSleep = nowEligible.includes("sleep-last-night");
+  const nowCardIds = rankNowCards({
+    minutesOfDay: nowMinutes,
+    // Only computed when sleep is actually in play — it is a 28-night regularity
+    // pass, not worth running on an evening render that can't use it.
+    wakeMinutes: nowFreshSleep ? typicalWakeTime(profile.id) : null,
+    freshSleepSummary: nowFreshSleep,
+    workoutFinishedMinAgo: showRecapCard
+      ? (finishedPresence?.sinceMin ?? null)
+      : null,
+    mealAnchors: nowMealAnchors,
+    eveningAnchor: nowSlots.Evening != null ? nowSlots.Evening * 60 : null,
+    checkInDone: todayMood != null,
+    eligible: nowEligible,
+  });
+  const nowPromoted = new Set<string>(nowCardIds);
+  // Each strip card is a REFERENCE to the node the grid already built — the same
+  // component, the same data, never a second rendering. The grid keeps the widget
+  // in Customize (so its order/visibility preference survives) and only skips it in
+  // normal mode, via `promoted` below.
+  const nowStripCards: NowStripCard[] = nowCardIds
+    .map((id) => ({
+      id,
+      node:
+        id === "session-recap"
+          ? finishedRecap && (
+              <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
+            )
+          : gridWidgets.find((w) => w.id === id)?.node,
+    }))
+    .filter((c): c is NowStripCard => c.node != null);
+
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        subtitle={`Today is ${formatLongDate(on, formatPrefs)} — here's your health at a glance.`}
-      />
+      {/* Desktop only (issue #1413, section C): on a phone the nav already says
+          where you are, and "Dashboard — today is <date>" costs a chunk of a much
+          shorter screen before any content. The date survives below `md` on the Now
+          strip's corner. Not a mirrored pair — there is no second mobile branch to
+          drift from, just an element the phone doesn't get. */}
+      <div className="hidden md:block">
+        <PageHeader
+          title="Dashboard"
+          subtitle={`Today is ${formatLongDate(on, formatPrefs)} — here's your health at a glance.`}
+        />
+      </div>
       {/* Illness hero (#858): pinned before the customizable grid. It leads above
           Needs attention on smaller screens (the mobile 7am case); at XL the two
           equally weighted cards share the row so neither stretches across the wide
@@ -993,23 +1119,29 @@ export default async function Dashboard() {
           saveState={saveIllnessHeroState}
         />
         <div className="min-w-0">
-          <NeedsAttentionHero items={attention} today={on} />
+          <NeedsAttentionHero
+            items={attention}
+            today={on}
+            preferCollapsed={getAttentionHeroCollapsed(login.id)}
+            saveCollapsed={saveAttentionHeroCollapsed}
+          />
         </div>
       </div>
+      {/* The moment's most relevant card(s), above the user's own grid (#1413 A).
+          Renders nothing at all when no signal is firing. */}
+      <NowStrip
+        cards={nowStripCards}
+        dateLabel={formatLongDate(on, formatPrefs)}
+      />
       {recentlyResolved.length > 0 && (
-        <RecentlyResolvedReopen items={recentlyResolved} />
+        <RecentlyResolvedReopen
+          items={recentlyResolved}
+          showHouseholdPromo={promoInReopenBand}
+          dismissAction={dismissRecentlyResolved}
+        />
       )}
-      {promoteHouseholdHistory && (
-        <div className="mb-6" data-testid="household-history-promo">
-          <Link
-            href={EPISODES_HREF}
-            className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-          >
-            See the household&rsquo;s illness episodes &amp; visits →
-          </Link>
-        </div>
-      )}
-      {showRecapCard && finishedRecap && (
+      {/* Skipped when the Now strip promoted it — one render, never two (#1413). */}
+      {showRecapCard && finishedRecap && !nowPromoted.has("session-recap") && (
         <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
       )}
       {onboardingState && onboardingPresence && (
@@ -1024,10 +1156,14 @@ export default async function Dashboard() {
           completion={onboardingChecklistCompletion}
         />
       )}
-      <HouseholdStrip entries={householdEntries} />
+      <HouseholdStrip
+        entries={householdEntries}
+        showHouseholdPromo={promoInHouseholdStrip}
+      />
       <DashboardGrid
         key={profile.id}
         widgets={gridWidgets}
+        promoted={nowCardIds}
         saveAction={saveDashboardLayout}
       />
     </div>

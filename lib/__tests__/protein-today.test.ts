@@ -3,6 +3,8 @@ import {
   proteinIntake,
   proteinTarget,
   proteinTodayNudgeLine,
+  proteinTodayNudgeParts,
+  proteinTodayStatus,
   type ProteinToday,
 } from "@/lib/protein";
 
@@ -48,8 +50,45 @@ describe("proteinTodayNudgeLine", () => {
     const line = proteinTodayNudgeLine(
       makeToday({ todayIntake, todayGrams: todayIntake.grams })
     );
-    expect(line).toContain("Protein today · 120 g");
+    expect(line).toContain("Protein · 120 g");
     expect(line).not.toContain("at least");
+  });
+
+  // #1710: the line used to render "at least 107 g of ~80–105 g" with NO status —
+  // 107 g is ABOVE the band, so the goal is reached, but the phrasing read like a
+  // shortfall. The conclusion is stated in WORDS (not emoji alone) so it survives
+  // screen readers and notification previews that strip emoji.
+  it("states 'goal reached' at or above the band, and reads as reached — never a warning", () => {
+    const above = proteinTodayNudgeLine(makeToday({ todayGrams: 140 }));
+    expect(above).toContain("goal reached");
+    expect(above).toContain("🎯");
+    // Overshoot is not a problem, and there is no ceiling to have exceeded.
+    expect(above.toLowerCase()).not.toMatch(/over|too much|exceed|max/);
+
+    // Exactly at the band's floor is reached, not "below" — and the floor compared
+    // against is the one the line PRINTS, so the words can't contradict the numbers.
+    expect(proteinTodayNudgeLine(makeToday({ todayGrams: 95 }))).toContain(
+      "goal reached"
+    );
+  });
+
+  it("below the band is a NEUTRAL marker — no nag, no praise", () => {
+    const below = proteinTodayNudgeLine(makeToday({ todayGrams: 62 }));
+    expect(below).toContain("🍗");
+    expect(below).not.toContain("goal reached");
+    expect(below.toLowerCase()).not.toMatch(/short|need|should|behind|only/);
+  });
+
+  it("the status is ONE derivation, shared rather than re-decided per surface", () => {
+    expect(proteinTodayStatus(makeToday({ todayGrams: 140 }))).toBe("reached");
+    expect(proteinTodayStatus(makeToday({ todayGrams: 95 }))).toBe("reached");
+    expect(proteinTodayStatus(makeToday({ todayGrams: 94 }))).toBe("below");
+    // The parts and the joined line can't disagree.
+    const t = makeToday({ todayGrams: 140 });
+    const parts = proteinTodayNudgeParts(t);
+    expect(proteinTodayNudgeLine(t)).toBe(
+      `${parts.emoji} Protein · ${parts.amount} of ${parts.band} — ${parts.statusWords}`
+    );
   });
 
   it("no today data yet reads 'at least 0 g' (a floor, in progress)", () => {

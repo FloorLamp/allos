@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Wordmark from "@/components/Wordmark";
 import { getCurrentSession } from "@/lib/auth";
-import { safeNextPath } from "@/lib/login-security";
+import { safeNextPath, safePrefillUsername } from "@/lib/login-security";
 import { isDemoMode, DEMO_USERNAME, DEMO_PASSWORD } from "@/lib/demo";
 import { canSendAuthEmail } from "@/lib/auth-email";
 import LoginForm from "./LoginForm";
@@ -11,10 +11,14 @@ import LoginForm from "./LoginForm";
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage(props: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; u?: string }>;
 }) {
   const searchParams = await props.searchParams;
   const next = safeNextPath(searchParams.next);
+  // Sign-in prefill after an invite/reset (issue #1434): the set-password success
+  // links here carrying the username the token was minted for, so the invitee isn't
+  // asked to recall a name the admin chose. Shape-validated, never trusted.
+  const prefillUsername = safePrefillUsername(searchParams.u);
   // Already signed in — skip the form and go where they were headed.
   if (await getCurrentSession()) redirect(next);
 
@@ -31,7 +35,7 @@ export default async function LoginPage(props: {
           <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
             Enter your credentials to continue.
           </p>
-          <LoginForm next={next} />
+          <LoginForm next={next} username={prefillUsername} />
           {canSendAuthEmail() && (
             <a
               href="/forgot-password"

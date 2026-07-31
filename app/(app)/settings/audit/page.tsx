@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { PageHeader } from "@/components/ui";
-import SettingsTabs from "../SettingsTabs";
-import AdminSubNav from "../AdminSubNav";
+import { getDisplayFormatPrefs } from "@/lib/settings";
+import { formatTimestamp } from "@/lib/format-date";
+import SettingsGroupLayout from "../SettingsGroupLayout";
 import {
   queryAuditEvents,
   auditFilterOptions,
@@ -43,7 +43,12 @@ export default async function AuditLogPage(props: {
   const searchParams = await props.searchParams;
   // The audit log spans every profile (who accessed/modified whose data), so it's
   // admin-only — a member is redirected out by requireAdmin().
-  const { profile } = await requireAdmin();
+  const { login, profile } = await requireAdmin();
+  // The admin ops tables (Audit / Errors / AI logs) render ONE timestamp shape
+  // through the shared formatter, read as UTC (issue #1448). This column used to
+  // print SQLite's raw `2026-07-24 22:14:15` verbatim while its sibling tables
+  // called toLocaleString() — three admin screens, two conventions.
+  const formatPrefs = getDisplayFormatPrefs(login.id);
 
   const filters: AuditFilters = {
     loginId: intOrNull(searchParams.login),
@@ -57,13 +62,11 @@ export default async function AuditLogPage(props: {
   const pages = pageCount(total, AUDIT_PAGE_SIZE);
 
   return (
-    <div>
-      <PageHeader
-        title="Settings"
-        subtitle="Audit log — who accessed or modified which profile's data. Auth events, PHI access (medical files, share links), and admin/family changes. Identifiers only, never medical content. Retained 90 days."
-      />
-      <SettingsTabs isAdmin />
-      <AdminSubNav />
+    <SettingsGroupLayout group="logs" login={login} profile={profile}>
+      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+        Who accessed or modified which profile&rsquo;s data — identifiers only,
+        never medical content.
+      </p>
 
       {/* Filters (plain GET form so it works without JS and is bookmarkable). */}
       <form
@@ -157,7 +160,7 @@ export default async function AuditLogPage(props: {
                     data-testid="audit-row"
                   >
                     <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
-                      {e.ts}
+                      {formatTimestamp(e.ts, formatPrefs, { zone: "utc" })}
                     </td>
                     <td className="td">
                       {e.username ??
@@ -207,6 +210,6 @@ export default async function AuditLogPage(props: {
           )}
         </div>
       </div>
-    </div>
+    </SettingsGroupLayout>
   );
 }

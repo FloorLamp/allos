@@ -5,6 +5,7 @@
 // Medication history / lifecycle: courses (episodes), active-flag sync, side
 // effects and their promotion to an allergy row.
 import { db, today, writeTx } from "../../db";
+import { sqlNow } from "../../clock";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
 import { strengthFromName } from "../../prescription-parse";
 import { profileAgeMonths } from "../../settings";
@@ -19,6 +20,7 @@ import {
 import type { PediatricFormContext } from "../../prn-dosing";
 import type { WeightUnit } from "../../settings";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
+import type { IntakeObligation } from "../../types";
 
 // The pediatric label-dosing context (#798) for a medication form: the profile's age
 // in months + its latest recorded weight, so a PRN med form (full or the #843 quick-
@@ -63,14 +65,14 @@ export function getEpisodeMedReconciliation(
 
   const meds = db
     .prepare(
-      `SELECT id, name, as_needed, rx, date(created_at) AS created_on
+      `SELECT id, name, obligation, rx, date(created_at) AS created_on
          FROM intake_items
         WHERE profile_id = ? AND kind = 'medication' AND active = 1`
     )
     .all(profileId) as {
     id: number;
     name: string;
-    as_needed: number;
+    obligation: IntakeObligation;
     rx: number;
     created_on: string;
   }[];
@@ -95,7 +97,7 @@ export function getEpisodeMedReconciliation(
   const inputs: EpisodeMedInput[] = meds.map((m) => ({
     itemId: m.id,
     name: m.name,
-    asNeeded: m.as_needed === 1,
+    asNeeded: m.obligation === "may",
     rx: m.rx === 1,
     hasOpenCourse: true, // active=1 upholds the "active ⇔ open course" invariant
     createdOn: m.created_on,
@@ -731,8 +733,8 @@ export function promoteMedicationSideEffect(
     db.prepare(
       `INSERT OR IGNORE INTO allergies
          (substance, reaction, severity, status, onset_date, notes, source,
-          external_id, profile_id)
-       VALUES (?,?,?,?,?,?,NULL,?,?)`
+          external_id, profile_id, created_at)
+       VALUES (?,?,?,?,?,?,NULL,?,?,?)`
     ).run(
       row.effect,
       `Reaction to ${row.med_name}`,
@@ -741,7 +743,9 @@ export function promoteMedicationSideEffect(
       date,
       row.notes ?? `Promoted from a ${row.med_name} side effect.`,
       `med-se:${id}`,
-      profileId
+      profileId,
+      // created_at from the clock seam (#1534) — the Timeline day fallback.
+      sqlNow()
     );
     db.prepare(
       "UPDATE intake_item_side_effects SET resolved = 1 WHERE id = ?"

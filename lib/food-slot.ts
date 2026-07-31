@@ -11,10 +11,19 @@
 // deliberately does NOT borrow supplement-schedule's `currentTimeBucket` 21:00
 // "Before sleep" split — the bedtime DOSE slot does not partition food.
 
+import { hhmmToMinutes } from "./date";
+
 // The three food windows. Same string values as the Telegram nudge's FoodNudgeWindow
 // (lib/notifications/food-format) so a window flows unchanged between the surfaces.
 export type FoodSlot = "Morning" | "Midday" | "Evening";
 export const FOOD_SLOTS: readonly FoodSlot[] = ["Morning", "Midday", "Evening"];
+
+export function isFoodSlot(value: unknown): value is FoodSlot {
+  return (
+    typeof value === "string" &&
+    (FOOD_SLOTS as readonly string[]).includes(value)
+  );
+}
 
 // Fallback boundaries (minutes-of-day) used when the profile has NOT configured a
 // full morning/midday/evening notify schedule. Reproduce currentTimeBucket's fixed
@@ -81,7 +90,5 @@ export function deriveFoodSlot(
 // Convenience: derive a food slot straight from an "HH:MM" wall-clock string and the
 // boundaries. Malformed input folds to minute 0 (Morning) rather than throwing.
 export function foodSlotForHhmm(hhmm: string, b: FoodSlotBoundaries): FoodSlot {
-  const [h, m] = hhmm.split(":");
-  const mins = (Number(h) || 0) * 60 + (Number(m) || 0);
-  return deriveFoodSlot(mins, b);
+  return deriveFoodSlot(hhmmToMinutes(hhmm), b);
 }

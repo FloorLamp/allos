@@ -43,9 +43,11 @@ const TREND_CELL_CLASS: Record<HabitWeekVerdict, string> = {
 export default function WeeklyHabits({
   profileId,
   formatPrefs,
+  embedded = false,
 }: {
   profileId: number;
   formatPrefs?: DisplayFormatPrefs;
+  embedded?: boolean;
 }) {
   const habits = getFrequencyTargetProgress(profileId).filter(
     (p) => p.target.scope_kind === "food_group"
@@ -62,16 +64,10 @@ export default function WeeklyHabits({
   const trends = getFoodHabitTrends(profileId, formatPrefs);
 
   return (
-    <div className="card" data-testid="weekly-habits">
-      <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-        Weekly habits
-      </h2>
+    <div className={embedded ? undefined : "card"} data-testid="weekly-habits">
+      <h3 className="mb-3 section-label">Weekly habits</h3>
 
-      {habits.length === 0 ? (
-        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-          Track a food group as a weekly habit — e.g. fatty fish 2×/week.
-        </p>
-      ) : (
+      {habits.length > 0 && (
         <ul className="mb-3 space-y-1.5">
           {habits.map((p) => {
             const interactions = foodHabitInteractions(

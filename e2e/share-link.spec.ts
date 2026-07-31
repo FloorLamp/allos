@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Public share links (issue #391, gap 1 — the ONLY anonymous PHI surface). The
 // create→view→revoke flow (PassportControls → profile/actions →
 // app/share/[token]/page) had zero browser coverage beyond a 404-header check.

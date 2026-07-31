@@ -37,8 +37,8 @@ import {
   setStatus,
   setArchived,
   deleteGoal,
-} from "@/app/(app)/goals/actions";
-import GoalForm from "@/app/(app)/goals/GoalForm";
+} from "@/app/(app)/training/goal-actions";
+import GoalForm from "@/app/(app)/training/GoalForm";
 
 // A progress value, formatted for the goal's metric.
 function goalValueText(g: Goal, value: number, wu: WeightUnit): string {
@@ -53,11 +53,19 @@ export default function GoalsManager({
   goals,
   goalProgress,
   lifts,
+  equipment,
+  equipmentByExercise,
   weightUnit,
 }: {
   goals: Goal[];
   goalProgress: Record<number, GoalProgress>;
   lifts: string[];
+  // The profile's equipment registry (id + display name, retired included so a goal
+  // scoped to sold gear still names it) and, per canonical movement key, the
+  // implements that movement has actually been logged on (#1610). Both are inert for
+  // a profile that owns no equipment — the goal form then renders no picker at all.
+  equipment: { id: number; name: string }[];
+  equipmentByExercise: Record<string, number[]>;
   weightUnit: WeightUnit;
 }) {
   const wu = weightUnit;
@@ -383,6 +391,8 @@ export default function GoalsManager({
         >
           <GoalForm
             lifts={lifts}
+            equipment={equipment}
+            equipmentByExercise={equipmentByExercise}
             weightUnit={weightUnit}
             editGoal={modal.goal}
             onDone={() => setModal(null)}

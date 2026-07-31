@@ -19,6 +19,8 @@
 //     resolved item's `empty` flag so the page renders the CTA instead of a
 //     blank card.
 
+import { DATA_QUALITY_PREFIX } from "./data-quality";
+
 export type WidgetSpan = "full" | "two-thirds" | "third" | "half";
 
 export interface WidgetDef {
@@ -72,6 +74,62 @@ export interface DashboardLayout {
   hidden: string[];
 }
 
+// ── Finding families with a dedicated dashboard home (#1533) ───────────────────
+// The Coaching-observations rollup's charter (#449) is dashboard REACH for findings
+// that otherwise render only on their own tabs. A finding family that has earned its
+// OWN dashboard widget already has that reach, so by the rollup's own charter it does
+// not belong in the rollup — but collectCoachingFindings produces one set, so without
+// this the same gap rendered in both cards and inflated the rollup's "N patterns"
+// count with rows it was double-showing.
+//
+// This registry encodes the charter as data: dedupeKey PREFIX → the widget id that is
+// that family's dedicated dashboard home. The split below is then self-maintaining —
+// when the next finding family earns its own widget, adding one line here stops the
+// duplication, and hiding that widget puts the family straight back into the rollup
+// (the catch-all), so a hidden card never silently drops dashboard reach.
+//
+// NOT a suppression mechanism: both cards still read the ONE collectCoachingFindings
+// computation and share the findings bus, so a dismiss anywhere still silences
+// everywhere (including the origin tab), and the Coaching TAB still shows everything.
+export const FINDING_DASHBOARD_HOME: Record<string, string> = {
+  // Structural data-quality gaps (#1045) → the Data quality widget.
+  [DATA_QUALITY_PREFIX]: "data-quality",
+};
+
+// The widget id that is this finding's dedicated dashboard home, or null when the
+// family has none (the common case — those are exactly the rollup's constituency).
+export function findingDashboardHome(dedupeKey: string): string | null {
+  for (const [prefix, widgetId] of Object.entries(FINDING_DASHBOARD_HOME)) {
+    if (dedupeKey.startsWith(prefix)) return widgetId;
+  }
+  return null;
+}
+
+// The rollup's rendered set: every active coaching finding whose family has no
+// dedicated dashboard home, plus those whose home widget is currently hidden. The
+// caller passes a VISIBILITY predicate — "is this widget actually on the person's
+// dashboard right now?", i.e. the resolved item's `visible` flag, not mere catalog
+// eligibility (the page resolves hidden widgets too, so Customize can preview them).
+// Callers MUST derive the widget's count and its cap/overflow from this result, not
+// from the unfiltered input — the count has to equal what is on screen.
+export function rollupCoachingFindings<T extends { dedupeKey: string }>(
+  findings: readonly T[],
+  isWidgetVisible: (widgetId: string) => boolean
+): T[] {
+  return findings.filter((f) => {
+    const home = findingDashboardHome(f.dedupeKey);
+    return home === null || !isWidgetVisible(home);
+  });
+}
+
+// The slice a dedicated home widget renders: the findings whose family is homed to it.
+export function findingsForDashboardHome<T extends { dedupeKey: string }>(
+  findings: readonly T[],
+  widgetId: string
+): T[] {
+  return findings.filter((f) => findingDashboardHome(f.dedupeKey) === widgetId);
+}
+
 // ── Dashboard list caps (#1219) ────────────────────────────────────────────────
 // Every capped list widget splits through ONE pure helper and surfaces its
 // overflow (a disclosure of the remaining rows, or a "+N more" link) — a widget
@@ -94,6 +152,24 @@ export function capDashboardList<T>(
   return { shown: items.slice(0, n), overflow: items.slice(n) };
 }
 
+// Actionable protocol rows can never disappear behind the compact widget cap
+// (#1584). Render every row with a pending log action, then use any remaining
+// standard-cap slots for informational protocols. Overflow therefore contains
+// informational rows only.
+export function capActionableDashboardList<T>(
+  items: readonly T[],
+  cap: number,
+  isActionable: (item: T) => boolean
+): { shown: T[]; overflow: T[] } {
+  const actionable = items.filter(isActionable);
+  const informational = items.filter((item) => !isActionable(item));
+  const informationalSlots = Math.max(0, Math.trunc(cap) - actionable.length);
+  return {
+    shown: [...actionable, ...informational.slice(0, informationalSlots)],
+    overflow: informational.slice(informationalSlots),
+  };
+}
+
 // The dashboard shows only a compact weekly-habit subset. Rank the WHOLE open
 // set before applying the limit so creation order cannot hide a less-complete
 // habit behind one that is nearly done. Kept pure for direct regression coverage.
@@ -101,6 +177,17 @@ export interface DashboardHabitProgress {
   count: number;
   per_week: number;
   met: boolean;
+}
+
+export type DashboardHabitDomain = "training" | "food" | "practice";
+
+// The combined habits card spans three owning surfaces. Keep this classification
+// shared so a practice can never inherit the old "anything non-food is training"
+// fallback and point at the wrong editor.
+export function dashboardHabitDomain(scopeKind: string): DashboardHabitDomain {
+  if (scopeKind === "food_group") return "food";
+  if (scopeKind === "practice") return "practice";
+  return "training";
 }
 
 export function summarizeDashboardHabits<T extends DashboardHabitProgress>(

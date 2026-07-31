@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_SITCOACH } from "./fixture-logins";
 
@@ -31,17 +31,15 @@ test("dashboard coaching widget HOLDS the nags during an open illness episode (#
   await page.context().close();
 });
 
-test("situations bar acknowledges active situational items (#662 item 1)", async ({
+test("supplement schedule acknowledges active situational items without owning the controls (#662 item 1)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, creds(E2E_LOGIN_SITCOACH));
 
   await page.goto("/nutrition?tab=supplements");
 
-  // The situations bar is present with Illness active…
-  await expect(page.getByTestId("situations-bar")).toBeVisible();
-  // …and the one-line activation acknowledgment names the count of situational items
-  // now due because a situation is active (the seeded Zinc supplement under Illness).
+  await expect(page.getByTestId("situations-bar")).toHaveCount(0);
+  // The one-line acknowledgment still explains why the seeded Zinc dose is due.
   await expect(page.getByTestId("situation-activation")).toHaveText(
     "1 situational item now active"
   );

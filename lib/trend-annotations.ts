@@ -20,6 +20,17 @@ import type { DateRange } from "./timeline-format";
 export type AnnotationKind =
   "medication" | "appointment" | "situation" | "protocol";
 
+// The kinds, in display order. Exported because the toggle state is a
+// Record<AnnotationKind, boolean> that several hosts build — hand-writing that
+// object literal in each of them is how a new kind ships toggled-off in one place
+// and on in another (components/TrendAnnotationToggles.tsx builds it from here).
+export const ANNOTATION_KINDS: readonly AnnotationKind[] = [
+  "medication",
+  "appointment",
+  "situation",
+  "protocol",
+];
+
 // A positioned marker: an ISO date, a short human label, and the source kind that
 // drives its color + the per-type toggle.
 export interface TrendAnnotation {
@@ -212,6 +223,30 @@ export function snapAnnotationsToDates(
     if (best != null) out.push({ ...a, date: best });
   }
   return out;
+}
+
+// Event names belong in the chart tooltip, not painted permanently across the
+// plot. Several medication/situation markers in a 90-day window otherwise form
+// an unreadable band of overlapping SVG text. The vertical colored lines remain
+// visible; hovering a chart date adds every event snapped to that date.
+export function annotationTooltipLabel(
+  dateLabel: string,
+  date: string,
+  annotations: readonly TrendAnnotation[],
+  windows: readonly Pick<TrendWindow, "start" | "end" | "label">[] = []
+): string {
+  const labels = [
+    ...annotations
+      .filter((annotation) => annotation.date === date)
+      .map((annotation) => annotation.label),
+    ...windows
+      .filter(
+        (window) =>
+          window.start <= date && (window.end == null || window.end >= date)
+      )
+      .map((window) => window.label),
+  ].filter((label, index, all) => all.indexOf(label) === index);
+  return labels.length > 0 ? `${dateLabel} · ${labels.join(" · ")}` : dateLabel;
 }
 
 // ---- Protocol windows (issue #660) ----

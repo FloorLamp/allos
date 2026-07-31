@@ -1,5 +1,5 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { expandUpcomingAggregates } from "./helpers";
 // Issue #297: on the Upcoming page's Today band, due doses used to sort
 // alphabetically because the adapter dropped time_of_day — morning and bedtime
 // doses interleaved A–Z. The seed (e2e/seed-events.ts) ships a MORNING dose named
@@ -12,6 +12,9 @@ test("Upcoming Today band orders doses by time bucket, not alphabetically (#297)
   page,
 }) => {
   await page.goto("/upcoming");
+  // The band's scheduled doses fold into one disclosure (#1504). The rows and their
+  // order are unchanged — they are simply behind it, so open it before comparing.
+  await expandUpcomingAggregates(page.getByRole("main"), "dose");
 
   const morning = page.getByText("Zeaxanthin Morning (e2e)");
   const bedtime = page.getByText("Ashwagandha Bedtime (e2e)");

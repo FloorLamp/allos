@@ -3,11 +3,13 @@ import {
   getGoalProgressMap,
   getFrequencyTargetProgress,
   getActivitySuggestions,
+  getLoggedEquipmentByExercise,
 } from "@/lib/queries";
+import { getEquipment } from "@/lib/equipment";
 import { getUnitPrefs, getWeekMode } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { frequencyScopeLabel } from "@/lib/goals";
-import FrequencyTargets from "@/app/(app)/goals/FrequencyTargets";
+import FrequencyTargets from "@/app/(app)/training/FrequencyTargets";
 import GoalsManager from "./GoalsManager";
 import GoalPacingFindings from "./GoalPacingFindings";
 
@@ -24,6 +26,14 @@ export default async function GoalsSection() {
   const targets = getFrequencyTargetProgress(profile.id);
   const weekMode = getWeekMode(profile.id);
   const lifts = getActivitySuggestions(profile.id).lifts;
+  // Load-context inputs for the goal form (#1610). Retired gear is included: it still
+  // labels history, and a goal may legitimately track a machine you've stopped using.
+  // Both collapse to nothing for a profile with no registry equipment, so the picker
+  // simply doesn't render.
+  const equipment = getEquipment(profile.id, { includeRetired: true }).map(
+    (e) => ({ id: e.id, name: e.name })
+  );
+  const equipmentByExercise = getLoggedEquipmentByExercise(profile.id);
 
   return (
     <section
@@ -40,6 +50,8 @@ export default async function GoalsSection() {
         goals={goals}
         goalProgress={goalProgress}
         lifts={lifts}
+        equipment={equipment}
+        equipmentByExercise={equipmentByExercise}
         weightUnit={wu}
       />
 
@@ -56,19 +68,21 @@ export default async function GoalsSection() {
           . Click a routine to edit it.
         </p>
         <FrequencyTargets
-          items={targets.map((t) => ({
-            id: t.target.id,
-            scopeKind: t.target.scope_kind,
-            scopeValue: t.target.scope_value,
-            label: frequencyScopeLabel(
-              t.target.scope_kind,
-              t.target.scope_value
-            ),
-            count: t.count,
-            perWeek: t.per_week,
-            met: t.met,
-            pace: t.pace,
-          }))}
+          items={targets
+            .filter((t) => t.target.scope_kind !== "practice")
+            .map((t) => ({
+              id: t.target.id,
+              scopeKind: t.target.scope_kind,
+              scopeValue: t.target.scope_value,
+              label: frequencyScopeLabel(
+                t.target.scope_kind,
+                t.target.scope_value
+              ),
+              count: t.count,
+              perWeek: t.per_week,
+              met: t.met,
+              pace: t.pace,
+            }))}
         />
       </div>
     </section>

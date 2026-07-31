@@ -1,4 +1,5 @@
 import { daysBetweenDateStr } from "./date";
+import { strengthLoadKey } from "./lifts";
 
 // Trailing window (days) that bounds the "recent" strength-history scans AND the
 // freshness of a next-set progression seed. A session or name older than this is
@@ -33,46 +34,85 @@ export function isSeedFresh(
   return age != null && age <= windowDays;
 }
 
+// A history entry a seed may be drawn from. `equipmentId` is the session's
+// `exercise_sets.equipment_id` — the registry implement it was performed on, or
+// null for the unassigned/default lane. Optional so the pre-#1610 shapes (raw set
+// rows without the column selected) still type-check as an all-unassigned history.
+export interface SeedCandidate {
+  date: string;
+  exercise: string;
+  equipmentId?: number | null;
+}
+
 /**
- * Pick the prior sessions that SEED a next-set suggestion for `targetName` out of
- * a lift's merged history.
+ * The sessions of a merged movement history that are LOAD-COMPARABLE with the
+ * (exercise, equipment) context being entered — the ONE gate every seed, repeat-fill
+ * and "Recent" reference passes through (#1610).
  *
  * Since #331 a base's equipment variants collapse under one canonical
- * exerciseHistoryKey, so the merged `sessions` (newest-first) can interleave
- * implements — a Dumbbell Curl session and a Barbell Curl session share one
- * history. Seeding blindly off the newest session then mixes implements: a
- * per-hand dumbbell load and a barbell total are materially different
- * progressions (#393). This mirrors the editor's lastEquipmentId: prefer the
- * newest session logged under the EXACT `targetName`, and only when that exact
- * name was never logged fall back to the newest session overall.
+ * exerciseHistoryKey, so `sessions` (newest-first) can interleave implements — a
+ * Dumbbell Curl session and a Barbell Curl session share one history, and since a
+ * profile may own several registry machines, two sessions can even share one exact
+ * name and still be non-comparable loads.
  *
- * Two same-day activities are one session (as everywhere in the strength layer),
- * so the return is every session sharing the chosen session's date — filtered to
- * the exact name when an exact match won, or any implement in the fallback — for
- * the caller to flatMap into the seed. ONE decision both the editor chip and
- * getStrengthByExercise's lastSessionBest/lastSessionSets consume, so the seed is
- * implement-appropriate identically on every surface.
+ * The rule, in order:
  *
- * Generic over `{ date, exercise }` so it serves both the editor's RecentSession
- * objects and getStrengthByExercise's raw set rows.
+ * 1. Sessions matching the requested `strengthLoadKey` (exact variant + equipment
+ *    lane) win. This preserves #393's barbell-vs-dumbbell separation and adds the
+ *    equipment-instance separation #1610 asks for.
+ * 2. Otherwise, when EITHER side names a registry implement, return nothing. A
+ *    freshly selected hotel machine must show no home-machine ghost, and a set left
+ *    in the unassigned lane must not inherit a machine's numbers — we never guess
+ *    which implement produced non-comparable history.
+ * 3. Otherwise (an equipment-free history and an equipment-free target, e.g. an
+ *    ambiguous bare base like "Curl" that was only ever logged as "Dumbbell Curl"),
+ *    fall back to the whole merged history exactly as before #1610 — byte-for-byte
+ *    prior behavior for every profile that owns no strength equipment.
  */
-export function pickSeedSessions<T extends { date: string; exercise: string }>(
+export function loadContextSessions<T extends SeedCandidate>(
   sessions: readonly T[],
-  targetName: string
+  targetName: string,
+  targetEquipmentId: number | null = null
 ): T[] {
   if (sessions.length === 0) return [];
-  const exact = targetName.trim().toLowerCase();
-  const match = sessions.find((s) => s.exercise.trim().toLowerCase() === exact);
-  if (match) {
-    // Exact-variant history exists: seed from that variant's newest session
-    // (all same-day rows of the same implement), never a heavier/lighter sibling.
-    return sessions.filter(
-      (s) => s.date === match.date && s.exercise.trim().toLowerCase() === exact
-    );
-  }
-  // The exact name was never logged (e.g. an ambiguous bare base) — fall back to
-  // the newest session's date, any implement, exactly as before the exact-match
-  // preference existed.
-  const newestDate = sessions[0].date;
-  return sessions.filter((s) => s.date === newestDate);
+  const want = strengthLoadKey(targetName, targetEquipmentId);
+  const exact = sessions.filter(
+    (s) => strengthLoadKey(s.exercise, s.equipmentId ?? null) === want
+  );
+  if (exact.length > 0) return exact;
+  const anyTagged =
+    targetEquipmentId != null ||
+    sessions.some((s) => (s.equipmentId ?? null) != null);
+  if (anyTagged) return []; // rule 2 — never cross a load context
+  return [...sessions]; // rule 3 — legacy equipment-free fallback (#393)
+}
+
+/**
+ * Pick the prior sessions that SEED a next-set suggestion for the
+ * (`targetName`, `targetEquipmentId`) load context out of a lift's merged history.
+ *
+ * Narrows the history to its load-comparable slice (loadContextSessions above), then
+ * keeps that slice's newest date — two same-day activities are one session, as
+ * everywhere in the strength layer — for the caller to flatMap into the seed. ONE
+ * decision the editor chip, getStrengthByExercise's lastSessionBest/lastSessionSets
+ * and the session recap's vs-last delta all consume, so the seed is
+ * implement-appropriate identically on every surface.
+ *
+ * Generic over `{ date, exercise, equipmentId? }` so it serves both the editor's
+ * RecentSession objects and getStrengthByExercise's raw set rows.
+ */
+export function pickSeedSessions<T extends SeedCandidate>(
+  sessions: readonly T[],
+  targetName: string,
+  targetEquipmentId: number | null = null
+): T[] {
+  const comparable = loadContextSessions(
+    sessions,
+    targetName,
+    targetEquipmentId
+  );
+  if (comparable.length === 0) return [];
+  // `sessions` arrives newest-first, and the filters above preserve that order.
+  const newestDate = comparable[0].date;
+  return comparable.filter((s) => s.date === newestDate);
 }

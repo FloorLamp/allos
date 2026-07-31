@@ -23,6 +23,18 @@ export function deleteSetting(key: string): void {
   db.prepare("DELETE FROM settings WHERE key = ?").run(key);
 }
 
+// Every GLOBAL settings key starting with `prefix`. The instance-tier twin of
+// getProfileSettingKeysWithPrefix, used by the shared-supply-pool nudge (#1374) to
+// enumerate its per-pool episode markers (notify_last_pool_refill_<poolId>) so a marker
+// whose pool is gone can be swept (#325). A pool is household-shared and has no owning
+// profile, so its marker lives here rather than in profile_settings.
+export function getSettingKeysWithPrefix(prefix: string): string[] {
+  const rows = db
+    .prepare("SELECT key FROM settings WHERE key LIKE ? ESCAPE '\\'")
+    .all(prefix.replace(/[\\%_]/g, "\\$&") + "%") as { key: string }[];
+  return rows.map((r) => r.key);
+}
+
 // Generic per-profile key/value access (profile_settings table).
 export function getProfileSetting(
   profileId: number,

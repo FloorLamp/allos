@@ -32,7 +32,7 @@ export default function PaginationControls({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="btn-ghost text-sm disabled:opacity-40"
+            className="btn-ghost text-sm"
             disabled={page <= 1}
             onClick={() => onPageChange(page - 1)}
           >
@@ -43,7 +43,7 @@ export default function PaginationControls({
           </span>
           <button
             type="button"
-            className="btn-ghost text-sm disabled:opacity-40"
+            className="btn-ghost text-sm"
             disabled={page >= pageCount}
             onClick={() => onPageChange(page + 1)}
           >

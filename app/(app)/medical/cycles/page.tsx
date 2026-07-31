@@ -4,7 +4,7 @@ import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
-import SymptomLogBar from "@/app/(app)/symptoms/SymptomLogBar";
+import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import { SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,
@@ -13,7 +13,7 @@ import {
   getSymptomLogOrder,
 } from "@/lib/queries";
 import { getUnitPrefs } from "@/lib/settings";
-import { listCyclePeriods, getOpenPeriod } from "@/lib/cycle-store";
+import { listCyclePeriods } from "@/lib/cycle-store";
 import {
   cyclePhaseOnDate,
   cycleLengths,
@@ -21,6 +21,7 @@ import {
   CYCLE_PHASE_LABELS,
   CYCLE_REGULARITY_VARIATION_DAYS,
 } from "@/lib/cycle";
+import { cycleControlState } from "@/lib/cycle-plausibility";
 import CycleForm from "./CycleForm";
 import PeriodQuickActions from "./PeriodQuickActions";
 import CycleHistoryRow from "./CycleHistoryRow";
@@ -44,7 +45,10 @@ export default async function CyclePage() {
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
   const periods = listCyclePeriods(profile.id);
-  const openPeriod = getOpenPeriod(profile.id);
+  // The ONE control-state computation (#1681): which quick action may be offered, the
+  // derived state line, and whether an open period has outrun the plausible maximum. The
+  // client component renders it and decides nothing.
+  const control = cycleControlState(periods, todayStr);
   const currentPhase = cyclePhaseOnDate(periods, todayStr);
   const stats = cycleStats(periods);
   const lengths = cycleLengths(periods); // oldest-first
@@ -71,12 +75,25 @@ export default async function CyclePage() {
             </div>
           </div>
           <div className="text-right text-xs text-slate-500 dark:text-slate-400">
-            {openPeriod
-              ? `Period open since ${openPeriod.period_start}`
+            {control.openPeriodStart
+              ? `Period open since ${control.openPeriodStart}`
               : "No period currently open"}
           </div>
         </div>
-        <PeriodQuickActions hasOpenPeriod={!!openPeriod} />
+        {/* A period left open past the plausible maximum (#1682): the phase above has
+            already stopped claiming menstrual, and we ASK rather than closing the record
+            ourselves — the record is the user's, and only their tap writes to it. */}
+        {control.staleOpenPeriod && (
+          <p
+            className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200"
+            data-testid="cycle-stale-open"
+          >
+            Still bleeding? This period has been open since{" "}
+            {control.openPeriodStart} — set its end date below, or tap “Period
+            ended today”. Until then the phase is derived without it.
+          </p>
+        )}
+        <PeriodQuickActions state={control} />
         <p className="text-xs text-slate-500 dark:text-slate-400">
           The luteal phase resolves once your next period is logged — the phase
           is derived from history, never forecast.

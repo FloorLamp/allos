@@ -4,7 +4,7 @@ import {
   linkRecordVisitAction,
   declineRecordVisitAction,
   unlinkRecordVisitAction,
-} from "@/app/(app)/visit-links/actions";
+} from "@/app/(app)/visit-link-actions";
 import type { VisitLinkedRow } from "@/lib/queries";
 import type {
   EncounterFromVisit,
@@ -25,6 +25,9 @@ const DOMAIN_LABEL: Record<Exclude<VisitLinkDomain, "episode">, string> = {
   immunization: "Immunization",
   optical: "Prescription",
   dental: "Dental",
+  // #1526: the last two clinical observations to gain a visit link.
+  skin: "Skin lesion",
+  allergy: "Allergy",
 };
 
 function pairsJson(suggestions: EncounterFromVisit["suggestions"]): string {

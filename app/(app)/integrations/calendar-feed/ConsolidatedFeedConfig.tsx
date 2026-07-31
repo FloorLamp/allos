@@ -128,9 +128,9 @@ export default function ConsolidatedFeedConfig({
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Enable a single subscribe link that merges the upcoming appointments
           of <strong>every profile you can access</strong> into one calendar —
-          each event labeled with the profile&apos;s name. {spanNote} Each
-          profile keeps its own detail level, so a profile set to minimal still
-          shows only &ldquo;Medical appointment&rdquo;.
+          each event labeled with the profile’s name. {spanNote} Each profile
+          keeps its own detail level, so a profile set to minimal still shows
+          only “Medical appointment”.
         </p>
         <div className="max-w-xs">
           <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />

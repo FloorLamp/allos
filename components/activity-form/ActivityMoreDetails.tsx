@@ -5,6 +5,7 @@ import NotesField from "./NotesField";
 import EstimatedCalories from "./EstimatedCalories";
 import ImportedActivityDetails from "./ImportedActivityDetails";
 import RouteMap from "@/components/RouteMap";
+import ActivityFormCheck from "./ActivityFormCheck";
 
 // The activity form's collapsible "More details" disclosure (#1207 extraction):
 // notes, the manual calorie estimate, imported-metric read-outs, and the route map.
@@ -23,6 +24,7 @@ export default function ActivityMoreDetails({
   onEstChange,
   onEstReset,
   editData,
+  activityId,
   distanceUnit,
 }: {
   open: boolean;
@@ -38,6 +40,9 @@ export default function ActivityMoreDetails({
   onEstChange: (v: string) => void;
   onEstReset: () => void;
   editData: ActivityEditData | null;
+  // The activity's SAVED row id — `editData?.id ?? createdId` in the parent, so it
+  // covers create mode once autosave has inserted the row. Null before that.
+  activityId: number | null;
   distanceUnit: DistanceUnit;
 }) {
   return (
@@ -84,6 +89,20 @@ export default function ActivityMoreDetails({
             activity={editData}
             distanceUnit={distanceUnit}
           />
+
+          {/* Form check (#1457) — needs a SAVED activity id, not edit mode (#1520
+              fixed the confusion: this gated on `editData`, which stays null for a
+              create-mode form's whole life, so the block never appeared while
+              logging). The id is the resolved `editData?.id ?? createdId` the parent
+              already computes: absent until autosave has created the row, present
+              from the moment it exists — including mid-create. Keyed on it so the
+              block's own clip fetch re-runs across the null→created transition
+              instead of holding the first render's (empty) read. Deferred upload —
+              holding the file client-side until a row exists — stays rejected
+              (#1457); the block simply appears once the row does. */}
+          {activityId != null && (
+            <ActivityFormCheck key={activityId} activityId={activityId} />
+          )}
 
           {editData?.route_polyline && (
             <section

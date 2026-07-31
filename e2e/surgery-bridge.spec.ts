@@ -1,12 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick } from "./helpers";
 
 // Pre-surgery / Post-op suggest-only bridge (#1299): the producer for the #1296 pause.
 // This spec OWNS its fixtures (create-and-clean): it schedules a surgical visit for
-// today, then asserts the Nutrition → Supplements situations bar surfaces the
-// suggestion chip ("activate Pre-surgery"), confirming activates the Pre-surgery
-// situation. It cancels every visit it scheduled and deactivates Pre-surgery afterward
-// so the shared-seed profile is left unchanged (robust across --repeat-each).
+// today, then asserts Nutrition → Supplements surfaces the suggest-only bridge
+// ("activate Pre-surgery"), confirming activates the Pre-surgery
+// situation. An afterEach cancels every visit it scheduled and deactivates
+// Pre-surgery — on the failure path too — so the shared-seed profile is left
+// unchanged (robust across --repeat-each and across a mid-test red).
 
 const VISIT_TITLE = "E2E Arthroscopy";
 
@@ -15,17 +16,57 @@ const VISIT_TITLE = "E2E Arthroscopy";
 // click + a retrying count-decrement (not settledClick, whose armed POST-wait races the
 // cancel's `startTransition` server action in fast production timing) — the row leaves
 // the upcoming section once its status settles to Cancelled.
-async function cancelOurVisits(page: import("@playwright/test").Page) {
-  await page.goto("/records/history/visits");
-  const cancelBtns = page
+// The still-SCHEDULED rows this spec created. A cancelled visit stays on the page in
+// the settled/history list, so a bare title filter would keep counting a previous
+// --repeat-each pass's leftovers; the live Cancel button is what marks a row as still
+// scheduled (and it's the same thing the bridge query selects on).
+function ourScheduledRows(page: import("@playwright/test").Page) {
+  return page
     .getByTestId("appointment-row")
     .filter({ hasText: VISIT_TITLE })
-    .getByRole("button", { name: "Cancel appointment" });
+    .filter({ has: page.getByRole("button", { name: "Cancel appointment" }) });
+}
+
+async function cancelOurVisits(page: import("@playwright/test").Page) {
+  await page.goto("/records/history/visits");
+  const cancelBtns = ourScheduledRows(page).getByRole("button", {
+    name: "Cancel appointment",
+  });
   for (let n = await cancelBtns.count(); n > 0; n--) {
     await cancelBtns.first().click(); // first-ok: loop-cancel of the visits THIS spec scheduled (unique title)
     await expect(cancelBtns).toHaveCount(n - 1);
   }
 }
+
+// Deactivate Pre-surgery if this spec left it on through the dashboard context
+// surface that owns situation controls. Runs from afterEach, so a mid-test FAILURE
+// can never hand the shared
+// seed profile an active Pre-surgery — which would suppress the very suggestion this
+// spec (and its next run in the same shard) asserts (`surgeryBridgeSuggestion`
+// returns null in the "pre" branch while Pre-surgery is active), i.e. turn one red
+// into a cascading one.
+async function clearPresurgery(page: import("@playwright/test").Page) {
+  await page.goto("/");
+  const checkin = page.getByTestId("how-are-you-card");
+  if ((await checkin.count()) === 0) return;
+  await checkin.getByTestId("checkin-section-context-toggle").click();
+  const toggle = checkin.getByTestId("checkin-situation-Pre-surgery");
+  if ((await toggle.count()) === 0) return;
+  if ((await toggle.getAttribute("aria-pressed")) !== "true") return;
+  await settledClick(page, toggle);
+  // Background Server Action polls can satisfy settledClick's POST wait before
+  // this toggle's refresh lands; the durable inactive state is the real settle.
+  await expect(toggle).not.toHaveAttribute("aria-pressed", "true", {
+    timeout: 15_000,
+  });
+}
+
+// Leave the shared seed profile exactly as found even when the test body throws
+// (#868 fixture ownership: a spec owns — and unwinds — its own writes).
+test.afterEach(async ({ page }) => {
+  await clearPresurgery(page);
+  await cancelOurVisits(page);
+});
 
 test("a scheduled surgical visit suggests activating Pre-surgery", async ({
   page,
@@ -49,6 +90,16 @@ test("a scheduled surgical visit suggests activating Pre-surgery", async ({
     page,
     addCard.getByRole("button", { name: "Add", exact: true })
   );
+  // Settle on the DURABLE server-rendered row before navigating away (#1437).
+  // Every app page carries steady background Server-Action POST traffic — the
+  // app-wide import + extraction watchers each poll on a 6s timer, and both POST to
+  // the CURRENT route URL, so `settledClick`'s armed same-origin POST wait can
+  // resolve on a bystander poll while the create is still in flight (the hazard
+  // helpers.ts documents). The `goto` below would then ABORT the create — measured:
+  // the appointment never lands, the chip never renders, and the failure reads
+  // "element(s) not found" exactly as CI saw twice. Asserting the row here holds the
+  // page still until the write is durable, and the poll can't fake it.
+  await expect(ourScheduledRows(page)).toHaveCount(1);
 
   // ── The bridge chip appears on the Supplements situations bar ───────────────
   await page.goto("/nutrition?tab=supplements");
@@ -61,18 +112,14 @@ test("a scheduled surgical visit suggests activating Pre-surgery", async ({
     page,
     chip.getByRole("button", { name: "Activate Pre-surgery" })
   );
+  await expect(chip).toHaveCount(0);
+  await page.goto("/");
+  const checkin = page.getByTestId("how-are-you-card");
+  await checkin.getByTestId("checkin-section-context-toggle").click();
   await expect(
-    page
-      .getByTestId("situations-bar")
-      .getByRole("button", { name: "Pre-surgery", exact: true })
+    checkin.getByTestId("checkin-situation-Pre-surgery")
   ).toHaveAttribute("aria-pressed", "true");
 
-  // ── Clean up: deactivate Pre-surgery, cancel the visit(s) ───────────────────
-  await settledClick(
-    page,
-    page
-      .getByTestId("situations-bar")
-      .getByRole("button", { name: "Pre-surgery", exact: true })
-  );
-  await cancelOurVisits(page);
+  // Cleanup (deactivate Pre-surgery, cancel the visit) is the afterEach above — it
+  // runs on the failure path too, and its own settles are navigation-free.
 });

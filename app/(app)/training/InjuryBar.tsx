@@ -61,10 +61,17 @@ export default function InjuryBar({
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             Injuries
           </h3>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            Log a tweak so coaching trains around it. Active regions are set
-            aside (and named on your suggestion); recovering ones ease back.
-          </p>
+          {/* Conditional card (#1496): on the doing-first Overview the explainer
+              renders only when there IS something (or the form is open). With no
+              injury logged the card collapses to its title + "Log injury" — the
+              affordance stays (it's the only door to the first injury) but it no
+              longer costs a paragraph of vertical space above the real content. */}
+          {(current.length > 0 || showForm) && (
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Log a tweak so coaching trains around it. Active regions are set
+              aside (and named on your suggestion); recovering ones ease back.
+            </p>
+          )}
         </div>
         <button
           type="button"

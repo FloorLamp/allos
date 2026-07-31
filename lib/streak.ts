@@ -63,3 +63,26 @@ export function flexibleStreak(
   }
   return streak;
 }
+
+// THE user-facing activity streak (issue #1398 / #221: one question, one computation).
+//
+// Both variants above are legitimate math, but only ONE of them may answer the
+// question a surface labels "streak". Two engines used to feed that one word — the
+// Training week tile read the strict currentStreak while the milestone and the
+// weekly recap read the rest-tolerant flexibleStreak — so a profile could earn a
+// "30-day activity streak" recognition while the Training tile read "Streak 2".
+//
+// The rest-tolerant variant wins: it is the one the recognition surfaces already
+// celebrate, and a training habit that includes rest days is a habit kept, not a
+// habit broken. Every surface that shows the user a number under the word "streak"
+// (the Training/Journal week summary, the milestone engine, the weekly recap card
+// and notification) calls THIS function — never flexibleStreak or currentStreak
+// directly — so the variant can never be re-picked per surface.
+//
+// currentStreak stays exported for the DIFFERENTLY-LABELLED consecutive-day count:
+// the weekly recap's "N-day consecutive" delta and the coaching overtraining nudge's
+// "trained N days in a row" (which additionally asks about hard-session dates, not
+// activity dates). Distinct question, distinct label, distinct number.
+export function activityStreak(today: string, dates: string[]): number {
+  return flexibleStreak(today, dates);
+}

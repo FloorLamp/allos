@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type Locator } from "@playwright/test";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 
 // The unified "How are you today?" daily check-in card (issue #992): the one-tap
@@ -120,10 +121,14 @@ test.describe("Daily wellbeing check (#992)", () => {
     await card.getByTestId("mood-energy-2").click();
     await card.getByTestId("mood-note").fill("short night");
     await card.getByTestId("mood-save").click();
-    // The save settles when the server marker reflects the expanded fields.
+    // The save settles when the server marker reflects the expanded fields — a
+    // declared 15s budget: the marker updates only after the write committed AND
+    // the refresh round-tripped, which loses the default 5s window under load
+    // (observed locally 6/9 on clean main, the #1556 family).
     await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
       "data-energy",
-      "2"
+      "2",
+      { timeout: 15_000 }
     );
     await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
       "data-note",
@@ -145,7 +150,7 @@ test.describe("Daily wellbeing check (#992)", () => {
 
     // The logged series surfaces on Trends → Body (never flag-checked — the card
     // copy says so in plain words).
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     const trend = page.getByTestId("mood-trend");
     await expect(trend).toBeVisible();
     await expect(trend).toContainText("never range-checked");
@@ -159,9 +164,17 @@ test.describe("Daily wellbeing check (#992)", () => {
     await page.goto("/");
 
     const card = page.getByTestId("how-are-you-card");
-    // Branch into the illness flow (door A, one tap).
+    // Branch into the illness flow (door A, one tap). Per this spec's settle
+    // discipline settledClick is unreliable on the dashboard (bystander POSTs),
+    // and the cockpit itself IS the server-truth signal — it renders only after
+    // the activation wrote and the refresh round-tripped. So the settle is a
+    // DECLARED budget on that signal: 15s, measured after the default 5s window
+    // lost to the action+refresh round-trip on loaded CI shards (2/2 shard-4
+    // failures, 2026-07-26 — the #1556 family).
     await page.getByTestId("feeling-sick-activate").click();
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
+    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
+      timeout: 15_000,
+    });
 
     // State 2 — the shell stays for the mood tap, the illness branch defers to
     // the hero with a quiet note, and the front-door affordance is gone.

@@ -56,10 +56,35 @@ function emptyInput(over: Partial<PersistInput> = {}): PersistInput {
   };
 }
 
-// An import bundle with one visit + a prescription + a lab, both carrying the FHIR
-// encounter reference to that visit (tier-1).
+// An import bundle with one visit + a prescription + a lab + an allergy, each carrying
+// the FHIR encounter reference to that visit (tier-1). The allergy joined in #1526,
+// when allergies gained encounter_id.
 function bundleWithVisitLinks(): PersistInput {
   return emptyInput({
+    allergies: [
+      {
+        substance: "Penicillin",
+        substance_code: null,
+        substance_code_system: null,
+        reaction: "Hives",
+        severity: "Moderate",
+        status: "active",
+        onset_date: null,
+        external_id: "allergy:penicillin",
+        encounter_external_id: "ccda:encounter:v1",
+      },
+      // An allergy with NO encounter reference — stays unlinked by tier-1.
+      {
+        substance: "Latex",
+        substance_code: null,
+        substance_code_system: null,
+        reaction: null,
+        severity: null,
+        status: "active",
+        onset_date: null,
+        external_id: "allergy:latex",
+      },
+    ],
     encounters: [
       {
         date: DATE,
@@ -190,6 +215,23 @@ describe("tier-1 FHIR self-heal", () => {
       )
       .get(profileId) as { encounter_id: number | null };
     expect(hdl.encounter_id).toBeNull();
+
+    // #1526: the referenced allergy is stamped, the unreferenced one is not.
+    const penicillin = db
+      .prepare(
+        `SELECT id, encounter_id FROM allergies WHERE profile_id = ? AND substance = 'Penicillin'`
+      )
+      .get(profileId) as { id: number; encounter_id: number | null };
+    expect(penicillin.encounter_id).toBe(eid);
+    const latex = db
+      .prepare(
+        `SELECT encounter_id FROM allergies WHERE profile_id = ? AND substance = 'Latex'`
+      )
+      .get(profileId) as { encounter_id: number | null };
+    expect(latex.encounter_id).toBeNull();
+    expect(encounterForRecord(profileId, "allergy", penicillin.id)?.id).toBe(
+      eid
+    );
 
     // The med surfaces "Prescribed at" and the visit lists it "From this visit".
     const medRow = db

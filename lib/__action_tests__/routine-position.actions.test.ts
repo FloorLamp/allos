@@ -7,7 +7,7 @@
 // saveActivity write path against the seeded active routine.
 
 import { describe, it, expect } from "vitest";
-import { saveActivity } from "@/app/(app)/journal/actions";
+import { saveActivity } from "@/app/(app)/training/activity-actions";
 import {
   adoptTemplate,
   activateRoutine,

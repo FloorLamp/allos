@@ -8,7 +8,8 @@ import { db, today } from "../db";
 import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
 import { getIntakeSafetyContext } from "./intake";
-import { weekWindowStart, recentWindowStart } from "./training/common";
+import { weekWindowStart } from "./profile-week";
+import { recentWindowStart } from "./training/common";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
 import {
   getMetricDailyTotals,
@@ -21,7 +22,6 @@ import {
   getWeekMode,
   getWeekStart,
 } from "../settings";
-import { zonedDateParts } from "../date";
 import { trailingWeeks } from "../week-window";
 import type { DisplayFormatPrefs } from "../format-date";
 import {
@@ -29,14 +29,14 @@ import {
   HABIT_TREND_WEEKS,
   type HabitWeekCell,
 } from "../food-habit-trend";
+import { type FoodSlot } from "../food-slot";
 import {
-  foodSlotBoundaries,
-  foodSlotForHhmm,
-  type FoodSlot,
-  type FoodSlotBoundaries,
-} from "../food-slot";
+  foodSlotForProfileInstant,
+  profileFoodSlotBoundaries,
+} from "../profile-food-slot";
 import { blendFoodOrder } from "../food-rank";
 import {
+  foodEventWindow,
   foodEventsInWindow,
   slotServingCounts,
   type FoodLedgerEvent,
@@ -49,7 +49,6 @@ import {
   proteinTarget,
   assessProteinAdequacy,
   estimatedProteinGrams,
-  resolveProteinGoalLevel,
   type ProteinAdequacy,
   type ProteinToday,
 } from "../protein";
@@ -66,6 +65,7 @@ import {
   getUserSex,
   getUserAge,
   getExcludedFoodGroups,
+  getProteinGoalLevel,
 } from "../settings/profile-attrs";
 import { demoteExcludedGroups } from "../dietary-preferences";
 import {
@@ -126,6 +126,78 @@ export function getFoodServingsOnDate(
   const m = new Map<string, number>();
   for (const r of rows) m.set(r.group_key, r.servings);
   return m;
+}
+
+export interface FoodMealDay {
+  date: string;
+  counts: Record<string, number>;
+  slotCounts: Record<FoodSlot, Record<string, number>>;
+}
+
+// Recent meal history for the Food page: the daily source-of-truth counters plus the
+// per-serving event ledger grouped into Morning/Midday/Evening. Explicit meal_slot
+// values power backfills; older/tap-only events retain the timestamp fallback. Two
+// range reads cover the whole picker rather than issuing one query per day and slot.
+export function getFoodMealDays(
+  profileId: number,
+  dates: readonly string[]
+): FoodMealDay[] {
+  if (dates.length === 0) return [];
+  const ordered = [...dates].sort();
+  const from = ordered[0];
+  const to = ordered[ordered.length - 1];
+  const byDate = new Map<string, FoodMealDay>(
+    dates.map((date) => [
+      date,
+      {
+        date,
+        counts: {},
+        slotCounts: { Morning: {}, Midday: {}, Evening: {} },
+      },
+    ])
+  );
+
+  const totals = db
+    .prepare(
+      `SELECT date, group_key, servings FROM food_log
+        WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0`
+    )
+    .all(profileId, from, to) as {
+    date: string;
+    group_key: string;
+    servings: number;
+  }[];
+  for (const row of totals) {
+    const day = byDate.get(row.date);
+    if (day) day.counts[row.group_key] = row.servings;
+  }
+
+  const events = db
+    .prepare(
+      `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+        ORDER BY logged_at, id`
+    )
+    .all(profileId, from, to) as FoodLedgerEvent[];
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  const tz = getTimezone(profileId);
+  for (const event of events) {
+    // The reserved protein ranking event is not a food-group serving and has its own
+    // grams surface, so it must never appear as a mystery meal chip.
+    if (!foodGroupBySlug(event.name)) continue;
+    const day = byDate.get(event.date);
+    if (!day) continue;
+    const slot = foodEventWindow(
+      event.logged_at,
+      tz,
+      boundaries,
+      event.meal_slot
+    );
+    const slotCounts = day.slotCounts[slot];
+    slotCounts[event.name] = (slotCounts[event.name] ?? 0) + 1;
+  }
+
+  return dates.map((date) => byDate.get(date)!);
 }
 
 // The profile's food-log rows on/after `since` (inclusive), as FoodLogEntry[] for the
@@ -207,35 +279,11 @@ export function foodLogToday(profileId: number): string {
   return today(profileId);
 }
 
-// The profile's configured food-slot boundaries (issue #950), read from the RAW
-// notify slot-hour settings so "unconfigured" is genuinely detected (getNotifySchedule
-// would already have substituted the DEFAULT hours, which we can't tell from a user's
-// choice). A fully configured schedule re-anchors the buckets to its midpoints; an
-// unset/partial one falls back to the fixed 11:00/15:00 defaults (foodSlotBoundaries).
-// Reads only the per-profile settings tier (not owned data), so the profile-scoping
-// guard is unaffected.
-function profileFoodSlotBoundaries(profileId: number): FoodSlotBoundaries {
-  const raw = (key: string): number | null => {
-    const v = getProfileSetting(profileId, key);
-    if (v == null || v === "") return null;
-    const n = Number(v);
-    return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
-  };
-  return foodSlotBoundaries({
-    // Mirrors SUPP_HOUR_KEYS in lib/settings/notifications.ts (the food nudge rides the
-    // same morning/midday/evening supplement slots, #682).
-    morning: raw("notify_supp_morning_hour"),
-    midday: raw("notify_supp_midday_hour"),
-    evening: raw("notify_supp_evening_hour"),
-  });
-}
-
 // The food slot a UTC instant falls into for a profile (its timezone + configured
 // boundaries). The ONE derivation both surfaces use, so the web bar's slot chip and
 // the ranking can never disagree. Profile-scoped reads only the settings tier.
 export function foodSlotForInstant(profileId: number, instant: Date): FoodSlot {
-  const { hhmm } = zonedDateParts(getTimezone(profileId), instant);
-  return foodSlotForHhmm(hhmm, profileFoodSlotBoundaries(profileId));
+  return foodSlotForProfileInstant(profileId, instant);
 }
 
 // The profile's CURRENT food slot (wall-clock now, in its timezone). The Food tab
@@ -324,7 +372,7 @@ function gatherFoodRankingSignals(
     const tz = getTimezone(profileId);
     const events = db
       .prepare(
-        `SELECT group_key AS name, date, logged_at FROM food_log_events
+        `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
           WHERE profile_id = ? AND date >= ?`
       )
       .all(profileId, since) as FoodLedgerEvent[];
@@ -398,7 +446,7 @@ export function getFoodSlotServingsOnDate(
   const tz = getTimezone(profileId);
   const events = db
     .prepare(
-      `SELECT group_key AS name, date, logged_at FROM food_log_events
+      `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
         WHERE profile_id = ? AND date = ?`
     )
     .all(profileId, date) as FoodLedgerEvent[];
@@ -570,74 +618,96 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
   const bodyweightKg = bodyweightAsOf(weightsAsc, t);
   const leanMassKg = getLatestMetricValue(profileId, "lean_mass_kg");
 
-  // Goal level — the profile's training goal when set (#719 onboarding hook), else the
-  // "active" default; the pure resolver maps whatever string lands.
-  const goal = resolveProteinGoalLevel(
-    getProfileSetting(profileId, "training_goal")
-  );
+  // Goal level — the profile's training goal (Settings → Nutrition, #1503), or the
+  // documented default when they have not picked one. ONE reader for every surface.
+  const goal = getProteinGoalLevel(profileId);
 
   const intake = proteinIntake({ dailyTracked, dailyLogged, dailyEstimated });
   const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
   return assessProteinAdequacy(intake, target);
 }
 
-// The band-gauge model for the Food tab (issue #974): today so far + this week's daily
-// average + the goal band, in ONE gather so the gauge, the quick-add card, and the
-// Telegram food-nudge status line format the same numbers (#221). Reuses the SAME pieces
-// getProteinAdequacy reads — the target inputs (goal + LBM-preferred bodyweight) and, for
-// the weekly marker, getProteinAdequacy's OWN daily-average figure, so the marker can
-// never drift from the adequacy card. Today's bar is the #824 composition applied to a
-// SINGLE day: today's servings through estimatedProteinGrams + today's quick-add grams, or
-// today's tracked reading when one exists. Returns null when there's no target (no
-// bodyweight) or no protein data at all (never a bare "0 g" nudge).
-export function getProteinToday(profileId: number): ProteinToday | null {
-  const t = today(profileId);
-
-  // Target — the SAME inputs getProteinAdequacy uses (goal + LBM-preferred bodyweight).
+// The protein target as of a calendar day. The recent-day picker needs historical
+// estimates to use weight available on that day rather than leaking a later weigh-in
+// backward. Lean mass remains the profile's latest preferred target basis, matching the
+// existing adequacy gather.
+function proteinTargetOnDate(profileId: number, date: string) {
   const weightsAsc = getWeights(profileId)
     .map((w) => ({ date: w.date, weight_kg: w.weight_kg }))
     .sort((a, b) => (a.date < b.date ? -1 : 1));
-  const bodyweightKg = bodyweightAsOf(weightsAsc, t);
+  const bodyweightKg = bodyweightAsOf(weightsAsc, date);
   const leanMassKg = getLatestMetricValue(profileId, "lean_mass_kg");
-  const goal = resolveProteinGoalLevel(
-    getProfileSetting(profileId, "training_goal")
-  );
-  const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
+  const goal = getProteinGoalLevel(profileId);
+  return proteinTarget({ goal, bodyweightKg, leanMassKg });
+}
+
+// A SINGLE calendar day's protein estimate for the seven-day Food picker: that day's
+// food-group servings + quick-add grams, or its tracked protein reading when present.
+// The legacy ProteinToday shape is reused by the gauge; its weekly marker is deliberately
+// null because a historical day should not be visually mixed with the CURRENT week's
+// average. Returns null when that date has no protein signal or no target.
+export function getProteinOnDate(
+  profileId: number,
+  date: string
+): ProteinToday | null {
+  const target = proteinTargetOnDate(profileId, date);
   if (!target) return null;
 
-  // Today's composition (a SINGLE day, not the weekly average): today's food-group
-  // servings → estimated grams + today's quick-add grams, or today's tracked reading.
-  const servings = getFoodServingsOnDate(profileId, t);
-  const todayServings = [...servings.entries()].map(([slug, n]) => ({
+  const servings = getFoodServingsOnDate(profileId, date);
+  const dayServings = [...servings.entries()].map(([slug, n]) => ({
     slug,
     servings: n,
   }));
-  const dailyEstimated = estimatedProteinGrams(todayServings);
-  const loggedToday = getProteinLoggedGrams(profileId, t);
-  const trackedToday = getMetricDailyTotals(profileId, "protein_g").find(
-    (r) => r.date === t
+  const dailyEstimated = estimatedProteinGrams(dayServings);
+  const loggedOnDate = getProteinLoggedGrams(profileId, date);
+  const trackedOnDate = getMetricDailyTotals(profileId, "protein_g").find(
+    (r) => r.date === date
   );
-  const todayIntake = proteinIntake({
-    dailyTracked: trackedToday ? trackedToday.value : null,
-    dailyLogged: loggedToday > 0 ? loggedToday : null,
+  const dayIntake = proteinIntake({
+    dailyTracked: trackedOnDate ? trackedOnDate.value : null,
+    dailyLogged: loggedOnDate > 0 ? loggedOnDate : null,
     dailyEstimated,
   });
-  const todayGrams = todayIntake?.grams ?? 0;
+  const dayGrams = dayIntake?.grams ?? 0;
+  if (dayGrams <= 0) return null;
+
+  return {
+    todayIntake: dayIntake,
+    todayGrams: dayGrams,
+    target,
+    weeklyAverageGrams: null,
+  };
+}
+
+// The band-gauge model for the Food tab (issue #974): today so far + this week's daily
+// average + the goal band, in ONE gather so the gauge, the quick-add card, and the
+// Telegram food-nudge status line format the same numbers (#221). The date-specific
+// composition comes from getProteinOnDate; today's formatter adds the adequacy gather's
+// current-week marker. It preserves the in-progress 0 g gauge when the week has protein
+// history but today does not.
+export function getProteinToday(profileId: number): ProteinToday | null {
+  const t = today(profileId);
+  const onDate = getProteinOnDate(profileId, t);
 
   // Weekly marker — EXACTLY the adequacy computation's daily-average figure (#221), read
   // from the SAME gather so the two can never disagree.
   const weeklyAverageGrams =
     getProteinAdequacy(profileId)?.intake.grams ?? null;
 
-  // Suppress when there's no protein data at all (a bodyweight-only profile that has never
-  // logged) — never a bare "0 g" nudge or an empty gauge.
-  if (
-    todayGrams <= 0 &&
-    (weeklyAverageGrams == null || weeklyAverageGrams <= 0)
-  )
-    return null;
+  if (onDate) return { ...onDate, weeklyAverageGrams };
 
-  return { todayIntake, todayGrams, target, weeklyAverageGrams };
+  // Suppress when there's no protein data at all (a bodyweight-only profile that has
+  // never logged) — never a bare "0 g" nudge or empty gauge.
+  if (weeklyAverageGrams == null || weeklyAverageGrams <= 0) return null;
+  const target = proteinTargetOnDate(profileId, t);
+  if (!target) return null;
+
+  return {
+    todayIntake: null,
+    todayGrams: 0,
+    target,
+    weeklyAverageGrams,
+  };
 }
 
 // ---- Fiber adequacy (issue #976) ----
@@ -720,6 +790,44 @@ export function getFiberAdequacy(profileId: number): FiberAdequacy | null {
     dailyTracked,
     dailyEstimated,
     dailySupplemented,
+    unknownSupplement,
+  });
+  const target = fiberTarget({
+    ageYears: getUserAge(profileId),
+    sex: getUserSex(profileId),
+  });
+  return assessFiberAdequacy(intake, target);
+}
+
+// A SINGLE calendar day's fiber estimate for the seven-day Food picker. Unlike
+// getFiberAdequacy's current-week daily average, this combines only the selected day's
+// food servings, confirmed fiber doses, and tracked fiber total. That keeps Yesterday's
+// display historical rather than silently repeating this week's figure.
+export function getFiberOnDate(
+  profileId: number,
+  date: string
+): FiberAdequacy | null {
+  const servings = [...getFoodServingsOnDate(profileId, date).entries()].map(
+    ([slug, n]) => ({ slug, servings: n })
+  );
+  const dailyEstimated = estimatedFiberGrams(servings);
+
+  let dailySupplemented = 0;
+  let unknownSupplement = false;
+  for (const row of getConfirmedIntakeDosesInRange(profileId, date)) {
+    if (row.date !== date || !isFiberSupplement(row.name)) continue;
+    const { grams, known } = fiberDoseGrams(row.amount);
+    if (known && grams > 0) dailySupplemented += grams;
+    else unknownSupplement = true;
+  }
+
+  const trackedOnDate = getMetricDailyTotals(profileId, "fiber_g").find(
+    (row) => row.date === date
+  );
+  const intake = fiberIntake({
+    dailyTracked: trackedOnDate?.value ?? null,
+    dailyEstimated,
+    dailySupplemented: dailySupplemented > 0 ? dailySupplemented : null,
     unknownSupplement,
   });
   const target = fiberTarget({

@@ -7,6 +7,7 @@ import {
   getProfileNameById,
 } from "@/lib/profile-summary-load";
 import ProfilePassport from "@/components/ProfilePassport";
+import PageContainer from "@/components/PageContainer";
 import type { AvatarProfile } from "@/components/Avatar";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { recordAudit } from "@/lib/audit";
@@ -54,11 +55,14 @@ export default async function SharePage(props: {
   });
   if (!rl.ok) {
     return (
-      <div className="mx-auto min-h-screen max-w-3xl px-4 py-10">
+      <PageContainer
+        width="reading"
+        className="mx-auto min-h-screen px-4 py-10"
+      >
         <p className="text-sm text-neutral-600 dark:text-neutral-300">
           Too many requests. Try again in about {rl.retryAfterSec} seconds.
         </p>
-      </div>
+      </PageContainer>
     );
   }
 
@@ -93,7 +97,10 @@ export default async function SharePage(props: {
     const assembled = assembleIllnessEpisode(link.profile_id, episode);
     return (
       <ConfirmProvider>
-        <div className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:py-10">
+        <PageContainer
+          width="reading"
+          className="mx-auto min-h-screen px-4 py-6 sm:py-10"
+        >
           <div className="mb-4 flex items-center justify-end">
             <PrintButton />
           </div>
@@ -103,7 +110,7 @@ export default async function SharePage(props: {
             timeZone={getTimezone(link.profile_id)}
             nowIso={clockNow().toISOString()}
           />
-        </div>
+        </PageContainer>
       </ConfirmProvider>
     );
   }
@@ -116,7 +123,10 @@ export default async function SharePage(props: {
     const medName = getProfileNameById(link.profile_id) ?? "Profile";
     const rows = getCurrentMedicationList(link.profile_id);
     return (
-      <div className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:py-10">
+      <PageContainer
+        width="reading"
+        className="mx-auto min-h-screen px-4 py-6 sm:py-10"
+      >
         <div className="mb-4 flex items-center justify-end">
           <PrintButton />
         </div>
@@ -126,7 +136,7 @@ export default async function SharePage(props: {
           generatedAt={new Date().toISOString()}
           rows={rows}
         />
-      </div>
+      </PageContainer>
     );
   }
 
@@ -144,7 +154,10 @@ export default async function SharePage(props: {
   };
 
   return (
-    <div className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:py-10">
+    <PageContainer
+      width="reading"
+      className="mx-auto min-h-screen px-4 py-6 sm:py-10"
+    >
       <ProfilePassport
         summary={summary}
         profile={sharedProfile}
@@ -154,6 +167,6 @@ export default async function SharePage(props: {
         generatedAt={new Date().toISOString()}
         expiresAt={link.expires_at}
       />
-    </div>
+    </PageContainer>
   );
 }

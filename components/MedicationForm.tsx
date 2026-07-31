@@ -15,6 +15,10 @@ import DoseRowsEditor, {
   emptyDose,
   type DoseState,
 } from "@/components/intake/DoseRowsEditor";
+import CadenceEditor, {
+  type CadenceState,
+} from "@/components/intake/CadenceEditor";
+import { parseWeekdays } from "@/lib/intake-cadence";
 import KeepApartPairsEditor, {
   type PairState,
 } from "@/components/intake/KeepApartPairsEditor";
@@ -45,11 +49,17 @@ import {
 import { resolveIntakePrefill, type PrefillField } from "@/lib/intake-prefill";
 import {
   CONDITION_LABELS,
+  OBLIGATIONS,
+  OBLIGATION_HINTS,
+  OBLIGATION_LABELS,
   pauseLinkNeedsConfirm,
 } from "@/lib/supplement-schedule";
 import { useConfirm } from "@/components/ConfirmDialog";
+import DraftRestoreBanner from "./DraftRestoreBanner";
+import { useFormDraft } from "./useFormDraft";
 import type {
   FormResult,
+  IntakeObligation,
   Supplement,
   SupplementDose,
   SupplementPair,
@@ -169,9 +179,19 @@ export default function MedicationForm({
   // a prescription" disclosure. Defaults from the stored flag, or OTC for a new med;
   // the combobox pick and any recorded prescriber flip it on.
   const [rxFlag, setRxFlag] = useState(s?.rx === 1);
-  const [asNeeded, setAsNeeded] = useState(s?.as_needed === 1);
+  // Obligation (#1505) replaces both the old priority band and the as-needed
+  // checkbox. A medication DEFAULTS to `must` — the tier that reminds AND escalates —
+  // because that is the posture a prescription is prescribed under; a new med the
+  // user never touches is protected rather than quietly unmonitored.
+  const [obligation, setObligation] = useState<IntakeObligation>(
+    s?.obligation ?? "must"
+  );
+  // "As needed" is no longer its own flag: `may` IS the as-needed shape (amount-only
+  // dose, redose interval/max, no scheduled reminders). Derived so every downstream
+  // branch that used to read the checkbox keeps reading one value.
+  const asNeeded = obligation === "may";
   const [startedOn, setStartedOn] = useState(
-    course?.started_on ?? (s?.as_needed === 1 ? "" : (todayStr ?? ""))
+    course?.started_on ?? (s?.obligation === "may" ? "" : (todayStr ?? ""))
   );
   const [startedOnTouched, setStartedOnTouched] = useState(false);
   // End date (#1140 Part D): the current course's stopped_on. Editing an existing med only
@@ -201,9 +221,22 @@ export default function MedicationForm({
           amount: d.amount ?? "",
           time_of_day: d.time_of_day ?? "",
           food_timing: d.food_timing,
+          weekdays: [...parseWeekdays(d.weekdays)].sort((a, b) => a - b),
+          start_date: d.start_date ?? "",
+          end_date: d.end_date ?? "",
         }))
       : [emptyDose()]
   );
+
+  // Item-level calendar (#1602). Seeded from the stored row so an edit round-trips
+  // rather than silently resetting a weekly medication to daily.
+  const [cadence, setCadence] = useState<CadenceState>(() => ({
+    kind: s?.cadence_kind ?? "daily",
+    weekdays: [...parseWeekdays(s?.cadence_weekdays)].sort((a, b) => a - b),
+    intervalDays:
+      s?.cadence_interval_days != null ? String(s.cadence_interval_days) : "",
+    anchorDate: s?.cadence_anchor_date ?? "",
+  }));
 
   // A scheduled regimen starts today by default because its adherence window needs a
   // beginning. PRN use is often intermittent and may predate this record, so do not
@@ -340,7 +373,7 @@ export default function MedicationForm({
     // Brand suggestions narrow to this med's brands when known, always led by "Generic"
     // (#851 item 3).
     setBrandOptions(medicationBrandOptions(pf.brandSuggestions));
-    if (pf.asNeeded !== undefined) setAsNeeded(pf.asNeeded);
+    if (pf.asNeeded !== undefined) setObligation(pf.asNeeded ? "may" : "must");
     if (pf.minIntervalHours !== undefined)
       setMinIntervalHours(String(pf.minIntervalHours));
     if (pf.maxDailyCount !== undefined)
@@ -389,9 +422,103 @@ export default function MedicationForm({
     suggested.has("foodTiming") ||
     suggested.has("timeOfDay");
 
+  // Local draft (#1699). Named inputs cover the scalar fields; the dose rows,
+  // cadence and keep-apart pairs are state that only becomes FormData at submit, so
+  // they ride in `extra` — as do the prefill bookkeeping sets, without which a
+  // restored form would re-suggest over values the user had already accepted.
+  const draftExtra = useMemo(
+    () => ({
+      name,
+      condition,
+      situation,
+      pauseSituation,
+      brand,
+      rxFlag,
+      obligation,
+      startedOn,
+      startedOnTouched,
+      endDate,
+      minIntervalHours,
+      maxDailyCount,
+      redoseNotice,
+      product,
+      formulationSlug,
+      critical,
+      doses,
+      cadence,
+      pairRows,
+      touched: [...touched],
+      suggested: [...suggested],
+    }),
+    [
+      name,
+      condition,
+      situation,
+      pauseSituation,
+      brand,
+      rxFlag,
+      obligation,
+      startedOn,
+      startedOnTouched,
+      endDate,
+      minIntervalHours,
+      maxDailyCount,
+      redoseNotice,
+      product,
+      formulationSlug,
+      critical,
+      doses,
+      cadence,
+      pairRows,
+      touched,
+      suggested,
+    ]
+  );
+  type MedicationDraft = typeof draftExtra;
+  const draft = useFormDraft<MedicationDraft>({
+    formKey: "medication",
+    recordId: s?.id ?? null,
+    formRef,
+    extra: draftExtra,
+    onRestore: (d) => {
+      setName(d.name);
+      setCondition(d.condition);
+      setSituation(d.situation);
+      setPauseSituation(d.pauseSituation);
+      setBrand(d.brand);
+      setRxFlag(d.rxFlag);
+      setObligation(d.obligation);
+      setStartedOn(d.startedOn);
+      setStartedOnTouched(d.startedOnTouched);
+      setEndDate(d.endDate);
+      setMinIntervalHours(d.minIntervalHours);
+      setMaxDailyCount(d.maxDailyCount);
+      setRedoseNotice(d.redoseNotice);
+      setProduct(d.product);
+      setFormulationSlug(d.formulationSlug);
+      setCritical(d.critical);
+      setDoses(d.doses);
+      setCadence(d.cadence);
+      setPairRows(d.pairRows);
+      setTouched(new Set(d.touched));
+      setSuggested(new Set(d.suggested));
+    },
+    confirmReplace: () =>
+      confirm({
+        title: "Resume the unsaved medication?",
+        message:
+          "This replaces what you have typed here with the entry kept on this device.",
+        confirmLabel: "Resume",
+      }),
+  });
+
   async function handle(formData: FormData) {
     setError(null);
     formData.set("doses", JSON.stringify(doses));
+    formData.set("cadence_kind", cadence.kind);
+    formData.set("cadence_weekdays", cadence.weekdays.join(","));
+    formData.set("cadence_interval_days", cadence.intervalDays);
+    formData.set("cadence_anchor_date", cadence.anchorDate);
     formData.set("pairs", JSON.stringify(pairRows));
     const label = name.trim() || "Medication";
     // Consent gate (#1296): a situational hold on a MEDICATION silences its
@@ -400,12 +527,36 @@ export default function MedicationForm({
     if (
       pause &&
       pause !== (s?.pause_situation ?? "") &&
-      pauseLinkNeedsConfirm({ kind: "medication", priority: "high" })
+      pauseLinkNeedsConfirm({ kind: "medication", obligation })
     ) {
       const ok = await confirm({
         title: "Pause reminders?",
         message: `This will silence reminders for ${label} while ${pause} is active. Link the pause?`,
         confirmLabel: "Link pause",
+      });
+      if (!ok) return;
+    }
+    // MED GUARDRAIL (#1505 Part 0). Kind stopped deciding pushability, so the one
+    // thing standing between a prescription and silence is this confirm. It is
+    // deliberately CONSEQUENCE-STATING rather than "are you sure?": the user is
+    // giving up a safety net, and the dialog names exactly which parts of it.
+    //
+    // Asked ONLY when an EXISTING must medication is being moved down. Two exclusions,
+    // both deliberate:
+    //   • a NEW medication is a declaration, not a reduction — nothing is being taken
+    //     away, and adding a PRN painkiller should not be interrogated;
+    //   • a med already below must is not re-asked on every unrelated edit.
+    // That is the contact-consent rule's shape: consent is owed for LOSING a safety
+    // net you had, not for describing what an item is.
+    const wasMust = s != null && (s.obligation ?? "must") === "must";
+    if (obligation !== "must" && wasMust) {
+      const ok = await confirm({
+        title: `Reduce reminders for ${label}?`,
+        message:
+          obligation === "may"
+            ? `${label} will get no reminders, no missed-dose escalation, and no missed-dose safety net. It stays on your list and one tap away when you want it. Continue?`
+            : `${label} will still be reminded and still counted, but it loses missed-dose escalation — no follow-up nudge if a dose goes unconfirmed, no caregiver alert. Continue?`,
+        confirmLabel: "Reduce reminders",
       });
       if (!ok) return;
     }
@@ -420,6 +571,9 @@ export default function MedicationForm({
       setError(result.error);
       return;
     }
+    // Durably saved — drop the local draft so it can never re-offer what was just
+    // written (#1699).
+    draft.clear();
     toast(s ? `${label} updated` : `${label} added`);
     if (onDone) onDone();
     else {
@@ -432,7 +586,7 @@ export default function MedicationForm({
       setBrand("");
       setBrandOptions(MED_BRAND_OPTIONS);
       setRxFlag(false);
-      setAsNeeded(false);
+      setObligation("must");
       setStartedOn(todayStr ?? "");
       setStartedOnTouched(false);
       setMinIntervalHours("");
@@ -452,6 +606,11 @@ export default function MedicationForm({
 
   return (
     <form ref={formRef} action={handle} className="grid gap-4 sm:grid-cols-2">
+      <DraftRestoreBanner
+        draft={draft}
+        noun="medication"
+        className="sm:col-span-2"
+      />
       {s && <input type="hidden" name="id" value={s.id} />}
       <input type="hidden" name="kind" value="medication" />
       <input type="hidden" name="product" value={product} />
@@ -699,24 +858,40 @@ export default function MedicationForm({
           a prescription — a small disclosure flips an OTC med to Rx for the edge case,
           so an OTC med isn't asked for a prescriber it doesn't have. */}
       <input type="hidden" name="rx" value={rxFlag ? "1" : "0"} />
+      {/* Obligation (#1505). One field where a Priority select and an "As needed"
+          checkbox used to sit — they were two spellings of the same question, and
+          keeping both is what let a "low priority" medication look reminded while a
+          PRN one looked un-prioritized. `may` IS as-needed, so choosing it reveals the
+          redose block below exactly as the old checkbox did. The hint states the
+          CURRENT choice's consequences from the shared copy; the med-specific
+          consequence confirm lives at submit (see handle()). */}
       <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
-        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-          <input
-            type="checkbox"
-            name="as_needed"
-            value="1"
-            checked={asNeeded}
-            onChange={(e) => {
-              setAsNeeded(e.target.checked);
-              markTouched("asNeeded");
-            }}
-            className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
-          />
-          As needed
+        <label className="label" htmlFor={`med-obligation-${fid}`}>
+          Obligation
           {suggested.has("asNeeded") && <PrefillBadge />}
         </label>
-        <p className="mt-1 pl-6 text-xs text-slate-500 dark:text-slate-400">
-          Log doses when they are taken instead of using scheduled reminders.
+        <select
+          id={`med-obligation-${fid}`}
+          name="obligation"
+          data-testid="med-obligation"
+          value={obligation}
+          onChange={(e) => {
+            setObligation(e.target.value as IntakeObligation);
+            markTouched("asNeeded");
+          }}
+          className="input"
+        >
+          {OBLIGATIONS.map((o) => (
+            <option key={o} value={o}>
+              {OBLIGATION_LABELS[o]}
+            </option>
+          ))}
+        </select>
+        <p
+          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="med-obligation-hint"
+        >
+          {OBLIGATION_HINTS[obligation]}
         </p>
       </div>
 
@@ -1050,6 +1225,7 @@ export default function MedicationForm({
             needed.
           </p>
         )}
+        <CadenceEditor value={cadence} onChange={setCadence} />
         <DoseRowsEditor
           doses={doses}
           setDoses={setDosesTouched}

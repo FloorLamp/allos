@@ -6,6 +6,7 @@ import {
   getSupplementLogsInRange,
   getSupplementPairs,
   getRefillRates,
+  getPoolChips,
   getPendingSuggestions,
   getActivitiesByDate,
   getActivityDates,
@@ -20,8 +21,13 @@ import {
   getEffectiveActiveSituations,
   getDerivedSituationLines,
   getNavRelevance,
+  countVisiblePools,
 } from "@/lib/queries";
-import { activeByKey } from "@/lib/findings";
+import { activeByKey, activeFindings } from "@/lib/findings";
+import {
+  buildAdherencePatternFindings,
+  buildDemotionSuggestionFindings,
+} from "@/lib/rule-findings";
 import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import {
@@ -44,32 +50,46 @@ import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
+import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, zonedDateParts } from "@/lib/date";
 import {
   getActiveSituations,
+  getDisplayFormatPrefs,
   getSituationEvents,
   getSituations,
   getTimezone,
   getExcludedFoodGroups,
+  getWeekMode,
+  getWeekStart,
 } from "@/lib/settings";
+import { formatWeekdayDate } from "@/lib/format-date";
+import { weekWindow } from "@/lib/week-window";
+import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import {
   suggestedSituationsFromConditions,
   situationActivationLine,
   mergedSituationOptions,
 } from "@/lib/situations";
-import { withPeriodOption } from "@/lib/derived-situations";
+import {
+  withPeriodOption,
+  withWeatherSituationOptions,
+} from "@/lib/derived-situations";
+import { weatherSituationsRelevant } from "@/lib/queries/weather-situations";
+import { getUnitPrefs } from "@/lib/settings";
 import {
   countSituationalDue,
-  isDueOn,
+  doseDueOn,
   isPostWorkoutReady,
   timeBucket,
   TIME_BUCKETS,
-  PRIORITY_ORDER,
-  PRIORITY_LABELS,
+  TIME_BUCKET_LABELS,
+  OBLIGATION_ORDER,
+  OBLIGATION_LABELS,
   CONDITION_LABELS,
-  priorityClass,
+  obligationClass,
   workoutDaySubtitleLabel,
   heldBySituation,
   type TimeBucket,
@@ -83,6 +103,7 @@ import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
 import {
   indexTakenByDose,
+  doseWindowSince,
   supplementAdherenceStrip,
   STRIP_DAYS,
   type AdherenceDot,
@@ -91,13 +112,15 @@ import {
   separatePairWarnings,
   type KeepApartWarning,
 } from "@/lib/intake-pairs";
-import SupplementForm from "@/components/SupplementForm";
 import SuggestionsForm from "./SuggestionsForm";
 import AdherenceFindings from "./AdherenceFindings";
+import DemotionSuggestions from "./DemotionSuggestions";
+import SupplementSchedule from "./SupplementSchedule";
+import SupplementInsightBadges from "./SupplementInsightBadges";
+import AddSupplementModal from "./AddSupplementModal";
+import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
 import {
-  addSupplement,
   toggleSituation,
-  toggleSituationIllnessType,
   acceptSuggestion,
   activateSurgerySituation,
   clearSurgerySituation,
@@ -106,6 +129,7 @@ import {
 } from "./supplement-actions";
 import { getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
+import { IconChevronDown } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
 
@@ -115,12 +139,19 @@ interface Item {
 }
 
 // The Supplements tab of the Nutrition umbrella (#746): the former /medicine
-// supplement surface — situations, stack UL/RDA + cross-kind interaction/PGx
-// warnings, time-bucketed dose rows, AI suggestions, and the supplement add form.
-// A self-contained async server component (it re-resolves the session like
-// AdherenceFindings does) rendered by the tabbed nutrition page.
+// supplement surface — context-aware scheduling, stack UL/RDA + cross-kind interaction/PGx
+// warnings, a slot-filterable schedule, compact coaching disclosures, and modal
+// add/edit flows. A self-contained async server component rendered by the tabbed
+// nutrition page.
 export default async function SupplementsTab() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  // The medicine-cabinet door (#1522) counts over the caller's WHOLE accessible set,
+  // not the acting profile: a shared bottle is household-scoped and has no kind of
+  // its own, so this tab and Medications show the same number and land on the same
+  // list. Everything else on this tab stays single-profile.
+  const cabinetCount = countVisiblePools((await requireScope()).ids);
+  const todayStr = today(profile.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   // Dietary preferences (#975): the RDA-adequacy food-source lines filter/substitute
   // excluded groups the same way the #577 suggestions do.
   const excludedGroups = getExcludedFoodGroups(profile.id);
@@ -134,8 +165,8 @@ export default async function SupplementsTab() {
     dosesBySupp.set(d.item_id, arr);
   }
 
-  const taken = getTakenDoseIds(profile.id, today(profile.id));
-  const skipped = getSkippedDoseIds(profile.id, today(profile.id));
+  const taken = getTakenDoseIds(profile.id, todayStr);
+  const skipped = getSkippedDoseIds(profile.id, todayStr);
   const activeSituations = new Set(getActiveSituations(profile.id));
   // Per-day situation resolver for the adherence strip: a past day is scored against
   // the situations active THAT day (#654), reconstructed from the change-log, not the
@@ -144,16 +175,14 @@ export default async function SupplementsTab() {
     activeSituations,
     getSituationEvents(profile.id)
   );
-  const todaysActivities = getActivitiesByDate(profile.id, today(profile.id));
+  const todaysActivities = getActivitiesByDate(profile.id, todayStr);
   const isWorkoutDay = todaysActivities.length > 0;
   // #558: a pre_workout supplement should surface on a PREDICTED training day
   // (from the inferred cadence), not only once a session is logged; post_workout
   // stays gated on a logged session, held until the earliest session's end time.
-  const predictedWorkoutDay = isPredictedWorkoutDay(
-    profile.id,
-    today(profile.id)
-  );
-  const { hhmm } = zonedDateParts(getTimezone(profile.id), new Date());
+  const predictedWorkoutDay = isPredictedWorkoutDay(profile.id, todayStr);
+  const tz = getTimezone(profile.id);
+  const { hhmm } = zonedDateParts(tz, new Date());
   const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const postWorkoutReady = isPostWorkoutReady(
     todaysActivities.map((a) => a.end_time ?? a.start_time),
@@ -165,9 +194,10 @@ export default async function SupplementsTab() {
   // exactly while its derived context holds.
   const effectiveSituations = getEffectiveActiveSituations(
     profile.id,
-    today(profile.id)
+    todayStr
   );
   const ctx = {
+    date: todayStr,
     isWorkoutDay,
     activeSituations: effectiveSituations,
     predictedWorkoutDay,
@@ -176,7 +206,11 @@ export default async function SupplementsTab() {
   // The visible derived-context state lines (shared with the check-in + digest, #221)
   // and whether the poor-sleep line carries the one-tap "Not today" override (only when
   // DERIVED — a declared toggle is cleared by its chip, never the override, #1292).
-  const derivedLines = getDerivedSituationLines(profile.id, today(profile.id));
+  const derivedLines = getDerivedSituationLines(
+    profile.id,
+    todayStr,
+    getUnitPrefs(login.id).temperatureUnit
+  );
   const showPoorSleepOverride = derivedLines.poorSleepOverridable;
   // When fitness tracking is restricted for this profile the workout/rest-day
   // concept is meaningless, so we drop the subtitle prefix and the workout/
@@ -185,7 +219,21 @@ export default async function SupplementsTab() {
 
   // Adherence strip inputs.
   const workoutDays = new Set(getActivityDates(profile.id));
-  const dates = lastNDates(today(profile.id), STRIP_DAYS);
+  const dates = lastNDates(todayStr, STRIP_DAYS);
+  // The schedule control mirrors Food's bounded recent-day lens: today first,
+  // followed by the previous six days. Adherence keeps its wider 14-day window.
+  const scheduleDates = dates
+    .slice(-7)
+    .reverse()
+    .map((date, index) => ({
+      date,
+      label:
+        index === 0
+          ? "Today"
+          : index === 1
+            ? "Yesterday"
+            : formatWeekdayDate(date, formatPrefs),
+    }));
   const takenByDose = indexTakenByDose(
     getSupplementLogsInRange(profile.id, STRIP_DAYS)
   );
@@ -196,16 +244,16 @@ export default async function SupplementsTab() {
   // Policy lives in the shared supplementAdherenceStrip (issue #313).
   const stripBySupp = new Map<number, AdherenceDot[]>();
   for (const s of supplements) {
-    const doseIds = (dosesBySupp.get(s.id) ?? []).map((d) => d.id);
     stripBySupp.set(
       s.id,
       supplementAdherenceStrip(
         s,
-        doseIds,
+        dosesBySupp.get(s.id) ?? [],
         dates,
         workoutDays,
         situationsOn,
-        takenByDose
+        takenByDose,
+        tz
       )
     );
   }
@@ -219,6 +267,15 @@ export default async function SupplementsTab() {
       .flatMap((s) =>
         (dosesBySupp.get(s.id) ?? []).map((dose) => ({ supplement: s, dose }))
       );
+  const existedOn = (item: Item, date: string) => {
+    const since = doseWindowSince(
+      item.supplement.created_at,
+      item.dose.created_at,
+      takenByDose.get(item.dose.id),
+      tz
+    );
+    return since == null || date >= since;
+  };
 
   // Medications render in their own section; the buckets/paused
   // lists below are supplements only, so the two kinds never intermix.
@@ -226,6 +283,46 @@ export default async function SupplementsTab() {
   // Supplement-kind items only — this tab's empty state keys on these, not the
   // full intake list (a profile with only medications is empty HERE, #746).
   const supplementItems = supplements.filter((s) => !isMed(s));
+  const currentWeek = weekWindow(
+    todayStr,
+    getWeekMode(profile.id),
+    getWeekStart(profile.id)
+  );
+  const weeklyDates = dates.filter(
+    (date) => date >= currentWeek.start && date <= currentWeek.end
+  );
+  const weeklyAdherenceDays: SupplementAdherenceDayInput[] = weeklyDates.map(
+    (date) => {
+      const dateContext =
+        date === todayStr
+          ? ctx
+          : {
+              date,
+              isWorkoutDay: workoutDays.has(date),
+              activeSituations: situationsOn(date),
+            };
+      const dueDoseIds = itemsFor(
+        (supplement) => !isMed(supplement) && !!supplement.active
+      )
+        .filter((item) => doseDueOn(item.supplement, item.dose, dateContext))
+        .filter((item) => existedOn(item, date))
+        .map((item) => item.dose.id);
+      return {
+        date,
+        due: dueDoseIds.length,
+        taken: dueDoseIds.filter((doseId) =>
+          takenByDose.get(doseId)?.taken.has(date)
+        ).length,
+        skipped: dueDoseIds.filter((doseId) =>
+          takenByDose.get(doseId)?.skipped.has(date)
+        ).length,
+        isToday: date === todayStr,
+      };
+    }
+  );
+  const weeklyAdherenceLabels = Object.fromEntries(
+    weeklyDates.map((date) => [date, formatWeekdayDate(date, formatPrefs)])
+  );
   // A situational HOLD (#1296): the item is active but its pause_situation is on, so
   // it's suppressed from every due path (isDueOn returns false). Split it OUT of the
   // "not scheduled today" bucket into its own visible Held section — a held item is a
@@ -236,18 +333,25 @@ export default async function SupplementsTab() {
   // (e.g. "Poor sleep") holds exactly while that context is active, and a declared
   // surgery hold and a derived poor-sleep flow through the one union together.
   const isHeld = (s: Supplement) => !!heldBySituation(s, effectiveSituations);
-  const dueItems = itemsFor((s) => !isMed(s) && !!s.active && isDueOn(s, ctx));
+  // Per-ROW, not per-item (#1602): with a per-dose weekday subset or validity window,
+  // two rows of the SAME item can land differently today (warfarin's 5 mg row is due on
+  // Monday, its 2.5 mg row is not), so the due/not-scheduled split has to be made at the
+  // row level or an alternating pair would show both amounts every day.
+  const activeSupplementItems = itemsFor((s) => !isMed(s) && !!s.active);
+  const dueItems = activeSupplementItems.filter((i) =>
+    doseDueOn(i.supplement, i.dose, ctx)
+  );
   const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
-  const notScheduled = itemsFor(
-    (s) => !isMed(s) && !!s.active && !isDueOn(s, ctx) && !isHeld(s)
+  // An off-cadence row lands HERE — visible under "Not scheduled today" with its
+  // cadence named — rather than vanishing. Same discoverability contract as the Held
+  // section: an absence the user can see and explain is safe; a silent one is not.
+  const notScheduled = activeSupplementItems.filter(
+    (i) => !doseDueOn(i.supplement, i.dose, ctx) && !isHeld(i.supplement)
   );
   const paused = itemsFor((s) => !isMed(s) && !s.active);
 
   // Medications render on their own page (#746); this tab is supplements only, so
   // the `isMed` predicate below simply excludes them from every list here.
-  const todayStr = today(profile.id);
-
-  const takenCount = dueItems.filter((it) => taken.has(it.dose.id)).length;
 
   // Shared findings-suppression store (#227/#435): the ONE snooze/dismiss ledger
   // behind both Upcoming and every findings surface. The stack-safety warnings and
@@ -267,25 +371,29 @@ export default async function SupplementsTab() {
     .map(([k]) => k);
 
   // Group due items by time bucket; within a bucket use the SHARED dose-day
-  // comparator (priority → stack → name) so this section and the Upcoming /
+  // comparator (obligation → stack → name) so this section and the Upcoming /
   // needs-attention surfaces order a dose day identically (issue #297). The
   // buckets already partition by time-of-day, so the comparator's leading bucket
-  // key is a constant within each group and the residual order is priority → …
-  const byBucket = new Map<TimeBucket, Item[]>();
-  for (const it of dueItems) {
-    const b = timeBucket(it.dose.time_of_day);
-    const arr = byBucket.get(b) ?? [];
-    arr.push(it);
-    byBucket.set(b, arr);
-  }
+  // key is a constant within each group and the residual order is obligation → …
   const doseEntry = (it: Item): DoseDayEntry => ({
     timeOfDay: it.dose.time_of_day,
-    priority: it.supplement.priority,
+    obligation: it.supplement.obligation,
     stack: it.supplement.stack,
     name: it.supplement.name,
   });
-  for (const arr of byBucket.values())
-    arr.sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
+  const byBucketFor = (items: Item[]) => {
+    const grouped = new Map<TimeBucket, Item[]>();
+    for (const item of items) {
+      const bucket = timeBucket(item.dose.time_of_day);
+      const rows = grouped.get(bucket) ?? [];
+      rows.push(item);
+      grouped.set(bucket, rows);
+    }
+    for (const rows of grouped.values())
+      rows.sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
+    return grouped;
+  };
+  const byBucket = byBucketFor(dueItems);
 
   // "Keep apart" warnings: a separate-pair whose both supplements have a due
   // dose in the same bucket. Policy lives in the shared separatePairWarnings
@@ -305,12 +413,12 @@ export default async function SupplementsTab() {
       todayStr
     );
 
-  // The situations bar is driven by the id-keyed vocabulary (#560): every situation
-  // ROW for this profile, plus the built-in suggestions — the ONE shared merged option
+  // Item forms use the id-keyed vocabulary (#560): every situation row for this
+  // profile, plus the built-in suggestions — the ONE shared merged option
   // set (mergedSituationOptions: vocabulary ∪ SUGGESTED_SITUATIONS, NOCASE-deduped so a
-  // stored "illness" doesn't double up with the suggested "Illness"), so this bar, the
-  // dashboard check-in "Anything going on?" chips, and the item-form option source can
-  // never disagree about the vocabulary (#221/#1177). Each option carries its #799
+  // stored "illness" doesn't double up with the suggested "Illness"), so the dashboard
+  // check-in and item-form option source can never disagree about the vocabulary
+  // (#221/#1177). Each option carries its #799
   // illness-type flag (`illnessType`) and whether it's a saved row (`inVocabulary`).
   const situationRows = getSituations(profile.id);
   // The built-in "Period" derived situation (#1298) joins the option set ONLY when cycle
@@ -319,9 +427,15 @@ export default async function SupplementsTab() {
     mergedSituationOptions(situationRows),
     getNavRelevance(profile.id).cycle
   );
-  // The item-form situation picker reads the SAME merged option set the bar renders
-  // (#1177), passed through the SituationOptionsProvider below.
-  const situationOptionNames = situationChips.map((o) => o.name);
+  // The item-form situation picker reads that same merged option set (#1177), passed
+  // through the SituationOptionsProvider below — WIDENED by the five built-in weather
+  // situations (#1726) when they're relevant for this profile, so an antihistamine can
+  // be keyed to "High pollen" and go due automatically. They join the PICKER only, never
+  // the toggle chip row: a weather situation is derived, so there is nothing to toggle.
+  const situationOptionNames = withWeatherSituationOptions(
+    situationChips,
+    weatherSituationsRelevant(profile.id, todayStr)
+  ).map((o) => o.name);
 
   // One-way condition bridge (#560 part 2): an ACTIVE acute illness/injury condition
   // suggests its matching clinical situation, so a sick user doesn't flip two toggles
@@ -338,6 +452,19 @@ export default async function SupplementsTab() {
   const surgeryBridge = getSurgeryBridgeSuggestions(profile.id);
 
   const suggestions = getPendingSuggestions(profile.id);
+  const adherenceFindings = activeFindings(
+    buildAdherencePatternFindings(profile.id, todayStr),
+    suppressions,
+    todayStr
+  );
+  // Priority demotion suggestions (#1505 part 2) — the same coaching-tier engine the
+  // dashboard rollup and the coaching tab read, filtered through the SAME suppression
+  // bus, so dismissing here silences it everywhere.
+  const demotionFindings = activeFindings(
+    buildDemotionSuggestionFindings(profile.id, todayStr),
+    suppressions,
+    todayStr
+  );
   const pairsFor = (suppId: number) =>
     pairs.filter((p) => p.a_id === suppId || p.b_id === suppId);
 
@@ -345,6 +472,7 @@ export default async function SupplementsTab() {
   // item has enough history, else the scheduled-dose-count estimate. Threaded to
   // each row so the badge reflects real consumption and can name its basis.
   const refillRates = getRefillRates(profile.id);
+  const poolChips = getPoolChips(profile.id);
 
   // Stack-total UL warnings (issue #148): nutrients whose active-stack daily
   // supplemental intake exceeds the NIH Tolerable Upper Intake Level for this
@@ -415,110 +543,256 @@ export default async function SupplementsTab() {
     active: !!s.active,
   }));
 
-  const renderRow = (it: Item, due: boolean) => (
-    <EditableSupplementRow
-      key={it.dose.id}
-      supplement={it.supplement}
-      dose={it.dose}
-      doses={dosesBySupp.get(it.supplement.id) ?? []}
-      allSupplements={supplements}
-      stackItems={stackItems}
-      pgxVariants={pgxVariants}
-      pairs={pairsFor(it.supplement.id)}
-      isTaken={taken.has(it.dose.id)}
-      isSkipped={skipped.has(it.dose.id)}
-      due={due}
-      strip={stripFor(it.supplement)}
-      trainingRestricted={trainingRestricted}
-      refillRate={refillRates.get(it.supplement.id) ?? null}
-      suppressedFoodKeys={suppressedFoodKeys}
-    />
+  const renderRow = (it: Item, due: boolean, date = todayStr) => {
+    const doseHistory = takenByDose.get(it.dose.id);
+    const isTaken =
+      date === todayStr
+        ? taken.has(it.dose.id)
+        : !!doseHistory?.taken.has(date);
+    const isSkipped =
+      date === todayStr
+        ? skipped.has(it.dose.id)
+        : !!doseHistory?.skipped.has(date);
+    const historicalStatus =
+      date === todayStr
+        ? null
+        : isTaken
+          ? ("taken" as const)
+          : isSkipped
+            ? ("skipped" as const)
+            : ("missed" as const);
+
+    return (
+      <EditableSupplementRow
+        key={it.dose.id}
+        supplement={it.supplement}
+        dose={it.dose}
+        doses={dosesBySupp.get(it.supplement.id) ?? []}
+        allSupplements={supplements}
+        stackItems={stackItems}
+        pgxVariants={pgxVariants}
+        pairs={pairsFor(it.supplement.id)}
+        isTaken={isTaken}
+        isSkipped={isSkipped}
+        due={due && date === todayStr}
+        strip={stripFor(it.supplement)}
+        trainingRestricted={trainingRestricted}
+        refillRate={refillRates.get(it.supplement.id) ?? null}
+        poolChip={poolChips.get(it.supplement.id) ?? null}
+        historicalStatus={historicalStatus}
+        suppressedFoodKeys={suppressedFoodKeys}
+      />
+    );
+  };
+
+  const dayContext = trainingRestricted
+    ? null
+    : workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay);
+  const scheduleBucketsFor = (date: string, dayItems: Item[]) => {
+    const grouped = date === todayStr ? byBucket : byBucketFor(dayItems);
+    return TIME_BUCKETS.map((bucket) => {
+      const bucketItems = grouped.get(bucket) ?? [];
+      // Keep-apart warnings are current safety guidance, not historical claims.
+      const warnings =
+        date === todayStr
+          ? bucketWarnings(bucketItems)
+          : ([] as KeepApartWarning[]);
+      return {
+        slot: bucket,
+        count: bucketItems.length,
+        content: (
+          <section
+            key={`${date}-${bucket}`}
+            data-testid={`supplement-bucket-${bucket
+              .toLowerCase()
+              .replaceAll(" ", "-")}`}
+          >
+            <h3 className="mb-2 section-label">{TIME_BUCKET_LABELS[bucket]}</h3>
+            {warnings.map((warning) => (
+              <Notice
+                key={warning.key}
+                tone="amber"
+                icon
+                className="mb-2"
+                action={
+                  <DismissFindingButton
+                    dedupeKey={warning.key}
+                    label={`Dismiss: ${warning.text}`}
+                  />
+                }
+              >
+                {warning.text}
+              </Notice>
+            ))}
+            {bucketItems.length > 0 && (
+              <div className="space-y-3">
+                {bucketItems.map((item) => renderRow(item, true, date))}
+              </div>
+            )}
+          </section>
+        ),
+      };
+    });
+  };
+  const scheduleDays = scheduleDates.map(({ date, label }) => {
+    const dayItems =
+      date === todayStr
+        ? dueItems
+        : itemsFor((supplement) => !isMed(supplement) && !!supplement.active)
+            .filter((item) =>
+              doseDueOn(item.supplement, item.dose, {
+                date,
+                isWorkoutDay: workoutDays.has(date),
+                activeSituations: situationsOn(date),
+              })
+            )
+            .filter((item) => existedOn(item, date));
+    const takenCountForDay = dayItems.filter((item) =>
+      takenByDose.get(item.dose.id)?.taken.has(date)
+    ).length;
+    return {
+      date,
+      label,
+      totalCount: dayItems.length,
+      takenCount: takenCountForDay,
+      buckets: scheduleBucketsFor(date, dayItems),
+    };
+  });
+  const secondarySchedule = (
+    <>
+      {heldItems.length > 0 && (
+        <section data-testid="held-section">
+          <h3 className="section-label">Held ({heldItems.length})</h3>
+          <div className="mt-2 space-y-3">
+            {heldItems.map((item) => (
+              <div
+                key={item.dose.id}
+                data-testid={`held-item-${item.supplement.id}`}
+              >
+                <span className="badge mb-1 inline-block bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  Held — {item.supplement.pause_situation} active
+                </span>
+                {renderRow(item, false)}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {notScheduled.length > 0 && (
+        <details data-testid="not-scheduled-section" className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750">
+            <span>More supplements ({notScheduled.length})</span>
+            <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="mt-2 space-y-3">
+            {notScheduled.map((item) => renderRow(item, false))}
+          </div>
+        </details>
+      )}
+
+      {paused.length > 0 && (
+        <details>
+          <summary className="cursor-pointer section-label">
+            Paused ({paused.length})
+          </summary>
+          <div className="mt-2 space-y-3">
+            {paused.map((item) => renderRow(item, false))}
+          </div>
+        </details>
+      )}
+    </>
+  );
+  const suggestionPanel = (
+    <>
+      <SuggestionsForm />
+      {suggestions.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+          Generate optional ideas from recent labs or add context about how
+          you&rsquo;re feeling. Suggestions appear here for review before
+          anything is added to your schedule.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {[...suggestions]
+            .sort(
+              (a, b) =>
+                OBLIGATION_ORDER[a.obligation] - OBLIGATION_ORDER[b.obligation]
+            )
+            .map((suggestion) => (
+              <div
+                key={suggestion.id}
+                className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-slate-800 dark:text-slate-100">
+                    {suggestion.name}
+                  </span>
+                  {suggestion.dosage && (
+                    <span className="text-sm text-slate-500 dark:text-slate-400">
+                      · {suggestion.dosage}
+                    </span>
+                  )}
+                  <span
+                    className={`badge ${obligationClass(suggestion.obligation)}`}
+                  >
+                    {OBLIGATION_LABELS[suggestion.obligation]}
+                  </span>
+                  {suggestion.condition !== "daily" && (
+                    <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
+                      {CONDITION_LABELS[suggestion.condition]}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  {suggestion.rationale}
+                </p>
+                {suggestion.source_detail && (
+                  <p
+                    data-testid="supplement-suggestion-source"
+                    className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400"
+                  >
+                    {suggestion.source_detail}
+                  </p>
+                )}
+                <div className="mt-2 flex items-center gap-3 text-xs">
+                  <form
+                    action={async (formData) => {
+                      "use server";
+                      await acceptSuggestion(formData);
+                    }}
+                  >
+                    <input type="hidden" name="id" value={suggestion.id} />
+                    <SubmitButton
+                      pendingLabel="Adding…"
+                      className="font-medium text-brand-700 hover:underline disabled:opacity-60 dark:text-brand-400"
+                    >
+                      Add to schedule
+                    </SubmitButton>
+                  </form>
+                  <DismissSuggestionButton
+                    id={suggestion.id}
+                    name={suggestion.name}
+                  />
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+    </>
   );
 
   return (
     <SituationOptionsProvider options={situationOptionNames}>
       <div>
-        {/* This tab lives under the Nutrition page header, so it carries only a
-          compact status line (workout-day label + taken count) rather than its
-          own PageHeader. */}
-        <p
-          data-testid="supplements-status"
-          className="mb-4 text-sm text-slate-500 dark:text-slate-400"
-        >
-          {trainingRestricted
-            ? `${takenCount}/${dueItems.length} taken.`
-            : `${workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay)} — ${takenCount}/${dueItems.length} taken.`}
-        </p>
-
-        {/* Situations bar */}
-        <div
-          className="mb-4 flex flex-wrap items-center gap-2"
-          data-testid="situations-bar"
-        >
-          <span className="section-label">Situations</span>
-          {situationChips.map((sit) => {
-            const on = activeSituations.has(sit.name);
-            // A real vocabulary row can opt into being an illness-type symptom container
-            // (#799); a suggested-but-unsaved chip has no row yet, so no toggle.
-            const isRow = sit.inVocabulary;
-            const illnessOn = sit.illnessType;
-            return (
-              <div key={sit.name} className="flex items-center gap-1">
-                <form
-                  action={async (fd) => {
-                    "use server";
-                    await toggleSituation(fd);
-                  }}
-                >
-                  <input type="hidden" name="situation" value={sit.name} />
-                  <SubmitButton
-                    aria-pressed={on}
-                    className={`badge cursor-pointer disabled:opacity-60 ${
-                      on
-                        ? "bg-brand-600 text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
-                    }`}
-                  >
-                    {sit.name}
-                  </SubmitButton>
-                </form>
-                {isRow && (
-                  <form
-                    action={async (fd) => {
-                      "use server";
-                      await toggleSituationIllnessType(fd);
-                    }}
-                  >
-                    <input type="hidden" name="situation" value={sit.name} />
-                    <SubmitButton
-                      aria-pressed={illnessOn}
-                      title={
-                        illnessOn
-                          ? "Illness — symptom logging on"
-                          : "Mark as illness (enables symptom logging)"
-                      }
-                      data-testid={`situation-illness-${sit.name}`}
-                      className={`badge cursor-pointer px-1.5 disabled:opacity-60 ${
-                        illnessOn
-                          ? "bg-orange-500 text-white"
-                          : "bg-transparent text-slate-400 hover:text-orange-500"
-                      }`}
-                    >
-                      🤒
-                    </SubmitButton>
-                  </form>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
         {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
           the profile's own data, NOT a manual toggle — rendered distinctly and NON-
           toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
-          only the DERIVED contribution for today (a declared toggle is cleared by its
-          chip above). The same lines appear on the check-in disclosure + digest. */}
-        {(derivedLines.poorSleep || derivedLines.period) && (
+          only the DERIVED contribution for today. The same lines appear on the
+          check-in disclosure + digest. */}
+        {(derivedLines.poorSleep ||
+          derivedLines.period ||
+          derivedLines.weather.length > 0) && (
           <div
             className="-mt-2 mb-4 space-y-1"
             data-testid="derived-situations"
@@ -560,6 +834,18 @@ export default async function SupplementsTab() {
                 <span>{derivedLines.period}</span>
               </div>
             )}
+            {derivedLines.weather.map((line) => (
+              <div
+                key={line}
+                className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="derived-weather"
+              >
+                <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                  Auto
+                </span>
+                <span>{line}</span>
+              </div>
+            ))}
           </div>
         )}
 
@@ -740,6 +1026,15 @@ export default async function SupplementsTab() {
           </div>
         )}
 
+        {/* Priority demotion suggestions (#1505): high/mandatory supplements that have
+          gone sustainedly untaken, offered for the `low` tag. Calm and hideable —
+          accepting is the user's own obligation write, never the system's. */}
+        {demotionFindings.length > 0 && (
+          <div className="mb-4">
+            <DemotionSuggestions findings={demotionFindings} />
+          </div>
+        )}
+
         {/* Supplement-related interaction warnings. Cross-kind findings also render on
           Medications with the same dedupeKey, so dismissing either twin silences both.
           Medication-only interaction and PGx findings stay on Medications. */}
@@ -749,175 +1044,99 @@ export default async function SupplementsTab() {
           coverage={safetyCoverage}
         />
 
-        {/* Adherence-pattern observations (issue #45, domain 3) */}
-        <div className="mb-4">
-          <AdherenceFindings />
-        </div>
-
         {supplementItems.length === 0 ? (
-          <EmptyState message="No supplements yet. Add one below. Medications live on their own page." />
-        ) : (
-          <div className="space-y-6">
-            {TIME_BUCKETS.map((bucket) => {
-              const items = byBucket.get(bucket);
-              if (!items || items.length === 0) return null;
-              const warnings = bucketWarnings(items);
-              return (
-                <section key={bucket}>
-                  <h2 className="mb-2 section-label">{bucket}</h2>
-                  {warnings.map((w) => (
-                    <Notice
-                      key={w.key}
-                      tone="amber"
-                      icon
-                      className="mb-2"
-                      action={
-                        <DismissFindingButton
-                          dedupeKey={w.key}
-                          label={`Dismiss: ${w.text}`}
-                        />
-                      }
-                    >
-                      {w.text}
-                    </Notice>
-                  ))}
-                  <div className="space-y-3">
-                    {items.map((it) => renderRow(it, true))}
+          <div
+            data-testid="supplement-workspace"
+            className="grid gap-6 lg:grid-cols-[1fr_320px]"
+          >
+            <EmptyState message="No supplements yet. Add one when you're ready. Medications live on their own page." />
+            <aside
+              data-testid="supplement-sidebar"
+              className="min-w-0 self-start"
+            >
+              <div
+                data-testid="supplement-sidebar-surface"
+                className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
+              >
+                <section className="p-4">
+                  <h2 className="mb-3 section-label">Insights</h2>
+                  <SupplementInsightBadges
+                    patternCount={adherenceFindings.length}
+                    suggestionCount={suggestions.length}
+                    patterns={
+                      <AdherenceFindings findings={adherenceFindings} />
+                    }
+                    suggestions={suggestionPanel}
+                  />
+                </section>
+                <section className="p-4">
+                  <h2 className="mb-3 section-label">Manage</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <AddSupplementModal
+                      allSupplements={supplements}
+                      stackItems={stackItems}
+                      pgxVariants={pgxVariants}
+                      trainingRestricted={trainingRestricted}
+                    />
+                    <SharedSuppliesLink count={cabinetCount} />
                   </div>
                 </section>
-              );
-            })}
-
-            {heldItems.length > 0 && (
-              <section data-testid="held-section">
-                <p className="section-label">Held ({heldItems.length})</p>
-                <div className="mt-2 space-y-3">
-                  {heldItems.map((it) => (
-                    <div
-                      key={it.dose.id}
-                      data-testid={`held-item-${it.supplement.id}`}
-                    >
-                      <span className="badge mb-1 inline-block bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                        Held — {it.supplement.pause_situation} active
-                      </span>
-                      {renderRow(it, false)}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {notScheduled.length > 0 && (
-              <details>
-                <summary className="cursor-pointer section-label">
-                  Not scheduled today ({notScheduled.length})
-                </summary>
-                <div className="mt-2 space-y-3">
-                  {notScheduled.map((it) => renderRow(it, false))}
-                </div>
-              </details>
-            )}
-
-            {paused.length > 0 && (
-              <details>
-                <summary className="cursor-pointer section-label">
-                  Paused ({paused.length})
-                </summary>
-                <div className="mt-2 space-y-3">
-                  {paused.map((it) => renderRow(it, false))}
-                </div>
-              </details>
-            )}
+              </div>
+            </aside>
+          </div>
+        ) : (
+          <div
+            data-testid="supplement-workspace"
+            className="grid gap-6 lg:grid-cols-[1fr_320px]"
+          >
+            <div className="min-w-0">
+              <SupplementSchedule
+                today={todayStr}
+                days={scheduleDays}
+                secondary={secondarySchedule}
+                context={dayContext}
+                action={
+                  <AddSupplementModal
+                    key="add-supplement"
+                    allSupplements={supplements}
+                    stackItems={stackItems}
+                    pgxVariants={pgxVariants}
+                    trainingRestricted={trainingRestricted}
+                  />
+                }
+              />
+            </div>
+            <aside
+              data-testid="supplement-sidebar"
+              className="min-w-0 self-start"
+            >
+              <div
+                data-testid="supplement-sidebar-surface"
+                className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
+              >
+                <SupplementWeeklyAdherence
+                  days={weeklyAdherenceDays}
+                  labels={weeklyAdherenceLabels}
+                />
+                <section className="p-4">
+                  <h2 className="mb-3 section-label">Insights</h2>
+                  <SupplementInsightBadges
+                    patternCount={adherenceFindings.length}
+                    suggestionCount={suggestions.length}
+                    patterns={
+                      <AdherenceFindings findings={adherenceFindings} />
+                    }
+                    suggestions={suggestionPanel}
+                  />
+                </section>
+                <section className="p-4">
+                  <h2 className="mb-3 section-label">Manage</h2>
+                  <SharedSuppliesLink count={cabinetCount} />
+                </section>
+              </div>
+            </aside>
           </div>
         )}
-
-        {/* AI suggestions */}
-        <details className="card mb-4 mt-6" open={suggestions.length > 0}>
-          <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-            AI suggestions{suggestions.length ? ` (${suggestions.length})` : ""}
-          </summary>
-          <SuggestionsForm />
-          {suggestions.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-              No pending suggestions. Generate some from your recent labs or a
-              note above. Requires AI to be configured (ANTHROPIC_API_KEY or
-              AI_BASE_URL).
-            </p>
-          ) : (
-            <div className="mt-4 space-y-3">
-              {[...suggestions]
-                .sort(
-                  (a, b) =>
-                    PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
-                )
-                .map((sug) => (
-                  <div
-                    key={sug.id}
-                    className="rounded-lg border border-black/10 p-3 dark:border-white/10"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-slate-800 dark:text-slate-100">
-                        {sug.name}
-                      </span>
-                      {sug.dosage && (
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
-                          · {sug.dosage}
-                        </span>
-                      )}
-                      <span className={`badge ${priorityClass(sug.priority)}`}>
-                        {PRIORITY_LABELS[sug.priority]}
-                      </span>
-                      {sug.condition !== "daily" && (
-                        <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
-                          {CONDITION_LABELS[sug.condition]}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                      {sug.rationale}
-                    </p>
-                    {sug.source_detail && (
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        {sug.source_detail}
-                      </p>
-                    )}
-                    <div className="mt-2 flex items-center gap-3 text-xs">
-                      <form
-                        action={async (fd) => {
-                          "use server";
-                          await acceptSuggestion(fd);
-                        }}
-                      >
-                        <input type="hidden" name="id" value={sug.id} />
-                        <SubmitButton
-                          pendingLabel="Adding…"
-                          className="font-medium text-brand-700 hover:underline disabled:opacity-60 dark:text-brand-400"
-                        >
-                          Add to schedule
-                        </SubmitButton>
-                      </form>
-                      <DismissSuggestionButton id={sug.id} name={sug.name} />
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-        </details>
-
-        {/* Add supplement — always expanded, like the other "Add entry" forms
-          (e.g. Body Metrics). Medications are added on the Medications page. */}
-        <div className="card mt-6" data-testid="add-supplement-card">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Add supplement
-          </h2>
-          <SupplementForm
-            action={addSupplement}
-            allSupplements={supplements}
-            stackItems={stackItems}
-            pgxVariants={pgxVariants}
-            trainingRestricted={trainingRestricted}
-          />
-        </div>
 
         {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
           <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />

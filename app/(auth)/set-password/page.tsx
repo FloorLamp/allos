@@ -1,4 +1,5 @@
 import Wordmark from "@/components/Wordmark";
+import { db } from "@/lib/db";
 import { peekAuthToken } from "@/lib/auth-tokens";
 import SetPasswordForm from "./SetPasswordForm";
 
@@ -13,6 +14,17 @@ export default async function SetPasswordPage(props: {
   // spends it. An invalid/expired/consumed token renders the generic dead-link
   // message with no oracle.
   const info = token ? peekAuthToken(token) : null;
+  // The username the token was minted for (issue #1434): the success step hands it
+  // to /login as a prefill, so someone who just proved token possession isn't asked
+  // to recall a name the admin chose. Resolved only for a LIVE token — a dead link
+  // renders the generic message and learns nothing.
+  const username = info
+    ? ((
+        db
+          .prepare("SELECT username FROM logins WHERE id = ?")
+          .get(info.loginId) as { username: string } | undefined
+      )?.username ?? null)
+    : null;
   const isInvite = info?.kind === "invite";
   const heading = isInvite ? "Set your password" : "Reset your password";
   const label = isInvite ? "Set password" : "Reset password";
@@ -35,7 +47,11 @@ export default async function SetPasswordPage(props: {
                   ? " finish setting up your login."
                   : " sign in with from now on."}
               </p>
-              <SetPasswordForm token={token} label={label} />
+              <SetPasswordForm
+                token={token}
+                label={label}
+                username={username}
+              />
             </>
           ) : (
             <>

@@ -34,6 +34,7 @@
 
 import {
   type UpcomingItem,
+  type UpcomingDomain,
   type SignalGroup,
   type UrgencyBand,
   BAND_LABELS,
@@ -41,6 +42,7 @@ import {
   compareWithinBand,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
+import { itemSuppressionPolicy } from "./upcoming-suppress";
 import {
   biomarkerViewHref,
   dataSectionHref,
@@ -53,11 +55,22 @@ import { type Reason, concatReasons, flaggedReason } from "./reasons";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 import type { IntegrationId } from "./types";
 
-// A failing/needs-reauth integration provider, reduced to what the model renders.
+// A broken integration provider, reduced to what the model renders. `kind` distinguishes
+// the two ways a provider can be broken (#1685), because they need different copy and ask
+// the user for different things:
+//   "failing" — a recorded failure / dead grant. The cause is known and the fix is
+//               consent: reconnect.
+//   "stale"   — nothing has failed, and nothing has arrived either. The connection may be
+//               perfectly authorized; all we honestly know is that it stopped, so the
+//               copy states the observation ("no data since <date>") and asks the user to
+//               check rather than claiming a cause.
+// Both carry the SAME item key, so a provider is one row on every surface no matter which
+// signal raised it, and the gather guarantees only one of the two can fire per provider.
 export interface AttentionIntegration {
   id: IntegrationId | null;
   provider: string;
   detail: string | null;
+  kind?: "failing" | "stale";
 }
 
 // A newly-flagged biomarker plus its optional risk-layer reasons (issue #656 item
@@ -126,23 +139,37 @@ export function buildFlaggedItem(
   };
 }
 
-// A failing/needs-reauth integration → a shared attention item. Structural (you
-// reconnect it, you don't snooze it), so it's non-suppressible and files under the
-// "For review" grouping alongside the import-review count.
-function integrationToItem(i: AttentionIntegration): UpcomingItem {
+// A broken integration → a shared attention item. Structural (you reconnect it, you
+// don't snooze it), so it's non-suppressible and files under the "For review" grouping
+// alongside the import-review count.
+//
+// Exported since #1685 so the morning digest can render the SAME item the two web
+// surfaces do rather than re-deriving a second description of a broken sync (#221).
+//
+// The two kinds share the key, the domain, the grouping and the href, and differ only in
+// the words: a stale connection must not be told to "Reconnect", because reconnecting is
+// a guess about a cause we have no evidence for — the honest ask is to check it.
+export function integrationToItem(i: AttentionIntegration): UpcomingItem {
   const reconnectHref = i.id ? integrationDetailHref(i.id) : null;
+  const stale = i.kind === "stale";
   return {
     key: `integration:${i.id ?? i.provider}`,
     domain: "integration",
     signalGroup: "review",
-    title: `${i.provider} sync needs attention`,
-    detail: i.detail ?? "Reconnect to resume syncing.",
+    title: stale
+      ? `${i.provider} sync has stopped`
+      : `${i.provider} sync needs attention`,
+    detail:
+      i.detail ??
+      (stale
+        ? "No recent data from this source."
+        : "Reconnect to resume syncing."),
     // Match the CTA's promise: known, connectable providers go straight to their
     // setup page. Unknown/planned providers safely fall back to Review.
     href: reconnectHref ?? dataSectionHref("review"),
     dueDate: null,
-    dueText: "Reconnect",
-    actionLabel: "Reconnect",
+    dueText: stale ? "No recent data" : "Reconnect",
+    actionLabel: stale ? "Check connection" : "Reconnect",
     suppressible: false,
   };
 }
@@ -374,6 +401,21 @@ const CARD_BAND_RANK: Record<CardBand, number> = {
   review: 2,
 };
 
+// Domains the dashboard hero deliberately never carries, whatever their date says.
+//
+// The "Needs attention" hero is care-tier: pinned, and the one surface a user cannot
+// choose not to look at. `portal-sync` (#1757) is COACHING tier by hard product contract
+// — portal hygiene is never a safety signal — so it lives on the Upcoming page and in
+// the morning digest line that page's grouping produces, and nowhere else. Without this
+// it would drift onto the hero on the single day its expiry lands on "today", which is
+// exactly the un-ignorable treatment a calm ask must never get.
+//
+// A SET, not a special case: the next calm domain that must stay off the hero adds a
+// name here rather than another branch.
+const CARD_EXCLUDED_DOMAINS: ReadonlySet<UpcomingDomain> = new Set([
+  "portal-sync",
+]);
+
 // Which card band an item belongs to, or null if the card EXCLUDES it. Signals →
 // "Needs review". A date-scheduled item is act-now only when it's overdue (→ Urgent)
 // or due today (→ Today); a this-week / later scheduled item is planning-view-only
@@ -383,6 +425,7 @@ export function cardBandForItem(
   item: UpcomingItem,
   today: string
 ): CardBand | null {
+  if (CARD_EXCLUDED_DOMAINS.has(item.domain)) return null;
   if (item.signalGroup) return "review";
   const band = bandForItem(item, today);
   if (band === "overdue") return "urgent";
@@ -589,4 +632,98 @@ export function planAttentionMoreLinks(
   }
 
   return { perBand, trailing };
+}
+
+// ---------------------------------------------------------------------------
+// Hero collapse (issue #1413, section B) — the owner-confirmed refinement of the
+// #449 care tier from ALWAYS-FULL to ALWAYS-PRESENT.
+// ---------------------------------------------------------------------------
+//
+// The "Needs attention" hero is care-tier PUSH: pinned, non-hideable, no dismiss
+// control. On a phone the full card also costs the better part of a screen, even
+// on a day whose items you have already read — which is a real cost, but NOT a
+// reason to weaken the tier. So the contract changes on exactly one axis: the
+// VERTICAL COST becomes opt-in, while presence and the COUNT never do.
+//
+// What that buys, precisely:
+//   - Collapsed still renders the count and the highest-severity band, so
+//     "3 need attention, one of them past due" survives the compaction. A
+//     collapsed hero is a smaller signal, never an absent one.
+//   - There is still no dismiss. Collapse is a two-way toggle the user can
+//     always reverse from the same control; nothing here can reach a state with
+//     no attention affordance on the page.
+//   - The SAFETY CARVE-OUT below outranks the preference entirely.
+//
+// These are pure decisions so the #449 contract is pinned by unit tests rather
+// than by reviewer memory of what the component happens to render.
+
+// The bands a collapsed hero can advertise, most severe first — the same
+// vocabulary and order as the expanded card's sections, so the compact line can
+// never describe the card differently from the card.
+export function attentionTopBand(
+  items: UpcomingItem[],
+  today: string
+): CardBand | null {
+  const subset = attentionCardItems(items, today);
+  for (const band of CARD_BAND_ORDER) {
+    if (subset.some((i) => cardBandForItem(i, today) === band)) return band;
+  }
+  return null;
+}
+
+// Whether the hero carries a SAFETY-tier item and must therefore render expanded
+// no matter what the viewer's collapse preference says (#942's `isHiddenUnderPolicy`
+// posture applied to compaction rather than suppression).
+//
+// The tier is read from the item's OWN declared lifecycle policy via the shared
+// `itemSuppressionPolicy` dispatcher — NOT from a second list of "serious-looking"
+// domains maintained here. That matters: "safety-ungated" is already the property
+// that means "the dismissal bus may never hide this" (dose reminders, missed-dose
+// escalation, the #716 crisis finding), so a signal that opts into it inherits the
+// no-compaction guarantee automatically, and a future safety signal cannot be
+// added without also getting this behavior. A domain allowlist here would have to
+// be remembered and updated separately, which is precisely how a safety carve-out
+// silently stops covering something.
+export function attentionSafetyLocked(
+  items: UpcomingItem[],
+  today: string
+): boolean {
+  return attentionCardItems(items, today).some(
+    (i) => itemSuppressionPolicy(i) === "safety-ungated"
+  );
+}
+
+// The hero's resolved display state. `collapsed` is what the surface renders;
+// `locked` tells it to suppress the collapse CONTROL as well, so a safety-locked
+// hero offers no toggle that would do nothing (a dead control reads as a bug and
+// invites the user to keep pressing it).
+export interface AttentionHeroState {
+  collapsed: boolean;
+  locked: boolean;
+  count: number;
+  topBand: CardBand | null;
+}
+
+// Resolve the hero's state from the viewer's stored preference and the items.
+// The safety carve-out is checked FIRST and unconditionally — the preference is
+// not consulted for a safety-locked hero — mirroring how `isHiddenUnderPolicy`
+// puts its "safety-ungated" branch ahead of any stored record, so neither can be
+// weakened by editing what is stored.
+//
+// An EMPTY hero (the quiet "all clear") is also never collapsed: there is nothing
+// to compact, and a collapsed all-clear line would be a strictly worse rendering
+// of the same zero.
+export function attentionHeroState(
+  items: UpcomingItem[],
+  today: string,
+  preferCollapsed: boolean
+): AttentionHeroState {
+  const count = attentionCardItems(items, today).length;
+  const locked = attentionSafetyLocked(items, today);
+  return {
+    collapsed: !locked && count > 0 && preferCollapsed,
+    locked,
+    count,
+    topBand: attentionTopBand(items, today),
+  };
 }

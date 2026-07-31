@@ -34,7 +34,10 @@ const log = createLogger("health-connect-ingest");
 //     committed — the next push of the rolling window re-covers the remainder;
 //   - the whole push still folds into ONE recordSyncEvent (the #14 split) because the
 //     per-chunk UpsertCounts are folded here into one per-type total, NOT recorded
-//     per chunk.
+//     per chunk;
+//   - a mid-batch failure throws HealthConnectWriteError carrying the split and the
+//     provenance of the chunks that COMMITTED (#1614), so the route's single ok:false
+//     event can say what landed instead of reporting null counts over durable rows.
 // The per-type collapse the upserts do internally (body_metrics same-date merge) stays
 // correct: the Health Connect parser emits at most one body-metrics row per date, so a
 // date never straddles two chunks.
@@ -48,6 +51,23 @@ export interface ChunkedIngestResult {
   // Per-row provenance (#1333) accumulated across every chunk — the caller links it
   // to the sync event id after recordSyncEvent (which needs the whole push's split).
   provenance: ProvenanceEntry[];
+}
+
+// A mid-batch write failure that carries the accounting for the chunks that ACTUALLY
+// COMMITTED (issue #1614). Earlier chunk transactions are durable by design, so a
+// failure event recording null counts and no provenance let rows land while the event
+// could not say what landed. This mirrors FitbitTakeoutWriteError: the partial split
+// and the committed rows' provenance travel with the error, and the route records ONE
+// honest ok:false event from them (the route owns the window / raw payload ref, so it
+// stays the event writer).
+export class HealthConnectWriteError extends Error {
+  readonly committed: ChunkedIngestResult;
+
+  constructor(cause: unknown, committed: ChunkedIngestResult) {
+    super("Health Connect ingest failed while writing records", { cause });
+    this.name = "HealthConnectWriteError";
+    this.committed = committed;
+  }
 }
 
 const total = (c: UpsertCounts): number => c.inserted + c.updated + c.unchanged;
@@ -69,27 +89,69 @@ export function ingestHealthConnectPayload(
   // writeTx, so it's a stable target for the drill-in links.
   const provenance: ProvenanceEntry[] = [];
 
-  for (const slice of chunk(parsed.bodyMetrics, chunkSize)) {
-    const c = writeTx(() =>
-      upsertBodyMetrics(profileId, slice, source, provenance)
+  // The result as it stands RIGHT NOW — only committed chunks are folded in, so this
+  // is exactly what a partial-failure event may claim.
+  const snapshot = (): ChunkedIngestResult => ({
+    counts: {
+      bodyMetrics: total(bodyMetrics),
+      samples: total(samples),
+      hrMinutes: total(hrMinutes),
+      activities: total(activities),
+      vitals: total(vitals),
+    },
+    split: foldCounts([bodyMetrics, samples, hrMinutes, activities, vitals]),
+    vitalIds,
+    provenance,
+  });
+
+  // Keep provenance TRANSACTIONAL with its chunk (#1614, the #1617 pattern): the
+  // upserts append to a chunk-local sink while the transaction is open, and only a
+  // committed chunk's entries are promoted into the run's array. A rolled-back chunk
+  // discards its sink instead of leaking nonexistent row ids into the failure event.
+  const commitChunks = <T>(
+    rows: readonly T[],
+    upsert: (slice: T[], sink: ProvenanceEntry[]) => UpsertCounts,
+    fold: (part: UpsertCounts) => void
+  ) => {
+    for (const slice of chunk(rows, chunkSize)) {
+      const sink: ProvenanceEntry[] = [];
+      const part = writeTx(() => upsert(slice, sink));
+      fold(part);
+      provenance.push(...sink);
+    }
+  };
+
+  try {
+    commitChunks(
+      parsed.bodyMetrics,
+      (slice, sink) => upsertBodyMetrics(profileId, slice, source, sink),
+      (c) => {
+        bodyMetrics = foldCounts([bodyMetrics, c]);
+      }
     );
-    bodyMetrics = foldCounts([bodyMetrics, c]);
-  }
-  for (const slice of chunk(parsed.samples, chunkSize)) {
-    const c = writeTx(() =>
-      upsertMetricSamples(profileId, slice, source, provenance)
+    commitChunks(
+      parsed.samples,
+      (slice, sink) => upsertMetricSamples(profileId, slice, source, sink),
+      (c) => {
+        samples = foldCounts([samples, c]);
+      }
     );
-    samples = foldCounts([samples, c]);
-  }
-  for (const slice of chunk(parsed.hrMinutes, chunkSize)) {
-    const c = writeTx(() => upsertHrMinutes(profileId, slice, source));
-    hrMinutes = foldCounts([hrMinutes, c]);
-  }
-  for (const slice of chunk(parsed.activities, chunkSize)) {
-    const c = writeTx(() =>
-      upsertActivities(profileId, slice, source, provenance)
+    commitChunks(
+      parsed.hrMinutes,
+      (slice) => upsertHrMinutes(profileId, slice, source),
+      (c) => {
+        hrMinutes = foldCounts([hrMinutes, c]);
+      }
     );
-    activities = foldCounts([activities, c]);
+    commitChunks(
+      parsed.activities,
+      (slice, sink) => upsertActivities(profileId, slice, source, sink),
+      (c) => {
+        activities = foldCounts([activities, c]);
+      }
+    );
+  } catch (err) {
+    throw new HealthConnectWriteError(err, snapshot());
   }
   // The no-finish fallback for imports (#1154 §B2): a just-ingested session dated
   // today gets the delayed post-workout dose dispatch armed, so its doses aren't
@@ -122,10 +184,16 @@ export function ingestHealthConnectPayload(
       });
     }
   }
-  for (const slice of chunk(parsed.vitals, chunkSize)) {
-    const r = writeTx(() => upsertVitals(profileId, slice, source, provenance));
-    vitals = foldCounts([vitals, r.counts]);
-    vitalIds.push(...r.ids);
+  try {
+    for (const slice of chunk(parsed.vitals, chunkSize)) {
+      const sink: ProvenanceEntry[] = [];
+      const r = writeTx(() => upsertVitals(profileId, slice, source, sink));
+      vitals = foldCounts([vitals, r.counts]);
+      vitalIds.push(...r.ids);
+      provenance.push(...sink);
+    }
+  } catch (err) {
+    throw new HealthConnectWriteError(err, snapshot());
   }
 
   return {

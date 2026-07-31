@@ -14,6 +14,8 @@ import {
   getSupplementLogsInRange,
   getSupplementPairs,
   getRefillRates,
+  getPoolChips,
+  type PoolChipData,
   getActivitiesByDate,
   getActivityDates,
   isPredictedWorkoutDay,
@@ -32,9 +34,10 @@ import {
   getMedicationFamilyStates,
   getEffectiveActiveSituations,
 } from "@/lib/queries";
-import { redoseWindowStatus } from "@/lib/prn-redose";
+import { effectiveMaxDailyCount, redoseWindowStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
+import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
 import {
   administrationDayLabel,
   administrationLastDoseLabel,
@@ -99,6 +102,7 @@ import {
   type DormantPrnInput,
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
+import { isPrn } from "@/lib/supplement-schedule";
 
 // The per-med derived context every card/row formats over. `prnRedoseLine` is the
 // marker-agnostic next-window chip; `prnDayLabel`/`prnTimes` are the administration
@@ -110,6 +114,9 @@ export interface MedCardData {
   sideEffects: MedicationSideEffect[];
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
+  // The shared supply pool this med draws from, if any (#1374) — the chip that
+  // REPLACES the per-item refill badge, carrying the POOLED days-left.
+  poolChip: PoolChipData | null;
   due: boolean;
   pairs: SupplementPair[];
   prnDayLabel: string | null;
@@ -230,6 +237,7 @@ export function loadMedicationsData(
     nowMinutes
   );
   const ctx = {
+    date: todayStr,
     isWorkoutDay,
     activeSituations: effectiveSituations,
     predictedWorkoutDay,
@@ -261,6 +269,7 @@ export function loadMedicationsData(
   }
 
   const refillRates = getRefillRates(profileId);
+  const poolChips = getPoolChips(profileId);
   const pairs = getSupplementPairs(profileId);
   const pairsFor = (suppId: number) =>
     pairs.filter((p) => p.a_id === suppId || p.b_id === suppId);
@@ -271,7 +280,7 @@ export function loadMedicationsData(
   // one query per PRN item inside the card-builder loop — an N+1 over the un-purged
   // intake_item_logs ledger. Per-item derivation stays in JS below.
   const prnMedIds = supplements
-    .filter((s) => s.kind === "medication" && s.as_needed === 1)
+    .filter((s) => s.kind === "medication" && isPrn(s))
     .map((s) => s.id);
   const adminsByItem = getAdministrationsForItemsOnDate(
     profileId,
@@ -296,7 +305,7 @@ export function loadMedicationsData(
     redoseLine: string | null;
     redosePrimary: boolean;
   } => {
-    if (s.as_needed !== 1)
+    if (!isPrn(s))
       return {
         label: null,
         administrations: [],
@@ -321,14 +330,15 @@ export function loadMedicationsData(
     const famCount = fam?.countToday ?? admins.length;
     let redoseLine: string | null = null;
     let redosePrimary = true;
-    if (s.min_interval_hours != null && s.max_daily_count != null && famLast) {
-      const effectiveMax =
-        fam?.minConfirmedMax != null
-          ? Math.min(s.max_daily_count, fam.minConfirmedMax)
-          : s.max_daily_count;
+    // The daily max is optional (#1458): the interval + an administration are all
+    // the "next dose in ~Nh" half needs, so the gate asks only for those.
+    if (s.min_interval_hours != null && famLast) {
       const redoseStatus = redoseWindowStatus({
         minIntervalHours: s.min_interval_hours,
-        maxDailyCount: effectiveMax,
+        maxDailyCount: effectiveMaxDailyCount(
+          s.max_daily_count,
+          fam?.minConfirmedMax
+        ),
         latestGivenAt: parseUtcSql(famLast),
         countToday: famCount,
         now: nowInstant,
@@ -354,11 +364,11 @@ export function loadMedicationsData(
 
   // A med is "loggable today" (dose check-offs shown) when it's active and either
   // PRN or due under today's context.
-  const medDue = (s: Supplement) =>
-    !!s.active && (s.as_needed === 1 || isDueOn(s, ctx));
+  const medDue = (s: Supplement) => !!s.active && (isPrn(s) || isDueOn(s, ctx));
 
   const buildCardData = (med: Supplement): MedCardData => {
-    const doseIds = (dosesBySupp.get(med.id) ?? []).map((d) => d.id);
+    const medDoses = dosesBySupp.get(med.id) ?? [];
+    const doseIds = medDoses.map((d) => d.id);
     const prn = prnInfoFor(med);
     const monitoring = med.active
       ? monitoringSummaryForMed({
@@ -374,13 +384,15 @@ export function loadMedicationsData(
       sideEffects: sideEffectsByItem.get(med.id) ?? [],
       strip: supplementAdherenceStrip(
         med,
-        doseIds,
+        medDoses,
         dates,
         workoutDays,
         situationsOn,
-        takenByDose
+        takenByDose,
+        tz
       ),
       refillRate: refillRates.get(med.id) ?? null,
+      poolChip: poolChips.get(med.id) ?? null,
       due: medDue(med),
       pairs: pairsFor(med.id),
       prnDayLabel: prn.label,
@@ -490,22 +502,10 @@ export function loadMedicationsData(
       nowInstant
     );
     // Family-widened window math (#1027): the clock/count/max span the ingredient
-    // family, so an OTC sibling's dose holds this row's "Redose OK" too.
-    const redoseStatus =
-      m.minIntervalHours != null &&
-      m.maxDailyCount != null &&
-      m.familyLastGivenAt
-        ? redoseWindowStatus({
-            minIntervalHours: m.minIntervalHours,
-            maxDailyCount: Math.min(
-              m.maxDailyCount,
-              m.familyMaxDailyCount ?? m.maxDailyCount
-            ),
-            latestGivenAt: parseUtcSql(m.familyLastGivenAt),
-            countToday: m.familyCount,
-            now: nowInstant,
-          })
-        : null;
+    // family, so an OTC sibling's dose holds this row's "Redose OK" too. The gate is
+    // the shared prnQuickLogRedoseStatus (#221) — one computation across this list,
+    // the dashboard widget and the Telegram `/dose` list.
+    const redoseStatus = prnQuickLogRedoseStatus(m, nowInstant);
     const redoseLine = redoseCardLabel(redoseStatus, m.familyMemberCount);
     return {
       id: m.id,
@@ -529,7 +529,7 @@ export function loadMedicationsData(
     .map((s) => ({
       itemId: s.id,
       name: s.name,
-      asNeeded: s.as_needed === 1,
+      asNeeded: isPrn(s),
       active: !!s.active,
       lastAdministration: lastAdminByItem.get(s.id) ?? null,
       createdOn: s.created_at.slice(0, 10),
@@ -584,7 +584,7 @@ export function medicationListFromCards(
       name: c.med.name,
       brand: c.med.brand,
       product: c.med.product,
-      asNeeded: c.med.as_needed === 1,
+      asNeeded: isPrn(c.med),
       rx: c.med.rx === 1,
       prescriber: c.med.prescriber,
       doseAmounts: c.doses.map((d) => d.amount).filter((a): a is string => !!a),
@@ -619,9 +619,9 @@ export function getMedicationAdherenceCalendar(
     (s) => s.id === itemId && s.kind === "medication"
   );
   if (!med) return buildAdherenceCalendar([]);
-  const doseIds = getSupplementDoses(profileId)
-    .filter((d) => d.item_id === itemId)
-    .map((d) => d.id);
+  const medDoses = getSupplementDoses(profileId).filter(
+    (d) => d.item_id === itemId
+  );
   const todayStr = today(profileId);
   const dates = lastNDates(todayStr, days);
   const workoutDays = new Set(getActivityDates(profileId));
@@ -634,11 +634,12 @@ export function getMedicationAdherenceCalendar(
   );
   const strip = supplementAdherenceStrip(
     med,
-    doseIds,
+    medDoses,
     dates,
     workoutDays,
     situationsOn,
-    takenByDose
+    takenByDose,
+    getTimezone(profileId)
   );
   const courses = getMedicationCourses(profileId).filter(
     (course) => course.item_id === itemId

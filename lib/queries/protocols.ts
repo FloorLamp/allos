@@ -7,13 +7,17 @@
 // login's display unit HERE (the units boundary), keeping the engine unit-agnostic.
 
 import { db } from "../db";
-import { getBiomarkerSeries, getCanonicalBiomarker } from "./medical";
-import { getBodyMetrics } from "./metrics";
+import { getAllBiomarkerSeries, getCanonicalBiomarker } from "./medical";
+import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
 import {
   getFrequencyTargetProgress,
   type FrequencyTargetProgress,
-} from "./training";
-import { getBioAgeReadings } from "./derived";
+} from "./frequency-targets";
+import {
+  getBiomarkerSeriesWithDerived,
+  getDerivedBiomarkerReadings,
+  getUsedCanonicalNamesWithDerived,
+} from "./derived";
 import { getSleepRegularityTrend } from "./sleep";
 import { kgTo } from "../units";
 import type { WeightUnit } from "../settings";
@@ -21,8 +25,10 @@ import type { Protocol } from "../types";
 import {
   FIXED_OUTCOME_METRICS,
   fixedMetricDef,
+  normalizeOutcomeKeys,
   outcomeMetricLabel,
   parseOutcomeKey,
+  preferredOutcomeKey,
   type OutcomeDirection,
 } from "../protocol-metrics";
 import {
@@ -36,7 +42,25 @@ import type { Betterness } from "../protocol-compare";
 import { daysBetweenDateStr } from "../date";
 import { protocolPracticeLabel } from "../protocol-practice";
 import { protocolHref, type AppRoute } from "../hrefs";
-import { getUsedCanonicalNames } from "./medical";
+import {
+  getPracticeDayCount,
+  getPracticeSpellingsMap,
+  practiceSpellingsFor,
+} from "./wellness";
+import {
+  biomarkerOutcomeOption,
+  type OutcomeOption,
+} from "../protocol-outcome-picker";
+import { canonicalGroupKey, groupByCanonicalName } from "../biomarker-group";
+import { preferredOutcomeKeyForBiomarker } from "../outcome-identity";
+import { getRankedBiomarkerOptions } from "./biomarker-options";
+import {
+  buildProtocolHeatmap,
+  type ProtocolDayUsage,
+  type ProtocolHeatmap,
+} from "../protocol-heatmap";
+
+export type { OutcomeOption } from "../protocol-outcome-picker";
 
 interface ProtocolRow {
   id: number;
@@ -60,7 +84,9 @@ function parseOutcomeKeys(v: string | null): string[] {
   try {
     const arr = JSON.parse(v);
     return Array.isArray(arr)
-      ? arr.filter((x): x is string => typeof x === "string")
+      ? normalizeOutcomeKeys(
+          arr.filter((x): x is string => typeof x === "string")
+        )
       : [];
   } catch {
     return [];
@@ -173,8 +199,10 @@ export function getProtocolWindowsForOutcome(
   profileId: number,
   outcomeKey: string
 ): ProtocolWindowInput[] {
+  const preferred = preferredOutcomeKey(outcomeKey);
+  if (!preferred) return [];
   return getProtocols(profileId)
-    .filter((p) => p.outcomeKeys.includes(outcomeKey))
+    .filter((p) => p.outcomeKeys.includes(preferred))
     .map((p) => ({
       name: p.name,
       startDate: p.start_date,
@@ -210,85 +238,366 @@ export function situationUsedByOtherProtocol(
   return !!row;
 }
 
-// Usage-during-window for a protocol (issue #344): a pure join over `activities`
-// within [start_date, end_date ?? today] that used the protocol's linked gear
-// (activities.equipment_id) and/or logged the protocol's practice type. Counted as
-// distinct training days, plus the last such date, for the "23 sessions · last 3
-// days ago" line. No new table. Profile-scoped.
+// Usage-during-window for a protocol (issues #344/#1583): event-row counts within
+// [start_date, end_date ?? today]. Each scope reads its own ledger: activities,
+// food_log, or practice_logs. Multi-session days remain multiple sessions.
 export interface ProtocolUsage {
   sessions: number;
   lastUsed: string | null;
 }
 
+type ProtocolUsageScope =
+  | { kind: "practice"; value: string }
+  | { kind: "food_group"; value: string }
+  | {
+      kind: "activity";
+      equipmentId: number | null;
+      activityType: string | null;
+    }
+  | { kind: "none" };
+
+// Resolve the protocol intervention once, from its ALREADY-LOADED frequency target
+// (null when it links none, or the link dangles). Pure, so the one-protocol and the
+// batched gather below cannot disagree about what a protocol measures.
+function usageScopeFor(
+  protocol: Protocol,
+  target: { scope_kind: string; scope_value: string } | null
+): ProtocolUsageScope {
+  let activityType: string | null = null;
+  if (target) {
+    if (target.scope_kind === "practice") {
+      return { kind: "practice", value: target.scope_value };
+    }
+    if (target.scope_kind === "food_group") {
+      return { kind: "food_group", value: target.scope_value };
+    }
+    if (target.scope_kind === "type") activityType = target.scope_value;
+  }
+
+  if (protocol.equipment_id != null || activityType != null) {
+    return {
+      kind: "activity",
+      equipmentId: protocol.equipment_id,
+      activityType,
+    };
+  }
+  return { kind: "none" };
+}
+
+// The frequency targets a set of protocols link, in ONE profile-scoped read.
+function protocolTargetsById(
+  profileId: number,
+  protocols: readonly Protocol[]
+): Map<number, { scope_kind: string; scope_value: string }> {
+  const ids = [
+    ...new Set(
+      protocols
+        .map((p) => p.frequency_target_id)
+        .filter((id): id is number => id != null)
+    ),
+  ];
+  const out = new Map<number, { scope_kind: string; scope_value: string }>();
+  if (ids.length === 0) return out;
+  const rows = db
+    .prepare(
+      `SELECT id, scope_kind, scope_value FROM frequency_targets
+        WHERE profile_id = ? AND id IN (${ids.map(() => "?").join(",")})`
+    )
+    .all(profileId, ...ids) as {
+    id: number;
+    scope_kind: string;
+    scope_value: string;
+  }[];
+  for (const row of rows) {
+    out.set(row.id, {
+      scope_kind: row.scope_kind,
+      scope_value: row.scope_value,
+    });
+  }
+  return out;
+}
+
+function tallyByDate(
+  into: Map<number, Map<string, number>>,
+  protocolId: number,
+  date: string,
+  count: number
+): void {
+  let days = into.get(protocolId);
+  if (!days) {
+    days = new Map<string, number>();
+    into.set(protocolId, days);
+  }
+  days.set(date, (days.get(date) ?? 0) + count);
+}
+
+// Usage-during-window for MANY protocols, in a bounded number of queries (#1655).
+//
+// The per-protocol shape issued its own scope lookup plus its own grouped ledger
+// query, so /longevity's protocol list cost two queries per protocol the profile had
+// EVER created — a page that gets slower purely as a function of how long someone has
+// used the feature, recomputing windows that closed years ago. This reads each ledger
+// ONCE over the union of the windows and slices per protocol in JS, the same shape
+// getWellnessPractices already uses for its per-practice heatmaps.
+//
+// The single-protocol reader below delegates here, so there is exactly one definition
+// of what a protocol's daily usage is.
+export function getProtocolUsageByDayMap(
+  profileId: number,
+  protocols: readonly Protocol[],
+  today: string,
+  practiceSpellingsByProtocol?: ReadonlyMap<number, readonly string[]>
+): Map<number, ProtocolDayUsage[]> {
+  const out = new Map<number, ProtocolDayUsage[]>();
+  if (protocols.length === 0) return out;
+
+  const targets = protocolTargetsById(profileId, protocols);
+  const scoped = protocols.map((protocol) => ({
+    protocol,
+    start: protocol.start_date,
+    end: protocol.end_date ?? today,
+    scope: usageScopeFor(
+      protocol,
+      protocol.frequency_target_id != null
+        ? (targets.get(protocol.frequency_target_id) ?? null)
+        : null
+    ),
+  }));
+
+  // date → count, per protocol; emitted sorted at the end.
+  const tallies = new Map<number, Map<string, number>>();
+  const spanOf = (rows: typeof scoped) => ({
+    start: rows.reduce(
+      (min, r) => (r.start < min ? r.start : min),
+      rows[0].start
+    ),
+    end: rows.reduce((max, r) => (r.end > max ? r.end : max), rows[0].end),
+  });
+
+  // ---- practice_logs -------------------------------------------------------------
+  const practices = scoped.filter((r) => r.scope.kind === "practice");
+  if (practices.length > 0) {
+    const spellingsMap = getPracticeSpellingsMap(profileId);
+    const perProtocol = new Map<number, Set<string>>();
+    const all = new Set<string>();
+    for (const row of practices) {
+      const value = (row.scope as { kind: "practice"; value: string }).value;
+      const spellings =
+        practiceSpellingsByProtocol?.get(row.protocol.id) ??
+        practiceSpellingsFor(spellingsMap, value);
+      perProtocol.set(row.protocol.id, new Set(spellings));
+      for (const s of spellings) all.add(s);
+    }
+    if (all.size > 0) {
+      const values = [...all];
+      const span = spanOf(practices);
+      const rows = db
+        .prepare(
+          `SELECT date, practice, COUNT(*) AS count
+             FROM practice_logs
+            WHERE profile_id = ? AND practice IN (${values
+              .map(() => "?")
+              .join(",")})
+              AND date >= ? AND date <= ?
+            GROUP BY date, practice`
+        )
+        .all(profileId, ...values, span.start, span.end) as {
+        date: string;
+        practice: string;
+        count: number;
+      }[];
+      for (const row of practices) {
+        const mine = perProtocol.get(row.protocol.id)!;
+        for (const r of rows) {
+          if (r.date < row.start || r.date > row.end) continue;
+          if (!mine.has(r.practice)) continue;
+          tallyByDate(tallies, row.protocol.id, r.date, r.count);
+        }
+      }
+    }
+  }
+
+  // ---- food_log ------------------------------------------------------------------
+  const foods = scoped.filter((r) => r.scope.kind === "food_group");
+  if (foods.length > 0) {
+    const keys = [
+      ...new Set(
+        foods.map(
+          (r) => (r.scope as { kind: "food_group"; value: string }).value
+        )
+      ),
+    ];
+    const span = spanOf(foods);
+    const rows = db
+      .prepare(
+        `SELECT date, group_key, CAST(SUM(servings) AS INTEGER) AS count
+           FROM food_log
+          WHERE profile_id = ? AND date >= ? AND date <= ?
+            AND group_key IN (${keys.map(() => "?").join(",")}) AND servings > 0
+          GROUP BY date, group_key`
+      )
+      .all(profileId, span.start, span.end, ...keys) as {
+      date: string;
+      group_key: string;
+      count: number;
+    }[];
+    for (const row of foods) {
+      const key = (row.scope as { kind: "food_group"; value: string }).value;
+      for (const r of rows) {
+        if (r.group_key !== key) continue;
+        if (r.date < row.start || r.date > row.end) continue;
+        tallyByDate(tallies, row.protocol.id, r.date, r.count);
+      }
+    }
+  }
+
+  // ---- activities ----------------------------------------------------------------
+  const acts = scoped.filter((r) => r.scope.kind === "activity");
+  if (acts.length > 0) {
+    const span = spanOf(acts);
+    const scopes = acts.map(
+      (r) =>
+        r.scope as {
+          kind: "activity";
+          equipmentId: number | null;
+          activityType: string | null;
+        }
+    );
+    // The union of the lanes any of these protocols measures, so the one grouped read
+    // still narrows to the rows a protocol could match rather than the whole ledger.
+    const equipIds = [
+      ...new Set(
+        scopes
+          .map((s) => s.equipmentId)
+          .filter((id): id is number => id != null)
+      ),
+    ];
+    const types = [
+      ...new Set(
+        scopes.map((s) => s.activityType).filter((t): t is string => t != null)
+      ),
+    ];
+    const lanes = [
+      ...(equipIds.length > 0
+        ? [`equipment_id IN (${equipIds.map(() => "?").join(",")})`]
+        : []),
+      ...(types.length > 0
+        ? [`type IN (${types.map(() => "?").join(",")})`]
+        : []),
+    ].join(" OR ");
+    const rows = db
+      .prepare(
+        `SELECT date, equipment_id, type, COUNT(*) AS count FROM activities
+          WHERE profile_id = ? AND date >= ? AND date <= ? AND (${lanes})
+          GROUP BY date, equipment_id, type`
+      )
+      .all(profileId, span.start, span.end, ...equipIds, ...types) as {
+      date: string;
+      equipment_id: number | null;
+      type: string;
+      count: number;
+    }[];
+    for (const row of acts) {
+      const scope = row.scope as {
+        kind: "activity";
+        equipmentId: number | null;
+        activityType: string | null;
+      };
+      for (const r of rows) {
+        if (r.date < row.start || r.date > row.end) continue;
+        const matches =
+          (scope.equipmentId != null && r.equipment_id === scope.equipmentId) ||
+          (scope.activityType != null && r.type === scope.activityType);
+        if (!matches) continue;
+        tallyByDate(tallies, row.protocol.id, r.date, r.count);
+      }
+    }
+  }
+
+  for (const row of scoped) {
+    const days = tallies.get(row.protocol.id);
+    out.set(
+      row.protocol.id,
+      days
+        ? [...days]
+            .map(([date, count]) => ({ date, count }))
+            .sort((a, b) => (a.date < b.date ? -1 : 1))
+        : []
+    );
+  }
+  return out;
+}
+
+export function getProtocolUsageByDay(
+  profileId: number,
+  protocol: Protocol,
+  today: string,
+  practiceSpellings?: readonly string[]
+): ProtocolDayUsage[] {
+  return (
+    getProtocolUsageByDayMap(
+      profileId,
+      [protocol],
+      today,
+      practiceSpellings
+        ? new Map([[protocol.id, practiceSpellings]])
+        : undefined
+    ).get(protocol.id) ?? []
+  );
+}
+
 export function getProtocolUsage(
   profileId: number,
   protocol: Protocol,
-  today: string
+  today: string,
+  practiceSpellings?: readonly string[]
 ): ProtocolUsage {
-  const end = protocol.end_date ?? today;
-  // The practice from the linked frequency target: an activity type (counted over
-  // activities) or a food group (#580 — counted over food_log).
-  let practiceType: string | null = null;
-  let practiceFoodGroup: string | null = null;
-  if (protocol.frequency_target_id != null) {
-    const t = db
-      .prepare(
-        `SELECT scope_kind, scope_value FROM frequency_targets
-          WHERE id = ? AND profile_id = ?`
-      )
-      .get(protocol.frequency_target_id, profileId) as
-      { scope_kind: string; scope_value: string } | undefined;
-    if (t && t.scope_kind === "type") practiceType = t.scope_value;
-    else if (t && t.scope_kind === "food_group")
-      practiceFoodGroup = t.scope_value;
-  }
-
-  // Food-group practice: distinct days the group was logged in the protocol window —
-  // the "during this protocol" tally for a diet intervention (fatty fish for omega-3).
-  if (practiceFoodGroup != null) {
-    const rows = db
-      .prepare(
-        `SELECT DISTINCT date FROM food_log
-          WHERE profile_id = ? AND date >= ? AND date <= ?
-            AND group_key = ? AND servings > 0
-          ORDER BY date`
-      )
-      .all(profileId, protocol.start_date, end, practiceFoodGroup) as {
-      date: string;
-    }[];
-    return {
-      sessions: rows.length,
-      lastUsed: rows.length ? rows[rows.length - 1].date : null,
-    };
-  }
-
-  if (protocol.equipment_id == null && practiceType == null)
-    return { sessions: 0, lastUsed: null };
-
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT date FROM activities
-        WHERE profile_id = ? AND date >= ? AND date <= ?
-          AND (
-            (? IS NOT NULL AND equipment_id = ?)
-            OR (? IS NOT NULL AND type = ?)
-          )
-        ORDER BY date`
-    )
-    .all(
-      profileId,
-      protocol.start_date,
-      end,
-      protocol.equipment_id,
-      protocol.equipment_id,
-      practiceType,
-      practiceType
-    ) as { date: string }[];
-
+  const days = getProtocolUsageByDay(
+    profileId,
+    protocol,
+    today,
+    practiceSpellings
+  );
   return {
-    sessions: rows.length,
-    lastUsed: rows.length ? rows[rows.length - 1].date : null,
+    sessions: days.reduce((sum, day) => sum + day.count, 0),
+    lastUsed: days.at(-1)?.date ?? null,
   };
+}
+
+export function getProtocolHeatmap(
+  profileId: number,
+  protocol: Protocol,
+  today: string,
+  weekStart = 0
+): ProtocolHeatmap {
+  return getProtocolHeatmaps(profileId, [protocol], today, weekStart)[
+    protocol.id
+  ];
+}
+
+// Every listed protocol's heatmap, keyed by protocol id (#1655). The protocol list
+// renders a heatmap per row — including for long-ended experiments, whose window is
+// exactly what makes them worth looking at — so the list gathers here rather than
+// asking per row: one bounded gather over the ledgers, not two queries per protocol
+// the profile has ever created.
+export function getProtocolHeatmaps(
+  profileId: number,
+  protocols: readonly Protocol[],
+  today: string,
+  weekStart = 0
+): Record<number, ProtocolHeatmap> {
+  const usage = getProtocolUsageByDayMap(profileId, protocols, today);
+  return Object.fromEntries(
+    protocols.map((protocol) => [
+      protocol.id,
+      buildProtocolHeatmap(
+        usage.get(protocol.id) ?? [],
+        protocol.start_date,
+        protocol.end_date ?? today,
+        weekStart
+      ),
+    ])
+  );
 }
 
 // The protocol's CONFIGURED practice (issue #344, generalized in #580): the linked
@@ -352,27 +661,25 @@ export function getProtocolAdherence(
   );
 }
 
-// An option in the outcome-metric picker: the fixed metrics plus the profile's
-// tracked biomarkers. Grouped so the form can render headings.
-export interface OutcomeOption {
-  key: string;
-  label: string;
-  group: "Body & indices" | "Biomarkers";
-}
-
-export function getProtocolOutcomeOptions(profileId: number): OutcomeOption[] {
+export function getProtocolOutcomeOptions(
+  profileId: number,
+  today: string
+): OutcomeOption[] {
   const fixed: OutcomeOption[] = FIXED_OUTCOME_METRICS.map((m) => ({
     key: m.key,
     label: m.label,
     group: "Body & indices",
+    panel: null,
+    searchTerms: [],
   }));
-  const biomarkers: OutcomeOption[] = getUsedCanonicalNames(profileId).map(
-    (name) => ({
-      key: `biomarker:${name}`,
-      label: name,
-      group: "Biomarkers",
-    })
-  );
+  const biomarkers = getRankedBiomarkerOptions(
+    profileId,
+    today,
+    getUsedCanonicalNamesWithDerived(profileId)
+  )
+    .map((option) => option.name)
+    .filter((name) => preferredOutcomeKeyForBiomarker(name) == null)
+    .map(biomarkerOutcomeOption);
   return [...fixed, ...biomarkers];
 }
 
@@ -385,16 +692,21 @@ export function resolveOutcomeSeries(
   key: string,
   weightUnit: WeightUnit
 ): OutcomeSeries | null {
-  const parsed = parseOutcomeKey(key);
+  const canonicalKey = preferredOutcomeKey(key);
+  if (!canonicalKey) return null;
+  const parsed = parseOutcomeKey(canonicalKey);
   if (!parsed) return null;
 
   if (parsed.kind === "biomarker") {
     const cb = getCanonicalBiomarker(parsed.id);
-    const samples: OutcomeSample[] = getBiomarkerSeries(profileId, parsed.id)
+    const samples: OutcomeSample[] = getBiomarkerSeriesWithDerived(
+      profileId,
+      parsed.id
+    )
       .filter((r) => r.value_num != null)
       .map((r) => ({ date: r.date, value: r.value_num as number }));
     return {
-      key,
+      key: canonicalKey,
       label: parsed.id,
       unit: cb?.unit ?? null,
       direction: (cb?.direction as OutcomeDirection | undefined) ?? "in_range",
@@ -403,21 +715,19 @@ export function resolveOutcomeSeries(
   }
 
   if (parsed.kind === "body") {
-    const def = fixedMetricDef(key);
-    const rows = getBodyMetrics(profileId);
-    const samples: OutcomeSample[] = [];
-    for (const r of rows) {
-      if (parsed.id === "weight" && r.weight_kg != null) {
-        samples.push({ date: r.date, value: kgTo(r.weight_kg, weightUnit) });
-      } else if (parsed.id === "resting_hr" && r.resting_hr != null) {
-        samples.push({ date: r.date, value: r.resting_hr });
-      } else if (parsed.id === "body_fat" && r.body_fat_pct != null) {
-        samples.push({ date: r.date, value: r.body_fat_pct });
-      }
-    }
+    const def = fixedMetricDef(canonicalKey);
+    const samples: OutcomeSample[] = getLogicalBodyMetricDailySeries(
+      profileId,
+      parsed.id as "weight" | "resting_hr" | "body_fat",
+      -1
+    ).map((point) => ({
+      date: point.date,
+      value:
+        parsed.id === "weight" ? kgTo(point.value, weightUnit) : point.value,
+    }));
     return {
-      key,
-      label: def?.label ?? outcomeMetricLabel(key),
+      key: canonicalKey,
+      label: def?.label ?? outcomeMetricLabel(canonicalKey),
       unit: parsed.id === "weight" ? weightUnit : (def?.unit ?? null),
       direction: def?.direction ?? "neutral",
       samples,
@@ -425,13 +735,12 @@ export function resolveOutcomeSeries(
   }
 
   // index:*
-  const def = fixedMetricDef(key);
+  const def = fixedMetricDef(canonicalKey);
   let samples: OutcomeSample[] = [];
   if (parsed.id === "phenoage") {
-    samples = getBioAgeReadings(profileId).draws.map((d) => ({
-      date: d.date,
-      value: d.bioAge,
-    }));
+    samples = getBiomarkerSeriesWithDerived(profileId, "PhenoAge")
+      .filter((row) => row.value_num != null)
+      .map((row) => ({ date: row.date, value: row.value_num as number }));
   } else if (parsed.id === "sri") {
     samples = getSleepRegularityTrend(profileId).map((t) => ({
       date: t.date,
@@ -439,8 +748,8 @@ export function resolveOutcomeSeries(
     }));
   }
   return {
-    key,
-    label: def?.label ?? outcomeMetricLabel(key),
+    key: canonicalKey,
+    label: def?.label ?? outcomeMetricLabel(canonicalKey),
     unit: def?.unit ?? null,
     direction: def?.direction ?? "neutral",
     samples,
@@ -466,6 +775,116 @@ export function getProtocolComparison(
   });
 }
 
+// Detail-page picker data in one bounded gather: all offered outcomes are compared
+// against this protocol's before/during windows so options with real data in BOTH
+// windows can rank first and show a delta preview. Biomarkers are gathered through
+// one bulk read rather than one getBiomarkerSeries query per option.
+export function getProtocolOutcomePickerData(
+  profileId: number,
+  protocol: Protocol,
+  today: string,
+  weightUnit: WeightUnit
+): {
+  comparison: ProtocolComparison;
+  options: OutcomeOption[];
+} {
+  const baseOptions = getProtocolOutcomeOptions(profileId, today);
+  const baseKeys = new Set(baseOptions.map((option) => option.key));
+  // A protocol can outlive the reading that originally made a biomarker
+  // selectable. Keep every currently selected outcome in the editor so opening
+  // and saving it never silently drops a historical choice.
+  for (const key of normalizeOutcomeKeys(protocol.outcomeKeys)) {
+    if (baseKeys.has(key)) continue;
+    const parsed = parseOutcomeKey(key);
+    if (parsed?.kind !== "biomarker") continue;
+    baseOptions.push(biomarkerOutcomeOption(parsed.id));
+    baseKeys.add(key);
+  }
+  const keys = normalizeOutcomeKeys([
+    ...baseOptions.map((option) => option.key),
+    ...protocol.outcomeKeys,
+  ]);
+  const hasBiomarkers = keys.some((key) => key.startsWith("biomarker:"));
+  const storedByCanonical = hasBiomarkers
+    ? groupByCanonicalName(getAllBiomarkerSeries(profileId))
+    : new Map();
+  const derived = hasBiomarkers ? getDerivedBiomarkerReadings(profileId) : [];
+
+  const series = keys
+    .map((key): OutcomeSeries | null => {
+      const parsed = parseOutcomeKey(key);
+      if (parsed?.kind !== "biomarker") {
+        return resolveOutcomeSeries(profileId, key, weightUnit);
+      }
+
+      const canonical = parsed.id;
+      const canonicalLower = canonical.toLowerCase();
+      const rows = [
+        ...(storedByCanonical.get(canonicalGroupKey(canonical)) ?? []),
+        ...derived.filter(
+          (row) =>
+            (row.canonical_name ?? row.name).toLowerCase() === canonicalLower
+        ),
+      ].sort((a, b) =>
+        a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id
+      );
+      const cb = getCanonicalBiomarker(canonical);
+      return {
+        key,
+        label: canonical,
+        unit: cb?.unit ?? null,
+        direction:
+          (cb?.direction as OutcomeDirection | undefined) ?? "in_range",
+        samples: rows
+          .filter((row) => row.value_num != null)
+          .map((row) => ({ date: row.date, value: row.value_num as number })),
+      };
+    })
+    .filter((item): item is OutcomeSeries => item != null);
+
+  const allComparison = compareProtocol(series, {
+    startDate: protocol.start_date,
+    endDate: protocol.end_date,
+    today,
+  });
+  const comparedByKey = new Map(
+    allComparison.outcomes.map((outcome) => [outcome.key, outcome])
+  );
+  const options = baseOptions.map((option) => {
+    const outcome = comparedByKey.get(option.key);
+    if (
+      !outcome ||
+      outcome.insufficient ||
+      outcome.baseline.mean == null ||
+      outcome.intervention.mean == null ||
+      outcome.meanDelta == null
+    ) {
+      return option;
+    }
+    return {
+      ...option,
+      preview: {
+        beforeMean: outcome.baseline.mean,
+        duringMean: outcome.intervention.mean,
+        meanDelta: outcome.meanDelta,
+        unit: outcome.unit,
+        beforeN: outcome.baseline.n,
+        duringN: outcome.intervention.n,
+      },
+    };
+  });
+
+  return {
+    options,
+    comparison: {
+      ...allComparison,
+      outcomes: normalizeOutcomeKeys(protocol.outcomeKeys)
+        .map((key) => comparedByKey.get(key))
+        .filter((outcome): outcome is NonNullable<typeof outcome> => !!outcome),
+    },
+  };
+}
+
 // A compact summary of one ONGOING protocol for the dashboard widget (issue #660):
 // days elapsed, this-week practice adherence, and the primary outcome's during-
 // window trend. Every field is a FORMATTER over the SAME computations the detail
@@ -485,11 +904,11 @@ export interface ActiveProtocolSummary {
     // At/above the ceiling — the calm "that's plenty" state (#1259).
     atCeiling: boolean;
     label: string;
-    // The practice NAME when this is a wellness-practice adherence (#1259), enabling the
-    // widget's one-tap "Log session" button; null for type/food_group adherence (which
-    // are logged elsewhere — a workout, a food serving).
-    practiceName: string | null;
   } | null;
+  // All three practice scopes are actionable (#1584). The dashboard passes this
+  // same model to ProtocolLogButton as the detail page.
+  practice: ProtocolPractice | null;
+  practiceTodayCount: number;
   primaryOutcome: {
     label: string;
     betterness: Betterness;
@@ -507,6 +926,7 @@ export function getActiveProtocolSummaries(
   today: string,
   weightUnit: WeightUnit
 ): ActiveProtocolSummary[] {
+  const spellingsByIdentity = getPracticeSpellingsMap(profileId);
   return getProtocols(profileId)
     .filter((p) => p.end_date == null)
     .map((protocol) => {
@@ -539,10 +959,18 @@ export function getActiveProtocolSummaries(
                   practice.scopeKind,
                   practice.value
                 ),
-                practiceName:
-                  practice.scopeKind === "practice" ? practice.value : null,
               }
             : null,
+        practice,
+        practiceTodayCount:
+          practice?.scopeKind === "practice"
+            ? getPracticeDayCount(
+                profileId,
+                practice.value,
+                today,
+                practiceSpellingsFor(spellingsByIdentity, practice.value)
+              )
+            : 0,
         primaryOutcome: primary
           ? {
               label: primary.label,

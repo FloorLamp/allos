@@ -109,6 +109,32 @@ const RECORD_DOMAINS: Record<
     labelExpr: "t.name",
     externalIdExpr: "t.external_id",
   },
+  // #1526 closes the last two encounter-link gaps. The columns land in migration 125;
+  // joining RECORD_DOMAINS is what makes each one linkable, suggestable, displayable
+  // ("Checked at:" / "Recorded at:"), and — crucially — freed by nullEncounterLinks
+  // before an encounter delete, all through the machinery its siblings already use.
+  skin: {
+    table: "skin_lesions",
+    dateExpr: "t.observed_date",
+    providerExpr: "t.provider_id",
+    // A lesion's identity is its label, falling back to the coarse body-map bucket
+    // (the same two fields skinLesionTitle renders) — never blank in practice, since
+    // the write path requires a label OR a region.
+    labelExpr: "COALESCE(NULLIF(t.label, ''), t.body_region, 'Skin lesion')",
+    externalIdExpr: "t.external_id",
+  },
+  allergy: {
+    // NOTE the date semantics: an allergy's only date is `onset_date`, which is when
+    // the REACTION began, not when the visit documented it. So a same-day tier-2
+    // suggestion fires rarely for this domain (and never for the common undated row) —
+    // that is honest, not a gap: the picker on the allergy form is the primary way this
+    // link gets set, and an exact date match still deserves the offer when it happens.
+    table: "allergies",
+    dateExpr: "t.onset_date",
+    providerExpr: "t.provider_id",
+    labelExpr: "t.substance",
+    externalIdExpr: "t.external_id",
+  },
 };
 
 const RECORD_DOMAIN_LIST = Object.keys(RECORD_DOMAINS) as Exclude<
@@ -405,6 +431,43 @@ export function encounterForRecord(
       )
       .get(id, profileId) as LinkedEncounterRef | undefined) ?? null
   );
+}
+
+// ── Form-side visit picker (#1526) ──────────────────────────────────────────────
+
+// The profile's visits as picker options, deduped to one representative per visit
+// (ENCOUNTER_REPRESENTATIVE_IDS — the same collapse every visit read uses, so a
+// cross-document duplicate visit is offered once). Shaped as LinkedEncounterRef so the
+// option text runs through the SAME formatVisitLabel the row's "Recorded at:" sub-line
+// does. Newest first: the visit you're recording against is almost always recent.
+export function getEncounterPickerOptions(
+  profileId: number
+): LinkedEncounterRef[] {
+  return db
+    .prepare(
+      `SELECT e.id, e.date, e.type, p.name AS providerName
+         FROM encounters e
+         LEFT JOIN providers p ON p.id = e.provider_id
+        WHERE e.profile_id = ? AND e.id IN (${ENCOUNTER_REPRESENTATIVE_IDS})
+        ORDER BY e.date DESC, e.id DESC`
+    )
+    .all(profileId, profileId) as LinkedEncounterRef[];
+}
+
+// Resolve a POSTED encounter id against this profile's visits — the validation a
+// write path needs before storing the link. Returns the id when the visit exists and
+// belongs to the profile, else null (a blank, non-numeric, or forged cross-profile id
+// stores as "no link" rather than tripping the FK or leaking another profile's visit).
+export function encounterIdForProfile(
+  profileId: number,
+  raw: unknown
+): number | null {
+  const id = Number(String(raw ?? "").trim());
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const row = db
+    .prepare(`SELECT id FROM encounters WHERE id = ? AND profile_id = ?`)
+    .get(id, profileId) as { id: number } | undefined;
+  return row ? row.id : null;
 }
 
 // Batch inverse of encounterForRecord (issue #1355): the linked encounter for EVERY

@@ -265,14 +265,14 @@ function SetupCard({ callbackUrl }: { callbackUrl: string }) {
         <li>
           Weight, body fat, and resting heart rate feed the{" "}
           <Link
-            href="/trends?tab=body"
+            href="/trends#body"
             className="text-brand-700 underline dark:text-brand-400"
           >
-            Body Metrics
+            Body metrics
           </Link>{" "}
           charts; blood pressure, SpO₂, and temperature land as{" "}
           <Link
-            href="/trends?tab=vitals"
+            href="/trends#body"
             className="text-brand-700 underline dark:text-brand-400"
           >
             vitals

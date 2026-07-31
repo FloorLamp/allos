@@ -1,12 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_WEIGHT_QA,
   WEIGHT_QUICKADD_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Dashboard weight quick-add (#1042 phase 2): the weight-trend widget's inline
 // form posts the SAME addBodyMetric write core as the Trends → Body quick-add,
@@ -27,9 +27,7 @@ import {
 // precedent), so --repeat-each starts from the same two-point series every run.
 
 function resetQuickAddRows(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -84,7 +82,7 @@ test("dashboard weight quick-add logs a weigh-in that persists into the trend (#
 
     // And it appears in the same series on Trends → Body (the widget's link
     // target) — the one-computation check across both surfaces.
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends");
     // Scope to the classic chart stack (the desktop-default layout): the #1067
     // Phase 2 tile grid renders FIRST in the DOM but is md:hidden at this
     // viewport, so an unscoped first-match would land on an invisible tile value.

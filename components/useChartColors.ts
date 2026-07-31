@@ -15,7 +15,11 @@ export interface ChartColors {
   // BiomarkerChart's value line + dots (dark navy in light mode would vanish on
   // a dark background).
   line: string;
-  dotHollowFill: string;
+  // The card surface the chart is drawn on. Used to HOLLOW a dot (surface fill +
+  // colored stroke) and to cut the 2px gap between stacked bar segments — both
+  // need to paint the background back over a mark, so they need its color, and
+  // it is also the surface the #1445 palette validation measures contrast against.
+  surface: string;
 }
 
 const LIGHT: ChartColors = {
@@ -26,7 +30,7 @@ const LIGHT: ChartColors = {
   tooltipBorder: "#e2e8f0", // slate-200
   tooltipText: "#1e293b", // slate-800
   line: "#ea580c", // orange-600 (Vitals secondary) — pops against the green optimal band
-  dotHollowFill: "#ffffff", // card surface, so bounded dots read as hollow
+  surface: "#ffffff", // card surface: hollow dots + stacked-segment gaps paint with it
 };
 
 const DARK: ChartColors = {
@@ -37,7 +41,7 @@ const DARK: ChartColors = {
   tooltipBorder: "#334155", // slate-700
   tooltipText: "#e2e8f0", // slate-200
   line: "#fb923c", // orange-400 (Vitals secondary) — vivid on dark, pops against the green optimal band
-  dotHollowFill: "#0f172a", // slate-900 = the card surface, so bounded dots read as hollow
+  surface: "#0f172a", // slate-900 = the card surface (hollow dots, stacked-segment gaps)
 };
 
 function isDark(): boolean {

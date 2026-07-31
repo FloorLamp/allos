@@ -53,9 +53,13 @@ describe("saveHomeAssistantPrefs", () => {
         "escalation",
         "preventive",
         "workout",
+        // The stale-workout and practice nudges became REAL routable kinds in #1718
+        // (they dispatched as "other", so they could not be muted or routed at all).
+        "workout-stale",
         "workout-recap",
         "food",
         "mood",
+        "practice",
         "digest",
         "weekly-recap",
         "milestone",
@@ -63,7 +67,7 @@ describe("saveHomeAssistantPrefs", () => {
     );
     // Profile-scoped: a bystander profile is untouched.
     expect(getProfileHomeAssistant(bystander.id).enabled).toBe(false);
-    expect(revalidate).toHaveBeenCalledWith("/settings/profile");
+    expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
   });
 
   it("rejects a malformed URL when enabling and persists nothing", async () => {

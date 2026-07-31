@@ -1,12 +1,12 @@
 import Link from "next/link";
+import { chartActivityRamp } from "@/lib/chart-colors";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
+// The same blessed activity ramp the full heatmap uses (issue #1445) — the strip
+// is the heatmap's compact twin, so a second ladder here is the drift.
 const LEVEL_CLASS = [
-  "bg-slate-100 dark:bg-ink-800",
-  "bg-emerald-200 dark:bg-emerald-900",
-  "bg-emerald-300 dark:bg-emerald-700",
-  "bg-emerald-400 dark:bg-emerald-600",
-  "bg-emerald-500 dark:bg-emerald-400",
+  chartActivityRamp.emptyClass,
+  ...chartActivityRamp.stepClasses,
 ];
 
 function summary(day: ActiveDaysStripData["days"][number]): string {

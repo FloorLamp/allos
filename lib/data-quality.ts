@@ -144,7 +144,7 @@ function birthdateGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       "Unlocks biological age, fitness percentiles, eGFR, strength standing, " +
       "age-based screening reminders, and life-stage-aware presentation.",
-    ctaHref: "/settings/profile",
+    ctaHref: "/settings/health",
     leverage: 6,
   };
 }
@@ -157,7 +157,7 @@ function sexGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       "Unlocks sex-gated screenings, sex-specific reference ranges, and cycle " +
       "relevance.",
-    ctaHref: "/settings/profile",
+    ctaHref: "/settings/health",
     leverage: 3,
   };
 }
@@ -175,7 +175,7 @@ function reproductiveStatusGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       "Unlocks correct female-hormone reference ranges (Estradiol / FSH / LH) " +
       "instead of the age proxy.",
-    ctaHref: "/settings/profile",
+    ctaHref: "/settings/health",
     leverage: 1,
   };
 }
@@ -191,10 +191,12 @@ function pediatricHeightGap(i: DataQualityInputs): DataQualityGap | null {
     label: "Add a height",
     whyLine:
       "Unlocks pediatric blood-pressure percentiles (they're height-indexed).",
-    // The child-profile growth quick-add on Trends → Body, focused on the height
-    // field (#1146) — height/growth entry stayed on the Body tab when #1076 moved
-    // vitals to their own tab, so this is the post-move entry surface.
-    ctaHref: "/trends?tab=body&focus=height",
+    // The child-profile growth quick-add in the Trends body census, focused on the
+    // height field (#1146). `focus=` opens the combined measurements form on
+    // whichever surface the viewport calls for; the `#body` anchor is where the
+    // reader lands behind it. #1644 retired the `?tab=body` that used to carry
+    // both — the census is the default view's third part now.
+    ctaHref: "/trends?focus=height#body",
     leverage: 1,
   };
 }

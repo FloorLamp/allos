@@ -1,5 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { hydratedClick, settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Genomic variants CRUD on the #genomics section of /results (#709, #1042 phase 5): add a structured variant through the
 // real form, see it in the list with its reported significance + result-type shown
@@ -8,7 +10,7 @@ import Database from "better-sqlite3";
 // Fixture discipline (shared seeded DB): a unique gene marker scopes every action
 // and a raw-connection cleanup in beforeAll AND afterAll makes the spec idempotent
 // across CI retries — it only ever touches rows it created.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const GENE = "E2EGENE1";
 
 function cleanup() {
@@ -30,6 +32,8 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     test.slow();
 
     await page.goto("/results/genomics");
+    // Entry lives behind "+ Add genomic variant" since #1499 section C.
+    await hydratedClick(page, page.getByTestId("add-genomic-panel-toggle"));
     const form = page.getByTestId("genomic-variant-form");
     await expect(form).toBeVisible();
 
@@ -42,7 +46,10 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
       .getByLabel("Clinical significance")
       .selectOption("likely-pathogenic");
     await form.getByLabel("Source lab").fill("E2E Genetics Lab");
-    await form.getByRole("button", { name: "Add", exact: true }).click();
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Add", exact: true })
+    );
     await expect(page.getByText("Variant saved")).toBeVisible();
 
     // It appears in the list with its factual identity + reported classification.
@@ -59,7 +66,10 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await editForm
       .getByLabel("Clinical significance")
       .selectOption("pathogenic");
-    await editForm.getByRole("button", { name: "Save", exact: true }).click();
+    await settledClick(
+      page,
+      editForm.getByRole("button", { name: "Save", exact: true })
+    );
     await expect(page.getByText("Variant updated")).toBeVisible();
     await expect(list.getByRole("row").filter({ hasText: GENE })).toContainText(
       "Pathogenic",
@@ -72,10 +82,12 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     // getByRole("button", { name: "Delete" }) is a strict-mode collision.
     const survivor = list.getByRole("row").filter({ hasText: GENE });
     await survivor.getByRole("button", { name: "Delete" }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
+    await settledClick(
+      page,
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Delete", exact: true })
+    );
     await expect(list.getByRole("row").filter({ hasText: GENE })).toHaveCount(
       0
     );

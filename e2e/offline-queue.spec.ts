@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { hydratedClick } from "./helpers";
 
 // #28: PWA offline write queue. A body-metric quick-add submitted while the browser
 // is OFFLINE must be queued in IndexedDB (not lost), show a "queued" state + pending
@@ -16,10 +17,11 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
 }) => {
   const marker = `offline-e2e-${Date.now()}`;
 
-  await page.goto("/trends?tab=body");
-  const form = page
-    .locator("form")
-    .filter({ has: page.getByRole("heading", { name: "Log body metrics" }) });
+  await page.goto("/trends");
+  // #1486: the body quick-add is now the combined "Log measurements" form behind
+  // the desktop "+ Log" modal — open it before going offline.
+  await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+  const form = page.getByTestId("measurements-quick-add");
   await expect(form).toBeVisible();
 
   // Go offline BEFORE submitting — the moment logging actually happens at a gym
@@ -28,7 +30,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
 
   await form.getByLabel("Weight (kg)").fill("81.4");
   await form.getByLabel("Notes").fill(marker);
-  await form.getByRole("button", { name: "Save entry" }).click();
+  await form.getByRole("button", { name: "Save measurements" }).click();
 
   // It's queued, not failed: the "saved offline" toast + the pending badge.
   await expect(
@@ -50,7 +52,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
 
   // The row is now persisted server-side — and appears EXACTLY ONCE (the idempotency
   // ledger prevented a double-replay from the racing flush triggers).
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   await expect(page.getByText(marker)).toHaveCount(1);
 
   // A further reload (which re-runs the on-load flush against an empty queue) must
@@ -72,16 +74,17 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
 }) => {
   const marker = `offline-reject-${Date.now()}`;
 
-  await page.goto("/trends?tab=body");
-  const form = page
-    .locator("form")
-    .filter({ has: page.getByRole("heading", { name: "Log body metrics" }) });
+  await page.goto("/trends");
+  // #1486: the body quick-add is now the combined "Log measurements" form behind
+  // the desktop "+ Log" modal — open it before going offline.
+  await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+  const form = page.getByTestId("measurements-quick-add");
   await expect(form).toBeVisible();
 
   await context.setOffline(true);
   await form.getByLabel("Weight (kg)").fill("77.3");
   await form.getByLabel("Notes").fill(marker);
-  await form.getByRole("button", { name: "Save entry" }).click();
+  await form.getByRole("button", { name: "Save measurements" }).click();
 
   const badge = page.getByTestId("offline-queue-badge");
   await expect(badge).toHaveText(/1 queued offline/);
@@ -105,17 +108,21 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
 
   await context.setOffline(false);
 
-  // The rejected entry is parked for review — never silently discarded.
+  // The rejected entry is parked for review — never silently discarded. The
+  // reconnect replay plus the review card's render can outlast the default 5s on
+  // a loaded runner (the same post-action render latency ceilinged elsewhere in
+  // the suite); a named ceiling, not a sleep — this still fails if the entry is
+  // silently dropped.
   const review = page.getByTestId("offline-rejected-review");
-  await expect(review).toBeVisible();
+  await expect(review).toBeVisible({ timeout: 20_000 });
   await expect(review).toContainText(/couldn.?t be applied/i);
   await expect(review).toContainText("Body metric");
 
   // The live queue badge clears (the intent left the live queue) and the entry
-  // did NOT persist server-side.
-  await expect(badge).toHaveCount(0);
+  // did NOT persist server-side. Same post-replay settle as the review card.
+  await expect(badge).toHaveCount(0, { timeout: 20_000 });
   await page.unroute("**/api/offline-replay");
-  await page.goto("/trends?tab=body");
+  await page.goto("/trends");
   await expect(page.getByText(marker)).toHaveCount(0);
 
   // The review panel survives a reload (persisted in the dead-letter store) and can

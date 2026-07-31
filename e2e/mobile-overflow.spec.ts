@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { expectNoClippedContent } from "./helpers";
 import { E2E_LOGIN_MOBILE_HC, E2E_MEMBER_PASSWORD } from "./fixture-logins";
@@ -104,15 +105,25 @@ test.describe("mobile clipped-content audit (#1063)", () => {
     await expectNoClippedContent(page);
   });
 
-  test("/settings/profile: settings sections fit a phone viewport", async ({
+  test("/settings/health: settings sections fit a phone viewport", async ({
     page,
   }) => {
     test.slow();
     await phone(page);
-    await page.goto("/settings/profile");
+    // The old tier-first /settings/profile page (a ~4,900px phone scroll with an
+    // anchor jump-nav) became topic groups in #1462; Health profile is its
+    // identity/localization successor.
+    await page.goto("/settings/health");
     await expect(
-      page.getByRole("heading", { name: "Identity & localization" })
+      page.getByRole("heading", { name: "Health profile" })
     ).toBeVisible();
+    await expectNoClippedContent(page);
+  });
+
+  test("/settings: the group index fits a phone viewport", async ({ page }) => {
+    await phone(page);
+    await page.goto("/settings");
+    await expect(page.getByTestId("settings-index")).toBeVisible();
     await expectNoClippedContent(page);
   });
 });

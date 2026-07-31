@@ -80,13 +80,73 @@ function reachesDb(rel: string, stack: Set<string> = new Set()): boolean {
 
 // Playwright test/spec/setup files are run by the Playwright runner (which loads
 // env via playwright.config.ts), NOT as standalone tsx entrypoints, so they own no
-// env-first obligation even when they touch process.env.
-function isPlaywrightFile(rel: string): boolean {
+// env-first obligation even when they touch process.env. The same is true of the
+// harness modules those files IMPORT (e2e/worker-env.ts, the DB-per-worker
+// addressing module of #1538): they are only ever evaluated inside a Playwright
+// process, so the closure below excludes them too. A module reached from
+// e2e/seed-events.ts (a real standalone tsx entrypoint that does NOT import
+// @playwright/test) is not in this closure and stays covered.
+function isPlaywrightSource(rel: string): boolean {
   return (
     rel.endsWith(".spec.ts") ||
     rel.endsWith(".setup.ts") ||
     read(rel).includes('"@playwright/test"')
   );
+}
+
+// The Playwright config is the other runner entrypoint: whatever it names
+// (globalSetup, globalTeardown) and whatever those import is loaded by the runner,
+// never by `tsx`.
+const PLAYWRIGHT_CONFIG = "playwright.config.ts";
+
+function importClosure(roots: string[]): Set<string> {
+  const seen = new Set<string>();
+  const queue = [...roots];
+  while (queue.length) {
+    const rel = queue.pop()!;
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    for (const spec of importSpecifiers(rel)) {
+      const target = resolveImport(rel, spec);
+      if (target && !seen.has(target)) queue.push(target);
+    }
+  }
+  return seen;
+}
+
+const { playwrightOnly } = (() => {
+  const all: string[] = [];
+  for (const dir of SCAN_DIRS) {
+    const abs = path.join(ROOT, dir);
+    if (fs.existsSync(abs)) all.push(...walk(abs));
+  }
+  const fromPlaywright = importClosure([
+    PLAYWRIGHT_CONFIG,
+    ...all.filter(isPlaywrightSource),
+  ]);
+  // Anything a NON-Playwright module IMPORTS can end up evaluated by a standalone
+  // `tsx` run (e2e/seed/* under e2e/seed-events.ts, for instance), so it keeps its
+  // env-first obligation even when a spec also imports it. Seeded from those
+  // modules' import TARGETS rather than the modules themselves, so a file's own
+  // presence in scripts//e2e/ never exempts it — only being loaded exclusively by
+  // the Playwright runner does.
+  const standaloneSeeds = all
+    .filter((f) => !fromPlaywright.has(f))
+    .flatMap((f) =>
+      importSpecifiers(f)
+        .map((spec) => resolveImport(f, spec))
+        .filter((t): t is string => t !== null)
+    );
+  const fromStandalone = importClosure(standaloneSeeds);
+  return {
+    playwrightOnly: new Set(
+      [...fromPlaywright].filter((f) => !fromStandalone.has(f))
+    ),
+  };
+})();
+
+function isPlaywrightFile(rel: string): boolean {
+  return playwrightOnly.has(rel);
 }
 
 function usesProcessEnv(rel: string): boolean {
@@ -104,6 +164,23 @@ function walk(dir: string): string[] {
   return out;
 }
 
+// Standalone entrypoints that read process.env but must NOT load this repo's .env files.
+// Keep this SHORT and justified: the default is that a script touching process.env owes
+// the env-first import, and an entry here is a claim that loading .env would be WRONG for
+// that script, not merely unnecessary.
+const ENV_FREE = new Set<string>([
+  // scripts/upload-docs.ts (#1735) — the remote document-upload CLI. It is deliberately
+  // DEPENDENCY-FREE (Node stdlib only, nothing from this repo) so it can be copied to any
+  // machine with Node 24 and run against a remote instance with no checkout, no database
+  // and no version-skew concern. Importing ./load-env would pull in @next/env and destroy
+  // exactly that property. Its two variables (ALLOS_TOKEN, ALLOS_URL) are supplied by the
+  // OPERATOR'S shell on the REMOTE machine — this repo's .env belongs to the server, not
+  // to the client, and reading it would be the wrong behaviour rather than a missing one.
+  // It cannot reach lib/db (the #679 bug class this guard exists for) because it imports
+  // nothing from the repo at all.
+  "scripts/upload-docs.ts",
+]);
+
 function discoverEntrypoints(): string[] {
   const files: string[] = [];
   for (const dir of SCAN_DIRS) {
@@ -111,7 +188,10 @@ function discoverEntrypoints(): string[] {
     if (fs.existsSync(abs)) files.push(...walk(abs));
   }
   return files
-    .filter((rel) => rel !== ENV_LOADER && !isPlaywrightFile(rel))
+    .filter(
+      (rel) =>
+        rel !== ENV_LOADER && !isPlaywrightFile(rel) && !ENV_FREE.has(rel)
+    )
     .filter((rel) => reachesDb(rel) || usesProcessEnv(rel))
     .sort();
 }
@@ -138,13 +218,32 @@ describe("standalone script environment bootstrap", () => {
     (file) => {
       const source = read(file);
       const imports = staticImports(source);
-      const expected = file.startsWith("e2e/")
-        ? "../scripts/load-env"
-        : "./load-env";
+      // The specifier is depth-relative: scripts/*.ts reach the loader as
+      // "./load-env", e2e/*.ts as "../scripts/load-env", and a NESTED module
+      // (e2e/seed/*.ts, the #1511 per-domain split) as "../../scripts/load-env".
+      // Computed rather than hardcoded so a new subdirectory keeps being checked
+      // instead of silently failing on the wrong expected string.
+      const rel = path
+        .relative(path.dirname(file), ENV_LOADER.replace(/\.ts$/, ""))
+        .replace(/\\/g, "/");
+      const expected = rel.startsWith(".") ? rel : `./${rel}`;
 
       expect(imports[0]).toBe(expected);
       expect(source).not.toContain('from "@next/env"');
       expect(source).not.toContain("loadEnvConfig(");
+    }
+  );
+
+  it.each([...ENV_FREE])(
+    "an env-free entrypoint really imports nothing from this repo: %s",
+    (file) => {
+      // The exemption above is only honest while the script stays dependency-free. If it
+      // ever grows a repo import, it can reach lib/db and must rejoin the guard.
+      const targets = importSpecifiers(file)
+        .map((spec) => resolveImport(file, spec))
+        .filter((t): t is string => t !== null);
+      expect(targets).toEqual([]);
+      expect(reachesDb(file)).toBe(false);
     }
   );
 

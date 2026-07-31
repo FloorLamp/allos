@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #32: the Weekly-recap dashboard card and a milestone Timeline entry.
 // The e2e seed (e2e/seed-events.ts) pins a dashboard layout that makes the
 // weekly-recap widget visible for profile 1 and plants a "50 workouts logged"
@@ -34,7 +33,13 @@ test.describe("Weekly recap + milestones (#32)", () => {
   }) => {
     await page.goto("/timeline?category=milestone");
     await expect(page.getByText("50 workouts logged").first()).toBeVisible(); // first-ok: asserts the milestone line renders — order-agnostic presence
-    // The milestone badge labels the category on the card.
-    await expect(page.getByText("Milestone").first()).toBeVisible(); // first-ok: asserts a Milestone badge renders — order-agnostic presence
+    // The milestone badge labels the category on the card. Scoped to a feed entry:
+    // the #1517 collapsed filter bar renders a (hidden) "Milestone · All dates"
+    // summary label earlier in the DOM, which a page-wide first-match would grab —
+    // the consolidation-class selector break. (Prose deliberately avoids spelling
+    // out the locator call: the hygiene guard is a text scan and would count it.)
+    await expect(
+      page.locator('[id^="timeline-entry-"]').getByText("Milestone").first() // first-ok: asserts a Milestone badge renders on a feed entry — order-agnostic presence
+    ).toBeVisible();
   });
 });

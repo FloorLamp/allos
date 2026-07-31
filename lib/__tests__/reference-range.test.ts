@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ageBandLabel,
   biomarkerAxisDomain,
+  biomarkerRetestStatus,
   classifyQualitativeResult,
   daysBetween,
   DEFAULT_AXIS_PAD_FRACTION,
@@ -889,6 +890,18 @@ describe("retestIntervalDays (per-biomarker cadence)", () => {
 });
 
 describe("isBiomarkerStale with a per-biomarker interval", () => {
+  it("distinguishes current readings from non-applicable retest clocks", () => {
+    expect(biomarkerRetestStatus("2024-01-01", "lab", "2024-03-15", 90)).toBe(
+      "current"
+    );
+    expect(biomarkerRetestStatus("2024-01-01", "lab", "2024-04-01", 90)).toBe(
+      "due"
+    );
+    expect(
+      biomarkerRetestStatus("2024-01-01", "genomics", "2024-04-01", 90)
+    ).toBe("not-applicable");
+  });
+
   it("uses a short cadence so a 100-day-old quarterly marker is stale", () => {
     // 100 days > 90-day HbA1c cadence → stale, though it's well under a year and
     // would NOT be stale under the flat 365-day rule.

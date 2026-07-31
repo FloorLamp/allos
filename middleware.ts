@@ -115,5 +115,28 @@ export function middleware(req: NextRequest) {
 export const config = {
   // Run on everything except Next's internal static/image/data assets. Metadata
   // icon routes live at the root and are handled by the allowlist above.
-  matcher: ["/((?!_next/static|_next/image|_next/data).*)"],
+  //
+  // …plus ONE route handler, the Fitbit Takeout import. Any path this matcher
+  // covers gets its request body CLONED for the Edge runtime and capped at
+  // experimental.proxyClientMaxBodySize — and over that cap Next does NOT reject:
+  // it warns ("Request body exceeded 101MB … only the first 101MB will be
+  // available") and hands the route a TRUNCATED body. A Takeout export is ~250MB
+  // and a ZIP's central directory lives at the END of the file, so a truncated
+  // archive isn't a partial import, it's an unparseable one: the importer throws
+  // "Not a valid ZIP archive" and the route 500s. Verified end-to-end against a
+  // real 246,673,276-byte export — 500 while matched, 200 once excluded.
+  //
+  // Raising the transport cap instead would force EVERY matched route to buffer a
+  // quarter-gigabyte body, to serve one upload. Excluding this one costs nothing:
+  // middleware is explicitly coarse and non-authoritative (see the header comment)
+  // and the route calls requireWriteAccess() itself, so auth is unchanged; the CSP
+  // is meaningless on a JSON response; and the sliding-cookie refresh happens on
+  // every other navigation. The upload cap that actually governs this route is
+  // DEFAULT_MAX_TAKEOUT_BYTES, enforced by the handler while it streams to disk.
+  //
+  // lib/__tests__/upload-size-lockstep.test.ts pins this exclusion — without it the
+  // handler's 1 GiB cap is a false promise.
+  matcher: [
+    "/((?!_next/static|_next/image|_next/data|api/integrations/fitbit-takeout/import).*)",
+  ],
 };

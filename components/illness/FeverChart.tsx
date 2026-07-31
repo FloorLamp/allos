@@ -1,4 +1,4 @@
-import { chartSeries, chartBand } from "@/lib/chart-colors";
+import { chartBand, chartNeutral, chartSeries } from "@/lib/chart-colors";
 import type {
   EpisodeMedication,
   TemperaturePoint,
@@ -11,20 +11,37 @@ import {
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
+import {
+  MOBILE_CHART_CONTENT_PX,
+  viewBoxFontSize,
+  type ViewBoxScale,
+} from "@/lib/chart-svg";
 
 // Compact episode chart with readable axes: temperature values, date ticks, a labeled
 // normal-range band, and dose markers share the same time scale. Colors stay on the
 // app chart palette; storage and geometry remain canonical °F.
 const W = 320;
-const H = 142;
-const PLOT_LEFT = 34;
+const H = 148;
+const PLOT_LEFT = 38;
 const PLOT_RIGHT = 8;
-const PLOT_TOP = 10;
-const PLOT_BOTTOM = 82;
-const DOSE_Y = 105;
-const DATE_Y = 137;
+const PLOT_TOP = 12;
+const PLOT_BOTTOM = 84;
+const DOSE_Y = 108;
+const DATE_Y = 141;
 const NORMAL_LOW = 97.0;
 const NORMAL_HIGH = 99.0;
+
+// The scale contract this panel renders under, and the type size that follows from
+// it (issue #1518). A fixed viewBox scaled to `width: 100%` paints `fontSize` USER
+// UNITS at `fontSize × (container ÷ viewBox)` CSS px, so the size is computed from
+// the narrowest container rather than typed in — the hand-picked 6.5 and 7 here
+// rendered ~7.3px and ~7.8px on a phone, under the legibility floor the guard now
+// enforces for this whole family.
+const SCALE: ViewBoxScale = {
+  viewBoxWidth: W,
+  minContainerPx: MOBILE_CHART_CONTENT_PX,
+};
+const LABEL = viewBoxFontSize(SCALE);
 
 function shortDate(date: string, prefs: DisplayFormatPrefs): string {
   const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
@@ -102,7 +119,7 @@ export default function FeverChart({
     ...doses.map((dose) => dose.date),
   ]);
 
-  return (
+  const chart = (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
@@ -129,16 +146,21 @@ export default function FeverChart({
       />
       <text
         x={PLOT_LEFT + 3}
-        y={bandTop + 8}
-        fontSize={6.5}
-        fill={chartSeries.slate}
+        y={bandTop + LABEL}
+        fontSize={LABEL}
+        fill={chartNeutral}
       >
         Normal range
       </text>
-      <text x={1} y={PLOT_TOP + 4} fontSize={7} fill={chartSeries.slate}>
+      <text
+        x={1}
+        y={PLOT_TOP + LABEL * 0.5}
+        fontSize={LABEL}
+        fill={chartNeutral}
+      >
         {fmtTemp(hi - 0.5, temperatureUnit)}
       </text>
-      <text x={1} y={PLOT_BOTTOM} fontSize={7} fill={chartSeries.slate}>
+      <text x={1} y={PLOT_BOTTOM} fontSize={LABEL} fill={chartNeutral}>
         {fmtTemp(lo + 0.5, temperatureUnit)}
       </text>
 
@@ -158,8 +180,8 @@ export default function FeverChart({
               x={x}
               y={DATE_Y}
               textAnchor="middle"
-              fontSize={7}
-              fill={chartSeries.slate}
+              fontSize={LABEL}
+              fill={chartNeutral}
             >
               {shortDate(date, formatPrefs)}
             </text>
@@ -199,7 +221,12 @@ export default function FeverChart({
             stroke={chartBand.reference}
             opacity={0.35}
           />
-          <text x={1} y={DOSE_Y + 3} fontSize={7} fill={chartSeries.slate}>
+          <text
+            x={1}
+            y={DOSE_Y + LABEL * 0.35}
+            fontSize={LABEL}
+            fill={chartNeutral}
+          >
             Doses
           </text>
           {doses.map((dose, index) => {
@@ -217,5 +244,53 @@ export default function FeverChart({
         </>
       )}
     </svg>
+  );
+
+  if (doses.length === 0) return chart;
+  return (
+    <>
+      {chart}
+      {/* The dose detail, in DOM text beneath the chart (#1512 D).
+          Each diamond's medication, amount and time lived only in an SVG
+          `<title>`, which a touch device never shows — so on a phone the dose
+          row was an unreadable line of shapes. Inline labels were the first
+          choice and do not fit: an episode spans several days across 274 user
+          units and doses cluster within hours of each other, so the labels would
+          smear (the #1573 failure). A caption line is the sanctioned fallback:
+          complete, legible at any width, and it prints with the chart. */}
+      <ul
+        data-testid="fever-chart-doses"
+        className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600 dark:text-slate-300"
+      >
+        {doses.map((dose, index) => {
+          const amount = formatMedicationDoseProduct(dose.amount, dose.product);
+          return (
+            <li
+              key={dose.id ?? `${dose.name}:${dose.date}:${index}`}
+              data-testid="fever-chart-dose"
+              className="flex min-w-0 items-center gap-1.5"
+            >
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 shrink-0 rotate-45"
+                style={{ background: chartSeries.violet }}
+              />
+              <span className="truncate">
+                {[
+                  dose.name,
+                  amount || null,
+                  dose.time
+                    ? formatClockValue(dose.time, formatPrefs.timeFormat)
+                    : null,
+                  shortDate(dose.date, formatPrefs),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }

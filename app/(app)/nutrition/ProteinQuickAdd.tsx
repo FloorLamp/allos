@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconPlus, IconMinus } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import FoodGroupIcon from "@/components/FoodGroupIcon";
 import { addProteinGrams, undoProteinGrams } from "./actions";
 
 // Protein-grams quick-add (issue #824), modeled on the one-tap food-serving bar
@@ -16,8 +17,8 @@ import { addProteinGrams, undoProteinGrams } from "./actions";
 // adds it to the day, "−" removes it. Optimistic local total, a Server Action per tap,
 // reconciled to the server's authoritative total (#748 item 2) so a failed write can't
 // leave a phantom gram count. The box pre-fills with the last-used amount (scoop sizes
-// repeat); a preset chip re-offers it after an edit. Deliberately unobtrusive — the
-// total only reads as meaningful once you've logged something.
+// repeat). The control renders as a peer to the food-group rows: direct gram entry
+// belongs in the logging flow, while nutrient gauges remain read-only analysis.
 
 export default function ProteinQuickAdd({
   today,
@@ -69,78 +70,65 @@ export default function ProteinQuickAdd({
   }
 
   return (
-    <div data-testid="protein-quickadd">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-200">
-          Log protein
-        </h4>
+    <div
+      data-testid="protein-quickadd"
+      className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2 dark:border-white/10 dark:bg-ink-900"
+    >
+      <FoodGroupIcon
+        slug="__protein__"
+        className="h-5 w-5 shrink-0 text-emerald-500"
+      />
+      <div className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-slate-800 dark:text-slate-100">
+          Protein
+        </span>
         <span
           data-testid="protein-quickadd-total"
-          className="shrink-0 text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
+          className="block truncate text-xs tabular-nums text-slate-500 dark:text-slate-400"
         >
-          {Math.round(total)} g today
+          {Math.round(total)}g today
         </span>
       </div>
-      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-        A shake or protein powder has no food group — log its grams here and
-        they add to the estimate above.
-      </p>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          data-testid="protein-quickadd-undo"
-          aria-label="Remove protein grams"
-          disabled={!canSubmit || total <= 0}
-          onClick={() => apply(-1)}
-          className="tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
-        >
-          <IconMinus className="h-4 w-4" stroke={2} />
-        </button>
-        <div className="relative flex-1">
-          <input
-            data-testid="protein-quickadd-input"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={300}
-            step={1}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="grams"
-            aria-label="Protein grams to add"
-            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 pr-8 text-sm tabular-nums text-slate-800 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
-          />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 dark:text-slate-400">
-            g
-          </span>
-        </div>
-        <button
-          type="button"
-          data-testid="protein-quickadd-add"
-          aria-label="Add protein grams"
-          disabled={!canSubmit}
-          onClick={() => apply(1)}
-          className="btn btn-sm shrink-0"
-        >
-          <IconPlus className="h-4 w-4" stroke={2} />
-          Add
-        </button>
+      <button
+        type="button"
+        data-testid="protein-quickadd-undo"
+        aria-label="Remove protein grams"
+        title="Remove protein grams"
+        disabled={!canSubmit || total <= 0}
+        onClick={() => apply(-1)}
+        className="tap-target flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
+      >
+        <IconMinus className="h-4 w-4" stroke={2} />
+      </button>
+      <div className="relative w-16 shrink-0 sm:w-20">
+        <input
+          data-testid="protein-quickadd-input"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={300}
+          step={1}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0"
+          aria-label="Protein grams to add"
+          className="w-full rounded-lg border border-black/10 bg-white py-1.5 pl-2 pr-5 text-center text-sm tabular-nums text-slate-800 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
+        />
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500 dark:text-slate-400">
+          g
+        </span>
       </div>
-      {lastPreset != null && (
-        <div className="mt-3 flex items-center gap-2">
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Last used
-          </span>
-          <button
-            type="button"
-            data-testid="protein-quickadd-preset"
-            onClick={() => setAmount(String(lastPreset))}
-            className="rounded-full border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
-          >
-            {lastPreset} g
-          </button>
-        </div>
-      )}
+      <button
+        type="button"
+        data-testid="protein-quickadd-add"
+        aria-label="Add protein grams"
+        title="Add protein grams"
+        disabled={!canSubmit}
+        onClick={() => apply(1)}
+        className="tap-target flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700 disabled:opacity-30"
+      >
+        <IconPlus className="h-4 w-4" stroke={2} />
+      </button>
     </div>
   );
 }

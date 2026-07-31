@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   getCardioByActivity,
   getExerciseComparison,
+  getExerciseLoadContexts,
   getGoalProgressMap,
   getGoals,
   getLatestBodyMetric,
@@ -13,7 +14,11 @@ import {
   type SportStat,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import { exerciseHistoryKey, regionForExercise } from "@/lib/lifts";
+import {
+  exerciseHistoryKey,
+  loadContextLabel,
+  regionForExercise,
+} from "@/lib/lifts";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getInjuryConstraints } from "@/lib/injuries";
 import { temperedRegions, RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
@@ -40,6 +45,7 @@ import {
   cardioMetricValue,
   coerceCardioMetric,
   coerceKind,
+  coerceLoadContext,
   coerceRange,
   coerceStrengthMetric,
   defaultMetric,
@@ -55,7 +61,9 @@ import {
   type AnalyzeView,
   type RangeId,
 } from "@/lib/analyze-view";
+import { cardMetaEntries } from "@/lib/card-row";
 import { EmptyState } from "@/components/ui";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import LineChartCard from "@/components/LineChartCard";
@@ -69,12 +77,14 @@ export default async function AnalyzeSection({
   exercise,
   metric,
   range,
+  lane,
 }: {
   kind?: string;
   item?: string;
   exercise?: string;
   metric?: string;
   range?: string;
+  lane?: string;
 }) {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
@@ -116,11 +126,29 @@ export default async function AnalyzeSection({
     "";
   const activeRange = coerceRange(range);
   const fromDate = rangeStart(profile.id, activeRange);
+  // The resolved strength item, pulled out of the view builders so its LOAD CONTEXTS
+  // (#1610) can be read before hrefFor closes over the active lane — every control
+  // link then keeps the reader on the implement they chose.
+  const strengthStat =
+    activeKind === "strength"
+      ? (strength.find((s) => s.exercise === selectedName) ?? strength[0])
+      : undefined;
+  // Empty for cardio and sport. A lift logged in exactly ONE context has nothing to
+  // choose between, so no chooser renders and the view stays the plain history.
+  const loadContexts = strengthStat
+    ? getExerciseLoadContexts(profile.id, strengthStat.exercise)
+    : [];
+  const activeContext = coerceLoadContext(loadContexts, lane);
+  const activeLane = loadContexts.length > 1 ? activeContext?.lane : undefined;
   const hrefFor = (patch: {
     kind?: AnalyzeKind;
     item?: string;
     metric?: string;
     range?: RangeId;
+    // The load context to keep (#1610). Omitted, the CURRENT lane rides along so a
+    // metric or range change stays on the machine the reader is looking at; `null`
+    // drops it so a different item resolves to its own most-recent context.
+    lane?: string | null;
   }): AppRoute => {
     const nextKind = patch.kind ?? activeKind;
     const params = new URLSearchParams();
@@ -136,6 +164,8 @@ export default async function AnalyzeSection({
         cardio.find((c) => c.activity === selectedName)
       );
     params.set("metric", metricForKind);
+    const nextLane = patch.lane === undefined ? activeLane : patch.lane;
+    if (nextLane) params.set("lane", nextLane);
     return `/training?${params.toString()}`;
   };
   const analyzeOptions = buildAnalyzeOptions({
@@ -160,10 +190,11 @@ export default async function AnalyzeSection({
             fromDate,
           })
         : strengthView({
-            stat:
-              strength.find((s) => s.exercise === selectedName) ?? strength[0],
+            stat: strengthStat ?? strength[0],
             profileId: profile.id,
             metric,
+            loadContexts,
+            activeContext: activeLane ? activeContext : undefined,
             fromDate,
             units,
             bodyweightKg,
@@ -179,7 +210,12 @@ export default async function AnalyzeSection({
       ?.label ?? currentItem;
 
   return (
-    <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
+    // The section marker (#1496) is the lazy-tab proof: /training builds ONLY the
+    // active tab, so an Overview response must not contain this testid.
+    <section
+      data-testid="analyze-section"
+      className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]"
+    >
       <div className="space-y-6">
         <div className="card relative z-20 focus-within:z-50">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
@@ -232,13 +268,51 @@ export default async function AnalyzeSection({
               ))}
             </div>
           </div>
+
+          {/* Load contexts (#1610). ONE top-level movement stays in the picker
+              above; its implements are labeled CHILDREN here, defaulting to the
+              most recently used. The label is the implement (or "Unassigned"),
+              never the exercise name repeated — two machines share the name, so
+              repeating it would render exactly the duplicate unlabeled rows #1610
+              forbids. Renders only when there is genuinely a choice. */}
+          {view.loadContexts && view.loadContexts.length > 1 && (
+            <div className="mt-4" data-testid="analyze-load-contexts">
+              <span className="mb-1 block section-label">Equipment</span>
+              <div className="flex flex-wrap gap-1.5">
+                {view.loadContexts.map((c) => (
+                  <Link
+                    key={c.lane}
+                    href={hrefFor({ item: currentItem, lane: c.lane })}
+                    data-testid={`analyze-load-context-${c.lane}`}
+                    aria-current={
+                      c.lane === view.activeLane ? "true" : undefined
+                    }
+                    className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
+                      c.lane === view.activeLane
+                        ? "border-brand-500 bg-brand-500 text-white"
+                        : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                    }`}
+                  >
+                    {c.label}
+                    <span className="ml-1.5 opacity-70 tabular-nums">
+                      {c.sessions}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                Loads aren&rsquo;t comparable across machines, so each is its
+                own progression.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="card">
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <div>
               <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                {view.name}
+                {view.displayName ?? view.name}
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {view.chartLabel} across logged sessions
@@ -264,8 +338,18 @@ export default async function AnalyzeSection({
           {view.sessions.length === 0 ? (
             <EmptyState message="No sessions in this range. Widen the range or log one." />
           ) : (
+            /* Below `sm` these sessions stack as flat rows (#1426): the date is the
+               row title, the view's LEADING metric — the one the chart above plots,
+               so the column the user chose — is the headline value, and the rest
+               become a compact meta line. `cardMetaEntries` decides which of those
+               survive: a placeholder cell, or one that just repeats the date, buys
+               no screen on a phone (#531–#534). The wide-table scroller stays for
+               `sm` and up. */
             <div className="overflow-x-auto">
-              <table className="w-full whitespace-nowrap">
+              <ResponsiveTable
+                className="w-full sm:whitespace-nowrap"
+                data-testid="analyze-sessions"
+              >
                 <thead>
                   <tr className="border-b border-black/5 dark:border-white/10">
                     <th className="th">Date</th>
@@ -277,31 +361,48 @@ export default async function AnalyzeSection({
                   </tr>
                 </thead>
                 <tbody>
-                  {view.sessions.map((s, i) => (
-                    <tr
-                      key={`${s.activityId}-${i}`}
-                      className="border-b border-black/5 dark:border-white/10"
-                    >
-                      <td className="td">
-                        <Link
-                          href={`/training?tab=log#activity-${s.activityId}`}
-                          className="font-medium text-brand-700 hover:underline dark:text-brand-300"
-                        >
-                          {formatLongDate(s.date, formatPrefs)}
-                        </Link>
-                      </td>
-                      {s.cells.map((cell, i) => (
-                        <td
-                          key={i}
-                          className="td text-slate-600 dark:text-slate-300"
-                        >
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {view.sessions.map((s, i) => {
+                    const dateText = formatLongDate(s.date, formatPrefs);
+                    // Which columns survive onto the card, by the shared rule —
+                    // computed once per row and matched back by INDEX (two metrics
+                    // may share a label; positions never collide). Column 0 is the
+                    // headline value, so it's exempt from the meta filtering, but it
+                    // still participates: a later column repeating it is dropped as a
+                    // duplicate rather than said twice.
+                    const keep = new Set(
+                      cardMetaEntries(view.columns, s.cells, {
+                        title: dateText,
+                      }).map((e) => e.index)
+                    );
+                    return (
+                      <tr
+                        key={`${s.activityId}-${i}`}
+                        className="border-b border-black/5 dark:border-white/10"
+                      >
+                        <Td slot="title">
+                          <Link
+                            href={`/training?tab=log#activity-${s.activityId}`}
+                            className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                          >
+                            {dateText}
+                          </Link>
+                        </Td>
+                        {s.cells.map((cell, ci) => (
+                          <Td
+                            key={ci}
+                            slot={ci === 0 ? "value" : "meta"}
+                            label={view.columns[ci]}
+                            empty={!keep.has(ci)}
+                            className="text-slate-600 dark:text-slate-300"
+                          >
+                            {cell}
+                          </Td>
+                        ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
-              </table>
+              </ResponsiveTable>
             </div>
           )}
         </div>
@@ -316,6 +417,8 @@ function strengthView({
   stat,
   profileId,
   metric,
+  loadContexts,
+  activeContext,
   fromDate,
   units,
   bodyweightKg,
@@ -327,6 +430,11 @@ function strengthView({
   stat: ReturnType<typeof getStrengthByExercise>[number];
   profileId: number;
   metric?: string;
+  // Every load context this lift has been logged in, newest-first, and the one the
+  // view is narrowed to — undefined when there is only one context, in which case
+  // the comparison stays movement-wide exactly as before #1610.
+  loadContexts: ReturnType<typeof getExerciseLoadContexts>;
+  activeContext: ReturnType<typeof getExerciseLoadContexts>[number] | undefined;
   fromDate: string | null;
   units: ReturnType<typeof getUnitPrefs>;
   bodyweightKg: number | null;
@@ -352,8 +460,14 @@ function strengthView({
     recoveringRegion: statRegion != null && recovering.has(statRegion),
     recoveringFactor: RECOVERING_LOAD_FACTOR,
   };
+  // ONE load context per comparison (#1610): two registry machines both serialize as
+  // the same exact logged name, so charting them together would plot a hotel
+  // machine's 50 kg and a home machine's 80 kg as one progression and read the two
+  // histories as one session table.
   const sessions = rangeFilter(
-    getExerciseComparison(profileId, stat.exercise, units.weightUnit),
+    getExerciseComparison(profileId, stat.exercise, units.weightUnit, {
+      equipmentLane: activeContext?.lane,
+    }),
     fromDate
   );
   const newest = [...sessions].sort(newestFirst);
@@ -366,8 +480,20 @@ function strengthView({
   );
   return {
     name: stat.exercise,
+    displayName: loadContextLabel(
+      stat.exercise,
+      activeContext?.equipment ?? null
+    ),
     metric: activeMetric,
     metrics: STRENGTH_METRICS,
+    loadContexts: activeContext
+      ? loadContexts.map((c) => ({
+          lane: c.lane,
+          label: c.label,
+          sessions: c.sessions,
+        }))
+      : undefined,
+    activeLane: activeContext?.lane,
     chartLabel: chartMetric.chartLabel,
     chartUnit: activeMetric === "reps" ? "" : ` ${units.weightUnit}`,
     color: chartSeries.violet,
@@ -445,7 +571,7 @@ function cardioView({
         : activeMetric === "speed"
           ? ` ${units.distanceUnit}/h`
           : " min",
-    color: activeMetric === "speed" ? chartSeries.brand : chartSeries.emerald,
+    color: activeMetric === "speed" ? chartSeries.brand : chartSeries.sky,
     latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
     chart: sessions.map((s) => ({
       date: s.date,

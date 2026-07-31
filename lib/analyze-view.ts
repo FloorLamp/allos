@@ -63,10 +63,31 @@ export interface AnalyzeOption {
   href: AppRoute;
 }
 
+// One selectable load context, as the Analyze controls render it (#1610). `lane` is
+// the shared `equipmentLoadLane` string the URL carries; `label` names the implement
+// (or "Unassigned"), because the exercise NAME is what the choices have in common
+// and the implement is what distinguishes them (#531).
+export interface AnalyzeLoadContext {
+  lane: string;
+  label: string;
+  sessions: number;
+}
+
 export interface AnalyzeView {
+  // Identity — the item the URL and the picker carry. Always the raw movement name.
   name: string;
+  // What the panel HEADS itself with. Equals `name` unless a load context narrows
+  // the view, in which case it is `loadContextLabel(name, implement)` so the reader
+  // can see WHICH machine's progression they are looking at (#1610).
+  displayName?: string;
   metric: string;
   metrics: { id: string; label: string; chartLabel: string }[];
+  // The item's load contexts, most recently used first, when it has MORE THAN ONE.
+  // Absent (or empty) means there is nothing to choose between and no chooser
+  // renders — a single lane is just "the history".
+  loadContexts?: AnalyzeLoadContext[];
+  // The lane the view is currently narrowed to (one of `loadContexts`).
+  activeLane?: string;
   chartLabel: string;
   chartUnit: string;
   color: string;
@@ -75,6 +96,18 @@ export interface AnalyzeView {
   columns: string[];
   sessions: { activityId: number; date: string; cells: string[] }[];
   detail: ReactNode;
+}
+
+// The load context an Analyze request resolves to: the one named by `lane` when the
+// item actually has it, else the MOST RECENTLY USED one — #1610's "default the
+// detail/Analyze view to the most recently used context". A stale or hand-typed lane
+// (a deleted implement, another exercise's machine) falls back rather than rendering
+// an empty chart. `contexts` arrives newest-first from getExerciseLoadContexts.
+export function coerceLoadContext<T extends { lane: string }>(
+  contexts: readonly T[],
+  lane: string | undefined
+): T | undefined {
+  return contexts.find((c) => c.lane === lane) ?? contexts[0];
 }
 
 export function formatRatio(ratio: number) {

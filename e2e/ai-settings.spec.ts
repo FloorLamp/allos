@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick, settledFill } from "./helpers";
 
 // The admin Server settings page surfaces the two AI provider tiers (issue #875):
@@ -65,7 +65,7 @@ test.describe("Settings → Profile: recommendation cadence", () => {
   test("admin can pick a recommendation cadence for the active profile", async ({
     page,
   }) => {
-    await page.goto("/settings/profile");
+    await page.goto("/settings/coaching");
     const form = page.getByTestId("recommendation-cadence-form");
     await expect(form).toBeVisible();
     const select = page.getByTestId("recommendation-cadence");

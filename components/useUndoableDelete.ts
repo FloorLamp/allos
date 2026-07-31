@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import { undoDelete, undoDeletes } from "@/app/(app)/undo/actions";
+import { undoDelete, undoDeletes } from "@/app/(app)/undo-actions";
 
 // How long the Undo toast stays up (ms). The holding row itself lives ~24h, but the
 // toast is the only affordance, so it lingers well past the default success toast.
@@ -24,11 +24,18 @@ export function useUndoableDelete() {
   return async function run(
     action: (
       fd: FormData
-    ) => Promise<{ undoId: number | null } | { undoIds: number[] }>,
+    ) => Promise<
+      | { undoId: number | null; error?: string }
+      | { undoIds: number[]; error?: string }
+    >,
     fd: FormData,
     opts: { deletedMessage: string }
   ): Promise<void> {
     const result = await action(fd);
+    if (result.error) {
+      toast(result.error, { tone: "error" });
+      return;
+    }
     // An action may return a single token (`undoId`, the common delete) or a batch
     // (`undoIds`, an N-way merge that deletes several rows under one toast, #1081).
     // Normalize to a token list.

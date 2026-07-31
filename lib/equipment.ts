@@ -124,11 +124,18 @@ export function setEquipmentRetired(
 // Delete an equipment row, first detaching it from any row that links to it so
 // their history survives (the columns have no FK ON DELETE action, so this is done
 // in code — #342 added the activity link, #344 the protocol reference). Equipment
-// is gear at THREE places: the per-set strength implement
+// is gear at FOUR places: the per-set strength implement
 // (exercise_sets.equipment_id), the session-level activity link
-// (activities.equipment_id), and a protocol's recovery-gear reference
-// (protocols.equipment_id). Every detach and the delete are scoped to the profile
+// (activities.equipment_id), a protocol's recovery-gear reference
+// (protocols.equipment_id), and a goal's optional load context
+// (goals.equipment_id, #1610). Every detach and the delete are scoped to the profile
 // so a leaked id can't reach another profile's rows.
+//
+// A goal detaches back to MOVEMENT-WIDE, which is the honest reading: the machine it
+// was scoped to no longer exists, and #1610's compatibility clause says a destructive
+// delete must not have provenance invented for it. Its sets have moved to the
+// unassigned lane in the same transaction, so a goal left pointing at the dead id
+// would measure nothing at all.
 export function deleteEquipment(profileId: number, id: number): void {
   writeTx(() => {
     db.prepare(
@@ -142,6 +149,10 @@ export function deleteEquipment(profileId: number, id: number): void {
     ).run(id, profileId);
     db.prepare(
       `UPDATE protocols SET equipment_id = NULL
+        WHERE equipment_id = ? AND profile_id = ?`
+    ).run(id, profileId);
+    db.prepare(
+      `UPDATE goals SET equipment_id = NULL
         WHERE equipment_id = ? AND profile_id = ?`
     ).run(id, profileId);
     db.prepare("DELETE FROM equipment WHERE id = ? AND profile_id = ?").run(

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #155: entering a condition by its lay name surfaces an ICD-10-CM code suggestion
 // the user CONFIRMS ("Use code"), which fills the code + code-system fields; on save
 // the stored code renders in the conditions table. This drives the real form and
@@ -7,7 +6,7 @@ import { test, expect } from "@playwright/test";
 test("manual condition entry suggests an ICD-10-CM code the user can confirm (#155)", async ({
   page,
 }) => {
-  await page.goto("/records/problems");
+  await page.goto("/records/problems/conditions");
 
   // Scope to the Conditions section — on the merged Health record page (#1042
   // phase 6) other sections carry a "Condition" field (Family history) and an
