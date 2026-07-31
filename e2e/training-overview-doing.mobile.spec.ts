@@ -142,6 +142,63 @@ test("the desktop Training tabs remain a compact left-aligned strip", async ({
   );
 });
 
+// Issue #1661 — a tab-first page's header action used to be handed to PageHeader,
+// which lives inside the `hidden md:block` heading band, so on a phone the action
+// simply did not exist. Training's Equipment link was the casualty: no door at all
+// from Training to the equipment registry below `md`. The action is now its own
+// cell beside the heading band rather than inside it, so it survives the band's
+// disappearance — ONE node, right-aligned above the tab panel on a phone.
+test("Training's Equipment door is reachable on a phone (#1661)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=overview");
+
+  // The heading band itself is still gone below `md` — the action is not part of it.
+  await expect(page.getByTestId("training-page-title")).toBeHidden();
+
+  const action = page.getByTestId("training-page-action");
+  await expect(action).toBeVisible();
+  const door = action.getByTestId("training-equipment-link");
+  await expect(door).toBeVisible();
+  await expect(door).toHaveAttribute("href", "/equipment");
+
+  // It sits above the tab panel's content rather than overlapping it, and is a
+  // real tap target rather than a bare line of text.
+  const [doorBox, todayBox] = await Promise.all([
+    door.boundingBox(),
+    page.getByTestId("training-today").boundingBox(),
+  ]);
+  expect(doorBox!.height).toBeGreaterThanOrEqual(24);
+  expect(doorBox!.y + doorBox!.height).toBeLessThanOrEqual(todayBox!.y);
+
+  await followLink(page, door, /\/equipment$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Equipment" })
+  ).toBeVisible();
+});
+
+test("the desktop Training header keeps the Equipment door beside the title (#1661)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/training?tab=overview");
+
+  const title = page.getByTestId("training-page-title");
+  await expect(title).toBeVisible();
+  const door = page
+    .getByTestId("training-page-action")
+    .getByTestId("training-equipment-link");
+  await expect(door).toBeVisible();
+
+  // Same row as the heading, to its right — where #1616 put it.
+  const [titleBox, doorBox] = await Promise.all([
+    title.boundingBox(),
+    door.boundingBox(),
+  ]);
+  expect(doorBox!.x).toBeGreaterThan(titleBox!.x);
+  expect(doorBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
+});
+
 test("no chart card renders on Overview — the volume/intensity block moved to Trends → Fitness", async ({
   page,
 }) => {

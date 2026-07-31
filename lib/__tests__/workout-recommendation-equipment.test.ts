@@ -71,11 +71,13 @@ describe("recommendNextWorkout — equipment preference (#345)", () => {
 
   it("de-ranks within the dated-history path too", () => {
     // Both lifts logged; Back Squat more frequent so it would lead by frequency,
-    // but a dumbbell-only registry sinks it below the available Goblet Squat.
+    // but a dumbbell-only registry sinks it below the available Goblet Squat. The
+    // sessions sit outside Legs' recovery window (#1673) so the equipment question is
+    // the only thing deciding the order here.
     const dated: DatedExercise[] = [
-      { date: "2026-07-06", exercise: "Back Squat" },
-      { date: "2026-07-05", exercise: "Back Squat" },
-      { date: "2026-07-04", exercise: "Goblet Squat" },
+      { date: "2026-07-03", exercise: "Back Squat" },
+      { date: "2026-07-02", exercise: "Back Squat" },
+      { date: "2026-07-01", exercise: "Goblet Squat" },
     ];
     const avail: EquipmentAvailability = {
       hasAny: true,

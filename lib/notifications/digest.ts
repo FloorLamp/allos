@@ -119,6 +119,17 @@ export interface DigestInput {
   // the calm Upcoming planning item renders, so the glance and the planning surface can
   // never disagree (#221). Empty ⇒ no plan is worth surfacing this week.
   weatherPlanLines?: string[];
+  // The weather-aware light-exposure line (#1723 part 1) — "Sunny, UV moderate until
+  // 4pm — good window for light exposure." Rendered by the pure lightExposureLine over
+  // the ALREADY-SYNCED weather/UV cache, gated by the named favorable-conditions
+  // predicate plus a relevance test, so a rainy day, a missing forecast or a profile
+  // this isn't about produces nothing. It rides THIS message; no send is created.
+  // Its own optional field so per-category demotion (#1714) has one switch.
+  lightExposureLine?: string | null;
+  // The Today STEP line (#1723 part 2) — the declared daily target, stated only when
+  // the trailing average sits below it (restating a target the reader already meets is
+  // not news). Null on every other day and for every profile with no declared target.
+  stepsTodayLine?: string | null;
   // Yesterday
   activities: DigestActivity[];
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
@@ -137,9 +148,24 @@ export interface DigestInput {
   // canonical kg — the same policy the weekly recap documents. Rounded via the
   // shared fmtWeight formatter rather than printed as the raw stored float (#380).
   weightKg: number | null;
+  // Yesterday's steps against the declared daily target (#1723 part 2), in the #1712
+  // verdict shape ("8,400 steps ▲ target met" / "5,100 of 8,000 steps"). Null when no
+  // target is declared or no reading exists — the digest states a comparison or says
+  // nothing; it never prints a lonely number for the reader to evaluate.
+  stepsLine?: string | null;
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
   newDocumentLabels: string[];
+  // The RECENT-CHANGES lines (#1713), already ranked, floored and capped by the ONE
+  // shared collector (lib/recent-changes.ts + lib/queries/recent-changes.ts) that the
+  // Household member card reads at 7 days and this reads at 24 hours. They join the
+  // existing "New since the last digest" section, which is what finally makes it the
+  // honest "what changed" section it was always trying to be: out-of-range vitals,
+  // mood/check-in, symptoms and overnight data arrival can appear at last.
+  //
+  // Empty on a quiet 24h, and an empty list renders NO section — the digest must never
+  // manufacture news to fill space (the same rule the delta line already follows).
+  recentChangeLines?: string[];
   // Last night's sleep (issue #1117), or null when the sleep summary is off or
   // there's no fresh sleep data. When present the digest gets a calm Sleep section.
   sleep?: DigestSleep | null;
@@ -271,6 +297,16 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     todayLines.push(`\u{1F6B4} ${line}`);
   }
 
+  // The weather-aware light window (#1723 part 1). Present only on a day whose
+  // forecast actually supports it, and only for a profile the line is about — the gate
+  // lives in the pure predicate, so by the time the line exists there is nothing left
+  // to decide here. It states a WINDOW, never an instruction with a deadline.
+  if (input.lightExposureLine) {
+    todayLines.push(`☀️ ${input.lightExposureLine}`);
+  }
+  // The daily step target (#1723 part 2), stated only when it is genuinely informative.
+  if (input.stepsTodayLine) todayLines.push(`🚶 ${input.stepsTodayLine}`);
+
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
   // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
   // the per-band counts (the glance line above already summarizes them) so a day of
@@ -326,6 +362,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // Rounded, kg per the notification unit policy documented on weightKg above.
     yLines.push(`⚖️ Weight: ${fmtWeight(input.weightKg, "kg")}`);
   }
+  // Steps vs the declared target (#1723 part 2) — a verdict, not a raw number (#1712).
+  if (input.stepsLine) yLines.push(`🚶 ${input.stepsLine}`);
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 
   // Sleep: a calm "how'd I sleep" (issue #1117) — last night's MAIN overnight
@@ -377,6 +415,13 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       `📄 ${input.newDocumentLabels.length} new document${input.newDocumentLabels.length === 1 ? "" : "s"}: ${input.newDocumentLabels.join(", ")}`
     );
   }
+  // The recent-changes lines (#1713) join the SAME section, below the flagged results
+  // and new documents the digest's own send-cursor window already reported. That order
+  // is the floor holding end to end: a flagged lab leads the section, the collector's
+  // own flagged-vital floor leads what follows, and routine lines can never displace
+  // either. The collector has already ranked, capped and appended any "+N more", so
+  // nothing here can spill.
+  for (const line of input.recentChangeLines ?? []) newLines.push(line);
   if (newLines.length) sections.push({ heading: "New", lines: newLines });
 
   // MINIMAL DIGEST GUARANTEE (#1505, owner-decided). Normally an empty digest is
