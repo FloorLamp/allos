@@ -269,6 +269,12 @@ export function seedSuppressedCenter(): void {
     );
   }
 
+  // The stamped day's max temperature — comfortably over the #1726 heatwave ENTRY
+  // bound (32 °C), so three consecutive such days genuinely make today notable AND give
+  // the journal card an unmistakable figure. Kept above the bound rather than at it, so
+  // the fixture doesn't sit on the hysteresis edge the predicate exists to smooth.
+  const WEATHER_STAMP_TEMP_C = 34;
+
   // #1172 — the Open-Meteo weather/UV integration + two-sided UV-dose sun model. A
   // dedicated adult profile seeded so the weather spec is fully isolated from profile
   // 1: a coarse home location (New York; timezone matched so the local hour labels line
@@ -323,6 +329,36 @@ export function seedSuppressedCenter(): void {
     ] as [string, number][]) {
       insUv.run(wxLat, wxLng, `${wxToday}T${hr}:00`, uv, uv + 1, 600, 500, 100);
     }
+    // ---- Conditions stamps + notable Timeline days (#1728) ----
+    // An outdoor RIDE today (the outdoor catalog flag decides which sessions get a
+    // stamp; the walk above is deliberately not an outdoor-flagged name, so only this
+    // one is stamped) plus a cached DAILY row for its day, so the journal card renders
+    // "31°C · clear". A three-day hot spell ending today additionally makes today a
+    // NOTABLE day under the #1726 heatwave predicate, so the Timeline day header
+    // carries its conditions summary — quiet by default, notable by exception.
+    db.prepare(
+      `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, duration_min)
+     VALUES (?, ?, 'cardio', 'Cycling', '07:00', '08:00', 60)`
+    ).run(wxId, wxToday);
+    const insDay = db.prepare(
+      `INSERT INTO weather_days
+         (lat, lng, date, temp_max_c, temp_min_c, precipitation_mm, weather_code, source)
+       VALUES (?, ?, ?, ?, ?, 0, 0, 'e2e')
+       ON CONFLICT(lat, lng, date) DO NOTHING`
+    );
+    for (let back = 2; back >= 0; back--) {
+      const d = new Date(`${wxToday}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - back);
+      insDay.run(
+        wxLat,
+        wxLng,
+        d.toISOString().slice(0, 10),
+        WEATHER_STAMP_TEMP_C,
+        22
+      );
+    }
+
     // Two successful weather syncs so the profile's Connected-sources card renders
     // with a latest-state line AND an expandable history (#1614): before that fix
     // Weather was excluded from getConnectedSources by kind, so the "Sync history"

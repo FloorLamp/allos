@@ -108,6 +108,39 @@ test.describe("Weather & UV integration (#1172)", () => {
     }
   });
 
+  test("conditions are stamped on the outdoor session and the notable day (#1728)", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_WEATHER,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      // The seeded RIDE is outdoor-flagged, so its journal card carries the conditions
+      // it happened in. The seeded walk is not outdoor-flagged and carries none —
+      // the catalog flag decides, not the availability of data.
+      await member.goto("/training");
+      const rideCard = member.locator(".card", { hasText: "Cycling" }).first(); // first-ok: fixture-owned single seeded ride
+      await expect(rideCard).toBeVisible();
+      // Rendered in the LOGIN's scale (the fixture login reads Fahrenheit), which is
+      // the point: the stamp is a display concern over a canonical °C reading.
+      await expect(rideCard.getByTestId("activity-metrics")).toContainText(
+        "93°F · clear"
+      );
+
+      // The three-day hot spell makes today NOTABLE, so the Timeline day header
+      // carries its conditions summary. Quiet days carry none.
+      await member.goto("/timeline");
+      const context = member.getByTestId("timeline-weather-context").first(); // first-ok: fixture-owned single notable day
+      await expect(context).toBeVisible();
+      await expect(context).toContainText("Heatwave");
+    } finally {
+      await member.context().close();
+    }
+  });
+
   test("disabling the integration turns the connection off", async ({
     browser,
   }) => {

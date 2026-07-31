@@ -220,6 +220,17 @@ Three properties are load-bearing:
   `WEATHER_FORECAST_DAYS` ahead (the planning surfaces need forecast), while the
   situation predicates are handed a series ending TODAY.
 
+**The session-to-weather join — one join, three consumers (#1724/#1728).**
+`lib/queries/weather-training.ts` joins a profile's logged cardio/sport sessions to the
+cached daily weather of the day each happened on. That ONE result feeds the tolerance
+ENVELOPE (what conditions this person actually trains in), the journal-card conditions
+STAMP, and — through the #1726 predicates over the same series — the Timeline's
+notable-day context. It is DERIVED AT READ TIME and never written onto the activity row:
+one source of truth, no backfill problem, and a cache gap renders no stamp rather than a
+stale one. Because `weather_days` carries no `profile_id` to join on, the join is done in
+TypeScript over two reads (profile-scoped activities, global weather) rather than in SQL —
+which is also what keeps the profile-scoping guard satisfied.
+
 **Chunked ingest (#1064).** The Health Connect write path processes the parsed
 batch in bounded per-type ~1,000-record slices, each its own IMMEDIATE `writeTx`
 (`lib/integrations/health-connect-ingest.ts`), so the connection is never

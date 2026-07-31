@@ -437,6 +437,27 @@ more" clicks. A **Source** filter sits alongside them, offering exactly the
 providers your own history contains (Manual, Strava, Google Health Connect,
 Document, …) labelled the same way the cards' provenance chips are.
 
+**Weather-aware suggestions.** When the Weather & UV source is on, outdoor
+activities are quietly **parked** in conditions you don't train in — the ride
+drops out of today's suggestion, the message says why, and the indoor stand-in
+takes its slot ("Too cold for cycling (−2°C) — Stationary Bike instead"). The
+threshold is _yours_: it's derived from the conditions you've actually logged
+sessions in, so someone who rides at 3°C keeps being offered the ride and
+someone whose rides all sit above 15°C doesn't. Until there's enough history to
+tell, only genuinely hostile conditions park anything. Nothing is ever banned —
+logging the outdoor session anyway is normal, and it teaches the engine. An
+alternative is only offered if you've logged it before or own the gear;
+otherwise you get the normal next-best suggestion with the explanation intact.
+Parked activities also stop counting as "stale" while parked, so winter can't
+push a ride _harder_ precisely when the weather is worst.
+
+**Conditions on the record.** An outdoor session's journal card shows what it
+was like outside ("31°C · clear"), and Timeline days carry a short conditions
+note when the weather was notable — a heatwave, cold snap, pressure swing, high
+pollen or poor air day. It's read from the cached weather at display time and
+never written onto the workout, so a gap in the data simply shows nothing. This
+is context, not judgement: a slow run at 31°C explains itself.
+
 Workout history, goals, strength analysis, cardio records, sport summaries, and
 per-exercise history; the Overview tab carries a **Training watch** card of
 calm, dismissible observations over your recent training — a push/pull volume
