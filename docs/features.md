@@ -1187,7 +1187,8 @@ dates, or profile). A tracked gap that a later catalog update covers shows a
 
 ### Derived indices
 
-Standard derived indices (Non-HDL cholesterol, triglyceride/HDL ratio, HOMA-IR,
+Standard derived indices (Non-HDL cholesterol, the cholesterol/HDL, LDL/HDL and
+triglyceride/HDL ratios, HOMA-IR,
 race-free CKD-EPI 2021 eGFR, and Levine **PhenoAge** — a biological-age estimate
 in years) are computed from your existing labs and shown alongside them, marked
 "derived" with their formula (eGFR/HOMA-IR/PhenoAge only appear when the needed

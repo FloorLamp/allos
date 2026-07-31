@@ -128,6 +128,18 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["LDL-C", "LDL Cholesterol"],
   ["LDL Calculated", "LDL Cholesterol"],
   ["LDL Cholesterol, Calculated", "LDL Cholesterol"],
+  // The lipid RATIOS (#1582). A lab that prints one must land on the same entry the
+  // derived index computes, or the analyte forks into a reported series and a
+  // computed one. The token set already folds "LDL:HDL Ratio" and "LDL HDL Ratio"
+  // onto "LDL/HDL Ratio"; these two spellings it does not ({hdl, ldl} and
+  // {cholesterol, hdl, ldl, ratio} match no entry).
+  ["LDL/HDL", "LDL/HDL Ratio"],
+  ["LDL/HDL Cholesterol Ratio", "LDL/HDL Ratio"],
+  // Same analyte, the spelling that names the numerator in full. NOT aliased, on
+  // purpose: a bare "Cholesterol/HDL" — its token set {cholesterol, hdl} is exactly
+  // "HDL Cholesterol"'s, so the spelling is genuinely ambiguous and an alias could
+  // only guess which analyte a report meant.
+  ["Total Cholesterol/HDL Ratio", "Cholesterol/HDL Ratio"],
   // Iron
   ["Total Iron Binding Capacity", "Total Iron-Binding Capacity (TIBC)"],
   // CBC differential — ABSOLUTE counts (cells/uL). The model prefixes "Absolute"
