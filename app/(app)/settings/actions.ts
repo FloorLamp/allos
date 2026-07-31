@@ -37,6 +37,7 @@ import {
   setLoginTelegram,
   setLoginTelegramDisabledKinds,
   isProfileMutedForLogin,
+  setLoginDigestDemotions,
   setProfileMutedForLogin,
   clearNotifyReviewNeeded,
   getTelegramBotConfig,
@@ -62,6 +63,7 @@ import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { canAccessProfile } from "@/lib/auth";
 import { parsePushSubscription } from "@/lib/notifications/push-core";
 import { parseDisabledKinds } from "@/lib/notifications/home-assistant-core";
+import { parseDigestDemotions } from "@/lib/notifications/digest-tune";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
@@ -390,6 +392,23 @@ export async function saveProfileNotifyMute(
     return { ok: false };
   const muted = formData.get("muted") === "on" || formData.get("muted") === "1";
   setProfileMutedForLogin(session.login.id, profileId, muted);
+  revalidatePath("/settings/notifications");
+  return { ok: true };
+}
+
+// Per-category digest demotion (#1714), the Settings MIRROR of the digest's ⚙️ Tune
+// control. Login-scoped: the caller writes only its OWN preferences, so no profile
+// authorization is involved and no profile-owned data is touched. Unknown category
+// names are dropped by the shared parser rather than stored, so a stale form can't
+// persist a preference that silences nothing.
+export async function saveDigestDemotions(
+  formData: FormData
+): Promise<{ ok: boolean }> {
+  const { login } = await requireSession();
+  setLoginDigestDemotions(
+    login.id,
+    parseDigestDemotions(String(formData.get("demoted") ?? ""))
+  );
   revalidatePath("/settings/notifications");
   return { ok: true };
 }
