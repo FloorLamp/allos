@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   startImport,
   commitImportJob,
@@ -62,7 +61,6 @@ export default function ImportClient({
 }: {
   units: { weightUnit: WeightUnit };
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [type, setType] = useState<ImportType>("workouts");
   const [typeTouched, setTypeTouched] = useState(false);
@@ -99,7 +97,6 @@ export default function ImportClient({
       }
       setText("");
       toast("Extraction started — you’ll be notified when it’s ready.");
-      router.refresh();
     } catch (e) {
       const message =
         e instanceof Error ? e.message : "Couldn't start the extraction.";
@@ -205,7 +202,6 @@ export function ImportJobList({
 // A single async import job: shows its status, and for a 'ready' job lets the
 // user expand the extracted preview table and save it (or discard).
 function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
-  const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<null | "save" | "discard">(null);
@@ -219,7 +215,6 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
         return;
       }
       toast(r.message);
-      router.refresh();
     } catch {
       // commitImportJob deliberately RETHROWS after reverting the job to 'ready'
       // (good server design) — without this catch the spinner just cleared and
@@ -229,7 +224,6 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
         tone: "error",
         duration: null,
       });
-      router.refresh();
     } finally {
       setPending(null);
     }
@@ -239,7 +233,6 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
     setPending("discard");
     try {
       await discardImportJob(job.id);
-      router.refresh();
     } catch {
       toast("Couldn't discard this import. Try again.", {
         tone: "error",

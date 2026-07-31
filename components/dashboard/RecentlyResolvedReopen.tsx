@@ -5,7 +5,6 @@ import Link from "next/link";
 import { IconRestore, IconX } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import { useToast } from "@/components/Toast";
-import { useRouter } from "next/navigation";
 import { reopenEpisodeAction } from "@/app/(app)/medical/episodes/actions";
 import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
 import type { AppRoute } from "@/lib/hrefs";
@@ -67,7 +66,6 @@ export default function RecentlyResolvedReopen({
   // whether the write succeeded or failed — it reports that the attempt settled.
   const [savedCount, setSavedCount] = useState(0);
   const toast = useToast();
-  const router = useRouter();
 
   const visible = items.filter((i) => !dismissed.has(i.episodeId));
   // The footer can outlive the lines for one revalidation (see the header note), so
@@ -88,7 +86,6 @@ export default function RecentlyResolvedReopen({
         return;
       }
       toast(`${item.situation} reopened.`);
-      router.refresh();
     });
   }
 

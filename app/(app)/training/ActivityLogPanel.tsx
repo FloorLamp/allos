@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -26,7 +25,6 @@ export default function ActivityLogPanel({
   distanceUnit: DistanceUnit;
   defaultDate: string;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,12 +70,10 @@ export default function ActivityLogPanel({
     }
     toast("Session logged");
     formRef.current?.reset();
-    router.refresh();
   }
 
   async function remove(formData: FormData) {
     await deleteActivity(formData);
-    router.refresh();
   }
 
   return (

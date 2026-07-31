@@ -53,7 +53,6 @@ export default function ServerTelegramSettings({
     runSave(async () => {
       await saveTelegramBotConfig(buildFormData());
       setResult(null);
-      router.refresh();
     });
   }
 
@@ -73,7 +72,6 @@ export default function ServerTelegramSettings({
           message: "Couldn’t register the webhook. Try again.",
         });
       }
-      router.refresh();
     });
   }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   deleteActivity,
   logBodyweight,
@@ -145,7 +144,6 @@ export default function ActivityForm({
   // row: sticking to the page viewport there would detach it from the form.
   stickyFooter?: boolean;
 }) {
-  const router = useRouter();
   const tz = useTimezone();
   // Kept for the unmount-flush failure path: the toast outlives the form.
   const toast = useToast();
@@ -897,7 +895,6 @@ export default function ActivityForm({
     try {
       await logBodyweight(w, date, units.weightUnit);
       setBwKnown(true);
-      router.refresh();
     } finally {
       setBwSaving(false);
     }

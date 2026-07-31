@@ -169,7 +169,7 @@ export default function ActivityEditorProvider({
   // it back to a blank state and dropping the user's unfinished input. This
   // happens on the journal page's 0→1-activities transition: with no activities
   // the page shows an empty state (no dock), so "Log activity" opens the
-  // overlay; the first auto-save's router.refresh() mounts JournalView, which
+  // overlay; the first auto-save's server re-render mounts JournalView, which
   // registers the dock. A ref mirrors it so open* can read the live dock
   // presence without taking dockEl as a dependency (which would churn the
   // memoized api on every dock registration).

@@ -1,7 +1,6 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { IconX } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
@@ -24,7 +23,6 @@ export default function UntrackHabitButton({
 }) {
   const confirm = useConfirm();
   const toast = useToast();
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   async function onClick() {
@@ -47,7 +45,6 @@ export default function UntrackHabitButton({
       });
       return;
     }
-    startTransition(() => router.refresh());
   }
 
   return (

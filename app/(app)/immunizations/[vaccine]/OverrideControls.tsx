@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
 import Combobox from "@/components/Combobox";
@@ -46,7 +45,6 @@ export default function OverrideControls({
     note: string | null;
   } | null;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [kind, setKind] = useState<OverrideKind>(current?.kind ?? "immune");
   const [reason, setReason] = useState(current?.reason ?? "");
@@ -60,7 +58,6 @@ export default function OverrideControls({
     formData.set("kind", kind);
     await setImmunizationOverride(formData);
     toast("Override saved");
-    router.refresh();
   }
 
   async function clear() {
@@ -68,7 +65,6 @@ export default function OverrideControls({
     fd.set("vaccine", vaccine);
     await clearImmunizationOverride(fd);
     toast("Override removed");
-    router.refresh();
   }
 
   return (

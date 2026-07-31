@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import PhotoCapture from "@/components/photo/PhotoCapture";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
@@ -36,7 +35,6 @@ export default function ProgressPhotosView({
   readOnly: boolean;
   autoCapture?: boolean;
 }) {
-  const router = useRouter();
   const confirm = useConfirm();
   const [pose, setPose] = useState<ProgressPose>("front");
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
@@ -126,7 +124,6 @@ export default function ProgressPhotosView({
               setNotice(null);
               setDate("");
               setCaption("");
-              router.refresh();
               return null;
             }}
           />
@@ -203,7 +200,6 @@ export default function ProgressPhotosView({
                     fd.set("photo_id", String(photo.id));
                     const res = await deleteProgressPhoto(fd);
                     setNotice(res.ok ? "Photo deleted." : res.error);
-                    router.refresh();
                   }}
                 >
                   Delete

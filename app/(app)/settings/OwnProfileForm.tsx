@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveOwnProfile } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -20,7 +19,6 @@ export default function OwnProfileForm({
   profiles: SessionProfile[];
   ownProfileId: number | null;
 }) {
-  const router = useRouter();
   const [value, setValue] = useState<string>(
     ownProfileId != null ? String(ownProfileId) : "none"
   );
@@ -32,7 +30,6 @@ export default function OwnProfileForm({
     runSave(async () => {
       const res = await saveOwnProfile(fd);
       if (!res.ok) throw new Error(res.error ?? "Couldn't save.");
-      router.refresh();
     });
   }
 

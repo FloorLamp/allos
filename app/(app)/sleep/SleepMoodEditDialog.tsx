@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import MoodValencePicker from "@/components/MoodValencePicker";
@@ -64,7 +63,6 @@ export default function SleepMoodEditDialog(
   const initialRow = rowForDate(initialDate);
   const [date, setDate] = useState(initialDate);
   const [row, setRow] = useState(initialRow);
-  const router = useRouter();
   const sleepHoursRef = useRef<HTMLInputElement>(null);
   const initialDuration = durationFields(initialRow.sleepEditHours);
   const [sleepHours, setSleepHours] = useState(initialDuration.hours);
@@ -144,7 +142,6 @@ export default function SleepMoodEditDialog(
         return;
       }
       onClose();
-      router.refresh();
     } catch {
       setError("Couldn’t save those changes. Try again.");
     } finally {

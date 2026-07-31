@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   IconPhone,
   IconMapPin,
@@ -35,7 +34,6 @@ export default function ProviderIdentityCard({
   // Specialty is a controlled Combobox (#1177) over the curated NUCC labels — fuzzy
   // search across the hundreds-long taxonomy, free text preserved.
   const [specialty, setSpecialty] = useState(provider.specialty ?? "");
-  const router = useRouter();
   const toast = useToast();
 
   async function handle(formData: FormData) {
@@ -47,7 +45,6 @@ export default function ProviderIdentityCard({
     }
     toast("Provider updated");
     setEditing(false);
-    router.refresh();
   }
 
   if (editing) {
@@ -189,7 +186,6 @@ export default function ProviderIdentityCard({
       return;
     }
     toast(provider.archived ? "Provider unarchived" : "Provider archived");
-    router.refresh();
   }
 
   return (

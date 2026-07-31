@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -24,7 +23,6 @@ export default function ConditionForm({
   profileId?: number;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!condition;
@@ -76,7 +74,6 @@ export default function ConditionForm({
       setCodeSystem("");
     }
     onDone?.();
-    router.refresh();
   }
 
   const uid = condition?.id ?? "new";

@@ -173,7 +173,7 @@ export default function HowAreYouCard({
   const [symptomExpanded, setSymptomExpanded] = useState(false);
 
   // Local mirrors of today's entry for instant feedback; the server row is the
-  // source of truth on the next render (router.refresh after each save).
+  // source of truth on the next render (the save action revalidates).
   const [valence, setValence] = useState<number | null>(mood?.valence ?? null);
   const [energy, setEnergy] = useState<number | null>(mood?.energy ?? null);
   const [anxiety, setAnxiety] = useState<number | null>(mood?.anxiety ?? null);
@@ -206,7 +206,6 @@ export default function HowAreYouCard({
           setError(res.error);
           return;
         }
-        router.refresh();
       } catch (err) {
         // Offline (or a dropped connection): queue the captured fields to replay
         // on reconnect — idempotent per day, so a double flush can't duplicate.
@@ -261,8 +260,7 @@ export default function HowAreYouCard({
       const fd = new FormData();
       fd.set("situation", name);
       const res = await toggleSituation(fd);
-      if (res.ok) router.refresh();
-      else setError(res.error);
+      if (!res.ok) setError(res.error);
     });
   }
 
@@ -272,7 +270,6 @@ export default function HowAreYouCard({
   function overridePoorSleep() {
     startSit(async () => {
       await dismissDerivedPoorSleep();
-      router.refresh();
     });
   }
 
@@ -315,7 +312,6 @@ export default function HowAreYouCard({
               start(async () => {
                 const res = await resumeMoodCheckins();
                 toast(res.ok ? "Daily check-ins resumed" : res.error);
-                router.refresh();
               })
             }
           >
@@ -563,7 +559,6 @@ export default function HowAreYouCard({
                 onClick={() =>
                   startSick(async () => {
                     await activateIllnessForSymptoms();
-                    router.refresh();
                   })
                 }
                 className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"

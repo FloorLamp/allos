@@ -40,11 +40,12 @@ import {
 // The studies list renders at `/results/imaging` (#1079). Bare `/results` is a
 // pure `redirect()` stub to `/results/biomarkers` (see its page.tsx) and renders
 // no imaging at all, so revalidating it never invalidated the surface these writes
-// change — leaving the client-side `router.refresh()` in ImagingStudyForm as the
-// ONLY thing that could repaint the list after an add/edit/delete. Revalidating
-// the route that actually RENDERS the list gives the action's own response a fresh
-// tree for that surface, an independent second repaint path. Same correction
-// `app/(app)/results/actions.ts` already carries for `/results/biomarkers`.
+// change, and the list's own router-cache entry stayed stale for the next
+// navigation to it. Revalidating the route that actually RENDERS the list is what
+// keeps that cache honest. Same correction `app/(app)/results/actions.ts` already
+// carries for `/results/biomarkers`. (The repaint of the page the writer is
+// LOOKING at comes from the action response either way — see
+// docs/internals/server-action-refresh.md.)
 function revalidateImaging() {
   revalidatePath("/results/imaging");
   revalidatePath("/timeline");

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 
@@ -52,7 +51,6 @@ export function useActivityAutosave({
   buildFormData: (savedId: number | null) => FormData;
   toast: (msg: string) => void;
 }): ActivityAutosave {
-  const router = useRouter();
   const [status, setStatus] = useState<SaveStatus>("idle");
   // Timestamp of the last successful save; drives the SaveStatus check + fade.
   const [savedAt, setSavedAt] = useState(0);
@@ -117,7 +115,6 @@ export function useActivityAutosave({
         setStatus("saved");
         setSavedAt(Date.now());
       }
-      router.refresh();
     } catch {
       if (mountedRef.current) setStatus("error");
       // Failed after the form closed (the unmount flush): the status icon is

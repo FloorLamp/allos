@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import Combobox from "@/components/Combobox";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
@@ -88,7 +87,6 @@ export default function SupplementForm({
     trainingRestricted,
     s?.condition
   );
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const fid = s?.id ?? "new";
@@ -267,7 +265,6 @@ export default function SupplementForm({
       setCritical(false);
       setDoses([emptyDose()]);
       setPairRows([]);
-      router.refresh();
     }
   }
 

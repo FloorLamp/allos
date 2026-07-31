@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   MAX_WEEKLY_CAP,
   substanceDef,
@@ -34,7 +33,6 @@ export default function ConsumptionSection({
   capSet: boolean;
   cap: number | null;
 }) {
-  const router = useRouter();
   const def = substanceDef(substance);
   const [pending, setPending] = useState(false);
   const [capInput, setCapInput] = useState(cap != null ? String(cap) : "");
@@ -46,7 +44,6 @@ export default function ConsumptionSection({
     const r = await fn();
     setPending(false);
     if (!r.ok && "error" in r) setError((r as { error: string }).error);
-    router.refresh();
   }
 
   function withSubstance(extra?: Record<string, string>): FormData {

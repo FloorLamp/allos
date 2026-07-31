@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { IconCamera, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
@@ -50,7 +49,6 @@ export default function SymptomPhotoStrip({
   profileId?: number;
 }) {
   const [pending, start] = useTransition();
-  const router = useRouter();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [caption, setCaption] = useState("");
@@ -76,7 +74,6 @@ export default function SymptomPhotoStrip({
       setCaption("");
       setPhotoSymptom("");
       toast("Photo attached.");
-      router.refresh();
     });
   }
 
@@ -93,7 +90,6 @@ export default function SymptomPhotoStrip({
       }
       setEditingId(null);
       toast(captionDraft.trim() ? "Caption updated." : "Caption removed.");
-      router.refresh();
     });
   }
 
@@ -171,7 +167,6 @@ export default function SymptomPhotoStrip({
                               toast(res.error, { tone: "error" });
                               return;
                             }
-                            router.refresh();
                           })
                         }
                         className="tap-target rounded p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50 dark:hover:bg-rose-950/30"

@@ -2,7 +2,6 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -175,7 +174,6 @@ export default function EpisodeTimeline({
     (sum, group) => sum + group.events.length,
     0
   );
-  const router = useRouter();
   const toast = useToast();
   const undoableDelete = useUndoableDelete();
   const confirm = useConfirm();
@@ -225,7 +223,6 @@ export default function EpisodeTimeline({
           ? "Symptom updated."
           : "Dose updated."
     );
-    router.refresh();
   }
 
   async function remove(event: IllnessTimelineEvent) {

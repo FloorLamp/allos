@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { BackupSettings } from "@/lib/settings";
 import {
   saveBackupSettings,
@@ -48,7 +47,6 @@ export default function BackupSettings({
     lastError: string | null;
   };
 }) {
-  const router = useRouter();
   const [enabled, setEnabled] = useState(settings.enabled);
   const [hour, setHour] = useState(settings.hour);
   const [keepDaily, setKeepDaily] = useState(settings.keepDaily);
@@ -71,7 +69,6 @@ export default function BackupSettings({
     runSave(async () => {
       await saveBackupSettings(fd);
       setResult(null);
-      router.refresh();
     });
   }
 
@@ -85,14 +82,12 @@ export default function BackupSettings({
           message: "Couldn’t run the backup. Try again.",
         });
       }
-      router.refresh();
     });
   }
 
   function verifyOffsite() {
     startRunNow(async () => {
       setResult(await verifyOffsiteDestination());
-      router.refresh();
     });
   }
 
@@ -106,7 +101,6 @@ export default function BackupSettings({
           message: "Couldn’t re-check integrity. Try again.",
         });
       }
-      router.refresh();
     });
   }
 

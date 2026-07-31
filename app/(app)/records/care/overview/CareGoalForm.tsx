@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -22,7 +21,6 @@ export default function CareGoalForm({
   profileId?: number;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!goal;
@@ -48,7 +46,6 @@ export default function CareGoalForm({
     toast(editing ? "Goal updated" : "Goal saved");
     if (!editing) formRef.current?.reset();
     onDone?.();
-    router.refresh();
   }
 
   const uid = goal?.id ?? "new";

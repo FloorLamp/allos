@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   SUBSTANCE_INSTRUMENTS,
   substanceInstrumentDef,
@@ -30,7 +29,6 @@ export default function SubstanceInstrumentsForm({
   // param and passes it. Absent/unknown ⇒ the AUDIT-C default.
   initialInstrument?: SubstanceInstrument;
 }) {
-  const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [instrument, setInstrument] = useState<SubstanceInstrument>(
     initialInstrument ?? "AUDIT-C"
@@ -97,7 +95,6 @@ export default function SubstanceInstrumentsForm({
       return;
     }
     reset();
-    router.refresh();
   }
 
   return (

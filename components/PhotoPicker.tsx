@@ -41,7 +41,6 @@ export default function PhotoPicker({
   hasPhoto,
   onUpload,
   onRemove,
-  onDone,
   variant = "default",
   disabled = false,
   onBusyChange,
@@ -51,8 +50,6 @@ export default function PhotoPicker({
   // which profile that is (active profile vs. an admin-selected one).
   onUpload: (file: File) => Promise<PhotoResult>;
   onRemove: () => Promise<PhotoResult>;
-  // Called after a successful upload/remove so the parent can revalidate/refresh.
-  onDone: () => void;
   variant?: Variant;
   // Lets a parent disable the controls while it's busy with unrelated work.
   disabled?: boolean;
@@ -81,8 +78,7 @@ export default function PhotoPicker({
     setError(null);
     start(async () => {
       const r = await onUpload(file);
-      if (r.ok) onDone();
-      else setError(r.error);
+      if (!r.ok) setError(r.error);
     });
   }
 
@@ -90,8 +86,7 @@ export default function PhotoPicker({
     setError(null);
     start(async () => {
       const r = await onRemove();
-      if (r.ok) onDone();
-      else setError(r.error);
+      if (!r.ok) setError(r.error);
     });
   }
 

@@ -2,7 +2,6 @@
 
 import { useId, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   IconPencil,
   IconTrash,
@@ -77,7 +76,6 @@ export default function EquipmentManager({
   // equipment id → usage badge; a missing id means "never used" (no badge).
   usage?: Record<number, EquipmentUsageBadge>;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -141,7 +139,6 @@ export default function EquipmentManager({
       const wasEditing = editingId != null;
       cancel();
       toast(wasEditing ? "Equipment updated" : "Equipment added");
-      router.refresh();
     });
   }
 
@@ -157,7 +154,6 @@ export default function EquipmentManager({
       await deleteEquipmentAction(e.id);
       if (editingId === e.id) cancel();
       toast(`Deleted ${e.name}`);
-      router.refresh();
     });
   }
 
@@ -167,7 +163,6 @@ export default function EquipmentManager({
       await setEquipmentRetiredAction(e.id, next);
       if (editingId === e.id) cancel();
       toast(next ? `Retired ${e.name}` : `Restored ${e.name}`);
-      router.refresh();
     });
   }
 

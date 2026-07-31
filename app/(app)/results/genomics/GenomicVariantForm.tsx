@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -31,7 +30,6 @@ export default function GenomicVariantForm({
   profileId?: number;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!variant;
@@ -57,7 +55,6 @@ export default function GenomicVariantForm({
     toast(editing ? "Variant updated" : "Variant saved");
     if (!editing) formRef.current?.reset();
     onDone?.();
-    router.refresh();
   }
 
   const uid = variant?.id ?? "new";

@@ -92,7 +92,6 @@ function TierBlock({
         setResult({ ok: true, message: "Saved." });
         setApiKey("");
         setClearKey(false);
-        router.refresh();
       } catch {
         setResult({ ok: false, message: "Couldn't save the tier. Try again." });
       }
@@ -109,7 +108,6 @@ function TierBlock({
         setApiKey("");
         setClearKey(false);
         setResult(await testAiTier(buildFormData()));
-        router.refresh();
       } catch {
         setResult({
           ok: false,

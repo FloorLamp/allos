@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import NotesText from "@/components/NotesText";
 import ProfileSwitcherChip from "@/components/ProfileSwitcherChip";
 import OverflowMenu, {
@@ -49,7 +48,6 @@ export default function SharedSupplyCard({
 }: {
   pool: SharedSupplyCardData;
 }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +61,6 @@ export default function SharedSupplyCard({
       if (!res.ok) setError(res.error ?? "Couldn't save.");
       else {
         setOpen(false);
-        router.refresh();
       }
     });
   };
@@ -76,7 +73,6 @@ export default function SharedSupplyCard({
       const res = await deletePoolAction(fd);
       if (!res.ok) setError(res.error ?? "Couldn't delete.");
       else {
-        router.refresh();
       }
     });
   };

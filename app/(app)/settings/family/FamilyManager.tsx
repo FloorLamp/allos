@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
 import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -132,7 +131,6 @@ function ProfilesCard({
   grants: Record<number, number[]>;
   summaries: Record<number, ProfileDataSummary>;
 }) {
-  const router = useRouter();
   const confirm = useConfirm();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
@@ -159,7 +157,6 @@ function ProfilesCard({
       setResult(r);
       if (r.ok) {
         setNewName("");
-        router.refresh();
       }
     });
   }
@@ -185,7 +182,6 @@ function ProfilesCard({
             summary={summaries[p.id]}
             losingAccess={membersLosingAllAccess(p.id, members)}
             canDelete={profiles.length > 1}
-            onDone={() => router.refresh()}
           />
         ))}
       </div>
@@ -224,13 +220,11 @@ function ProfileRow({
   summary,
   losingAccess,
   canDelete,
-  onDone,
 }: {
   profile: Profile;
   summary: ProfileDataSummary | undefined;
   losingAccess: string[];
   canDelete: boolean;
-  onDone: () => void;
 }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
@@ -253,7 +247,6 @@ function ProfileRow({
       if (r.ok) {
         setConfirmOpen(false);
         setTypedName("");
-        onDone();
       }
     });
   }
@@ -265,7 +258,6 @@ function ProfileRow({
     start(async () => {
       const r = await renameProfile(fd);
       setResult(r);
-      if (r.ok) onDone();
     });
   }
 
@@ -305,7 +297,6 @@ function ProfileRow({
             fd.set("profileId", String(profile.id));
             return removeProfilePhoto(fd);
           }}
-          onDone={onDone}
         />
         <div className="flex items-center gap-3">
           {!confirmOpen && (
@@ -403,7 +394,6 @@ function LoginsCard({
   sessionCounts: Record<number, number>;
   canInvite: boolean;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
   const [username, setUsername] = useState("");
@@ -460,7 +450,6 @@ function LoginsCard({
         setInvite(false);
         setAccessIds([]);
         setAccessTouched(false);
-        router.refresh();
       }
     });
   }
@@ -486,7 +475,6 @@ function LoginsCard({
             sessionCount={sessionCounts[a.id] ?? 0}
             grantCount={(grants[a.id] ?? []).length}
             canInvite={canInvite}
-            onDone={() => router.refresh()}
           />
         ))}
       </div>
@@ -616,7 +604,6 @@ function LoginRow({
   sessionCount,
   grantCount,
   canInvite,
-  onDone,
 }: {
   login: Login;
   isLastAdmin: boolean;
@@ -626,7 +613,6 @@ function LoginRow({
   // row says so instead of leaving the admin with no signal at all.
   grantCount: number;
   canInvite: boolean;
-  onDone: () => void;
 }) {
   const confirm = useConfirm();
   const [pending, start] = useTransition();
@@ -646,7 +632,6 @@ function LoginRow({
       if (r.ok) {
         setPassword("");
         setOpen(false);
-        onDone();
       }
     });
   }
@@ -658,10 +643,7 @@ function LoginRow({
     start(async () => {
       const r = await setLoginEmail(fd);
       setResult(r);
-      if (r.ok) {
-        setEmailOpen(false);
-        onDone();
-      }
+      if (r.ok) setEmailOpen(false);
     });
   }
 
@@ -671,7 +653,6 @@ function LoginRow({
     start(async () => {
       const r = await sendInvite(fd);
       setResult(r);
-      if (r.ok) onDone();
     });
   }
 
@@ -695,7 +676,6 @@ function LoginRow({
     start(async () => {
       const r = await revokeLoginSessions(fd);
       setResult(r);
-      if (r.ok) onDone();
     });
   }
 
@@ -719,7 +699,6 @@ function LoginRow({
     start(async () => {
       const r = await deleteLogin(fd);
       setResult(r);
-      if (r.ok) onDone();
     });
   }
 
@@ -1016,7 +995,6 @@ function OwnProfileRow({
   login: Login;
   profiles: Profile[];
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
   const [value, setValue] = useState<string>(
@@ -1030,7 +1008,6 @@ function OwnProfileRow({
     start(async () => {
       const r = await setLoginOwnProfile(fd);
       setResult(r);
-      if (r.ok) router.refresh();
     });
   }
 
@@ -1073,7 +1050,6 @@ function GrantsRow({
   granted: number[];
   access: Record<number, Access>;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
   // profile id → access level for each CURRENTLY-granted profile. Absence from
@@ -1105,7 +1081,6 @@ function GrantsRow({
     start(async () => {
       const r = await setGrants(fd);
       setResult(r);
-      if (r.ok) router.refresh();
     });
   }
 

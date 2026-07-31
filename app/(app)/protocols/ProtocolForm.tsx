@@ -231,7 +231,6 @@ export default function ProtocolForm({
       selectTemplate("");
     }
     onDone?.();
-    router.refresh();
   }
 
   const uid = protocol?.id ?? "new";

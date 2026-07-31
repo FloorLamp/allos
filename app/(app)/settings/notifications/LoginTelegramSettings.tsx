@@ -44,7 +44,6 @@ export default function LoginTelegramSettings({
     runSave(async () => {
       await saveLoginTelegram(buildFormData());
       setResult(null);
-      router.refresh();
     });
   }
 
@@ -57,7 +56,6 @@ export default function LoginTelegramSettings({
       try {
         await saveLoginTelegram(fd);
         setResult(await sendTestNotification());
-        router.refresh();
       } catch {
         setResult({ ok: false, message: "Couldn’t send the test. Try again." });
       }

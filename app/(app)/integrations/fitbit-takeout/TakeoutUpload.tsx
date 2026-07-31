@@ -53,8 +53,9 @@ export default function TakeoutUpload() {
         return;
       }
       setResult(body as ImportResult);
-      // The import wrote body metrics, sleep and activities — refresh so the
-      // "last import" line and any open Trends data reflect it.
+      // Survives the #1473 sweep: the import runs through a route handler
+      // (`fetch`), not a Server Action, so no action response carries a fresh tree
+      // — this is the only thing that repaints the "last import" line.
       router.refresh();
     } catch {
       setError("Upload failed. Check the file and try again.");

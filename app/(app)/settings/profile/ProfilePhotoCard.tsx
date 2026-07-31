@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import PhotoPicker from "@/components/PhotoPicker";
 import { uploadProfilePhoto, removeProfilePhoto } from "../photo-actions";
@@ -17,8 +16,6 @@ export default function ProfilePhotoCard({
   profile: AvatarProfile;
   disabled?: boolean;
 }) {
-  const router = useRouter();
-
   return (
     <div className="card space-y-4">
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -35,7 +32,6 @@ export default function ProfilePhotoCard({
             return uploadProfilePhoto(fd);
           }}
           onRemove={() => removeProfilePhoto(new FormData())}
-          onDone={() => router.refresh()}
         />
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">

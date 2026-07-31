@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -26,7 +25,6 @@ export default function LesionPhotoStrip({
   photos: LesionPhotoRow[];
 }) {
   const fmt = useFormatPrefs();
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +45,6 @@ export default function LesionPhotoStrip({
     toast("Photo added");
     formRef.current?.reset();
     setOpen(false);
-    router.refresh();
   }
 
   return (
@@ -78,7 +75,6 @@ export default function LesionPhotoStrip({
                 <form
                   action={async (fd) => {
                     await deleteLesionPhoto(fd);
-                    router.refresh();
                   }}
                   className="inline"
                 >

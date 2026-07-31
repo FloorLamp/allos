@@ -64,7 +64,6 @@ export default function HomeAssistantNotificationSettings({
         throw new Error(res.error);
       }
       setResult(null);
-      router.refresh();
     });
   }
 
@@ -81,7 +80,6 @@ export default function HomeAssistantNotificationSettings({
           return;
         }
         setResult(await sendTestHomeAssistant());
-        router.refresh();
       } catch {
         setResult({
           ok: false,

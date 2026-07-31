@@ -19,8 +19,8 @@ import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 // A primary "Taken now" button records an administration NOW; "Earlier dose" reveals
 // retro offsets — 30m ago, 1h ago, or a specific time today — the retro-entry home
 // ("gave it at 4pm, logging it now"). Each successful log is a real administration
-// (the ledger allows multiples/day), and router.refresh() pulls the revalidated
-// "N today · last …" subtitle from the server.
+// (the ledger allows multiples/day), and the action's own revalidate brings back the
+// updated "N today · last …" subtitle with its response.
 export default function QuickLogPrnControl({
   itemId,
   name,
@@ -85,7 +85,6 @@ export default function QuickLogPrnControl({
         );
         setOpen(false);
         setTime("");
-        router.refresh();
       } else {
         toast(res.error, { tone: "error" });
       }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { IconWand, IconEyeOff, IconAlertTriangle } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import {
@@ -32,7 +31,6 @@ export default function UnitMislabelReview({
   items: UnitMislabelReviewRow[];
 }) {
   const toast = useToast();
-  const router = useRouter();
 
   if (items.length === 0) return null;
 
@@ -40,7 +38,6 @@ export default function UnitMislabelReview({
     const fd = new FormData();
     fd.set("id", String(item.id));
     const res = await applyUnitMislabel(fd);
-    router.refresh();
     if (!res.ok) {
       toast(res.error, { tone: "error" });
       return;
@@ -55,7 +52,6 @@ export default function UnitMislabelReview({
             const r = await undoUnitMislabel(undo);
             if (r.ok) {
               toast("Correction undone.");
-              router.refresh();
             } else {
               toast("Couldn’t undo the correction.", { tone: "error" });
             }
@@ -69,7 +65,6 @@ export default function UnitMislabelReview({
     const fd = new FormData();
     fd.set("id", String(item.id));
     const res = await dismissUnitMislabel(fd);
-    router.refresh();
     if (!res.ok) toast(res.error, { tone: "error" });
   }
 
