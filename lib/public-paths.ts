@@ -53,6 +53,10 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   // its own explicit write gate before touching a profile. That call IS the gate.
   "/api/documents",
   "/api/documents/profiles",
+  // The acquirer's end-of-run sync report (#1739). Same token, same scope, same reason
+  // for being listed: a bearer POST from a tool on the user's own machine, which has no
+  // cookie, and which the coarse middleware check would answer with a 307 at /login.
+  "/api/documents/sync-report",
 ]);
 
 export function isPublicPath(pathname: string): boolean {

@@ -1,8 +1,11 @@
-// The PURE decisions behind POST /api/documents (issue #1735): which profile a request
-// targets, and what word describes what happened to each uploaded file. No DB, no fs, no
-// request — so the route stays a thin shell and both decisions are unit-testable.
+// The PURE per-file OUTCOME decision behind POST /api/documents (issue #1735): what word
+// describes what happened to each uploaded file. No DB, no fs, no request — so the route
+// stays a thin shell over one decision.
 //
-// ── PER-FILE OUTCOME ─────────────────────────────────────────────────────────
+// (Destination parsing moved to lib/acquirer-identity.ts when #1739 added the identity
+// form: "which profile does this request target" became a single exactly-one-of decision
+// across both the `profile` and `(portal, patient)` shapes, and splitting it across two
+// modules would have meant two parsers for one question.)
 //
 // The translation from the row `ingestMedicalUpload` landed on into the word an API
 // caller gets back.
@@ -89,20 +92,4 @@ export function classifyUploadOutcome(
 // re-scans the same folder.
 export function anyUploadFailed(outcomes: readonly UploadOutcome[]): boolean {
   return outcomes.includes("failed");
-}
-
-// ── TARGET PROFILE ───────────────────────────────────────────────────────────
-
-// The profile id a request names, or null. Accepts only a plain positive decimal, for
-// the same reason the token wire format does: `Number()` would happily read "007",
-// "+2", "2e0" and " 2 " as the same profile, and a credential-adjacent parameter should
-// have exactly one spelling. Null is NOT a default — the route answers 400, because
-// silently landing someone's labs on the wrong person is the failure this refuses to
-// risk (a share sheet has no choice and falls back to the active profile; a CLI has a
-// choice and must use it).
-export function parseTargetProfileId(raw: unknown): number | null {
-  const text = typeof raw === "string" ? raw : "";
-  if (!/^[1-9][0-9]*$/.test(text)) return null;
-  const id = Number(text);
-  return Number.isSafeInteger(id) ? id : null;
 }

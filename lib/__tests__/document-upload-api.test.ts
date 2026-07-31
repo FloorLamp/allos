@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   anyUploadFailed,
   classifyUploadOutcome,
-  parseTargetProfileId,
   type LandedDocumentRow,
 } from "../document-upload-api";
 
@@ -115,30 +114,5 @@ describe("anyUploadFailed", () => {
     expect(anyUploadFailed(["stored", "duplicate"])).toBe(false);
     expect(anyUploadFailed(["stored", "failed"])).toBe(true);
     expect(anyUploadFailed([])).toBe(false);
-  });
-});
-
-describe("parseTargetProfileId", () => {
-  it("accepts a plain positive decimal", () => {
-    expect(parseTargetProfileId("2")).toBe(2);
-    expect(parseTargetProfileId("17")).toBe(17);
-  });
-
-  it("refuses anything absent, empty, or non-numeric", () => {
-    expect(parseTargetProfileId(null)).toBeNull();
-    expect(parseTargetProfileId(undefined)).toBeNull();
-    expect(parseTargetProfileId("")).toBeNull();
-    expect(parseTargetProfileId("alice")).toBeNull();
-    expect(parseTargetProfileId(2)).toBeNull();
-  });
-
-  it("refuses spellings that would alias onto one profile", () => {
-    // One profile, one spelling — the same rule the token wire format applies.
-    expect(parseTargetProfileId("007")).toBeNull();
-    expect(parseTargetProfileId("+2")).toBeNull();
-    expect(parseTargetProfileId("2e0")).toBeNull();
-    expect(parseTargetProfileId(" 2 ")).toBeNull();
-    expect(parseTargetProfileId("0")).toBeNull();
-    expect(parseTargetProfileId("-1")).toBeNull();
   });
 });

@@ -77,6 +77,34 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "deleteSharedSupply (#1374): unlinks each member row it just read from poolMembers — the statement itself IS profile-scoped (id AND profile_id); listed only because the surrounding function's membership read is the cross-profile one above",
   },
   {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT pi.profile_id AS profileId, pi.portal_id AS portalId FROM portal_identities pi JOIN portals p ON p.id = pi.portal_id WHERE p.slug = ? COLLATE NOCASE AND pi.patient_label = ?",
+    why: "resolvePortalIdentity (#1739): the ONE lookup that RESOLVES which profile to gate on; the gate is the protection, the resolved id is immediately intersected with the token's write set. Filtering by profile_id here would presuppose the answer the acquirer is asking for. An identity that resolves to a profile the pushing token cannot write is refused exactly as loudly as an unbound one",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT pi.id AS id, pi.portal_id AS portalId, p.slug AS portalSlug, p.name AS portalName, pi.patient_label AS patientLabel, pi.profile_id AS profileId, pi.updated_at AS updatedAt FROM portal_identities pi JOIN portals p ON p.id = pi.portal_id",
+    why: "listPortalIdentities (#1739): the administrative 'which patient goes where' view is cross-profile BY NATURE — its whole job is to show bindings across the household so a misfiled one is visible. It carries identifiers and labels only (no health data), and the rendering surface is admin-gated and filters to the viewer's accessible set before display",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "SELECT id FROM portal_identities WHERE portal_id = ? AND patient_label = ?",
+    why: "bindPortalIdentity (#1739): re-reads the id of the row the adjacent ON CONFLICT upsert just wrote, keyed on the UNIQUE(portal_id, patient_label) index. The INSERT itself names profile_id and the caller authorized it; this reads back only the surrogate key",
+  },
+  {
+    file: "lib/portals.ts",
+    includes: "DELETE FROM portal_identities WHERE portal_id = ?",
+    why: "deletePortal (#1739): dropping a PORTAL removes every binding on it regardless of profile — that is the operation. The FK cascade would also fire; this runs explicitly so the teardown holds with foreign_keys off",
+  },
+  {
+    file: "lib/portals.ts",
+    includes: "DELETE FROM portal_identities WHERE id = ?",
+    why: "unbindPortalIdentity (#1739): deletes one binding by its surrogate id, which the caller resolved from the admin-gated listing and authorized before calling this auth-blind write core",
+  },
+  {
     file: "lib/queries/medical/flags.ts",
     includes: "UPDATE medical_records SET flag = ? WHERE id = ?",
     why: "reconcileFlags: the ids are produced by a profile-scoped SELECT in the same function",
