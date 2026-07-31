@@ -4,6 +4,13 @@
       "date": "2026-07-31",
       "entries": [
         {
+          "pr": 1758,
+          "kind": "fix",
+          "title": "Portal setup gets honest about its first run",
+          "body": "The very first portal sync no longer looks like nothing happened: the status line now says \"The tool reported 3 patients — map them below to finish setup\" instead of \"No run reported yet.\" The tool can also report a portal-wide failure (a changed login page, a moved download) without inventing a patient, and the count of patients waiting to be mapped is now the number that are actually new. Plus a safety catch on mapping: the profile picker no longer preselects anyone, so a mis-click can't file a patient under whoever sorts first — and the show-once API token finally has a copy button.",
+          "issues": [1756]
+        },
+        {
           "pr": 1753,
           "kind": "feature",
           "title": "Patient portals grow up: household logins, discovered patients, and a truer name",
