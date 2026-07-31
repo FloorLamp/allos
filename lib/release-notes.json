@@ -4,6 +4,27 @@
       "date": "2026-07-31",
       "entries": [
         {
+          "pr": 1753,
+          "kind": "feature",
+          "title": "Patient portals grow up: household logins, discovered patients, and a truer name",
+          "body": "The portal integration is now \"Patient portals\" — MyChart was just the first door; any portal with a standard health-record export works the same way. Households with two portal logins get accounts (\"Mom\", \"Dad\"), so two patients who share a name on different logins can never collide onto one profile. The companion tool now reports the patient list it sees, and the card turns that into waiting-to-be-mapped entries any caregiver with write access can bind — or mark ignored for patients you don't want synced. Sync status shows per portal, per login, per patient.",
+          "issues": [1739]
+        },
+        {
+          "pr": 1752,
+          "kind": "feature",
+          "title": "Documents remember which portal they came from",
+          "body": "A record uploaded through a portal now carries \"Acquired via <portal>\" in Data → Review and on the document itself. When two providers' portals disagree about an immunization, which copy came from where finally has an answer — and a hand-uploaded file says exactly that, by saying nothing.",
+          "issues": [1748]
+        },
+        {
+          "pr": 1751,
+          "kind": "fix",
+          "title": "Portal mapping deletions are now properly fenced",
+          "body": "Removing a portal patient mapping now verifies you can write to the profile the mapping actually points at — resolved on the server, never trusted from the form. A crafted request can no longer delete another profile's mapping, and a concurrent re-bind makes the delete refuse rather than proceed on stale authority.",
+          "issues": [1747]
+        },
+        {
           "pr": 1745,
           "kind": "feature",
           "title": "Training that checks the forecast — without overruling you",
