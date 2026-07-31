@@ -491,6 +491,89 @@ function byFractionComplete(
   return a.target.scope_value.localeCompare(b.target.scope_value);
 }
 
+// Each region's most recent session inside the bounded dated window. The one recency
+// index every #1673 decision reads: the scope-target pick, the within-tier ordering,
+// and the per-region recovery windows.
+function lastTrainedByRegion(
+  rows: readonly DatedExercise[]
+): Map<MuscleRegion, string> {
+  const last = new Map<MuscleRegion, string>();
+  for (const r of rows) {
+    const reg = regionForExercise(r.exercise);
+    if (!reg) continue;
+    const cur = last.get(reg);
+    if (!cur || r.date > cur) last.set(reg, r.date);
+  }
+  return last;
+}
+
+// The dated rows inside the recommendation's lookback window.
+function datedWithinWindow(input: NextWorkoutInput): DatedExercise[] {
+  return (input.datedExercises ?? []).filter((r) =>
+    within(r.date, input.today, WORKOUT_LOOKBACK_DAYS)
+  );
+}
+
+// Whether a region is still inside its recovery window as of `today` (#1673). Same-day
+// training is deliberately NOT counted: "you already trained today" is a different
+// question, owned by the trained-today branch and #1672's same-day deferral.
+function regionResting(
+  region: MuscleRegion,
+  lastByRegion: ReadonlyMap<MuscleRegion, string>,
+  today: string
+): boolean {
+  const last = lastByRegion.get(region);
+  if (last == null) return false;
+  const daysSince = daysBetween(last, today);
+  return daysSince >= 1 && daysSince <= regionRecoveryDays(region);
+}
+
+// The behind STRENGTH target the shared suggestion is scoped to. Least-complete first,
+// as before — but with two #1673 corrections ahead of the old alphabetical tie-break,
+// which was exactly as calendar-blind as the focus ordering the issue reports ("Back
+// 0/2" beat "Legs 0/2" on the letter B while back was 36 hours old):
+//
+//   • a target with at least one region OUT of its recovery window outranks one whose
+//     regions are all resting — otherwise the scope lands on an untrainable target and
+//     the day reads as all-fresh while a trainable behind target sits right there. The
+//     scope only settles on an all-resting target when EVERY behind strength target is,
+//     which is precisely the all-fresh corner (decision 3);
+//   • ties on completeness — which the weekly reset creates wholesale — go to the
+//     target whose regions have rested longest. A target with no history in the window
+//     is maximally stale and leads.
+function pickScopeTarget(
+  behindStrength: RoutineTargetProgress[],
+  lastByRegion: ReadonlyMap<MuscleRegion, string>,
+  today: string,
+  paceReleased: ReadonlySet<MuscleRegion>
+): RoutineTargetProgress | undefined {
+  const trainable = (t: RoutineTargetProgress): boolean => {
+    const regions = regionsForTarget(t);
+    // A type target names no region, so nothing constrains it.
+    if (regions.length === 0) return true;
+    return regions.some(
+      (r) => paceReleased.has(r) || !regionResting(r, lastByRegion, today)
+    );
+  };
+  const freshness = (t: RoutineTargetProgress): string => {
+    const dates = regionsForTarget(t)
+      .map((r) => lastByRegion.get(r))
+      .filter((d): d is string => d != null);
+    return dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : "";
+  };
+  // The fraction alone — byFractionComplete folds in its own alphabetical tie-break,
+  // which is the very ordering recency has to displace here.
+  const fraction = (t: RoutineTargetProgress) =>
+    t.count / Math.max(1, t.per_week);
+  return [...behindStrength].sort(
+    (a, b) =>
+      Number(trainable(b)) - Number(trainable(a)) ||
+      fraction(a) - fraction(b) ||
+      freshness(a).localeCompare(freshness(b)) ||
+      a.target.scope_value.localeCompare(b.target.scope_value)
+  )[0];
+}
+
 function toBehindTarget(t: RoutineTargetProgress): BehindTarget {
   return {
     id: t.target.id ?? null,
@@ -586,7 +669,11 @@ function latestTrainingDate(
 function computeStrengthWorkout(
   input: NextWorkoutInput,
   scopeTarget: RoutineTargetProgress | null,
-  excluded: Set<MuscleRegion>
+  excluded: Set<MuscleRegion>,
+  paceReleased: ReadonlyMap<
+    MuscleRegion,
+    { target: BehindTarget; daysLeftInWindow: number }
+  >
 ): {
   focus: MuscleRegion[];
   exercises: string[];
@@ -605,9 +692,7 @@ function computeStrengthWorkout(
       for (const r of regionsForTarget(t))
         if (!excluded.has(r)) behindRegions.push(r);
 
-  const dated = (input.datedExercises ?? []).filter((r) =>
-    within(r.date, today, WORKOUT_LOOKBACK_DAYS)
-  );
+  const dated = datedWithinWindow(input);
 
   if (dated.length > 0) {
     // In scope AND not excluded by an active injury (#838) — the exclusion is the user's
@@ -619,7 +704,7 @@ function computeStrengthWorkout(
       today,
       behindRegions,
       inScope,
-      paceReleasedRegions(routine, excluded)
+      paceReleased
     );
     const exercises = rankExercises(dated, focusRegions);
     return {
@@ -760,14 +845,7 @@ function focusFromHistory(
 ): { focus: MuscleRegion[]; recovery: RecoveryWindowState } {
   const todayWeekday = weekdayOfDateStr(today);
 
-  // Each region's most recent session inside the bounded window.
-  const lastByRegion = new Map<MuscleRegion, string>();
-  for (const r of rows) {
-    const reg = regionForExercise(r.exercise);
-    if (!reg) continue;
-    const cur = lastByRegion.get(reg);
-    if (!cur || r.date > cur) lastByRegion.set(reg, r.date);
-  }
+  const lastByRegion = lastTrainedByRegion(rows);
 
   // In-scope regions inside their recovery window, and the subset a tight week releases.
   const inWindow: RestingRegion[] = [];
@@ -816,7 +894,9 @@ function focusFromHistory(
       )
       .map((x) => x.r);
 
-  for (const r of staleFirst(usualRegions.filter((u) => behindRegions.includes(u))))
+  for (const r of staleFirst(
+    usualRegions.filter((u) => behindRegions.includes(u))
+  ))
     add(r);
   for (const r of staleFirst(behindRegions)) add(r);
   for (const r of staleFirst(usualRegions)) add(r);
@@ -1117,11 +1197,6 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     .filter((t) => !targetFullyExcluded(t, excluded));
   const behindTargets = behind.map(toBehindTarget);
 
-  // Scope the shared strength suggestion to the most-overdue behind strength
-  // target when the routine has one; otherwise leave it unscoped (habit).
-  const behindStrength = behind
-    .filter((t) => !isCardioTarget(t))
-    .sort(byFractionComplete)[0];
   // Routine-aware path (#740): an active routine resolves TODAY'S day into a
   // filled session — the authoritative recommendation. Guarded so that with NO
   // active routine the function is byte-for-byte its prior behavior (the whole
@@ -1176,10 +1251,23 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     // prior weekly-target / habit composition below.
   }
 
+  // Recovery-window bookkeeping (#1673), resolved once so the scope pick, the focus
+  // ordering and the disclosure all read one answer.
+  const paceReleased = paceReleasedRegions(routine, excluded);
+  // Scope the shared strength suggestion to the most-overdue behind strength target
+  // when the routine has one; otherwise leave it unscoped (habit).
+  const behindStrength = pickScopeTarget(
+    behind.filter((t) => !isCardioTarget(t)),
+    lastTrainedByRegion(datedWithinWindow(input)),
+    today,
+    new Set(paceReleased.keys())
+  );
+
   const { focus, exercises, primary, recovery } = computeStrengthWorkout(
     input,
     behindStrength ?? null,
-    excluded
+    excluded,
+    paceReleased
   );
 
   const base = {
