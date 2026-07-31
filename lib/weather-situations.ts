@@ -207,8 +207,17 @@ function spellDates(
     }
     prev = d.date;
     if (inSpell) {
-      if (meetsExit(d)) on.add(d.date);
-      else inSpell = false;
+      if (meetsExit(d)) {
+        on.add(d.date);
+      } else {
+        // The spell is over. Reset the ENTER run too: a day that failed the exit bound
+        // failed the (stricter) enter bound by construction, so it contributes nothing
+        // to a new run — and leaving the old count standing would let a SINGLE hot day
+        // after the break re-enter the spell and backfill retroactively over the very
+        // day that ended it. Re-entry must earn a fresh minDays run.
+        inSpell = false;
+        enterRun = 0;
+      }
       continue;
     }
     if (meetsEnter(d)) {

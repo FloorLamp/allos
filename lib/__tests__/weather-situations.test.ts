@@ -102,6 +102,34 @@ describe("heatwave predicate (#1726)", () => {
     }
   });
 
+  it("re-entry after a spell ends needs a FRESH consecutive run", () => {
+    // The regression this pins: on exiting a spell the ENTER run must reset. When it
+    // didn't, a single hot day after the break re-entered the spell AND the backfill
+    // retroactively stamped the exit day itself as in-spell — a 25 °C day reported as
+    // an active Heatwave, leaking into dueness, notable days, impact windows and the
+    // care-tier heat-risk note.
+    const days = tempSeries("2026-07-01", [35, 35, 35, 25, 33, 20]);
+    // The spell covers its three qualifying days.
+    expect(on(days, "2026-07-03")).toContain(BUILTIN_HEATWAVE_SITUATION);
+    // The exit day is OFF — it is the day that ended the spell.
+    expect(on(days, "2026-07-04")).not.toContain(BUILTIN_HEATWAVE_SITUATION);
+    // And one hot day afterwards does NOT re-enter: re-entry earns its own run.
+    expect(on(days, "2026-07-05")).not.toContain(BUILTIN_HEATWAVE_SITUATION);
+    // No window ever claimed the exit day.
+    expect(weatherSituationWindows(days, BUILTIN_HEATWAVE_SITUATION)).toEqual([
+      { start: "2026-07-01", end: "2026-07-03" },
+    ]);
+  });
+
+  it("re-enters once a fresh full run arrives", () => {
+    const days = tempSeries("2026-07-01", [35, 35, 35, 20, 34, 34, 34]);
+    expect(on(days, "2026-07-07")).toContain(BUILTIN_HEATWAVE_SITUATION);
+    expect(weatherSituationWindows(days, BUILTIN_HEATWAVE_SITUATION)).toEqual([
+      { start: "2026-07-01", end: "2026-07-03" },
+      { start: "2026-07-05", end: "2026-07-07" },
+    ]);
+  });
+
   it("counts consecutive days across a month boundary", () => {
     const days = tempSeries("2026-07-30", [35, 35, 35]);
     expect(days.map((d) => d.date)).toEqual([
@@ -156,6 +184,14 @@ describe("cold-snap predicate (#1726)", () => {
     const days = tempSeries("2026-01-10", [-3, -3, 2, -3, 8]);
     expect(on(days, "2026-01-12")).toContain(BUILTIN_COLD_SNAP_SITUATION);
     expect(on(days, "2026-01-14")).not.toContain(BUILTIN_COLD_SNAP_SITUATION);
+  });
+
+  it("also needs a fresh run to re-enter after a thaw ends the snap", () => {
+    // The same exit-path reset, on the other spellDates caller.
+    const days = tempSeries("2026-01-10", [-3, -3, 8, -3, 6]);
+    expect(on(days, "2026-01-11")).toContain(BUILTIN_COLD_SNAP_SITUATION);
+    expect(on(days, "2026-01-12")).not.toContain(BUILTIN_COLD_SNAP_SITUATION);
+    expect(on(days, "2026-01-13")).not.toContain(BUILTIN_COLD_SNAP_SITUATION);
   });
 
   it("never holds at the same time as a heatwave", () => {
