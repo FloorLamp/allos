@@ -50,10 +50,12 @@ describe("requestSyncAction — the gate", () => {
     actAs(login, profile, "read");
 
     const accountId = makePortalWithMappedPatient(profile.id);
-    await expect(requestSyncAction(fd({ account_id: accountId }))).rejects.toThrow(
-      /no write access/
+    await expect(
+      requestSyncAction(fd({ account_id: accountId }))
+    ).rejects.toThrow(/no write access/);
+    expect(listSyncRequests().some((r) => r.accountId === accountId)).toBe(
+      false
     );
-    expect(listSyncRequests().some((r) => r.accountId === accountId)).toBe(false);
   });
 
   it("lets a member with write access somewhere raise one", async () => {
@@ -62,10 +64,12 @@ describe("requestSyncAction — the gate", () => {
     actAs(login, profile);
 
     const accountId = makePortalWithMappedPatient(profile.id);
-    await expect(requestSyncAction(fd({ account_id: accountId }))).resolves.toEqual(
-      { ok: true }
+    await expect(
+      requestSyncAction(fd({ account_id: accountId }))
+    ).resolves.toEqual({ ok: true });
+    expect(listSyncRequests().some((r) => r.accountId === accountId)).toBe(
+      true
     );
-    expect(listSyncRequests().some((r) => r.accountId === accountId)).toBe(true);
   });
 });
 
@@ -91,16 +95,20 @@ describe("requestSyncAction — the typed outcome", () => {
     const out = await requestSyncAction(fd({ account_id: accountId }));
     expect(out.ok).toBe(false);
     expect(out.ok === false && out.error).toMatch(/Map at least one patient/i);
-    expect(listSyncRequests().some((r) => r.accountId === accountId)).toBe(false);
+    expect(listSyncRequests().some((r) => r.accountId === accountId)).toBe(
+      false
+    );
   });
 
   it("refuses a malformed account id", async () => {
     const login = createLogin({ role: "admin" });
     const profile = createProfile(`Req Bad ${++seq}`, login.id);
     actAs(login, profile);
-    expect(await requestSyncAction(fd({ account_id: "not-a-number" }))).toEqual({
-      ok: false,
-      error: "Unknown portal login.",
-    });
+    expect(await requestSyncAction(fd({ account_id: "not-a-number" }))).toEqual(
+      {
+        ok: false,
+        error: "Unknown portal login.",
+      }
+    );
   });
 });

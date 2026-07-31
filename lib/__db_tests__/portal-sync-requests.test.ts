@@ -57,7 +57,10 @@ function makeProfile(name: string): number {
   );
 }
 
-function makeLogin(username: string, role: "admin" | "member" = "member"): number {
+function makeLogin(
+  username: string,
+  role: "admin" | "member" = "member"
+): number {
   return Number(
     db
       .prepare(
@@ -98,7 +101,9 @@ function fixture(tag: string): Fixture {
   const mom = accounts.find((a) => a.name === `MomLogin${tag}`)!;
   const dad = accounts.find((a) => a.name === `DadLogin${tag}`)!;
   // Mom's login covers Mom. Dad's login covers nobody yet — the unmapped case.
-  expect(bindPortalIdentity(mom.id, `PATIENT ${tag}`, momProfile).ok).toBe(true);
+  expect(bindPortalIdentity(mom.id, `PATIENT ${tag}`, momProfile).ok).toBe(
+    true
+  );
   return {
     momProfile,
     dadProfile,
@@ -128,16 +133,18 @@ describe("requestSync — the manual creator", () => {
     expect(second.ok).toBe(true);
     expect(second.ok && second.created).toBe(false);
     // ONE row per portal login, by primary key — the table cannot be grown by asking.
-    expect(listSyncRequests().filter((r) => r.accountId === f.mom.id)).toHaveLength(
-      1
-    );
+    expect(
+      listSyncRequests().filter((r) => r.accountId === f.mom.id)
+    ).toHaveLength(1);
   });
 
   it("refuses a portal login with no mapped patients", () => {
     const f = fixture("nomap");
     const out = requestSync(f.dad.id, "manual");
     expect(out).toEqual({ ok: false, error: "no-mapped-patients" });
-    expect(listSyncRequests().some((r) => r.accountId === f.dad.id)).toBe(false);
+    expect(listSyncRequests().some((r) => r.accountId === f.dad.id)).toBe(
+      false
+    );
   });
 
   it("refuses an unknown login without writing anything", () => {
@@ -196,7 +203,9 @@ describe("staleness — the cadence creator", () => {
       f.mom.id
     );
     evaluateStalenessRequests(todayFor);
-    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(false);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
+      false
+    );
   });
 
   it("does not let a FAILED run reset the staleness clock", () => {
@@ -253,7 +262,9 @@ describe("post-visit — mapped profiles only", () => {
       "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Cardiology', 'cancelled')"
     ).run(f.momProfile, stamp(shiftDateStr(f.anchor, -1), "14:00:00"));
     evaluatePostVisitRequests(todayFor);
-    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(false);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
+      false
+    );
   });
 
   it("ignores a visit outside the window and a future one", () => {
@@ -265,7 +276,9 @@ describe("post-visit — mapped profiles only", () => {
       "INSERT INTO appointments (profile_id, scheduled_at, title, status) VALUES (?, ?, 'Future', 'scheduled')"
     ).run(f.momProfile, stamp(shiftDateStr(f.anchor, 5)));
     evaluatePostVisitRequests(todayFor);
-    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(false);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
+      false
+    );
   });
 });
 
@@ -286,7 +299,9 @@ describe("the request answers itself", () => {
       discovered: 0,
     });
 
-    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(false);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
+      false
+    );
     // The ROW is still there — nothing was deleted, nothing was stamped. Openness is
     // derived, so the report path needs no second write to keep consistent.
     expect(listSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(true);
@@ -319,7 +334,9 @@ describe("the request answers itself", () => {
       f.mom.id
     );
 
-    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(false);
+    expect(openSyncRequests().some((r) => r.accountId === f.mom.id)).toBe(
+      false
+    );
     // And nothing reaches any surface: no Upcoming item, therefore no digest line.
     expect(syncRequestItems(f.momProfile, f.anchor)).toEqual([]);
   });
@@ -443,9 +460,9 @@ describe("reach — an Upcoming item and a digest line sharing one key", () => {
     const model = buildUpcomingDigest("Mom", groupUpcoming(upcoming, f.anchor));
     expect(model).not.toBeNull();
     // Named, not merely counted: a bare "1 portal check" cannot be acted on.
-    expect(model!.syncIssues.some((s) => s.title.includes("Run the portal tool"))).toBe(
-      true
-    );
+    expect(
+      model!.syncIssues.some((s) => s.title.includes("Run the portal tool"))
+    ).toBe(true);
     expect(model!.lines.join(" ")).toContain("portal check");
   });
 
