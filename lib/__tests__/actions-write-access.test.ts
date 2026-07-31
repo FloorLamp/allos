@@ -152,6 +152,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "requireAnyProfileWriteAccess",
   },
   {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "requestSyncAction",
+    why: "portal-login write that ROUTES NOTHING (#1757): it raises a SYNC REQUEST keyed to a portal LOGIN — an ask that somebody run the companion tool — and the row carries no profile_id and cannot (the same request covers every patient bound under that login). There is therefore no target for requireProfileWriteAccess, and requireWriteAccess would assert the session's ACTIVE profile, which is unrelated to a portal login. Same gate and same population as the pending-list actions beside it: requireAnyProfileWriteAccess() — session + demo refusal + WRITE on at least one reachable profile, i.e. someone who could act on the records a run would bring in. A read-only caregiver cannot raise one",
+    gate: "requireAnyProfileWriteAccess",
+  },
+  {
     file: "app/(app)/settings/token-actions.ts",
     fn: "createApiTokenAction",
     why: "login-scoped (#1734): mints an API token on the caller's OWN login — a way to PRESENT that login, not profile-owned data, and it grants no access the login doesn't already have (every bearer route re-derives profile reach through accessForProfile at request time). requireWriteAccess() would be the wrong gate twice: it checks the ACTIVE profile, and it would refuse a read-only caregiver their own credentials. Demo-gated so the shared public demo login can't mint a credential that outlives the visit",

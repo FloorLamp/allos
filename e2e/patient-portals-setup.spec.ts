@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { hydratedClick, settledFill, settledSelect } from "./helpers";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // The Patient portals card's setup flow (#1739): register a portal, map a patient to a
 // profile, and see the mapping listed.
@@ -438,4 +438,88 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
 
     await removePortal(page, portal);
   });
+
+  // SYNC REQUESTS (#1757). Allos cannot run a portal sync, so the card cannot offer
+  // "Sync now" — what it offers is asking the person whose machine holds the login. The
+  // open ask is shown with its expiry, and it CLEARS when a run is reported, because the
+  // request answers itself rather than needing an acknowledgment protocol.
+  test("an open sync request shows on the card and clears when a run is reported", async ({
+    page,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Request Portal ${stamp}`;
+    const label = `Request Patient ${stamp}`;
+
+    await addPortal(page, portal);
+    // A login with no mapped patient can be asked, and the refusal says why — a nudge
+    // there would have nobody to reach.
+    const row = page
+      .getByTestId("sync-request-row")
+      .filter({ hasText: portal })
+      .first(); // first-ok: the portal name is unique to this test
+    await expect(row).toBeVisible();
+    await hydratedClick(page, row.getByTestId("sync-request-ask"));
+    await expect(page.getByTestId("portals-error")).toContainText(
+      "Map at least one patient"
+    );
+
+    // Map a patient, then ask again.
+    await page.getByTestId("bind-account").selectOption({ label: portal });
+    await settledFill(page, page.getByTestId("bind-label"), label);
+    await hydratedClick(page, page.getByTestId("bind-add"));
+    await expect(page.getByTestId("portals-status")).toHaveText(
+      "Patient mapped."
+    );
+
+    await hydratedClick(page, row.getByTestId("sync-request-ask"));
+    await expect(page.getByTestId("portals-status")).toHaveText(
+      "Sync requested."
+    );
+    // The card shows the ask AND its deadline — a request expires rather than hangs, so
+    // the surface that raised it says when it stops mattering.
+    await expect(row.getByTestId("sync-request-open")).toContainText(
+      "Sync requested"
+    );
+    await expect(row.getByTestId("sync-request-open")).toContainText("expires");
+
+    // The next reported run answers it. Nothing acknowledges the request and nothing
+    // clears a flag — the row simply stops being open once a report is newer than it.
+    plantRunReport(portal);
+    await page.reload();
+    await expect(
+      page
+        .getByTestId("sync-request-row")
+        .filter({ hasText: portal })
+        .first() // first-ok: spec-owned row
+        .getByTestId("sync-request-open")
+    ).toHaveCount(0);
+
+    await removePortal(page, portal);
+  });
+
+  // A run report for this spec's own portal, stamped now (the frozen clock), so it is
+  // newer than the request the test just raised.
+  function plantRunReport(portalName: string) {
+    const handle = new Database(workerDbPath());
+    try {
+      const portal = handle
+        .prepare("SELECT id FROM portals WHERE name = ?")
+        .get(portalName) as { id: number };
+      const account = handle
+        .prepare("SELECT id FROM portal_accounts WHERE portal_id = ?")
+        .get(portal.id) as { id: number };
+      const at = frozenNow().toISOString().replace("T", " ").slice(0, 19);
+      handle
+        .prepare(
+          `INSERT INTO portal_run_reports
+             (account_id, portal_id, at, ok, status, message, discovered)
+           VALUES (?, ?, ?, 1, 'nothing-new', NULL, 0)
+           ON CONFLICT(account_id) DO UPDATE SET at = excluded.at, ok = 1`
+        )
+        .run(account.id, portal.id, at);
+    } finally {
+      handle.close();
+    }
+  }
 });
