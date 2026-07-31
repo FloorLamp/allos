@@ -19,6 +19,13 @@ import {
   listPortals,
 } from "@/lib/portals";
 import { portalStatusLine } from "@/lib/portal-status";
+import { openSyncRequests } from "@/lib/portal-requests";
+import {
+  daysUntilExpiry,
+  syncRequestCardLine,
+  syncRequestCopy,
+} from "@/lib/sync-requests";
+import { today } from "@/lib/db";
 import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import PortalSetup from "./PortalSetup";
 
@@ -82,6 +89,26 @@ export default async function PatientPortalsPage() {
   const canManagePending =
     login.role === "admin" || writableProfiles.length > 0;
   const pending = canManagePending ? listPendingIdentities() : [];
+
+  // OPEN sync requests (#1757), one per portal login at most. Formatted here through the
+  // SAME pure formatter the Upcoming item and the digest line use, so the card and the
+  // nudge describe one state. Read for the population that can act on it — the same gate
+  // the pending list takes — since the button that raises one is gated that way too.
+  const cardToday = today(profile.id);
+  const syncRequests = canManagePending
+    ? openSyncRequests().map((r) => ({
+        accountId: r.accountId,
+        line: syncRequestCardLine(
+          syncRequestCopy({
+            portalName: r.portalName,
+            accountName: r.accountName,
+            accountImplicit: r.accountImplicit,
+            reason: r.reason,
+          }),
+          daysUntilExpiry(r.expiresAt, cardToday)
+        ),
+      }))
+    : [];
 
   // Per-(login, patient) "Last synced" for the ACTIVE profile's runs.
   const statuses = identitySyncStatuses(profile.id, "patient-portals");
@@ -172,6 +199,7 @@ export default async function PatientPortalsPage() {
         identities={identities}
         pending={pending}
         statuses={statuses}
+        syncRequests={syncRequests}
         profiles={profiles}
         writableProfiles={writableProfiles}
         isAdmin={login.role === "admin"}

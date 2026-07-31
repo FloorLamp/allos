@@ -101,6 +101,7 @@ import { runStravaSync } from "../lib/integrations/strava-sync";
 import { runOuraSync } from "../lib/integrations/oura-sync";
 import { runWithingsSync } from "../lib/integrations/withings-sync";
 import { runWeatherSync } from "../lib/integrations/weather-sync";
+import { evaluateSyncRequests } from "../lib/portal-requests";
 
 const log = createLogger("notify");
 
@@ -825,6 +826,30 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
 async function tick() {
   const profiles = allProfiles();
   let anyFailed = false;
+
+  // Portal sync requests (#1757): GLOBAL, once per tick, and deliberately BEFORE the
+  // per-profile loop so an ask raised this hour is already visible to today's digest
+  // rather than waiting a day.
+  //
+  // Not inside the loop, because a request is about a portal LOGIN, not a person: one
+  // login covering three people would otherwise be evaluated three times and the
+  // supersession rule would be asked to sort out a race it should never have seen. It
+  // writes ROWS ONLY — no send, ever. The nudge itself is the Upcoming item the request
+  // produces and the digest line that item's own banding yields, which is the whole
+  // reach this feature is allowed (coaching tier: portal hygiene is never a safety
+  // signal). Best-effort: raising an ask must never fail a tick that has medication
+  // reminders to deliver.
+  try {
+    const raised = evaluateSyncRequests((profileId) => today(profileId));
+    if (raised.staleness > 0 || raised.postVisit > 0) {
+      log.info("portal sync requests raised", raised);
+    }
+  } catch (e) {
+    log.error("portal sync-request evaluation failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
   for (const p of profiles) {
     try {
       if (await tickProfile(p)) anyFailed = true;

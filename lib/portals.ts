@@ -234,6 +234,12 @@ export function deletePortal(portalId: number): boolean {
     db.prepare("DELETE FROM portal_run_reports WHERE portal_id = ?").run(
       portalId
     );
+    // Open sync requests go with the portal they name (#1757). CASCADE would do it, but
+    // the runner disables foreign keys during migrations and this module deletes the
+    // other portal children explicitly for exactly that reason.
+    db.prepare("DELETE FROM portal_sync_requests WHERE portal_id = ?").run(
+      portalId
+    );
     db.prepare("DELETE FROM portal_accounts WHERE portal_id = ?").run(portalId);
     db.prepare(
       "UPDATE medical_documents SET acquired_portal_id = NULL WHERE acquired_portal_id = ?"
@@ -347,6 +353,9 @@ export function deletePortalAccount(accountId: number): boolean {
       "DELETE FROM pending_portal_identities WHERE account_id = ?"
     ).run(accountId);
     db.prepare("DELETE FROM portal_run_reports WHERE account_id = ?").run(
+      accountId
+    );
+    db.prepare("DELETE FROM portal_sync_requests WHERE account_id = ?").run(
       accountId
     );
     db.prepare(
@@ -928,6 +937,14 @@ export function recordPortalRunReport(
     status: SyncReportStatus;
     message: string | null;
     discovered: number;
+    // WHICH allos login pushed this run (#1757). Null for a path that has no login to
+    // name; the sync-report route always has one. This is the ONLY record of who
+    // actually runs the tool for a portal login, and it is what lets a sync-request
+    // nudge reach that person's own channels instead of broadcasting to the household
+    // (lib/portal-requests.ts: syncRequestRecipients). Overwritten with the run, so it
+    // always names the login that most recently reported — a machine handed over to a
+    // different person re-points it by running once.
+    reportedByLoginId?: number | null;
   }
 ): void {
   // The clock SEAM (sqlNow, #1534), not datetime('now'): the card reduces this to a
@@ -935,15 +952,17 @@ export function recordPortalRunReport(
   const now = sqlNow();
   db.prepare(
     `INSERT INTO portal_run_reports
-       (account_id, portal_id, at, ok, status, message, discovered)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+       (account_id, portal_id, at, ok, status, message, discovered,
+        reported_by_login_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(account_id)
      DO UPDATE SET portal_id = excluded.portal_id,
                    at = excluded.at,
                    ok = excluded.ok,
                    status = excluded.status,
                    message = excluded.message,
-                   discovered = excluded.discovered`
+                   discovered = excluded.discovered,
+                   reported_by_login_id = excluded.reported_by_login_id`
   ).run(
     account.id,
     account.portalId,
@@ -951,7 +970,8 @@ export function recordPortalRunReport(
     input.ok ? 1 : 0,
     input.status,
     input.message ? input.message.slice(0, 500) : null,
-    Math.max(0, Math.round(input.discovered))
+    Math.max(0, Math.round(input.discovered)),
+    input.reportedByLoginId ?? null
   );
 }
 

@@ -8,6 +8,7 @@
 // in lib/__db_tests__/upcoming.scoping.test.ts.
 
 import { cache } from "../../request-cache";
+import { syncRequestItems } from "./portal-sync";
 import { shiftDateStr } from "../../date";
 import {
   signalKey,
@@ -612,6 +613,11 @@ const rawUpcoming = cache(function rawUpcoming(
     ...outdoorPlanItems(profileId),
     ...practiceItems(profileId),
     ...enduranceEventItems(profileId, today, distanceUnit),
+    // Open portal sync requests (#1757) — "run the portal tool on the computer with
+    // Mom's login". Rides this aggregation deliberately: the morning digest's Today
+    // section formats the SAME set, so the item and its digest line share one dedupe
+    // key and one dismissal (#221), and the feature needs no send of its own.
+    ...syncRequestItems(profileId, today),
   ];
 });
 
