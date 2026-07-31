@@ -1,6 +1,25 @@
 {
   "days": [
     {
+      "date": "2026-07-31",
+      "entries": [
+        {
+          "pr": 1736,
+          "kind": "feature",
+          "title": "Nudges that read like they know you",
+          "body": "A sweep over every message the app sends. The protein line now says when you've reached your goal instead of implying a shortfall; the workout nudge leads with the exact target driving its suggestion; the daily digest previews today's recommended workout and drops its redundant tail on Telegram. A second same-day workout nudge acknowledges the session you already did, and if mood check-ins are about to auto-pause, the final reminder says so — pausing quietly unless you ask to keep them.",
+          "issues": [1722, 1710, 1709, 1712, 1672, 1668]
+        },
+        {
+          "pr": 1733,
+          "kind": "fix",
+          "title": "The safety tier stops lying",
+          "body": "Missed-dose escalations now reach every channel you configured — Web Push and Home Assistant included, not just Telegram — and a broken safety channel finally shows up in delivery health. Escalations state how long a dose has been unconfirmed and offer a one-tap Skip. The /dose command shows the same redose safety verdicts as the app, push notifications stop asking you to tap buttons they can't show, a next-morning tap on yesterday's household round is refused instead of mislogged, and shared-chat messages always name whose dose they mean.",
+          "issues": [1716, 1717, 1718, 1719, 1720, 1721]
+        }
+      ]
+    },
+    {
       "date": "2026-07-30",
       "entries": [
         {
