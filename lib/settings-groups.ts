@@ -62,10 +62,12 @@ export type SettingsGroup = {
   // standard (docs/internals/copy.md, #945) these stay to a single sentence.
   summary: string;
   relevance?: SettingsGroupRelevance;
-  // Sub-pages rendered by the group nav when the group is active. Only the
-  // Logs & audit group has them: AI logs / Errors / Audit are three diagnostic
-  // VIEWERS that share one topic but can't sensibly share one page. They come from
-  // this same registry, so they are part of the one nav, not a fourth system.
+  // Sub-pages rendered by the group nav when the group is active. Two groups have
+  // them: Logs & audit (AI logs / Errors / Audit are three diagnostic VIEWERS that
+  // share one topic but can't sensibly share one page) and Account & security (API
+  // tokens, #1734 — a credential REGISTRY with its own mint/revoke lifecycle, which
+  // does not belong stacked under the password and 2FA forms). They come from this
+  // same registry, so they are part of the one nav, not a fourth system.
   pages?: readonly SettingsGroupPage[];
 };
 
@@ -77,7 +79,15 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     tier: "login",
     adminOnly: false,
     summary:
-      "Password, two-factor authentication, and the devices you're signed in on.",
+      "Password, two-factor authentication, the devices you're signed in on, and your API tokens.",
+    // API tokens (#1734) sit in the LOGIN tier beside sessions and 2FA, because a
+    // token is another way to present this login — not a per-profile setting. It
+    // earns its own sub-page rather than a fourth card: minting shows a secret
+    // exactly once, which needs room and its own explanation.
+    pages: [
+      { href: "/settings/account", label: "Account & security" },
+      { href: "/settings/tokens", label: "API tokens" },
+    ],
   },
   {
     id: "display",

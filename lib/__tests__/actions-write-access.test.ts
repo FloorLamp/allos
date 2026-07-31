@@ -122,6 +122,18 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "requireLoginWriteAccess",
   },
   {
+    file: "app/(app)/settings/token-actions.ts",
+    fn: "createApiTokenAction",
+    why: "login-scoped (#1734): mints an API token on the caller's OWN login — a way to PRESENT that login, not profile-owned data, and it grants no access the login doesn't already have (every bearer route re-derives profile reach through accessForProfile at request time). requireWriteAccess() would be the wrong gate twice: it checks the ACTIVE profile, and it would refuse a read-only caregiver their own credentials. Demo-gated so the shared public demo login can't mint a credential that outlives the visit",
+    gate: "requireLoginWriteAccess",
+  },
+  {
+    file: "app/(app)/settings/token-actions.ts",
+    fn: "revokeApiTokenAction",
+    why: "login-scoped (#1734): revokes an API token — the caller's own, or any token when the caller is an admin (who can already delete the whole login). Same tier as revokeSessionAction, and demo-gated so one visitor can't revoke another's",
+    gate: "requireLoginWriteAccess",
+  },
+  {
     file: "app/(app)/settings/actions.ts",
     fn: "revokeSessionAction",
     why: "login-scoped: revokes one of the caller's own sessions (demo-gated, #278)",

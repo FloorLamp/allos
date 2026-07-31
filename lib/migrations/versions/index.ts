@@ -125,6 +125,7 @@ import { migration as m123 } from "./123-practice-target-unique";
 import { migration as m124 } from "./124-intake-obligation";
 import { migration as m125 } from "./125-lesion-allergy-encounter-link";
 import { migration as m126 } from "./126-intake-cadence";
+import { migration as m127 } from "./127-api-tokens";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -259,4 +260,5 @@ export const MIGRATIONS: Migration[] = [
   m124,
   m125,
   m126,
+  m127,
 ];
