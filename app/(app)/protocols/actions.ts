@@ -305,43 +305,49 @@ export async function updateProtocol(formData: FormData): Promise<FormResult> {
   );
   const equipmentId = resolveEquipmentId(profile.id, formData);
   const intakeItemId = resolveIntakeItemId(profile.id, formData);
-  const practice = syncPracticeTarget(profile.id, formData, {
-    frequency_target_id: existing.frequency_target_id,
-    owns_frequency_target: existing.owns_frequency_target,
-  });
+  // One transaction for the whole edit, exactly as create runs: the practice
+  // target, the protocol row, the stale-target cleanup and the situation
+  // reconciliation are one state change, and a half-applied edit would leave an
+  // orphan target or a situation that disagrees with the row it was named on.
+  writeTx(() => {
+    const practice = syncPracticeTarget(profile.id, formData, {
+      frequency_target_id: existing.frequency_target_id,
+      owns_frequency_target: existing.owns_frequency_target,
+    });
 
-  db.prepare(
-    `UPDATE protocols
+    db.prepare(
+      `UPDATE protocols
        SET name = ?, start_date = ?, end_date = ?, notes = ?,
            outcome_keys = ?, situation = ?, equipment_id = ?,
            frequency_target_id = ?, owns_frequency_target = ?,
            intake_item_id = ?
      WHERE id = ? AND profile_id = ?`
-  ).run(
-    name,
-    start,
-    end,
-    notes,
-    JSON.stringify(outcomeKeys),
-    situation,
-    equipmentId,
-    practice.frequency_target_id,
-    practice.owns_frequency_target,
-    intakeItemId,
-    id,
-    profile.id
-  );
-  // Now that the protocol row no longer references the old target, clean it up.
-  cleanupStaleOwnedTarget(profile.id, practice.staleOwnedTargetId, id);
+    ).run(
+      name,
+      start,
+      end,
+      notes,
+      JSON.stringify(outcomeKeys),
+      situation,
+      equipmentId,
+      practice.frequency_target_id,
+      practice.owns_frequency_target,
+      intakeItemId,
+      id,
+      profile.id
+    );
+    // Now that the protocol row no longer references the old target, clean it up.
+    cleanupStaleOwnedTarget(profile.id, practice.staleOwnedTargetId, id);
 
-  // Reconcile the situation activation with the edit: a removed/renamed situation
-  // on an ongoing protocol is deactivated (unless a sibling needs it); a newly-set
-  // situation on an ongoing protocol is activated.
-  const wasOngoing = existing.end_date == null;
-  if (existing.situation && existing.situation !== situation && wasOngoing) {
-    deactivateSituation(profile.id, existing.situation, id);
-  }
-  if (situation && end == null) activateSituation(profile.id, situation);
+    // Reconcile the situation activation with the edit: a removed/renamed situation
+    // on an ongoing protocol is deactivated (unless a sibling needs it); a newly-set
+    // situation on an ongoing protocol is activated.
+    const wasOngoing = existing.end_date == null;
+    if (existing.situation && existing.situation !== situation && wasOngoing) {
+      deactivateSituation(profile.id, existing.situation, id);
+    }
+    if (situation && end == null) activateSituation(profile.id, situation);
+  });
 
   revalidateProtocols(id);
   return formOk();
@@ -378,12 +384,18 @@ export async function endProtocol(formData: FormData): Promise<FormResult> {
   if (existing.end_date != null)
     return formError("That protocol has already ended.");
   const end = today(profile.id);
-  db.prepare(
-    "UPDATE protocols SET end_date = ? WHERE id = ? AND profile_id = ?"
-  ).run(end, id, profile.id);
-  // Ending the protocol inverts its situation activation.
-  if (existing.situation)
-    deactivateSituation(profile.id, existing.situation, id);
+  // The row write and the situation inversion are ONE transition (see resume for
+  // the same pairing): a protocol that reads "ended" while its situation is still
+  // active would keep firing situational supplements and nudges for a block the
+  // user has stopped.
+  writeTx(() => {
+    db.prepare(
+      "UPDATE protocols SET end_date = ? WHERE id = ? AND profile_id = ?"
+    ).run(end, id, profile.id);
+    // Ending the protocol inverts its situation activation.
+    if (existing.situation)
+      deactivateSituation(profile.id, existing.situation, id);
+  });
   revalidateProtocols(id);
   return formOk();
 }
@@ -406,10 +418,17 @@ export async function resumeProtocol(formData: FormData): Promise<FormResult> {
     );
   }
 
-  db.prepare(
-    "UPDATE protocols SET end_date = NULL WHERE id = ? AND profile_id = ?"
-  ).run(id, profile.id);
-  if (existing.situation) activateSituation(profile.id, existing.situation);
+  // Reopening the row and reactivating its situation are ONE transition, so they
+  // go in ONE writeTx like create/run-again do. Split, a failure between them
+  // commits a protocol that reads "Ongoing" while its situational supplements and
+  // nudges stay off — and the user cannot self-correct, because an already-active
+  // protocol is no longer resume-eligible.
+  writeTx(() => {
+    db.prepare(
+      "UPDATE protocols SET end_date = NULL WHERE id = ? AND profile_id = ?"
+    ).run(id, profile.id);
+    if (existing.situation) activateSituation(profile.id, existing.situation);
+  });
   revalidateProtocols(id);
   return formOk();
 }
@@ -547,20 +566,25 @@ export async function deleteProtocol(
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
   if (!existing) return formError("Couldn't find that protocol.");
-  db.prepare("DELETE FROM protocols WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
-  );
-  // Delete carries its side-state (row-ops rule): a practice frequency target this
-  // protocol OWNED is removed too — but only after the protocol row is gone (else
-  // the FK on protocols.frequency_target_id fails) and only when no sibling
-  // protocol references it.
-  if (existing.owns_frequency_target && existing.frequency_target_id != null)
-    maybeDeleteOwnedTarget(profile.id, existing.frequency_target_id, id);
-  // An ongoing protocol's situation activation is reversed (unless a sibling
-  // protocol still needs it).
-  if (existing.situation && existing.end_date == null)
-    deactivateSituation(profile.id, existing.situation, id);
+  // The row and every piece of side-state it carries go together in one
+  // transaction; the ORDER inside it still matters (see below), but a failure
+  // partway can no longer leave an orphan target or a stranded situation.
+  writeTx(() => {
+    db.prepare("DELETE FROM protocols WHERE id = ? AND profile_id = ?").run(
+      id,
+      profile.id
+    );
+    // Delete carries its side-state (row-ops rule): a practice frequency target this
+    // protocol OWNED is removed too — but only after the protocol row is gone (else
+    // the FK on protocols.frequency_target_id fails) and only when no sibling
+    // protocol references it.
+    if (existing.owns_frequency_target && existing.frequency_target_id != null)
+      maybeDeleteOwnedTarget(profile.id, existing.frequency_target_id, id);
+    // An ongoing protocol's situation activation is reversed (unless a sibling
+    // protocol still needs it).
+    if (existing.situation && existing.end_date == null)
+      deactivateSituation(profile.id, existing.situation, id);
+  });
   revalidateProtocols();
   return { ok: true, redirectTo: "/longevity#protocols" };
 }
