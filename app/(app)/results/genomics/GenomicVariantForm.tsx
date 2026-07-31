@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import Combobox from "@/components/Combobox";
 import {
   GENOMIC_RESULT_TYPES,
   GENOMIC_SIGNIFICANCES,
+  PGX_GENE_SYMBOLS,
   ZYGOSITIES,
   resultTypeLabel,
   significanceLabel,
@@ -36,6 +38,9 @@ export default function GenomicVariantForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!variant;
   const [error, setError] = useState<string | null>(null);
+  // Gene is a controlled Combobox over the PGx symbols (#1676) — form.reset() can't
+  // clear it, so the add path clears this state explicitly on a successful save.
+  const [gene, setGene] = useState(variant?.gene ?? "");
 
   async function handle(formData: FormData) {
     setError(null);
@@ -55,7 +60,10 @@ export default function GenomicVariantForm({
       return;
     }
     toast(editing ? "Variant updated" : "Variant saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      setGene("");
+    }
     onDone?.();
     router.refresh();
   }
@@ -80,13 +88,20 @@ export default function GenomicVariantForm({
           <label className="label" htmlFor={`gv-gene-${uid}`}>
             Gene
           </label>
-          <input
+          {/* The PGx cross-check (#710) matches this symbol EXACTLY, so a drifted
+              spelling drops the check silently. The picker offers the ten symbols
+              CPIC guidance actually covers; a hereditary-risk gene (BRCA1 and the
+              rest) is still typed freely, which is why the empty state says so
+              rather than claiming there is no such gene. */}
+          <Combobox
             id={`gv-gene-${uid}`}
             name="gene"
-            className="input"
-            defaultValue={variant?.gene ?? ""}
+            ariaLabel="Gene"
+            value={gene}
+            onChange={setGene}
+            options={[...PGX_GENE_SYMBOLS]}
+            emptyLabel="Not a pharmacogenomic gene — type any symbol"
             placeholder="e.g. BRCA1, CYP2C19"
-            required
           />
         </div>
         <div>

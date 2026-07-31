@@ -6,7 +6,30 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
+import {
+  CARE_PLAN_CATEGORIES,
+  CARE_PLAN_CATEGORY_LABELS,
+  CARE_PLAN_CLOSED_STATUS_LIST,
+  CARE_PLAN_OPEN_STATUSES,
+  isRecognizedCarePlanStatus,
+} from "@/lib/care-plan-upcoming";
 import type { CarePlanItem, FormResult } from "@/lib/types";
+
+// The sentinel the two pickers use for "none of the above, let me type it". It is
+// never stored — the paired text field owns the posted value.
+const OTHER = "__other";
+
+// Whether a loaded value is one of the offered options (case-insensitively), so an
+// imported row's own spelling opens the picker on "Other" with its text preserved
+// instead of silently snapping to a neighbour.
+function offered(
+  value: string | null | undefined,
+  options: readonly string[]
+): string | null {
+  const v = value?.trim();
+  if (!v) return null;
+  return options.find((o) => o.toLowerCase() === v.toLowerCase()) ?? null;
+}
 
 // Shared add/edit care-plan form. Add mode: no `item`. Edit mode: pass the row + an
 // `onDone` callback (renders a hidden id + a Cancel button). The provider is a
@@ -29,6 +52,28 @@ export default function CarePlanForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!item;
   const [error, setError] = useState<string | null>(null);
+  // Category and status were bare inputs (#1676). Status is the one that mattered:
+  // isCarePlanItemOpen() only recognizes a curated set of CLOSED spellings, so a
+  // hand-typed "finished" left the item nudging Upcoming forever. Both are now enum
+  // pickers with an explicit, visibly-labelled free-text escape.
+  const loadedCategory = offered(item?.category, CARE_PLAN_CATEGORIES);
+  const [category, setCategory] = useState(
+    item?.category?.trim() ? (loadedCategory ?? OTHER) : ""
+  );
+  const [categoryOther, setCategoryOther] = useState(
+    loadedCategory ? "" : (item?.category ?? "")
+  );
+  const RECOGNIZED_STATUSES = [
+    ...CARE_PLAN_OPEN_STATUSES,
+    ...CARE_PLAN_CLOSED_STATUS_LIST,
+  ];
+  const loadedStatus = offered(item?.status, RECOGNIZED_STATUSES);
+  const [status, setStatus] = useState(
+    item?.status?.trim() ? (loadedStatus ?? OTHER) : ""
+  );
+  const [statusOther, setStatusOther] = useState(
+    loadedStatus ? "" : (item?.status ?? "")
+  );
 
   async function handle(formData: FormData) {
     setError(null);
@@ -48,7 +93,13 @@ export default function CarePlanForm({
       return;
     }
     toast(editing ? "Care-plan item updated" : "Care-plan item saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      setCategory("");
+      setCategoryOther("");
+      setStatus("");
+      setStatusOther("");
+    }
     onDone?.();
     router.refresh();
   }
@@ -83,27 +134,94 @@ export default function CarePlanForm({
           <label className="label" htmlFor={`cp-category-${uid}`}>
             Category
           </label>
-          <input
+          {/* The buckets the Plan-of-Treatment importer already writes, so a manual
+              item and an imported one classify the same way. */}
+          <select
             id={`cp-category-${uid}`}
-            name="category"
             className="input"
-            defaultValue={item?.category ?? ""}
-            placeholder="procedure / encounter / …"
-          />
+            data-testid={`cp-category-select-${uid}`}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="">Not stated</option>
+            {CARE_PLAN_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {CARE_PLAN_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+            <option value={OTHER}>Other…</option>
+          </select>
+          {category === OTHER ? (
+            <input
+              name="category"
+              className="input mt-2"
+              aria-label="Other category"
+              data-testid={`cp-category-other-${uid}`}
+              value={categoryOther}
+              onChange={(e) => setCategoryOther(e.target.value)}
+              placeholder="Describe the kind of planned care"
+            />
+          ) : (
+            <input type="hidden" name="category" value={category} />
+          )}
         </div>
         <div>
           <label className="label" htmlFor={`cp-status-${uid}`}>
             Status
           </label>
-          <input
+          <select
             id={`cp-status-${uid}`}
-            name="status"
             className="input"
-            defaultValue={item?.status ?? ""}
-            placeholder="planned / active / …"
-          />
+            data-testid={`cp-status-select-${uid}`}
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="">Not stated</option>
+            <optgroup label="Open — keeps nudging Upcoming">
+              {CARE_PLAN_OPEN_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Closed — stops nudging">
+              {CARE_PLAN_CLOSED_STATUS_LIST.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </optgroup>
+            <option value={OTHER}>Other…</option>
+          </select>
+          {status === OTHER ? (
+            <input
+              name="status"
+              className="input mt-2"
+              aria-label="Other status"
+              data-testid={`cp-status-other-${uid}`}
+              value={statusOther}
+              onChange={(e) => setStatusOther(e.target.value)}
+              placeholder="e.g. awaiting authorization"
+            />
+          ) : (
+            <input type="hidden" name="status" value={status} />
+          )}
         </div>
       </div>
+      {/* The unrecognized-status fate, said out loud instead of discovered weeks
+          later (#1676). An unknown status counts as OPEN — the safe direction for a
+          real plan with an odd imported status, and unchanged by this issue — which
+          means a free-text "finished" does NOT close the item. */}
+      {status === OTHER && !isRecognizedCarePlanStatus(statusOther) && (
+        <p
+          data-testid={`cp-status-unrecognized-${uid}`}
+          className="text-xs text-amber-700 dark:text-amber-400"
+        >
+          A status outside the list above sits outside the open/closed machinery:
+          this item keeps counting as open and keeps appearing in Upcoming. Pick a
+          closed status to stop it.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor={`cp-code-${uid}`}>
