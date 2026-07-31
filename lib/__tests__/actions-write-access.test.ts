@@ -122,16 +122,34 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "requireLoginWriteAccess",
   },
   {
-    file: "app/(app)/integrations/mychart/actions.ts",
+    file: "app/(app)/integrations/patient-portals/actions.ts",
     fn: "bindIdentityAction",
     why: "cross-profile write (#1739): binds a portal patient label to a TARGET profile, which is not necessarily the session's active one — binding grandma's portal patient to grandma's profile from your own session is the normal case, so requireWriteAccess() (which checks only the ACTIVE profile) is the wrong gate. It calls requireProfileWriteAccess(profileId) instead: the #31 cross-profile guard, which refuses in demo mode, asserts the caller can REACH the target, and asserts WRITE on it — strictly stronger here than the active-profile check",
     gate: "requireProfileWriteAccess",
   },
   {
-    file: "app/(app)/integrations/mychart/actions.ts",
+    file: "app/(app)/integrations/patient-portals/actions.ts",
     fn: "unbindIdentityAction",
-    why: "cross-profile write (#1739): removing a binding changes where that patient's future records go (namely nowhere — they are refused), the same class of decision as creating one, so it takes the same requireProfileWriteAccess gate on the profile the binding currently points at. That profile is RESOLVED FROM THE ROW server-side, never read from the post (#1747): gating on a client-supplied profile id authorized nothing, because nothing tied it to the binding actually being deleted",
+    why: "cross-profile write (#1739): removing a binding changes where that patient's future records go (namely nowhere — they are refused), the same class of decision as creating one, so it takes the same requireProfileWriteAccess gate on the profile the binding currently points at. That profile is RESOLVED FROM THE ROW server-side, never read from the post (#1747): gating on a client-supplied profile id authorized nothing, because nothing tied it to the binding actually being deleted. An IGNORED binding has no profile by CHECK, so that branch takes the any-profile-write gate and a delete scoped to `ignored = 1`",
     gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "bindPendingIdentityAction",
+    why: "cross-profile write (#1739): the one-tap version of bindIdentityAction — it binds a REPORTED-but-unplaced portal identity to a TARGET profile, taking the (login, patient label) off the pending row server-side so the caller cannot retype them into a subtly different key. Same class of write, same gate: requireProfileWriteAccess(profileId) on the target, not requireWriteAccess() on the session's active profile",
+    gate: "requireProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "ignorePendingIdentityAction",
+    why: "pending-list write that ROUTES NOTHING (#1739): it records 'never sync this portal patient' as a binding with NO profile (the migration-131 CHECK makes ignored+profile unrepresentable). There is therefore no target profile for requireProfileWriteAccess, and requireWriteAccess would assert the session's ACTIVE profile, which is unrelated to a portal login. It calls the local requireAnyProfileWriteAccess() instead: session + demo refusal + WRITE on at least one reachable profile — the same population the bind picker serves. Member-visible by owner ruling; a read-only caregiver still cannot silence an identity",
+    gate: "requireAnyProfileWriteAccess",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "dismissPendingIdentityAction",
+    why: "pending-list write that ROUTES NOTHING (#1739): clears one prompt row and nothing else — the identity returns if the tool reports it again. Same gate and same reasoning as ignorePendingIdentityAction: no profile to target, so requireAnyProfileWriteAccess()",
+    gate: "requireAnyProfileWriteAccess",
   },
   {
     file: "app/(app)/settings/token-actions.ts",
