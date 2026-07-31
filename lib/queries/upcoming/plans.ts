@@ -54,6 +54,33 @@ export function trainingItems(profileId: number): UpcomingItem[] {
   );
 }
 
+// The outdoor-session PLANNING item (#1724 part 5) — Upcoming is the planning surface,
+// so this is where "Saturday is the best window for your ride" lives; the digest's
+// This-week line renders the SAME `planningLine` computation as a glance (#221).
+//
+// CALM by construction: banded to `week` (never Today, never the hero), no due date, and
+// it only appears when outdoor viability is genuinely SCARCE — a week where every day
+// works produces nothing, and a week where NO day works produces nothing either, because
+// there is no session to recommend and nagging about weather nobody can change is the
+// escalation the attention doctrine forbids. ZERO NEW SENDS: this is a page item, and the
+// digest line rides the morning message that already goes out.
+//
+// Dismissible through the shared bus, keyed per (activity, week start), so declining
+// this week's plan never silences next week's.
+export function outdoorPlanItems(profileId: number): UpcomingItem[] {
+  if (isTrainingRestricted(profileId)) return [];
+  return getOutdoorPlans(profileId, today(profileId)).map((plan) => ({
+    key: plan.dedupeKey,
+    domain: "training" as const,
+    title: `Best window for your ${plan.activity.toLowerCase()} this week`,
+    detail: plan.line,
+    href: "/training",
+    dueDate: null,
+    band: "week" as const,
+    dueText: "Plan",
+  }));
+}
+
 // Wellness-practice weekly targets running BEHIND their floor (#1259). The calm,
 // coaching-tier twin of the Telegram practice nudge — SAME `practice:<id>` key so a
 // dismissal here silences the push (the #227 workout-nudge bus pattern). Only surfaces a
@@ -157,6 +184,7 @@ import type { DistanceUnit } from "../../settings";
 import type { UpcomingItem } from "../../upcoming";
 import { fmtDistance } from "../../units";
 import { trainingSignalKey } from "../../workout-nudge";
+import { getOutdoorPlans } from "../weather-training";
 import { getCarePlanItems } from "../clinical";
 import { getFrequencyTargetProgress } from "../frequency-targets";
 import { getGoals } from "../training";

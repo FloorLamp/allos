@@ -81,6 +81,12 @@ const ALLOWLIST: Record<string, string> = {
     "the user's OWN skin-type (Fitzpatrick) MED threshold; a physics-thresholded safety " +
     "note, not a demographic risk-ranked due signal, so it opts out like the other " +
     "med/sun-safety findings",
+  outdoorPlanItems:
+    "outdoor-session planning item (#1724 part 5) \u2014 names the best weather window " +
+    "for a behind outdoor target this week. Its ordering comes from the forecast and " +
+    "the profile's OWN revealed tolerance envelope, not from a demographic risk " +
+    "stratum; it carries no due date and is banded `week` by construction, so there is " +
+    "no priority for the risk layer to modulate",
   weatherMedItems:
     "medication/supplement \u00d7 conditions safety note (#1727) \u2014 a curated " +
     "photosensitizing or heat-risk attribute composed with today's UV / heatwave; the " +

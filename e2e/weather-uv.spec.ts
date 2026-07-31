@@ -141,6 +141,36 @@ test.describe("Weather & UV integration (#1172)", () => {
     }
   });
 
+  test("the outdoor-session plan names the best window on Upcoming (#1724)", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_WEATHER,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      // The fixture is behind a 2x/week cardio target with a season of rides and a
+      // forecast whose only dry day is two days out — scarce viability, so the plan is
+      // signal. Upcoming is the planning surface; the digest renders the SAME line.
+      await member.goto("/upcoming");
+      await expect(
+        member.getByRole("link", {
+          name: "Best window for your cycling this week",
+        })
+      ).toBeVisible();
+      // The detail is the SAME planningLine string the digest renders: it names the
+      // weekday and the target's progress, and it hedges ("so far") because the week
+      // reaches past the reliable forecast horizon.
+      await expect(
+        member.getByText(/looks like the best window for your cycling/)
+      ).toContainText("cycling 1/2");
+    } finally {
+      await member.context().close();
+    }
+  });
+
   test("disabling the integration turns the connection off", async ({
     browser,
   }) => {

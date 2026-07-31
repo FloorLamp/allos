@@ -21,6 +21,7 @@ import {
   getEffectiveActiveSituations,
   getDerivedSituationLines,
 } from "../queries";
+import { getOutdoorPlans } from "../queries/weather-training";
 import { groupUpcoming } from "../upcoming";
 import { integrationToItem } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
@@ -392,6 +393,11 @@ export function gatherDigestInput(
     // the dedicated nudge formats. The nudge is deliberately unchanged: the digest is a
     // 7am heads-up, the nudge is the actionable prompt with buttons later.
     workoutPreview: digestWorkoutLine(recommendWorkout(profileId, gathered)),
+    // The outdoor-session PLAN (#1724 part 5) — the same planningLine computation the
+    // calm Upcoming item renders, as a This-week glance. It rides THIS message; no
+    // dedicated send exists or is created. Empty on a week with no scarcity to plan
+    // around, and honestly hedged past the reliable forecast horizon.
+    weatherPlanLines: getOutdoorPlans(profileId, td).map((plan) => plan.line),
     activities,
     adherence,
     // Delta headline (#1505 part 3): WHICH pushed obligations changed state, from the

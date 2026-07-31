@@ -150,6 +150,7 @@ import {
   markCarePlanItemDone,
   practiceItems,
   trainingItems,
+  outdoorPlanItems,
 } from "./plans";
 export { markCarePlanItemDone } from "./plans";
 import {
@@ -608,6 +609,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...biomarkerItems(profileId, today),
     ...goalItems(profileId),
     ...trainingItems(profileId),
+    ...outdoorPlanItems(profileId),
     ...practiceItems(profileId),
     ...enduranceEventItems(profileId, today, distanceUnit),
   ];

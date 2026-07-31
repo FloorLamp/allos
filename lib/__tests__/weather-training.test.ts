@@ -359,9 +359,40 @@ describe("viable days feed the pace math (#1672/#1673 composition)", () => {
 
   it("falls back to the calendar count when there is NO weather data", () => {
     // Weather must never make a target look impossible just because the forecast is
-    // missing — silence over guessing, in the direction that doesn't nag.
+    // missing — silence over guessing, in the direction that doesn't nag. Contrast the
+    // all-parked case above, where data EXISTS and the honest answer is zero.
     const scan = scanViableDays("Cycling", TODAY, week, [], env);
+    expect(scan.hasForecast).toBe(false);
     expect(remainingViableDays(scan, week.length)).toBe(week.length);
+  });
+
+  it("ALL DAYS PARKED yields zero, not the calendar count", () => {
+    // The regression this pins. "No forecast" and "forecast says every day is parked"
+    // both produce viable=false with an infinite penalty, so an inference over penalties
+    // alone treated them alike and returned the CALENDAR count for both — telling the
+    // pace math "you have three days" while the weather said none, which is the exact
+    // contradiction the composition exists to remove.
+    const forecast = week.map((d) =>
+      day(d, { tempMaxC: 15, precipitationMm: 80 })
+    );
+    const scan = scanViableDays("Cycling", TODAY, week, forecast, env);
+    expect(scan.hasForecast).toBe(true);
+    expect(scan.viableDates).toEqual([]);
+    expect(remainingViableDays(scan, week.length)).toBe(0);
+    // And zero must read as STAND DOWN, never as urgency: nothing is viable, so there is
+    // no plan to surface and nothing to escalate about.
+    expect(planningWorthSurfacing(scan, 1)).toBe(false);
+  });
+
+  it("distinguishes a missing forecast from a parked one day by day", () => {
+    const forecast = [day(week[0], { tempMaxC: 15, precipitationMm: 80 })];
+    const scan = scanViableDays("Cycling", TODAY, week, forecast, env);
+    // Day 0 has data and is parked; days 1-2 have no row at all.
+    expect(scan.days[0]).toMatchObject({ forecast: true, viable: false });
+    expect(scan.days[1]).toMatchObject({ forecast: false, viable: false });
+    // Some data exists, so the app has an opinion: zero viable days.
+    expect(scan.hasForecast).toBe(true);
+    expect(remainingViableDays(scan, week.length)).toBe(0);
   });
 
   it("is not 'the last viable day' when several remain", () => {

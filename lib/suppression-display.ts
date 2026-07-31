@@ -28,6 +28,7 @@ import { DORMANT_PRN_PREFIX } from "./dormant-prn";
 import { FOOD_TIMING_PREFIX } from "./food-drug-interactions";
 import { KEEP_APART_PREFIX } from "./intake-pairs";
 import { WEATHER_MED_PREFIX } from "./weather-med-safety";
+import { OUTDOOR_PLAN_PREFIX } from "./queries/weather-training";
 import { CONDITION_CONSIDERATION_PREFIX } from "./condition-training-considerations";
 import { SURGERY_BRIDGE_PREFIX } from "./surgery-bridge";
 
@@ -228,6 +229,14 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: "training:",
     domain: "Due & scheduled",
     label: () => "Training target",
+  },
+  {
+    // The outdoor-session planning item (#1724 part 5) — "Saturday is the best window
+    // for your ride". Calm and weekly, keyed per (activity, week start) so declining
+    // this week's plan never silences next week's.
+    prefix: OUTDOOR_PLAN_PREFIX,
+    domain: "Due & scheduled",
+    label: () => "Outdoor session plan",
   },
   {
     // Wellness-practice weekly target (#1259): the Upcoming twin of the pace-aware

@@ -359,6 +359,51 @@ export function seedSuppressedCenter(): void {
       );
     }
 
+    // ---- Forecast-ahead planning (#1724 part 5) ----
+    // A behind weekly CARDIO target plus a season of rides (so the tolerance envelope is
+    // REVEALED, not assumed) plus a forecast whose only dry day is two days out — the
+    // scarcity that makes the plan signal rather than filler. The week is pinned to
+    // START TODAY so the fixture always has a full six remaining on-days regardless of
+    // which weekday CI runs on; with a fixed week start the days-left count drifts and
+    // the plan would appear on a Monday and vanish on a Friday.
+    setPS.run(wxId, "week_mode", "calendar");
+    setPS.run(
+      wxId,
+      "week_start",
+      String(new Date(`${wxToday}T12:00:00Z`).getUTCDay())
+    );
+    db.prepare(
+      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+       VALUES (?, 'type', 'cardio', 2)`
+    ).run(wxId);
+    const shiftWx = (n: number): string => {
+      const d = new Date(`${wxToday}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + n);
+      return d.toISOString().slice(0, 10);
+    };
+    // A season of rides in mild-to-warm conditions.
+    [10, 12, 14, 16, 18, 20, 22, 24].forEach((t, i) => {
+      const date = shiftWx(-7 * (i + 1));
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min)
+         VALUES (?, ?, 'cardio', 'Cycling', 60)`
+      ).run(wxId, date);
+      insDay.run(wxLat, wxLng, date, t, t - 6);
+    });
+    // The week ahead: wet everywhere except day+2. (Today itself is already cached hot
+    // above, which is fine — the plan names the best FUTURE window.)
+    const insWet = db.prepare(
+      `INSERT INTO weather_days
+         (lat, lng, date, temp_max_c, temp_min_c, precipitation_mm, weather_code, source)
+       VALUES (?, ?, ?, 16, 10, ?, 61, 'e2e')
+       ON CONFLICT(lat, lng, date) DO UPDATE SET
+         temp_max_c = excluded.temp_max_c,
+         precipitation_mm = excluded.precipitation_mm`
+    );
+    for (let i = 1; i <= 6; i++) {
+      insWet.run(wxLat, wxLng, shiftWx(i), i === 2 ? 0 : 60);
+    }
+
     // Two successful weather syncs so the profile's Connected-sources card renders
     // with a latest-state line AND an expandable history (#1614): before that fix
     // Weather was excluded from getConnectedSources by kind, so the "Sync history"

@@ -316,6 +316,12 @@ export function parkedDisclosureLine(d: ParkedDisclosure): string {
 export interface ViableDay {
   date: string;
   viable: boolean;
+  // Whether the cache actually HAD a forecast row for this day. Load-bearing, and the
+  // reason this is a field rather than an inference: "no forecast" and "forecast says
+  // parked" both yield viable=false and an infinite penalty, but they are opposite
+  // epistemic states — one is the app having NO opinion, the other is the app having a
+  // definite one. Collapsing them makes the pace composition below silently wrong.
+  forecast: boolean;
   // Present for a viable day: how far inside the envelope it sits, so the scan can name
   // the BEST window rather than merely the first acceptable one. Lower is better.
   penalty: number;
@@ -330,6 +336,9 @@ export interface ViableDaysScan {
   // True when the forecast reached past the reliable horizon and the scan had to
   // truncate; the copy then hedges rather than committing to a distant day.
   truncated: boolean;
+  // Whether ANY scanned day had a cached forecast row. False ⇒ the app knows nothing
+  // about the week and must not form an opinion about it.
+  hasForecast: boolean;
 }
 
 // How far outside comfort a viable day sits — distance from the middle of the
@@ -372,13 +381,19 @@ export function scanViableDays(
     }
     const day = byDate.get(date);
     if (!day) {
-      days.push({ date, viable: false, penalty: Number.POSITIVE_INFINITY });
+      days.push({
+        date,
+        viable: false,
+        forecast: false,
+        penalty: Number.POSITIVE_INFINITY,
+      });
       continue;
     }
     const verdict = parkedVerdict(activity, day, env);
     days.push({
       date,
       viable: !verdict.parked,
+      forecast: true,
       penalty: verdict.parked ? Number.POSITIVE_INFINITY : dayPenalty(day, env),
     });
   }
@@ -396,6 +411,7 @@ export function scanViableDays(
     viableDates: viable.map((d) => d.date),
     bestDate: best,
     truncated,
+    hasForecast: days.some((d) => d.forecast),
   };
 }
 
@@ -422,17 +438,28 @@ export function planningWorthSurfacing(
 // is pace-tight ON THAT DAY: the same-day deferral must not defer past it, and the
 // tight-week override fires carrying the weather fact.
 //
-// Returns the count the pace math should use. A scan with NO weather data at all falls
-// back to the calendar count (silence over guessing — weather must not make a target
-// look impossible just because the forecast is missing).
+// TWO WORLDS, DELIBERATELY NOT ALIKE (the distinction `ViableDay.forecast` exists for):
+//
+//   • NO FORECAST AT ALL — the app knows nothing about the week. It must not form an
+//     opinion, so this returns the CALENDAR count: weather must never make a target look
+//     impossible merely because the forecast is missing. Silence over guessing, in the
+//     direction that doesn't nag.
+//   • FORECAST PRESENT, EVERY DAY PARKED — the app knows exactly one thing: there are
+//     ZERO viable days. Returning the calendar count here would tell the pace math "you
+//     have three days" while the weather says none, which is the precise contradiction
+//     this composition exists to remove. So it returns 0.
+//
+// CONSUMERS MUST READ 0 AS STAND-DOWN, NOT URGENCY. Zero viable days means the outdoor
+// target is not achievable this week, so the honest response is to go QUIET — never to
+// escalate about something the weather has made impossible. That is the attention
+// doctrine's contact-consent rule (the system may reduce contact unilaterally, never
+// increase it), and it is why planningWorthSurfacing already returns false when nothing
+// is viable: no viable day, no plan line.
 export function remainingViableDays(
   scan: ViableDaysScan,
   calendarDaysRemaining: number
 ): number {
-  const hasAnyData = scan.days.some(
-    (d) => Number.isFinite(d.penalty) || d.viable
-  );
-  if (scan.days.length === 0 || !hasAnyData) return calendarDaysRemaining;
+  if (scan.days.length === 0 || !scan.hasForecast) return calendarDaysRemaining;
   return scan.viableDates.length;
 }
 

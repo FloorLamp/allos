@@ -451,6 +451,17 @@ otherwise you get the normal next-best suggestion with the explanation intact.
 Parked activities also stop counting as "stale" while parked, so winter can't
 push a ride _harder_ precisely when the weather is worst.
 
+**Planning the week around the weather.** When a weekly cardio target is behind
+and the coming week's outdoor viability is _scarce_ — one dry day among five wet
+ones, say — the morning digest and Upcoming both note the best window: "This
+week: Saturday looks like the best window for your cycling (cycling 1/2)." It
+appears only when there's a real choice to make: a week where every day works
+says nothing, and a week where no day works says nothing either — there's no
+session to recommend, and nagging about weather nobody can change isn't the
+point. Past about five days out it hedges rather than promising you next
+Wednesday's sunshine, and with no forecast cached it stays quiet. No new
+notification is created: the line rides the morning message you already get.
+
 **Conditions on the record.** An outdoor session's journal card shows what it
 was like outside ("31°C · clear"), and Timeline days carry a short conditions
 note when the weather was notable — a heatwave, cold snap, pressure swing, high
