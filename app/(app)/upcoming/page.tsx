@@ -107,6 +107,9 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "dental-safety": IconAlertTriangle,
   ototoxic: IconAlertTriangle,
   "uv-exposure": IconSun,
+  // A med × conditions safety note (#1727) — the same alert glyph the other curated
+  // med-safety notes carry; the sun icon belongs to the dose-based UV finding.
+  "weather-med": IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,
   screening: IconMicroscope,

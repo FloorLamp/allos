@@ -17,6 +17,7 @@ import {
   DERIVED_SITU_PROFILE,
   DERIVED_SITU_PERIOD_ITEM,
   DERIVED_SITU_SLEEP_ITEM,
+  DERIVED_SITU_POLLEN_ITEM,
   E2E_LOGIN_SITIMPACT,
   SITUATION_IMPACT_PROFILE,
 } from "../fixture-logins";
@@ -25,6 +26,14 @@ import {
   serializeSituationEvents,
 } from "../../lib/trend-annotations";
 import { seedMemberLogin, fixtureProfileId } from "./common";
+
+// The coarse home location the derived-situations fixture's weather rows are keyed to
+// (~0.1° storage precision). Its own coordinate so the GLOBAL, location-keyed weather
+// cache can't collide with another fixture's series.
+const DERIVED_SITU_HOME = { lat: 51.5, lng: -0.1 };
+// Comfortably over POLLEN_ENTER.grass, so the situation holds without sitting on the
+// threshold the predicate's hysteresis band is about.
+const DERIVED_SITU_POLLEN_COUNT = 60;
 
 // ── Menstrual cycle log + derived situations ──
 export function seedCycleAndDerived(): void {
@@ -136,6 +145,13 @@ export function seedCycleAndDerived(): void {
         )
         .run(dsId).lastInsertRowid
     );
+    const pollenSit = Number(
+      db
+        .prepare(
+          `INSERT INTO situations (profile_id, name, active) VALUES (?, 'High pollen', 0)`
+        )
+        .run(dsId).lastInsertRowid
+    );
 
     const keyedItem = (name: string, situation: string, sitId: number) => {
       const itemId = Number(
@@ -155,6 +171,31 @@ export function seedCycleAndDerived(): void {
     };
     keyedItem(DERIVED_SITU_PERIOD_ITEM, "Period", periodSit);
     keyedItem(DERIVED_SITU_SLEEP_ITEM, "Poor sleep", sleepSit);
+    keyedItem(DERIVED_SITU_POLLEN_ITEM, "High pollen", pollenSit);
+
+    // The WEATHER derived situation (#1726). Two facts make it hold: a home location
+    // (weather features are quietly absent without one) and cached daily rows carrying
+    // a grass-pollen count over the family's entry bound. The keyed item above is also
+    // what makes weather situations RELEVANT for this profile, so nothing else is
+    // needed — and nothing is ever toggled, which is the point of a derived situation.
+    setProfileSetting(dsId, "home_lat", String(DERIVED_SITU_HOME.lat));
+    setProfileSetting(dsId, "home_lng", String(DERIVED_SITU_HOME.lng));
+    db.prepare(`DELETE FROM weather_days WHERE lat = ? AND lng = ?`).run(
+      DERIVED_SITU_HOME.lat,
+      DERIVED_SITU_HOME.lng
+    );
+    for (let i = 3; i >= 0; i--) {
+      db.prepare(
+        `INSERT INTO weather_days
+           (lat, lng, date, temp_max_c, pollen_grass, source)
+         VALUES (?, ?, ?, 18, ?, 'e2e')`
+      ).run(
+        DERIVED_SITU_HOME.lat,
+        DERIVED_SITU_HOME.lng,
+        shiftDateStr(dsToday, -i),
+        DERIVED_SITU_POLLEN_COUNT
+      );
+    }
 
     // A rough last-night sleep session (300 min = 5h < the 6h floor) so getSleepSignal
     // trips and the measured poor-sleep context is ON, plus a few good baseline nights.

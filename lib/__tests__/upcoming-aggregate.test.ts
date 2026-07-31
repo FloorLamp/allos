@@ -77,6 +77,7 @@ describe("what folds", () => {
       "dental-safety",
       "ototoxic",
       "uv-exposure",
+      "weather-med",
       "mental-health",
       "prn-max",
     ] as UpcomingDomain[]) {

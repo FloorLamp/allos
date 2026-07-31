@@ -167,6 +167,7 @@ import {
   prnMaxItems,
   refillItems,
   uvOverexposureItems,
+  weatherMedItems,
 } from "./intake-safety";
 // The `may` availability gather (#1505) is re-exported rather than folded into
 // collectUpcoming on purpose: it is NOT due work, so it must never join the banded
@@ -593,6 +594,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...drugAllergyItems(profileId),
     ...interactionItems(profileId),
     ...uvOverexposureItems(profileId, today),
+    ...weatherMedItems(profileId, today, temperatureUnit),
     ...pgxItems(profileId),
     ...contrastItems(profileId, today),
     ...dentalSafetyItems(profileId),

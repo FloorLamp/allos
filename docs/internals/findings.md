@@ -380,6 +380,50 @@ awaiting a glaucoma workup), **#705** (dental "re-eval in 3 months"), **#715**
 
 ---
 
+## Conditions compose with the stack, they don't add a nag (#1727)
+
+Status: **shipped** (photosensitizers × UV, heat-risk meds × heatwave)
+
+A curated safety engine whose trigger is the WEATHER rather than another pill
+raises the reach question sharply: the fact is care-tier (an environmental
+exposure interacting with an active medication), but the conditions recur, so a
+naive implementation would speak most days of a summer. The rules this settled
+on, stated once here because the next environmental engine will need them:
+
+- **Enrichment before emission.** When a line about the same event is ALREADY
+  firing, the med fact joins it as one clause rather than becoming a second
+  finding. A photosensitizer on a day the UV-overexposure heads-up fires enriches
+  that line and keys under the SAME dedupeKey, so one dismissal still covers the
+  day. Two findings about one afternoon is the failure mode; one richer sentence
+  is the fix.
+- **A standalone line only where the existing one is silent.** The new
+  finding exists precisely for the gap the enrichment can't cover — a strong-sun
+  day with nothing logged outdoors yet, so there is no dose to warn about and the
+  advice is still actionable. It stands down the moment the overexposure line
+  takes over. The heatwave note is the same shape and requires BOTH facts, so a
+  merely warm day is silent however many diuretics are in the stack.
+- **No new send, ever.** Both notes ride Upcoming, the hero, and the digest that
+  already fires. The composition adds no channel, which is the contact-consent
+  rule of the attention doctrine: the system may enrich what it was already
+  saying, never start saying more.
+- **Date-scoped dedupe keys.** The condition is a property of the DAY, not a
+  standing fact about the medication, so the key carries the date: a dismissal
+  silences today and a genuinely new qualifying day surfaces fresh. (Contrast
+  the ototoxic note, whose key is standing because the drug class is.)
+- **Obligation-blind (#1505, pinned) and kind-blind.** A `may` photosensitizer
+  triggers exactly like a `must` one — obligation governs whether the app
+  CONTACTS you about taking something, never whether a drug reacts to sunlight.
+  And the stack screened is supplements AND medications: St John's Wort is a
+  supplement and a documented photosensitizer.
+- **Safety gates itself; it doesn't inherit a calm surface's gate.** The
+  weather-SITUATION machinery (#1726) is relevance-gated so five context rows
+  don't appear in the life of someone with no reason to care. The safety
+  composition deliberately does NOT read through that gate: taking the medication
+  IS the reason to care, and a care-tier note must not be silenced by the
+  unrelated fact that the user never keyed a supplement to pollen.
+
+---
+
 ## Empty safety results are never affirmative all-clears (#1032)
 
 Status: **shipped** (intake safety notices + quiet footer disclosure; the
@@ -387,7 +431,7 @@ principle applies to every safety surface)
 
 The safety-logic datasets are, by explicit design, **curated high-value
 subsets** (51 interaction rules, 34 PGx entries, 6 ototoxic classes, the
-drug-allergy classes, 2 contrast entries, …). The principle, stated once here
+drug-allergy classes, 2 contrast entries, 15 weather-sensitivity classes, …). The principle, stated once here
 alongside the #449 tiers: **a safety surface must never let _absence of a
 finding_ read as an _affirmative all-clear_; when coverage is partial, say so.**
 A profile whose entire stack is off-dataset must not render identically to one
