@@ -51,8 +51,9 @@ export const ENCOUNTER_CLASS_LABELS: Record<string, string> = {
 // recognizes each of these labels, and the pairing is pinned by
 // lib/__tests__/encounter-kind.test.ts. Free text stays allowed — a source's own
 // wording ("Office Visit") is still the better `type` when the user has it.
-export const ENCOUNTER_TYPE_OPTIONS: readonly string[] =
-  Object.values(ENCOUNTER_CLASS_LABELS);
+export const ENCOUNTER_TYPE_OPTIONS: readonly string[] = Object.values(
+  ENCOUNTER_CLASS_LABELS
+);
 
 // A friendly display label for a raw ActEncounterCode class. Falls back to the raw
 // (upper-cased) code for a class we haven't catalogued — never invents meaning —

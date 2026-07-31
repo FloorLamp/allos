@@ -202,9 +202,7 @@ export default function AllergyForm({
                   </option>
                 ))}
                 {r.severity && !isCanonicalReactionSeverity(r.severity) && (
-                  <option value={r.severity}>
-                    {r.severity} — as recorded
-                  </option>
+                  <option value={r.severity}>{r.severity} — as recorded</option>
                 )}
               </select>
               {reactions.length > 1 && (

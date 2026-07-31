@@ -121,7 +121,8 @@ for (const entry of VOCABULARY) {
   const all = new Set(allergenComparableForms(entry.name));
   for (const term of entry.terms)
     for (const f of allergenComparableForms(term)) all.add(f);
-  for (const f of all) if (!CANONICAL_BY_FORM.has(f)) CANONICAL_BY_FORM.set(f, entry.name);
+  for (const f of all)
+    if (!CANONICAL_BY_FORM.has(f)) CANONICAL_BY_FORM.set(f, entry.name);
 }
 
 // The canonical spelling for a typed allergen, or null when the vocabulary doesn't

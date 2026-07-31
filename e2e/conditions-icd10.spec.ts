@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { settledFill } from "./helpers";
 // #155: entering a condition by its lay name surfaces an ICD-10-CM code suggestion
 // the user CONFIRMS ("Use code"), which fills the code + code-system fields; on save
 // the stored code renders in the conditions table. This drives the real form and
@@ -14,13 +15,21 @@ test("manual condition entry suggests an ICD-10-CM code the user can confirm (#1
   const section = page.getByTestId("records-conditions");
   const nameField = section.getByLabel("Condition", { exact: true });
   await expect(nameField).toBeVisible();
-  // Type a lay name that maps to a curated code (Asthma → J45.909).
-  await nameField.fill("Asthma");
+  // Type a lay name that maps to a curated code (Asthma → J45.909). The name is a
+  // Combobox over the curated catalog since #1676, so settledFill keeps the typed
+  // value out of the pre-hydration revert window.
+  await settledFill(page, nameField, "Asthma");
 
   const suggestion = section.getByTestId("icd10-suggestion");
   await expect(suggestion).toBeVisible();
   await expect(suggestion).toContainText("J45.909");
 
+  // Typing leaves the picker's dropdown open OVER the chip (it hangs directly below
+  // the field), exactly as any autocomplete does. Escape dismisses it — the gesture a
+  // person makes before reaching for the chip — and the code confirm is unchanged:
+  // picking a name never applies a code on its own.
+  await nameField.press("Escape");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
   await section.getByTestId("icd10-suggestion-apply").click();
 
   // The confirm filled the code + code-system inputs.

@@ -217,9 +217,9 @@ export default function CarePlanForm({
           data-testid={`cp-status-unrecognized-${uid}`}
           className="text-xs text-amber-700 dark:text-amber-400"
         >
-          A status outside the list above sits outside the open/closed machinery:
-          this item keeps counting as open and keeps appearing in Upcoming. Pick a
-          closed status to stop it.
+          A status outside the list above sits outside the open/closed
+          machinery: this item keeps counting as open and keeps appearing in
+          Upcoming. Pick a closed status to stop it.
         </p>
       )}
       <div className="grid grid-cols-2 gap-3">

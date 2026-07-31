@@ -59,9 +59,9 @@ export default async function ProtocolsSection({
   const intakeItems = getProtocolIntakeOptions(profile.id);
   // The SAME merged situation vocabulary the supplement and medication forms read
   // (#1676) — the protocol's "Activate situation" names the same thing they do.
-  const situationOptions = mergedSituationOptions(getSituations(profile.id)).map(
-    (o) => o.name
-  );
+  const situationOptions = mergedSituationOptions(
+    getSituations(profile.id)
+  ).map((o) => o.name);
 
   return (
     <section
