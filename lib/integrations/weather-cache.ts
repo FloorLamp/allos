@@ -159,7 +159,7 @@ export function getUvHoursForDay(
 // Same table family, same posture, one grain coarser: weather_days holds one row per
 // (coarse location, LOCAL date) with the daily aggregates the derived-situation
 // predicates, the day/session stamps, and the outdoor-viability scan read. Global and
-// location-keyed for the same reason the hourly cache is (migration 128's rationale),
+// location-keyed for the same reason the hourly cache is (migration 129's rationale),
 // so nothing here filters by profile_id.
 
 // A cached day as read back by the predicate/stamp layers.

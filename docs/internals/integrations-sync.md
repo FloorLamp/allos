@@ -198,7 +198,7 @@ conditions stamps, and outdoor-viability scan read — max/min temperature, mean
 sea-level pressure, precipitation, WMO code, peak UV — MERGED with the keyless
 Open-Meteo **air-quality** endpoint (US AQI + per-species pollen, reduced to the
 day's peak per FAMILY: tree/grass/weed). They land in `weather_days`
-(migration 128), global and location-keyed on `(lat, lng, date)` for exactly the
+(migration 129), global and location-keyed on `(lat, lng, date)` for exactly the
 reasons migration 098 gave for the hourly table, one grain coarser: everything
 added is a DAILY figure the provider publishes per day or that only means
 anything as a day summary, so widening the hourly table would store each 24×.

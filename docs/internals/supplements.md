@@ -474,7 +474,7 @@ goes due exactly while that context holds. Two tenants today:
 - **Weather (#1726)** — five built-ins (`Heatwave`, `Cold snap`,
   `Pressure swing`, `High pollen`, `Poor air quality`), derived from the cached
   daily weather series for the profile's home location (`weather_days`,
-  migration 128; pure predicates in `lib/weather-situations.ts`, gather in
+  migration 129; pure predicates in `lib/weather-situations.ts`, gather in
   `lib/queries/weather-situations.ts`). Unlike the other two there is **no
   declared/derived split**: weather has no self-report fallback — either the
   cached series says the day qualified or the app claims nothing. Every predicate
