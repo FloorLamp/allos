@@ -10,7 +10,11 @@ import {
   syncReportEvent,
 } from "@/lib/acquirer-identity";
 import { resolvePortalIdentity } from "@/lib/portals";
-import { recordSync, recordSyncEvent } from "@/lib/integrations/connections";
+import {
+  recordSync,
+  recordSyncEvent,
+  upsertConnection,
+} from "@/lib/integrations/connections";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/log";
 
@@ -162,6 +166,14 @@ export async function POST(req: Request): Promise<Response> {
     // timestamp standing so the card shows how long it has actually been since the
     // portal was last read.
     if (ev.ok) {
+      // Ensure the connection ROW exists before stamping it. recordSync is an UPDATE, so
+      // without this the very first report — and every report for a profile that never
+      // ran setup — would silently write nothing and the card would show "Last synced:
+      // never" forever while events piled up beside it. A successful push IS the
+      // connection for an external-attended integration: there is no OAuth dance or
+      // token paste to create the row beforehand, so the first successful run is what
+      // marks it connected.
+      upsertConnection(profileId, PROVIDER, { status: "connected" });
       recordSync(profileId, PROVIDER, {
         inserted: ev.inserted,
         updated: ev.updated,
