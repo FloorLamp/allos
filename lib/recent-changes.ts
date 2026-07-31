@@ -119,14 +119,17 @@ const RECENT_CHANGE_TABLE = defineRankTable<string, RecentChangeContext>({
       },
     },
     {
-      // An open illness episode makes vitals and visits the live question.
+      // An open illness episode makes vitals and visits the live question. The
+      // boost is sized to clear the whole base range (labs sits at 8, vitals at 4),
+      // because "vitals lead while someone is sick" is the point — a smaller boost
+      // would leave a routine unflagged lab above the reading being watched.
       key: "open-episode",
       boost: (item, ctx) => {
         if (!ctx.openEpisode) return 0;
         const change = ctx.byId.get(item.id);
         if (!change) return 0;
         return change.category === "vitals" || change.category === "visits"
-          ? 4
+          ? 5
           : 0;
       },
     },

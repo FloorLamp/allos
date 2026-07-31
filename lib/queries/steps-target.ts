@@ -20,6 +20,7 @@ import {
   stepsVerdictLine,
 } from "../steps-target";
 import { hourInTz, shiftDateStr } from "../date";
+import { now as appNow } from "../clock";
 
 // Enough history for the trailing average plus the day itself.
 const STEPS_LOOKBACK_DAYS = STEPS_TRAILING_DAYS + 2;
@@ -78,7 +79,10 @@ export interface StepsPaceObservation {
 export function getStepsPaceObservation(
   profileId: number,
   date: string,
-  now: Date = new Date()
+  // Defaults to the app's clock seam, not a raw `new Date()`, so the e2e freeze and a
+  // DB fixture can both place the evaluation at a chosen hour. The staleness delta is
+  // measured against this SAME instant, so a frozen clock stays internally consistent.
+  now: Date = appNow()
 ): StepsPaceObservation | null {
   const target = getStepsDailyTarget(profileId);
   if (target == null) return null;
