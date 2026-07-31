@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 129 (issue #1726): the cached DAILY weather series — the substrate the
+// Migration 128 (issue #1726): the cached DAILY weather series — the substrate the
 // weather-derived situations (heatwave, cold snap, pressure swing, high pollen, poor
 // air quality) evaluate their predicates over, and the same rows the session/day
 // weather stamps and the training-tolerance envelope read.
@@ -94,7 +94,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 129,
-  name: "129-weather-daily-cache",
+  id: 128,
+  name: "128-weather-daily-cache",
   up,
 };

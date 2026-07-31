@@ -119,8 +119,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "connection last_sync_at/updated_at/refresh_claimed_at, the sync-event feed stamp, its retention sweep, and the 1-hour error-flood guard — audit stamps, claim leases and durations.",
   },
   "lib/integrations/weather-cache.ts": {
-    count: 1,
-    why: "weather cache fetched_at — a TTL stamp.",
+    count: 2,
+    why: "weather cache fetched_at, once per grain (the hourly weather_uv_hours upsert and the daily weather_days one, #1726) — TTL/provenance stamps. Neither is ever compared to a today()-derived calendar day: the CALENDAR identity of a cached row is its own hour_ts / date column, which comes from the provider in the location's local time, not from the clock.",
   },
   "lib/medical-pipeline.ts": {
     count: 1,
