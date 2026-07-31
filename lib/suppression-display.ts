@@ -27,6 +27,7 @@ import { MED_BRIDGE_PREFIX } from "./medication-record-match";
 import { DORMANT_PRN_PREFIX } from "./dormant-prn";
 import { FOOD_TIMING_PREFIX } from "./food-drug-interactions";
 import { KEEP_APART_PREFIX } from "./intake-pairs";
+import { WEATHER_MED_PREFIX } from "./weather-med-safety";
 import { CONDITION_CONSIDERATION_PREFIX } from "./condition-training-considerations";
 import { SURGERY_BRIDGE_PREFIX } from "./surgery-bridge";
 
@@ -314,6 +315,11 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: "uv-exposure:",
     domain: "Warnings",
     label: () => "UV overexposure note",
+  },
+  {
+    prefix: WEATHER_MED_PREFIX,
+    domain: "Warnings",
+    label: () => "Weather-safety note",
   },
   {
     prefix: FOOD_TIMING_PREFIX,

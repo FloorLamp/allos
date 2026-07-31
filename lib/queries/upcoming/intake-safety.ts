@@ -77,6 +77,17 @@ import {
   getMentalHealthShareFull,
 } from "../../settings";
 import { getEffectiveActiveSituations } from "../derived-situations";
+import { getWeatherDay, weatherSituationHolds } from "../weather-situations";
+import { getWeatherMedWarnings } from "../intake/warnings";
+import {
+  decideHeatRiskNote,
+  decidePhotosensitizerNote,
+  enrichUvDetail,
+} from "../../weather-med-safety";
+import {
+  BUILTIN_HEATWAVE_SITUATION,
+  fmtAmbientTemp,
+} from "../../weather-situations";
 import { sharedSurfaceDetail } from "../../appointment-sensitivity";
 import {
   CANONICAL_DISPLAY_UNITS,
@@ -511,18 +522,98 @@ export function uvOverexposureItems(
   if (!dose) return [];
   const obs = decideUvOverexposure(today, dose);
   if (!obs) return [];
+  // #1727 composition 1: when a photosensitizer is active, the med fact is folded into
+  // THIS line as one clause — never raised as a second warning about the same
+  // afternoon. The dedupeKey is unchanged, so a dismissal still silences the day's UV
+  // warning as a whole.
+  const detail = enrichUvDetail(
+    obs.detail,
+    getWeatherMedWarnings(profileId, "photosensitizing")
+  );
   return [
     {
       key: obs.dedupeKey,
       domain: "uv-exposure" as const,
       title: obs.title,
-      detail: obs.detail,
+      detail,
       href: timelineDayHref(today),
       dueDate: null,
       band: "today" as const,
       dueText: "Review",
     },
   ];
+}
+
+// Medication/supplement × WEATHER safety notes (issue #1727) — the STANDALONE half of
+// the composition, and the one genuinely new reach the issue grants:
+//
+//   • a photosensitizer active on a HIGH-UV day where the overexposure warning is NOT
+//     firing (nothing logged outdoors yet, so there is no dose to warn about) — the
+//     fact is still worth knowing BEFORE going out, and it disappears the moment the
+//     overexposure line takes over, so the two never both speak about one afternoon;
+//   • a heat-risk med while the HEATWAVE situation holds — requiring BOTH facts, so a
+//     merely warm day says nothing however many diuretics are in the stack.
+//
+// Care-tier (#449), like the interaction/PGx/ototoxic/allergy notes it sits beside: it
+// reaches Upcoming + the dashboard hero and rides the digest that already fires. NO
+// dedicated send is created — the #1727 boundary. Dismissible per the care-tier norms
+// (these inform, they don't escalate), keyed per (item, entry, DATE) so a dismissal
+// silences that day and a new qualifying day surfaces fresh.
+//
+// OBLIGATION-BLIND (#1505, pinned) all the way down: the gather applies no obligation
+// filter, so a `may` photosensitizer triggers exactly like a `must` one.
+export function weatherMedItems(
+  profileId: number,
+  today: string,
+  temperatureUnit: TemperatureUnit = "C"
+): UpcomingItem[] {
+  const items: UpcomingItem[] = [];
+
+  const dose = getUvDoseForDay(profileId, today);
+  const overexposureFiring =
+    dose != null && decideUvOverexposure(today, dose) != null;
+  const day = getWeatherDay(profileId, today);
+  const photo = decidePhotosensitizerNote(today, {
+    peakUvIndex: day?.uvIndexMax ?? null,
+    hits: getWeatherMedWarnings(profileId, "photosensitizing"),
+    overexposureFiring,
+  });
+  if (photo) {
+    items.push({
+      key: photo.dedupeKey,
+      domain: "weather-med" as const,
+      title: photo.title,
+      detail: photo.detail,
+      href: MEDICATIONS_HREF,
+      dueDate: null,
+      band: "today" as const,
+      dueText: "Review",
+    });
+  }
+
+  const heat = decideHeatRiskNote(today, {
+    heatwaveActive: weatherSituationHolds(
+      profileId,
+      BUILTIN_HEATWAVE_SITUATION,
+      today
+    ),
+    hits: getWeatherMedWarnings(profileId, "heat-risk"),
+    tempLabel: fmtAmbientTemp(day?.tempMaxC ?? null, temperatureUnit),
+  });
+  if (heat) {
+    items.push({
+      key: heat.dedupeKey,
+      domain: "weather-med" as const,
+      title: heat.title,
+      detail: heat.detail,
+      href: MEDICATIONS_HREF,
+      dueDate: null,
+      band: "today" as const,
+      dueText: "Review",
+    });
+  }
+
+  return items;
 }
 
 // Pharmacogenomics cross-check (issue #710): a stored PGx result (a genomic_variants

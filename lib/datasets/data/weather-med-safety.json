@@ -1,0 +1,331 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "weather-med-safety",
+  "title": "Medication × weather safety",
+  "description": "Baked medication/supplement × WEATHER safety dataset (issue #1727) — the curated attribute lists behind two compositions: PHOTOSENSITIZING items (tetracyclines, fluoroquinolones, thiazides, amiodarone, systemic retinoids, sulfonamides, some NSAIDs, voriconazole, St John's Wort) enrich the existing high-UV line, and HEAT-RISK items (diuretics, anticholinergics, beta-blockers, stimulants, antipsychotics, SGLT2 inhibitors) enrich the heatwave line. Items match by RxNorm ingredient CUI + synonym (the shared machinery) and the check is KIND-BLIND — a supplement can be a photosensitizer. INFORMATIONAL, never prescriptive; the absence of a flag is NOT clearance (a curated subset). Fully OFFLINE. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:weather-med-safety`.",
+  "citation": [
+    {
+      "source": "U.S. FDA — The Sun and Your Medicine (drug-induced photosensitivity)",
+      "url": "https://www.fda.gov/drugs/special-features/sun-and-your-medicine",
+      "note": "Uncopyrightable clinical facts (these drug classes cause photosensitivity) stated in our own words and cited to the FDA consumer reference. Drug generic/brand names are public nomenclature."
+    },
+    {
+      "source": "U.S. NLM DailyMed — FDA-approved labeling (photosensitivity warnings)",
+      "url": "https://dailymed.nlm.nih.gov/dailymed/",
+      "note": "Photosensitivity warnings appear in the FDA-approved labeling for these agents; facts restated in our own words."
+    },
+    {
+      "source": "U.S. CDC — Heat and Medications / Heat-Related Illness guidance",
+      "url": "https://www.cdc.gov/heat-health/",
+      "note": "Public-health guidance that these medication classes raise heat-illness risk, stated in our own words."
+    },
+    {
+      "source": "U.S. NIH NIA — Hot Weather Safety for Older Adults; CDC heat guidance",
+      "url": "https://www.nia.nih.gov/health/safety/hot-weather-safety-older-adults",
+      "note": "NIH consumer guidance on heat risk including medication effects, stated in our own words."
+    },
+    {
+      "source": "U.S. NIH NCCIH — St. John's Wort; DailyMed labeling (photosensitivity)",
+      "url": "https://www.nccih.nih.gov/health/st-johns-wort",
+      "note": "NIH reference for St John's Wort, including increased sun sensitivity; stated in our own words."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "meta": {
+    "version": 1
+  },
+  "entries": [
+    {
+      "key": "amiodarone",
+      "exposure": "photosensitizing",
+      "label": "Amiodarone",
+      "rxcuis": [],
+      "synonyms": [
+        "amiodarone",
+        "cordarone",
+        "nexterone",
+        "pacerone"
+      ],
+      "clause": "increases sun sensitivity",
+      "note": "Amiodarone causes photosensitivity in a substantial share of people taking it, and prolonged exposure can leave lasting skin discoloration.",
+      "source": "U.S. NLM DailyMed — FDA-approved labeling (photosensitivity warnings)"
+    },
+    {
+      "key": "anticholinergic_heat",
+      "exposure": "heat-risk",
+      "label": "Anticholinergics (sedating antihistamines, tricyclics, oxybutynin)",
+      "rxcuis": [],
+      "synonyms": [
+        "amitriptyline",
+        "atarax",
+        "benadryl",
+        "benztropine",
+        "chlorpheniramine",
+        "diphenhydramine",
+        "ditropan",
+        "doxepin",
+        "hydroxyzine",
+        "nortriptyline",
+        "oxybutynin",
+        "scopolamine",
+        "tolterodine",
+        "vistaril"
+      ],
+      "clause": "can reduce sweating in heat",
+      "note": "Anticholinergic medicines reduce sweating, which is the body's main way of shedding heat.",
+      "source": "U.S. CDC — Heat and Medications / Heat-Related Illness guidance"
+    },
+    {
+      "key": "antipsychotic_heat",
+      "exposure": "heat-risk",
+      "label": "Antipsychotics (olanzapine, risperidone, quetiapine)",
+      "rxcuis": [],
+      "synonyms": [
+        "abilify",
+        "aripiprazole",
+        "chlorpromazine",
+        "clozapine",
+        "haldol",
+        "haloperidol",
+        "olanzapine",
+        "quetiapine",
+        "risperdal",
+        "risperidone",
+        "seroquel",
+        "zyprexa"
+      ],
+      "clause": "can impair temperature regulation",
+      "note": "Antipsychotics can interfere with the brain's temperature regulation and with sweating, raising heat-illness risk in a hot spell.",
+      "source": "U.S. CDC — Heat and Medications / Heat-Related Illness guidance"
+    },
+    {
+      "key": "beta_blocker_heat",
+      "exposure": "heat-risk",
+      "label": "Beta-blockers (metoprolol, atenolol, propranolol)",
+      "rxcuis": [],
+      "synonyms": [
+        "atenolol",
+        "beta blocker",
+        "bisoprolol",
+        "carvedilol",
+        "coreg",
+        "inderal",
+        "lopressor",
+        "metoprolol",
+        "nebivolol",
+        "propranolol",
+        "tenormin",
+        "toprol"
+      ],
+      "clause": "can blunt the body's heat response",
+      "note": "Beta-blockers blunt the increase in heart rate and skin blood flow the body uses to shed heat, so hot weather is harder to compensate for.",
+      "source": "U.S. NIH NIA — Hot Weather Safety for Older Adults; CDC heat guidance"
+    },
+    {
+      "key": "diuretic_heat",
+      "exposure": "heat-risk",
+      "label": "Diuretics (loop and thiazide)",
+      "rxcuis": [],
+      "synonyms": [
+        "aldactone",
+        "bumetanide",
+        "bumex",
+        "chlorthalidone",
+        "diuretic",
+        "furosemide",
+        "hctz",
+        "hydrochlorothiazide",
+        "indapamide",
+        "lasix",
+        "spironolactone",
+        "torsemide"
+      ],
+      "clause": "can add to dehydration risk in heat",
+      "note": "Diuretics increase fluid loss, which compounds the dehydration a hot spell already causes.",
+      "source": "U.S. CDC — Heat and Medications / Heat-Related Illness guidance"
+    },
+    {
+      "key": "fluoroquinolone",
+      "exposure": "photosensitizing",
+      "label": "Fluoroquinolone antibiotics (ciprofloxacin, levofloxacin)",
+      "rxcuis": [],
+      "synonyms": [
+        "avelox",
+        "cipro",
+        "ciprofloxacin",
+        "fluoroquinolone",
+        "levaquin",
+        "levofloxacin",
+        "moxifloxacin",
+        "norfloxacin",
+        "ofloxacin"
+      ],
+      "clause": "can increase sun sensitivity",
+      "note": "Fluoroquinolone antibiotics carry a labeled photosensitivity warning; sun exposure during a course can produce an exaggerated sunburn reaction.",
+      "source": "U.S. NLM DailyMed — FDA-approved labeling (photosensitivity warnings)"
+    },
+    {
+      "key": "photosensitizing_nsaid",
+      "exposure": "photosensitizing",
+      "label": "Photosensitizing NSAIDs (piroxicam, naproxen)",
+      "rxcuis": [],
+      "synonyms": [
+        "aleve",
+        "feldene",
+        "ketoprofen",
+        "naprosyn",
+        "naproxen",
+        "piroxicam"
+      ],
+      "clause": "can increase sun sensitivity",
+      "note": "Some NSAIDs — piroxicam and naproxen most notably — are documented photosensitizers, unlike the class as a whole.",
+      "source": "U.S. FDA — The Sun and Your Medicine (drug-induced photosensitivity)"
+    },
+    {
+      "key": "sglt2_heat",
+      "exposure": "heat-risk",
+      "label": "SGLT2 inhibitors (empagliflozin, dapagliflozin)",
+      "rxcuis": [],
+      "synonyms": [
+        "canagliflozin",
+        "dapagliflozin",
+        "empagliflozin",
+        "ertugliflozin",
+        "farxiga",
+        "invokana",
+        "jardiance"
+      ],
+      "clause": "can add to dehydration risk in heat",
+      "note": "SGLT2 inhibitors increase urinary fluid loss, which adds to the dehydration risk of a hot spell.",
+      "source": "U.S. CDC — Heat and Medications / Heat-Related Illness guidance"
+    },
+    {
+      "key": "st_johns_wort",
+      "exposure": "photosensitizing",
+      "label": "St John's Wort",
+      "rxcuis": [],
+      "synonyms": [
+        "hypericum",
+        "hypericum perforatum",
+        "st john s wort",
+        "st johns wort"
+      ],
+      "clause": "can increase sun sensitivity",
+      "note": "St John's Wort can increase sensitivity to sunlight, particularly at higher doses — a supplement with a drug-like photosensitizing effect.",
+      "source": "U.S. NIH NCCIH — St. John's Wort; DailyMed labeling (photosensitivity)"
+    },
+    {
+      "key": "stimulant_heat",
+      "exposure": "heat-risk",
+      "label": "Stimulants (amphetamines, methylphenidate)",
+      "rxcuis": [],
+      "synonyms": [
+        "adderall",
+        "amphetamine",
+        "concerta",
+        "dextroamphetamine",
+        "lisdexamfetamine",
+        "methylphenidate",
+        "modafinil",
+        "ritalin",
+        "vyvanse"
+      ],
+      "clause": "can raise heat production",
+      "note": "Stimulants raise body heat production and can mask the tiredness that would otherwise be a cue to stop.",
+      "source": "U.S. CDC — Heat and Medications / Heat-Related Illness guidance"
+    },
+    {
+      "key": "sulfonamide",
+      "exposure": "photosensitizing",
+      "label": "Sulfonamide antibacterials (sulfamethoxazole/trimethoprim)",
+      "rxcuis": [],
+      "synonyms": [
+        "bactrim",
+        "cotrimoxazole",
+        "septra",
+        "sulfadiazine",
+        "sulfamethoxazole",
+        "sulfisoxazole",
+        "trimethoprim sulfamethoxazole"
+      ],
+      "clause": "can increase sun sensitivity",
+      "note": "Sulfonamide antibacterials carry a labeled photosensitivity warning.",
+      "source": "U.S. NLM DailyMed — FDA-approved labeling (photosensitivity warnings)"
+    },
+    {
+      "key": "systemic_retinoid",
+      "exposure": "photosensitizing",
+      "label": "Systemic retinoids (isotretinoin, acitretin)",
+      "rxcuis": [],
+      "synonyms": [
+        "absorica",
+        "accutane",
+        "acitretin",
+        "amnesteem",
+        "claravis",
+        "isotretinoin",
+        "soriatane"
+      ],
+      "clause": "increases sun sensitivity",
+      "note": "Systemic retinoids thin the outer skin layer and are labeled for increased sensitivity to sunlight.",
+      "source": "U.S. NLM DailyMed — FDA-approved labeling (photosensitivity warnings)"
+    },
+    {
+      "key": "tetracycline",
+      "exposure": "photosensitizing",
+      "label": "Tetracycline antibiotics (doxycycline, minocycline, tetracycline)",
+      "rxcuis": [],
+      "synonyms": [
+        "adoxa",
+        "demeclocycline",
+        "doryx",
+        "doxycycline",
+        "minocin",
+        "minocycline",
+        "oracea",
+        "sarecycline",
+        "solodyn",
+        "tetracycline",
+        "vibramycin"
+      ],
+      "clause": "increases sun sensitivity",
+      "note": "Tetracycline antibiotics — doxycycline most of all — are among the best-documented causes of drug-induced photosensitivity: skin can burn faster and at lower sun exposure than usual.",
+      "source": "U.S. FDA — The Sun and Your Medicine (drug-induced photosensitivity)"
+    },
+    {
+      "key": "thiazide_diuretic",
+      "exposure": "photosensitizing",
+      "label": "Thiazide diuretics (hydrochlorothiazide, chlorthalidone)",
+      "rxcuis": [],
+      "synonyms": [
+        "chlorthalidone",
+        "hctz",
+        "hydrochlorothiazide",
+        "indapamide",
+        "metolazone",
+        "microzide",
+        "thiazide"
+      ],
+      "clause": "increases sun sensitivity",
+      "note": "Thiazide diuretics, hydrochlorothiazide in particular, are a well-documented cause of drug-induced photosensitivity with long-term use.",
+      "source": "U.S. FDA — The Sun and Your Medicine (drug-induced photosensitivity)"
+    },
+    {
+      "key": "voriconazole",
+      "exposure": "photosensitizing",
+      "label": "Voriconazole",
+      "rxcuis": [],
+      "synonyms": [
+        "vfend",
+        "voriconazole"
+      ],
+      "clause": "increases sun sensitivity",
+      "note": "Voriconazole causes marked photosensitivity, and its labeling advises avoiding strong direct sunlight during treatment.",
+      "source": "U.S. NLM DailyMed — FDA-approved labeling (photosensitivity warnings)"
+    }
+  ]
+}

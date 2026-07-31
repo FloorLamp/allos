@@ -79,6 +79,13 @@ export type UpcomingDomain =
   // An active ototoxic medication (#717) — a calm, cited, informational hearing-safety
   // note. Care-tier, like the interaction/PGx/dental med-safety notes.
   | "ototoxic"
+  // An active medication or supplement composed with today's CONDITIONS (#1727) — a
+  // photosensitizer on a high-UV day, a heat-risk med during a heatwave. Care-tier,
+  // like the other curated med-safety notes; informational, never prescriptive, and
+  // obligation-blind (#1505) — the sun does not care how often you take something.
+  // Distinct from `uv-exposure`, which is about a DOSE already received: this is about
+  // a property of the day and the stack together.
+  | "weather-med"
   | "appointment"
   | "visit"
   | "screening"
@@ -147,6 +154,10 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // A same-day UV overexposure heads-up (#1172) — a care-tier informational note,
   // grouped with the other med-safety/care notes ahead of the scheduling domains.
   "uv-exposure": 5.7,
+  // A med × conditions note (#1727) — the same care-tier informational band, just
+  // after the UV note it composes with, so on a day both fire the dose-based warning
+  // reads first and this reads as the standing property it is.
+  "weather-med": 5.8,
   appointment: 6,
   careplan: 7,
   visit: 8,

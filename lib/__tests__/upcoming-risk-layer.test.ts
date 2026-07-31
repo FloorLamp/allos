@@ -81,6 +81,12 @@ const ALLOWLIST: Record<string, string> = {
     "the user's OWN skin-type (Fitzpatrick) MED threshold; a physics-thresholded safety " +
     "note, not a demographic risk-ranked due signal, so it opts out like the other " +
     "med/sun-safety findings",
+  weatherMedItems:
+    "medication/supplement \u00d7 conditions safety note (#1727) \u2014 a curated " +
+    "photosensitizing or heat-risk attribute composed with today's UV / heatwave; the " +
+    "membership is a cited DATASET fact about the drug class and the trigger is the " +
+    "weather, so there is no demographic risk stratum to consult \u2014 it opts out " +
+    "like the other med-safety findings it sits beside",
   medMonitoringItems:
     "medication → required-monitoring-lab bridge (#995) — a med-driven retest clock whose " +
     "cadence + reach tier come from the curated medication-monitoring DATASET (per-entry " +

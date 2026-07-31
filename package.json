@@ -42,6 +42,7 @@
     "gen:contrast-safety": "tsx scripts/gen-contrast-safety.ts",
     "gen:dental-safety": "tsx scripts/gen-dental-safety.ts",
     "gen:ototoxic": "tsx scripts/gen-ototoxic.ts",
+    "gen:weather-med-safety": "tsx scripts/gen-weather-med-safety.ts",
     "gen:drug-allergy": "tsx scripts/gen-drug-allergy.ts",
     "gen:medication-monitoring": "tsx scripts/gen-medication-monitoring.ts",
     "gen:radiation-dose": "tsx scripts/gen-radiation-dose.ts",

@@ -205,3 +205,38 @@ export function getWeatherSituationWindows(
   );
   return weatherSituationWindows(series, situation);
 }
+
+// ---- Ungated reads for the SAFETY composition (#1727) ------------------------------
+//
+// The relevance gate above exists so five context rows don't appear in the life of
+// someone with no reason to care — a CALM-surface concern. A care-tier safety note has
+// its own, stricter gate: you are taking a medication the conditions interact with. So
+// the med × weather composition asks the predicates DIRECTLY, without the relevance
+// gate, and would otherwise be silenced by an unrelated fact (that the user hasn't
+// keyed a supplement to pollen). The home-location gate still applies — no weather
+// data, no claim.
+
+// Whether a named weather situation holds on `date`, ungated by relevance.
+export function weatherSituationHolds(
+  profileId: number,
+  situation: WeatherSituationName,
+  date: string
+): boolean {
+  return activeWeatherSituations(
+    getWeatherSeries(profileId, date),
+    date
+  ).includes(situation);
+}
+
+// The single cached day for a profile's home location, or null when there is no home
+// location or no cached row. The day-level figures (peak UV, max temperature) the
+// safety composition and the display stamps read.
+export function getWeatherDay(
+  profileId: number,
+  date: string
+): WeatherDay | null {
+  const home = getHomeLocation(profileId);
+  if (!home) return null;
+  const [row] = getWeatherDays(home.lat, home.lng, date, date);
+  return row ?? null;
+}

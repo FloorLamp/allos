@@ -41,6 +41,9 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   // A same-day UV overexposure heads-up (#1172). Care-tier, counted in the push
   // alongside the other same-day med/sun-safety notes.
   "uv-exposure": "UV overexposure note",
+  // A med × conditions note (#1727). Care-tier, counted alongside the other med-safety
+  // notes — it rides the digest that already fires and adds no send of its own.
+  "weather-med": "weather-safety note",
   appointment: "appointment",
   visit: "preventive visit",
   screening: "screening",
@@ -104,6 +107,7 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
   "dental-safety",
   "ototoxic",
   "uv-exposure",
+  "weather-med",
   "appointment",
   "careplan",
   "visit",
