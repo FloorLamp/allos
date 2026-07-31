@@ -167,6 +167,16 @@ test("practice edits reject invalid cadence and logs-only name collisions (#1618
   const historyCard = refreshedMain
     .getByTestId("wellness-practice-card")
     .filter({ hasText: historyName });
+  // Post-create re-render ceiling (recurring-failure census, docs/internals/
+  // e2e-hygiene.md): the second Save's Server Action re-renders the whole practice
+  // list, and settledClick's own pre-visibility assert runs at the 5 s default
+  // (it does NOT honor opts.timeout), so the first card lookup after the save can
+  // outrun it on a loaded shard. Both cards paint in the same repaint, so one
+  // named ceiling covers the sequence. Not a sleep — this still fails if the
+  // created card never appears.
+  await expect(trackedCard.getByTestId("practice-log-button")).toBeVisible({
+    timeout: 20_000,
+  });
   await settledClick(page, trackedCard.getByTestId("practice-log-button"));
   await settledClick(page, historyCard.getByTestId("practice-log-button"));
   await settledClick(page, historyCard.getByTestId("practice-log-button"));
