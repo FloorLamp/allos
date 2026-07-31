@@ -96,6 +96,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/portals.ts",
+    includes:
+      "UPDATE medical_documents SET acquired_portal_id = NULL WHERE acquired_portal_id = ?",
+    why: "deletePortal (#1748): dropping a PORTAL clears the acquired-by link on every document that names it, regardless of profile — that is the operation, exactly like the portal_identities cleanup beside it. The FK's ON DELETE SET NULL would also fire; this runs explicitly so the teardown holds with foreign_keys off. It writes ONLY the provenance column (never profile_id, never content), and the documents themselves are untouched",
+  },
+  {
+    file: "lib/portals.ts",
     includes: "DELETE FROM portal_identities WHERE portal_id = ?",
     why: "deletePortal (#1739): dropping a PORTAL removes every binding on it regardless of profile — that is the operation. The FK cascade would also fire; this runs explicitly so the teardown holds with foreign_keys off",
   },

@@ -26,6 +26,7 @@ import {
   createVisitOffers,
 } from "@/lib/queries";
 import { getUserFullName, getUnitPrefs } from "@/lib/settings";
+import { portalById } from "@/lib/portals";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
 import { PageHeader } from "@/components/ui";
@@ -166,9 +167,20 @@ function listingItems(
   }
 }
 
-function ProvenanceRow({ label, value }: { label: string; value: string }) {
+function ProvenanceRow({
+  label,
+  value,
+  testId,
+}: {
+  label: string;
+  value: string;
+  testId?: string;
+}) {
   return (
-    <div className="flex flex-wrap justify-between gap-2 border-b border-black/5 py-2 text-sm last:border-0 dark:border-white/10">
+    <div
+      className="flex flex-wrap justify-between gap-2 border-b border-black/5 py-2 text-sm last:border-0 dark:border-white/10"
+      data-testid={testId}
+    >
       <span className="text-slate-500 dark:text-slate-400">{label}</span>
       <span className="font-medium text-slate-800 dark:text-slate-100">
         {value}
@@ -217,6 +229,12 @@ export default async function ImportDetailPage(props: {
     getUserFullName(profile.id),
     profile.name,
   ]);
+  // Acquired-by provenance (#1748): the portal registry row this document was pushed in
+  // from, resolved to its current display name so a portal rename reads correctly here
+  // and in Review at the same moment. Null for every hand-uploaded document.
+  const acquiredVia = doc.acquired_portal_id
+    ? (portalById(doc.acquired_portal_id)?.name ?? null)
+    : null;
   const raw = formatRawExtraction(doc.raw_extraction);
   // Import DEBUGGER report: what the parse DROPPED + why, and
   // which sections/resource types it did/didn't consume. Null for AI-extracted docs
@@ -368,6 +386,19 @@ export default async function ImportDetailPage(props: {
               )}
               {doc.source && (
                 <ProvenanceRow label="Source" value={doc.source} />
+              )}
+              {/* ACQUIRED VIA (#1748): which portal the companion tool pushed this in
+                  from. Rendered under the absent-pillar rule like every row here — a
+                  document a person uploaded says nothing at all, because "you uploaded
+                  it" is not provenance worth a line. It survives a reassignment on
+                  purpose: how the document arrived does not change when whose it is
+                  changes. */}
+              {acquiredVia && (
+                <ProvenanceRow
+                  label="Acquired via"
+                  value={acquiredVia}
+                  testId="doc-acquired-via"
+                />
               )}
               {doc.patient_name && (
                 <ProvenanceRow

@@ -976,4 +976,10 @@ export interface MedicalDocument {
   // one finalize UPDATE in lib/import-persist.ts; the digest's "new documents"
   // window keys on it. NULL until a document first completes.
   extraction_completed_at: string | null;
+  // ACQUIRED-BY (#1748): the portal registry row this document was pushed in from,
+  // stamped only on the portal-resolved upload path. NULL means a person put it here —
+  // the upload form, the share sheet, or a `profile=<id>` CLI push — which is what every
+  // document predating the acquirer surface also means. Survives a reassignment: how it
+  // arrived does not change when whose it is changes.
+  acquired_portal_id: number | null;
 }

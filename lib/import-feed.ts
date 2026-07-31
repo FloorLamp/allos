@@ -67,6 +67,10 @@ export interface FeedDocument {
   // predates the field, and every path with no confidence signal (deterministic
   // import, keyless extraction, pre-#1601 document), simply has none → no badge.
   confidence_scrutiny?: number;
+  // The display name of the portal this document was acquired from (#1748), or null for
+  // the ordinary human upload. Optional so a fixture or caller predating the column
+  // simply has none — the row then says nothing about acquisition, which is correct.
+  acquired_portal_name?: string | null;
   uploaded_at: string;
 }
 
@@ -209,6 +213,11 @@ export interface FeedItemView {
   // Document-only: the stated patient name, for the provenance-mismatch flag. The
   // renderer decides whether it actually mismatches the active profile.
   patientName: string | null;
+  // Document-only: the portal this document was ACQUIRED from (#1748), or null when a
+  // person uploaded it. Calm and factual — it is provenance, never a warning: the whole
+  // point is telling two portals' overlapping records apart, and saying nothing at all
+  // for the ordinary hand-uploaded document.
+  acquiredVia: string | null;
 }
 
 // Map a document's normalized log status to a feed tone.
@@ -311,6 +320,7 @@ export function feedItemView(
       scrutiny: 0,
       meta: formatWindow(ev.window_start, ev.window_end),
       patientName: null,
+      acquiredVia: null,
     };
   }
   if (entry.stream === "sync-quiet") {
@@ -328,6 +338,7 @@ export function feedItemView(
       scrutiny: 0,
       meta: null,
       patientName: null,
+      acquiredVia: null,
     };
   }
   if (entry.stream === "document") {
@@ -349,6 +360,7 @@ export function feedItemView(
           : 0,
       meta: documentFormatLabel(doc),
       patientName: doc.patient_name,
+      acquiredVia: doc.acquired_portal_name ?? null,
     };
   }
   const job = entry.job;
@@ -364,5 +376,6 @@ export function feedItemView(
     scrutiny: 0,
     meta: null,
     patientName: null,
+    acquiredVia: null,
   };
 }

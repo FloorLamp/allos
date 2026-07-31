@@ -32,6 +32,7 @@ import { computeImportDiff } from "@/lib/import-diff";
 import type { PersistInput } from "@/lib/import-shape";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { db } from "@/lib/db";
+import { createPortal } from "@/lib/portals";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const DATE = "2020-06-01";
@@ -256,6 +257,37 @@ describe("reassignDocument", () => {
     // The imported content is intact under B — identical to A's reconciled snapshot.
     const snapshotB = getReprocessSnapshot(b.id, docId);
     expect(computeImportDiff(snapshotA, snapshotB).hasChanges).toBe(false);
+  });
+
+  it("CARRIES acquired-by provenance across the move (#1748)", async () => {
+    // How a document ARRIVED is a fact about its arrival, not a claim about whose it
+    // is. And the single most likely reason to reassign a portal document is that the
+    // binding sent it to the wrong person — which is exactly when "which portal pushed
+    // this?" is the question being asked. Clearing it here would destroy the audit
+    // trail at the moment it matters most.
+    const portal = createPortal("reassign-portal", "Reassign Portal");
+    expect(portal.ok).toBe(true);
+    if (!portal.ok) return;
+
+    const admin = createLogin({ role: "admin" });
+    const a = createProfile("REASSIGN-PROV-A");
+    const b = createProfile("REASSIGN-PROV-B");
+    const docId = newDocument(a.id);
+    db.prepare(
+      "UPDATE medical_documents SET acquired_portal_id = ?, extraction_status = 'done' WHERE id = ?"
+    ).run(portal.id, docId);
+    actAs(admin, a);
+
+    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
+    expect(res.status).toBe("done");
+
+    const moved = db
+      .prepare(
+        "SELECT profile_id AS p, acquired_portal_id AS portal FROM medical_documents WHERE id = ?"
+      )
+      .get(docId) as { p: number; portal: number | null };
+    expect(moved.p).toBe(b.id);
+    expect(moved.portal).toBe(portal.id);
   });
 
   it("writes a medical-document.reassign audit event and preserves a non-null provider_id (#655)", async () => {
