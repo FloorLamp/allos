@@ -2,16 +2,18 @@
 // handler with synthesized requests.
 //
 // The endpoint answers one question — "what does allos have for this identity?" — in
-// three states, and the THIRD state is the reason it is safe to build at all:
+// four states, and the ones that are NOT "held" are the reason it is safe to build at all:
 //
 //   held    — hashes with stored bytes.
 //   deleted — content-hash tombstones (#1777).
-//   neither — send it.
+//   covered — offers refused as duplicates (#1828): nothing stored, but the records are
+//             already held under other packaging.
+//   none of them — send it.
 //
 // A bare `held` list would invite diff-and-send, and diff-and-send against a two-state
 // answer resurrects every document the user deleted. So the tests below spend most of
 // their time on the truthfulness of the split: a stored document is held and not
-// deleted; a deleted one is deleted and not held; the two lists never overlap; and a
+// deleted; a deleted one is deleted and not held; the lists never overlap; and a
 // marker row (a 'skipped' duplicate, a 'failed' rejection) carries a hash but is NOT
 // held, because a client told otherwise would stop sending a document allos does not
 // have.
@@ -31,6 +33,7 @@ import {
   accountsForPortal,
 } from "@/lib/portals";
 import { writeDocumentTombstone } from "@/lib/document-tombstones";
+import { recordCoverageMarker } from "@/lib/document-coverage";
 
 let writerToken: string;
 let otherToken: string;
@@ -86,6 +89,31 @@ function insertDoc(
     512,
     contentHash,
     status,
+    sqlNow(),
+    profileId
+  );
+}
+
+// A stored document that CARRIES a clinical identity (#1780) — the thing a coverage
+// marker points at. Its own content hash is unique per call and irrelevant to the
+// coverage question, which keys on the clinical key alone.
+function insertKeyedDoc(
+  profileId: number,
+  filename: string,
+  clinicalKey: string
+): void {
+  db.prepare(
+    `INSERT INTO medical_documents
+       (filename, stored_path, mime_type, size_bytes, content_hash, clinical_key,
+        extraction_status, uploaded_at, profile_id)
+     VALUES (?,?,?,?,?,?,'done',?,?)`
+  ).run(
+    filename,
+    `data/uploads/medical/${profileId}/${filename}`,
+    "application/xml",
+    512,
+    `e2e-doc-hash-held-${clinicalKey}`,
+    clinicalKey,
     sqlNow(),
     profileId
   );
@@ -294,10 +322,64 @@ describe("GET /api/documents/held — the three states", () => {
     expect(serialized).not.toContain("deleted-labs.pdf");
     expect(serialized).not.toContain("stored.pdf");
     expect(Object.keys(body).sort()).toEqual([
+      "covered",
       "deleted",
       "held",
       "ok",
       "profile",
     ]);
+  });
+
+  // ── The third list (#1828) ────────────────────────────────────────────────
+  it("answers `covered` for a hash it refused as a records-duplicate", async () => {
+    // Nothing was stored for these bytes, so they are in neither of the other two lists —
+    // which is exactly why the two-list rule told a client to re-send them forever.
+    const key = "e2e-clinical-key-covered-present-1";
+    insertKeyedDoc(heldProfile, "covering-present.xml", key);
+    const hash = "e2e-doc-hash-held-covered-1";
+    recordCoverageMarker(heldProfile, hash, key);
+
+    const body = await (
+      await GET(req(writerToken, `profile=${heldProfile}`))
+    ).json();
+    expect(body.covered).toContain(hash);
+    expect(body.held).not.toContain(hash);
+    expect(body.deleted).not.toContain(hash);
+  });
+
+  it("omits a hash whose records nothing holds any more", async () => {
+    // The marker exists but its covering document never did — the state a delete leaves
+    // behind. Validity is recomputed at READ, so there is no invalidation hook that could
+    // be forgotten, and the client re-offers on its very next run having been told
+    // nothing.
+    const hash = "e2e-doc-hash-held-uncovered-1";
+    recordCoverageMarker(heldProfile, hash, "e2e-clinical-key-nobody-holds-1");
+    const body = await (
+      await GET(req(writerToken, `profile=${heldProfile}`))
+    ).json();
+    expect(body.covered).not.toContain(hash);
+  });
+
+  it("keeps all three lists disjoint", async () => {
+    const body = await (
+      await GET(req(writerToken, `profile=${heldProfile}`))
+    ).json();
+    const held = body.held as string[];
+    const deleted = body.deleted as string[];
+    const covered = body.covered as string[];
+    expect(covered.filter((h) => held.includes(h))).toEqual([]);
+    expect(covered.filter((h) => deleted.includes(h))).toEqual([]);
+  });
+
+  it("never answers another profile's coverage", async () => {
+    const key = "e2e-clinical-key-otherprofile-1";
+    insertKeyedDoc(otherProfile, "covering-other.xml", key);
+    const hash = "e2e-doc-hash-held-covered-other-1";
+    recordCoverageMarker(otherProfile, hash, key);
+
+    const body = await (
+      await GET(req(writerToken, `profile=${heldProfile}`))
+    ).json();
+    expect(body.covered).not.toContain(hash);
   });
 });

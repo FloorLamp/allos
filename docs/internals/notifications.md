@@ -804,10 +804,10 @@ now follows the same convention through `reconcileClosingText`, which composes
 "[Norton] 🍽️ Morning food log — handled in the app." (and, for a rollover,
 "… — this was yesterday's message."). The subject comes from the pointer's stored
 `title`, recorded AS DELIVERED in the same chokepoint write as the keyboard —
-migration 138 — because the tick edits by pointer and never holds the text it is
+migration 139 — because the tick edits by pointer and never holds the text it is
 replacing; re-deriving it would run a whole builder and would produce TODAY's
 title for YESTERDAY's message on a rollover close. A pointer without one (written
-before 138) degrades to the bare line: a close never invents a subject.
+before 139) degrades to the bare line: a close never invents a subject.
 
 **Edits, never sends.** Everything routes through the chokepoint's
 `closeMessage` / `updateMessageKeyboard` / `rebuildMessage`. Telegram does not

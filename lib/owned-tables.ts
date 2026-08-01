@@ -77,6 +77,11 @@ export const OWNED_TABLES = [
   // foreign_keys OFF so intra-subtree order is immaterial there.
   "lesion_photos",
   "medical_documents",
+  // Refused-as-duplicate offers (#1828, migration 138): the memory that lets the acquirer
+  // inventory answer a third list. It links to NO document — the whole point is that
+  // nothing was stored for those bytes — so its position here is free; it is listed
+  // beside medical_documents only because that is the question it is about.
+  "document_coverage_markers",
   "allergies",
   "conditions",
   "encounters",

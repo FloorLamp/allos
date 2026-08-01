@@ -785,7 +785,7 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
   });
 
   it("degrades to the bare line for a pointer with no recorded title", async () => {
-    // A pointer written before migration 138 — nothing to name, so nothing is invented.
+    // A pointer written before migration 139 — nothing to name, so nothing is invented.
     const pid = newProfile("Legacy Lou");
     seedLoginTelegram(pid, "5551993");
     const yd = shiftDateStr(today(pid), -1);

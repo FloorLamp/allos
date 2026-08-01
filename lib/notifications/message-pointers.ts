@@ -38,7 +38,7 @@ export interface MessagePointer {
   keyboard: InlineKeyboard;
   // The message's TITLE LINE as delivered — attribution prefix included (#1822 item 7).
   // The sweep edits by pointer and never holds the text it is replacing, so this is what
-  // lets a close name its own subject. Null for a pointer recorded before migration 138,
+  // lets a close name its own subject. Null for a pointer recorded before migration 139,
   // which closes with the subjectless line rather than a guessed one.
   title: string | null;
   sentAt: string;

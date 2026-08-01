@@ -584,7 +584,7 @@ function planEdit(
     // The close NAMES ITS SUBJECT (#1822 item 7): the pointer recorded the delivered
     // title line at send time, attribution prefix included, so replacing the whole text
     // no longer leaves an orphan bubble in a shared chat. A pointer without one (recorded
-    // before migration 138) degrades to the bare closing line.
+    // before migration 139) degrades to the bare closing line.
     return {
       kind: "close",
       text: reconcileClosingText(decision.reason, pointer.title),

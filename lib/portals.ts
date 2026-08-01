@@ -288,23 +288,33 @@ export function accountsForPortal(portalId: number): PortalAccount[] {
   ).map(toAccount);
 }
 
-// Add a named login to a portal ("Mom", "Dad"). An account is a NICKNAME, never a
-// credential: no username, no password, nothing that could sign in to anything. Those
-// live only in the tool's local config, keyed by the slug this mints.
+// HOW AN ACCOUNT (portal login) NAME IS VALIDATED — one rule, one sentence, for every
+// path that names a login (#1829).
+//
+// The no-address invariant holds in full; the ONE narrowing is that an EMAIL SHAPE is
+// allowed, because a portal login usually IS an email and that is the nickname a person
+// reaches for. `mailto:`, `https://user@host`, `user@host/path`, a bare `gmail.com` and an
+// IP literal are all still refused — rejectsAddress runs those checks BEFORE the
+// allowance. A portal NAME keeps full strictness (an institution is not an email, and it
+// is the field that tempts URL-pasting).
+//
+// Exported so any later affordance that renames a login validates identically rather than
+// growing a second, drifting copy of the rule.
+export const ACCOUNT_NAME_RULE = { allowEmail: true } as const;
+export const ACCOUNT_NAME_ERROR =
+  "A login is recorded by a name or an email address — never a web address. The companion tool holds the address, and the credentials, on your own machine.";
+
+// Add a named login to a portal ("Mom", "Dad", "mom@example.com"). An account is a LABEL,
+// never a credential: no password, nothing that could sign in to anything. Those live only
+// in the tool's local config, keyed by the slug this mints.
 export function createPortalAccount(
   portalId: number,
   name: string
 ): PortalWriteResult {
   const n = name.trim().slice(0, PORTAL_NAME_MAX);
   if (!n) return { ok: false, error: "Give the login a name." };
-  // Same address refusal as a portal name. An account name is another free-text field,
-  // and the no-address rule is enforced at every one of them rather than at most of them.
-  if (rejectsAddress(n)) {
-    return {
-      ok: false,
-      error:
-        "A login is recorded by nickname only — never a web address or a username.",
-    };
+  if (rejectsAddress(n, ACCOUNT_NAME_RULE)) {
+    return { ok: false, error: ACCOUNT_NAME_ERROR };
   }
   const base = mintSlug(n);
   if (!base) {

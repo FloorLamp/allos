@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 138 (issue #1822 item 7): remember WHAT a live message was about, so the
+// Migration 139 (issue #1822 item 7): remember WHAT a live message was about, so the
 // reconcile close can name its own subject.
 //
 // ── THE DEFECT ───────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 138,
-  name: "138-notify-message-title",
+  id: 139,
+  name: "139-notify-message-title",
   up,
 };

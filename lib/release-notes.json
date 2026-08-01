@@ -4,6 +4,41 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1830,
+          "kind": "fix",
+          "issues": [1823],
+          "title": "Opening the desktop profile switcher no longer shoves the sidebar",
+          "body": "The switcher panel now drops over the sidebar's contents instead of pushing the navigation, calendar, and footer down by half a screen and snapping them back on close."
+        },
+        {
+          "pr": 1825,
+          "kind": "fix",
+          "issues": [1433],
+          "title": "A brand-new profile no longer opens on a wall of red \"Overdue\" screenings",
+          "body": "Screenings with no recorded history now show as a calm \"No record yet — add a past date or schedule\" setup list instead of red Overdue rows. Nothing about them is counted as late, badged, or sent as a reminder — real overdue states, backed by a recorded date, look exactly as before."
+        },
+        {
+          "pr": 1824,
+          "kind": "fix",
+          "issues": [1819],
+          "title": "The morning digest reports news, not plumbing",
+          "body": "Data-arrival lines now say what arrived (\"Health Connect: steps, sleep, workouts\") instead of meaningless raw row counts, and the weather cache no longer produces a permanent arrival line every single morning. Six smaller copy and grammar fixes ride along: no doubled \"Today:\" prefix, named overdue items instead of bare counts, merged supplement lines, and friendlier sleep phrasing."
+        },
+        {
+          "pr": 1821,
+          "kind": "feature",
+          "issues": [1408],
+          "title": "Energy and Calm from your daily check-in are now charted",
+          "body": "The check-in's energy and calm ratings each get the full treatment your mood rating already had: a Trends card, a tile, a detail page with history and corrections, and a star for the Overview grid. The calm chart plots the same high-is-calm scale the check-in card uses."
+        },
+        {
+          "pr": 1820,
+          "kind": "feature",
+          "issues": [1679, 1680],
+          "title": "Next-period forecasting and trying-to-conceive tracking",
+          "body": "The Cycle page (and a dashboard tile) now project your next period as a date window with an honest confidence label derived from your own cycle variability — never a bare date, never before three completed cycles, and paused entirely during pregnancy or after menopause. A new trying-to-conceive section records LH tests, waking temperature, and cervical mucus as ordinary observations and derives an evidence-based fertile window; it stays off until you turn it on."
+        },
+        {
           "pr": 1816,
           "kind": "feature",
           "issues": [1677],

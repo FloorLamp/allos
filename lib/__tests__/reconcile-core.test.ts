@@ -273,7 +273,7 @@ describe("reconcileClosingText (#1822 item 7)", () => {
   });
 
   it("degrades to the bare line rather than inventing a subject", () => {
-    // A pointer recorded before migration 138 has no title; so does a title-less message.
+    // A pointer recorded before migration 139 has no title; so does a title-less message.
     for (const missing of [null, undefined, "", "   ", "\n…"]) {
       expect(reconcileClosingText("resolved", missing)).toBe(
         RECONCILE_CLOSING.resolved

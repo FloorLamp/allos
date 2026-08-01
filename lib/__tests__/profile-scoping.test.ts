@@ -272,9 +272,9 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 071 (#703) ADD COLUMN guard: a schema-shape PRAGMA (does dose_msv already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows",
   },
   {
-    file: "lib/migrations/versions/138-notify-message-title.ts",
+    file: "lib/migrations/versions/139-notify-message-title.ts",
     includes: "PRAGMA table_info(notify_messages)",
-    why: "migration 138 (#1822) ADD COLUMN guard: a schema-shape PRAGMA (does `title` already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
+    why: "migration 139 (#1822) ADD COLUMN guard: a schema-shape PRAGMA (does `title` already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
     file: "lib/migrations/versions/076-encounter-type-code.ts",
