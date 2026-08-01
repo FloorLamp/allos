@@ -24,7 +24,14 @@ see a no-op UPDATE). **User-edit lock (#133):** imported `activities`,
 `body_metrics`, and `medical_records` rows each carry an `edited` flag; the
 app's edit paths set it on a source-owned row (`isEditLocked` in `sync-log.ts`),
 and the keyed upserts skip an edit-locked row (counting it `unchanged`) so a
-hand-correction survives the next rolling-window push. `body_metrics` is
+hand-correction survives the next rolling-window push. **Bulk corrections
+(#1603)** ride the same chokepoint: Data → Review's "Fix a run of data" panel
+(`lib/bulk-correction.ts` / `lib/bulk-correction-db.ts`) applies a plan →
+preview → apply pass over a date-range × source × field run, sets the edit lock
+on every corrected source-owned row (the preview says so plainly), snapshots the
+inverse into `deleted_rows` (`kind='bulk-correction'`, 24h undo window), and its
+undo restores a row only while its value still equals the correction's result —
+clearing `edited` only where that correction set it. `body_metrics` is
 DB-keyed on `UNIQUE(profile_id, date, source)` (NULL source exempt —
 manual/document rows), so its upsert uses `ON CONFLICT DO UPDATE` like the other
 tables. The **Data → Review** tab (`components/ReviewInbox.tsx`; profile-scoped
