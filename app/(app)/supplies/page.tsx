@@ -2,7 +2,8 @@ import { requireScope, stampSubjects } from "@/lib/scope";
 import { listVisiblePoolViews } from "@/lib/queries";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
-import { intakeHref, medicationHref } from "@/lib/hrefs";
+import { addItemFromPoolHref, intakeHref, medicationHref } from "@/lib/hrefs";
+import { poolSurfaceKind } from "@/lib/supply-product";
 import { sharedSupplyMemberLabels } from "@/lib/shared-supply-member-labels";
 import SharedSupplyCard, {
   type SharedSupplyCardData,
@@ -48,6 +49,22 @@ export default async function SuppliesPage() {
     visiblePools.flatMap(({ stamped }) => stamped)
   );
 
+  // "Add for another person" (#1705). A bottle has no kind of its own, so the surface
+  // its next item lands on is read off the membership (poolSurfaceKind). Offered only
+  // for profiles this caller may WRITE — a read-only grant gets no add affordance —
+  // and the write itself still happens under that profile's own gate: the chip switches
+  // the active profile first, then the ordinary add form runs requireWriteAccess().
+  const addTargetProfiles = scope.profiles
+    .filter((p) => scope.access.get(p.id) === "write")
+    .map((p) => ({ id: p.id, name: p.name }))
+    .sort((a, b) =>
+      a.id === scope.actingProfileId
+        ? -1
+        : b.id === scope.actingProfileId
+          ? 1
+          : 0
+    );
+
   const cards: SharedSupplyCardData[] = visiblePools.map(
     ({ pool, visible, stamped }) => ({
       id: pool.id,
@@ -82,6 +99,8 @@ export default async function SuppliesPage() {
             ? medicationHref(m.itemId)
             : intakeHref(m.kind),
       })),
+      addHref: addItemFromPoolHref(poolSurfaceKind(pool.members), pool.id),
+      addTargets: addTargetProfiles,
       canWrite:
         pool.members.length === 0
           ? scope.access.get(scope.actingProfileId) === "write"

@@ -664,6 +664,37 @@ nobody, and somebody has to be able to clear them). The page lists
 through the SAME predicate, so a door can never promise a bottle the page won't show.
 The count skips the pooled-projection build the list needs.
 
+**The product-fact exchange (#1705).** A bottle carries `name`/`strength`/`form`;
+an item carries `name`, `product`/`brand` and its dose amounts — **there is no
+`strength` or `form` column on `intake_items`**, which is what makes "the pool is
+authoritative for the product" implementable by DERIVATION rather than by copying.
+The split: the bottle owns WHAT THE PRODUCT IS (name, strength, form, the on-hand
+count, the low-supply threshold); the item owns HOW THIS PERSON USES IT (dose
+amount and schedule, obligation, situation gating, notes, its own display name).
+One pure module, `lib/supply-product.ts`, owns both directions plus the single
+`productLabel`/`bottleLabel` every surface (picker option, shared-bottle chip,
+cabinet heading) reads.
+
+- **Item → bottle.** `createPoolAction` seeds `name` and `strength` from the item
+  alongside the existing one-way count migration. The item's strength is its FIRST
+  active dose amount (`itemStrength`) — dose `amount` is where a strength is
+  actually typed. A posted field always wins, matching the count rule; `form` has
+  no item-side source and is left for the user.
+- **Bottle → item.** `listSharedSupplyOptions` carries `form` and resolves through
+  `listLinkableSupplies(ids)` — the SAME `isPoolVisibleTo` rule the cabinet lists
+  by, so a picker can never offer a bottle the cabinet hides. Two entry points: the
+  item forms' create-mode bottle selector (in the shared `SharedSupplyPicker`,
+  posting `supply_id` on the item's own save so `addSupplement` links it and forces
+  the private count NULL), and the cabinet's **"Add for another person"** — a
+  profile selector whose submit switches the active profile and lands on
+  `addItemFromPoolHref(kind, poolId)` (`?supply=`), so the item is created under the
+  TARGET profile's own write gate. The bottle's kind-surface comes from
+  `poolSurfaceKind` (any medication member ⇒ the medications surface).
+- **Derivation, not duplication.** A linked item stores no copy of the bottle's
+  product facts; `PoolChipData` carries `strength`/`form` and the chip renders them,
+  so editing the bottle updates every member's display with **no write to any item
+  row** — and there is no mismatch state to reconcile on unlink.
+
 **Cross-grant visibility (stated choice).** The cabinet resolves access once at
 the boundary via `requireScope()` and lists the pools the caller's accessible
 profiles draw from, plus member-less orphans. A member granted only ONE linked

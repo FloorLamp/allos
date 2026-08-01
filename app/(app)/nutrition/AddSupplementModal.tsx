@@ -6,6 +6,7 @@ import ModalShell from "@/components/ModalShell";
 import SupplementForm from "@/components/SupplementForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
+import type { SupplyOption } from "@/lib/supply-product";
 import { addSupplement } from "./supplement-actions";
 
 // The add workflow is intentionally absent from the resting schedule. A compact
@@ -15,13 +16,17 @@ export default function AddSupplementModal({
   stackItems,
   pgxVariants,
   trainingRestricted,
+  initialSupply = null,
 }: {
   allSupplements: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
   trainingRestricted: boolean;
+  // Arrived from the cabinet's "Add for another person" (#1705): the modal opens
+  // already showing the seeded form rather than making the user find Add again.
+  initialSupply?: SupplyOption | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialSupply != null);
 
   return (
     <div data-testid="add-supplement-card">
@@ -51,6 +56,7 @@ export default function AddSupplementModal({
               stackItems={stackItems}
               pgxVariants={pgxVariants}
               trainingRestricted={trainingRestricted}
+              initialSupply={initialSupply}
               onDone={() => setOpen(false)}
             />
           </div>

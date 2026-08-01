@@ -15,7 +15,9 @@ import {
   deletePoolAction,
   linkItemAction,
   unlinkItemAction,
+  listSharedSupplyOptions,
 } from "@/app/(app)/supplies/actions";
+import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
 import { createSharedSupply, getSharedSupply } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -197,6 +199,7 @@ describe("link / unlink gate on the ITEM's own profile", () => {
       id: supplyId,
       name: `From item ${t}`,
       strength: null,
+      form: null,
     });
     // The count moved INTO the pool, one-way — the item keeps no second copy.
     expect(getSharedSupply(supplyId as number)?.quantity_on_hand).toBe(90);
@@ -262,6 +265,7 @@ describe("link / unlink gate on the ITEM's own profile", () => {
       id: supplyId,
       name: `Unlink ${t}`,
       strength: null,
+      form: null,
     });
     expect(itemQty(a)).toBe(null);
     const unlinked = await unlinkItemAction(fd({ item_id: a }));
@@ -272,5 +276,173 @@ describe("link / unlink gate on the ITEM's own profile", () => {
     // its count, now orphaned rather than destroyed.
     expect(itemQty(a)).toBe(null);
     expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(25);
+  });
+});
+
+// ── The product-fact exchange between a bottle and an item (#1705) ──────────────
+//
+// Direction 1 seeds the bottle from the item; direction 2 creates the item FROM the
+// bottle. Only this tier sees both gates: the seeding reads the item under its own
+// profile scope, and the create-from-bottle write runs the TARGET profile's gate.
+
+function dose(itemId: number, amount: string, sort = 0): void {
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, retired)
+     VALUES (?, ?, '08:00', 'any', ?, 0)`
+  ).run(itemId, amount, sort);
+}
+
+describe("a pool created from an item inherits its product identity", () => {
+  it("seeds name and strength from the item, alongside the count", async () => {
+    const t = tag();
+    const admin = createLogin({ role: "admin", username: `seed_${t}` });
+    const p = createProfile(`Ada Lovelace ${t}`);
+    actAs(admin, p);
+    const a = item(p.id, `Cholecalciferol ${t}`, 60);
+    dose(a, "5000 IU");
+    dose(a, "1000 IU", 1);
+
+    // The picker posts nothing but the item id: everything else is inherited.
+    const res = await createPoolAction(fd({ item_id: a }));
+    expect(res.ok).toBe(true);
+    const supplyId = supplyIdOf(a) as number;
+    const pool = getSharedSupply(supplyId);
+    expect(pool?.name).toBe(`Cholecalciferol ${t}`);
+    // The FIRST active dose amount is where a strength is actually typed.
+    expect(pool?.strength).toBe("5000 IU");
+    expect(pool?.quantity_on_hand).toBe(60);
+    expect(itemQty(a)).toBe(null);
+  });
+
+  it("lets a posted field win over the inherited one", async () => {
+    const t = tag();
+    const admin = createLogin({ role: "admin", username: `over_${t}` });
+    const p = createProfile(`Ada Lovelace ${t}`);
+    actAs(admin, p);
+    const a = item(p.id, `Cholecalciferol ${t}`, 60);
+    dose(a, "5000 IU");
+
+    const res = await createPoolAction(
+      fd({
+        item_id: a,
+        name: `Household D3 ${t}`,
+        strength: "2000 IU",
+        form: "softgel",
+      })
+    );
+    expect(res.ok).toBe(true);
+    const pool = getSharedSupply(supplyIdOf(a) as number);
+    expect(pool?.name).toBe(`Household D3 ${t}`);
+    expect(pool?.strength).toBe("2000 IU");
+    expect(pool?.form).toBe("softgel");
+  });
+
+  it("does not read product facts across a profile boundary", async () => {
+    const t = tag();
+    const member = createLogin({ role: "member", username: `bnd_${t}` });
+    const mine = createProfile(`Ada Lovelace ${t}`, member.id);
+    const stranger = createProfile(`Test Patient ${t}`);
+    actAs(member, mine);
+    const foreign = item(stranger.id, `Med ${t}`, 5);
+    dose(foreign, "500 mg");
+    await expect(createPoolAction(fd({ item_id: foreign }))).rejects.toThrow(
+      /not accessible/
+    );
+  });
+});
+
+describe("an item created from a bottle links on save", () => {
+  it("links the new item and drops its private count", async () => {
+    const t = tag();
+    const admin = createLogin({ role: "admin", username: `mk_${t}` });
+    const p = createProfile(`Ada Lovelace ${t}`);
+    actAs(admin, p);
+    const supplyId = newPool(`Household ${t}`, 120);
+
+    const res = await addSupplement(
+      fd({
+        name: `Cholecalciferol ${t}`,
+        kind: "supplement",
+        supply_id: supplyId,
+        // What the form would post for an untracked private count.
+        quantity_on_hand: "",
+        doses: JSON.stringify([{ amount: "5000 IU", time_of_day: "08:00" }]),
+      })
+    );
+    expect(res.ok).toBe(true);
+    const created = db
+      .prepare(
+        "SELECT id, supply_id AS s, quantity_on_hand AS q FROM intake_items WHERE profile_id = ? AND name = ?"
+      )
+      .get(p.id, `Cholecalciferol ${t}`) as {
+      id: number;
+      s: number | null;
+      q: number | null;
+    };
+    expect(created.s).toBe(supplyId);
+    // A pooled item keeps NO private count — the phantom-double-supply invariant.
+    expect(created.q).toBe(null);
+    // The bottle's own count is untouched by the link.
+    expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(120);
+  });
+
+  it("refuses a bottle outside the caller's reach instead of linking it", async () => {
+    const t = tag();
+    // The bottle belongs to a household branch this member was never granted.
+    const owner = createLogin({ role: "member", username: `own_${t}` });
+    const theirs = createProfile(`Test Patient ${t}`, owner.id);
+    const supplyId = newPool(`Foreign ${t}`, 30);
+    const theirItem = item(theirs.id, `Med ${t}`, null);
+    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
+      supplyId,
+      theirItem
+    );
+
+    const outsider = createLogin({ role: "member", username: `out_${t}` });
+    const mine = createProfile(`Ada Lovelace ${t}`, outsider.id);
+    actAs(outsider, mine);
+
+    const res = await addSupplement(
+      fd({
+        name: `Sneaky ${t}`,
+        kind: "supplement",
+        supply_id: supplyId,
+        doses: JSON.stringify([{ amount: "1 tab" }]),
+      })
+    );
+    expect(res.ok).toBe(false);
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE name = ?")
+        .get(`Sneaky ${t}`)
+    ).toEqual({ n: 0 });
+  });
+
+  it("offers only the bottles the caller's own people draw from, plus orphans", async () => {
+    const t = tag();
+    const owner = createLogin({ role: "member", username: `lo_${t}` });
+    const theirs = createProfile(`Test Patient ${t}`, owner.id);
+    const hidden = newPool(`Hidden ${t}`, 10);
+    const theirItem = item(theirs.id, `Med ${t}`, null);
+    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
+      hidden,
+      theirItem
+    );
+    const orphan = newPool(`Orphan ${t}`, 10);
+
+    const outsider = createLogin({ role: "member", username: `lx_${t}` });
+    const mine = createProfile(`Ada Lovelace ${t}`, outsider.id);
+    actAs(outsider, mine);
+    const mineItem = item(mine.id, `Mine ${t}`, null);
+    const ownPool = newPool(`Mine ${t}`, 10);
+    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
+      ownPool,
+      mineItem
+    );
+
+    const ids = (await listSharedSupplyOptions()).map((o) => o.id);
+    expect(ids).toContain(ownPool);
+    expect(ids).toContain(orphan);
+    expect(ids).not.toContain(hidden);
   });
 });
