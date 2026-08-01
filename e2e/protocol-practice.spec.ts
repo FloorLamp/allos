@@ -138,7 +138,16 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   const practiceName = `E2E Practice ${frozenNow().getTime()}`;
   // A year-long window exercises the compact card heatmap's mobile density story
   // (#1588) while the unique practice keeps adherence deterministic.
-  const start = new Date(frozenNow().getTime() - 370 * 86_400_000)
+  //
+  // 367, NOT a multiple-of-7-minus-1: the End-now step stamps the end date as the
+  // profile-LOCAL today while this start string is UTC-derived, so the inclusive
+  // window length is 367±1 days depending on the pinned zone's skew. None of
+  // 366/367/368 is divisible by 7, so the window can NEVER align exactly with the
+  // heatmap's week rows — which is what the data-outside padding assertion below
+  // depends on. The previous 370 made the length 371±1; 371 IS divisible by 7, so
+  // one calendar day in ~7 the window aligned, the padding legitimately vanished,
+  // and the assertion failed deterministically all day on every PR (2026-08-01).
+  const start = new Date(frozenNow().getTime() - 367 * 86_400_000)
     .toISOString()
     .slice(0, 10);
 
