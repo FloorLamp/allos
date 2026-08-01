@@ -24,6 +24,7 @@ import {
   seedLoadContexts,
 } from "./seed/training";
 import { seedIntegrationSyncEvents } from "./seed/integrations";
+import { seedPortalHouseholds } from "./seed/portals";
 import { seedMergeFixtures } from "./seed/merge";
 import {
   seedImportFeed,
@@ -183,3 +184,4 @@ seedReportPanes();
 // Appended after those for the same reason (#1504): a new profile plus its own intake
 // rows, so every existing fixture's row ids stay exactly where they were.
 seedUpcomingAggregate();
+seedPortalHouseholds();

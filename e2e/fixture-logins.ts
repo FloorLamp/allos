@@ -28,6 +28,7 @@ export * from "./logins/medical";
 export * from "./logins/metrics";
 export * from "./logins/notifications";
 export * from "./logins/nutrition";
+export * from "./logins/portals";
 export * from "./logins/shared";
 export * from "./logins/situations";
 export * from "./logins/timeline";
