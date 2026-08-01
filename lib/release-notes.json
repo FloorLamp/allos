@@ -4,6 +4,13 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1786,
+          "kind": "fix",
+          "issues": [1780],
+          "title": "One person on two portal logins no longer imports twice",
+          "body": "Portals regenerate their export files on every request, so the same records could arrive looking like brand-new documents — especially when one person is reachable through two portal logins — and every visit ended up recorded twice. Allos now recognizes a health-record file by the clinical entry ids inside it, not just its bytes: an offer whose records exactly match a document already held is refused as already imported, a portal sync's repeat offers land no rows at all, and partly-overlapping exports still store normally. Existing documents are recognized retroactively. Operators: migration 136 applies automatically."
+        },
+        {
           "pr": 1784,
           "kind": "feature",
           "issues": [1779],
