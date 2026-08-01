@@ -160,6 +160,31 @@ export function seedIntegrationSyncEvents(): void {
     }
   }
 
+  // #1772: an OLDER Strava failure, so the sync-history table has a failure row that
+  // is NOT the latest event. Before the redesign `ev.error` rendered only for the
+  // latest event, so a historical "Sync failed" row gave no reason at all — and the
+  // moment a success landed, even the most recent failure's reason disappeared from
+  // the UI entirely. Dated before the no-op run so it can't break their consecutive
+  // collapse, and older than the newest Strava failure so "currently failing" is
+  // decided by that one and this fixture changes no badge count. Its message is
+  // distinct from the newest failure's so the assertion can name the history row.
+  ins.run(
+    PROFILE_ID,
+    "strava",
+    "2026-07-07 22:00:00",
+    0,
+    "2026-07-01",
+    "2026-07-07",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null, // raw_ref
+    "Strava rate limit reached (429): daily quota exhausted"
+  );
+
   // Four consecutive hourly Strava no-op re-scans (05:00–08:00) → one collapsed line.
   for (const hour of ["05", "06", "07", "08"]) {
     ins.run(

@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { followLink, settledClick } from "./helpers";
+import { settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Open-Meteo weather/UV integration + the two-sided UV-dose sun model (#1172). All
@@ -24,22 +24,24 @@ test.describe("Weather & UV integration (#1172)", () => {
       await expect(
         main.getByRole("heading", { name: /Weather & UV/i })
       ).toBeVisible();
-      // Seeded enabled → the connected badge (not "Not enabled"/"needed").
-      await expect(member.getByTestId("weather-status")).toContainText(
+      // Seeded enabled → the connected badge from the shared state model (#1772);
+      // the page's own weather-status badge is the not-enabled / no-location one.
+      await expect(member.getByTestId("sync-status-weather")).toContainText(
         "Connected"
       );
       // Today's outdoor activity + cached UV → the dose summary card shows UV-min.
       await expect(member.getByTestId("weather-today-dose")).toContainText(
         "UV-min"
       );
-      // The manual Sync-now control exists (drives the same idempotent sync).
-      await expect(member.getByTestId("weather-sync")).toBeVisible();
+      // The manual Sync-now control exists — the SHARED button now, the same one
+      // Review's inbox offers, instead of this page's own redirecting form.
+      await expect(member.getByTestId("sync-now-weather")).toBeVisible();
     } finally {
       await member.context().close();
     }
   });
 
-  test("the setup page's Sync history link reaches the Weather card in Review (#1614)", async ({
+  test("the setup page owns the history table, and Review collapses the healthy source (#1614/#1772)", async ({
     browser,
   }) => {
     test.slow();
@@ -50,33 +52,43 @@ test.describe("Weather & UV integration (#1172)", () => {
     });
     try {
       await member.goto("/integrations/weather");
-      // The setup page has always offered this link; Weather was excluded from
-      // "Connected sources" by kind, so its successful history had no destination.
-      const historyLink = member.getByTestId("sync-history-link");
-      await expect(historyLink).toBeVisible();
-      await followLink(member, historyLink, /\/data\?section=review/);
 
-      const weatherCard = member
+      // #1614 made Weather's successful history reachable at all (it had been
+      // excluded from Connected sources by kind). #1772 then moved every recurring
+      // provider's history HOME: the setup page renders the real table, and Review
+      // links back to it. So the history is here, in the provider's own page.
+      const history = member.getByTestId("sync-history");
+      await expect(history).toBeVisible();
+
+      // A CACHE provider speaks cache language: its counts are revised forecast
+      // cells of a global location-keyed cache, not user records, so the run reads
+      // "16 readings revised" — never "16 changed · 320 unchanged".
+      await expect(history.getByText("16 readings revised")).toBeVisible();
+      await expect(history.getByText(/320 unchanged/)).toHaveCount(0);
+      // The window both runs cover is stated once above the table, as coverage.
+      await expect(history.getByTestId("sync-history-window")).toContainText(
+        "covers 2026-06-25 → 2026-07-09"
+      );
+
+      // Review is an inbox: a healthy provider is one line there, not a second copy
+      // of this page — same badge, same outcome sentence, linking home.
+      await member.goto("/data?section=review");
+      const weatherRow = member
         .getByTestId("review-inbox")
         .getByTestId("source-weather");
-      await expect(weatherCard).toBeVisible();
-      await expect(weatherCard.getByText("Connected")).toBeVisible();
-      // Latest state = the newest seeded run's split.
+      await expect(weatherRow).toBeVisible();
+      await expect(weatherRow.getByTestId("sync-status-weather")).toContainText(
+        "Connected"
+      );
       await expect(
-        weatherCard.getByText("12 new · 4 changed · 320 unchanged").first() // first-ok: the latest-state line repeats inside the collapsed history list of this fixture-owned card
+        weatherRow.getByText("Forecast refreshed · 16 readings revised")
       ).toBeVisible();
-      // Keyless and tick-driven: no on-demand pull button, and not the push-only
-      // explainer either — just a way back to its own settings.
+      // Nothing to act on, so no controls at all — just the way back.
       await expect(
-        weatherCard.getByRole("button", { name: "Sync now" })
+        weatherRow.getByRole("button", { name: "Sync now" })
       ).toHaveCount(0);
-      await expect(weatherCard.getByText(/Push-only/)).toHaveCount(0);
-      const back = weatherCard.getByRole("link", {
-        name: /Open Weather & UV .* settings/,
-      });
+      const back = weatherRow.getByRole("link");
       await expect(back).toHaveAttribute("href", "/integrations/weather");
-      // The history tail is reachable from the card too.
-      await expect(weatherCard.getByText(/Recent syncs \(2\)/)).toBeVisible();
     } finally {
       await member.context().close();
     }
@@ -182,7 +194,7 @@ test.describe("Weather & UV integration (#1172)", () => {
     });
     try {
       await member.goto("/integrations/weather");
-      await expect(member.getByTestId("weather-status")).toContainText(
+      await expect(member.getByTestId("sync-status-weather")).toContainText(
         "Connected"
       );
       // Disable, then re-enable so the spec leaves the fixture as it found it
@@ -195,7 +207,7 @@ test.describe("Weather & UV integration (#1172)", () => {
         /Not enabled/i
       );
       await settledClick(member, member.getByTestId("weather-enable"));
-      await expect(member.getByTestId("weather-status")).toContainText(
+      await expect(member.getByTestId("sync-status-weather")).toContainText(
         "Connected"
       );
     } finally {

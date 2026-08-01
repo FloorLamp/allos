@@ -42,6 +42,17 @@ function homeHref(source: ConnectedSource) {
 // back to reconnect; a push-only provider explains why there is no button.
 function SourceAction({ source }: { source: ConnectedSource }) {
   const href = homeHref(source);
+  // Push FIRST: a push-only provider (Health Connect) has nothing to pull and nothing
+  // to "reconnect" from here — the phone exporter drives it, and its token lives on
+  // its own page — so it explains itself whatever its connection row says.
+  if (source.kind === "push") {
+    return (
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        Push-only — your phone&apos;s exporter sends data on a schedule;
+        there&apos;s nothing to sync by hand.
+      </span>
+    );
+  }
   if (source.connected && source.canSyncNow) {
     return <SyncNowButton provider={source.id} />;
   }
@@ -53,16 +64,6 @@ function SourceAction({ source }: { source: ConnectedSource }) {
       >
         Reconnect {source.name} →
       </Link>
-    );
-  }
-  if (source.kind === "push") {
-    // Push-only providers (Health Connect) can't be pulled on demand — the phone
-    // exporter drives them on its own schedule.
-    return (
-      <span className="text-xs text-slate-500 dark:text-slate-400">
-        Push-only — your phone&apos;s exporter sends data on a schedule;
-        there&apos;s nothing to sync by hand.
-      </span>
     );
   }
   return href ? (

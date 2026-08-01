@@ -1772,18 +1772,30 @@ Bring data in (upload documents, paste logs, connect a device or service) under
 
 ### Connected sources
 
-Connected sources lists only the recurring providers you've actually set up —
-each currently connected, one you connected before and later removed (which
-keeps showing its historical logs as a **Not connected** card with a
-**Reconnect** link), or one whose token expired or was revoked (a **Needs
-reconnect** card — a dead connection self-marks and stops silently retrying
-forever, instead of looking healthy while never syncing); a provider you never
-configured is left out entirely rather than shown as an empty card. Each source
-collapses to one card showing its latest sync outcome + relative time + the
-new/changed/unchanged split, with an expandable recent-sync history, a
-per-provider **Sync now** for connected pull providers (Strava, Oura, and
-Withings; Health Connect is push-only, so its card explains the phone exporter
-drives it), and an admin **View raw** to inspect the exact provider payload.
+Connected sources is an **inbox**: it lists only the recurring providers you've
+actually set up, and it expands the ones that need you. A provider whose last run
+failed, whose token expired or was revoked (**Needs reconnect** — a dead
+connection self-marks and stops silently retrying forever, instead of looking
+healthy while never syncing), whose run stopped early (**Partial sync**), or that
+you connected before and later removed (**Not connected**, with its historical
+logs and a **Reconnect** link) gets a card with the reason, the action —
+**Sync now** for connected pull providers (Strava, Oura, Withings, Weather;
+Health Connect is push-only, so its card explains the phone exporter drives it) —
+and a link to its full history. Everything healthy collapses to a single line
+showing the same badge and the same outcome sentence. A provider you never
+configured is left out entirely.
+
+The provider's **own page** is its home: the same status header, its
+connect/disconnect/sync controls, and the full **Sync history** table — when each
+run happened (absolute _and_ relative), whether it worked, what it changed, and
+the window it covered where that differs from the norm. Every failed run states
+its reason, not just "Failed"; a stretch of hourly runs that brought nothing new
+collapses to one line; and an admin **View raw** inspects the exact provider
+payload. A run that actually wrote records offers **What this wrote**, which
+lists them with links; a provider that legitimately records none — Weather
+refreshes a shared forecast cache, which contains no records of yours — simply
+doesn't offer it, and reports its runs in its own words ("Forecast refreshed · 16
+readings revised") instead of counting cache cells as if they were your data.
 
 ### Imports
 
