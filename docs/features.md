@@ -851,7 +851,9 @@ saying nothing while "whose data is this?" had no answer on that screen at all
 keep the wordmark).
 
 Tapping it opens one **switcher panel** — a drawer dropping from the bar on a
-phone, an expanding container below it on desktop, both rendering the same rows.
+phone, a container dropping below it on desktop, both rendering the same rows.
+On either viewport the panel **overlays** what is behind it: opening the desktop
+switcher never pushes the nav, calendar or footer below it out of the way.
 Every accessible profile gets a row with **two** controls, never one ambiguous
 tap: the **name** switches who you are acting as, and the **eye** toggles that
 profile in and out of your view. You cannot un-view the profile you are acting
