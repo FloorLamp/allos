@@ -7,7 +7,12 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  DIGEST_CATEGORY_LABELS,
+  DIGEST_CATEGORY_NOTABLE,
+  DIGEST_CATEGORY_SHORT,
+  DIGEST_OWN_CATEGORIES,
   DIGEST_TUNABLE_CATEGORIES,
+  activitiesSurviveDemotion,
   collapsedTuneAction,
   expandedTuneActions,
   intersectDigestDemotions,
@@ -22,32 +27,49 @@ import {
   type DigestCategory,
 } from "@/lib/notifications/digest-tune";
 import { parseTuneCallback } from "@/lib/notifications/callback-data";
-import { applyRecentChangeDemotion } from "@/lib/recent-changes";
+import {
+  RECENT_CHANGE_CATEGORIES,
+  applyRecentChangeDemotion,
+} from "@/lib/recent-changes";
 import { SLEEP_TYPICAL_BAND_MIN } from "@/lib/sleep-summary";
 
-describe("the tunable category set (#1714)", () => {
-  it("covers the collector's categories except labs, plus sleep", () => {
+describe("the tunable category set (#1714, widened by #1797)", () => {
+  // DERIVED, not hand-listed: the expectation is built from the SAME two registries the
+  // module composes, so a category added to the collector tomorrow is tunable with no
+  // edit here — and a hand-maintained list would fail this the day the collector grows.
+  it("is exactly the collector's registry plus the digest's own sections", () => {
     expect(DIGEST_TUNABLE_CATEGORIES).toEqual([
-      "visits",
-      "growth",
-      "intake",
-      "vitals",
-      "symptoms",
-      "mood",
-      "data",
-      "sleep",
+      ...RECENT_CHANGE_CATEGORIES,
+      ...DIGEST_OWN_CATEGORIES,
     ]);
   });
 
-  it("labs is NOT tunable — every line it carries is floor class", () => {
-    expect(isDigestCategory("labs")).toBe(false);
+  it("the conservative launch intersection is retired — labs and activities are in", () => {
+    // The #1774 exclusions, pinned as present so neither can quietly come back.
+    expect(isDigestCategory("labs")).toBe(true);
+    expect(isDigestCategory("activities")).toBe(true);
+    expect(DIGEST_TUNABLE_CATEGORIES).toContain("labs");
+    expect(DIGEST_TUNABLE_CATEGORIES).toContain("activities");
   });
 
-  it("sleep is the digest's own section, so the collector never sees it", () => {
-    expect(recentChangeDemotions(["vitals", "sleep", "mood"])).toEqual([
-      "vitals",
-      "mood",
-    ]);
+  it("every tunable category carries a label, a short label and a notable promise", () => {
+    for (const c of DIGEST_TUNABLE_CATEGORIES) {
+      expect(DIGEST_CATEGORY_LABELS[c]).toBeTruthy();
+      expect(DIGEST_CATEGORY_SHORT[c]).toBeTruthy();
+      expect(DIGEST_CATEGORY_NOTABLE[c]).toBeTruthy();
+    }
+  });
+
+  it("the digest's own sections are the ones the collector never produces", () => {
+    for (const own of DIGEST_OWN_CATEGORIES) {
+      expect(RECENT_CHANGE_CATEGORIES).not.toContain(own);
+    }
+  });
+
+  it("sleep and activities are the digest's own, so the collector never sees them", () => {
+    expect(
+      recentChangeDemotions(["labs", "vitals", "sleep", "mood", "activities"])
+    ).toEqual(["labs", "vitals", "mood"]);
   });
 });
 
@@ -66,9 +88,17 @@ describe("the stored form", () => {
   it("DROPS a name that is not a tunable category", () => {
     // A retired or forged name must silence nothing — keeping it would resurrect the
     // preference if the name were ever reused.
-    expect(parseDigestDemotions("mood,labs,activities, vitals ")).toEqual([
+    expect(parseDigestDemotions("mood,dreams,horoscope, vitals ")).toEqual([
       "vitals",
       "mood",
+    ]);
+  });
+
+  it("orders by declaration, so labs leads and activities trails", () => {
+    expect(parseDigestDemotions("activities,mood,labs")).toEqual([
+      "labs",
+      "mood",
+      "activities",
     ]);
   });
 });
@@ -151,6 +181,42 @@ describe("the preference filter composed with the safety floor", () => {
       new Set(recentChangeDemotions(["mood"]))
     );
     expect(kept).toHaveLength(2);
+  });
+
+  it("a tuned-down LABS category still surfaces every flagged result (#1797)", () => {
+    // The safety-floor pin the widened set exists to demonstrate: labs is tunable now,
+    // and the toggle still cannot take a flagged result away, because `flagged` implies
+    // notable. Tuning reduces routine contact; it never reaches a floor.
+    const flaggedLab = {
+      id: "labs:Ferritin:2020-03-04",
+      category: "labs" as const,
+      text: "🚩 Ferritin 12 (low)",
+      date: "2020-03-04",
+      flagged: true,
+    };
+    const kept = applyRecentChangeDemotion(
+      [flaggedLab],
+      new Set(recentChangeDemotions(["labs"]))
+    );
+    expect(kept.map((c) => c.id)).toEqual([flaggedLab.id]);
+  });
+});
+
+describe("activitiesSurviveDemotion — the PR predicate, reused not re-derived", () => {
+  it("undemoted activities always survive, record or not", () => {
+    expect(activitiesSurviveDemotion([], 0)).toBe(true);
+  });
+
+  it("a demoted ORDINARY training day stops", () => {
+    expect(activitiesSurviveDemotion(["activities"], 0)).toBe(false);
+  });
+
+  it("a demoted day that set a personal record still appears", () => {
+    expect(activitiesSurviveDemotion(["activities"], 1)).toBe(true);
+  });
+
+  it("demoting a different category leaves the section alone", () => {
+    expect(activitiesSurviveDemotion(["sleep"], 0)).toBe(true);
   });
 });
 
@@ -267,8 +333,14 @@ describe("parseTuneCallback", () => {
     });
   });
 
-  it("rejects a toggle naming an untunable or unknown category", () => {
-    expect(parseTuneCallback("tunet:7:2020-03-04:labs")).toBeNull();
+  it("accepts the categories the widened set added (#1797)", () => {
+    expect(parseTuneCallback("tunet:7:2020-03-04:labs")?.category).toBe("labs");
+    expect(parseTuneCallback("tunet:7:2020-03-04:activities")?.category).toBe(
+      "activities"
+    );
+  });
+
+  it("rejects a toggle naming an unknown category", () => {
     expect(parseTuneCallback("tunet:7:2020-03-04:nonsense")).toBeNull();
     expect(parseTuneCallback("tunet:7:2020-03-04")).toBeNull();
   });
