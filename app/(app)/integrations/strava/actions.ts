@@ -62,31 +62,6 @@ export async function connectStrava() {
   redirect(`${AUTHORIZE_URL}?${params.toString()}`);
 }
 
-// Pull from Strava on demand, then refresh the views the data feeds. The result
-// is persisted by runStravaSync (recordSync) and shown via the revalidated
-// last-sync summary, so this returns void to satisfy the form-action signature.
-export async function syncStravaAction() {
-  const { profile } = await requireWriteAccess();
-  // runStravaSync returns { error } for graceful failures and can throw on an
-  // unexpected network error; catch both so neither becomes an unhandled error
-  // page, and surface the failure to the page via the ?error= param.
-  let failed = false;
-  try {
-    const res = await runStravaSync(profile.id);
-    if (res && "error" in res) {
-      log.error("strava sync failed", { error: res.error });
-      failed = true;
-    }
-  } catch (err) {
-    log.error("strava sync threw", { err: String(err) });
-    failed = true;
-  }
-  for (const p of ["/", "/training", "/trends", "/integrations/strava"]) {
-    revalidatePath(p);
-  }
-  if (failed) redirect("/integrations/strava?error=sync_failed");
-}
-
 export interface SyncNowResult {
   status: "done" | "error";
   message: string;

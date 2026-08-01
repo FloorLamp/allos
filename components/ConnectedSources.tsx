@@ -1,259 +1,169 @@
 import Link from "next/link";
-import {
-  IconAlertTriangle,
-  IconCircleCheck,
-  IconCircle,
-} from "@tabler/icons-react";
-import type { IntegrationSyncEvent } from "@/lib/types";
+import { IconArrowRight } from "@tabler/icons-react";
 import type { IntegrationId } from "@/lib/types/integrations";
 import { integrationDetailHref } from "@/lib/hrefs";
 import type { ConnectedSource } from "@/lib/queries/integrations";
-import { formatSplitLabel, formatWindow } from "@/lib/integrations/sync-log";
 import {
-  isTruncatedSyncEvent,
-  originChoiceLabel,
-  parseSyncEventDetails,
-} from "@/lib/integrations/sync-details";
-import RelativeTime from "@/components/RelativeTime";
-import RawPayloadViewer from "@/components/RawPayloadViewer";
+  formatSyncOutcome,
+  needsAttention,
+  standingBadge,
+} from "@/lib/integrations/provider-state";
 import SyncNowButton from "@/components/SyncNowButton";
-import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
+import StatusBadge from "@/components/integrations/StatusBadge";
+import SyncTimestamp from "@/components/integrations/SyncTimestamp";
+import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
 
-// Records a sync actually wrote (inserted + updated) — the count the provenance
-// drill-in (#1333) can resolve to deep links. Unchanged re-sends aren't recorded, so
-// this is exactly what the drill-in lists. A failure or an all-unchanged sync is 0.
-// It is the SUMMARY count, shown either way; whether the DRILL-IN is offered is a
-// separate question answered by recorded provenance (#1771), not by this number.
-function writtenCount(ev: IntegrationSyncEvent): number {
-  if (!ev.ok) return 0;
-  return (ev.inserted ?? 0) + (ev.updated ?? 0);
+// Data → Review, "Connected sources" — an INBOX (#1772), not a second copy of every
+// provider's page.
+//
+// #208 created this as the recurring-streams half of Review; #1212 then made it the
+// ONE place sync history rendered and #1614 routed Weather in. What neither covered is
+// that a provider's status and controls were still rendered twice in two visual
+// languages — here and on its own setup page — with different badges, different
+// timestamp formats, and (with the setup pages' raw `last_sync_summary` echo) a third
+// accounting. The state model is now one computation (lib/integrations/provider-state
+// over getIntegrationState) and the surfaces have deliberate, different ROLES:
+//
+//   • the setup page is the provider's HOME — status header, controls, full history;
+//   • this is the INBOX — providers that need attention, with the reason and the
+//     action; healthy providers collapse to a single line that links home.
+//
+// History renders in exactly ONE place still (#1212's rule holds): it moved home.
+// Server component — the page reads the sources via lib/queries (getConnectedSources).
+
+// The way back to a provider's own page. `integrationDetailHref` only returns null
+// for the planned Garmin, which never appears here.
+function homeHref(source: ConnectedSource) {
+  return integrationDetailHref(source.id as IntegrationId);
 }
 
-// Data → Review, "Connected sources" (issue #208): the RECURRING import streams —
-// Health Connect, Strava — where the question is "is it healthy now", so each
-// provider collapses to ONE latest-state card (outcome + relative time + the
-// new/changed/unchanged split) with an expandable recent history, an admin raw-
-// payload viewer, and a per-provider "Sync now" (Strava) or a push explainer (HC).
-// This is the correct home for the "resync" intent — contrast the chronological
-// one-off Imports feed (<ImportFeed>). Server component — the page reads the sources
-// via lib/queries (getConnectedSources) and hands them in.
-
-function StateLine({ ev }: { ev: IntegrationSyncEvent }) {
-  const { primary, muted } = formatSplitLabel(ev);
-  // A truncated run SUCCEEDED as far as it got, but a page cap / rate limit left data
-  // upstream (#1614) — so it must not read as a clean green success. It gets the
-  // caution icon and an explicit "partial" chip; the reason renders in <SyncDetails>.
-  const truncated = ev.ok !== 0 && isTruncatedSyncEvent(ev);
-  const Icon = ev.ok && !truncated ? IconCircleCheck : IconAlertTriangle;
-  const iconTone = !ev.ok
-    ? "text-rose-500"
-    : truncated
-      ? "text-amber-500"
-      : "text-emerald-500";
-  const skipped = ev.skipped ?? 0;
-  return (
-    <span className="inline-flex items-center gap-1.5 text-sm">
-      <Icon className={`h-4 w-4 shrink-0 ${iconTone}`} stroke={1.75} />
-      <span
-        className={
-          ev.ok
-            ? muted
-              ? "text-slate-500 dark:text-slate-400"
-              : "text-slate-700 dark:text-slate-200"
-            : "font-medium text-rose-700 dark:text-rose-300"
-        }
+// The action a provider in the inbox offers. A pull source that is connected can be
+// pulled on demand; one that was removed (#294) or whose token died (#326) gets a way
+// back to reconnect; a push-only provider explains why there is no button.
+function SourceAction({ source }: { source: ConnectedSource }) {
+  const href = homeHref(source);
+  if (source.connected && source.canSyncNow) {
+    return <SyncNowButton provider={source.id} />;
+  }
+  if (!source.connected && href) {
+    return (
+      <Link
+        href={href}
+        className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
       >
-        {ev.ok ? primary : "Sync failed"}
+        Reconnect {source.name} →
+      </Link>
+    );
+  }
+  if (source.kind === "push") {
+    // Push-only providers (Health Connect) can't be pulled on demand — the phone
+    // exporter drives them on its own schedule.
+    return (
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        Push-only — your phone&apos;s exporter sends data on a schedule;
+        there&apos;s nothing to sync by hand.
       </span>
-      {truncated && (
-        <span
-          className="font-medium text-amber-600 dark:text-amber-400"
-          data-testid={`sync-partial-${ev.id}`}
-        >
-          · partial
-        </span>
-      )}
-      {/* ev.ok is a NUMBER (0/1) — a bare `ev.ok &&` would render a literal "0"
-          on failure lines, so coerce it. */}
-      {ev.ok !== 0 && skipped > 0 && (
-        <span className="text-amber-600 dark:text-amber-400">
-          · {skipped} skipped
-        </span>
-      )}
-    </span>
-  );
-}
-
-function SyncDetails({ ev }: { ev: IntegrationSyncEvent }) {
-  const details = parseSyncEventDetails(ev.details ?? null);
-  if (!details) return null;
-  return (
-    <div
-      className="mt-1 space-y-0.5 text-xs text-amber-700 dark:text-amber-300"
-      data-testid={`sync-details-${ev.id}`}
+    );
+  }
+  return href ? (
+    <Link
+      href={href}
+      className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
     >
-      {details.warnings.map((warning) => (
-        <p key={warning}>{warning}</p>
-      ))}
-      {details.origins.map((choice) => (
-        <p key={`${choice.date}:${choice.metric}`}>
-          {originChoiceLabel(choice)}
-        </p>
-      ))}
-    </div>
-  );
+      Open {source.name} settings →
+    </Link>
+  ) : null;
 }
 
-function SourceCard({
+// A provider that needs attention: the full shared status header (the same component
+// its own page leads with), its action, and a link to the full history.
+function AttentionCard({
   source,
   isAdmin,
 }: {
   source: ConnectedSource;
   isAdmin: boolean;
 }) {
-  const { latest, history } = source;
-  // The drill-in is gated on provenance ACTUALLY existing for the event (#1771) —
-  // never on a provider hardcode. An expander that promises record detail and then
-  // apologizes reads as broken, and for a cache provider (Weather) it apologized on
-  // every single sync.
-  const provenance = new Set(source.provenanceEventIds);
-  const reconnectHref = integrationDetailHref(source.id as IntegrationId);
+  const href = homeHref(source);
   return (
     <li
       className="rounded-lg border border-black/5 p-3 dark:border-white/5"
       data-testid={`source-${source.id}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-slate-800 dark:text-slate-100">
-            {source.name}
-          </span>
-          {source.connected ? (
-            <span className="badge inline-flex items-center gap-1 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-              Connected
-            </span>
-          ) : source.needsReauth ? (
-            // The credential died (dead/revoked token) — a distinct, actionable state
-            // from the benign "Not connected" (issue #326).
-            <span className="badge inline-flex items-center gap-1 bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-              <IconAlertTriangle className="h-3.5 w-3.5" /> Needs reconnect
-            </span>
-          ) : (
-            <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-              Not connected
-            </span>
-          )}
-        </div>
-        {latest && (
-          <RelativeTime
-            value={latest.at}
-            className="text-xs text-slate-500 dark:text-slate-400"
-          />
-        )}
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-        {latest ? (
-          <StateLine ev={latest} />
-        ) : (
-          <span className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-            <IconCircle className="h-4 w-4 shrink-0" stroke={1.75} />
-            No syncs yet
-          </span>
-        )}
-        {latest?.window_start && (
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {formatWindow(latest.window_start, latest.window_end)}
-          </span>
-        )}
-      </div>
-
-      {latest && !latest.ok && latest.error && (
-        <p className="mt-1 break-words text-sm text-rose-700 dark:text-rose-300">
-          {latest.error}
-        </p>
-      )}
-      {latest && <SyncDetails ev={latest} />}
-      {latest && writtenCount(latest) > 0 && provenance.has(latest.id) && (
-        <SyncRowsDrilldown eventId={latest.id} count={writtenCount(latest)} />
-      )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        {source.canSyncNow ? (
-          source.connected ? (
-            <SyncNowButton provider={source.id} />
-          ) : (
-            // A pull source only appears here once it's been set up, so a
-            // not-connected card is one that was connected and later removed
-            // (issue #294) OR one whose token died and flipped to needs_reauth
-            // (#326): either way, offer a Reconnect link back to its setup page.
-            // A connectable pull source always has a detail page (integrationDetailHref
-            // only returns null for the planned Garmin, which can't sync).
-            reconnectHref && (
+      <IntegrationStatusHeader
+        state={source}
+        showName
+        isAdmin={isAdmin}
+        controls={
+          <>
+            <SourceAction source={source} />
+            {href && source.history.length > 0 && (
               <Link
-                href={reconnectHref}
-                className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                href={href}
+                className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                data-testid={`source-history-link-${source.id}`}
               >
-                Reconnect {source.name} →
+                Full sync history →
               </Link>
-            )
-          )
-        ) : source.kind === "push" ? (
-          // Push-only providers (Health Connect) can't be pulled on demand — the
-          // phone exporter drives them on its own schedule.
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Push-only — your phone&apos;s exporter sends data on a schedule;
-            there&apos;s nothing to sync by hand.
-          </span>
-        ) : (
-          // A keyless background source (Weather & UV): it runs on the hourly tick
-          // and its own setup page owns the enable/sync controls, so this card is
-          // purely its sync history plus a way back to that page (#1614).
-          reconnectHref && (
-            <Link
-              href={reconnectHref}
-              className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-            >
-              Open {source.name} settings →
-            </Link>
-          )
-        )}
-        {isAdmin && latest?.raw_ref && (
-          <div className="w-full">
-            <RawPayloadViewer id={latest.id} />
-          </div>
-        )}
-      </div>
+            )}
+          </>
+        }
+      />
+    </li>
+  );
+}
 
-      {history.length > 1 && (
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
-            Recent syncs ({history.length})
-          </summary>
-          <ul className="mt-2 space-y-1.5 border-l border-black/5 pl-3 dark:border-white/10">
-            {history.map((ev) => (
-              <li key={ev.id} className="text-xs">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <RelativeTime
-                    value={ev.at}
-                    className="text-slate-500 dark:text-slate-400"
-                  />
-                  <StateLine ev={ev} />
-                  {ev.window_start && (
-                    <span className="text-slate-500 dark:text-slate-400">
-                      {formatWindow(ev.window_start, ev.window_end)}
-                    </span>
-                  )}
-                </div>
-                {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
-                <SyncDetails ev={ev} />
-                {writtenCount(ev) > 0 && provenance.has(ev.id) && (
-                  <SyncRowsDrilldown eventId={ev.id} count={writtenCount(ev)} />
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
+// A healthy provider: one line. Nothing here needs doing, so the inbox states it and
+// gets out of the way — the same badge, the same outcome sentence, and the same
+// timestamp treatment as everywhere else, just compact.
+function HealthyRow({ source }: { source: ConnectedSource }) {
+  const badge = standingBadge(source.standing);
+  const href = homeHref(source);
+  const outcome = source.latest
+    ? formatSyncOutcome(source.latest, source.vocabulary)
+    : null;
+  const body = (
+    <>
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="font-medium text-slate-800 dark:text-slate-100">
+          {source.name}
+        </span>
+        <StatusBadge
+          label={badge.label}
+          tone={badge.tone}
+          testid={`sync-status-${source.id}`}
+        />
+        <span
+          className={`text-sm ${
+            outcome && !outcome.muted
+              ? "text-slate-700 dark:text-slate-200"
+              : "text-slate-500 dark:text-slate-400"
+          }`}
+        >
+          {outcome ? outcome.primary : "No syncs yet"}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+        {source.latest && (
+          <SyncTimestamp value={source.latest.at} relativeOnly />
+        )}
+        <IconArrowRight className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+      </span>
+    </>
+  );
+  return (
+    <li data-testid={`source-${source.id}`}>
+      {href ? (
+        <Link
+          href={href}
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 transition hover:border-brand-300 dark:border-white/5 dark:hover:border-brand-800"
+        >
+          {body}
+        </Link>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 dark:border-white/5">
+          {body}
+        </div>
       )}
     </li>
   );
@@ -267,6 +177,8 @@ export default function ConnectedSources({
   isAdmin?: boolean;
 }) {
   if (sources.length === 0) return null;
+  const attention = sources.filter((s) => needsAttention(s.standing));
+  const healthy = sources.filter((s) => !needsAttention(s.standing));
   return (
     <div className="card" data-testid="connected-sources">
       <div className="mb-1">
@@ -274,15 +186,25 @@ export default function ConnectedSources({
           Connected sources
         </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Devices and services that sync automatically — each showing its latest
-          state. Expand a source for its recent sync history.
+          Devices and services that sync automatically. Anything needing your
+          attention is expanded with the reason and what to do; the rest are one
+          line each. Open a source for its controls and full sync history.
         </p>
       </div>
-      <ul className="mt-3 space-y-3">
-        {sources.map((source) => (
-          <SourceCard key={source.id} source={source} isAdmin={isAdmin} />
-        ))}
-      </ul>
+      {attention.length > 0 && (
+        <ul className="mt-3 space-y-3" data-testid="sources-attention">
+          {attention.map((source) => (
+            <AttentionCard key={source.id} source={source} isAdmin={isAdmin} />
+          ))}
+        </ul>
+      )}
+      {healthy.length > 0 && (
+        <ul className="mt-3 space-y-1.5" data-testid="sources-healthy">
+          {healthy.map((source) => (
+            <HealthyRow key={source.id} source={source} />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -120,11 +120,7 @@ export default async function FitbitTakeoutPage() {
               : "No archive imported yet."}
         </p>
         <div className="mt-3">
-          <IntegrationSyncHistoryLink
-            lastSuccessAt={lastImport}
-            connected={conn?.status === "connected"}
-            surface="imports"
-          />
+          <IntegrationSyncHistoryLink lastSuccessAt={lastImport} />
         </div>
       </div>
     </div>

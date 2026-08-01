@@ -324,8 +324,15 @@ describe("getConnectedSources includes the keyless Weather stream", () => {
     expect(weather).toBeTruthy();
     expect(weather!.kind).toBe("public");
     expect(weather!.connected).toBe(true);
-    // Keyless and tick-driven: no on-demand pull button on this card.
-    expect(weather!.canSyncNow).toBe(false);
+    // Keyless and tick-driven, but still pullable on demand — #1772 unified the
+    // setup page's redirecting sync form and Review's inline button into ONE
+    // affordance, so weather joined the on-demand set instead of keeping a private
+    // one. Healthy providers collapse in Review, so the button only renders where
+    // there is something to act on.
+    expect(weather!.canSyncNow).toBe(true);
+    // It speaks the cache dialect: its counts are revised forecast cells, not records.
+    expect(weather!.vocabulary).toBe("forecast");
+    expect(weather!.standing).toBe("healthy");
     expect(weather!.latest?.inserted).toBe(336);
     expect(weather!.history.length).toBe(1);
   });
