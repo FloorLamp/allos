@@ -3,8 +3,14 @@
 import { useState } from "react";
 import { IconPlus, IconMinus } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import { shouldQueueOffline } from "@/lib/offline/queue";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
-import { addProteinGrams, undoProteinGrams } from "./actions";
+import {
+  addProteinGrams,
+  undoProteinGrams,
+  type ProteinLogResult,
+} from "./actions";
 
 // Protein-grams quick-add (issue #824), modeled on the one-tap food-serving bar
 // (FoodLogBar): a single number control that SUMS into the day's manual-protein total.
@@ -37,6 +43,8 @@ export default function ProteinQuickAdd({
   );
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
+  const { enqueue } = useOfflineQueue();
 
   const grams = Number(amount);
   const canSubmit = Number.isFinite(grams) && grams > 0 && !busy;
@@ -49,17 +57,58 @@ export default function ProteinQuickAdd({
     setBusy(true);
     // Optimistic: reflect the change immediately (clamped at zero on remove).
     setTotal((t) => Math.max(0, t + delta * grams));
+    const rollback = () => setTotal((t) => Math.max(0, t - delta * grams));
+    // Queue an ADD tap while offline (#1596): the captured grams + day replay
+    // through the same write core on reconnect, so a post-shake log with no
+    // signal never fails; the optimistic total stands in until then. UNDO stays
+    // online-only — a decrement is not a capture (lib/offline/queue.ts scope
+    // comment) — so an offline "−" rolls back with an honest message.
+    const queueOffline = async () => {
+      await enqueue("food", today, {
+        entry: "protein",
+        groupKey: null,
+        mealSlot: null,
+        grams,
+      });
+      toast("Saved offline — will sync when you reconnect.");
+    };
+    const undoNeedsConnection = () => {
+      rollback();
+      toast("You're offline — removing protein needs a connection.", {
+        tone: "error",
+      });
+    };
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      if (delta === 1) await queueOffline();
+      else undoNeedsConnection();
+      setBusy(false);
+      return;
+    }
     const fd = new FormData();
     fd.set("grams", String(grams));
     fd.set("date", today);
-    const res =
-      delta === 1 ? await addProteinGrams(fd) : await undoProteinGrams(fd);
+    let res: ProteinLogResult;
+    try {
+      res =
+        delta === 1 ? await addProteinGrams(fd) : await undoProteinGrams(fd);
+    } catch (err) {
+      // Connection dropped mid-tap — queue an add instead of a false failure.
+      if (shouldQueueOffline(navigator.onLine !== false, err)) {
+        if (delta === 1) await queueOffline();
+        else undoNeedsConnection();
+      } else {
+        rollback();
+        toast("Couldn't save that — try again.", { tone: "error" });
+      }
+      setBusy(false);
+      return;
+    }
     if (res.ok) {
       // Reconcile with the server's authoritative daily total.
       setTotal(res.grams);
     } else {
       // Roll back this tap.
-      setTotal((t) => Math.max(0, t - delta * grams));
+      rollback();
       toast(res.error || "Couldn't save that — try again.", { tone: "error" });
     }
     setBusy(false);

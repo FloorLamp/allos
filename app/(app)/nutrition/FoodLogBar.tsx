@@ -17,8 +17,10 @@ import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import { useToast } from "@/components/Toast";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import { shouldQueueOffline } from "@/lib/offline/queue";
 import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
-import { logFoodServing, undoFoodServing } from "./actions";
+import { logFoodServing, undoFoodServing, type FoodLogResult } from "./actions";
 import { useFoodSelectedDate } from "./FoodSuggestionsLayout";
 
 // One-tap food-group serving logger (issue #579), modeled on the dose-confirm one-tap
@@ -115,6 +117,8 @@ export default function FoodLogBar({
   // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toast = useToast();
+  // Offline quick-log queue (#1596): an ADD tap with no signal queues for replay.
+  const { enqueue } = useOfflineQueue();
 
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
   const nutrientSummary = nutrientSummaryByDate.find(
@@ -260,24 +264,69 @@ export default function FoodLogBar({
     // Optimistic: reflect the tap immediately.
     setCount(slug, (n) => n + delta);
     setSlotCount(activeSlot, slug, (n) => n + delta);
+    const rollback = () => {
+      setCount(slug, (n) => n - delta);
+      setSlotCount(activeSlot, slug, (n) => n - delta);
+    };
+    // Queue an ADD tap while offline (#1596): the captured slug + the meal window
+    // and day under the user's finger replay through the same write core on
+    // reconnect, so a kitchen-moment tap never fails. The optimistic count stands
+    // in for the server total until then. UNDO stays online-only — a decrement is
+    // not a capture (see the lib/offline/queue.ts scope comment) — so an offline
+    // "−" rolls back with an honest message instead of pretending.
+    const queueOffline = async () => {
+      await enqueue("food", activeDate, {
+        entry: "serving",
+        groupKey: slug,
+        mealSlot: activeSlot,
+        grams: null,
+      });
+      toast("Saved offline — will sync when you reconnect.");
+    };
+    const undoNeedsConnection = () => {
+      rollback();
+      toast("You're offline — removing a serving needs a connection.", {
+        tone: "error",
+      });
+    };
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      if (delta === 1) await queueOffline();
+      else undoNeedsConnection();
+      return;
+    }
     const fd = new FormData();
     fd.set("group_key", slug);
     fd.set("date", activeDate);
     fd.set("meal_slot", activeSlot);
-    const res =
-      delta === 1 ? await logFoodServing(fd) : await undoFoodServing(fd);
-    if (res.ok) {
+    let outcome: FoodLogResult;
+    try {
+      outcome =
+        delta === 1 ? await logFoodServing(fd) : await undoFoodServing(fd);
+    } catch (err) {
+      // Connection dropped mid-tap — queue an add instead of a false failure.
+      if (delta === 1 && shouldQueueOffline(navigator.onLine !== false, err)) {
+        await queueOffline();
+        return;
+      }
+      if (delta === -1 && shouldQueueOffline(navigator.onLine !== false, err)) {
+        undoNeedsConnection();
+        return;
+      }
+      rollback();
+      toast("Couldn't save that serving — try again.", { tone: "error" });
+      return;
+    }
+    if (outcome.ok) {
       // Reconcile with the server's authoritative daily total (#748 item 2) so a
       // dropped/failed write can never leave a phantom count.
-      setCount(slug, () => res.servings);
-      const mealServings = res.mealServings;
+      const { servings, mealServings } = outcome;
+      setCount(slug, () => servings);
       if (mealServings != null)
         setSlotCount(activeSlot, slug, () => mealServings);
     } else {
       // Roll back this tap and tell the user it didn't stick.
-      setCount(slug, (n) => n - delta);
-      setSlotCount(activeSlot, slug, (n) => n - delta);
-      toast(res.error || "Couldn't save that serving — try again.", {
+      rollback();
+      toast(outcome.error || "Couldn't save that serving — try again.", {
         tone: "error",
       });
     }

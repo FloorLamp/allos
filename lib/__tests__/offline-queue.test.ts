@@ -13,6 +13,8 @@ import {
   planFlushDisposition,
   describeIntent,
   classifyDoseReplay,
+  classifySetReplay,
+  resolveCapturedInstant,
   MAX_REPLAY_ATTEMPTS,
   type QueuedIntent,
   type ReplayResult,
@@ -191,6 +193,11 @@ describe("FLOW_KINDS", () => {
       // Daily mood check-in (#992): idempotent per profile+date on the server's
       // UNIQUE(profile_id, date) upsert.
       "mood",
+      // Workout session logged entirely offline (#1596 — #28's "add set" ask):
+      // create-only, exactly-once via the replayed_keys ledger.
+      "set",
+      // Additive food quick-adds (#1596): a food-group serving or protein grams.
+      "food",
     ]);
   });
 });
@@ -367,6 +374,98 @@ describe("classifyDoseReplay (honoring the typed outcome, #1427)", () => {
         else expect(r.reason).toBeUndefined();
       }
     }
+  });
+});
+
+describe("classifySetReplay (honoring the typed outcome, #1596)", () => {
+  it("reports a persisted session as done, with no reason attached", () => {
+    expect(classifySetReplay({ ok: true, id: 12 })).toEqual({ status: "done" });
+  });
+
+  it("rejects every refusal with a human reason — never a silent drop", () => {
+    const restricted = classifySetReplay({ ok: false, reason: "restricted" });
+    expect(restricted.status).toBe("rejected");
+    expect(restricted.reason).toMatch(/isn't available for this profile/i);
+
+    const invalid = classifySetReplay({ ok: false, reason: "invalid" });
+    expect(invalid.status).toBe("rejected");
+    expect(invalid.reason).toMatch(/couldn't be validated/i);
+
+    // Unreachable for a create-only intent (no row id in the payload), but the
+    // mapping stays total so a future outcome can't fall through silently.
+    const notOwned = classifySetReplay({ ok: false, reason: "not-owned" });
+    expect(notOwned.status).toBe("rejected");
+    expect(notOwned.reason).toBeTruthy();
+  });
+});
+
+describe("resolveCapturedInstant (#1596)", () => {
+  const now = new Date("2026-07-15T19:40:00.000Z");
+
+  it("keeps a parseable past capture instant (the honest tap time)", () => {
+    expect(resolveCapturedInstant("2026-07-15T08:12:00.000Z", now)).toBe(
+      "2026-07-15T08:12:00.000Z"
+    );
+  });
+
+  it("falls back to now for garbage, missing, or future timestamps", () => {
+    expect(resolveCapturedInstant("not a time", now)).toBe(now.toISOString());
+    expect(resolveCapturedInstant(undefined, now)).toBe(now.toISOString());
+    expect(resolveCapturedInstant(42, now)).toBe(now.toISOString());
+    // A client clock running ahead must not ledger an event in the future.
+    expect(resolveCapturedInstant("2026-07-15T21:00:00.000Z", now)).toBe(
+      now.toISOString()
+    );
+  });
+});
+
+describe("set/food intent shapes (#1596)", () => {
+  it("a set intent carries the captured form fields and describes as a workout", () => {
+    const intent = buildIntent(
+      "set",
+      "2026-07-15",
+      {
+        fields: {
+          type: "strength",
+          title: "Evening lifts",
+          date: "2026-07-15",
+          weight_unit: "lb",
+          distance_unit: "km",
+          sets: '[{"exercise":"Back Squat","weight":225,"reps":5}]',
+          components: "[]",
+        },
+      },
+      7
+    );
+    expect(intent.profileId).toBe(7);
+    expect(describeIntent(intent)).toBe("Workout session · 2026-07-15");
+  });
+
+  it("a food intent discriminates serving vs protein and describes as a food log", () => {
+    const serving = buildIntent(
+      "food",
+      "2026-07-15",
+      {
+        entry: "serving",
+        groupKey: "vegetables",
+        mealSlot: "Morning",
+        grams: null,
+      },
+      7
+    );
+    expect(describeIntent(serving)).toBe("Food log · 2026-07-15");
+    const protein = buildIntent(
+      "food",
+      "2026-07-15",
+      { entry: "protein", groupKey: null, mealSlot: null, grams: 30 },
+      7
+    );
+    expect(protein.payload).toEqual({
+      entry: "protein",
+      groupKey: null,
+      mealSlot: null,
+      grams: 30,
+    });
   });
 });
 

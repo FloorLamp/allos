@@ -158,6 +158,7 @@ export async function POST(req: Request) {
       "/medications",
       "/trends",
       "/results",
+      "/training",
     ]) {
       revalidatePath(p);
     }
