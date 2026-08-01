@@ -316,7 +316,8 @@ never recycle). **Other:** the combobox collapses to one option per med
 (`medicationCatalogOptions` — `Generic (Brand, Brand)`, ≤2 brands + "…", filter
 over the label, a typed brand token prefills `brand` via
 `resolveMedicationPick`); "Generic" leads the brand options
-(`medicationBrandOptions`); a catalog pick auto-confirms an UNAMBIGUOUS RxNorm
+(`medicationBrandOptions`); the picker's ORDER is per-profile (#1677 — see
+**Picker order** below); a catalog pick auto-confirms an UNAMBIGUOUS RxNorm
 top match (`dominantRxNormCandidate`, silent offline degrade, ambiguous →
 manual); refill tracking is a collapsed disclosure unless already tracked; the
 pediatric weight-band suggestion moved next to the Doses ("how much") section;
@@ -720,3 +721,31 @@ Access is the receiving profile's own login's WRITE grant on the member,
 re-validated at send and at tap. Full design + the safety semantics (never
 bus-gated, escalation deliberately NOT aggregated) live in
 [`notifications.md`](notifications.md).
+
+**Picker order (#1677).** `Combobox` shows 8 rows and an empty query keeps
+source order, so a flat catalog's first eight entries ARE the picker.
+Alphabetical over 242 medications opened on Adalimumab/Alendronate; the
+supplement catalog's category grouping made all eight rows vitamins whatever the
+profile takes. Ordering is now a per-PROFILE computation in three tiers: what
+this profile records (a CURRENT medication / ACTIVE supplement outranks a past
+one), then a curated common head, then the flat tail. Membership never changes
+and free-text semantics are untouched — everything stays reachable by search.
+
+The pure rankers are `lib/medication-rank.ts` and `lib/supplement-rank.ts` over
+the shared `rankByFrequency`; both follow the `rank-core`/#1490 discipline of
+stable facts and BUCKETED presence (weights combine with MAX, so duplicate
+ledger rows never inflate a rank and there is no raw-recency jitter).
+`lib/queries/intake-options.ts` resolves each profile's ledger once and
+`components/IntakeOptionsContext.tsx` supplies the result to the forms, the same
+shape `ProviderOptionsContext`/`SituationOptionsContext` already use — so
+`MedicationForm` and `QuickAddMedication` read ONE source and can never disagree
+about the head (#221). The BRAND field keeps its post-name-pick narrowing to the
+chosen drug's own brands; only its PRE-pick state changed, to lead with the
+brands this profile has recorded.
+
+The sibling rankers live beside them: `lib/provider-rank.ts` (recency-decayed
+provider use across every provider-bearing domain, plus the specialty head, fed
+by `lib/queries/provider-options.ts`) and `lib/immunization-rank.ts` (age/life-
+stage buckets read off the SAME `assessSchedule` status engine the schedule grid
+draws, fed by `lib/queries/immunization-options.ts`) — so an adult's vaccine
+picker no longer opens on an infant's first year.

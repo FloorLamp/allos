@@ -18,6 +18,8 @@ import {
 import SymptomLogBar from "./SymptomLogBar";
 import CockpitEndEpisode from "@/components/dashboard/CockpitEndEpisode";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
+import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
+import { getIntakeCatalogOptions } from "@/lib/queries";
 import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
 import { staleEpisodeNudgeFor } from "@/lib/stale-episode-data";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
@@ -147,14 +149,19 @@ export default function IllnessCockpitBody({
           className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
           data-testid="cockpit-prn"
         >
-          <IllnessMedicationLogger
-            meds={prnMeds}
-            tz={tz}
-            profileId={target}
-            pediatric={getPediatricFormContext(profileId, units.weightUnit)}
-            canAdd={!crossProfile}
-            nowIso={clockNow().toISOString()}
-          />
+          {/* Its inline quick-add reads the SAME ranked medication options the
+              Medications page offers (#1677) — resolved for the patient whose cockpit
+              this is, not for whoever is looking at it. */}
+          <IntakeOptionsProvider options={getIntakeCatalogOptions(profileId)}>
+            <IllnessMedicationLogger
+              meds={prnMeds}
+              tz={tz}
+              profileId={target}
+              pediatric={getPediatricFormContext(profileId, units.weightUnit)}
+              canAdd={!crossProfile}
+              nowIso={clockNow().toISOString()}
+            />
+          </IntakeOptionsProvider>
         </div>
       )}
 
