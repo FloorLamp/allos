@@ -171,12 +171,21 @@ export function behindThisWeekLine(
 // Rest and on-track states REFRAME the line exactly as they reframe the nudge (never a
 // blind "train today" on a rest day), and a recommendation with nothing to say yields
 // null so the digest simply omits the line.
+//
+// SECTION-AWARE FRAMING (#1819 item 3). The standalone "Today:" prefix is correct
+// wherever the line stands on its own; under the morning digest's **Today** heading it
+// restated the heading ("Today / 🏋️ Today: Strength session — …"). So the formatter
+// gains a BARE variant rather than the digest growing its own copy: same computation,
+// same states, only the framing moves. `standalone` defaults to true so every existing
+// caller is unchanged.
 export function digestWorkoutLine(
-  rec: WorkoutRecommendation | null
+  rec: WorkoutRecommendation | null,
+  opts: { standalone?: boolean } = {}
 ): string | null {
   if (!rec) return null;
-  if (rec.rest) return `🛌 Today: ${rec.rest.title}`;
-  if (rec.onTrack) return `✅ Today: ${rec.onTrack.title}`;
+  const lead = opts.standalone === false ? "" : "Today: ";
+  if (rec.rest) return `🛌 ${lead}${rec.rest.title}`;
+  if (rec.onTrack) return `✅ ${lead}${rec.onTrack.title}`;
   // suggestTitle falls back to a generic "Strength session" for an empty focus, which
   // is fine for the nudge's TITLE but would put a contentless line in the digest — so
   // the preview asks for a real focus or a resolved routine day before naming one.
@@ -186,6 +195,6 @@ export function digestWorkoutLine(
   if (!head && !exercises) return null;
   const deload = rec.deloadWeek ? " (deload week)" : "";
   return exercises
-    ? `🏋️ Today: ${head ? `${head} — ` : ""}${exercises}${deload}`
-    : `🏋️ Today: ${head}${deload}`;
+    ? `🏋️ ${lead}${head ? `${head} — ` : ""}${exercises}${deload}`
+    : `🏋️ ${lead}${head}${deload}`;
 }

@@ -220,6 +220,37 @@ export function frequencyPace(
   return count >= owedSoFar ? "on-pace" : "behind";
 }
 
+// How many lagging targets a pace summary names before it collapses to "+N more" —
+// a digest line has to stay a line.
+export const WEEKLY_PACE_MAX_NAMED = 3;
+
+// The WEEKLY-PROGRESS phrase over a set of paced targets (#1819 item 4) —
+// "2 of 4 training targets on pace", plus the lagging ones by name when any are.
+//
+// A bare count of unmet targets ("4 training targets") is a number with no information:
+// it is neither progress nor what is lagging. This states both, formatted over the SAME
+// `frequencyPace` verdict every weekly-target surface already renders (#221) — the
+// chips, the dashboard widget and this line cannot disagree, because there is one
+// computation and three formatters.
+//
+// Null for an empty set, which is the signal to say nothing rather than render
+// "0 of 0". "On pace" counts BOTH `met` and `on-pace`: a completed target has not
+// fallen behind, and a week that is going fine should read as going fine.
+export function weeklyTargetPaceLine(
+  entries: readonly { label: string; pace: FrequencyPace }[],
+  noun = "training target"
+): string | null {
+  if (entries.length === 0) return null;
+  const behind = entries.filter((e) => e.pace === "behind");
+  const onPace = entries.length - behind.length;
+  const head = `${onPace} of ${entries.length} ${noun}${entries.length === 1 ? "" : "s"} on pace`;
+  if (behind.length === 0) return head;
+  const named = behind.slice(0, WEEKLY_PACE_MAX_NAMED).map((e) => e.label);
+  const rest = behind.length - named.length;
+  const tail = rest > 0 ? `${named.join(", ")}, +${rest} more` : named.join(", ");
+  return `${head} — behind on ${tail}`;
+}
+
 // The badge/label text for a paced target — one place both surfaces format over.
 export function frequencyPaceLabel(pace: FrequencyPace): string {
   return pace === "met"

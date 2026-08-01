@@ -25,6 +25,7 @@ import {
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { getOutdoorPlans } from "../queries/weather-training";
+import { trainingPaceLine } from "../queries/upcoming/plans";
 import { collectRecentChanges } from "../queries/recent-changes";
 import { getLightExposureLine } from "../queries/light-exposure";
 import { getStepsDigestLines } from "../queries/steps-target";
@@ -52,7 +53,7 @@ import {
   getPublicUrl,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
-import { getIntakeDeltaLine } from "../intake-history";
+import { getIntakeDeltas } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
@@ -460,7 +461,15 @@ export function gatherDigestInput(
     // Today's recommended workout as ONE line (#1712 §2), from the SAME recommendation
     // the dedicated nudge formats. The nudge is deliberately unchanged: the digest is a
     // 7am heads-up, the nudge is the actionable prompt with buttons later.
-    workoutPreview: digestWorkoutLine(recommendWorkout(profileId, gathered)),
+    // BARE variant (#1819 item 3): this line renders under the digest's own **Today**
+    // heading, where the formatter's standalone "Today:" prefix restated it.
+    workoutPreview: digestWorkoutLine(recommendWorkout(profileId, gathered), {
+      standalone: false,
+    }),
+    // Weekly-progress phrase for the training band (#1819 item 4), over the SAME paced
+    // target set the Upcoming training items are drawn from. Null when the profile has
+    // declared no weekly targets.
+    trainingPaceLine: trainingPaceLine(profileId),
     // The outdoor-session PLAN (#1724 part 5) — the same planningLine computation the
     // calm Upcoming item renders, as a This-week glance. It rides THIS message; no
     // dedicated send exists or is created. Empty on a week with no scarcity to plan
@@ -474,11 +483,13 @@ export function gatherDigestInput(
     stepsTodayLine: stepsLines.today,
     activities,
     adherence,
-    // Delta headline (#1505 part 3): WHICH pushed obligations changed state, from the
-    // ONE shared classifier every digest channel formats. Null on a quiet window —
-    // the digest doesn't invent news. The x/y fraction above stays as secondary
-    // detail; the two answer different questions and are both honest.
-    intakeDeltaLine: getIntakeDeltaLine(profileId, td),
+    // Deltas (#1505 part 3): WHICH pushed obligations changed state, from the ONE
+    // shared classifier every digest channel formats. Empty on a quiet window — the
+    // digest doesn't invent news. Carried STRUCTURED rather than preformatted so
+    // buildDigest can also merge the delta into the x/y fraction when the two state one
+    // fact twice (#1819 item 6); it renders through the same `intakeDeltaLine` when
+    // they diverge.
+    intakeDeltas: getIntakeDeltas(profileId, td),
     // The guaranteed access tail (#1505). Scoped to the slot the digest is BUILT in;
     // the tick re-labels it at each boundary and the expansion re-scopes at tap, so a
     // morning-born keyboard never offers breakfast items at bedtime.
