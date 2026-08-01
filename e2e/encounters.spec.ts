@@ -90,6 +90,16 @@ test.describe("Visit detail page", () => {
 
   test("the Visits list row links to the detail page", async ({ page }) => {
     await page.goto("/records/history/visits");
+    // Provider/facility links should hug their visible content. A column flex stack
+    // without items-start stretches inline-flex children into full-width hit areas.
+    const providerCells = page.getByTestId("encounter-provider-cell");
+    await expect(providerCells).not.toHaveCount(0);
+    for (const cell of await providerCells.all()) {
+      await expect(cell).toHaveCSS("align-items", "flex-start");
+    }
+    await expect(
+      page.getByTestId("visits-past").getByRole("link", { name: "Directions" })
+    ).toHaveCount(0);
     // EncounterList is a client component; clicking a row's <Link> before it
     // hydrates swallows the client navigation (the URL never changes). followLink
     // retries the click until the router commits the detail URL — no networkidle

@@ -16,6 +16,7 @@ import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
 import AllergyList from "@/app/(app)/records/problems/allergies/AllergyList";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
+import { biomarkerViewHref } from "@/lib/hrefs";
 import { addAllergy } from "@/app/(app)/records/problems/allergies/actions";
 
 // Allergies (former /allergies index, #1042 phase 6): documented allergies (CCD
@@ -113,20 +114,31 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
               <ul className="space-y-3">
                 {labSensitizations.map((a) => (
                   <li key={a.key}>
-                    <div className="font-medium text-slate-800 dark:text-slate-100">
+                    <Link
+                      href={biomarkerViewHref(a.evidence?.marker)}
+                      className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                      data-testid="lab-sensitization-biomarker-link"
+                    >
                       {a.substance}
-                    </div>
+                    </Link>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      <SourceDocumentLink
-                        documentId={a.evidence?.documentId}
-                        className="text-brand-700 hover:underline dark:text-brand-300"
-                      >
-                        {a.evidence?.marker}
-                      </SourceDocumentLink>
+                      {a.evidence?.marker}
                       {a.evidence?.value ? ` · ${a.evidence.value}` : ""}
                       {a.evidence?.rastClass != null
                         ? ` · class ${a.evidence.rastClass}`
                         : ""}
+                      {a.evidence?.documentId ? (
+                        <>
+                          {" · "}
+                          <SourceDocumentLink
+                            documentId={a.evidence.documentId}
+                            className="text-brand-700 hover:underline dark:text-brand-300"
+                            testId="lab-sensitization-source-link"
+                          >
+                            Source document
+                          </SourceDocumentLink>
+                        </>
+                      ) : null}
                     </div>
                   </li>
                 ))}

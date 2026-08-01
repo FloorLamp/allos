@@ -94,6 +94,14 @@ test("a documented allergy keeps its corroborating IgE evidence", async ({
     await expect(sensitizations).toContainText(CORROBORATED_ALLERGEN);
     await expect(sensitizations).toContainText(CORROBORATING_MARKER);
     await expect(sensitizations).toContainText("Class 3");
+    const biomarkerLink = sensitizations
+      .getByTestId("lab-sensitization-biomarker-link")
+      .filter({ hasText: CORROBORATED_ALLERGEN });
+    await expect(biomarkerLink).toHaveAttribute(
+      "href",
+      `/biomarkers/view?name=${encodeURIComponent(CORROBORATING_MARKER)}`
+    );
+    await expect(biomarkerLink).not.toHaveAttribute("href", /\/import\//);
   } finally {
     clearCorroboratedFixture();
   }

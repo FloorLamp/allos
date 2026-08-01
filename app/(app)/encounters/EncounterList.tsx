@@ -9,7 +9,6 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
 import ProviderName from "@/components/ProviderName";
-import OpenInMaps from "@/components/OpenInMaps";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
@@ -116,7 +115,10 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     cellClassName: "hidden whitespace-nowrap md:table-cell",
     cell: (e) =>
       e.provider_name || e.location_name ? (
-        <div className="flex flex-col gap-1 text-slate-500 dark:text-slate-400">
+        <div
+          className="flex flex-col items-start gap-1 text-slate-500 dark:text-slate-400"
+          data-testid="encounter-provider-cell"
+        >
           {e.provider_name ? (
             <ProviderName
               name={e.provider_name}
@@ -145,14 +147,6 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
                 {e.location_name}
               </span>
             )
-          ) : null}
-          {e.location_address ? (
-            <OpenInMaps
-              address={e.location_address}
-              label="Directions"
-              showIcon={false}
-              className="text-xs text-brand-700 hover:underline dark:text-brand-300"
-            />
           ) : null}
         </div>
       ) : (
