@@ -337,21 +337,32 @@ describe("POST /api/documents — per-file outcomes", () => {
     expect(docCount(writeProfile)).toBe(1);
   });
 
-  it("reports `duplicate` for the same bytes again, with the engine's reason", async () => {
+  it("reports `duplicate` for the same bytes again — and lands NO row (#1776)", async () => {
     const bytes = pdfBytes("dup");
     await POST(
       uploadRequest(memberToken, writeProfile, [{ name: "labs.pdf", bytes }])
     );
+    const before = docCount(writeProfile);
     const res = await POST(
       uploadRequest(memberToken, writeProfile, [
         { name: "labs-copy.pdf", bytes },
       ])
     );
     const body = (await res.json()) as {
-      documents: { outcome: string; reason: string | null }[];
+      documents: {
+        id: number | null;
+        outcome: string;
+        reason: string | null;
+      }[];
     };
     expect(body.documents[0].outcome).toBe("duplicate");
-    expect(body.documents[0].reason).toMatch(/duplicate/i);
+    // A recognized duplicate offered to this ENDPOINT is an event, not a document: the
+    // sync report counts it `unchanged` and no marker row is written, so a retry stays
+    // idempotent in the table (#1776). It used to land a 'skipped' row per attempt,
+    // which is how forcing 11 already-held documents produced 22 rows.
+    expect(body.documents[0].id).toBeNull();
+    expect(body.documents[0].reason).toMatch(/already held/i);
+    expect(docCount(writeProfile)).toBe(before);
   });
 
   it("dedups PER PROFILE — the same file for a different person is stored", async () => {

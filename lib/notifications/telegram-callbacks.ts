@@ -70,6 +70,7 @@ import {
   parsePreventiveCallback,
   parsePrnLogCallback,
   parseOfferTailCallback,
+  parseTuneCallback,
   parseDemoteCallback,
   parsePracticeDoneCallback,
   parseRefillCallback,
@@ -145,6 +146,7 @@ import {
   handlePracticeDoneTap,
   handlePrnLogTap,
   handleOfferTailTap,
+  handleTuneTap,
   handleDemoteTap,
   handleSymptomPick,
   handleSymptomSeverity,
@@ -275,6 +277,17 @@ export async function handleCallbackQuery(
   const offerTail = parseOfferTailCallback(cq.data);
   if (offerTail) {
     await handleOfferTailTap(cq, offerTail);
+    return;
+  }
+
+  // The digest's ⚙️ Tune control (#1714): expand/collapse the per-category toggles in
+  // place, or flip one category's demotion. Parsed here — before the log tokens —
+  // for the same reason the offer tail is: an expanded Tune keyboard is made of
+  // `tunet:` buttons and a tune tap must never be mistaken for anything that writes
+  // to the profile's records.
+  const tune = parseTuneCallback(cq.data);
+  if (tune) {
+    await handleTuneTap(cq, tune);
     return;
   }
 

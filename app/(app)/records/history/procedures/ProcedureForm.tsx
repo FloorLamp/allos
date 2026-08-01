@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -29,7 +28,6 @@ export default function ProcedureForm({
   // name field + focuses it. Add mode only (ignored when editing an existing row).
   prefillName?: string;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!procedure;
@@ -55,7 +53,6 @@ export default function ProcedureForm({
     toast(editing ? "Procedure updated" : "Procedure saved");
     if (!editing) formRef.current?.reset();
     onDone?.();
-    router.refresh();
   }
 
   const uid = procedure?.id ?? "new";

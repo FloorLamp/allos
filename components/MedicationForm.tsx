@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import Combobox from "@/components/Combobox";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -153,7 +152,6 @@ export default function MedicationForm({
   todayStr?: string;
 }) {
   const s = supplement;
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const fid = s?.id ?? "new";
@@ -600,7 +598,6 @@ export default function MedicationForm({
       setPairRows([]);
       setSuggested(new Set());
       setTouched(new Set());
-      router.refresh();
     }
   }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, type FormEvent, type RefObject } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import Combobox from "@/components/Combobox";
 import { PRACTICE_STARTER_LIST } from "@/lib/practice";
@@ -25,7 +24,6 @@ export default function PracticeEditor({
   onDone?: () => void;
   initialFocusRef?: RefObject<HTMLInputElement | null>;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, setPending] = useState(false);
@@ -48,7 +46,6 @@ export default function PracticeEditor({
       }
       toast(targetId == null ? "Practice added" : "Practice updated");
       onDone?.();
-      router.refresh();
       if (targetId == null) {
         form.reset();
         setPracticeName("");

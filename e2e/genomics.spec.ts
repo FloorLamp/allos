@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Genomic variants CRUD on the #genomics section of /results (#709, #1042 phase 5): add a structured variant through the
@@ -38,7 +38,10 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await expect(form).toBeVisible();
 
     // Add a hereditary-risk variant with an ACMG significance.
-    await form.getByLabel("Gene").fill(GENE);
+    // Gene is a controlled Combobox over the PGx symbols since #1676; a non-PGx
+    // gene is still free text, and settledFill keeps the value out of the
+    // pre-hydration revert window.
+    await settledFill(page, form.getByLabel("Gene"), GENE);
     await form.getByLabel("Variant (rsID / HGVS)").fill("c.123A>G");
     await form.getByLabel("Zygosity").selectOption("heterozygous");
     await form.getByLabel("Result type").selectOption("hereditary-risk");
@@ -55,7 +58,7 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     // It appears in the list with its factual identity + reported classification.
     const list = page.getByTestId("genomic-variant-list");
     const row = list.getByRole("row").filter({ hasText: GENE });
-    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    // Renders on the save action's revalidated tree — a cold shard can outrun the default 5s (imaging/#1306 precedent).
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText("Likely pathogenic");
     await expect(row).toContainText("Hereditary risk");

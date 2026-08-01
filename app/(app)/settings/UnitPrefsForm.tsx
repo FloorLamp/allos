@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveUnitPrefs } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -15,7 +14,6 @@ import type {
 // Unit display preferences — a LOGIN-scoped setting (the signed-in login's
 // display choice), not a property of the active profile.
 export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
-  const router = useRouter();
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(prefs.weightUnit);
   const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>(
     prefs.distanceUnit
@@ -36,7 +34,6 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
     fd.set("temperature_unit", next.temperatureUnit);
     runSave(async () => {
       await saveUnitPrefs(fd);
-      router.refresh();
     });
   }
 

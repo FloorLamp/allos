@@ -69,6 +69,8 @@ export default function ReprocessDiffPanel({
       // Only note the divergence when we actually HAD a preview to commit but the
       // apply had to re-extract anyway (expired/stale/superseded token).
       setFallbackNote(!!token && outcome.mode === "re-extracted");
+      // Survives the #1473 sweep: applyReprocessPreview rewrites the document's
+      // extracted rows but calls no revalidatePath, so this is the only repaint.
       router.refresh();
     });
   }

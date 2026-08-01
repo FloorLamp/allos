@@ -27,7 +27,10 @@ import {
 // armed (the preference asks for no motion, not for no feedback).
 //
 // `router.refresh()` is the whole refresh: the app has no client cache to
-// invalidate, so re-running the Server Components IS the fresh page.
+// invalidate, so re-running the Server Components IS the fresh page. This is one
+// of the few refreshes that survived the #1473 sweep — it answers a user GESTURE,
+// not an awaited Server Action, so there is no action response to carry a fresh
+// tree (docs/internals/server-action-refresh.md).
 //
 // `data-state` / `data-refreshes` on the indicator are the observable contract —
 // they are what the e2e spec asserts against, since "did router.refresh() get

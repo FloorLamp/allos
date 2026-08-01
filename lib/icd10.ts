@@ -69,6 +69,40 @@ export function bestIcd10Suggestion(query: string): Icd10Suggestion | null {
   return suggestIcd10(query, 1)[0] ?? null;
 }
 
+// ---- The condition NAME vocabulary (issue #1676) ---------------------------
+//
+// The catalog's display names, in catalog order — the option source for the
+// condition-name pickers (the conditions form and the family-history form). Until
+// #1676 only the suggested CODE ever reached the UI: the 124 curated NAMES the
+// suggester ranks over were invisible, so a typed "high blood pressure" stayed a
+// one-off spelling that lib/condition-codes.ts's recognizers never saw. Duplicate
+// display names (none today) collapse to their first entry so the option list and
+// the term/code lookups below stay 1:1.
+const NAME_ORDER: string[] = [];
+const ENTRY_BY_NAME = new Map<string, Icd10Entry>();
+for (const e of ENTRIES) {
+  if (ENTRY_BY_NAME.has(e.name)) continue;
+  ENTRY_BY_NAME.set(e.name, e);
+  NAME_ORDER.push(e.name);
+}
+
+export const ICD10_CONDITION_NAMES: readonly string[] = NAME_ORDER;
+
+// The hidden spellings a catalog name also answers to — the SAME synonym list
+// suggestIcd10() scores against, handed to the picker's alias-aware filter so
+// "high blood pressure" finds "Essential (primary) hypertension" in the dropdown
+// exactly as it already does in the code suggestion.
+export function icd10SearchTerms(name: string): readonly string[] {
+  return ENTRY_BY_NAME.get(name)?.synonyms ?? [];
+}
+
+// The curated code for an exact catalog name — the picker's row badge, so two
+// otherwise similar-reading entries are told apart by the attribute that actually
+// distinguishes them (their code).
+export function icd10CodeForName(name: string): string | null {
+  return ENTRY_BY_NAME.get(name)?.code ?? null;
+}
+
 // The set of curated ICD-10-CM codes (uppercased), built once. Used by the
 // coverage-gap check (#550) to tell whether a condition's existing code is one the
 // curated catalog actually knows.

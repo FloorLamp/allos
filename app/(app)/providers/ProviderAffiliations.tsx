@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { IconLink, IconX, IconPlus } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -42,7 +41,6 @@ export default function ProviderAffiliations({
   counterpartProviders: Provider[];
   canEdit: boolean;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
   const counterpartType: ProviderType =
@@ -61,7 +59,6 @@ export default function ProviderAffiliations({
       return;
     }
     toast(ok);
-    router.refresh();
   }
 
   return (

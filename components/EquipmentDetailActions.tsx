@@ -32,7 +32,6 @@ export default function EquipmentDetailActions({
     startTransition(async () => {
       await setEquipmentRetiredAction(id, next);
       toast(next ? `Retired ${name}` : `Restored ${name}`);
-      router.refresh();
     });
   }
 

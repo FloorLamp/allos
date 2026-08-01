@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { settledFill } from "./helpers";
 
 // Type-aware training restriction (issue #489). Under the seeded min-training-age
 // gate (13), a member whose sole active profile is "Riley (child)" is restricted.
@@ -41,7 +42,9 @@ test.describe("Type-aware training restriction (#489)", () => {
 
       // Log a sport session; it persists and shows in the recent-sessions list.
       const title = `E2E Soccer ${Date.now()}`;
-      await form.getByLabel("What did you do?").fill(title);
+      // The title is an ActivityCombobox over the profile's own frequency-ranked
+      // sport/cardio names since #1676; free text still logs.
+      await settledFill(member, form.getByLabel("Activity"), title);
       await form.getByLabel("Duration (min)").fill("45");
       await form.getByRole("button", { name: "Log session" }).click();
       await expect(member.getByText("Session logged")).toBeVisible();

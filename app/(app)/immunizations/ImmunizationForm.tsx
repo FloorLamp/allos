@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import Combobox from "@/components/Combobox";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -46,7 +45,6 @@ export default function ImmunizationForm({
   onDone?: () => void;
   defaultDate: string;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!immunization;
@@ -78,7 +76,6 @@ export default function ImmunizationForm({
       setVaccine("");
     }
     onDone?.();
-    router.refresh();
   }
 
   return (

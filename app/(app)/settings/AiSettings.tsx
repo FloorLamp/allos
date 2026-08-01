@@ -1,14 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { AiPrefs } from "@/lib/settings";
 import { saveAiSettings } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 
 export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
-  const router = useRouter();
   const [autoSuggest, setAutoSuggest] = useState(
     prefs.autoSupplementSuggestions
   );
@@ -23,7 +21,6 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
     fd.set("recommendation_max_runs_per_day", String(next.maxRuns));
     runSave(async () => {
       await saveAiSettings(fd);
-      router.refresh();
     });
   }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveHouseholdRound, sendTestHouseholdRound } from "../profile/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -26,7 +25,6 @@ export default function HouseholdRoundSettings({
   offerable: { profileId: number; name: string }[];
   telegramConfigured: boolean;
 }) {
-  const router = useRouter();
   const [isOn, setIsOn] = useState(enabled);
   const [selected, setSelected] = useState<number[]>(memberIds);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -45,7 +43,6 @@ export default function HouseholdRoundSettings({
         fd.append("household_round_members", String(id));
       }
       await saveHouseholdRound(fd);
-      router.refresh();
     });
   }
 

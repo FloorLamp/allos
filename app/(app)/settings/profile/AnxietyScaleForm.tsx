@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveAnxietyScaleOptIn } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -14,7 +13,6 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // inferable signal who nonetheless wants the daily rating. Off by default. Saves on
 // change (the #794 Settings autosave-on-change pattern).
 export default function AnxietyScaleForm({ enabled }: { enabled: boolean }) {
-  const router = useRouter();
   const [on, setOn] = useState(enabled);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -23,7 +21,6 @@ export default function AnxietyScaleForm({ enabled }: { enabled: boolean }) {
     fd.set("anxiety_scale_enabled", next ? "1" : "0");
     runSave(async () => {
       await saveAnxietyScaleOptIn(fd);
-      router.refresh();
     });
   }
 

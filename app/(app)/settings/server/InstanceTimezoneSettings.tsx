@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveInstanceTimezone } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import TimezoneSelect from "@/components/TimezoneSelect";
@@ -15,7 +14,6 @@ export default function InstanceTimezoneSettings({
 }: {
   timezone: string;
 }) {
-  const router = useRouter();
   const [timezone, setTimezone] = useState(initialTimezone);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -24,7 +22,6 @@ export default function InstanceTimezoneSettings({
     fd.set("timezone", tz);
     runSave(async () => {
       await saveInstanceTimezone(fd);
-      router.refresh();
     });
   }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type {
   MedicationCourse,
@@ -90,7 +89,6 @@ export default function MedicationRow({
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   const toast = useToast();
-  const router = useRouter();
   const formatPrefs = useFormatPrefs();
 
   // Part C (#1140): one-tap Restart from the Past-med row — the same shared
@@ -105,7 +103,6 @@ export default function MedicationRow({
       if (!res.ok) toast(res.error, { tone: "error" });
       else {
         toast(`${med.name} restarted.`);
-        router.refresh();
       }
     } finally {
       setRestarting(false);

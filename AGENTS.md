@@ -332,6 +332,13 @@ See `docs/internals/e2e-hygiene.md`.
   `lib/auth`; the Server Action performs authorization and validation.
 - Server Action records pass serializable data only. Do not return a
   `better-sqlite3` row proxy to a client component.
+- Never call `router.refresh()` after awaiting a Server Action that revalidates:
+  any `revalidatePath`/`revalidateTag` makes the action response carry a freshly
+  rendered current page, so the refresh is a second full fetch. A refresh is only
+  correct when no action response backs it — a route-handler `fetch`, a poll, a
+  user gesture, or an action that deliberately skips revalidation while still
+  writing what the page shows. Survivors carry a one-line reason.
+  See `docs/internals/server-action-refresh.md`.
 
 ### Forms and UI
 

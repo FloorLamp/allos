@@ -7,6 +7,7 @@ import { apiTokenRateLimitKey } from "@/lib/api-token-format";
 import { ingestMedicalUpload } from "@/lib/medical-pipeline";
 import { MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
 import {
+  BLOCKED_REASON,
   classifyUploadOutcome,
   type UploadOutcome,
 } from "@/lib/document-upload-api";
@@ -247,7 +248,9 @@ export async function POST(req: Request): Promise<Response> {
   const skipped = files.length - toIngest.length;
 
   const documents: {
-    id: number;
+    // NULL for the two no-row outcomes (#1776/#1777): there is no document to point at
+    // because the endpoint deliberately created none.
+    id: number | null;
     name: string;
     outcome: UploadOutcome;
     reason: string | null;
@@ -255,15 +258,42 @@ export async function POST(req: Request): Promise<Response> {
   try {
     for (const file of toIngest) {
       const maxIdBefore = maxDocumentId(profileId);
-      const docId = await ingestMedicalUpload(login.id, profileId, file, {
+      const out = await ingestMedicalUpload(login.id, profileId, file, {
         acquiredPortalId,
+        // THE AUTOMATION FLAG (#1776/#1777). Set for BOTH destination forms, because
+        // what it selects is a property of the CALLER, not of how the caller named its
+        // target: this endpoint is reached with a bearer token by a script, and a script
+        // must never un-delete a document or leave a marker row per retry. A human
+        // debugging with `profile=<id>` and curl is still a script from here.
+        acquirer: true,
       });
-      const landed = readLanded(docId, profileId);
-      // The engine lands a row on every path, so a missing one means the row was
-      // deleted underneath us mid-request. Report the id we were given rather than
+      // A DELIBERATE NO-ROW OUTCOME (#1776/#1777). The engine refused to write anything:
+      // either the user deleted these bytes (`blocked`) or this profile already holds
+      // them (`already-held`). There is no document to point at and no id to report —
+      // the per-file outcome IS the answer, and the run's sync report is where the
+      // counts belong.
+      if (out.docId === null) {
+        documents.push({
+          id: null,
+          name: file.name,
+          outcome: out.refusal === "blocked" ? "blocked" : "duplicate",
+          // Named so a client author implements the right behaviour instead of filing
+          // a bug about a "lost" upload. A blocked file is not a failure and must not
+          // be retried; it is a decision a person made and can reverse in allos.
+          reason:
+            out.refusal === "blocked"
+              ? BLOCKED_REASON
+              : "already held for this profile; nothing was stored",
+        });
+        continue;
+      }
+      const docId = out.docId;
+      const row = readLanded(docId, profileId);
+      // The engine lands a row on every remaining path, so a missing one means the row
+      // was deleted underneath us mid-request. Report the id we were given rather than
       // inventing an outcome for a row we can no longer see.
-      const classified = landed
-        ? classifyUploadOutcome({ docId, maxIdBefore, ...landed })
+      const classified = row
+        ? classifyUploadOutcome({ docId, maxIdBefore, ...row })
         : { outcome: "stored" as const, reason: null };
       documents.push({
         id: docId,

@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -33,7 +32,6 @@ export default function DentalProcedureForm({
   record?: DentalProcedure;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!record;
@@ -55,7 +53,6 @@ export default function DentalProcedureForm({
     toast(editing ? "Record updated" : "Record saved");
     if (!editing) formRef.current?.reset();
     onDone?.();
-    router.refresh();
   }
 
   const uid = record?.id ?? "new";

@@ -3,8 +3,8 @@ import {
   getRoutinesWithDays,
   getTrainingTargetsToReplace,
 } from "@/lib/routines";
+import { getActivitySuggestions } from "@/lib/queries";
 import { ROUTINE_TEMPLATES } from "@/lib/routine-templates";
-import { LIFT_OPTIONS } from "@/lib/lifts";
 import { frequencyScopeLabel } from "@/lib/goals";
 import RoutinesManager from "./RoutinesManager";
 
@@ -15,6 +15,10 @@ import RoutinesManager from "./RoutinesManager";
 export default async function RoutinesSection() {
   const { profile } = await requireSession();
   const routines = getRoutinesWithDays(profile.id);
+  // The builder's exercise picker reads the FREQUENCY-RANKED lift list the activity
+  // form and GoalForm already consume (#1676), not the 76-entry catalog in catalog
+  // order — a runner authoring a routine should not be offered "Back Squat" first.
+  const liftOptions = getActivitySuggestions(profile.id).lifts;
   const replaceTargets = getTrainingTargetsToReplace(profile.id).map((t) => ({
     label: frequencyScopeLabel(t.scope_kind, t.scope_value),
     perWeek: t.per_week,
@@ -32,7 +36,7 @@ export default async function RoutinesSection() {
       routines={routines}
       templates={templates}
       replaceTargets={replaceTargets}
-      liftOptions={LIFT_OPTIONS}
+      liftOptions={liftOptions}
     />
   );
 }

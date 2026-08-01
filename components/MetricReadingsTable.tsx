@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { ResponsiveTable, Td } from "./ResponsiveTable";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
@@ -160,7 +159,6 @@ function ReadingRow({
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   const toast = useToast();
-  const router = useRouter();
 
   async function save() {
     const fd = new FormData();
@@ -178,7 +176,6 @@ function ReadingRow({
       toast("Reading updated.");
       // The chart above this table is server-rendered from the same rows, so it has
       // to redraw with the correction (revalidatePath marked it stale).
-      router.refresh();
     } finally {
       setBusy(false);
     }

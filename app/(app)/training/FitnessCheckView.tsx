@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import PageContainer from "@/components/PageContainer";
 import FitnessTestTimer from "@/components/activity-form/FitnessTestTimer";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
@@ -220,7 +219,6 @@ function CompletionCard({
 }
 
 function RetestCadence({ cadenceDays }: { cadenceDays: number }) {
-  const router = useRouter();
   const [days, setDays] = useState(String(cadenceDays));
   const [saved, setSaved] = useState(false);
   return (
@@ -233,7 +231,6 @@ function RetestCadence({ cadenceDays }: { cadenceDays: number }) {
         const r = await setFitnessCadence(fd);
         if (r.ok) {
           setSaved(true);
-          router.refresh();
         }
       }}
     >
@@ -405,7 +402,6 @@ function EntryModal({
   ) => void;
   onClose: () => void;
 }) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [value, setValue] = useState("");
@@ -420,7 +416,6 @@ function EntryModal({
 
   function done() {
     onClose();
-    router.refresh();
   }
 
   const setField = (k: string, v: string) =>

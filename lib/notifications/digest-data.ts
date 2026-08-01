@@ -40,6 +40,7 @@ import {
 import {
   getActiveSituations,
   getSituationEvents,
+  digestDemotionsForProfile,
   getNotifySchedule,
   getProfileSetting,
   setProfileSetting,
@@ -52,6 +53,14 @@ import { getIntakeDeltaLine } from "../intake-history";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
+import {
+  collapsedTuneAction,
+  recentChangeDemotions,
+  sleepSurvivesDemotion,
+  type DigestCategory,
+} from "./digest-tune";
+import type { RecentChangeCategory } from "../recent-changes";
+import type { NotificationAction } from "./types";
 import {
   buildDigest,
   dedupeFlaggedByAnalyte,
@@ -143,7 +152,13 @@ export function getNewlyFlaggedBiomarkers(
 // most recent main-sleep night must be today or yesterday (you actually woke
 // recently); a stale night isn't "how'd I sleep". The nap total is the wake-day's
 // non-main sleep, kept apart from the overnight figure.
-export function gatherDigestSleep(profileId: number): DigestSleep | null {
+export function gatherDigestSleep(
+  profileId: number,
+  // Categories this profile's readers have all demoted (#1714). A demoted Sleep
+  // section survives only on a night the #1712 verdict calls notable — the SAME
+  // classification the line already prints, never a second threshold.
+  demoted: readonly DigestCategory[] = []
+): DigestSleep | null {
   if (!getProfileSleepDigest(profileId)) return null;
   const signal = getSleepSignal(profileId);
   if (!signal) return null;
@@ -157,6 +172,15 @@ export function gatherDigestSleep(profileId: number): DigestSleep | null {
   const td = today(profileId);
   const yd = shiftDateStr(td, -1);
   if (last.wakeDay !== td && last.wakeDay !== yd) return null; // stale — skip
+
+  if (
+    !sleepSurvivesDemotion(
+      demoted,
+      signal.lastNightMin,
+      Math.round(signal.baselineMin)
+    )
+  )
+    return null;
 
   // Nap = all sleep on the wake-day minus the main overnight session (never folded
   // into the overnight figure). Uses the same session windows as mainSleepNights.
@@ -198,6 +222,15 @@ export function gatherDigestInput(
 ): DigestInput {
   const td = today(profileId);
   const yd = shiftDateStr(td, -1);
+
+  // Per-category demotion (#1714). One message, N readers: the preference is stored
+  // per LOGIN, so what applies to this profile's single digest is the conservative
+  // collapse — a category is demoted only when EVERY managing login declared it.
+  const demoted = digestDemotionsForProfile(profileId);
+
+  // Gathered up front: the Tune control has to know whether a Sleep section is in
+  // play today before the return object is assembled.
+  const sleep = gatherDigestSleep(profileId, demoted);
 
   const active = getSupplements(profileId).filter((s) => s.active);
   const suppById = new Map(active.map((s) => [s.id, s]));
@@ -445,16 +478,73 @@ export function gatherDigestInput(
     // collecting them here too would double-report one finding rather than add one.
     // Everything the digest was structurally blind to (out-of-range vitals, mood,
     // symptoms, overnight arrival) comes through here.
-    recentChangeLines: collectRecentChanges(profileId, {
-      sinceDays: 1,
-      today: td,
-      exclude: ["labs"],
-      overflowLabel: "since yesterday",
-    }).lines,
+    ...(() => {
+      const recent = collectRecentChanges(profileId, {
+        sinceDays: 1,
+        today: td,
+        exclude: ["labs"],
+        overflowLabel: "since yesterday",
+        // Demoted categories surface only their notable entries. `flagged` implies
+        // notable inside the collector, so the safety floor is structurally untouched
+        // by any preference (#1714).
+        demoted: recentChangeDemotions(demoted),
+      });
+      return {
+        recentChangeLines: recent.lines,
+        // What the ⚙️ Tune keyboard will offer: the categories present in TODAY's
+        // message (pre-demotion), plus Sleep when the section is in play. The tap
+        // re-resolves this against the TAPPING login's own preferences, exactly as the
+        // offer tail re-resolves its slot — the collapsed button is login-independent.
+        tuneTail: tuneTailFor(profileId, td, recent.presentCategories, sleep),
+      };
+    })(),
     // Last night's sleep (issue #1117) — null unless the opt-in is on and the data
     // is fresh; buildDigest renders a Sleep section only when present.
-    sleep: gatherDigestSleep(profileId),
+    sleep,
   };
+}
+
+// The collapsed ⚙️ Tune action for today's message, or null when the message carries
+// nothing tunable (#1714). Tuning is an escape hatch from lines you are actually
+// receiving; offering it on a digest that has none would be a control with no subject.
+// A reader who demoted everything reaches their toggles through the Settings mirror,
+// which is exactly the role the design gives it.
+function tuneTailFor(
+  profileId: number,
+  date: string,
+  present: readonly RecentChangeCategory[],
+  sleep: DigestSleep | null
+): NotificationAction | null {
+  return tunableFrom(present, sleep).length
+    ? collapsedTuneAction(profileId, date)
+    : null;
+}
+
+function tunableFrom(
+  present: readonly RecentChangeCategory[],
+  sleep: DigestSleep | null
+): DigestCategory[] {
+  const fromCollector = present.filter(
+    (c): c is Exclude<RecentChangeCategory, "labs"> => c !== "labs"
+  );
+  return sleep ? [...fromCollector, "sleep"] : [...fromCollector];
+}
+
+// The categories TODAY's digest could tune, resolved fresh at TAP time — the offer
+// tail's rule, one control over (#1505): a keyboard born in the morning is tapped
+// whenever, so what it opens into is computed now rather than baked at send. Read
+// WITHOUT any demotion so a category the tapping login has already silenced still
+// appears in its own toggle and stays reversible on Telegram.
+export function digestTunableCategories(
+  profileId: number,
+  date: string
+): DigestCategory[] {
+  const recent = collectRecentChanges(profileId, {
+    sinceDays: 1,
+    today: date,
+    exclude: ["labs"],
+  });
+  return tunableFrom(recent.presentCategories, gatherDigestSleep(profileId));
 }
 
 // Build + send this profile's morning digest for `date`. Returns whether a send

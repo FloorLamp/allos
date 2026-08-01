@@ -119,6 +119,9 @@ export default function ExtractionToaster({
           }
         }
       }
+      // Survives the #1473 sweep: poll-driven, same as ImportJobsToaster —
+      // getExtractionStates is a read action and the extraction ran in the
+      // background, so no action response ever carried the new tree.
       if (!seeded && changed) router.refresh();
 
       const processing = docs.some((d) => d.status === "processing");

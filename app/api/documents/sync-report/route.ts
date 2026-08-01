@@ -148,6 +148,7 @@ export async function POST(req: Request): Promise<Response> {
     updated: body.updated,
     unchanged: body.unchanged,
     failed: body.failed,
+    suppressed: body.suppressed,
   });
   const message =
     typeof body.message === "string" && body.message.trim()
@@ -309,6 +310,10 @@ export async function POST(req: Request): Promise<Response> {
       updated: ev.updated,
       unchanged: ev.unchanged,
       skipped: ev.skipped,
+      // Tombstone-blocked re-offers (#1777) ride the column migration 023 already added
+      // for the #507/#508 re-import tombstones, so Data → Review renders "N suppressed"
+      // through the same formatSplitLabel path as every other provider.
+      suppressed: ev.suppressed,
       error: ev.error,
       // WHICH identity this run was about (#1739). Null for a `profile=<id>` report from
       // a human debugging with curl, and for every other provider's events — the card

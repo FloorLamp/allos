@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { followLink, settledClick } from "./helpers";
+import { followLink, settledClick, settledFill } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // THIS worker's database (#1538): workerDbPath() resolves the same file this
@@ -91,7 +91,9 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
     // Branch to the encounter (past) shape and fill it. A past date is entered
     // directly; the toggle already selected the encounter branch.
     await add.getByTestId("visit-tense-past").click();
-    await add.getByLabel("Visit type").fill("Office Visit");
+    // Visit type is a controlled Combobox over the canonical class labels since
+    // #1676; a source's own wording is still accepted as free text.
+    await settledFill(page, add.getByLabel("Visit type"), "Office Visit");
     await add.getByLabel("Date", { exact: true }).fill("2024-03-04");
     await add.getByLabel("Reason (chief complaint)").fill(MARKER);
     // The Add button submits a Server Action that logs the encounter and

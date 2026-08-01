@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { IconPlus, IconMinus } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
@@ -37,8 +36,6 @@ export default function ProteinQuickAdd({
     lastPreset != null ? String(lastPreset) : ""
   );
   const [busy, setBusy] = useState(false);
-  const [, startTransition] = useTransition();
-  const router = useRouter();
   const toast = useToast();
 
   const grams = Number(amount);
@@ -66,7 +63,6 @@ export default function ProteinQuickAdd({
       toast(res.error || "Couldn't save that — try again.", { tone: "error" });
     }
     setBusy(false);
-    startTransition(() => router.refresh());
   }
 
   return (

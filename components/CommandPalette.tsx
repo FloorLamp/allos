@@ -390,13 +390,12 @@ export default function CommandPalette({
         toast(res.message, { tone: res.ok ? "success" : "error" });
         if (res.ok) {
           close();
-          router.refresh();
         }
       } finally {
         setCommitting(false);
       }
     },
-    [query, committing, toast, close, router]
+    [query, committing, toast, close]
   );
 
   // Run a per-hit contextual action (#662). A navigate action (add-result) just
@@ -439,12 +438,11 @@ export default function CommandPalette({
           toast("Appointment completed", { tone: "success" });
         }
         close();
-        router.refresh();
       } finally {
         setCommitting(false);
       }
     },
-    [committing, close, go, router, toast]
+    [committing, close, go, toast]
   );
 
   const runItem = useCallback(

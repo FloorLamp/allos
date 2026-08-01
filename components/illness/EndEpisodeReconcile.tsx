@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import ModalShell from "@/components/ModalShell";
@@ -49,7 +48,6 @@ export default function EndEpisodeReconcile({
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(meds.filter((m) => m.defaultChecked).map((m) => m.itemId))
   );
-  const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -72,7 +70,6 @@ export default function EndEpisodeReconcile({
           : successMessage
       );
       setOpen(false);
-      router.refresh();
     });
   }
 

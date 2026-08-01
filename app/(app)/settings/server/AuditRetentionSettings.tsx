@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   MIN_AUDIT_RETENTION_MONTHS,
   MAX_AUDIT_RETENTION_MONTHS,
@@ -16,7 +15,6 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // expectations can raise or lower it. The value is clamped server-side to
 // [MIN, MAX] months.
 export default function AuditRetentionSettings({ months }: { months: number }) {
-  const router = useRouter();
   const [value, setValue] = useState(String(months));
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -25,7 +23,6 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
     fd.set("audit_retention_months", value.trim());
     runSave(async () => {
       await saveAuditRetention(fd);
-      router.refresh();
     });
   }
 

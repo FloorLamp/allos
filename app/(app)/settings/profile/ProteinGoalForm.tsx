@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   PROTEIN_GOAL_LEVELS,
   PROTEIN_GOAL_OPTION_LABELS,
@@ -30,7 +29,6 @@ export default function ProteinGoalForm({
   // Modal consumers provide their own card shell and title.
   embedded?: boolean;
 }) {
-  const router = useRouter();
   const [level, setLevel] = useState<ProteinGoalLevel>(goal);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
   const band = proteinGoalBand(level);
@@ -42,7 +40,6 @@ export default function ProteinGoalForm({
     runSave(async () => {
       const res = await saveProteinGoal(fd);
       if (!res.ok) throw new Error(res.error);
-      router.refresh();
     });
   }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   RECOMMENDATION_CADENCES,
   CADENCE_LABELS,
@@ -21,7 +20,6 @@ export default function RecommendationCadenceForm({
   cadence: RecommendationCadence;
   isAdmin: boolean;
 }) {
-  const router = useRouter();
   const [value, setValue] = useState<RecommendationCadence>(cadence);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -30,7 +28,6 @@ export default function RecommendationCadenceForm({
     fd.set("recommendation_cadence", next);
     runSave(async () => {
       await saveRecommendationCadence(fd);
-      router.refresh();
     });
   }
 

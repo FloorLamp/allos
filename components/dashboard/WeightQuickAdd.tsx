@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { WeightUnit } from "@/lib/settings";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -35,7 +34,6 @@ export default function WeightQuickAdd({
   // Mia") so a caregiver's weigh-in never lands on the wrong record. Null → plain.
   subjectName: string | null;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
@@ -86,7 +84,6 @@ export default function WeightQuickAdd({
     }
     toast("Entry saved");
     formRef.current?.reset();
-    router.refresh();
   }
 
   return (

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   IconX,
   IconPlus,
@@ -15,7 +14,9 @@ import {
   symptomBySlug,
   SYMPTOM_SEVERITY_LEVELS,
   MAX_SYMPTOM_SEVERITY,
+  symptomLabelOptions,
 } from "@/lib/symptoms";
+import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
@@ -53,6 +54,10 @@ import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 // it offers a suggest-only "Mark as illness" bridge.
 
 type Row = { key: string; label: string; icon?: string };
+
+// The curated symptom labels, built once (catalog order — the picker shows the first
+// eight on an empty query).
+const SYMPTOM_LABEL_OPTIONS = symptomLabelOptions();
 
 export default function SymptomLogBar({
   date,
@@ -141,7 +146,6 @@ export default function SymptomLogBar({
   const [noteEditing, setNoteEditing] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [, startTransition] = useTransition();
-  const router = useRouter();
   const toast = useToast();
 
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
@@ -241,7 +245,6 @@ export default function SymptomLogBar({
         ? `Logged ${count} symptom${count === 1 ? "" : "s"}.`
         : "Logged."
     );
-    startTransition(() => router.refresh());
   }
 
   function toggleSymptomPicker() {
@@ -303,7 +306,6 @@ export default function SymptomLogBar({
       if (res.redFlag) {
         toast(res.redFlag, { tone: "error" });
       }
-      startTransition(() => router.refresh());
     } else {
       setTempError(res.error);
       toast(res.error, { tone: "error" });
@@ -346,8 +348,8 @@ export default function SymptomLogBar({
   const rowMap = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
   // Freeze the picker order for the life of this mount: the server re-ranks on every
-  // read, so a router.refresh() after a tap must not reorder rows under the finger (the
-  // FoodLogBar #591 discipline). The order only changes on remount (navigate away + back).
+  // read, so the re-render each tap's action triggers must not reorder rows under the
+  // finger (the FoodLogBar #591 discipline). The order only changes on remount (navigate away + back).
   const frozenOrder = useRef<string[] | null>(null);
   if (frozenOrder.current === null) {
     frozenOrder.current = rankedKeys ?? [
@@ -404,7 +406,6 @@ export default function SymptomLogBar({
         tone: "error",
       });
     }
-    startTransition(() => router.refresh());
   }
 
   // Explicit LOWER — selecting a labeled lower chip is sufficient intent. Optimistically
@@ -423,7 +424,6 @@ export default function SymptomLogBar({
       setSeverity(key, prev);
       toast(res.error || "Couldn't lower that symptom.", { tone: "error" });
     }
-    startTransition(() => router.refresh());
   }
 
   async function saveNote(key: string, value: string) {
@@ -439,7 +439,6 @@ export default function SymptomLogBar({
       setNote(key, prev);
       toast(res.error || "Couldn't save that note.", { tone: "error" });
     }
-    startTransition(() => router.refresh());
   }
 
   async function clear(key: string) {
@@ -457,11 +456,10 @@ export default function SymptomLogBar({
       if (prevNote) setNote(key, prevNote);
       toast(res.error || "Couldn't remove that symptom.", { tone: "error" });
     }
-    startTransition(() => router.refresh());
   }
 
-  function addCustom() {
-    const key = resolveSymptomKey(customDraft);
+  function addCustom(name: string = customDraft) {
+    const key = resolveSymptomKey(name);
     setCustomDraft("");
     if (!key) return;
     // One add path (#857): a typed name logs at severity 1, becoming a logged row.
@@ -731,14 +729,24 @@ export default function SymptomLogBar({
               addCustom();
             }}
           >
-            <input
-              data-testid="symptom-custom-input"
-              value={customDraft}
-              onChange={(e) => setCustomDraft(e.target.value)}
-              placeholder="Add another symptom…"
-              maxLength={80}
-              className="input h-8 flex-1 text-sm"
-            />
+            {/* The curated labels (#1676). resolveSymptomKey() already collapses an
+                EXACT label onto its catalog slug, but a near-miss ("Head ache")
+                minted a custom key sitting next to the curated `headache`; offering
+                the vocabulary turns those near-misses into exact matches. Free text
+                still logs — a custom symptom is a first-class one. */}
+            <div className="flex-1" data-testid="symptom-custom-input">
+              <Combobox
+                ariaLabel="Add another symptom"
+                value={customDraft}
+                onChange={setCustomDraft}
+                onPick={(v) => addCustom(v)}
+                options={SYMPTOM_LABEL_OPTIONS}
+                allowFreeText
+                closeStopsPropagation
+                placeholder="Add another symptom…"
+                inputClassName="h-8 text-sm"
+              />
+            </div>
             <button
               type="submit"
               data-testid="symptom-custom-add"
@@ -764,7 +772,6 @@ export default function SymptomLogBar({
             onClick={() =>
               startTransition(async () => {
                 await activateIllnessForSymptoms();
-                router.refresh();
               })
             }
             className="btn-ghost btn-sm border-dashed"

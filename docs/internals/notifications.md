@@ -562,6 +562,55 @@ STALENESS is deliberately NOT re-derived in the collector: #1685 already owns it
 end to end and already renders it in this same message's Today section.
 **A quiet 24h produces no section at all** — the digest does not manufacture news.
 
+**Per-category demotion — the ⚙️ Tune control (#1714).** As the digest's coverage
+grew, the recourse for an unwanted category was nothing or a settings checkbox
+farm. The escape hatch instead rides the surface that annoys you (the
+Take/Skip/Demote precedent, #1505): the message carries a collapsed **⚙️ Tune**
+button that expands **in place** — a keyboard edit, never a send — into one toggle
+per category, then **▲ Done**.
+
+- **Demote ≠ hide.** A demoted category stops appearing ROUTINELY and still
+  surfaces when it crosses its own notable threshold — and that predicate is
+  always the classification the line ALREADY computes (#221), never a second
+  threshold: `sleepVerdict` for sleep (#1712), the mood shift against the
+  subject's own recent average, a severe symptom-day, a growth band crossing.
+- **Preference filtering can never reach a safety floor.** `flagged` implies
+  notable inside `applyRecentChangeDemotion`, so a flagged lab or an out-of-range
+  vital survives every preference, structurally. `labs` is not tunable at all
+  (the digest excludes it and every line it would carry is floor class), and
+  neither are the offer tail, the Today obligations or the minimal-digest
+  guarantee — those are the MESSAGE's job, not a category. Demoting everything
+  makes the digest short, never silent.
+- **Vocabulary and predicates:** `lib/notifications/digest-tune.ts` (pure) —
+  `DIGEST_TUNABLE_CATEGORIES`, the labels, the stored form, the toggle, the
+  keyboard builders and `sleepSurvivesDemotion`. The collector half applies
+  through `collectRecentChanges({ demoted })`; the Sleep section applies through
+  `gatherDigestSleep(profileId, demoted)`.
+- **Storage is per LOGIN** (`login_settings.digest_demoted_categories`), beside
+  the login's Telegram channel config: which lines a digest routinely carries is a
+  display preference of the person reading it, not a fact about the data subject.
+  `toggleLoginDigestDemotion` does its read-modify-write inside one immediate
+  transaction and returns the state it stored, so both surfaces answer from the
+  typed outcome rather than confirming unconditionally.
+- **One message, N readers.** The digest is built once per profile and fans out to
+  every managing login, so `digestDemotionsForProfile` collapses the per-login
+  preferences CONSERVATIVELY (`intersectDigestDemotions`): a category is demoted
+  only when EVERY managing login declared it, and a profile with no managing login
+  demotes nothing. Nobody is shown less than they asked for, and no login's tap can
+  thin another login's digest. A per-recipient message body would be the only way
+  to honour two disagreeing readers exactly, and that is a delivery-core change
+  (`dispatch` renders one message per profile) — a separate decision, not a
+  side effect of this control.
+- **Which login a tap belongs to:** the login whose Telegram channel IS the chat,
+  lowest id first when a family chat has several — the same "first login owns the
+  chat" rule `dedupeRecipientsByChat` uses outbound, so the two directions cannot
+  disagree. A tap on YESTERDAY's digest is refused rather than retuned from stale
+  context.
+- **Mirrored in Settings → Notifications** ("Morning digest") as the same toggles,
+  read-write, so preferences are discoverable, reversible off-Telegram, and visible
+  to someone auditing why their digest looks thin. One storage, two surfaces — a
+  mirror of an existing message control, not a settings-only feature.
+
 **Light and movement lines (#1723).** Two more Today/Yesterday lines, both
 riding this message — **no send is created by either**:
 

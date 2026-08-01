@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { IconRestore } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -40,7 +39,6 @@ export default function ReopenEpisodeReconcile({
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(meds.map((m) => m.itemId))
   );
-  const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -62,7 +60,6 @@ export default function ReopenEpisodeReconcile({
           : "Episode reopened."
       );
       setOpen(false);
-      router.refresh();
     });
   }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
@@ -26,7 +25,6 @@ export default function EmergencyCardSettings({
   bloodType: string | null;
   contact: EmergencyContactSetting;
 }) {
-  const router = useRouter();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [bloodType, setBloodType] = useState(initialBloodType ?? "");
   const [contact, setContact] =
@@ -57,7 +55,6 @@ export default function EmergencyCardSettings({
     if (!next.enabled) clearEmergencyPayload();
     runSave(async () => {
       await saveEmergencyCardSettings(fd);
-      router.refresh();
     });
   }
 

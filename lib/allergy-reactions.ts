@@ -22,6 +22,42 @@ import type {
 // composition that produces it.
 export type { AllergyManifestation };
 
+// The reaction-SEVERITY vocabulary (issue #1676). The column is free TEXT by design
+// (sources print whatever they print, and migration 122 kept it that way), but the
+// FORM was a bare input, so a hand-entered grade was one of infinitely many
+// spellings. These are the three FHIR AllergyIntolerance.reaction.severity values,
+// ordinal from mildest — an enum where the entry surface is concerned, with a loaded
+// non-standard value preserved verbatim rather than silently rewritten.
+export const ALLERGY_REACTION_SEVERITIES = [
+  "mild",
+  "moderate",
+  "severe",
+] as const;
+
+export type AllergyReactionSeverity =
+  (typeof ALLERGY_REACTION_SEVERITIES)[number];
+
+// Labels that say what the grade MEANS, so "moderate" and "severe" aren't told apart
+// by tone alone.
+export const ALLERGY_REACTION_SEVERITY_LABELS: Record<
+  AllergyReactionSeverity,
+  string
+> = {
+  mild: "Mild — local, settled on its own",
+  moderate: "Moderate — needed treatment",
+  severe: "Severe — systemic or emergency care",
+};
+
+// Whether a stored grade is one of the three canonical values (case-insensitive).
+// A false answer is not an error: it means the value came from a source with its own
+// wording and must be shown as recorded.
+export function isCanonicalReactionSeverity(
+  severity: string | null | undefined
+): boolean {
+  const s = severity?.trim().toLowerCase();
+  return !!s && ALLERGY_REACTION_SEVERITIES.some((v) => v === s);
+}
+
 // ── The cached-first-row invariant ────────────────────────────────────────────
 //
 // `allergies.reaction` / `.severity` were NOT retired when `allergy_reactions`

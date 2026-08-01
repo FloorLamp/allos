@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveSmokingHistory } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
@@ -17,7 +16,6 @@ export default function SmokingHistoryForm({
 }: {
   history: SmokingHistory;
 }) {
-  const router = useRouter();
   const [status, setStatus] = useState<SmokingStatusValue | "">(
     history.status ?? ""
   );
@@ -52,7 +50,6 @@ export default function SmokingHistoryForm({
     fd.set("quit_year", next.status === "former" ? next.quitYear : "");
     runSave(async () => {
       await saveSmokingHistory(fd);
-      router.refresh();
     });
   }
 

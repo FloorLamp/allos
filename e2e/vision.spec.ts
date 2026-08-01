@@ -52,7 +52,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     // It appears in the list with its factual per-eye identity.
     const list = page.getByTestId("optical-prescription-list");
     const row = list.getByRole("row").filter({ hasText: "-6.25" });
-    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    // Renders on the save action's revalidated tree — a cold shard can outrun the default 5s (imaging/#1306 precedent).
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText("Glasses");
 

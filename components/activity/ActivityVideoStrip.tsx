@@ -53,7 +53,7 @@ export default function ActivityVideoStrip({
   // the Journal card does not.
   showAdd?: boolean;
   // Notifies the editor that the clip set changed, so it can re-read it — the card
-  // gets the same news from the grid's `router.refresh()`.
+  // gets the same news from the clip actions' own revalidate.
   onChange?: () => void;
 }) {
   // Without the add affordance this is a pure read surface, so an empty one has

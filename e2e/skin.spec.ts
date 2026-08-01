@@ -131,7 +131,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
       editForm.getByRole("button", { name: "Save", exact: true })
     );
     await expect(page.getByText("Lesion updated")).toBeVisible();
-    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    // Renders on the save action's revalidated tree — a cold shard can outrun the default 5s (imaging/#1306 precedent).
     await expect(card).toContainText("Unchanged since baseline.", {
       timeout: 15_000,
     });

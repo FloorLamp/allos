@@ -18,6 +18,7 @@ import { today as todayFor } from "../db";
 import { db } from "../db";
 import {
   applyRecentChangeDemotion,
+  RECENT_CHANGE_CATEGORIES,
   rankRecentChanges,
   recentChangeWindowStart,
   renderRecentChanges,
@@ -68,6 +69,11 @@ export interface RecentChangesResult extends RecentChangeRender {
   // The ranked changes behind `lines`, uncapped — so a caller that renders its own
   // chrome (chips, links) has the structured form without re-deriving the order.
   changes: RecentChange[];
+  // Every category that produced at least one change BEFORE demotion (#1714). The
+  // ⚙️ Tune control offers "the categories present in today's message", which is this
+  // set — computed pre-filter, so a category the reader has already demoted is still
+  // reported as present and its toggle stays reachable.
+  presentCategories: RecentChangeCategory[];
 }
 
 // The behavioral-health visit test. Encounters carry no AppointmentKind column, so
@@ -346,6 +352,9 @@ export function collectRecentChanges(
   // ── data arrival (#1713) ─────────────────────────────────────────────────────
   if (on("data")) changes.push(...arrivalChanges(profileId, sinceTs));
 
+  // Pre-demotion, so the Tune control (#1714) can offer a toggle for a category that
+  // IS producing lines this reader has chosen not to see.
+  const present = new Set(changes.map((c) => c.category));
   const kept = applyRecentChangeDemotion(changes, new Set(opts.demoted ?? []));
   const ranked = rankRecentChanges(kept, {
     lifeStage: stage,
@@ -357,6 +366,7 @@ export function collectRecentChanges(
   });
   return {
     changes: ranked,
+    presentCategories: RECENT_CHANGE_CATEGORIES.filter((c) => present.has(c)),
     ...renderRecentChanges(ranked, {
       max: opts.max,
       overflowLabel: opts.overflowLabel,

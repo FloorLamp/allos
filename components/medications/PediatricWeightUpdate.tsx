@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconScale } from "@tabler/icons-react";
 import DateField from "@/components/DateField";
 import { useToast } from "@/components/Toast";
@@ -26,7 +25,6 @@ export default function PediatricWeightUpdate({
   initiallyOpen?: boolean;
   onSaved: (next: PediatricFormContext) => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(initiallyOpen);
   const [weight, setWeight] = useState("");
@@ -72,7 +70,6 @@ export default function PediatricWeightUpdate({
     setWeight("");
     setOpen(false);
     toast("Weight updated");
-    router.refresh();
   }
 
   if (!open) {

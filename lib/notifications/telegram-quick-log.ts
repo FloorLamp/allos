@@ -529,7 +529,23 @@ export async function handleSymptomTextIntake(
 // buttons, so an absent keyboard can't overwrite the text.
 import crypto from "node:crypto";
 import { collapsedOfferAction, expandedOfferActions } from "./offer-tail";
-import type { DemoteCallback, OfferTailCallback } from "./callback-data";
+import {
+  collapsedTuneAction,
+  expandedTuneActions,
+  tunableCategoriesFor,
+  tuneToggleAnswer,
+} from "./digest-tune";
+import { digestTunableCategories } from "./digest-data";
+import {
+  getLoginDigestDemotions,
+  loginIdsForTelegramChat,
+  toggleLoginDigestDemotion,
+} from "../settings";
+import type {
+  DemoteCallback,
+  OfferTailCallback,
+  TuneCallback,
+} from "./callback-data";
 import { demoteIntakeObligation } from "../intake-obligation-write";
 import { DEMOTION_OUTCOME_TEXT } from "../supplement-demotion";
 import { getOfferedIntakeForSlot } from "../queries/intake";
@@ -652,6 +668,9 @@ export async function handleOfferTailTap(
   const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
 
   if (token.action === "collapse") {
+    // Collapsing restores the digest's WHOLE collapsed keyboard, not just this
+    // control: the ⚙️ Tune button (#1714) shares the message and would otherwise be
+    // destroyed by the first expand/collapse round-trip.
     await updateMessageKeyboard(
       chatId,
       messageId,
@@ -660,6 +679,9 @@ export async function handleOfferTailTap(
         body: "",
         actions: [
           collapsedOfferAction(profileId, date, nowHhmm, offered.length),
+          ...(digestTunableCategories(profileId, date).length
+            ? [collapsedTuneAction(profileId, date)]
+            : []),
         ],
       })
     );
@@ -725,4 +747,110 @@ export async function handleDemoteTap(
     messageId,
     removeButton(rows, cq.data as string)
   );
+}
+
+// The ⚙️ Tune tap (#1714): per-category digest demotion, driven from the message that
+// annoyed you rather than a settings page you visit later (#1505's Take/Skip/Demote
+// precedent).
+//
+// EXPAND AND COLLAPSE ARE NOT SENDS. Both are keyboard edits on a message the user
+// already received — Telegram does not notify on an edit, no new row appears in the
+// chat, the phone stays silent. That is what lets a control like this exist without
+// spending an interruption on it (the contact-consent rule in mechanism form).
+//
+// THE TOGGLE IS THE ONLY WRITE, and it is the user's own declared preference: nothing
+// here infers a demotion, and the write is login-scoped display state, never the data
+// subject's records. It answers from the TYPED outcome (which state the category
+// actually landed in) rather than confirming unconditionally, and re-renders the
+// keyboard so the icons always show the state that was actually stored.
+//
+// WHICH LOGIN. The preference belongs to the login whose Telegram channel IS this
+// chat. A family chat several logins point at resolves to the LOWEST login id — the
+// same "first login owns the chat" rule the outbound dedup uses
+// (dedupeRecipientsByChat), so inbound and outbound cannot disagree about whose chat
+// this is.
+export async function handleTuneTap(
+  cq: TelegramCallbackQuery,
+  token: TuneCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || messageId == null || chatId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const date = today(profileId);
+  // A tap on YESTERDAY's digest would tune against a message whose content has rolled
+  // over. Refuse plainly rather than silently retuning from stale context.
+  if (token.date !== date) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const loginId = [...loginIdsForTelegramChat(String(chatId))].sort(
+    (a, b) => a - b
+  )[0];
+  if (loginId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+
+  if (token.action === "collapse") {
+    const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+    const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+    await updateMessageKeyboard(
+      chatId,
+      messageId,
+      messageKeyboard({
+        title: "",
+        body: "",
+        actions: [
+          ...(offered.length
+            ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
+            : []),
+          collapsedTuneAction(profileId, date),
+        ],
+      })
+    );
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+
+  // The write, then the re-render — so the keyboard below is drawn from what was
+  // actually stored, never from what the tap intended.
+  let answer: string | undefined;
+  if (token.action === "toggle" && token.category) {
+    const outcome = toggleLoginDigestDemotion(loginId, token.category);
+    answer = tuneToggleAnswer(token.category, outcome.demoted);
+  }
+
+  const offering = tunableCategoriesFor(
+    digestTunableCategories(profileId, date),
+    getLoginDigestDemotions(loginId)
+  );
+  if (offering.length === 0) {
+    await answerCallbackQuery(
+      cq.id,
+      answer ?? "Nothing in today's digest to tune."
+    );
+    return;
+  }
+  await updateMessageKeyboard(
+    chatId,
+    messageId,
+    messageKeyboard({
+      title: "",
+      body: "",
+      actions: expandedTuneActions(
+        profileId,
+        date,
+        offering,
+        getLoginDigestDemotions(loginId)
+      ),
+    })
+  );
+  await answerCallbackQuery(cq.id, answer);
 }

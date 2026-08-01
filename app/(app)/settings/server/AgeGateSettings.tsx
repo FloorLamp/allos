@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveMinTrainingAge } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -17,7 +16,6 @@ export default function AgeGateSettings({
 }: {
   minTrainingAge: number | null;
 }) {
-  const router = useRouter();
   const [value, setValue] = useState(
     minTrainingAge != null ? String(minTrainingAge) : ""
   );
@@ -28,7 +26,6 @@ export default function AgeGateSettings({
     fd.set("min_training_age", value.trim());
     runSave(async () => {
       await saveMinTrainingAge(fd);
-      router.refresh();
     });
   }
 

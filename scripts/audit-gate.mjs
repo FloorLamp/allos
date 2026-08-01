@@ -3,11 +3,14 @@
 // `npm audit --audit-level=high` fails on ANY high/critical advisory with no
 // escape hatch, which wedges every PR when an advisory lands that has no
 // installable fix — the 2026-07-24 case: brace-expansion GHSA-mh99-v99m-4gvg
-// flags every version except 5.0.8, but 5.0.8's CommonJS export is an object
+// flagged every version except 5.0.8, but 5.0.8's CommonJS export is an object
 // (`{ expand }`) where every shipped consumer generation (minimatch 3/9/10's
 // published ranges, readdir-glob) expects `module.exports` to BE the function,
-// so pinning it via overrides breaks eslint at import time. No resolvable set
-// exists until the parents republish.
+// so pinning it via overrides broke eslint at import time. That entry is gone
+// (#1454): upstream re-cut the advisory into three in-major windows
+// (`<1.1.17`, `>=2.0.0 <2.1.3`, `>=4.0.0 <5.0.8`), so every consumer generation
+// now has a fixed version inside its own declared range and the tree resolves
+// clean with no override.
 //
 // This gate keeps the enforcement (a NEW high/critical still fails the job)
 // while carrying a small, justified allowlist. RULES for the allowlist:
@@ -22,20 +25,9 @@
 
 import { execSync } from "node:child_process";
 
-const ALLOWLIST = {
-  // brace-expansion DoS (high). No installable fix: only 5.0.8 is outside the
-  // flagged range and its CJS export shape breaks minimatch<=10.0.2 consumers
-  // (eslint's tree: "TypeError: expand is not a function"). The 1.x/2.x
-  // releases published 2026-07-08 look like in-major patches whose advisory
-  // metadata hasn't propagated. Remove when `npm audit` accepts an in-range
-  // version or the parents (minimatch, readdir-glob/exceljs) republish.
-  // Tracking: #1454.
-  "GHSA-mh99-v99m-4gvg": {
-    reason:
-      "no resolvable fix: only brace-expansion 5.0.8 clears the range and its export shape breaks all shipped minimatch consumers",
-    tracking: "#1454",
-  },
-};
+// Empty is the healthy state. Every entry needs a `reason` and a `tracking`
+// issue that owns its removal.
+const ALLOWLIST = {};
 
 let raw;
 try {

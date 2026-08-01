@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
+  normalizeGeneSymbol,
   normalizeResultType,
   normalizeSignificance,
   normalizeZygosity,
@@ -42,7 +43,11 @@ export async function addGenomicVariant(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  const gene = String(formData.get("gene") ?? "").trim();
+  // Canonicalize a recognized PGx symbol on write (#1676): crossCheckPgx matches
+  // gene names exactly (case-insensitively), so "cyp 2c19" would store a variant no
+  // CPIC guidance row can ever reach. A gene outside the PGx set — BRCA1 and the
+  // rest of the hereditary-risk vocabulary — is stored exactly as typed.
+  const gene = normalizeGeneSymbol(String(formData.get("gene") ?? ""));
   if (!gene) return formError("Enter the gene symbol.");
   // A manual row carries a NULL document_id / external_id (omitted here so they
   // default NULL) so the per-document import delete-set never touches it — the same
@@ -78,7 +83,11 @@ export async function updateGenomicVariant(
   // to the acting profile.
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
-  const gene = String(formData.get("gene") ?? "").trim();
+  // Canonicalize a recognized PGx symbol on write (#1676): crossCheckPgx matches
+  // gene names exactly (case-insensitively), so "cyp 2c19" would store a variant no
+  // CPIC guidance row can ever reach. A gene outside the PGx set — BRCA1 and the
+  // rest of the hereditary-risk vocabulary — is stored exactly as typed.
+  const gene = normalizeGeneSymbol(String(formData.get("gene") ?? ""));
   if (!id) return formError("Couldn't find that variant.");
   if (!gene) return formError("Enter the gene symbol.");
   db.prepare(

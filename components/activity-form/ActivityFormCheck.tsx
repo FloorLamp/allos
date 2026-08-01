@@ -47,7 +47,7 @@ export default function ActivityFormCheck({
     };
   }, [activityId]);
 
-  // Re-reads on activity change. The grid's own `router.refresh()` repaints the
+  // Re-reads on activity change. The clip actions' own revalidate repaints the
   // server tree behind the editor; this component's state is client-side and
   // outlives it, so an upload/delete calls `onChange` to re-read here too.
   useEffect(() => load(), [load]);

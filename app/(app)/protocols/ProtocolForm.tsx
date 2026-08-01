@@ -27,6 +27,8 @@ import {
 import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
 import DraftRestoreBanner from "@/components/DraftRestoreBanner";
 import { useFormDraft } from "@/components/useFormDraft";
+import Combobox from "@/components/Combobox";
+import { useSituationOptions } from "@/components/SituationOptionsContext";
 
 export type ProtocolFormResult =
   | { ok: true; redirectTo?: `/protocols/${number}` }
@@ -36,6 +38,35 @@ export type ProtocolFormResult =
 // but deliberately below the app shell's largest work-surface modal.
 export const PROTOCOL_MODAL_CLASS =
   "flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white p-4 shadow-xl outline-none sm:max-h-[calc(100dvh-4rem)] sm:p-6 dark:bg-ink-900";
+
+// The protocol's "Activate situation" field. Same vocabulary, same widget, same
+// context as the situation picker on the supplement and medication forms (#1676):
+// they name the same thing, and the #221 rule says they read one options source.
+// Kept as its own component so the template-seed remount (the keyed field block
+// below) resets its controlled value the way the uncontrolled input it replaced did.
+function SituationField({
+  uid,
+  defaultValue,
+}: {
+  uid: string | number;
+  defaultValue: string;
+}) {
+  const options = useSituationOptions();
+  const [situation, setSituation] = useState(defaultValue);
+  return (
+    <Combobox
+      id={`pr-situation-${uid}`}
+      name="situation"
+      ariaLabel="Situation"
+      value={situation}
+      onChange={setSituation}
+      options={options}
+      allowFreeText
+      closeStopsPropagation
+      placeholder="e.g. Creatine loading"
+    />
+  );
+}
 
 const PRACTICE_TYPE_LABELS: Record<string, string> = {
   strength: "Strength",
@@ -231,7 +262,6 @@ export default function ProtocolForm({
       selectTemplate("");
     }
     onDone?.();
-    router.refresh();
   }
 
   const uid = protocol?.id ?? "new";
@@ -347,14 +377,11 @@ export default function ProtocolForm({
             <label className="label" htmlFor={`pr-situation-${uid}`}>
               Situation <span className="text-slate-400">(optional)</span>
             </label>
-            <input
-              id={`pr-situation-${uid}`}
-              name="situation"
-              className="input"
+            <SituationField
+              uid={uid}
               defaultValue={
                 protocol?.situation ?? activeTemplate?.situation ?? ""
               }
-              placeholder="e.g. Creatine loading"
             />
           </div>
           {(equipment.length > 0 || intakeItems.length > 0) && (

@@ -103,6 +103,9 @@ export default function ImportJobsToaster({
             });
           }
         }
+        // Survives the #1473 sweep: this is poll-driven. getImportJobStates is a read
+        // action with no revalidatePath, and the work that changed the rows ran in a
+        // background job, not in an action this client awaited.
         if (changed) router.refresh();
       }
 

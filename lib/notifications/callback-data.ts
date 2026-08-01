@@ -17,6 +17,13 @@ import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { OFFER_COLLAPSE_PREFIX, OFFER_EXPAND_PREFIX } from "./offer-tail";
+import {
+  isDigestCategory,
+  TUNE_COLLAPSE_PREFIX,
+  TUNE_EXPAND_PREFIX,
+  TUNE_TOGGLE_PREFIX,
+  type DigestCategory,
+} from "./digest-tune";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
@@ -1130,4 +1137,35 @@ export function parseDemoteCallback(data: unknown): DemoteCallback | null {
   const itemId = Number(itemStr);
   if (!profileId || !itemId || !date) return null;
   return { profileId, itemId, date };
+}
+
+// ---- The digest's ⚙️ Tune control (issue #1714) ------------------------------
+
+export interface TuneCallback {
+  profileId: number;
+  date: string;
+  // expand/collapse are pure keyboard edits — nothing is written. `toggle` is the
+  // ONE write this control makes, and it is the user's own declared preference.
+  action: "expand" | "collapse" | "toggle";
+  // Set only for `toggle`; a toggle token naming an unknown category is rejected
+  // outright rather than silently ignored.
+  category: DigestCategory | null;
+}
+
+// Parse a "tune:<profileId>:<date>" / "tunec:<profileId>:<date>" /
+// "tunet:<profileId>:<date>:<category>" token. `date` is the digest's own day: a tap
+// on YESTERDAY's message must not retune from a message whose content has rolled
+// over, the same staleness rule the offer tail applies.
+export function parseTuneCallback(data: unknown): TuneCallback | null {
+  if (typeof data !== "string") return null;
+  const [prefix, profStr, date, catStr] = data.split(":");
+  const profileId = Number(profStr);
+  if (!profileId || !date) return null;
+  if (prefix === TUNE_EXPAND_PREFIX)
+    return { profileId, date, action: "expand", category: null };
+  if (prefix === TUNE_COLLAPSE_PREFIX)
+    return { profileId, date, action: "collapse", category: null };
+  if (prefix === TUNE_TOGGLE_PREFIX && isDigestCategory(catStr))
+    return { profileId, date, action: "toggle", category: catStr };
+  return null;
 }
