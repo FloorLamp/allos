@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import {
   accessForProfile,
   requireSession,
@@ -10,14 +11,17 @@ import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection } from "@/lib/integrations/connections";
 import { getLastSuccessfulSyncAt } from "@/lib/queries";
+import { anyApiTokenWithScope } from "@/lib/api-tokens";
 import {
   identitySyncStatuses,
   listPendingIdentities,
-  listPortalAccounts,
   listPortalIdentities,
-  listPortals,
 } from "@/lib/portals";
-import { listVisiblePortalRunReports } from "@/lib/portal-visibility";
+import {
+  listVisiblePortalRegistry,
+  listVisiblePortalRunReports,
+} from "@/lib/portal-visibility";
+import { portalSetupStage } from "@/lib/portal-setup-stage";
 import { portalStatusLine } from "@/lib/portal-status";
 import { openSyncRequests } from "@/lib/portal-requests";
 import {
@@ -26,7 +30,6 @@ import {
   syncRequestCopy,
 } from "@/lib/sync-requests";
 import { today } from "@/lib/db";
-import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import PortalSetup from "./PortalSetup";
 
 export const dynamic = "force-dynamic";
@@ -46,14 +49,31 @@ export const dynamic = "force-dynamic";
 // profile ids would put that mapping in local config on every machine, and a stale local
 // mapping filing one person's records under another is the harm this whole design
 // prevents.
+//
+// ── A GUIDED FLOW, NOT A WALL OF CARDS (#1826) ───────────────────────────────
+//
+// Everything above was true and the page still rendered all of it at once: eight flat
+// sibling cards in an order that did not match the numbered steps it advertised. This
+// page now DERIVES the setup stage (lib/portal-setup-stage.ts, pure, unit-tested) and
+// renders only that stage's card with one next step. Maintenance — the registry, the
+// add forms, unbind, and the manual bind demoted to an explicit escape hatch — lives in
+// a collapsed "Manage portals & logins" section that any stage can open. Progressive
+// disclosure, not lockout.
+//
+// THE REGISTRY READ IS THE SCOPED ONE (#1796). This page used to read `listPortals()` /
+// `listPortalAccounts()` — the whole instance-wide vocabulary — and only the ADMIN card
+// was gated, which left a non-admin's sync-request rows naming every household's portals
+// and login nicknames. `listVisiblePortalRegistry` is the same predicate #1791/#1796
+// already ruled for the API twin, so the page narrows onto it. For an admin the two are
+// identical (an admin reaches every profile), so nothing an admin sees changes; for
+// everyone else this only ever removes rows. It is also what makes the derived stage
+// honest per viewer: an empty registry means "nothing here is yours", and the card that
+// renders for it names no portal.
 export default async function PatientPortalsPage() {
   const { login, profile } = await requireSession();
   const def = getIntegration("patient-portals")!;
   const conn = getConnection(profile.id, "patient-portals");
   const lastSync = getLastSuccessfulSyncAt(profile.id, "patient-portals");
-
-  const portals = listPortals();
-  const accounts = listPortalAccounts();
 
   // Bindings are shown for the profiles this LOGIN can reach. The stored table is
   // instance-wide (an admin view of "which patient goes where"), so the filtering happens
@@ -90,28 +110,46 @@ export default async function PatientPortalsPage() {
     login.role === "admin" || writableProfiles.length > 0;
   const pending = canManagePending ? listPendingIdentities() : [];
 
+  // The portal vocabulary this viewer may see (#1796), and the same `canSeeUnclaimed`
+  // population the pending list takes — one gate decides it for every surface.
+  const { portals, accounts } = listVisiblePortalRegistry(
+    [...accessibleIds],
+    canManagePending
+  );
+
   // OPEN sync requests (#1757), one per portal login at most. Formatted here through the
   // SAME pure formatter the Upcoming item and the digest line use, so the card and the
   // nudge describe one state. Read for the population that can act on it — the same gate
   // the pending list takes — since the button that raises one is gated that way too.
   const cardToday = today(profile.id);
+  const visibleAccountIds = new Set(accounts.map((a) => a.id));
   const syncRequests = canManagePending
-    ? openSyncRequests().map((r) => ({
-        accountId: r.accountId,
-        line: syncRequestCardLine(
-          syncRequestCopy({
-            portalName: r.portalName,
-            accountName: r.accountName,
-            accountImplicit: r.accountImplicit,
-            reason: r.reason,
-          }),
-          daysUntilExpiry(r.expiresAt, cardToday)
-        ),
-      }))
+    ? openSyncRequests()
+        .filter((r) => visibleAccountIds.has(r.accountId))
+        .map((r) => ({
+          accountId: r.accountId,
+          line: syncRequestCardLine(
+            syncRequestCopy({
+              portalName: r.portalName,
+              accountName: r.accountName,
+              accountImplicit: r.accountImplicit,
+              reason: r.reason,
+            }),
+            daysUntilExpiry(r.expiresAt, cardToday)
+          ),
+        }))
     : [];
 
   // Per-(login, patient) "Last synced" for the ACTIVE profile's runs.
   const statuses = identitySyncStatuses(profile.id, "patient-portals");
+
+  // Run reports are ACCOUNT-level and carry no profile_id — that is what puts a run
+  // there — so the account's reachability is what decides visibility (#1787): an account
+  // bound to a profile in `accessibleIds`, or (for the same population that sees
+  // `pending`) one bound to nobody yet. Scoped in the READ, not filtered here; a surface
+  // that filters what it was handed is one refactor away from leaking again, and the
+  // failure `message` is 500 characters of free text from an external tool.
+  const reports = listVisiblePortalRunReports([...accessibleIds], canManagePending);
 
   // The Status sentence (#1756). ONE pure function decides it, because the card used to
   // answer "has anything happened?" two ways at once: "No run reported yet." above a list
@@ -121,20 +159,27 @@ export default async function PatientPortalsPage() {
   const statusLine = portalStatusLine({
     lastSuccessAt: lastSync,
     connected: conn !== undefined,
-    // Run reports are ACCOUNT-level and carry no profile_id — that is what puts a run
-    // there — so the account's reachability is what decides visibility (#1787): an
-    // account bound to a profile in `accessibleIds`, or (for the same population that
-    // sees `pending`) one bound to nobody yet. Scoped in the READ, not filtered here; a
-    // surface that filters what it was handed is one refactor away from leaking again,
-    // and the failure `message` is 500 characters of free text from an external tool.
-    reports: listVisiblePortalRunReports([...accessibleIds], canManagePending),
+    reports,
     // The same list the card renders, so the sentence never points at a card the viewer
     // cannot see.
     pending,
   });
 
+  // WHERE THIS HOUSEHOLD IS (#1826). Every fact is the VIEWER's — the scoped registry,
+  // the scoped reports, the gated pending list — so the next step the page names is one
+  // its reader could actually take. The token fact is the single instance-wide input,
+  // and it is a bare boolean; see lib/api-tokens.ts for why it is not per-login.
+  const stage = portalSetupStage({
+    portalCount: portals.length,
+    hasUploadToken: anyApiTokenWithScope("upload:documents"),
+    reportCount: reports.length,
+    pendingCount: pending.length,
+  });
+
   return (
-    <div className="space-y-6">
+    // "flow" — a guided multi-step flow, which is now literally what this page is. The
+    // old uncapped stack ran setup prose to the full width of a desktop shell.
+    <PageContainer width="flow" className="space-y-6">
       <div>
         <Link
           href="/data?section=import"
@@ -145,42 +190,36 @@ export default async function PatientPortalsPage() {
         <PageHeader title={def.name} />
       </div>
 
-      <div className="card">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          {def.blurb}
-        </p>
-      </div>
-
-      <div className="card">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          How it works
-        </h2>
-        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-600 dark:text-slate-300">
+      {/* The five-step overview survives as a COLLAPSIBLE, not a permanent card (#1826).
+          Each stage below states its own next step in a sentence or two; this is here for
+          the person who wants the whole shape before they start, and for the one who
+          wants to check what comes after where they are. */}
+      <details
+        className="card text-sm text-slate-600 dark:text-slate-300"
+        data-testid="portals-how-it-works"
+      >
+        <summary className="cursor-pointer font-medium text-slate-800 dark:text-slate-100">
+          How this works, all five steps
+        </summary>
+        <p className="mt-3">{def.blurb}</p>
+        <ol className="mt-3 list-decimal space-y-1 pl-5">
+          <li>Add the portal you use, by name.</li>
           <li>
-            Register each portal below. If two people sign in to the same portal
-            with their own accounts, give each login a nickname.
-          </li>
-          <li>
-            Create an API token under{" "}
+            Create an API token with the <strong>Upload documents</strong>{" "}
+            capability under{" "}
             <Link
               href="/settings/tokens"
               className="text-brand-700 hover:underline dark:text-brand-300"
             >
               Settings → API tokens
-            </Link>{" "}
-            with the <strong>Upload documents</strong> capability. Give each
-            computer its own token, so retiring one machine does not disturb the
-            others.
+            </Link>
+            .
           </li>
           <li>
-            Run the companion tool on your computer. It signs in the way you
-            would — you type the two-factor code — and reports which patients
-            that login covers.
+            Run the companion tool on your computer. You type the two-factor
+            code; it reports which patients that login covers.
           </li>
-          <li>
-            Those patients appear here to be mapped to profiles. Map them once;
-            later runs land automatically.
-          </li>
+          <li>Map each reported patient to a profile, once.</li>
           <li>
             Documents land in{" "}
             <Link
@@ -192,14 +231,10 @@ export default async function PatientPortalsPage() {
             , same as any other import.
           </li>
         </ol>
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          The first run fetches your full history and can take several minutes —
-          the portal prepares the export on its own schedule. Later runs only
-          pick up what changed.
-        </p>
-      </div>
+      </details>
 
       <PortalSetup
+        stage={stage}
         portals={portals}
         accounts={accounts}
         identities={identities}
@@ -210,32 +245,9 @@ export default async function PatientPortalsPage() {
         writableProfiles={writableProfiles}
         isAdmin={login.role === "admin"}
         canManagePending={canManagePending}
+        statusLine={statusLine}
+        lastSuccessAt={lastSync}
       />
-
-      <div className="card">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Status
-        </h2>
-        <p
-          data-testid="portals-status-line"
-          data-tone={statusLine.tone}
-          className={
-            statusLine.tone === "attention"
-              ? "mt-1 text-sm text-amber-700 dark:text-amber-300"
-              : "mt-1 text-sm text-slate-600 dark:text-slate-300"
-          }
-        >
-          {statusLine.text}
-        </p>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          A run that finds nothing new still counts as a check — the tool
-          reports every run, so a quiet week reads as healthy rather than
-          broken.
-        </p>
-        <div className="mt-3">
-          <IntegrationSyncHistoryLink lastSuccessAt={lastSync} />
-        </div>
-      </div>
-    </div>
+    </PageContainer>
   );
 }
