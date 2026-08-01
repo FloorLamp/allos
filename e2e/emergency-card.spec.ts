@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { settledClick } from "./helpers";
 // Offline Emergency Card (issue #42), living as the #emergency section of the
 // Passport page since the #1042 phase-3 merge (the old /emergency route was
 // removed outright in #1635 and 404s). This spec runs in its OWN unauthenticated
@@ -217,9 +218,17 @@ test("switching profiles via the household strip wipes the previous profile's em
   // a switch affordance that never ran the old per-button cleanup. Wait on the
   // identity bar naming the new profile: the definitive switch signal.
   await page.goto("/");
-  await page.getByRole("main").getByTestId("household-chip-2").click();
+  // settledClick, not a bare click: the chip is a `<form action={switchProfileAction}>`
+  // submit whose POST + revalidate + redirect re-renders the DASHBOARD — the heaviest
+  // page in the app — so a bare click leaves the assertion racing that render. Same
+  // named ceiling family-helpers' switchToProfile uses for the same reason.
+  await settledClick(
+    page,
+    page.getByRole("main").getByTestId("household-chip-2")
+  );
   await expect(page.getByTestId("profile-identity-bar")).toContainText(
-    "Riley (child)"
+    "Riley (child)",
+    { timeout: 20_000 }
   );
 
   // The previous profile's offline card is wiped from this device …

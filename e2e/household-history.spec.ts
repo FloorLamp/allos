@@ -199,11 +199,13 @@ test.describe("Care-trail surface (#1373 Part 2)", () => {
     await page.goto("/records/history/visits");
     await expect(page.getByTestId("household-view-link")).toHaveCount(0);
 
-    // The episodes surface renders their own trail — no view strip, no bounce (the old
-    // /household/history route is gone).
+    // The episodes surface renders their own trail — and a single-profile login
+    // grows no identity chrome at all (#1801 gates the whole apparatus on
+    // multiProfile), so there is nothing to switch or merge here. No bounce
+    // either: the old /household/history route is gone.
     await page.goto("/medical/episodes");
     await expect(page.getByTestId("care-trail-kind-toggle")).toBeVisible();
-    await expectInView(page, 1);
+    await expect(page.getByTestId("profile-identity-bar")).toHaveCount(0);
 
     await close();
   });
