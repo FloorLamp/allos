@@ -560,6 +560,89 @@ the subject's own recent average — never a judgment, never a streak, per the
 #992/#716 contract), **symptoms**, and **overnight data arrival**. Sync
 STALENESS is deliberately NOT re-derived in the collector: #1685 already owns it
 end to end and already renders it in this same message's Today section.
+
+## Live-message reconciliation (#1779)
+
+**The defect.** Every inline keyboard the app sent was a frozen snapshot that
+in-app writes never corrected. Take a dose, mark it in the app, come back to
+Telegram six hours later: the reminder still sat in the chat with live
+"✅ Taken" buttons, presenting the dose as outstanding. At that distance the
+chat artifact is trusted more than memory, so the message actively invited a
+re-take — the safety tier lying in the OUTBOUND direction (the #1716 family, one
+channel over). Sent-message edits had exactly three callers (the callback
+handlers, the quick-log flow, the send path's strip-previous guard), no Server
+Action touched them, and the only stored pointers were the one-per-profile food
+nudge (#947) and household round (#1719), kept to close the PREVIOUS message on
+the NEXT send rather than to sync state.
+
+**The honesty rule, which needs no second state model.** _A button whose tap
+would now be refused or answered "already done" by its own typed outcome must not
+remain rendered as actionable._ The typed-outcome layer already knows that answer
+for every family; reconciliation renders it PROACTIVELY. So a reconciler is one
+read-only predicate over the SAME computation that composed the send
+(`collectWindowDoses` for a dose session, `getWorkoutPresence` for a live draft,
+`buildFoodNudge` for the food counts) — never a second dueness model or a second
+renderer (#221).
+
+**The substrate.** Migration 135's `notify_messages` records one pointer per
+DELIVERED keyboard-bearing message — `(profile_id, chat_id, message_id, kind,
+date, keyboard, sent_at)` — written in the Telegram chokepoint, the only place
+holding both the sent message id and the message it was rendered from. It is per
+DELIVERY, not per send: one send fans out to N deduped chats (#1072), so a dose
+confirmed from a family group's copy corrects the copies in every other
+subscriber's chat. The delivered (post-cap) keyboard is stored because Telegram
+has no "read my message" API — that blob is the only record of what a chat is
+showing. Retention is a named cleanup class (#203): pointers past Telegram's
+~48h edit horizon are pruned on every sweep.
+
+**The sweep** (`reconcileProfileMessages`, one pass per profile per tick) applies
+one pure decision (`lib/notifications/reconcile-core.ts`):
+
+- nothing resolved → **no edit at all** (pinned by an edit-call count in the DB
+  tier — a reconcile that edits every tick is a rate-limit incident);
+- partially resolved → strip exactly the dead buttons, or re-render through the
+  family's own rebuilder (the dose family reuses the identical
+  `slotSessionForKeyboard` → `renderMergedIntakeMessage` path the TAP rebuild
+  runs);
+- fully resolved → `closeMessage` with an honest closing line;
+- **day rolled over** in the profile's timezone → strip or close regardless of
+  state, since yesterday's tokens carry yesterday's date. This also closes the
+  residual #947 gap: the last nudge of an evening used to keep a live keyboard
+  until the next send, which may never come;
+- a dead pointer (message deleted, chat gone, past the edit horizon) → the
+  best-effort edit fails, the pointer is dropped, nothing is retried forever.
+
+**Edits, never sends.** Everything routes through the chokepoint's
+`closeMessage` / `updateMessageKeyboard` / `rebuildMessage`. Telegram does not
+notify on an edit, so no interruption is spent; reconciliation only ever REDUCES
+what a chat claims, which is the direction the contact-consent rule allows
+unilaterally (docs/internals/findings.md §2).
+
+**The safety-rule check.** Closing a reminder because the dose was actually
+logged is state-driven, not dismissal-driven — the dueness is genuinely gone from
+the ledger, so "dose reminders are never silenced by suppression" survives
+intact. A reconciler may only read real ledger state and **never** the
+findings-suppression bus; the practice family reads raw frequency progress rather
+than `behindPractices` for exactly this reason, because the latter applies the
+bus. An Upcoming dismissal still never touches a safety message.
+
+**The completeness guard** (`lib/__tests__/reconcile-registry.test.ts`). A source
+scan harvests every callback-token prefix the notification modules can mint and
+fails the build unless each one is either owned by a family in
+`RECONCILE_PREFIXES` or declared **inert** with a written reason (a view control
+— "▲ Collapse", "⚙️ Tune", "➕ Show more", the `/dose` access list — makes no
+state claim, so it cannot lie and must not keep a resolved message alive). It
+also fails on a stale entry. An UNKNOWN prefix is deliberately not treated as
+inert: an unreasoned button leaves its message untouched rather than being closed
+on a guess.
+
+**Deliberately out of scope.** No write-path coupling: the Server Action layer
+stays free of Telegram calls. A fire-and-forget edit from the action layer could
+be added on top later, but it cannot replace this (no retry, a second concurrent
+writer of message state, a call site to remember at every write, and a burst
+against rate limits when items are logged one by one). Web Push is transient and
+has no retroactive-edit story.
+
 **A quiet 24h produces no section at all** — the digest does not manufacture news.
 
 **Per-category demotion — the ⚙️ Tune control (#1714).** As the digest's coverage

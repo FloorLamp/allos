@@ -244,6 +244,14 @@ export const OWNED_TABLES = [
   // "Ochsner MyChart" regardless of which family members it covers, so it carries no
   // profile_id and is intentionally absent from this list.)
   "portal_identities",
+  // Live Telegram message pointers (#1779): one row per DELIVERED keyboard-bearing
+  // message, so the tick can reconcile what a chat still displays against the ledger.
+  // Profile-owned because a delivered message is ABOUT a profile (the fan-out's
+  // subject) — and because a pointer that outlived its subject would ask a reconciler
+  // to rebuild a message for someone who no longer exists. Unlike the other entries
+  // this table grows with SENDS, so it carries a named cleanup class (#203): the
+  // reconcile sweep drops pointers past Telegram's ~48h edit horizon on every pass.
+  "notify_messages",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];
