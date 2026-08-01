@@ -32,7 +32,10 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
   const profileId = scope.actingProfileId;
   const multi = scope.viewIds.length > 1;
   const view = getAllergiesView(profileId);
-  const labOnly = view.filter((a) => a.origin === "labs");
+  // Keep corroborating IgE evidence too: `both` is a documented allergy with a
+  // matching positive lab, and splitting the manager from the evidence must not
+  // make that lab result disappear from this surface.
+  const labSensitizations = view.filter((a) => a.origin !== "documented");
   const stored = stampSubjects(
     scope,
     readForProfiles(scope.viewIds, (pid) => getAllergies(pid))
@@ -97,7 +100,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
             />
           </div>
 
-          {labOnly.length > 0 ? (
+          {labSensitizations.length > 0 ? (
             <div className="card">
               <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
                 Lab sensitizations
@@ -107,7 +110,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
                 sensitization, not by themselves a documented allergy.
               </p>
               <ul className="space-y-3">
-                {labOnly.map((a) => (
+                {labSensitizations.map((a) => (
                   <li key={a.key}>
                     <div className="font-medium text-slate-800 dark:text-slate-100">
                       {a.substance}

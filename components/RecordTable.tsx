@@ -217,7 +217,14 @@ export default function RecordTable<T extends { id: number }>({
                         ? `col-start-1 ${
                             multiView ? "row-start-2" : "row-start-1"
                           } block pr-2 sm:table-cell sm:px-3 sm:py-2`
-                        : "col-span-2 mt-1 flex items-start gap-2 p-0 text-sm sm:table-cell sm:px-3 sm:py-2"
+                        : `col-span-2 mt-1 flex items-start gap-2 p-0 text-sm sm:px-3 sm:py-2 ${
+                            // A caller that declares `hidden` also owns the
+                            // breakpoint that reveals this column (often md).
+                            // Adding sm:table-cell here would override it early.
+                            col.cellClassName?.split(/\s+/).includes("hidden")
+                              ? ""
+                              : "sm:table-cell"
+                          }`
                     } ${col.cellClassName ?? ""}`}
                   >
                     {i > 0 ? (

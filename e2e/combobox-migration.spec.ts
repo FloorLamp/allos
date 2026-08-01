@@ -67,6 +67,10 @@ test.describe("Combobox migration (#1176/#1177)", () => {
   }) => {
     test.slow();
     await page.goto("/records/specialty/dental");
+    await settledClick(
+      page,
+      page.getByTestId("add-dental-record-panel-toggle")
+    );
     const form = page.getByTestId("dental-procedure-form");
     await expect(form).toBeVisible();
     await form.getByLabel("Procedure / finding").fill(FINDING);
@@ -117,6 +121,10 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // The created provider now exists — reopening the picker offers it (proving the
     // create-on-type name reached the registry).
     await page.reload();
+    await settledClick(
+      page,
+      page.getByTestId("add-dental-record-panel-toggle")
+    );
     await page
       .getByTestId("dental-procedure-form")
       .getByRole("combobox", { name: "Provider" })

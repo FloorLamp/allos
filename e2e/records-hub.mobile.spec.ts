@@ -79,6 +79,7 @@ test("a Visits focus deep link opens entry without secondary description chrome 
   await expect(dialog).toBeVisible();
   await hydratedClick(page, dialog.getByRole("button", { name: "Close" }));
   await expect(dialog).toBeHidden();
+  await expect(page.getByTestId("add-visit-panel-toggle")).toBeFocused();
   const intro = page.getByTestId("records-pane-intro");
   await expect(
     intro.getByText("Manage upcoming appointments and your visit history.")
@@ -118,4 +119,21 @@ test("the first data row fits in the first viewport on key record panes (#1497)"
     expect(box).not.toBeNull();
     expect(box!.y).toBeLessThan(VIEWPORT_HEIGHT);
   }
+});
+
+test("record tables keep md-only columns hidden at the sm breakpoint", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 700, height: VIEWPORT_HEIGHT });
+  await page.goto("/records/problems/conditions");
+
+  const row = page
+    .getByTestId("records-conditions")
+    .locator("tbody tr")
+    .first();
+  const onsetCell = row.locator("td").nth(3);
+  await expect(onsetCell).toBeHidden();
+
+  await page.setViewportSize({ width: 800, height: VIEWPORT_HEIGHT });
+  await expect(onsetCell).toBeVisible();
 });

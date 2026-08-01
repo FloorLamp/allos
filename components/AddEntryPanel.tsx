@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -78,7 +79,13 @@ export default function AddEntryPanel({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const closeModal = useCallback(() => setOpen(false), []);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeModal = useCallback(() => {
+    setOpen(false);
+    // The dialog's focused control is about to unmount. Return keyboard users to
+    // the CTA that opened it after React commits the close.
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
   const gap = presentation === "modal" ? "" : dense ? "mb-5" : "mb-6";
 
   if (presentation === "modal") {
@@ -90,6 +97,7 @@ export default function AddEntryPanel({
         className={gap}
       >
         <button
+          ref={triggerRef}
           type="button"
           data-testid={
             toggleTestId ?? (testId ? `${testId}-toggle` : undefined)
