@@ -140,6 +140,10 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
   },
   "cycle-bleeding:": (t) =>
     part(t, 0) ? `Long period — ${part(t, 0)}` : "Long-period note",
+  // #1680: keyed on the DECLARED trying-to-conceive start. The label names the
+  // topic without restating the elapsed months — a silenced fertility prompt
+  // should read as calmly here as it did where it was dismissed.
+  "ttc-workup:": () => "Fertility conversation suggestion",
   "mood-obs:": () => "Mood observation",
   "sleep-mood:": () => "Sleep & mood observation",
   "med-dup:": (t) => {

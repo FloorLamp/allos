@@ -82,6 +82,9 @@ import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { prolongedBleedingObservations } from "./cycle-observation";
 import { listCyclePeriods } from "./cycle-store";
+import { decideWorkupPrompt } from "./ttc";
+import { getTtcStart } from "./settings/profile-attrs";
+import { getRiskAttributes } from "./settings";
 import { isPrn } from "./supplement-schedule";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import {
@@ -432,6 +435,7 @@ export function collectCoachingFindings(
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
     ...buildCycleBleedingFindings(profileId, today),
+    ...buildTtcWorkupFindings(profileId, today),
     // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
     // set (so a decline rides the shared bus and silences every surface), behind the
     // observational domains. NOTE (#1533): the order is no longer load-bearing for the
@@ -711,6 +715,49 @@ export function buildCycleBleedingFindings(
       actionLabel: "View cycle log",
     })
   );
+}
+
+// ---- Trying-to-conceive workup prompt (#1680) ------------------------------
+
+// A calm note once someone has been trying for the standard threshold — 12 months, or 6
+// from age 35 — suggesting that a clinician conversation is the usual next step.
+//
+// COACHING tier by hard product contract (#449): it joins collectCoachingFindings, its
+// dedupeKey (`ttc-workup:<declared start>`, TTC_WORKUP_PREFIX registered in
+// RULE_FINDING_PREFIXES) rides the shared suppression bus, and it NEVER notifies and never
+// reaches the non-hideable hero. TTC carries no obligation (the attention doctrine), and a
+// fertility timeline arriving as a push would be the single worst place for it.
+//
+// Gated on the DECLARED start only — nothing here infers that someone is trying — and it
+// goes silent during a pregnancy. The copy states elapsed time and the usual next step:
+// no cause, no odds, no encouragement, no milestone (the #716/#992 sensitivity precedent).
+// No owned SQL added here.
+export function buildTtcWorkupFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  // Adult-only content, the same `!isMinor` line the other adult-topic surfaces use.
+  if (isMinor(getUserAge(profileId))) return [];
+  const prompt = decideWorkupPrompt({
+    ttcStart: getTtcStart(profileId),
+    today,
+    age: getUserAge(profileId),
+    pregnant: getRiskAttributes(profileId).pregnant,
+  });
+  if (!prompt) return [];
+  return [
+    {
+      domain: "ttc-workup",
+      dedupeKey: prompt.dedupeKey,
+      title: prompt.title,
+      detail: prompt.detail,
+      tone: "info",
+      evidence:
+        "Counted from the start date you recorded — informational, not a diagnosis.",
+      actionHref: "/medical/cycles",
+      actionLabel: "View cycle log",
+    },
+  ];
 }
 
 // ---- Nutrition input (#580): behind-target food-habit observations --------

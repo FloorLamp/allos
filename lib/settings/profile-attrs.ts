@@ -115,6 +115,26 @@ export function setUserReproductiveStatus(
   setProfileSetting(profileId, "reproductive_status", status);
 }
 
+// ---- Trying to conceive (issue #1680) ----
+// The DECLARED date someone started trying, and the ONLY thing that turns the TTC
+// surfaces on. Declared-only, forever: logging an LH test or a waking temperature
+// is not a declaration of intent, and nothing but a user action writes this key.
+// Clearing it (or declaring a pregnancy) stops TTC tracking; the observations
+// themselves stay, because they are recorded facts. As sensitive as pregnancy —
+// same per-profile posture as the rest of the reproductive surfaces, and it never
+// travels to a cross-profile digest or household card.
+export function getTtcStart(profileId: number): string | null {
+  return getProfileSetting(profileId, "ttc_start_date") ?? null;
+}
+
+export function setTtcStart(profileId: number, date: string | null) {
+  if (date === null) {
+    deleteProfileSetting(profileId, "ttc_start_date");
+    return;
+  }
+  setProfileSetting(profileId, "ttc_start_date", date);
+}
+
 // ---- Smoking history (issue #83) ----
 // A per-profile STRUCTURED smoking record — status (never | former | current;
 // absent = unknown, the tri-state the risk-gated screening rules need), pack-years,

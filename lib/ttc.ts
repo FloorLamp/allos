@@ -6,7 +6,7 @@
 // reading is a vocabulary extension of a shipped observation store:
 //
 //   LH test        → medical_records  (a dated test result with a value/interpretation)
-//   BBT            → metric_samples   (a daily waking temperature, canonical °C)
+//   BBT            → metric_samples   (a daily waking temperature, canonical °F)
 //   Cervical mucus → symptom_logs     (a categorical daily observation, ordinal 1–4)
 //
 // WHAT THIS MODULE WILL NOT DO. No fertility SCORE and no "chance today" percentage: the
@@ -32,9 +32,11 @@ export const NOT_CONTRACEPTION_NOTE =
 // carries no canonical_name for exactly that reason.
 export const LH_TEST_RECORD_NAME = "Ovulation Test (LH)";
 
-// metric_samples.metric for the waking temperature. Canonical storage is °C (the units
-// rule); the login's temperature preference converts at the display boundary only.
-export const BBT_METRIC = "bbt_c";
+// metric_samples.metric for the waking temperature. Canonical storage is °F — the app has
+// ONE canonical temperature scale (lib/units.ts) and a second one here would fork the
+// conversion the units rule exists to prevent. The login's temperature preference converts
+// at the DISPLAY boundary only, through the shared fmtTemp.
+export const BBT_METRIC = "bbt_f";
 
 // symptom_logs.symptom for the daily mucus observation. Curated in lib/symptoms.json with
 // its OWN ordinal scale, so the stored 1–4 never renders as "mild → very severe".
@@ -240,9 +242,10 @@ export const BBT_BASELINE_READINGS = 6;
 // How many consecutive readings must stay above the baseline for the rise to count.
 export const BBT_RISE_SUSTAINED_READINGS = 3;
 
-// The rise, in °C, at least one sustained reading must clear above the baseline maximum.
-// Below this a "rise" is measurement noise (waking time, thermometer, a poor night).
-export const BBT_RISE_THRESHOLD_C = 0.2;
+// The rise, in canonical °F, at least one sustained reading must clear above the baseline
+// maximum. Below this a "rise" is measurement noise (waking time, thermometer, a poor
+// night). 0.4 °F is the classic threshold — the same number as the ~0.2 °C usually quoted.
+export const BBT_RISE_THRESHOLD_F = 0.4;
 
 // The fewest baseline readings that make the comparison honest. Gaps are normal — people
 // miss mornings — so the rule works over READINGS, not calendar days; but a "baseline" of
@@ -251,15 +254,15 @@ export const BBT_MIN_BASELINE_READINGS = 4;
 
 export interface DatedTemperature {
   date: string;
-  celsius: number;
+  degF: number; // canonical °F
 }
 
 export interface OvulationConfirmation {
   // The estimated ovulation day: the reading BEFORE the first sustained high one.
   ovulationDate: string;
   firstHighDate: string;
-  baselineC: number; // the pre-rise maximum the rise is measured against
-  riseC: number; // the largest sustained reading minus the baseline, rounded to 2dp
+  baselineF: number; // the pre-rise maximum the rise is measured against, canonical °F
+  riseF: number; // the largest sustained reading minus the baseline, rounded to 2dp
 }
 
 function round2(n: number): number {
@@ -272,7 +275,7 @@ function round2(n: number): number {
 // The rule (classic "3 over 6", gap-tolerant): for each candidate index i, take the up-to-
 // BBT_BASELINE_READINGS readings before it; require at least BBT_MIN_BASELINE_READINGS of
 // them; require the next BBT_RISE_SUSTAINED_READINGS readings to ALL exceed that
-// baseline's maximum; and require at least one of them to clear it by BBT_RISE_THRESHOLD_C.
+// baseline's maximum; and require at least one of them to clear it by BBT_RISE_THRESHOLD_F.
 // Estimated ovulation is the reading immediately BEFORE the first high one.
 export function confirmOvulation(
   readings: DatedTemperature[]
@@ -285,15 +288,15 @@ export function confirmOvulation(
     if (baseline.length < BBT_MIN_BASELINE_READINGS) continue;
     const high = sorted.slice(i, i + BBT_RISE_SUSTAINED_READINGS);
     if (high.length < BBT_RISE_SUSTAINED_READINGS) break; // not enough readings yet
-    const baselineMax = Math.max(...baseline.map((r) => r.celsius));
-    if (!high.every((r) => r.celsius > baselineMax)) continue;
-    const rise = Math.max(...high.map((r) => r.celsius)) - baselineMax;
-    if (rise < BBT_RISE_THRESHOLD_C) continue;
+    const baselineMax = Math.max(...baseline.map((r) => r.degF));
+    if (!high.every((r) => r.degF > baselineMax)) continue;
+    const rise = Math.max(...high.map((r) => r.degF)) - baselineMax;
+    if (rise < BBT_RISE_THRESHOLD_F) continue;
     return {
       ovulationDate: sorted[i - 1].date,
       firstHighDate: sorted[i].date,
-      baselineC: round2(baselineMax),
-      riseC: round2(rise),
+      baselineF: round2(baselineMax),
+      riseF: round2(rise),
     };
   }
   return null;
