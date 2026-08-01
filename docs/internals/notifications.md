@@ -621,7 +621,7 @@ corrupted; what is spent twice is the rate-limit budget the zero-call steady sta
 exists to protect. The pointer's keyboard is therefore treated as a lifecycle field
 with an atomic transition (AGENTS.md, the `demoteIntakeObligation` shape): each pass
 **claims** the transition — old blob → new blob, or a `DELETE` under the same witness
-for a close — *before* it touches the network, and only the winner calls Telegram
+for a close — _before_ it touches the network, and only the winner calls Telegram
 (`claimMessagePointerKeyboard` / `claimMessagePointerClose`). Claiming afterwards
 would leave both passes calling the API, which is the whole cost being avoided. The
 witness is the stored blob **verbatim**, never a re-serialization: a round-trip that
