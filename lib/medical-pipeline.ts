@@ -106,6 +106,7 @@ import {
   clinicalDuplicateMessage,
   clinicalKeyForInput,
 } from "@/lib/clinical-content-key";
+import { recordCoverageMarker } from "@/lib/document-coverage";
 export { computeReprocessAllCost } from "@/lib/medical-pipeline/reprocess-cost";
 
 const log = createLogger("medical");
@@ -274,7 +275,9 @@ export interface IngestOutcome {
   //                      offered health record is already imported from another document
   //                      of this profile (#1780). The one an acquirer hits repeatedly,
   //                      because a portal regenerates its container on every collection
-  //                      and the byte hash therefore never repeats.
+  //                      and the byte hash therefore never repeats. Still no row — but a
+  //                      COVERAGE MARKER is written (#1828) so the inventory can put this
+  //                      hash in its `covered` list and the client stops re-offering it.
   refusal: "blocked" | "already-held" | "already-imported" | null;
   // This upload CLEARED a content-hash tombstone: the user had deleted these bytes and
   // a human has now put them back. Human paths only — an acquirer can never set it,
@@ -549,6 +552,13 @@ export async function ingestMedicalUpload(
     // never byte-stable, so an acquirer re-collecting daily would land a fresh marker row
     // every single day and inflate the import feed without bound.
     if (acquirer) {
+      // …but the REFUSAL IS REMEMBERED (#1828). Nothing is stored, so this hash appears
+      // in neither `held` nor `deleted`, and #1776's "send what is in neither list" rule
+      // therefore told every acquirer to offer it again on every run, forever. The
+      // marker is what lets the inventory answer a third list — evidence only: whether
+      // the coverage still holds is recomputed at read, so deleting the covering document
+      // silently makes this file offerable again with nothing to tell the client.
+      recordCoverageMarker(profileId, contentHash, reserved.key);
       return {
         docId: null,
         refusal: "already-imported",

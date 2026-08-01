@@ -6,6 +6,7 @@ import { parseUploadTarget } from "@/lib/acquirer-identity";
 import { resolvePortalIdentity } from "@/lib/portals";
 import { heldDocumentHashes } from "@/lib/medical-pipeline/storage";
 import { tombstonedDocumentHashes } from "@/lib/document-tombstones";
+import { coveredDocumentHashes } from "@/lib/document-coverage";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 // THE DOCUMENT INVENTORY (issue #1776) — "what does allos have for this identity?"
@@ -28,7 +29,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 // answer, no rows are created, and a deletion is noticed on the NEXT run rather than
 // never.
 //
-// ── THREE STATES, NOT TWO — AND THAT IS THE WHOLE SAFETY ARGUMENT ────────────
+// ── FOUR STATES, NOT TWO — AND THAT IS THE WHOLE SAFETY ARGUMENT ─────────────
 //
 // A bare `held` list would be actively dangerous, because the obvious client behaviour
 // it invites — diff against it and send the difference — would RESURRECT every document
@@ -39,18 +40,30 @@ import { checkRateLimit } from "@/lib/rate-limit";
 //
 //   held    — hashes with stored bytes for this identity's profile.
 //   deleted — content-hash tombstones (#1777), written when a user deletes a document.
+//   covered — hashes allos REFUSED as duplicates (#1828): it stored nothing, but it
+//             already holds every clinical entry those bytes carry, under other packaging.
 //
-// A client sends exactly the hashes in NEITHER list. That is what makes the contract
+// A client sends exactly the hashes in NONE of the three. That is what makes the contract
 // safe for a client with NO local state at all — it needs no memory of its own, which is
-// precisely what made the old design fail. A hash absent from both after a previous send
-// means the document is genuinely gone WITHOUT a deliberate delete (lost, corrupted):
+// precisely what made the old design fail. A hash absent from all three after a previous
+// send means the document is genuinely gone WITHOUT a deliberate delete (lost, corrupted):
 // re-sending it is correct, and that is the reconciliation this endpoint exists for.
+//
+// THE THIRD LIST CLOSES A LOOP THE FIRST TWO COULD NOT EXPRESS. A `duplicate` refusal
+// stores nothing (#1781) — no row, no hash — so its bytes were in neither `held` nor
+// `deleted`, and the two-list rule told every acquirer to offer them again on every run,
+// forever. #1786 made that an ORDINARY configuration (one person, two portal logins, one
+// profile) rather than an anomaly, which is what turned a seam into a permanent re-upload.
+// The list is recomputed from stored evidence on every read (lib/document-coverage.ts), so
+// when the covering document is deleted the hash silently leaves and the client re-offers
+// — the staleness a client-side memory of "it said duplicate" could never avoid.
 //
 // THE LISTS ARE DISJOINT BY CONSTRUCTION, not by filtering here: a delete removes the
 // stored row as it writes the tombstone, a human re-upload clears the tombstone as it
-// stores, and a reassignment clears the destination's. If they ever overlapped, the
-// client's "in neither list" rule would still be safe — it would simply not send — so
-// the invariant is load-bearing for freshness, never for safety.
+// stores, a reassignment clears the destination's, and a coverage marker whose own bytes
+// became held stops being answered as covered. If they ever overlapped, the client's
+// "in no list" rule would still be safe — it would simply not send — so the invariant is
+// load-bearing for freshness, never for safety.
 //
 // DELETIONS STAY DEAD SERVER-SIDE, NOT BY CLIENT CONVENTION. This endpoint is only the
 // polite half. The upload path REFUSES a tombstoned hash outright (#1777), so a client
@@ -169,5 +182,9 @@ export async function GET(req: Request): Promise<Response> {
     profile: profileId,
     held: heldDocumentHashes(profileId),
     deleted: tombstonedDocumentHashes(profileId),
+    // The third list (#1828). Additive on the wire: a client written against the two-list
+    // contract keeps working unchanged — it simply keeps re-offering what this list would
+    // have told it to stop offering, which is exactly today's behaviour.
+    covered: coveredDocumentHashes(profileId),
   });
 }
