@@ -104,7 +104,7 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     expect(onHand(itemId)).toBe(7);
     let over = getPrnOverMaxItems(profileId, date);
     expect(over.map((o) => o.id)).toContain(itemId);
-    expect(over.find((o) => o.id === itemId)!.count).toBe(3);
+    expect(over.find((o) => o.id === itemId)!.total).toBe(3);
 
     // Delete one administration → the derived window recomputes (count 2, no longer
     // over the max of 2) and supply is re-credited 7 → 8.
@@ -123,7 +123,7 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     expect(getRedoseArmingState(profileId, itemId, date).countToday).toBe(3);
     expect(onHand(itemId)).toBe(7);
     over = getPrnOverMaxItems(profileId, date);
-    expect(over.find((o) => o.id === itemId)!.count).toBe(3);
+    expect(over.find((o) => o.id === itemId)!.total).toBe(3);
     // The restored row is a fresh id (never resurrects the deleted primary key).
     expect(adminIds(itemId)).not.toContain(logId);
   });

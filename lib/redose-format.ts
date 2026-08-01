@@ -5,7 +5,11 @@
 // computation"). INFORMATIONAL only: the copy states elapsed time against the user's
 // OWN confirmed numbers — never "you can take more".
 
-import type { RedoseStatus } from "./prn-redose";
+import type {
+  PrnDayExposure,
+  PrnExposureBasis,
+  RedoseStatus,
+} from "./prn-redose";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
 
 // A short "6h" / "6.5h" for an elapsed/remaining hour count, one decimal place at
@@ -25,6 +29,29 @@ export function countFragment(
   return maxDailyCount == null
     ? `${countToday} today`
     : `${countToday} of ${maxDailyCount} today`;
+}
+
+// A milligram value for copy: at most one decimal place, no trailing ".0".
+export function mgLabel(mg: number): string {
+  return String(Math.round(mg * 10) / 10);
+}
+
+// The "N of M" fragment on whatever basis the day's exposure was HONESTLY
+// computable on (#1854): milligrams when the amount-aware ceiling applied
+// ("1200 of 2400 mg today", "at least 1600 of 2400 mg today" when some doses
+// carried no parseable amount), else the plain administration count. One
+// formatter so the card, the widget, the Telegram list and the redose notice
+// state the same basis — and never imply mg precision the day doesn't have.
+export function exposureFragment(
+  exposure: PrnDayExposure | null,
+  countToday: number,
+  maxDailyCount: number | null
+): string {
+  if (!exposure || exposure.basis === "count") {
+    return countFragment(countToday, maxDailyCount);
+  }
+  const lead = exposure.unknownAmounts > 0 ? "at least " : "";
+  return `${lead}${mgLabel(exposure.total)} of ${mgLabel(exposure.max)} mg today`;
 }
 
 // The one-shot redose NOTICE message (title + body) for the fire case. The title
@@ -49,6 +76,10 @@ export function redoseNoticeMessage(input: {
   countToday: number;
   maxDailyCount: number;
   sinceName?: string | null;
+  // The day's amount-aware exposure (#1854); the count fragment then reads
+  // milligrams on the same basis the ceiling was judged on. Absent/null keeps
+  // the plain count.
+  exposure?: PrnDayExposure | null;
 }): { title: string; body: string } {
   const at = input.lastClock ? ` (${input.lastClock})` : "";
   const since = input.sinceName?.trim() || input.name;
@@ -63,7 +94,11 @@ export function redoseNoticeMessage(input: {
     title: `💊 Redose window open: ${who}${input.name}`,
     body:
       `${hoursLabel(input.sinceHours)} since ${medication}${at} — your minimum ` +
-      `interval has passed · ${countFragment(input.countToday, input.maxDailyCount)}.`,
+      `interval has passed · ${exposureFragment(
+        input.exposure ?? null,
+        input.countToday,
+        input.maxDailyCount
+      )}.`,
   };
 }
 
@@ -83,7 +118,11 @@ export function redoseCardLabel(
   familyMemberCount = 1
 ): string | null {
   if (!status) return null;
-  const count = countFragment(status.countToday, status.maxDailyCount);
+  const count = exposureFragment(
+    status.exposure,
+    status.countToday,
+    status.maxDailyCount
+  );
   const across =
     familyMemberCount > 1 ? ` across ${familyMemberCount} items` : "";
   if (status.atMax) return `Max reached · ${count}${across}`;
@@ -152,4 +191,44 @@ export function prnLogAnswerText(
   if (!logged) return base;
   const verdict = redoseCardLabel(status, familyMemberCount);
   return verdict ? `${base} · ${verdict}` : base;
+}
+
+// ---- The over-max care finding's detail line (#798 / #1027 / #1854) ---------
+//
+// One formatter for the `prn-max:<itemId>` finding so every surface it reaches
+// (Upcoming, the attention hero, the digest) phrases the SAME verdict — and
+// states the BASIS it was computed on. Milligrams read "2400 mg logged today …
+// max of 1200 mg per day" (with an honest "At least" lead when some doses had no
+// recorded amount — the mg lower bound that is already past the ceiling); the
+// count fallback reads "5 doses logged today … max of 4 per day", never implying
+// mg precision the day's amounts don't carry. A multi-item family names every
+// member (#531 — label by what the count spans).
+export function prnOverMaxDetail(input: {
+  basis: PrnExposureBasis;
+  total: number;
+  max: number;
+  unknownAmounts: number;
+  memberNames?: string[];
+}): string {
+  const mg = input.basis === "mg";
+  const logged = mg
+    ? `${input.unknownAmounts > 0 ? "At least " : ""}${mgLabel(input.total)} mg ` +
+      `logged today` +
+      (input.unknownAmounts > 0
+        ? ` (${input.unknownAmounts} ${
+            input.unknownAmounts === 1 ? "dose" : "doses"
+          } had no recorded amount)`
+        : ` (summed from your logged dose amounts)`)
+    : `${input.total} ${input.total === 1 ? "dose" : "doses"} logged today`;
+  const ceiling = mg
+    ? `${mgLabel(input.max)} mg per day`
+    : `${input.max} per day`;
+  const vs = input.memberNames?.length
+    ? `across ${input.memberNames.join(" + ")} vs the most conservative ` +
+      `confirmed max of ${ceiling}`
+    : `vs your confirmed max of ${ceiling}`;
+  return (
+    `${logged} ${vs}. Informational — if this looks wrong, adjust the log; ` +
+    `if you're in pain, contact your clinician.`
+  );
 }
