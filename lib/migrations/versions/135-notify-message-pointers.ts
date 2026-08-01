@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 134 (issue #1779): the LIVE MESSAGE POINTER — one row per delivered
+// Migration 135 (issue #1779): the LIVE MESSAGE POINTER — one row per delivered
 // keyboard-bearing Telegram message, so the tick can reconcile what a chat still
 // DISPLAYS against what the ledger actually says.
 //
@@ -98,7 +98,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 134,
-  name: "134-notify-message-pointers",
+  id: 135,
+  name: "135-notify-message-pointers",
   up,
 };

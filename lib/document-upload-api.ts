@@ -31,7 +31,19 @@
 //   failed    — the engine refused the file (too large, unsupported type, contents that
 //               contradict the declared type, or it could not be written to disk). The
 //               reason line comes back with it.
-export type UploadOutcome = "stored" | "duplicate" | "failed";
+//   blocked   — a person DELETED these exact bytes in allos, and the content-hash
+//               tombstone (#1777) refuses the re-offer. Emphatically not a failure and
+//               never worth retrying: the client's job is to stop offering it, which is
+//               what #1776's inventory `deleted` list lets it do without ever sending
+//               the body. A person can reverse it from Data → Review.
+export type UploadOutcome = "stored" | "duplicate" | "failed" | "blocked";
+
+// The reason line a `blocked` outcome carries. Owned here rather than typed at the route
+// so the endpoint, the contract doc, and the tests quote ONE sentence — and so it names
+// the surface that reverses it, because a client author reading only this line has to
+// know the deletion was deliberate and where its user can undo it.
+export const BLOCKED_REASON =
+  "deleted in allos; a user can allow re-acquisition from Data → Review";
 
 export interface LandedDocumentRow {
   // The id ingestMedicalUpload returned.

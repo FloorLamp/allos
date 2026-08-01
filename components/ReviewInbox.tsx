@@ -6,10 +6,12 @@ import { getIntegration } from "@/lib/integrations/registry";
 import { isStaleSyncEvent } from "@/lib/integrations/staleness";
 import { integrationDetailHref, type AppRoute } from "@/lib/hrefs";
 import type { FeedEntry } from "@/lib/import-feed";
+import type { DocumentTombstone } from "@/lib/document-tombstones";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import DuplicateReview from "@/components/DuplicateReview";
 import UnitMislabelReview from "@/components/UnitMislabelReview";
+import BlockedDocuments from "@/components/BlockedDocuments";
 import ConnectedSources from "@/components/ConnectedSources";
 import ImportFeed from "@/components/ImportFeed";
 import type {
@@ -47,6 +49,7 @@ export default function ReviewInbox({
   sources,
   feed,
   knownNames,
+  blockedDocuments = [],
   activityClusters = [],
   bodyMetricPairs = [],
   unitMislabels = [],
@@ -58,6 +61,9 @@ export default function ReviewInbox({
   sources: ConnectedSource[];
   // The one-off "Imports" feed (documents + paste jobs), newest-first.
   feed: FeedEntry[];
+  // Content-hash tombstones for this profile (#1777) — documents whose re-acquisition is
+  // blocked, each reversible with a tap. Empty for the household that never deleted one.
+  blockedDocuments?: DocumentTombstone[];
   // The active profile's own name(s), for the document provenance-mismatch flag.
   knownNames: (string | null | undefined)[];
   // Detected, still-unresolved duplicate ACTIVITY clusters (#10/#1081) + body-metric
@@ -141,6 +147,14 @@ export default function ReviewInbox({
       )}
 
       <ConnectedSources sources={sources} isAdmin={isAdmin} />
+
+      {/* Documents the user deleted, which an acquirer is therefore refused when it
+          offers them again (#1777) — with the one-tap way to change that mind. A
+          SIBLING of the portal source card rather than nested in it: that card is
+          rendered conditionally, so nesting would hide the only allow-again affordance
+          for a household with deleted documents and no live portal connection. Renders
+          nothing when nothing is blocked. */}
+      <BlockedDocuments tombstones={blockedDocuments} />
 
       <ImportFeed feed={feed} knownNames={knownNames} isAdmin={isAdmin} />
     </div>

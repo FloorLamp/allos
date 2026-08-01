@@ -101,9 +101,20 @@ success:
   Re-running an upload is safe by design.
 - `failed` — the engine refused it, and `reason` says why (too large, unsupported type,
   contents that contradict the file name).
+- `blocked` — **a person deleted these exact bytes in allos**, and the deletion is
+  remembered. The file was refused and nothing was stored. This is not a failure and
+  retrying will never help: the right response is to stop offering it, which the
+  inventory below lets you do without transferring anything. A user can reverse it from
+  **Data → Review → blocked from re-acquisition**, or by uploading the file themselves.
 
 `ok: true` means the request was handled, never that every file landed — always read the
 per-file `outcome`.
+
+`id` is `null` for `duplicate` and `blocked`, because **no `medical_documents` row is
+created on either path**. Both are events, not documents, and the run's sync report is
+their record — count them `unchanged` and `suppressed` respectively. (The in-app upload
+form still lands a visible "skipped" row for a duplicate: there the row is the feedback a
+person needs. A retry through this endpoint stays idempotent in the table.)
 
 You can send several `file` parts in one request; they are ingested one at a time, up to
 the same batch cap the upload form uses, and any overflow is reported in a `skipped`
@@ -176,6 +187,13 @@ as an ordinary sync event, so Data → Review shows it like any other integratio
 is recorded against the identity it names, so each mapped patient gets its own
 "Last checked".
 
+Counts are optional and default to `0`. Alongside `inserted` / `updated` / `unchanged` /
+`failed`, report **`suppressed`** — how many documents allos refused because a user had
+deleted them (the `blocked` outcome). It lands in the same accounting column the app
+already uses for a blocked re-import, so Data → Review renders "2 new · 1 suppressed"
+rather than quietly losing the document. A suppressed document is **not** a failure and
+never makes a run report `failed`.
+
 **`identities` is how mapping actually happens.** Report the portal's patient list
 verbatim — exactly the strings the proxy list showed — and every one that is not already
 mapped or ignored appears on the card ready to bind. Nobody has to predict how a portal
@@ -220,6 +238,45 @@ Such a report has no profile — that is what makes it portal-level — so it la
 **run report against the portal login** rather than as a profile's sync event, and shows
 on **Integrations → Patient portals → Status**. The same is true of a first run whose own
 patient is not mapped yet: refused, nothing filed, but the run is no longer invisible.
+
+### Asking what allos already holds
+
+The problem this solves is silent and permanent. A client that remembers locally which
+documents it has sent is recording **its own past behaviour**, not allos's current state.
+The two diverge the moment a document is deleted in allos: the client believes it already
+sent that document so it never sends it again, allos no longer has it, and nothing on
+either side notices. A daily sync keeps reporting success while the document simply is
+not there.
+
+`GET /api/documents/held` answers what an identity currently has, using the **same
+destination parameters** as the upload:
+
+```bash
+curl -H "Authorization: Bearer $ALLOS_TOKEN" \
+     "https://allos.example/api/documents/held?portal=ochsner-mychart&patient=Jane%20Q.%20Doe"
+```
+
+```json
+{ "ok": true, "profile": 7, "held": ["ab12…"], "deleted": ["cd34…"] }
+```
+
+- `held` — content hashes (sha-256 of the file bytes) allos has stored for this profile.
+- `deleted` — hashes a **user deleted**. Offering one of these back is refused with the
+  `blocked` outcome above.
+
+**Send exactly the hashes in neither list.** That rule is what makes the contract safe for
+a client with no local state at all — you need no memory of your own, which is precisely
+what made the naive design fail. A hash missing from both lists after you previously sent
+it means the document is genuinely gone _without_ a deliberate deletion (lost, corrupted):
+re-sending it is correct, and that is the reconciliation this endpoint exists for.
+
+Do not treat `deleted` as advisory. The upload path enforces it independently, so a client
+that ignores the list still cannot resurrect anything — it just wastes the bytes.
+
+`profile=<id>` works here too, for debugging by hand. The gate is the upload's: the same
+`upload:documents` scope (a token that may send bytes may know what is held), write access
+to the resolved profile, and the same `unmapped-identity` refusal for a patient that is not
+mapped. Hashes only — no filenames, dates, or counts.
 
 ### Finding the profile ids
 
@@ -377,8 +434,19 @@ behind on someone else's login.
 - `app/api/documents/route.ts` — the upload endpoint. It hands every file to
   `lib/medical-pipeline::ingestMedicalUpload`, the ONE ingest engine, and adds no gate of
   its own (a second copy would drift from the form's).
+- `app/api/documents/held/route.ts` — the inventory endpoint. It composes the upload's
+  gate and answers from two readers: `heldDocumentHashes` (stored bytes) and
+  `tombstonedDocumentHashes` (deletions).
+- `lib/document-tombstones.ts` — the content-hash document tombstone: written on delete,
+  consulted on the acquirer ingest path, cleared by a human upload or the Data → Review
+  allow-again action. It reuses the `import_tombstones` table under
+  `target_table = 'medical_documents'` and is deliberately NOT a member of
+  `TOMBSTONE_TABLES` (those are consulted by the keyed upserts; this one is consulted at
+  ingest).
 - Migration `127-api-tokens.ts` — the `api_tokens` table. It is login-owned (no
   `profile_id`), so it is not in `lib/owned-tables.ts`.
+- Migration `134-tombstone-label.ts` — the nullable `label` on `import_tombstones`, so a
+  blocked document can be named in the UI (the natural key is an opaque hash).
 
 `authenticateApiToken()` **authenticates only**. It answers "which login is this, and
 does its token carry the capability this endpoint demands" — nothing more. Whether that

@@ -458,7 +458,7 @@ describe("uploadMedicalDocument multi-file (issue #1008)", () => {
     const { profile } = seedActor();
     const result = await uploadMedicalDocument(batch([csv(1), csv(2), csv(3)]));
 
-    expect(result).toEqual({ ingested: 3, overflow: 0 });
+    expect(result).toEqual({ ingested: 3, overflow: 0, restored: 0 });
     const rows = docRows(profile.id);
     expect(rows).toHaveLength(3);
     expect(rows.map((r) => r.filename).sort()).toEqual([
@@ -491,7 +491,7 @@ describe("uploadMedicalDocument multi-file (issue #1008)", () => {
     );
 
     // All four were within the cap, so all four ran the ingest path.
-    expect(result).toEqual({ ingested: 4, overflow: 0 });
+    expect(result).toEqual({ ingested: 4, overflow: 0, restored: 0 });
     const rows = docRows(profile.id);
     expect(rows).toHaveLength(4);
 
@@ -513,7 +513,11 @@ describe("uploadMedicalDocument multi-file (issue #1008)", () => {
     const files = Array.from({ length: 22 }, (_, i) => csv(i + 1));
     const result = await uploadMedicalDocument(batch(files));
 
-    expect(result).toEqual({ ingested: MEDICAL_UPLOAD_BATCH_CAP, overflow: 2 });
+    expect(result).toEqual({
+      ingested: MEDICAL_UPLOAD_BATCH_CAP,
+      overflow: 2,
+      restored: 0,
+    });
     // Exactly the first 20 became rows; the 2 overflow files were never ingested.
     expect(docRows(profile.id)).toHaveLength(MEDICAL_UPLOAD_BATCH_CAP);
   });
@@ -521,7 +525,7 @@ describe("uploadMedicalDocument multi-file (issue #1008)", () => {
   it("is a no-op with no valid files", async () => {
     const { profile } = seedActor();
     const result = await uploadMedicalDocument(new FormData());
-    expect(result).toEqual({ ingested: 0, overflow: 0 });
+    expect(result).toEqual({ ingested: 0, overflow: 0, restored: 0 });
     expect(docRows(profile.id)).toHaveLength(0);
   });
 });

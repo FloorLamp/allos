@@ -241,7 +241,13 @@ describe("sync report", () => {
         unchanged: 2.6,
         failed: "not a number",
       })
-    ).toEqual({ inserted: 0, updated: 3, unchanged: 3, failed: 0 });
+    ).toEqual({
+      inserted: 0,
+      updated: 3,
+      unchanged: 3,
+      failed: 0,
+      suppressed: 0,
+    });
   });
 
   it("records nothing-new as a CALM SUCCESS", () => {
@@ -249,7 +255,7 @@ describe("sync report", () => {
     // failure badge quiet — a quiet day must not read as broken.
     const ev = syncReportEvent(
       "nothing-new",
-      { inserted: 0, updated: 0, unchanged: 4, failed: 0 },
+      { inserted: 0, updated: 0, unchanged: 4, failed: 0, suppressed: 0 },
       null
     );
     expect(ev.ok).toBe(true);
@@ -261,7 +267,7 @@ describe("sync report", () => {
   it("records downloaded with its accounting", () => {
     const ev = syncReportEvent(
       "downloaded",
-      { inserted: 2, updated: 1, unchanged: 3, failed: 0 },
+      { inserted: 2, updated: 1, unchanged: 3, failed: 0, suppressed: 0 },
       null
     );
     expect(ev.ok).toBe(true);
@@ -272,7 +278,7 @@ describe("sync report", () => {
   it("records failed as ok:false so the Review badge fires", () => {
     const ev = syncReportEvent(
       "failed",
-      { inserted: 0, updated: 0, unchanged: 0, failed: 2 },
+      { inserted: 0, updated: 0, unchanged: 0, failed: 2, suppressed: 0 },
       "portal login timed out"
     );
     expect(ev.ok).toBe(false);
@@ -282,18 +288,46 @@ describe("sync report", () => {
     expect(ev.received).toBe(2);
   });
 
+  it("carries tombstone-suppressed offers WITHOUT making the run a failure (#1777)", () => {
+    // A blocked re-offer means the run worked and allos deliberately refused: the user
+    // deleted those bytes. Reporting it as a failure would light the Data → Review
+    // failure badge for a portal that is behaving perfectly.
+    const ev = syncReportEvent(
+      "downloaded",
+      { inserted: 1, updated: 0, unchanged: 0, failed: 0, suppressed: 2 },
+      null
+    );
+    expect(ev.ok).toBe(true);
+    expect(ev.error).toBeNull();
+    expect(ev.suppressed).toBe(2);
+    // A suppressed document WAS received — the run fetched and offered it. Leaving it
+    // out would make the received/written split silently stop adding up.
+    expect(ev.received).toBe(3);
+    // It is NOT `skipped`: that word is already taken by "the tool could not push it".
+    expect(ev.skipped).toBe(0);
+  });
+
+  it("defaults suppressed to 0 for a tool that never reports it", () => {
+    // An acquirer built before #1777 omits the field entirely, and a client that never
+    // offers a deleted document never has to learn it exists.
+    expect(
+      parseSyncReportCounts({ inserted: 1, updated: 0, unchanged: 0 })
+        .suppressed
+    ).toBe(0);
+  });
+
   it("never invents an error line, but always has one on failure", () => {
     expect(
       syncReportEvent(
         "downloaded",
-        { inserted: 1, updated: 0, unchanged: 0, failed: 0 },
+        { inserted: 1, updated: 0, unchanged: 0, failed: 0, suppressed: 0 },
         "ignored"
       ).error
     ).toBeNull();
     expect(
       syncReportEvent(
         "failed",
-        { inserted: 0, updated: 0, unchanged: 0, failed: 0 },
+        { inserted: 0, updated: 0, unchanged: 0, failed: 0, suppressed: 0 },
         null
       ).error
     ).toBe("sync failed");

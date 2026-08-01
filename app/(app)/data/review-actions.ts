@@ -14,6 +14,10 @@ import {
 } from "@/lib/import-review/detect";
 import { writeActivityFold } from "@/lib/merge-activity";
 import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
+import {
+  clearDocumentTombstone,
+  type AllowReacquisitionResult,
+} from "@/lib/document-tombstones";
 import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import { mergeBodyMetric } from "@/lib/body-metric-extract";
 import type { PairDecision } from "@/lib/import-review/detect";
@@ -419,4 +423,38 @@ export async function dismissUnitMislabel(
   revalidatePath("/data");
   revalidatePath("/");
   return formOk();
+}
+
+// ALLOW RE-ACQUISITION of a document the user previously deleted (#1777).
+//
+// The one user-facing tombstone-clearing surface in the app. Deleting a document writes
+// a content-hash tombstone so an acquirer can never silently bring it back; this is how
+// a person reverses that decision, and it is deliberately a TAP — the system may notice
+// and suggest, but only the user's action writes.
+//
+// Write-access gated like any other profile write, and profile-scoped by the clear
+// itself. The outcome is typed because the tombstone may already be gone: a second tab
+// pressed the same button, or a human re-upload of the same bytes cleared it on the way
+// in. Answering "Allowed again" either way would be confirming a write that did not
+// happen.
+export async function allowDocumentReacquisition(
+  formData: FormData
+): Promise<AllowReacquisitionResult> {
+  const { profile } = await requireWriteAccess();
+  const hash = String(formData.get("hash") ?? "").trim();
+  if (!hash) return { status: "error", message: "Unknown document." };
+
+  if (!clearDocumentTombstone(profile.id, hash)) {
+    // Not an error — the desired state already holds. Say what is true rather than
+    // failing at a user who pressed a button twice.
+    return {
+      status: "already-allowed",
+      message: "That document was already allowed.",
+    };
+  }
+  revalidatePath("/data");
+  return {
+    status: "done",
+    message: "Allowed — portal sync can bring this document back again.",
+  };
 }
