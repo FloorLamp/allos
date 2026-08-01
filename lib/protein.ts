@@ -401,16 +401,23 @@ export function proteinTodayStatus(t: ProteinToday): ProteinTodayStatus {
 
 // The pieces of the food-nudge protein line, so one surface can render it plain and
 // another can emphasize the figure without either re-deriving the conclusion (#1710).
-// A floor basis (anything but a measured tracked reading) keeps "at least N g" per the
+// A floor basis (anything but a measured tracked reading) keeps its floor marker per the
 // #767 floor-copy discipline; a tracked reading states the figure directly.
+//
+// HEDGE ARRANGEMENT, NOT SEMANTICS (#1822 item 4). The line used to read "Protein · at
+// least 36 g of ~80–105 g" — three hedges stacked in six words ("at least", "of", "~"),
+// which takes two passes to parse even though every fact in it is deliberate. The floor
+// marker is now the compact trailing "+", the band is stated as the goal it is, and the
+// below-band case stays exactly as neutral as #1710/#992 require: no nag, no praise.
 //
 // The STATUS WORDS are in the text, not carried by the emoji alone, so the meaning
 // survives screen readers and notification previews that strip emoji.
 export interface ProteinNudgeLineParts {
   emoji: string;
-  // "at least 107 g" (floor basis) or "107 g" (a tracked reading).
+  // "107 g+" (floor basis — the trailing plus IS the #767 floor marker) or "107 g" (a
+  // tracked reading, which states the figure exactly).
   amount: string;
-  // "~80–105 g" — the goal band.
+  // "80–105 g" — the goal band.
   band: string;
   status: ProteinTodayStatus;
   // The trailing clause, or null when there is nothing true to add (the below-band
@@ -424,8 +431,8 @@ export function proteinTodayNudgeParts(t: ProteinToday): ProteinNudgeLineParts {
   const status = proteinTodayStatus(t);
   return {
     emoji: status === "reached" ? "🎯" : "🍗",
-    amount: isFloor ? `at least ${grams} g` : `${grams} g`,
-    band: `~${g(t.target.gramsLow)}–${g(t.target.gramsHigh)} g`,
+    amount: isFloor ? `${grams} g+` : `${grams} g`,
+    band: `${g(t.target.gramsLow)}–${g(t.target.gramsHigh)} g`,
     status,
     statusWords: status === "reached" ? "goal reached" : null,
   };
@@ -435,9 +442,10 @@ export function proteinTodayNudgeParts(t: ProteinToday): ProteinNudgeLineParts {
 // parts, joined. Rendered from the SAME ProteinToday the gauge uses (a third
 // formatter, never a second engine, #221). Before #1710 it read "at least 107 g of
 // ~80–105 g" with NO status: 107 g is above the band — the goal is reached — but the
-// phrasing read like a shortfall, hiding its own conclusion.
+// phrasing read like a shortfall, hiding its own conclusion. #1822 item 4 then
+// unstacked the remaining hedges: "🍗 Protein: 36 g+ so far · goal 80–105 g".
 export function proteinTodayNudgeLine(t: ProteinToday): string {
   const p = proteinTodayNudgeParts(t);
   const tail = p.statusWords ? ` — ${p.statusWords}` : "";
-  return `${p.emoji} Protein · ${p.amount} of ${p.band}${tail}`;
+  return `${p.emoji} Protein: ${p.amount} so far · goal ${p.band}${tail}`;
 }

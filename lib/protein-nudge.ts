@@ -26,8 +26,15 @@ export function isProteinNudgeKey(key: string): boolean {
 // typical scoop, used only at cold start; the last-used preset wins once one exists.
 export const DEFAULT_PROTEIN_PRESET_GRAMS = 30;
 
-// The "+Xg protein" button label — the grams preset, deliberately distinct from a
+// The glyph leading the protein button (#1822 item 6). Every OTHER button on the food
+// keyboard is "<glyph> <name>" (the #1710 catalog vocabulary), and this one was the sole
+// exception — one keyboard speaking two label grammars. Deliberately NOT one of the
+// FOOD_GROUP_EMOJI glyphs: the protein button is the shake path, not a serving of any
+// catalog group, and reusing a group's glyph would claim otherwise.
+export const PROTEIN_NUDGE_EMOJI = "💪";
+
+// The "💪 ＋Xg protein" button label — the grams preset, deliberately distinct from a
 // food-group name so it reads as the shake path, not a serving.
 export function proteinNudgeButtonLabel(grams: number): string {
-  return `＋${grams}g protein`;
+  return `${PROTEIN_NUDGE_EMOJI} ＋${grams}g protein`;
 }

@@ -74,7 +74,7 @@ import {
   decideReconcile,
   keyboardTokens,
   type ReconcileDecision,
-  RECONCILE_CLOSING,
+  reconcileClosingText,
   stripTokens,
   tokenPrefix,
 } from "./reconcile-core";
@@ -581,7 +581,14 @@ function planEdit(
   decision: ReconcileDecision
 ): EditPlan | null {
   if (decision.action === "close") {
-    return { kind: "close", text: RECONCILE_CLOSING[decision.reason] };
+    // The close NAMES ITS SUBJECT (#1822 item 7): the pointer recorded the delivered
+    // title line at send time, attribution prefix included, so replacing the whole text
+    // no longer leaves an orphan bubble in a shared chat. A pointer without one (recorded
+    // before migration 138) degrades to the bare closing line.
+    return {
+      kind: "close",
+      text: reconcileClosingText(decision.reason, pointer.title),
+    };
   }
   if (decision.action === "strip-all") {
     return { kind: "keyboard", keyboard: decision.keyboard };

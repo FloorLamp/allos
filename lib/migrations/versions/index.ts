@@ -136,6 +136,7 @@ import { migration as m134 } from "./134-tombstone-label";
 import { migration as m135 } from "./135-notify-message-pointers";
 import { migration as m136 } from "./136-clinical-content-key";
 import { migration as m137 } from "./137-episode-stopped-med-snapshot";
+import { migration as m138 } from "./138-notify-message-title";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -281,4 +282,5 @@ export const MIGRATIONS: Migration[] = [
   m135,
   m136,
   m137,
+  m138,
 ];

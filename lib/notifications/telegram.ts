@@ -191,6 +191,11 @@ function recordPointer(
     kind: msg.kind ?? "other",
     date: today(profileId),
     keyboard,
+    // The TITLE AS DELIVERED, attribution prefix and all (#1822 item 7). Recorded for
+    // exactly the reason the keyboard is: this is the only moment anyone holds it, and
+    // a reconcile close that replaces the whole text must be able to say what it closed
+    // — in a shared chat, whose message it closed.
+    title: msg.title,
   });
 }
 
