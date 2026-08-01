@@ -99,6 +99,17 @@ test.describe("Visit detail page", () => {
     await expect(
       past.getByRole("columnheader", { name: "Source" })
     ).toHaveCount(0);
+    const annualPhysicalRow = past
+      .getByRole("row")
+      .filter({ hasText: "Annual physical" })
+      .first(); // first-ok: either seeded Annual physical row proves the class badge is absent from table rows
+    await expect(
+      annualPhysicalRow.getByText("Ambulatory", { exact: true })
+    ).toHaveCount(0);
+    await expect(past.getByTestId("household-view-link")).toHaveAttribute(
+      "href",
+      "/medical/episodes"
+    );
     // Provider/facility links should hug their visible content. A column flex stack
     // without items-start stretches inline-flex children into full-width hit areas.
     const providerCells = page.getByTestId("encounter-provider-cell");
@@ -115,6 +126,7 @@ test.describe("Visit detail page", () => {
     // hydration gate needed (#868).
     const rowLink = page.getByRole("link", { name: "Office Visit" }).first(); // first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
     await expect(rowLink).toHaveAttribute("href", /\/encounters\/\d+$/);
+    await expect(rowLink).toHaveClass(/\btext-brand-700\b/);
     await followLink(page, rowLink, /\/encounters\/\d+$/);
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
   });
@@ -136,7 +148,7 @@ test.describe("Visit detail page", () => {
     await expect(
       row.getByText("Chief complaint", { exact: true })
     ).toBeVisible();
-    await expect(row.getByText("Ambulatory", { exact: true })).toBeHidden();
+    await expect(row.getByText("Ambulatory", { exact: true })).toHaveCount(0);
     const visit = row.getByRole("link", { name: "Office Visit" });
     const complaint = row.getByText("Annual physical", { exact: true });
     const [visitBox, complaintBox] = await Promise.all([

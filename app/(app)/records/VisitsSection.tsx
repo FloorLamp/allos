@@ -192,7 +192,18 @@ export default function VisitsSection({
         {/* Past — the encounter history follows Upcoming without an entry form
           between the two lists. */}
         <section data-testid="visits-past">
-          <h3 className="mb-3 section-label">Past</h3>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <h3 className="section-label">Past</h3>
+            {showHousehold && (
+              <Link
+                href={EPISODES_HREF}
+                className="shrink-0 text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+                data-testid="household-view-link"
+              >
+                View illness episodes →
+              </Link>
+            )}
+          </div>
           <EncounterList
             items={encounters}
             defaultDate={now}
@@ -201,16 +212,6 @@ export default function VisitsSection({
             }
           />
         </section>
-
-        {showHousehold && (
-          <Link
-            href={EPISODES_HREF}
-            className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-            data-testid="household-view-link"
-          >
-            View illness episodes →
-          </Link>
-        )}
       </div>
     </ProviderOptionsProvider>
   );

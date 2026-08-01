@@ -10,7 +10,6 @@ import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
-  classLabel,
   encounterKind,
   encounterTypeDisplay,
   ENCOUNTER_KIND_LABELS,
@@ -61,19 +60,12 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Visit",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (e) => (
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          href={`/encounters/${e.id}`}
-          className="transition hover:text-brand-700 hover:underline dark:hover:text-brand-300"
-        >
-          {encounterTypeDisplay(e.type, e.class_code)}
-        </Link>
-        {e.class_code ? (
-          <span className="badge hidden bg-sky-100 text-sky-700 sm:inline-flex dark:bg-sky-950 dark:text-sky-300">
-            {classLabel(e.class_code)}
-          </span>
-        ) : null}
-      </div>
+      <Link
+        href={`/encounters/${e.id}`}
+        className="font-medium text-brand-700 transition hover:underline dark:text-brand-300"
+      >
+        {encounterTypeDisplay(e.type, e.class_code)}
+      </Link>
     ),
   },
   {
