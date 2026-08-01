@@ -13,6 +13,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { createLogger } from "./log";
 import { endpointHost } from "./ai-client";
+import { redactSecrets } from "./error-log-format";
+import { trimJsonlLines } from "./jsonl-trim";
 import { withLogContext, getLogContext, type LogContext } from "./log-context";
 
 const log = createLogger("ai");
@@ -28,9 +30,13 @@ export function capDetail(s: string, n = 4000): string {
   return s.length > n ? s.slice(0, n) + `… (+${s.length - n} chars)` : s;
 }
 
-// Keep the file bounded: when it grows past this, rewrite with the newest lines.
+// Keep the file bounded: when it grows past MAX_BYTES, rewrite with the newest
+// lines. The kept tail must fit BOTH budgets (#1841) — a pure line-count trim
+// retains ~8MB of 4KB-capped lines and re-triggers on every append. KEEP_BYTES
+// sits at half the trigger so the appends between rewrites amortize.
 const MAX_BYTES = 5 * 1024 * 1024;
 const KEEP_LINES = 2000;
+const KEEP_BYTES = MAX_BYTES / 2;
 
 export type AiFeature =
   | "extraction"
@@ -134,11 +140,11 @@ function trimIfLarge() {
   try {
     const { size } = fs.statSync(AI_LOG_PATH);
     if (size <= MAX_BYTES) return;
-    const lines = fs
-      .readFileSync(AI_LOG_PATH, "utf8")
-      .split("\n")
-      .filter(Boolean);
-    fs.writeFileSync(AI_LOG_PATH, lines.slice(-KEEP_LINES).join("\n") + "\n");
+    const lines = fs.readFileSync(AI_LOG_PATH, "utf8").split("\n");
+    fs.writeFileSync(
+      AI_LOG_PATH,
+      trimJsonlLines(lines, KEEP_LINES, KEEP_BYTES).join("\n") + "\n"
+    );
   } catch {
     // best-effort
   }
@@ -161,6 +167,11 @@ export function recordAiEvent(e: Omit<AiEvent, "id" | "time">): AiEvent {
     loginId: e.loginId ?? ctx?.loginId ?? null,
     profileId: e.profileId ?? ctx?.profileId ?? null,
   };
+  // Redaction parity with errors.jsonl (#1842): free text may quote headers, a
+  // provider error body, or a config dump, so mask secret-looking values through
+  // the same chokepoint before anything is persisted or echoed.
+  if (event.detail) event.detail = redactSecrets(event.detail);
+  if (event.error) event.error = redactSecrets(event.error);
   try {
     ensureDir();
     fs.appendFileSync(AI_LOG_PATH, JSON.stringify(event) + "\n");
@@ -194,19 +205,15 @@ export function parseAiLine(line: string): AiEvent | null {
   }
 }
 
-// Newest-first, capped — for the SSR'd initial render.
+// Newest-first, capped — for the SSR'd initial render, the usage rollup, and
+// the SSE reconnect replay. Bounded (#1842): reads at most the newest MAX_BYTES
+// through the same byte-offset tail as the SSE poll instead of parsing the
+// whole file (a partial first line at the offset fails parseAiLine and is
+// dropped). The trim keeps the file's tail well under that window, so nothing
+// that survives trimming is ever skipped.
 export function readAiEvents(limit = 200): AiEvent[] {
-  try {
-    const lines = fs.readFileSync(AI_LOG_PATH, "utf8").split("\n");
-    const events: AiEvent[] = [];
-    for (const line of lines) {
-      const e = parseAiLine(line);
-      if (e) events.push(e);
-    }
-    return events.slice(-limit).reverse();
-  } catch {
-    return []; // file not created yet
-  }
+  const { events } = tailAiLog(Math.max(0, aiLogSize() - MAX_BYTES));
+  return events.slice(-limit).reverse();
 }
 
 export function aiLogSize(): number {
@@ -214,6 +221,19 @@ export function aiLogSize(): number {
     return fs.statSync(AI_LOG_PATH).size;
   } catch {
     return 0;
+  }
+}
+
+// Clear the log (admin action, #1842). Truncates rather than unlinks so the
+// path/dir stay put for the next append; mirrors clearErrorLog(). The stdout
+// echo leaves a trace of the wipe in `docker logs`.
+export function clearAiLog(): void {
+  try {
+    ensureDir();
+    fs.writeFileSync(AI_LOG_PATH, "");
+    log.info("ai log cleared");
+  } catch {
+    // best-effort
   }
 }
 
