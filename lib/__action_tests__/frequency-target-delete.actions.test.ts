@@ -155,7 +155,7 @@ describe("routine activation replacing training-scope goals (#1809, same FK)", (
       days: [
         {
           label: "Upper",
-          focus: ["chest"],
+          focus: ["Chest"],
           slots: [
             {
               candidates: ["Bench press"],
