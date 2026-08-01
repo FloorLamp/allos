@@ -10,7 +10,7 @@ import {
   mobilityRegionDays,
   type MobilitySessionInput,
 } from "../mobility-coverage";
-import { weekWindowStart } from "./profile-week";
+import { weekWindowStart, weekWindowStartOn } from "./profile-week";
 
 // Weekly frequency targets — the scope-kind-GENERIC `frequency_targets` read
 // machinery. It lived under lib/queries/training/goals.ts until #1637, which was
@@ -273,16 +273,26 @@ export interface FrequencyTargetHistory {
 //
 // One gather per event source over the WHOLE window, bucketed in JS — never one query
 // per week.
+//
+// `asOf` moves the anchor (#1632). It defaults to today — the detector's whole
+// point is the weeks leading up to now — but a WINDOWED analytics surface may end
+// its range in the past, and the honest ledger for such a window is the completed
+// weeks before ITS end, not before today's. The week containing `asOf` is excluded
+// exactly as the current week is: it is the in-progress one from that day's point
+// of view. Nothing else changes, so the default call site is byte-for-byte the
+// behaviour #1670 shipped.
 export function getFrequencyTargetWeeklyHistory(
   profileId: number,
-  weeks: number
+  weeks: number,
+  asOf?: string
 ): FrequencyTargetHistory[] {
   const targets = getFrequencyTargets(profileId).filter(
     (t) => t.scope_kind !== "substance"
   );
   if (targets.length === 0 || weeks < 1) return [];
 
-  const currentStart = weekWindowStart(profileId);
+  const currentStart =
+    asOf == null ? weekWindowStart(profileId) : weekWindowStartOn(profileId, asOf);
   const historyStart = shiftDateStr(currentStart, -7 * weeks);
   const weekStarts = Array.from({ length: weeks }, (_, i) =>
     shiftDateStr(historyStart, 7 * i)

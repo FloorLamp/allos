@@ -26,7 +26,7 @@ import {
   chartTooltipProps,
   useChartMotion,
 } from "./chart-scaffold";
-import { chartSeries } from "@/lib/chart-colors";
+import { chartBand, chartSeries } from "@/lib/chart-colors";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
@@ -57,6 +57,7 @@ export default function LineChartCard({
   annotations,
   windows,
   referenceValue,
+  referenceBand,
   decimals,
   yDomain,
   groupYTicks = false,
@@ -126,6 +127,14 @@ export default function LineChartCard({
   windows?: TrendWindow[];
   // A horizontal target line (e.g. a goal's target value, in this chart's unit).
   referenceValue?: { value: number; label?: string; color?: string } | null;
+  // A horizontal target BAND — a low–high range in this chart's unit, drawn as a
+  // tinted ReferenceArea behind the series (#1632: a wellness practice's weekly
+  // min–max cadence). A band and a line answer different questions — "stay inside
+  // this" vs "reach this" — so a caller passes whichever its target actually has,
+  // and a range target passes the band rather than two lines the reader has to
+  // mentally join. Same tint treatment as the biomarker reference band: fill only,
+  // with the label carried by the caller's chart note.
+  referenceBand?: { low: number; high: number; color?: string } | null;
 }) {
   const formatPrefs = useFormatPrefs();
   const key = dataKey ?? "value";
@@ -217,6 +226,16 @@ export default function LineChartCard({
               />
             );
           })}
+          {referenceBand != null && referenceBand.high > referenceBand.low && (
+            <ReferenceArea
+              y1={referenceBand.low}
+              y2={referenceBand.high}
+              fill={referenceBand.color ?? chartBand.optimal}
+              fillOpacity={0.12}
+              stroke={referenceBand.color ?? chartBand.optimal}
+              strokeOpacity={0.25}
+            />
+          )}
           {referenceValue != null && (
             <ReferenceLine
               y={referenceValue.value}

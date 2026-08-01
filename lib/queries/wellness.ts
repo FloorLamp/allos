@@ -19,7 +19,14 @@ import type { FrequencyPace } from "../goals";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargets,
+  getFrequencyTargetWeeklyHistory,
 } from "./frequency-targets";
+import {
+  practiceWeekVerdict,
+  summarizePracticeWeeks,
+  type PracticeConsistency,
+  type PracticeWeekVerdict,
+} from "../trends-practices";
 
 const WELLNESS_CARD_SESSION_LIMIT = 200;
 
@@ -506,4 +513,162 @@ export function getAllPracticeSessions(
 
 export function practiceNameMatches(a: string, b: string): boolean {
   return samePractice(a, b);
+}
+
+// ---- The Trends wellness lens (#1632) --------------------------------------
+
+// One COMPLETED week of a tracked practice: the window's inclusive start, the
+// distinct days it was logged, and the range verdict those two produce.
+export interface PracticeTrendWeek {
+  start: string;
+  count: number;
+  verdict: PracticeWeekVerdict;
+}
+
+// A tracked practice as the Trends lens renders it: its completed-week ledger,
+// the consistency that ledger rolls up to, and the per-day duration series for
+// the modalities that record one.
+export interface PracticeTrend {
+  targetId: number;
+  identity: string;
+  name: string;
+  perWeek: number;
+  perWeekMax: number | null;
+  /** Completed weeks, OLDEST FIRST — the render order of the strip and chart. */
+  weeks: PracticeTrendWeek[];
+  consistency: PracticeConsistency;
+  /** Sessions logged anywhere in the window, including the in-progress week. */
+  sessions: number;
+  /**
+   * Mean minutes per logged DAY, oldest first, for practices that record a
+   * duration. Empty for the ones that don't (a one-tap meditation log carries no
+   * minutes, and a zero-filled line would invent them).
+   */
+  duration: { date: string; value: number }[];
+  /** Whether the target itself existed for the whole window (see #1670). */
+  existedWholeWindow: boolean;
+}
+
+// The wellness lens's read (#1632): every TRACKED practice's completed-week
+// ledger over the hub's window.
+//
+// It is a FORMATTER over two existing gathers, not a third engine:
+//
+//   • The weeks come from `getFrequencyTargetWeeklyHistory` — the completed-weeks
+//     read #1670 built for the right-sizing detector. It already walks the
+//     profile's OWN weekly windows (calendar or rolling, in the profile's stored
+//     timezone), already folds practice spellings through `practiceIdentity`, and
+//     already excludes the in-progress week, which is under its floor by
+//     construction on every day but the last. Those are exactly this lens's
+//     requirements, so re-deriving them would have been a second answer to a
+//     question the app had already answered.
+//   • The verdict per week is `practiceWeekVerdict`, which is
+//     `frequencyRangeState` with the week fully elapsed — the same computation the
+//     /wellness card, the Goals-and-habits widget, Upcoming and the Telegram nudge
+//     key on. Trends formats those decisions; it never makes its own.
+//
+// TRACKED only: a practice with no weekly cadence has no floor and no ceiling, so
+// "weeks in range" is not a question that can be asked about it. It keeps its
+// /wellness card and its full session history.
+//
+// One extra query beyond the shared history read, regardless of how many
+// practices exist: a per-practice-per-day tally that carries both the session
+// count and the mean duration.
+export function getPracticeTrends(
+  profileId: number,
+  weeks: number,
+  asOf = profileToday(profileId)
+): PracticeTrend[] {
+  const history = getFrequencyTargetWeeklyHistory(profileId, weeks, asOf).filter(
+    (item) => item.target.scope_kind === "practice"
+  );
+  if (history.length === 0) return [];
+
+  // The window the session/duration series covers: the first completed week's
+  // start through the anchor day. Deliberately WIDER at the end than the weekly
+  // ledger — a duration series is a per-session trend, not a weekly verdict, so
+  // sessions logged in the in-progress week belong on it.
+  const windowStart = history[0].weeks[0]?.start ?? asOf;
+  const rows = db
+    .prepare(
+      `SELECT practice, date, COUNT(*) AS sessions, AVG(duration_min) AS mean_min
+         FROM practice_logs
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+        GROUP BY practice, date
+        ORDER BY date ASC`
+    )
+    .all(profileId, windowStart, asOf) as {
+    practice: string;
+    date: string;
+    sessions: number;
+    mean_min: number | null;
+  }[];
+
+  // Fold the stored spellings onto the one identity (SQL cannot call the
+  // normalizer), summing sessions and averaging durations per day.
+  const byIdentity = new Map<
+    string,
+    Map<string, { sessions: number; minutes: number; withMinutes: number }>
+  >();
+  for (const row of rows) {
+    const identity = practiceIdentity(row.practice);
+    if (!identity) continue;
+    let days = byIdentity.get(identity);
+    if (!days) byIdentity.set(identity, (days = new Map()));
+    const day = days.get(row.date) ?? {
+      sessions: 0,
+      minutes: 0,
+      withMinutes: 0,
+    };
+    day.sessions += row.sessions;
+    if (row.mean_min != null) {
+      // AVG ignores NULL rows, so weight the group's mean by how many of its
+      // sessions actually carried a duration before merging spellings.
+      day.minutes += row.mean_min * row.sessions;
+      day.withMinutes += row.sessions;
+    }
+    days.set(row.date, day);
+  }
+
+  return history
+    .map((item): PracticeTrend => {
+      const identity = practiceIdentity(item.target.scope_value);
+      const days = byIdentity.get(identity);
+      const weekRows = item.weeks.map((week) => ({
+        start: week.start,
+        count: week.count,
+        verdict: practiceWeekVerdict(
+          week.count,
+          item.target.per_week,
+          item.target.per_week_max
+        ),
+      }));
+      const duration: { date: string; value: number }[] = [];
+      let sessions = 0;
+      for (const [date, day] of days ?? []) {
+        sessions += day.sessions;
+        if (day.withMinutes > 0) {
+          duration.push({ date, value: day.minutes / day.withMinutes });
+        }
+      }
+      duration.sort((left, right) => left.date.localeCompare(right.date));
+      return {
+        targetId: item.target.id,
+        identity,
+        name: practiceDisplayName({
+          targetSpelling: item.target.scope_value,
+          identity,
+        }),
+        perWeek: item.target.per_week,
+        perWeekMax: item.target.per_week_max,
+        weeks: weekRows,
+        consistency: summarizePracticeWeeks(weekRows),
+        sessions,
+        duration,
+        existedWholeWindow: item.existedWholeWindow,
+      };
+    })
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
+    );
 }
