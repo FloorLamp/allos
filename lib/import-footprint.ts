@@ -10,7 +10,11 @@
 // leak in another (#201):
 //   - clearImportedDocumentRows — the reprocess/delete delete-set;
 //   - moveImportedDocumentRows — reassignDocument's cross-profile move;
-//   - countImportedDocumentRows — the extracted_count tally.
+//   - countImportedDocumentRows — the extracted_count tally, which since #1827 is
+//     ALSO the import debugger report's kept-vs-considered counts: persist rebinds
+//     `report.imported` (and `considered`) onto this tally in the same UPDATE, so
+//     the coverage card and the document's extracted count are one number. A table
+//     added here is therefore represented in BOTH accountings automatically.
 // (The tables had drifted before this list existed: head-circ samples/allergies/
 // conditions/encounters were added to the reprocess clear but not the delete path,
 // then procedures/family_history/care_plan_items/care_goals were cleared+deleted
