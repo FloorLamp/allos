@@ -93,7 +93,11 @@ describe("foodNudgePointerFromMessage", () => {
         data: "food:5:Morning:2026-07-18:berries",
         row: "food0",
       },
-      { label: "More…", url: "https://example.test/nutrition" },
+      {
+        label: "➕ Show more",
+        data: "foodmore:5:Morning:2026-07-18",
+        row: "food-showmore",
+      },
     ],
   };
 
@@ -111,7 +115,14 @@ describe("foodNudgePointerFromMessage", () => {
       title: "x",
       body: "y",
       kind: "food",
-      actions: [{ label: "More…", url: "https://example.test/nutrition" }],
+      // A view control only — no ranked button, so there is no window/date to point at.
+      actions: [
+        {
+          label: "➖ Show less",
+          data: "foodless:5:Morning:2026-07-18",
+          row: "food-showmore",
+        },
+      ],
     };
     expect(foodNudgePointerFromMessage(buttonless, 1, 1)).toBeNull();
     expect(

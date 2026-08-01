@@ -37,8 +37,8 @@
 //
 // ── INERT BUTTONS ────────────────────────────────────────────────────────────
 //
-// Not every button claims state. "▲ Collapse", "⚙️ Tune", "➕ Show more" and the
-// deep-link buttons are VIEW controls: they cannot go stale and they must not keep a
+// Not every button claims state. "▲ Collapse", "⚙️ Tune", "➕ Show more"/"➖ Show less"
+// and the deep-link buttons are VIEW controls: they cannot go stale and must not keep a
 // fully resolved message alive. They are neither killed nor counted — declared `inert`
 // in the registry with the reason, so the completeness guard can tell "we thought about
 // this and there is nothing to reconcile" from "nobody thought about this".

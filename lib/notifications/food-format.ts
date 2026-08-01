@@ -27,9 +27,13 @@ export const FOOD_NUDGE_WINDOWS: readonly FoodNudgeWindow[] = [
   "Evening",
 ];
 
-// How many of the top-ranked groups become quick-log buttons. Kept small so the
-// keyboard stays scannable on a phone; the long tail is reached via the "More…"
-// deep link. Two buttons per row (see rowFor) → an even count fills rows cleanly.
+// How many of the top-ranked groups become quick-log buttons — and, since #1075, the
+// PAGE SIZE both directions of the expansion step by. Kept small so the keyboard stays
+// scannable on a phone; the long tail is reached with "➕ Show more", never by leaving
+// the chat (#1807 retired the "＋ More…" deep link: the nudge's job is one-tap logging
+// in place, and a link to /nutrition on every send bought a keyboard row that answered
+// a question the ranked buttons already answer). Two buttons per row (see rowFor) → an
+// even count fills rows cleanly.
 export const FOOD_NUDGE_BUTTON_COUNT = 6;
 
 // The callback token a food quick-log button carries:
@@ -76,12 +80,27 @@ export function foodMoreCallbackData(
   return `foodmore:${profileId}:${window}:${date}`;
 }
 
+// The "➖ Show less" collapse token (#1807, the direction deferred from #1075):
+//   foodless:<profileId>:<window>:<date>
+// The exact mirror of foodMoreCallbackData and equally stateless — it carries NO count,
+// so the handler derives the current visible count from the keyboard and rebuilds at
+// max(FOOD_NUDGE_BUTTON_COUNT, current − FOOD_NUDGE_BUTTON_COUNT). The clamp is what makes
+// a double-tap harmless: collapsing bottoms out at the compact default a fresh send uses,
+// never at an empty keyboard.
+export function foodLessCallbackData(
+  profileId: number,
+  window: FoodNudgeWindow,
+  date: string
+): string {
+  return `foodless:${profileId}:${window}:${date}`;
+}
+
 // Count the ranked quick-log buttons currently in a nudge keyboard (#1075). Expansion is
 // STATELESS — the number of visible ranked buttons IS the current visibleCount — so a
-// handler reads it back off cq.message.reply_markup to preserve or extend the expansion.
-// Counts food-group (food:…) AND protein (foodprotein:…) buttons; IGNORES the tally line
-// (not a button), the "Show more" row (foodmore:…), the "More…" deep link (url, no
-// callback_data), and any opt-in row.
+// handler reads it back off cq.message.reply_markup to preserve, extend, or reduce the
+// expansion. Counts food-group (food:…) AND protein (foodprotein:…) buttons; IGNORES the
+// tally line (not a button), the view-control row ("Show more"/"Show less", foodmore:… /
+// foodless:…), and any opt-in row.
 export function countVisibleFoodButtons(
   keyboard:
     | readonly (readonly {
@@ -170,8 +189,6 @@ function tallyLine(dayServings: Map<string, number>): MessageBody | null {
 // Options for renderFoodNudge (the growing set of #974/#1073/#1075 knobs), so the
 // positional signature stays stable while behavior is added.
 export interface FoodNudgeRenderOpts {
-  // A configured public app URL → append a "More…" deep link to /nutrition.
-  deepLinkBase?: string;
   // Today-vs-goal protein status (issue #974 / day-grams line #1073), gathered as PARTS
   // (#1710) so the classification is decided once in lib/protein and only the emphasis
   // is decided here. Null/omitted when there's no target and no logged protein, so the
@@ -193,8 +210,9 @@ export interface FoodNudgeRenderOpts {
 // SLOT-scoped per-group counts (#1016 button "(n)" suffix), and the DAY-total counts (the
 // tally line). Renders the top `visibleCount` (default FOOD_NUDGE_BUTTON_COUNT) ranked keys
 // as quick-log buttons — a food group logs one serving, the __protein__ key logs the grams
-// preset — plus a "Show more" row while ranked keys remain below the fold (#1075) and, when
-// a public app URL is configured, a "More…" deep link for the long tail.
+// preset — plus a view-control row carrying "➕ Show more" while ranked keys remain below
+// the fold (#1075) and "➖ Show less" once the keyboard is expanded past the compact
+// default (#1807). No deep link: the keyboard is the whole surface (#1807).
 export function renderFoodNudge(
   profileId: number,
   window: FoodNudgeWindow,
@@ -260,12 +278,23 @@ export function renderFoodNudge(
     });
   }
 
-  const base = (opts.deepLinkBase ?? "").replace(/\/$/, "");
-  if (base) {
+  // #1807: the collapse direction, symmetric with the above and sharing its row — so a
+  // mid-expansion keyboard reads "➕ Show more · ➖ Show less" side by side and a fully
+  // expanded one carries "➖ Show less" alone, exactly as "Show more" drops once
+  // everything is shown. The default compact send never carries it.
+  //
+  // The test is `visible.length`, not `visibleCount`: the two differ only when a pointer
+  // asks for more buttons than there are ranked keys, and what the user can act on is the
+  // number of buttons ACTUALLY rendered — which is also what countVisibleFoodButtons reads
+  // back. Testing the request instead would render a collapse button that collapses to the
+  // same keyboard (a profile with 4 ranked keys at visibleCount 12 shows 4 either way), and
+  // a button whose tap changes nothing is a small lie of the kind this codebase does not
+  // ship.
+  if (visible.length > FOOD_NUDGE_BUTTON_COUNT) {
     actions.push({
-      label: "＋ More…",
-      url: `${base}/nutrition`,
-      row: "food-more",
+      label: "➖ Show less",
+      data: foodLessCallbackData(profileId, window, date),
+      row: "food-showmore",
     });
   }
 

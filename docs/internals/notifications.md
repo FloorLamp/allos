@@ -364,6 +364,40 @@ chokepoint. Split for testability: pure formatter + token
 (`household-round-access.ts`). Settings → Notifications carries the toggle, the
 access-filtered member checklist and a send-test.
 
+**The food nudge's keyboard (#682/#1016/#1073/#1075/#1807).** The nudge rides the
+morning/midday/evening supplement slots and is opt-in per profile. Its keyboard is
+the whole surface: `FOOD_NUDGE_BUTTON_COUNT` (6) top-ranked quick-log buttons two
+per row — the SAME `getFoodGroupLogOrder` ranking the `/nutrition` log bar uses
+(#221) — each carrying a slot-scoped "(n)" suffix, plus the reserved `__protein__`
+pseudo-group's "＋Xg protein" button at its ranked position, over a day-total
+"✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
+tap logs one serving and the message re-renders from `buildFoodNudge`, the one
+builder every send, tap-rebuild and reconcile goes through.
+
+That 6 is also the **page size** in both directions. "➕ Show more" (#1075) reveals
+the next page and drops once every ranked key is out; "➖ Show less" (#1807) steps
+one page back, clamped at the compact default so a stray tap bottoms out where a
+fresh send starts rather than at an empty keyboard. They share one row — mid
+expansion reads "➕ Show more · ➖ Show less", full expansion carries "➖ Show less"
+alone — and "Show less" is rendered against the buttons ACTUALLY shown, so a short
+ranked list can never produce a collapse button whose tap changes nothing.
+
+Both directions are **stateless**: the tokens (`foodmore:`/`foodless:`, one parser
+with a direction, the ⚙️ Tune shape) carry no count, because the expansion state
+IS the rendered keyboard — `countVisibleFoodButtons` reads it back off the tapped
+message. Both are declared **inert** in the reconcile registry: a view control
+makes no state claim. That same derivation is what the #1779 sweep's food rebuild
+uses (off the pointer's stored post-cap keyboard), so **expansion is the user's** —
+a tick can neither collapse a keyboard someone expanded nor re-expand one they
+collapsed.
+
+There is **no deep link** on this nudge. The "＋ More…" url button to `/nutrition`
+and its `deepLinkBase` plumbing were retired in #1807: the nudge's job is one-tap
+logging in place, the ranked buttons plus "Show more" cover the real vocabulary,
+and the long tail was not worth a keyboard row on every send. Other messages' deep
+links (refill's "Open form", the household round's "Open Household →") are
+untouched — this is a food-nudge ruling, not a policy against deep links.
+
 **Display units in notification copy (#1019).** Notifications render
 measurements in **canonical units (kg / km / °F)** — unit prefs are
 per-**login**, notifications per-**profile**, so there is no pref to consult
@@ -667,7 +701,7 @@ bus. An Upcoming dismissal still never touches a safety message.
 scan harvests every callback-token prefix the notification modules can mint and
 fails the build unless each one is either owned by a family in
 `RECONCILE_PREFIXES` or declared **inert** with a written reason (a view control
-— "▲ Collapse", "⚙️ Tune", "➕ Show more", the `/dose` access list — makes no
+— "▲ Collapse", "⚙️ Tune", "➕ Show more"/"➖ Show less", the `/dose` access list — makes no
 state claim, so it cannot lie and must not keep a resolved message alive). It
 also fails on a stale entry. An UNKNOWN prefix is deliberately not treated as
 inert: an unreasoned button leaves its message untouched rather than being closed

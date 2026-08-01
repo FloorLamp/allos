@@ -35,7 +35,7 @@ import {
   type AllCallback,
   type EscalationCallback,
   type FoodLogCallback,
-  type FoodMoreCallback,
+  type FoodExpandCallback,
   type FoodOptInCallback,
   type FoodProteinCallback,
   type PreventiveCallback,
@@ -64,7 +64,7 @@ import {
   parseAllCallback,
   parseEscalationCallback,
   parseFoodLogCallback,
-  parseFoodMoreCallback,
+  parseFoodExpandCallback,
   parseFoodOptInCallback,
   parseFoodProteinCallback,
   parsePreventiveCallback,
@@ -251,11 +251,11 @@ export async function handleCallbackQuery(
     await handleFoodProtein(cq, foodProtein);
     return;
   }
-  // "➕ Show more" (#1075): reveal the next FOOD_NUDGE_BUTTON_COUNT ranked buttons in place —
-  // a stateless view change, answered quietly.
-  const foodMore = parseFoodMoreCallback(cq.data);
-  if (foodMore) {
-    await handleFoodMore(cq, foodMore);
+  // "➕ Show more" (#1075) / "➖ Show less" (#1807): page the ranked buttons up or down in
+  // place — a stateless view change, answered quietly.
+  const foodExpand = parseFoodExpandCallback(cq.data);
+  if (foodExpand) {
+    await handleFoodExpand(cq, foodExpand);
     return;
   }
   const foodOptIn = parseFoodOptInCallback(cq.data);
@@ -1039,14 +1039,19 @@ async function handleFoodProtein(
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
 }
 
-// Handle a "➕ Show more" tap (#1075): reveal the next FOOD_NUDGE_BUTTON_COUNT ranked
-// buttons in place. STATELESS — the current visible count is derived by counting the ranked
-// buttons already in the keyboard, so no token field / stored count is needed; a double-tap
-// is harmless (it re-resolves to the next window). A view change, so answer QUIETLY (no
-// toast). Rebuilds through the chokepoint, which re-applies the shared-chat "[Name] " prefix.
-async function handleFoodMore(
+// Handle a "➕ Show more" (#1075) / "➖ Show less" (#1807) tap: page the ranked buttons one
+// FOOD_NUDGE_BUTTON_COUNT step up or down in place. STATELESS in BOTH directions — the
+// current visible count is derived by counting the ranked buttons already in the keyboard,
+// so no token field / stored count is needed; a double-tap is harmless (expanding
+// re-resolves to the next window, collapsing clamps at the compact default a fresh send
+// uses). A view change, so answer QUIETLY (no toast). Rebuilds through `buildFoodNudge` —
+// the same builder the send and every other rebuild call — so the slot-scoped "(n)"
+// suffixes, the protein pseudo-group button, the tally and the protein line all survive a
+// collapse exactly as they survive an expansion; and through the chokepoint, which
+// re-applies the shared-chat "[Name] " prefix.
+async function handleFoodExpand(
   cq: TelegramCallbackQuery,
-  token: FoodMoreCallback
+  token: FoodExpandCallback
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   const profileId =
@@ -1065,12 +1070,14 @@ async function handleFoodMore(
     return;
   }
   const current = countVisibleFoodButtons(rows);
-  const rebuilt = buildFoodNudge(
-    profileId,
-    token.window,
-    token.date,
-    current + FOOD_NUDGE_BUTTON_COUNT
-  );
+  // The clamp is the whole asymmetry between the two directions: expanding is unbounded
+  // (the renderer drops "Show more" once every ranked key is out), collapsing bottoms out
+  // at the compact default rather than at an empty keyboard.
+  const next =
+    token.action === "more"
+      ? current + FOOD_NUDGE_BUTTON_COUNT
+      : Math.max(FOOD_NUDGE_BUTTON_COUNT, current - FOOD_NUDGE_BUTTON_COUNT);
+  const rebuilt = buildFoodNudge(profileId, token.window, token.date, next);
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
   await answerCallbackQuery(cq.id);
 }
