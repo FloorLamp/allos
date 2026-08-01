@@ -4,6 +4,13 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1791,
+          "kind": "fix",
+          "issues": [1787],
+          "title": "Portal sync problems stay within their own household",
+          "body": "The patient-portals status card could show another household's portal failure message — including its free-text error — to anyone with a login on the instance. Portal run reports are now scoped by reachability: you see failures only for portal accounts bound to profiles you can access (plus unplaced first-contact runs, for the people who manage those). Portal names in the shared registry remain instance-wide, as designed."
+        },
+        {
           "pr": 1786,
           "kind": "fix",
           "issues": [1780],
