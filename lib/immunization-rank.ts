@@ -78,9 +78,12 @@ export function rankedVaccineOptions(
     });
   }
   for (const combo of COMBINATIONS) {
-    const buckets = expandToComponents(combo.code)
-      .map((code) => bucketByCode.get(code))
-      .filter((b): b is number => b !== undefined);
+    // Best (lowest) bucket across the components, each falling back to neutral: a
+    // combination is as relevant as the most relevant thing it covers, so Twinrix
+    // stays offered for its Hep A half even when Hep B has been declined.
+    const buckets = expandToComponents(combo.code).map(
+      (code) => bucketByCode.get(code) ?? NEUTRAL_BUCKET
+    );
     rows.push({
       name: combo.name,
       bucket: buckets.length ? Math.min(...buckets) : NEUTRAL_BUCKET,
