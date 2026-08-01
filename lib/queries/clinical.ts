@@ -614,7 +614,8 @@ export function getCarePlanItems(profileId: number): CarePlanItem[] {
               cp.resolved_by_imaging_study_id,
               cp.resolved_by_medical_record_id,
               cp.resolved_by_dental_procedure_id,
-              cp.resolved_by_skin_lesion_id, cp.resolved_at
+              cp.resolved_by_skin_lesion_id, cp.resolved_at,
+              cp.settled_disposition, cp.settled_on, cp.settled_reason
          FROM care_plan_items cp
          LEFT JOIN providers p ON p.id = cp.provider_id
         WHERE cp.profile_id = ?
