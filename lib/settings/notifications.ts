@@ -368,8 +368,8 @@ export function setHouseholdRoundPointer(
 
 // ---- The digest's live offer-tail keyboard (issue #1505) -------------------
 //
-// The digest carries the guaranteed "Log other…" tail, and that button's LABEL names
-// the slot it opens into ("Log other… · bedtime"). A morning-sent digest whose label
+// The digest carries the guaranteed offer tail, and that button's LABEL names the
+// slot it opens into ("Log other (2 for bedtime)"). A morning-sent digest whose label
 // still says "morning" at 10pm is a promise the expansion won't keep, so the tick
 // re-labels it at each slot boundary.
 //

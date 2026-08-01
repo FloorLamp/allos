@@ -177,7 +177,7 @@ export interface DigestInput {
   // Last night's sleep (issue #1117), or null when the sleep summary is off or
   // there's no fresh sleep data. When present the digest gets a calm Sleep section.
   sleep?: DigestSleep | null;
-  // The GUARANTEED access tail (#1505): the collapsed "Log other… · <slot>" action
+  // The GUARANTEED access tail (#1505): the collapsed "Log other (N for <slot>)" action
   // for this profile's `may` items, or null when the profile has none on offer today.
   // Its presence also lowers the "is there anything to say?" bar to zero — see
   // buildDigest — because for a tap-only user this button IS the digest's job.
@@ -509,7 +509,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // A tail-only digest still needs a body: an empty message reads as a bug. The
   // count rides the sentence here on EVERY channel — with no other content there is
   // nothing for the Telegram button to be redundant against, and a bare "Nothing
-  // scheduled." beside a "Log other…" button would under-describe what is on offer.
+  // scheduled." beside a "Log other" button would under-describe what is on offer.
   if (sections.length === 0) {
     const offered = input.offerCount ?? 0;
     sections.push({

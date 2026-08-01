@@ -1736,8 +1736,9 @@ or **May** — and everything else follows from it.
 Marking something **May** does not hide it. It keeps its schedule as a _hint_ for
 where to offer it, it still shows on Supplements & Meds, and on Upcoming it moves
 into an "available when you want them" section rather than disappearing. If you
-only use the app through Telegram, the daily digest carries a **"Log other…"**
-button that opens into whatever is available right now — so a May item is always
+only use the app through Telegram, the daily digest carries a
+**"Log other (3 for midday)"** button that opens into whatever is available right
+now — so a May item is always
 one tap away even though it never interrupts you.
 
 **Medications start as Must**, and moving one lower asks first, spelling out

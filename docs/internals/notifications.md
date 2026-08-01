@@ -4,8 +4,8 @@
 > model and the attention doctrine, not per-channel.** `must` reminds and
 > escalates; `should` reminds; `may` is never pushed and reaches the user only
 > through surfaces they open themselves — including the daily digest's
-> guaranteed "Log other…" tail, whose slot-boundary refresh is a keyboard EDIT
-> and therefore not a send. See
+> guaranteed "Log other (3 for midday)" tail, whose slot-boundary refresh is a
+> keyboard EDIT and therefore not a send. See
 > [the attention doctrine](findings.md#the-attention-doctrine) and
 > [supplements](supplements.md).
 
@@ -615,6 +615,73 @@ the subject's own recent average — never a judgment, never a streak, per the
 #992/#716 contract), **symptoms**, and **overnight data arrival**. Sync
 STALENESS is deliberately NOT re-derived in the collector: #1685 already owns it
 end to end and already renders it in this same message's Today section.
+
+**Arrival lines report NEWS, not substrate (#1819 items 1–2).** The data category
+had drifted into reporting the storage layer at the reader.
+
+- **Cache-kind providers are excluded outright.** Weather & UV's
+  `📥 Weather & UV (Open-Meteo): 406 new records` counted cells of the GLOBAL
+  location-keyed forecast cache, not records about the profile (the #1772
+  vocabulary disease, pushed to a phone) — and because the sliding fetch window
+  inserts new forecast hours every day, the old `HAVING SUM(inserted) > 0` passed
+  **every morning forever**. A permanent line carries no information (the
+  attention doctrine's own logic). The exclusion derives from the provider KIND
+  through the one shared `syncVocabularyForKind`, so a future cache-kind provider
+  is covered with no list to maintain. Cache-kind sync accounting lives in
+  **Data → Review**.
+- **The line names KINDS, not a summed count.**
+  `📥 Google Health Connect: 2271 new records` added minute-grain heart-rate rows
+  to a single body-weight reading, which is technically true and humanly
+  meaningless. `arrivalChanges` now reads the **per-row provenance the syncs
+  already persist** (`integration_sync_rows`, #1333 — the target table each written
+  row landed in, plus the metric for a `metric_samples` row) and renders
+  `📥 Google Health Connect: steps, sleep, workouts`. No second accounting is
+  minted; counts stay in Data → Review. The kind vocabulary and the capped phrase
+  are pure (`arrivalKind` / `arrivalKindsPhrase` in `lib/recent-changes.ts`).
+  A window whose writes name nothing — a legacy pre-#1333 event, a provider that
+  records no provenance — therefore produces **no line**, which is the honest
+  answer rather than a count standing in for news.
+
+**The Today section's band grammar (#1819 items 3–5).**
+
+- A band of **at most three items NAMES them** instead of counting them:
+  `🗓️ Overdue: Colonoscopy · CBC, Lipid panel`. Below that size a count withholds
+  the only thing the reader needs; above it, naming stops fitting on a line and the
+  count is genuinely the right shape (`summarizeBand`'s `nameAtMost`).
+- The **band summaries carry the section's bullet emoji** (`🗓️`) — they were the
+  only lines in the whole message without one.
+- A band whose `training` items are all **weekly targets** states weekly PROGRESS
+  instead of counting unmet ones: `🗓️ This week: 2 of 4 training targets on pace —
+  behind on Back, Chest`, formatted by the shared `weeklyTargetPaceLine` over the
+  SAME paced set (`getFrequencyTargetProgress`) the Training chips render. The
+  guard is the `training:` key namespace, not the domain — an endurance event and
+  an outdoor plan also live in `training`, and the phrase is not about them.
+- The **workout preview** renders `digestWorkoutLine`'s bare variant, because the
+  formatter's standalone `Today:` prefix restated the section heading it sits under.
+  Same computation, section-aware framing.
+
+**Yesterday: the delta and the fraction merge when redundant (#1819 item 6).**
+`🔁 Missed: Glycine (1 day)` above `💊 Supplements: 8/9 taken` stated one fact
+twice — the 1 missing IS the Glycine. When the delta **fully explains the gap**
+(exactly one item changed state, it went missed, and the gap is exactly one dose)
+the two collapse to `💊 Supplements: 8/9 taken — missed Glycine (1 day)`. Every
+divergent case — a skip, several misses, a resume, a mixed window — keeps both
+lines, because there #1505 part 3's "delta leads, fraction supports" is still
+answering two questions. The test is the pure `intakeGapExplainedBy`.
+
+**Sleep copy (#1819 item 7).** The verdict is a clause about the figure, so it
+takes the em-dash separator (`😴 Last night: 6h 38m — about typical`) rather than a
+bare space that read as one run-on quantity. `sriPresentation` gained a **banded
+qualifier** on its existing thresholds, so the line says what the index means:
+`📈 Sleep regularity 94 — very consistent`. #992's non-judgmental contract holds by
+construction — the qualifier describes the SCHEDULE's consistency, never the
+sleeper.
+
+**Separator grammar.** One rule across the digest: `:` introduces a label's
+content, `—` attaches a clause that qualifies the statement before it, and `·`
+joins peers on one line (`,` joins peers within one group). Applied wherever the
+above lines touch; a line that predates the rule and was not otherwise edited
+still follows it or is a candidate for the next pass.
 
 ## Live-message reconciliation (#1779)
 

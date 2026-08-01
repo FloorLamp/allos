@@ -9,7 +9,7 @@
 // arrives regardless — carries a guaranteed access path as its FIRST inline button.
 //
 // THE SHAPE. Collapsed by default: one button, labelled with the CURRENT slot
-// ("Log other… · bedtime"). Tapping expands it IN PLACE into one-tap log buttons for
+// ("Log other (2 for bedtime)"). Tapping expands it IN PLACE into one-tap log buttons for
 // the may items on offer right now, plus a collapse button. No new message is sent at
 // any point — the whole interaction is keyboard edits on a message that already
 // exists for its own reasons. That is the contact-consent rule in mechanism form: an
