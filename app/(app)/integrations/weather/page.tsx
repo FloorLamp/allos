@@ -1,35 +1,31 @@
 import Link from "next/link";
-import { IconArrowLeft, IconCheck } from "@tabler/icons-react";
+import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection } from "@/lib/integrations/connections";
-import { getLastSuccessfulSyncAt } from "@/lib/queries";
+import { getIntegrationState, SETUP_HISTORY_LIMIT } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { getHomeLocation, getSkinType } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { getUvDoseForDay } from "@/lib/queries/weather";
-import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
-import {
-  enableWeatherAction,
-  syncWeatherAction,
-  disconnectWeatherAction,
-} from "./actions";
+import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
+import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
+import SyncNowButton from "@/components/SyncNowButton";
+import { enableWeatherAction, disconnectWeatherAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 const ERROR_MESSAGES: Record<string, string> = {
   no_location:
     "Set your home location first (Settings → Profile) — the UV series is fetched for that spot.",
-  sync_failed:
-    "Couldn't reach Open-Meteo. Check your connection and try again in a moment.",
 };
 
 export default async function WeatherPage(props: {
   searchParams: Promise<{ error?: string }>;
 }) {
   const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const def = getIntegration("weather")!;
   const conn = getConnection(profile.id, "weather");
   const connected = conn?.status === "connected";
@@ -39,7 +35,15 @@ export default async function WeatherPage(props: {
     ? (ERROR_MESSAGES[searchParams.error] ?? "Something went wrong. Try again.")
     : null;
 
-  const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "weather");
+  // THE per-provider state (#1772): one computation behind this page, Review's
+  // inbox, and the Integrations grid. Weather speaks the CACHE vocabulary — its
+  // counts are revised forecast cells, not user records — which the shared
+  // formatter derives from the provider kind.
+  const state = getIntegrationState(
+    profile.id,
+    "weather",
+    SETUP_HISTORY_LIMIT
+  )!;
   const dose = connected
     ? getUvDoseForDay(profile.id, today(profile.id))
     : null;
@@ -85,19 +89,20 @@ export default async function WeatherPage(props: {
             </div>
           ) : connected ? (
             <>
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className="badge inline-flex items-center gap-1 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                  data-testid="weather-status"
-                >
-                  <IconCheck className="h-3.5 w-3.5" /> Connected
-                </span>
-                {conn?.last_sync_at && (
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Last sync: {conn.last_sync_at} UTC
-                  </span>
-                )}
-              </div>
+              <IntegrationStatusHeader
+                state={state}
+                isAdmin={login.role === "admin"}
+                controls={
+                  <>
+                    <SyncNowButton provider="weather" />
+                    <form action={disconnectWeatherAction}>
+                      <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
+                        Disable
+                      </button>
+                    </form>
+                  </>
+                }
+              />
 
               {dose && dose.outdoorMinutes > 0 && (
                 <div data-testid="weather-today-dose">
@@ -133,19 +138,6 @@ export default async function WeatherPage(props: {
                   only the &ldquo;enough sun&rdquo; side is shown.
                 </p>
               )}
-
-              <div className="flex gap-2 pt-1">
-                <form action={syncWeatherAction}>
-                  <button className="btn" data-testid="weather-sync">
-                    Sync now
-                  </button>
-                </form>
-                <form action={disconnectWeatherAction}>
-                  <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
-                    Disable
-                  </button>
-                </form>
-              </div>
             </>
           ) : (
             <div className="space-y-3">
@@ -173,10 +165,7 @@ export default async function WeatherPage(props: {
         <SetupCard />
 
         {connected && (
-          <IntegrationSyncHistoryLink
-            lastSuccessAt={lastSuccessAt}
-            connected={connected}
-          />
+          <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
         )}
       </div>
     </div>

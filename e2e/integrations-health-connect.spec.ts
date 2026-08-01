@@ -62,13 +62,10 @@ test.describe("Health Connect integration (#391)", () => {
       const first = await readRevealedToken(member);
       expect(first.length).toBeGreaterThan(10);
 
-      // #1212: sync history is deduped to ONE surface (Review → Connected
-      // sources). The setup page no longer renders its own "Recent activity"
-      // table — it links to that single history instead (a real destination, not
-      // a dead-end).
-      const historyLink = member.getByTestId("sync-history-link");
-      await expect(historyLink).toBeVisible();
-      await expect(historyLink).toHaveAttribute("href", "/data?section=review");
+      // #1212 deduped sync history to ONE surface and left this page a link to it;
+      // #1772 inverted that — the provider's own page is its HOME, so the history
+      // renders here as a real table and Review became an inbox linking back.
+      await expect(member.getByTestId("sync-history-link")).toHaveCount(0);
       await expect(member.getByText("Recent activity")).toHaveCount(0);
 
       // Rotate again → a fresh token replaces the revealed one. The displayed value
@@ -91,6 +88,17 @@ test.describe("Health Connect integration (#391)", () => {
         member.getByText("only shown at the moment it", { exact: false })
       ).toBeVisible();
       await expect(member.getByTestId("health-connect-token")).toHaveCount(0);
+
+      // The sync history table lives here now (#1772). This fixture profile has no
+      // sync events of its own, so it states that plainly rather than linking away.
+      const history = member.getByTestId("sync-history");
+      await expect(history).toBeVisible();
+      await expect(history).toContainText("No syncs recorded yet");
+      // The token card answers a DIFFERENT question (is the credential alive) and
+      // keeps its own lifecycle badge; the sync standing is the shared one.
+      await expect(
+        member.getByTestId("sync-status-health-connect")
+      ).toBeVisible();
     } finally {
       await member.context().close();
     }

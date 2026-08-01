@@ -227,11 +227,7 @@ export default async function PatientPortalsPage() {
           broken.
         </p>
         <div className="mt-3">
-          <IntegrationSyncHistoryLink
-            lastSuccessAt={lastSync}
-            connected={conn?.status === "connected"}
-            surface="imports"
-          />
+          <IntegrationSyncHistoryLink lastSuccessAt={lastSync} />
         </div>
       </div>
     </div>

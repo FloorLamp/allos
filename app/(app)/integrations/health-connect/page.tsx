@@ -13,9 +13,10 @@ import {
 } from "@/lib/integrations/connections";
 import { getPublicUrl } from "@/lib/settings";
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
-import { getLastSuccessfulSyncAt } from "@/lib/queries";
+import { getIntegrationState, SETUP_HISTORY_LIMIT } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
+import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
+import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import HealthConnectSetup from "./HealthConnectSetup";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ async function baseUrl(): Promise<string> {
 }
 
 export default async function HealthConnectPage() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const def = getIntegration("health-connect")!;
   const conn = getConnection(profile.id, "health-connect");
   const tokenInfo = getHealthConnectTokenInfo(profile.id);
@@ -53,17 +54,14 @@ export default async function HealthConnectPage() {
     Date.now()
   );
 
-  let lastSummary: Record<string, number> | null = null;
-  try {
-    lastSummary = conn?.last_sync_summary
-      ? JSON.parse(conn.last_sync_summary)
-      : null;
-  } catch {
-    lastSummary = null;
-  }
-
-  // Profile-scoped sync-event history for the debug panel.
-  const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "health-connect");
+  // THE per-provider state (#1772): one computation behind this page, Review's
+  // inbox, and the Integrations grid. The token card above answers a DIFFERENT
+  // question (is the credential alive) and keeps its own lifecycle badge.
+  const state = getIntegrationState(
+    profile.id,
+    "health-connect",
+    SETUP_HISTORY_LIMIT
+  )!;
 
   return (
     <div>
@@ -86,8 +84,6 @@ export default async function HealthConnectPage() {
           createdAt={tokenInfo.createdAt}
           lastUsedAt={tokenInfo.lastUsedAt}
           expiresAt={tokenInfo.expiresAt}
-          lastSummary={lastSummary}
-          lastSyncAt={conn?.last_sync_at ?? null}
         />
 
         {connected && (
@@ -164,10 +160,20 @@ export default async function HealthConnectPage() {
               </p>
             </div>
 
-            <IntegrationSyncHistoryLink
-              lastSuccessAt={lastSuccessAt}
-              connected={connected}
-            />
+            <div className="card">
+              <IntegrationStatusHeader
+                state={state}
+                isAdmin={login.role === "admin"}
+                controls={
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Push-only — your phone&apos;s exporter sends data on a
+                    schedule; there&apos;s nothing to sync by hand.
+                  </span>
+                }
+              />
+            </div>
+
+            <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
           </>
         )}
       </div>

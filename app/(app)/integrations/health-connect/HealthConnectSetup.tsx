@@ -64,8 +64,6 @@ export default function HealthConnectSetup({
   createdAt,
   lastUsedAt,
   expiresAt,
-  lastSummary,
-  lastSyncAt,
 }: {
   endpoint: string;
   connected: boolean;
@@ -75,8 +73,6 @@ export default function HealthConnectSetup({
   createdAt: string | null;
   lastUsedAt: string | null;
   expiresAt: string | null;
-  lastSummary: Record<string, number> | null;
-  lastSyncAt: string | null;
 }) {
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -149,11 +145,6 @@ export default function HealthConnectSetup({
             <IconCheck className="h-3.5 w-3.5" /> Connected
           </span>
         )}
-        {lastSyncAt && (
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Last sync: {lastSyncAt} UTC
-          </span>
-        )}
       </div>
 
       <TokenRow label="Endpoint URL" value={endpoint} />
@@ -205,22 +196,6 @@ export default function HealthConnectSetup({
           lastUsedAt={lastUsedAt}
           expiresAt={expiresAt}
         />
-      )}
-
-      {lastSummary && (
-        <div>
-          <label className="label">Last sync</label>
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(lastSummary).map(([k, v]) => (
-              <span
-                key={k}
-                className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
-              >
-                {k}: {v}
-              </span>
-            ))}
-          </div>
-        </div>
       )}
 
       {error && (

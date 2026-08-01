@@ -30,7 +30,9 @@ import type {
 // (a) integrations currently failing ("Needs attention") and (b) DETECTED
 // duplicate/conflict pairs (issue #10, Phase 2) span both, then
 // (c) "Connected sources" (<ConnectedSources>) — the RECURRING per-provider streams
-// collapsed to latest-state with a Sync now / push explainer — and
+// as an INBOX since #1772: a provider needing attention expanded with the reason and
+// the action, a healthy one collapsed to a single line linking to its own page (which
+// owns its controls and its full sync history) — and
 // (d) "Imports" (<ImportFeed>) — the chronological one-off feed of documents,
 // archive imports, and paste jobs. Server component — the page reads everything via
 // lib/queries.

@@ -4,9 +4,14 @@ import { followLink } from "./helpers";
 // Dogfoods the Data → Review import inbox (the feature that motivated this tier).
 // After issue #208 the surface is split into two sections with a shared strip on
 // top: "Needs attention" (a currently-failing integration) spans both, then
-// "Connected sources" (recurring per-provider streams, collapsed to latest-state
-// with a Sync now / push explainer) and "Imports" (the chronological one-off feed
-// of documents + archive imports + paste jobs). Plus the profile-menu badge count.
+// "Connected sources" and "Imports" (the chronological one-off feed of documents +
+// archive imports + paste jobs). Plus the profile-menu badge count.
+//
+// Since #1772 "Connected sources" is an INBOX rendered through the shared state model
+// (lib/integrations/provider-state): a provider that needs attention is expanded with
+// the reason and the action, a healthy one collapses to a single line, and the full
+// per-provider history lives on the provider's own page (see the setup-page specs
+// below and weather-uv.spec.ts).
 test.describe("Data → Review import inbox", () => {
   test("splits connected sources from one-off imports, with a failing integration on top", async ({
     page,
@@ -41,10 +46,12 @@ test.describe("Data → Review import inbox", () => {
     const hcCard = review.getByTestId("source-health-connect");
     await expect(hcCard.getByText("Google Health Connect")).toBeVisible();
     await expect(hcCard.getByText("30 new · 10 changed")).toBeVisible();
+    // The origin reconciliation renders once now — the inbox card shows the latest
+    // state only, so there is no history copy of the same line to disambiguate.
     await expect(
-      hcCard
-        .getByText("Total calories: Garmin used · Fitbit ignored as duplicate")
-        .first() // first-ok: within the source-health-connect card, the reconciliation line appears in both the collapsed latest-state and the recent-history list — assert the latest (same pattern as the Strava "Sync failed" line below)
+      hcCard.getByText(
+        "Total calories: Garmin used · Fitbit ignored as duplicate"
+      )
     ).toBeVisible();
     await expect(hcCard.getByText(/Push-only/)).toBeVisible();
 
@@ -54,9 +61,13 @@ test.describe("Data → Review import inbox", () => {
     await expect(
       stravaCard.getByRole("button", { name: "Sync now" })
     ).toBeVisible();
-    // "Sync failed" appears in both the collapsed latest-state line and the
-    // recent-history list of the same card — assert the first (latest-state).
-    await expect(stravaCard.getByText("Sync failed").first()).toBeVisible(); // first-ok: asserts the Strava card shows Sync failed — order-agnostic presence
+    // One card, one latest state — the history that used to repeat this line moved to
+    // the provider's own page (#1772), so this is an exact single match.
+    await expect(stravaCard.getByText("Sync failed")).toBeVisible();
+    // The inbox states the reason and offers the way to the full history.
+    await expect(stravaCard.getByText(/token refresh failed/)).toBeVisible();
+    const fullHistory = stravaCard.getByTestId("source-history-link-strava");
+    await expect(fullHistory).toHaveAttribute("href", "/integrations/strava");
 
     // Admin-only raw payload viewer (#9): the seeded Health Connect sync carries a
     // raw_ref, so the admin (the seed logs in as admin) sees a "View raw"
@@ -64,7 +75,7 @@ test.describe("Data → Review import inbox", () => {
     // profile-scoped raw route, which returns the captured provider JSON — now
     // rendered through the shared RawDataViewer as a collapsible tree (#1318), not
     // a flat <pre>.
-    const viewRaw = hcCard.getByText("View raw").first(); // first-ok: asserts the source card's View raw affordance — order-agnostic presence
+    const viewRaw = hcCard.getByText("View raw");
     await expect(viewRaw).toBeVisible();
     // The click can land while the page is still hydrating (all the assertions
     // above are satisfied by the SSR HTML alone): the native <details> may open
@@ -153,33 +164,56 @@ test.describe("Data → Review import inbox", () => {
     await expect(oura.getByRole("button", { name: "Sync now" })).toHaveCount(0);
   });
 
-  test("a truncated pull sync renders as partial, not a clean success (#1614)", async ({
+  // #1772 moved the per-provider history home to the provider's own page and made it
+  // a real table. These two assert the properties the redesign was FOR: a truncated
+  // run still reads as partial rather than a clean success (#1614), and a failure row
+  // that is no longer the latest still carries its reason.
+  test("the provider's own page owns the sync-history table (#1772)", async ({
     page,
   }) => {
-    await page.goto("/data?section=review");
-    const review = page.getByTestId("review-inbox");
-    const stravaCard = review.getByTestId("source-strava");
-    await expect(stravaCard).toBeVisible();
+    await page.goto("/integrations/strava");
+    const history = page.getByTestId("sync-history");
+    await expect(history).toBeVisible();
 
-    // The seeded truncated run sits in Strava's recent history (its newest event is
-    // still the token failure), so open the card's native <details>. It carries no
-    // onToggle, so a click works pre-hydration.
-    await stravaCard.getByText(/Recent syncs/).click();
+    // The window the runs cover is stated ONCE above the table instead of repeating
+    // verbatim on every row.
+    await expect(history.getByTestId("sync-history-window")).toContainText(
+      "2026-07-01 → 2026-07-08"
+    );
 
-    // The run reports what it DID land — and is explicitly marked partial, so a page
-    // cap / rate limit can no longer read as a fully green sync.
-    const partial = stravaCard.getByTestId(/^sync-partial-/);
-    await expect(partial).toBeVisible();
-    await expect(partial).toHaveText(/partial/);
+    // The four consecutive hourly no-op re-scans collapse to a single summary row
+    // (#137) rather than filling four slots with rows that say nothing.
+    const quiet = history.getByTestId("sync-history-quiet");
+    await expect(quiet).toHaveText(/4 syncs with no new data/);
+
+    // The seeded truncated run reports what it DID land and is explicitly marked
+    // partial, so a page cap / rate limit can't read as a fully green sync.
+    await expect(history.getByText("Partial", { exact: true })).toBeVisible();
     await expect(
-      stravaCard.getByText(/page cap or rate limit stopped this run early/)
+      history.getByText(/page cap or rate limit stopped this run early/)
     ).toBeVisible();
-    // The reason names the recovery, so the run doesn't look like data loss.
     await expect(
-      stravaCard.getByText(/next sync picks up where it left off/)
+      history.getByText(/next sync picks up where it left off/)
     ).toBeVisible();
-    // The same card's complete runs are NOT marked partial — exactly one marker.
-    await expect(partial).toHaveCount(1);
+  });
+
+  test("a history failure row exposes its reason, not just 'Failed' (#1772)", async ({
+    page,
+  }) => {
+    await page.goto("/integrations/strava");
+    const history = page.getByTestId("sync-history");
+    await expect(history).toBeVisible();
+
+    // The newest Strava event is a failure — its reason shows, as it always did.
+    await expect(
+      history.getByText(/Strava token refresh failed \(401\)/)
+    ).toBeVisible();
+    // And the OLDER failure, which is not the latest event, states its own distinct
+    // reason too. That row used to render a bare "Sync failed" with no explanation
+    // anywhere in the UI.
+    await expect(
+      history.getByText(/rate limit reached \(429\): daily quota exhausted/)
+    ).toBeVisible();
   });
 
   test("a dead-token source shows a 'Needs reconnect' card, distinct from 'Not connected' (issue #326)", async ({

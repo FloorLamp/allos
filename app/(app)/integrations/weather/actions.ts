@@ -32,26 +32,41 @@ export async function enableWeatherAction() {
   }
 }
 
-// Pull the UV series on demand. runWeatherSync returns { error } for graceful failures
-// (no location, provider/network error) and can throw — catch both so neither becomes
-// an unhandled error page; surface the failure via ?error=.
-export async function syncWeatherAction() {
+export interface SyncNowResult {
+  status: "done" | "error";
+  message: string;
+}
+
+// "Sync now" for the shared <SyncNowButton> (#1772). The setup page and Review used
+// to offer DIFFERENT sync affordances — a redirecting form action here, an inline
+// toasting button there — for the same idempotent run. There is one now, and it
+// returns a result the button surfaces inline instead of navigating with ?error=.
+export async function syncWeatherNow(): Promise<SyncNowResult> {
   const { profile } = await requireWriteAccess();
-  let failed = false;
+  if (!getHomeLocation(profile.id)) {
+    return {
+      status: "error",
+      message: "Set your home location first (Settings → Profile).",
+    };
+  }
   try {
     const res = await runWeatherSync(profile.id);
     if (res && "error" in res) {
-      log.error("weather sync failed", { error: res.error });
-      failed = true;
+      log.error("weather sync-now failed", { error: res.error });
+      return { status: "error", message: `Sync failed: ${res.error}` };
     }
+    for (const p of ["/", "/timeline", "/integrations/weather", "/data"]) {
+      revalidatePath(p);
+    }
+    const suffix = res.partial ? " (air quality unavailable this run)" : "";
+    return {
+      status: "done",
+      message: `Refreshed ${res.hours} ${res.hours === 1 ? "hour" : "hours"} and ${res.days} ${res.days === 1 ? "day" : "days"} of forecast.${suffix}`,
+    };
   } catch (err) {
-    log.error("weather sync threw", { err: String(err) });
-    failed = true;
+    log.error("weather sync-now threw", { err: String(err) });
+    return { status: "error", message: "Couldn't sync. Try again." };
   }
-  for (const p of ["/", "/timeline", "/integrations/weather", "/data"]) {
-    revalidatePath(p);
-  }
-  if (failed) redirect("/integrations/weather?error=sync_failed");
 }
 
 export async function disconnectWeatherAction() {

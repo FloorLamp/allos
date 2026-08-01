@@ -62,35 +62,6 @@ export async function connectWithings() {
   redirect(`${AUTHORIZE_URL}?${params.toString()}`);
 }
 
-// Pull from Withings on demand (form action on the setup page). runWithingsSync
-// returns { error } for graceful failures and can throw on an unexpected network
-// error; catch both so neither becomes an unhandled error page, and surface the
-// failure via ?error=.
-export async function syncWithingsAction() {
-  const { profile } = await requireWriteAccess();
-  let failed = false;
-  try {
-    const res = await runWithingsSync(profile.id);
-    if (res && "error" in res) {
-      log.error("withings sync failed", { error: res.error });
-      failed = true;
-    }
-  } catch (err) {
-    log.error("withings sync threw", { err: String(err) });
-    failed = true;
-  }
-  for (const p of [
-    "/",
-    "/trends",
-    "/timeline",
-    "/integrations/withings",
-    "/data",
-  ]) {
-    revalidatePath(p);
-  }
-  if (failed) redirect("/integrations/withings?error=sync_failed");
-}
-
 export interface SyncNowResult {
   status: "done" | "error";
   message: string;

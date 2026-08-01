@@ -1,13 +1,15 @@
 import Link from "next/link";
-import { IconArrowLeft, IconCheck } from "@tabler/icons-react";
+import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection, getOuraConfig } from "@/lib/integrations/connections";
-import { getLastSuccessfulSyncAt } from "@/lib/queries";
+import { getIntegrationState, SETUP_HISTORY_LIMIT } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
-import { connectOura, syncOuraAction, disconnectOuraAction } from "./actions";
+import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
+import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
+import SyncNowButton from "@/components/SyncNowButton";
+import { connectOura, disconnectOuraAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,15 +19,13 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Oura rejected that token (401). Check you copied the whole personal access token, then try again.",
   validation_failed:
     "Couldn't reach Oura to validate the token. Check your connection and try again in a moment.",
-  sync_failed:
-    "Couldn't sync. Check your connection to Oura and try again in a moment.",
 };
 
 export default async function OuraPage(props: {
   searchParams: Promise<{ error?: string }>;
 }) {
   const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const def = getIntegration("oura")!;
   const conn = getConnection(profile.id, "oura");
   const cfg = getOuraConfig(profile.id);
@@ -37,16 +37,9 @@ export default async function OuraPage(props: {
     ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;
 
-  let lastSummary: Record<string, number> | null = null;
-  try {
-    lastSummary = conn?.last_sync_summary
-      ? JSON.parse(conn.last_sync_summary)
-      : null;
-  } catch {
-    lastSummary = null;
-  }
-
-  const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "oura");
+  // THE per-provider state (#1772): one computation behind this page, Review's
+  // inbox, and the Integrations grid.
+  const state = getIntegrationState(profile.id, "oura", SETUP_HISTORY_LIMIT)!;
 
   return (
     <div>
@@ -79,60 +72,31 @@ export default async function OuraPage(props: {
 
       {connected ? (
         <div className="grid max-w-3xl gap-6">
-          <div className="card space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className="badge inline-flex items-center gap-1 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                data-testid="oura-status"
-              >
-                <IconCheck className="h-3.5 w-3.5" /> Connected
-              </span>
-              {linkedEmail && (
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {linkedEmail}
-                </span>
-              )}
-              {conn?.last_sync_at && (
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  Last sync: {conn.last_sync_at} UTC
-                </span>
-              )}
-            </div>
-
-            {lastSummary && (
-              <div>
-                <label className="label">Last sync</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(lastSummary).map(([k, v]) => (
-                    <span
-                      key={k}
-                      className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
-                    >
-                      {k}: {v}
-                    </span>
-                  ))}
-                </div>
-              </div>
+          <div className="card space-y-2">
+            <IntegrationStatusHeader
+              state={state}
+              isAdmin={login.role === "admin"}
+              controls={
+                <>
+                  <SyncNowButton provider="oura" />
+                  <form action={disconnectOuraAction}>
+                    <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
+                      Disconnect
+                    </button>
+                  </form>
+                </>
+              }
+            />
+            {linkedEmail && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Linked account: {linkedEmail}
+              </p>
             )}
-
-            <div className="flex gap-2 pt-1">
-              <form action={syncOuraAction}>
-                <button className="btn">Sync now</button>
-              </form>
-              <form action={disconnectOuraAction}>
-                <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
-                  Disconnect
-                </button>
-              </form>
-            </div>
           </div>
 
           <SetupCard />
 
-          <IntegrationSyncHistoryLink
-            lastSuccessAt={lastSuccessAt}
-            connected={connected}
-          />
+          <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
         </div>
       ) : (
         <div className="grid max-w-3xl gap-6">
