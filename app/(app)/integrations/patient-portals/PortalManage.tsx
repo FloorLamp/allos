@@ -1,11 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type {
-  Portal,
-  PortalAccount,
-  PortalIdentity,
-} from "@/lib/portals";
+import type { Portal, PortalAccount, PortalIdentity } from "@/lib/portals";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -421,7 +417,9 @@ export default function PortalManage({
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
                       {i.portalName}
-                      {showsAccount(i.portalId) ? ` · ${i.accountName}` : ""} →{" "}
+                      {showsAccount(i.portalId)
+                        ? ` · ${i.accountName}`
+                        : ""} →{" "}
                       {i.ignored ? (
                         <span data-testid="portal-identity-ignored">
                           not synced (ignored)

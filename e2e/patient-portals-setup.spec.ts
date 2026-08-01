@@ -4,10 +4,7 @@ import Database from "better-sqlite3";
 import { hydratedClick, settledFill, settledSelect } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath, frozenNow } from "./worker-env";
-import {
-  E2E_LOGIN_PORTAL_NONE,
-  E2E_MEMBER_PASSWORD,
-} from "./fixture-logins";
+import { E2E_LOGIN_PORTAL_NONE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The Patient portals page (#1739, reshaped by #1826): register a portal, map a patient to
 // a profile, and see the mapping listed — through a GUIDED flow that renders one stage's
@@ -82,10 +79,7 @@ async function addPortal(page: Page, name: string): Promise<void> {
 
 async function removePortal(page: Page, name: string): Promise<void> {
   await openManage(page);
-  const row = page
-    .getByTestId("portal-row")
-    .filter({ hasText: name })
-    .first(); // first-ok: the name is unique to the calling test, so this is spec-owned data
+  const row = page.getByTestId("portal-row").filter({ hasText: name }).first(); // first-ok: the name is unique to the calling test, so this is spec-owned data
   await openRowMenu(page, row, name);
   await (await menuItem(page, "portal-remove")).click();
   await confirmWith(page, "Remove portal");
@@ -460,7 +454,9 @@ test.describe("Patient portals — the guided stages (#1826)", () => {
       await expect(stage).toHaveAttribute("data-stage", "no-portals");
       // A member cannot register a portal, so the card says who can instead of showing a
       // form that would be refused at the gate.
-      await expect(stage).toContainText("An admin on this instance can add one");
+      await expect(stage).toContainText(
+        "An admin on this instance can add one"
+      );
       await expect(member.getByTestId("portal-name")).toHaveCount(0);
       await expect(member.getByTestId("portals-status-line")).toHaveCount(0);
       await expect(member.getByTestId("portals-manage")).toHaveCount(0);

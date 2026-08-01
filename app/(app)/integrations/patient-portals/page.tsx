@@ -149,7 +149,10 @@ export default async function PatientPortalsPage() {
   // `pending`) one bound to nobody yet. Scoped in the READ, not filtered here; a surface
   // that filters what it was handed is one refactor away from leaking again, and the
   // failure `message` is 500 characters of free text from an external tool.
-  const reports = listVisiblePortalRunReports([...accessibleIds], canManagePending);
+  const reports = listVisiblePortalRunReports(
+    [...accessibleIds],
+    canManagePending
+  );
 
   // The Status sentence (#1756). ONE pure function decides it, because the card used to
   // answer "has anything happened?" two ways at once: "No run reported yet." above a list
