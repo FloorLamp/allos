@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import {
-  getPickerProviders,
+  getRankedPickerProviders,
+  getIntakeCatalogOptions,
   getMedicationDoseHistory,
   resolveMedicationAcrossProfiles,
   encounterForRecord,
@@ -27,6 +28,7 @@ import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
+import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import ProfileIdentityBanner from "@/components/ProfileIdentityBanner";
 import {
   loadMedicationsData,
@@ -163,8 +165,9 @@ export default async function MedicationDetailPage(props: {
       className="mx-auto"
       data-testid="medication-detail"
     >
-      <ProviderOptionsProvider providers={getPickerProviders()}>
+      <ProviderOptionsProvider providers={getRankedPickerProviders(profileId)}>
         <SituationOptionsProvider options={situationOptions}>
+         <IntakeOptionsProvider options={getIntakeCatalogOptions(profileId)}>
           <div className="mb-4">
             <ProfileIdentityBanner
               profile={subject}
@@ -246,6 +249,7 @@ export default async function MedicationDetailPage(props: {
             initialAction={initialAction}
             conditions={medConditions}
           />
+         </IntakeOptionsProvider>
         </SituationOptionsProvider>
       </ProviderOptionsProvider>
     </PageContainer>

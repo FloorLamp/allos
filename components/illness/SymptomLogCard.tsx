@@ -16,6 +16,8 @@ import { episodeHeadline } from "@/lib/illness-episode-format";
 import { episodeHref } from "@/lib/hrefs";
 import SymptomLogBar from "./SymptomLogBar";
 import SymptomMedQuickAdd from "./SymptomMedQuickAdd";
+import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
+import { getIntakeCatalogOptions } from "@/lib/queries";
 
 // Dashboard symptom card (issue #799) — rendered ONLY while an illness-type situation is
 // active (the page gates its `available`), so it appears exactly when it's useful. Gathers
@@ -71,9 +73,11 @@ export default function SymptomLogCard({
         textIntakeEnabled={isTaskConfigured("symptom-map")}
       />
       {/* Door C (#843): reach for an OTC med right where you're logging symptoms. */}
-      <SymptomMedQuickAdd
-        pediatric={getPediatricFormContext(profileId, units.weightUnit)}
-      />
+      <IntakeOptionsProvider options={getIntakeCatalogOptions(profileId)}>
+        <SymptomMedQuickAdd
+          pediatric={getPediatricFormContext(profileId, units.weightUnit)}
+        />
+      </IntakeOptionsProvider>
     </div>
   );
 }

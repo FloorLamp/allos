@@ -23,6 +23,7 @@ import {
   getDerivedSituationLines,
   getNavRelevance,
   countVisiblePools,
+  getIntakeCatalogOptions,
 } from "@/lib/queries";
 import { activeByKey, activeFindings } from "@/lib/findings";
 import {
@@ -100,6 +101,7 @@ import type { Supplement, SupplementDose } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
+import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
 import {
@@ -794,6 +796,7 @@ export default async function SupplementsTab({
 
   return (
     <SituationOptionsProvider options={situationOptionNames}>
+     <IntakeOptionsProvider options={getIntakeCatalogOptions(profile.id)}>
       <div>
         {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
           the profile's own data, NOT a manual toggle — rendered distinctly and NON-
@@ -1154,6 +1157,7 @@ export default async function SupplementsTab({
           <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
         ) : null}
       </div>
+     </IntakeOptionsProvider>
     </SituationOptionsProvider>
   );
 }

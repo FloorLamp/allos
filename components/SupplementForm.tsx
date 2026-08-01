@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import Combobox from "@/components/Combobox";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
+import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import RxNormAffordance from "@/components/intake/RxNormAffordance";
@@ -53,7 +54,6 @@ import type {
   SupplementPair,
 } from "@/lib/types";
 
-const CATALOG_NAMES = SUPPLEMENT_CATALOG.map((c) => c.name);
 const CATALOG_BY_NAME = new Map(
   SUPPLEMENT_CATALOG.map((c) => [c.name.toLowerCase(), c])
 );
@@ -116,6 +116,11 @@ export default function SupplementForm({
     s?.pause_situation ?? ""
   );
   const situationOptions = useSituationOptions();
+  // The supplement name combobox source. Its ORDER is a per-PROFILE fact (#1677) — this
+  // shelf first (retired items included), then a commonality head, then the rest of the
+  // catalog — so it arrives through IntakeOptionsContext instead of being the catalog's
+  // own category grouping, whose first eight rows were all vitamins.
+  const catalogOptions = useIntakeOptions();
   const confirm = useConfirm();
   const [brand, setBrand] = useState(s?.brand ?? "");
   const [critical, setCritical] = useState(s?.critical === 1);
@@ -431,7 +436,7 @@ export default function SupplementForm({
             rx.onNameChange();
           }}
           onPick={onPickName}
-          options={CATALOG_NAMES}
+          options={catalogOptions.supplements}
           placeholder="e.g. Vitamin D3"
         />
         <RxNormAffordance name={name} rx={rx} />

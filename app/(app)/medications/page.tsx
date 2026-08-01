@@ -1,7 +1,8 @@
 import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
-  getPickerProviders,
+  getRankedPickerProviders,
+  getIntakeCatalogOptions,
   getConditions,
   collectHouseholdRollup,
   countVisiblePools,
@@ -14,6 +15,7 @@ import MedicationTodayStrip from "./MedicationTodayStrip";
 import MedicationAddWorkspace from "./MedicationAddWorkspace";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
+import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
 import PageContainer from "@/components/PageContainer";
 import {
@@ -141,8 +143,13 @@ export default async function MedicationsPage(props: {
 
   return (
     <PageContainer width="reading" className="mx-auto">
-      <ProviderOptionsProvider providers={getPickerProviders()}>
+      <ProviderOptionsProvider
+        providers={getRankedPickerProviders(actingProfileId)}
+      >
         <SituationOptionsProvider options={situationOptions}>
+         <IntakeOptionsProvider
+           options={getIntakeCatalogOptions(actingProfileId)}
+         >
           <MedicationAddWorkspace
             initialSupply={initialSupply}
             // The medicine-cabinet door (#1522), counted over the WHOLE accessible
@@ -188,6 +195,7 @@ export default async function MedicationsPage(props: {
               boards[0]
             );
           })()}
+         </IntakeOptionsProvider>
         </SituationOptionsProvider>
       </ProviderOptionsProvider>
     </PageContainer>

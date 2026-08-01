@@ -6,7 +6,7 @@ import {
   getDocumentProduced,
   getRecordsForDocument,
   getCanonicalAutocomplete,
-  getPickerProviders,
+  getRankedPickerProviders,
   getDocumentVisits,
   getDocumentConditions,
   getDocumentAllergies,
@@ -336,7 +336,7 @@ export default async function ImportDetailPage(props: {
   const canPreview = Boolean(doc.stored_path) && (isPdf || isImage);
 
   return (
-    <ProviderOptionsProvider providers={getPickerProviders()}>
+    <ProviderOptionsProvider providers={getRankedPickerProviders(profile.id)}>
       <CanonicalNamesProvider names={canonicalOptions}>
         <div>
           <Link
