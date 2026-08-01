@@ -1,11 +1,12 @@
 import { db } from "../db";
 import {
+  biomarkerViewHref,
   encounterHref,
-  importHref,
-  MEDICATIONS_HREF,
+  immunizationHref,
+  intakeHref,
+  medicationHref,
   type AppRoute,
 } from "../hrefs";
-import { sourceDocumentId } from "../record-format";
 import { biomarkerNameKey } from "./medical";
 
 // PER-PROFILE activity reads for the provider detail/index pages (issue #275).
@@ -54,22 +55,6 @@ export interface ProviderRelationship {
 
 function n(row: unknown): number {
   return (row as { n: number }).n;
-}
-
-type ActivityProvenance = {
-  document_id?: number | null;
-  source?: string | null;
-};
-
-// A provider activity item should open the record that established it. Imported
-// items therefore lead straight to their source document; manual/integration rows
-// retain the domain fallback used before this provenance was available.
-function providerActivityHref(
-  fallback: AppRoute,
-  row: ActivityProvenance
-): AppRoute {
-  const documentId = sourceDocumentId(row.document_id, row.source);
-  return documentId == null ? fallback : importHref(documentId);
 }
 
 // All per-profile count chips for one provider. Encounters count a row that names
@@ -349,7 +334,7 @@ export function getProviderVisits(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, date, type, reason, document_id, source FROM encounters
+      `SELECT id, date, type, reason FROM encounters
          WHERE profile_id = ? AND (provider_id = ? OR location_provider_id = ?)
          ORDER BY date DESC, id DESC`
     )
@@ -358,15 +343,13 @@ export function getProviderVisits(
     date: string | null;
     type: string | null;
     reason: string | null;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.date,
     label: r.type || "Visit",
     sublabel: r.reason,
-    href: providerActivityHref(encounterHref(r.id), r),
+    href: encounterHref(r.id),
   }));
 }
 
@@ -380,8 +363,8 @@ export function getProviderLabs(
   // analyte-listing surface keys on.
   const rows = db
     .prepare(
-      `SELECT id, date, ${biomarkerNameKey()} AS name, category,
-              document_id, source FROM medical_records
+      `SELECT id, date, ${biomarkerNameKey()} AS name, canonical_name, category
+         FROM medical_records
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY date DESC, id DESC`
     )
@@ -389,16 +372,15 @@ export function getProviderLabs(
     id: number;
     date: string | null;
     name: string;
+    canonical_name: string | null;
     category: string | null;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.date,
     label: r.name,
     sublabel: r.category,
-    href: providerActivityHref("/results/biomarkers", r),
+    href: biomarkerViewHref(r.canonical_name, r.name),
   }));
 }
 
@@ -408,24 +390,22 @@ export function getProviderMedications(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, name, kind, active, document_id, source FROM intake_items
+      `SELECT id, name, kind, active FROM intake_items
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY active DESC, name`
     )
     .all(profileId, providerId) as {
     id: number;
     name: string;
-    kind: string;
+    kind: "medication" | "supplement";
     active: number;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: null,
     label: r.name,
     sublabel: r.active ? r.kind : `${r.kind} · inactive`,
-    href: providerActivityHref(MEDICATIONS_HREF, r),
+    href: r.kind === "medication" ? medicationHref(r.id) : intakeHref(r.kind),
   }));
 }
 
@@ -435,7 +415,7 @@ export function getProviderImmunizations(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, date, vaccine, dose_label, source FROM immunizations
+      `SELECT id, date, vaccine, dose_label FROM immunizations
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY date DESC, id DESC`
     )
@@ -444,14 +424,13 @@ export function getProviderImmunizations(
     date: string | null;
     vaccine: string;
     dose_label: string | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.date,
     label: r.vaccine,
     sublabel: r.dose_label,
-    href: providerActivityHref("/records/history/immunizations", r),
+    href: immunizationHref(r.vaccine),
   }));
 }
 
@@ -461,7 +440,7 @@ export function getProviderProcedures(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, date, name, code, document_id, source FROM procedures
+      `SELECT id, date, name, code FROM procedures
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY date DESC, id DESC`
     )
@@ -470,15 +449,13 @@ export function getProviderProcedures(
     date: string | null;
     name: string;
     code: string | null;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.date,
     label: r.name,
     sublabel: r.code,
-    href: providerActivityHref("/records/history/procedures", r),
+    href: "/records/history/procedures",
   }));
 }
 
@@ -488,7 +465,7 @@ export function getProviderCarePlan(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, planned_date, description, status, document_id, source
+      `SELECT id, planned_date, description, status
          FROM care_plan_items
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY planned_date DESC, id DESC`
@@ -498,15 +475,13 @@ export function getProviderCarePlan(
     planned_date: string | null;
     description: string;
     status: string | null;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.planned_date,
     label: r.description,
     sublabel: r.status,
-    href: providerActivityHref("/records/care/overview", r),
+    href: "/records/care/overview#care-plan",
   }));
 }
 
@@ -516,7 +491,7 @@ export function getProviderAppointments(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, scheduled_at, title, status, document_id, source FROM appointments
+      `SELECT id, scheduled_at, title, status FROM appointments
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY scheduled_at DESC, id DESC`
     )
@@ -525,15 +500,13 @@ export function getProviderAppointments(
     scheduled_at: string;
     title: string | null;
     status: string;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.scheduled_at,
     label: r.title || "Appointment",
     sublabel: r.status,
-    href: providerActivityHref("/records/history/visits", r),
+    href: "/records/history/visits",
   }));
 }
 
@@ -543,7 +516,7 @@ export function getProviderImaging(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, study_date, modality, body_region, document_id, source
+      `SELECT id, study_date, modality, body_region
          FROM imaging_studies
          WHERE profile_id = ?
            AND (ordering_provider_id = ? OR reading_provider_id = ?)
@@ -554,15 +527,13 @@ export function getProviderImaging(
     study_date: string | null;
     modality: string;
     body_region: string | null;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.study_date,
     label: r.body_region ? `${r.modality} · ${r.body_region}` : r.modality,
     sublabel: null,
-    href: providerActivityHref("/results/imaging", r),
+    href: "/results/imaging",
   }));
 }
 
@@ -572,7 +543,7 @@ export function getProviderVision(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, issued_date, kind, document_id, source FROM optical_prescriptions
+      `SELECT id, issued_date, kind FROM optical_prescriptions
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY COALESCE(issued_date, '') DESC, id DESC`
     )
@@ -580,15 +551,13 @@ export function getProviderVision(
     id: number;
     issued_date: string | null;
     kind: string;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.issued_date,
     label: r.kind === "contacts" ? "Contact lenses" : "Glasses",
     sublabel: "Prescription",
-    href: providerActivityHref("/records/specialty/vision", r),
+    href: "/records/specialty/vision",
   }));
 }
 
@@ -598,7 +567,7 @@ export function getProviderDental(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, procedure_date, name, tooth, document_id, source
+      `SELECT id, procedure_date, name, tooth
          FROM dental_procedures
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY COALESCE(procedure_date, '') DESC, id DESC`
@@ -608,15 +577,13 @@ export function getProviderDental(
     procedure_date: string | null;
     name: string;
     tooth: string | null;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.procedure_date,
     label: r.name,
     sublabel: r.tooth ? `Tooth ${r.tooth}` : null,
-    href: providerActivityHref("/records/specialty/dental", r),
+    href: "/records/specialty/dental",
   }));
 }
 
@@ -626,7 +593,7 @@ export function getProviderSkin(
 ): ProviderActivityItem[] {
   const rows = db
     .prepare(
-      `SELECT id, observed_date, label, body_region, document_id, source
+      `SELECT id, observed_date, label, body_region
          FROM skin_lesions
          WHERE profile_id = ? AND provider_id = ?
          ORDER BY COALESCE(observed_date, '') DESC, id DESC`
@@ -636,15 +603,13 @@ export function getProviderSkin(
     observed_date: string | null;
     label: string | null;
     body_region: string | null;
-    document_id: number | null;
-    source: string | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     date: r.observed_date,
     label: r.label || r.body_region || "Skin lesion",
     sublabel: r.body_region,
-    href: providerActivityHref("/records/specialty/skin", r),
+    href: "/records/specialty/skin",
   }));
 }
 

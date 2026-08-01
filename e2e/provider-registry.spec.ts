@@ -89,6 +89,79 @@ test.describe("Provider registry closeout", () => {
       .click();
   });
 
+  test("provider activity links to clinical destinations, not source documents", async ({
+    page,
+  }) => {
+    const id = providerId("Dr. Cora Bell (e2e)");
+    const handle = new Database(DB_PATH);
+    const visitId = Number(
+      handle
+        .prepare(
+          `INSERT INTO encounters
+             (profile_id, date, type, provider_id, source)
+           VALUES (1, '2026-04-01', 'Provider href visit (e2e)', ?, 'document:908')`
+        )
+        .run(id).lastInsertRowid
+    );
+    const labId = Number(
+      handle
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, canonical_name, value, provider_id, source)
+           VALUES
+             (1, '2026-04-02', 'lab', 'GLUCOSE', 'Glucose', '90', ?, 'document:908')`
+        )
+        .run(id).lastInsertRowid
+    );
+    const medicationId = Number(
+      handle
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, active, obligation, provider_id, source)
+           VALUES
+             (1, 'Provider href medication (e2e)', 'medication', 1, 'must', ?, 'document:908')`
+        )
+        .run(id).lastInsertRowid
+    );
+    handle.close();
+
+    try {
+      await page.goto(`/providers/${id}`);
+      const detail = page.getByTestId("provider-detail");
+
+      await detail.getByTestId("activity-summary-visits").click();
+      await expect(
+        detail.getByRole("link", { name: /Provider href visit \(e2e\)/ })
+      ).toHaveAttribute("href", `/encounters/${visitId}`);
+
+      await detail.getByTestId("activity-summary-labs").click();
+      await expect(
+        detail.getByRole("link", { name: /Glucose/ })
+      ).toHaveAttribute("href", "/biomarkers/view?name=Glucose");
+
+      await detail.getByTestId("activity-summary-medications").click();
+      await expect(
+        detail.getByRole("link", {
+          name: /Provider href medication \(e2e\)/,
+        })
+      ).toHaveAttribute("href", `/medications/${medicationId}`);
+
+      await expect(detail.locator('a[href^="/import/"]')).toHaveCount(0);
+    } finally {
+      const cleanup = new Database(DB_PATH);
+      cleanup
+        .prepare("DELETE FROM encounters WHERE id = ? AND profile_id = 1")
+        .run(visitId);
+      cleanup
+        .prepare("DELETE FROM medical_records WHERE id = ? AND profile_id = 1")
+        .run(labId);
+      cleanup
+        .prepare("DELETE FROM intake_items WHERE id = ? AND profile_id = 1")
+        .run(medicationId);
+      cleanup.close();
+    }
+  });
+
   test("a declined affiliation suggestion stays gone (#1055)", async ({
     page,
   }) => {
