@@ -7,7 +7,7 @@ import {
   parseFoodLogCallback,
   parseFoodOptInCallback,
   parseFoodProteinCallback,
-  parseFoodMoreCallback,
+  parseFoodExpandCallback,
   foodLogAnswerText,
   foodProteinAnswerText,
   foodOptInAnswerText,
@@ -15,6 +15,10 @@ import {
   foodStaleDateAnswerText,
   foodTapDateGuard,
 } from "@/lib/notifications/callback-data";
+import {
+  foodLessCallbackData,
+  foodMoreCallbackData,
+} from "@/lib/notifications/food-format";
 
 describe("parseFoodLogCallback", () => {
   it("parses a well-formed token", () => {
@@ -64,20 +68,52 @@ describe("parseFoodProteinCallback (#1073)", () => {
   });
 });
 
-describe("parseFoodMoreCallback (#1075)", () => {
-  it("parses a well-formed token", () => {
-    expect(parseFoodMoreCallback("foodmore:5:Morning:2026-07-13")).toEqual({
+describe("parseFoodExpandCallback (#1075 more / #1807 less)", () => {
+  it("parses both directions off one token shape", () => {
+    expect(parseFoodExpandCallback("foodmore:5:Morning:2026-07-13")).toEqual({
       profileId: 5,
       window: "Morning",
       date: "2026-07-13",
+      action: "more",
+    });
+    expect(parseFoodExpandCallback("foodless:5:Morning:2026-07-13")).toEqual({
+      profileId: 5,
+      window: "Morning",
+      date: "2026-07-13",
+      action: "less",
     });
   });
-  it("rejects a bad window or a food-log token", () => {
-    expect(parseFoodMoreCallback("foodmore:5:Bedtime:2026-07-13")).toBeNull();
+  it("round-trips the builders' own tokens", () => {
     expect(
-      parseFoodMoreCallback("food:5:Morning:2026-07-13:leafy_greens")
+      parseFoodExpandCallback(foodMoreCallbackData(9, "Evening", "2026-07-13"))
+    ).toEqual({
+      profileId: 9,
+      window: "Evening",
+      date: "2026-07-13",
+      action: "more",
+    });
+    expect(
+      parseFoodExpandCallback(foodLessCallbackData(9, "Evening", "2026-07-13"))
+    ).toEqual({
+      profileId: 9,
+      window: "Evening",
+      date: "2026-07-13",
+      action: "less",
+    });
+  });
+  it("rejects a bad window, a food-log token, or a neighbouring prefix", () => {
+    expect(parseFoodExpandCallback("foodmore:5:Bedtime:2026-07-13")).toBeNull();
+    expect(parseFoodExpandCallback("foodless:5:Bedtime:2026-07-13")).toBeNull();
+    expect(
+      parseFoodExpandCallback("food:5:Morning:2026-07-13:leafy_greens")
     ).toBeNull();
-    expect(parseFoodMoreCallback("foodmore:0:Morning:2026-07-13")).toBeNull();
+    expect(parseFoodExpandCallback("foodmore:0:Morning:2026-07-13")).toBeNull();
+    expect(parseFoodExpandCallback("foodless:0:Morning:2026-07-13")).toBeNull();
+    // A prefix that merely starts the same way is not an expansion tap.
+    expect(
+      parseFoodExpandCallback("foodprotein:5:Morning:2026-07-13:30")
+    ).toBeNull();
+    expect(parseFoodExpandCallback("foodoptin:5:yes")).toBeNull();
   });
 });
 

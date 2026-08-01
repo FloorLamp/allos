@@ -110,6 +110,11 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
       "reveals the next page of the SAME nudge's ranked buttons — a stateless view change that logs nothing and claims nothing",
   },
   {
+    prefix: "foodless",
+    inert:
+      "collapses that expansion one page back (#1807) — the exact mirror of foodmore, pure keyboard view state, and it clamps at the compact default rather than emptying the keyboard",
+  },
+  {
     prefix: "offer",
     inert:
       "expands the digest's guaranteed-access tail (#1505); the expansion re-resolves the slot AT TAP, so the collapsed button cannot be stale",

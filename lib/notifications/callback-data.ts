@@ -765,22 +765,37 @@ export function foodProteinAnswerText(
   return `Logged ✅ ＋${grams} g protein — ${outcome.grams} g today`;
 }
 
-// A "➕ Show more" tap (#1075): "foodmore:<profileId>:<window>:<date>". Carries no count —
-// the handler derives the current visible count from the keyboard and rebuilds at +6.
-export interface FoodMoreCallback {
+// A food-nudge expansion tap — "➕ Show more" (#1075) or "➖ Show less" (#1807):
+//   "foodmore:<profileId>:<window>:<date>"  /  "foodless:<profileId>:<window>:<date>"
+// ONE parser for both directions, the ⚙️ Tune shape (#1714): the token carries a DIRECTION
+// and no count, because the expansion state IS the rendered keyboard — the handler counts
+// the ranked buttons already there and steps one page up or down from that. Nothing about
+// the tap is a state claim, which is why both prefixes are declared inert in the reconcile
+// registry.
+export interface FoodExpandCallback {
   profileId: number;
   window: FoodNudgeWindow;
   date: string;
+  action: "more" | "less";
 }
 
-export function parseFoodMoreCallback(data: unknown): FoodMoreCallback | null {
+export function parseFoodExpandCallback(
+  data: unknown
+): FoodExpandCallback | null {
   if (typeof data !== "string") return null;
-  const m = /^foodmore:(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2})$/.exec(data);
+  const m = /^food(more|less):(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2})$/.exec(
+    data
+  );
   if (!m) return null;
-  const profileId = Number(m[1]);
-  const window = m[2] as FoodNudgeWindow;
+  const profileId = Number(m[2]);
+  const window = m[3] as FoodNudgeWindow;
   if (!profileId || !FOOD_NUDGE_WINDOWS.includes(window)) return null;
-  return { profileId, window, date: m[3] };
+  return {
+    profileId,
+    window,
+    date: m[4],
+    action: m[1] === "more" ? "more" : "less",
+  };
 }
 
 export interface FoodOptInCallback {

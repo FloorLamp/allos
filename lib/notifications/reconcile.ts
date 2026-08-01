@@ -64,7 +64,11 @@ import {
   type IntakeSendSlot,
 } from "./supplement-format";
 import { buildFoodNudge } from "./food";
-import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
+import {
+  countVisibleFoodButtons,
+  FOOD_NUDGE_WINDOWS,
+  type FoodNudgeWindow,
+} from "./food-format";
 import { getIntakeItemObligation } from "../queries/intake/adherence";
 import {
   decideReconcile,
@@ -258,18 +262,28 @@ const householdRound: FamilyReconciler = {
 // the day's counts ("Leafy greens (2)") and the body carries the tally. So this family
 // kills nothing and instead RE-RENDERS from the same builder; the sweep edits only when
 // the render actually differs from what was delivered.
+//
+// EXPANSION IS THE USER'S (#1807). The re-render must derive its visible count from the
+// LIVE keyboard, exactly as the tap handlers do — the pointer's stored blob is the only
+// record of what the chat is showing, and it is post-cap, so it is the same number
+// `countVisibleFoodButtons` would read off a tap. Rebuilding at the default instead would
+// let a tick silently COLLAPSE a keyboard the user expanded (and, once "Show less" exists,
+// silently RE-EXPAND one they collapsed) — a unilateral change to what the user asked to
+// see, with no tap behind it. Zero is the "no ranked buttons at all" reading; `|| undefined`
+// hands that case back to the builder's own default rather than rendering an empty keyboard.
 const food: FamilyReconciler = {
   dead() {
     return new Set<string>();
   },
-  rebuild(profileId, tokens) {
+  rebuild(profileId, tokens, p) {
     for (const t of tokens) {
       const f = fields(t);
       if (f[0] !== "food" && f[0] !== "foodprotein") continue;
       const window = f[2] as FoodNudgeWindow;
       const date = f[3];
       if (!FOOD_NUDGE_WINDOWS.includes(window) || !date) continue;
-      return buildFoodNudge(profileId, window, date);
+      const visibleCount = countVisibleFoodButtons(p.keyboard) || undefined;
+      return buildFoodNudge(profileId, window, date, visibleCount);
     }
     return null;
   },
