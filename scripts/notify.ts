@@ -76,6 +76,7 @@ import {
   refreshDigestOfferTail,
   runDigest,
 } from "../lib/notifications/digest-data";
+import { reconcileProfileMessages } from "../lib/notifications/reconcile";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
@@ -757,6 +758,29 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       });
       anyFailed = true;
     }
+  }
+
+  // LIVE-MESSAGE RECONCILIATION (#1779). Every inline keyboard still sitting in a chat
+  // is checked against what the ledger actually says, and anything it claims that is no
+  // longer true is removed. This is the outbound half of "the safety tier stops lying":
+  // a dose taken in the app used to leave a live "✅ Taken" button presenting it as
+  // outstanding for the rest of the day, which is precisely the prompt that invites a
+  // double dose.
+  //
+  // It only ever REDUCES what a chat claims, and it does so with EDITS — Telegram does
+  // not notify on an edit, so no new interruption is spent. A steady state performs zero
+  // API calls. Never allowed to fail the tick: a message that keeps a stale button for
+  // another hour is bad, but a reconcile error that stops a medication reminder is worse.
+  try {
+    const rc = await reconcileProfileMessages(profile.id);
+    if (rc.edited > 0 || rc.closed > 0 || rc.dropped > 0) {
+      log.info("messages reconciled", { profile: profile.id, ...rc });
+    }
+  } catch (e) {
+    log.info("message reconcile failed (ignored)", {
+      profile: profile.id,
+      err: e instanceof Error ? e.message : String(e),
+    });
   }
 
   // Keep today's digest offer tail (#1505) labelled for the slot we are ACTUALLY in.
