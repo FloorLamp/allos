@@ -197,9 +197,9 @@ test("session length is charted only for the practices that record minutes (#163
       "1×/week"
     );
     // No ceiling declared, so the legend does not offer the at-ceiling state.
-    await expect(floorOnly.getByTestId("practice-weeks-legend")).not.toContainText(
-      "At weekly maximum"
-    );
+    await expect(
+      floorOnly.getByTestId("practice-weeks-legend")
+    ).not.toContainText("At weekly maximum");
   } finally {
     cleanUp(db, targets);
     db.close();

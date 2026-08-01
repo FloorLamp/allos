@@ -26,5 +26,6 @@ export function weekWindowStart(profileId: number): string {
 // answers with the week containing it, rolling mode with the trailing 7 days that
 // end on it. `weekWindowStart` is this with `today`.
 export function weekWindowStartOn(profileId: number, date: string): string {
-  return weekWindow(date, getWeekMode(profileId), getWeekStart(profileId)).start;
+  return weekWindow(date, getWeekMode(profileId), getWeekStart(profileId))
+    .start;
 }

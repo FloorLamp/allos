@@ -579,9 +579,11 @@ export function getPracticeTrends(
   weeks: number,
   asOf = profileToday(profileId)
 ): PracticeTrend[] {
-  const history = getFrequencyTargetWeeklyHistory(profileId, weeks, asOf).filter(
-    (item) => item.target.scope_kind === "practice"
-  );
+  const history = getFrequencyTargetWeeklyHistory(
+    profileId,
+    weeks,
+    asOf
+  ).filter((item) => item.target.scope_kind === "practice");
   if (history.length === 0) return [];
 
   // The window the session/duration series covers: the first completed week's

@@ -153,8 +153,9 @@ describe("practiceTrendWindow", () => {
   });
 
   it("never anchors in the future", () => {
-    expect(practiceTrendWindow({ from: "2026-01-01", to: "2026-12-31" }, TODAY))
-      .toMatchObject({ asOf: TODAY });
+    expect(
+      practiceTrendWindow({ from: "2026-01-01", to: "2026-12-31" }, TODAY)
+    ).toMatchObject({ asOf: TODAY });
   });
 });
 

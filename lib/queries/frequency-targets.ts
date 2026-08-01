@@ -292,7 +292,9 @@ export function getFrequencyTargetWeeklyHistory(
   if (targets.length === 0 || weeks < 1) return [];
 
   const currentStart =
-    asOf == null ? weekWindowStart(profileId) : weekWindowStartOn(profileId, asOf);
+    asOf == null
+      ? weekWindowStart(profileId)
+      : weekWindowStartOn(profileId, asOf);
   const historyStart = shiftDateStr(currentStart, -7 * weeks);
   const weekStarts = Array.from({ length: weeks }, (_, i) =>
     shiftDateStr(historyStart, 7 * i)
