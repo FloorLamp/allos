@@ -148,8 +148,12 @@ test.describe("Unified profile switcher (issue #1801)", () => {
 
       // The PAGE follows the switch: the medications board is the read-only
       // profile's now, not the write profile's.
-      await expect(page.getByText(MVMEDS_RO_MED)).toBeVisible();
-      await expect(page.getByText(MVMEDS_SELF_MED)).toHaveCount(0);
+      await expect(
+        page.getByTestId("medication-row").filter({ hasText: MVMEDS_RO_MED })
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("medication-row").filter({ hasText: MVMEDS_SELF_MED })
+      ).toHaveCount(0);
     } finally {
       await page.context().close();
     }
@@ -194,7 +198,9 @@ test.describe("Unified profile switcher (issue #1801)", () => {
       ).toContainText(MVMEDS_RO_PROFILE, { timeout: 20_000 });
       await expectActing(page, roId, true);
       await expect(page.getByTestId("read-only-badge-mobile")).toBeVisible();
-      await expect(page.getByText(MVMEDS_RO_MED)).toBeVisible();
+      await expect(
+        page.getByTestId("medication-row").filter({ hasText: MVMEDS_RO_MED })
+      ).toBeVisible();
     } finally {
       await page.context().close();
     }
