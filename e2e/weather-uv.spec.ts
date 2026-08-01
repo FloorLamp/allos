@@ -1,13 +1,54 @@
+import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { E2E_LOGIN_WEATHER, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { WEATHER_PROFILE } from "./logins/findings";
+import { workerDbPath } from "./worker-env";
 
-// Open-Meteo weather/UV integration + the two-sided UV-dose sun model (#1172). All
-// offline — the fixture profile (E2E_LOGIN_WEATHER) is seeded with a home location,
-// skin type, the weather connection ENABLED, an outdoor activity today, and cached
-// LIVE UV, so nothing here touches the network. Isolated from profile 1 so the
-// enable/disable toggles + timeline surfaces don't disturb the shared session's specs.
+// Open-Meteo weather/UV integration + the two-sided UV-dose sun model (#1172). The
+// fixture profile (E2E_LOGIN_WEATHER) is seeded with a home location, skin type, the
+// weather connection ENABLED, an outdoor activity today, and cached LIVE UV, so every
+// READ here is offline. Isolated from profile 1 so the enable/disable toggles +
+// timeline surfaces don't disturb the shared session's specs.
+//
+// ONE exception, and it is deliberate: `enableWeatherAction` kicks an initial
+// `runWeatherSync` with the real openMeteoSource (the WeatherSource seam is on
+// runWeatherSync, which the action does not thread), so the re-enable in the last
+// test below makes a genuine outbound request. That is the PRODUCT behaviour and the
+// test must not pretend otherwise — see restoreWeatherFixture() for how the run's
+// side effects are undone.
+
+// The two events e2e/seed/findings.ts seeds for the weather profile. Anything else on
+// the provider was written by a kicked sync during this file's run.
+const SEEDED_SYNC_EVENTS = ["2026-07-08 05:00:00", "2026-07-08 06:00:00"];
+
+// Undo what the re-enable's kicked sync wrote. Whatever the network did, the run
+// appends an integration_sync_events row — ok:1 with a today-relative window where
+// open-meteo is reachable, ok:0 where it is not — and the sibling tests in this file
+// read that provider's events: the first asserts its badge, and the history test
+// asserts both the latest outcome line and runWindowNorm, which is decided by a
+// majority over the event set. Two seeded rows survive one stray row; under
+// --repeat-each they would not survive three. So the fixture is restored to exactly
+// the seeded pair. Short-lived connection with a busy timeout so it never contends
+// with the running server on the WAL DB (the shell.mobile / adherence-patterns
+// pattern).
+function restoreWeatherFixture(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const profile = db
+      .prepare("SELECT id FROM profiles WHERE name = ?")
+      .get(WEATHER_PROFILE) as { id: number } | undefined;
+    if (!profile) return;
+    db.prepare(
+      `DELETE FROM integration_sync_events
+        WHERE profile_id = ? AND provider = 'weather' AND at NOT IN (?, ?)`
+    ).run(profile.id, ...SEEDED_SYNC_EVENTS);
+  } finally {
+    db.close();
+  }
+}
 test.describe("Weather & UV integration (#1172)", () => {
   test("the integration page renders the connected state and UV surfaces", async ({
     browser,
@@ -194,33 +235,42 @@ test.describe("Weather & UV integration (#1172)", () => {
     });
     try {
       await member.goto("/integrations/weather");
-      await expect(member.getByTestId("sync-status-weather")).toContainText(
-        "Connected"
-      );
-      // Disable, then re-enable so the spec leaves the fixture as it found it
-      // (the other tests in this file rely on the connected state).
+      // Connected → the page renders the shared status header, so the connection is
+      // evidenced by the controls only that branch has.
+      await expect(member.getByTestId("sync-now-weather")).toBeVisible();
+
+      // Disable, then re-enable so the spec leaves the fixture as it found it (the
+      // other tests in this file rely on the connected state).
       await settledClick(
         member,
         member.getByRole("button", { name: "Disable" })
       );
-      // Server-truth budget (#1556): the badge is server-rendered from the
-      // connection row, so it only swaps after the disable action's write +
-      // revalidate round-trip completes and the RSC tree repaints. Observed
-      // losing the 5s default under CI shard load at retries=0 (run 30682); the
-      // assertion still waits on the real commit, so it masks nothing.
+      // disconnectWeatherAction kicks no sync, so this badge is a pure function of
+      // the connection row — deterministic, no budget needed.
       await expect(member.getByTestId("weather-status")).toContainText(
-        /Not enabled/i,
-        { timeout: 20_000 }
+        /Not enabled/i
       );
+
       await settledClick(member, member.getByTestId("weather-enable"));
-      // Same class, and the wider half of it: enableWeather also kicks an initial
-      // runWeatherSync before revalidating, so the badge waits on a write + a sync
-      // attempt + the repaint. This is the assertion run 30682 lost.
-      await expect(member.getByTestId("sync-status-weather")).toContainText(
-        "Connected",
-        { timeout: 20_000 }
-      );
+      // This test is about the CONNECTION, so it asserts the connection — NOT the
+      // sync-standing badge. Since #1772 `sync-status-weather` reports STANDING,
+      // which folds in the latest run's outcome, and `enableWeatherAction` kicks a
+      // real runWeatherSync before it revalidates: where open-meteo is reachable
+      // that lands ok:1 and the badge reads "Connected", where it is not (CI has no
+      // egress; openMeteoFetch catches and returns ok:false rather than throwing) it
+      // lands ok:0 and the badge reads "Sync failing" — correctly, because a just-
+      // enabled provider whose only run failed IS something wrong. Asserting
+      // "Connected" here was asserting the network, which is why widening its budget
+      // to 20s did not help (run 30682). The connected VIEW is the honest, offline-
+      // deterministic signal: only that branch renders these controls.
+      await expect(member.getByTestId("sync-now-weather")).toBeVisible();
+      await expect(
+        member.getByRole("button", { name: "Disable" })
+      ).toBeVisible();
     } finally {
+      // The kicked sync appended an event whatever the network did; drop it so the
+      // siblings (and the next --repeat-each pass) see the seeded pair.
+      restoreWeatherFixture();
       await member.context().close();
     }
   });
