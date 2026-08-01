@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCcda } from "@/lib/cda";
+import { mergeImportResults, parseCcda } from "@/lib/cda";
 import { parseFhirBundle } from "@/lib/fhir";
 import {
   emptyReport,
@@ -10,6 +10,9 @@ import {
   reasonLabel,
   rowDropCount,
   isRowDrop,
+  keptRowCount,
+  withFootprintCounts,
+  reconcileStoredReportCounts,
   parseImportReport,
   serializeImportReport,
   tallyUnmappedLoincs,
@@ -337,6 +340,114 @@ describe("rowDropCount / isRowDrop", () => {
     };
     expect(rowDropCount(report)).toBe(1);
     expect(report.drops.filter(isRowDrop)).toHaveLength(1);
+  });
+});
+
+// ---- #1827: one vocabulary for "what counts as an imported row" ----
+
+describe("keptRowCount", () => {
+  it("sums every row-bearing kept list, ignoring absent ones", () => {
+    expect(
+      keptRowCount({
+        records: [1, 2],
+        immunizations: [1],
+        allergies: [1],
+        conditions: [1],
+        encounters: [1],
+        procedures: [1],
+        familyHistory: [1],
+        carePlanItems: [1],
+        careGoals: [1],
+        appointments: [1],
+        genomicVariants: [1],
+        imagingStudies: [1],
+        opticalPrescriptions: [1],
+        dentalProcedures: [1],
+        bodyMetrics: [1],
+        heights: [1],
+        headCircs: [1],
+      })
+    ).toBe(18);
+    expect(keptRowCount({})).toBe(0);
+    // The domains the old hand-maintained sums forgot still count: a document that
+    // carries ONLY them is not an empty import.
+    expect(
+      keptRowCount({
+        imagingStudies: [1],
+        opticalPrescriptions: [1],
+        dentalProcedures: [1],
+        genomicVariants: [1],
+        appointments: [1],
+      })
+    ).toBe(5);
+  });
+});
+
+describe("withFootprintCounts / reconcileStoredReportCounts", () => {
+  const parseTime: ImportReport = {
+    drops: [
+      // Two row drops + one section drop, so `considered` has something to follow.
+      { kind: "lab", label: "Comment(s)", reason: "null_flavor" },
+      { kind: "medication", label: "Unreadable sig", reason: "no_value" },
+      { kind: "section", label: "Insurance", reason: "unrecognized_section" },
+    ],
+    coverage: [{ key: "results", title: "Results", consumed: true, present: 4 }],
+    // What a parse guessed — here, blind to the medications it kept.
+    imported: 2,
+    considered: 4,
+  };
+
+  it("rebinds imported to the footprint tally and considered to footprint + row drops", () => {
+    const rebound = withFootprintCounts(parseTime, 9);
+    expect(rebound.imported).toBe(9);
+    expect(rebound.considered).toBe(11);
+    // Everything else is carried through untouched.
+    expect(rebound.drops).toEqual(parseTime.drops);
+    expect(rebound.coverage).toEqual(parseTime.coverage);
+    // Pure: the input report is not mutated.
+    expect(parseTime.imported).toBe(2);
+  });
+
+  it("rebinds a stored report in place, and leaves a report-less / unusable blob alone", () => {
+    const stored = reconcileStoredReportCounts(
+      serializeImportReport(parseTime),
+      9
+    );
+    const parsed = parseImportReport(stored)!;
+    expect(parsed.imported).toBe(9);
+    expect(parsed.considered).toBe(11);
+    expect(parsed.drops).toHaveLength(3);
+    // No report to reconcile (the paths that store none) stays null; an unparseable
+    // blob is left exactly as it came rather than rewritten or dropped.
+    expect(reconcileStoredReportCounts(null, 9)).toBeNull();
+    expect(reconcileStoredReportCounts("{not json", 9)).toBe("{not json");
+  });
+
+  it("keeps the report's other fields across the rebind (confidence survives)", () => {
+    const withConfidence: ImportReport = {
+      ...parseTime,
+      unmappedLoincs: [
+        { loinc: "55555-5", name: "Novel Marker", count: 1, unit: "ng/mL" },
+      ],
+      confidence: {
+        counts: { high: 1, medium: 1, low: 0, unknown: 0 },
+        scrutiny: 1,
+        flags: [
+          {
+            kind: "lab",
+            label: "Novel Marker",
+            confidence: "medium",
+            reason: "unit could be mg/dL or mmol/L",
+          },
+        ],
+      },
+    };
+    const parsed = parseImportReport(
+      reconcileStoredReportCounts(serializeImportReport(withConfidence), 3)
+    )!;
+    expect(parsed.imported).toBe(3);
+    expect(parsed.confidence?.scrutiny).toBe(1);
+    expect(parsed.unmappedLoincs).toEqual(withConfidence.unmappedLoincs);
   });
 });
 
@@ -800,5 +911,66 @@ describe("parseCcda → unmapped lab LOINC surfacing (Fix 3)", () => {
     ]);
     // The unmapped lab is imported, not dropped.
     expect(report.drops.some((d) => d.label === "Novel Marker")).toBe(false);
+  });
+});
+
+// ---- #1827: imaging counts, and the single-document and XDM paths agree ----
+
+// A Results section whose ONLY entry is an Epic radiology-study observation
+// (LOINC 18782-3, nullFlavor value + structured modality/site) — it becomes an
+// imaging STUDY, not a lab record. Both CCD report builders kept it and neither
+// counted it, so this document reported "0 imported" while its persist footprint
+// wrote a row. Synthetic.
+const IMAGING_CCD = `<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <effectiveTime value="20240301"/>
+  <component><structuredBody>
+    <component><section>
+      <templateId root="2.16.840.1.113883.10.20.22.2.3.1"/>
+      <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Results</title>
+      <entry><observation classCode="OBS" moodCode="EVN">
+        <templateId root="2.16.840.1.113883.10.20.22.4.2"/>
+        <id root="1.2.3" extension="IMG-77"/>
+        <code code="18782-3" codeSystem="2.16.840.1.113883.6.1"><originalText>Radiology Study observation (narrative)</originalText></code>
+        <statusCode code="completed"/>
+        <effectiveTime><low value="20240301120000-0500"/></effectiveTime>
+        <value xsi:type="ST" nullFlavor="NA"/>
+        <methodCode code="4" codeSystem="1.2.840.114350.1.13.535.2.7.10.x"><originalText>Ultrasound</originalText></methodCode>
+        <targetSiteCode code="119" codeSystem="1.2.840.114350.1.13.535.2.7.10.y"><originalText>Breast</originalText></targetSiteCode>
+      </observation></entry>
+    </section></component>
+  </structuredBody></component>
+</ClinicalDocument>`;
+
+describe("parseCcda → a kept imaging study counts as imported", () => {
+  const parsed = parseCcda(IMAGING_CCD);
+
+  it("counts the study the parser kept (it used to report zero)", () => {
+    expect(parsed.imagingStudies).toHaveLength(1);
+    expect(parsed.records).toHaveLength(0);
+    expect(parsed.report!.imported).toBe(1);
+  });
+});
+
+describe("mergeImportResults (XDM) → the merge path counts like the single-doc path", () => {
+  it("counts the merged kept set: same document twice collapses, disjoint documents union", () => {
+    const labOnly = parseCcda(CCD).report!.imported;
+    const imagingOnly = parseCcda(IMAGING_CCD).report!.imported;
+    // An XDM package repeating one document's sections collapses to a single kept
+    // set — the merged count is the single-document count, not double it.
+    const twice = mergeImportResults([
+      parseCcda(IMAGING_CCD),
+      parseCcda(IMAGING_CCD),
+    ]).report!;
+    expect(twice.imported).toBe(imagingOnly);
+    // Disjoint documents union — and the merge path sees the imaging domain the
+    // single-document path sees, because both count through the one registry.
+    const both = mergeImportResults([
+      parseCcda(CCD),
+      parseCcda(IMAGING_CCD),
+    ]).report!;
+    expect(both.imported).toBe(labOnly + imagingOnly);
+    expect(both.considered).toBe(both.imported + rowDropCount(both));
   });
 });
