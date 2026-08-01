@@ -1,15 +1,22 @@
-// Conflict-aware merge preview (issue #100). The PURE half: given the two full
-// activity rows a merge would fold together, find the fields where BOTH rows carry a
-// real, DIFFERING value — the cases where "keeper wins" is a guess the user should
-// get to make. Everything here is unit-tested (no DB, no network).
+// Conflict-aware merge preview (issue #100, generalized N-way by #1431). The PURE
+// half: given the full activity rows a merge would fold together, find the fields
+// where two or more rows carry real, DIFFERING values — the cases where "keeper
+// wins" is a guess the user should get to make. Everything here is unit-tested (no
+// DB, no network).
 //
 // Scope. A conflict is only surfaced for NUMERIC MAGNITUDE columns (duration, HR,
 // power, …) that differ beyond a small tolerance — the "42 vs 51 min" / "141 vs 149
-// bpm" case the issue describes. One-sided fields (only one row has a value) keep
+// bpm" case issue #100 describes. One-sided fields (only one row has a value) keep
 // folding silently, as do the string/opaque columns (notes, components, intensity,
 // start/end time) and the workout_type enum, where a "differ beyond a tolerance"
 // prompt makes no sense. Zero-as-missing semantics (#93) are reused verbatim from
 // detect.ts (hasFoldValue / ZERO_IS_MISSING_FIELDS) — never forked.
+//
+// Since #1431 the detection and the override seam are N-WAY: a conflict lists the
+// value EVERY member carries (not just keeper vs one drop), and an override names
+// the MEMBER whose value should win a field — so a 3+-row cluster merge can keep,
+// say, the Health Connect distance on a Strava keeper. The pairwise merge is the
+// two-member case of the same computation.
 
 import {
   ACTIVITY_FOLD_FIELDS,
@@ -57,12 +64,20 @@ export function foldFieldLabel(field: ActivityFoldField): string {
   return FOLD_FIELD_LABELS[field] ?? field;
 }
 
-// One surfaced conflict: the field plus the numeric value each side carries. Values
-// are always the raw canonical numbers (kg/km/etc.) straight off the two rows.
-export interface FieldConflict {
+// One merge member's fold-field values, keyed by its row id — the input shape for
+// the N-way conflict detector. The keeper is a member like any other.
+export interface MemberFoldValues {
+  id: number;
+  values: Record<string, unknown>;
+}
+
+// One surfaced conflict: the field plus the value EVERY member carries for it (a
+// member without a real value simply isn't an option — an override can never inject
+// a gap). Values are always the raw canonical numbers (kg/km/etc.) straight off the
+// rows; options preserve the caller's member order.
+export interface ClusterFieldConflict {
   field: ActivityFoldField;
-  keepValue: number;
-  dropValue: number;
+  options: { memberId: number; value: number }[];
 }
 
 // Relative closeness within `tol` (fraction). Two zeros are equal; otherwise the
@@ -74,24 +89,51 @@ function withinTolerance(a: number, b: number, tol: number): boolean {
   return Math.abs(a - b) / max <= tol;
 }
 
-// The conflicts between a keeper row and the row it would absorb: for each numeric
-// conflict field both rows carry a real value for (hasFoldValue — so a 0-filler
-// doesn't count), where the two magnitudes differ beyond CONFLICT_TOLERANCE. Order
-// follows ACTIVITY_FOLD_FIELDS for stable UI. Pure — the two args are the full rows.
-export function detectFieldConflicts(
-  keep: Record<string, unknown>,
-  drop: Record<string, unknown>
-): FieldConflict[] {
-  const out: FieldConflict[] = [];
+// The conflicts across N merge members (#1431): for each numeric conflict field,
+// the members carrying a real value (hasFoldValue — a 0-filler doesn't count); the
+// field is surfaced when at least two of those values differ beyond
+// CONFLICT_TOLERANCE (the min/max spread — the same "would an unattended fold
+// silently drop real data" question autoMergeCluster's material-conflict gate
+// asks). Order follows ACTIVITY_FOLD_FIELDS for stable UI. Pure. The two-member
+// call is exactly the pairwise #100 semantics: both rows carry a value and the two
+// differ beyond tolerance.
+export function detectClusterFieldConflicts(
+  members: MemberFoldValues[]
+): ClusterFieldConflict[] {
+  const out: ClusterFieldConflict[] = [];
   for (const f of ACTIVITY_FOLD_FIELDS) {
     if (!CONFLICT_FIELDS.has(f)) continue;
-    const kv = keep[f];
-    const dv = drop[f];
-    if (!hasFoldValue(f, kv) || !hasFoldValue(f, dv)) continue;
-    if (typeof kv !== "number" || typeof dv !== "number") continue;
-    if (!withinTolerance(kv, dv, CONFLICT_TOLERANCE))
-      out.push({ field: f, keepValue: kv, dropValue: dv });
+    const options: { memberId: number; value: number }[] = [];
+    for (const m of members) {
+      const v = m.values[f];
+      if (typeof v === "number" && hasFoldValue(f, v))
+        options.push({ memberId: m.id, value: v });
+    }
+    if (options.length < 2) continue;
+    const values = options.map((o) => o.value);
+    const lo = Math.min(...values);
+    const hi = Math.max(...values);
+    if (!withinTolerance(lo, hi, CONFLICT_TOLERANCE))
+      out.push({ field: f, options });
   }
+  return out;
+}
+
+// The pre-selected member per conflicting field: the KEEPER's value when the keeper
+// carries one, else the first listed option. The picker submits an explicit choice
+// for every surfaced field, so what renders selected is exactly what the merge
+// writes — the default is never left to fold-order luck. ONE computation (the
+// dialog derives its initial state from this, and re-derives it when the keeper
+// changes, so a keeper switch re-orients the preview).
+export function defaultOverrideChoices(
+  conflicts: ClusterFieldConflict[],
+  keeperId: number
+): OverrideChoices {
+  const out: OverrideChoices = {};
+  for (const c of conflicts)
+    out[c.field] = c.options.some((o) => o.memberId === keeperId)
+      ? keeperId
+      : c.options[0].memberId;
   return out;
 }
 
@@ -100,49 +142,83 @@ export function isActivityFoldField(name: string): name is ActivityFoldField {
   return (ACTIVITY_FOLD_FIELDS as readonly string[]).includes(name);
 }
 
-// Validate an untrusted override list from a client into real, de-duplicated
-// fold-field names. Accepts either a JSON-string (the form-encoded shape) or an
-// already-parsed array; anything that isn't a known fold-field name is dropped. The
-// VALUE is never trusted from the client — only the field NAME survives; the server
-// re-reads both rows and takes the discarded row's own value for each named field.
-export function parseOverrideFields(raw: unknown): ActivityFoldField[] {
-  let list: unknown = raw;
+// Per-field source-member choice (#1431): for each named fold field, the row id of
+// the merge member whose value should win. The VALUE never crosses the client
+// boundary — only the field name and member id do; the server re-reads the rows and
+// takes the chosen member's own stored value.
+export type OverrideChoices = Partial<Record<ActivityFoldField, number>>;
+
+// Validate an untrusted override payload from a client into real, per-field member
+// choices. Accepts a JSON-string (the form-encoded shape) or an already-parsed
+// value, in either of two shapes:
+//   - an OBJECT of fold-field name → member row id (the #1431 picker);
+//   - the LEGACY pairwise ARRAY of fold-field names (#100 — "take the discarded
+//     row's value"), resolved against `legacyDropId` when the caller can name the
+//     single discarded row; without one the array shape validates to no overrides.
+// Anything that isn't a known fold-field name with a positive-integer id is
+// dropped. Only NAMES and IDS survive — the id is later resolved against the
+// re-read, profile-verified merge rows, so a foreign id can never take effect.
+export function parseOverrideChoices(
+  raw: unknown,
+  legacyDropId?: number
+): OverrideChoices {
+  let val: unknown = raw;
   if (typeof raw === "string") {
     try {
-      list = JSON.parse(raw);
+      val = JSON.parse(raw);
     } catch {
-      return [];
+      return {};
     }
   }
-  if (!Array.isArray(list)) return [];
-  const seen = new Set<ActivityFoldField>();
-  for (const x of list)
-    if (typeof x === "string" && isActivityFoldField(x)) seen.add(x);
-  return [...seen];
+  const out: OverrideChoices = {};
+  if (Array.isArray(val)) {
+    if (typeof legacyDropId !== "number" || !Number.isInteger(legacyDropId))
+      return {};
+    for (const x of val)
+      if (typeof x === "string" && isActivityFoldField(x))
+        out[x] = legacyDropId;
+    return out;
+  }
+  if (val == null || typeof val !== "object") return {};
+  for (const [k, v] of Object.entries(val)) {
+    const n = Number(v);
+    if (isActivityFoldField(k) && Number.isInteger(n) && n > 0) out[k] = n;
+  }
+  return out;
 }
 
-// Fold as usual (foldActivityFields — keeper wins, discarded fills gaps), then for
-// each VALIDATED override field replace the keeper's value with the DISCARDED row's
-// own value — but only when the discarded row actually carries a real value there
-// (hasFoldValue), so an override can never inject a gap/filler. This is the only
-// place a discarded value is chosen over the keeper, and it always comes from the
-// re-read `drop` row — never from client input.
+// Fold as usual across the keeper and the ordered drops (foldActivityFields —
+// keeper wins, each drop only fills gaps, in the caller's deterministic order),
+// then apply the per-field member choices: each named field takes the CHOSEN
+// member's own value — regardless of where that member sits in the fold order —
+// but only when that member is actually one of the merge rows and carries a real
+// value there (hasFoldValue), so an override can never inject a gap/filler or
+// reach outside the merge. This is the only place a non-fold-default value is
+// chosen, and it always comes from a re-read row — never from client input.
 export function foldActivityFieldsWithOverrides(
   keep: Record<string, unknown>,
-  drop: Record<string, unknown>,
-  overrideFields: Iterable<string>
+  drops: Record<string, unknown>[],
+  choices: OverrideChoices = {}
 ): Record<ActivityFoldField, unknown> {
-  const out = foldActivityFields(keep, drop);
-  for (const name of overrideFields) {
-    if (!isActivityFoldField(name)) continue;
-    if (hasFoldValue(name, drop[name])) out[name] = drop[name];
+  let acc: Record<string, unknown> = keep;
+  for (const drop of drops) acc = { ...acc, ...foldActivityFields(acc, drop) };
+  const out = {} as Record<ActivityFoldField, unknown>;
+  for (const f of ACTIVITY_FOLD_FIELDS) out[f] = acc[f] ?? null;
+
+  const byId = new Map<number, Record<string, unknown>>();
+  for (const m of [keep, ...drops])
+    if (typeof m.id === "number") byId.set(m.id, m);
+  for (const [name, memberId] of Object.entries(choices)) {
+    if (!isActivityFoldField(name) || typeof memberId !== "number") continue;
+    const member = byId.get(memberId);
+    if (member && hasFoldValue(name, member[name])) out[name] = member[name];
   }
   return out;
 }
 
 // Pull just the fold-field values off a full activity row — the compact payload the
-// client needs to run detectFieldConflicts (and render the toggles) without shipping
-// the whole row. Pure.
+// client needs to run detectClusterFieldConflicts (and render the picker) without
+// shipping the whole row. Pure.
 export function pickFoldValues(
   row: Record<string, unknown>
 ): Record<string, unknown> {

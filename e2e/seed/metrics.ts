@@ -450,7 +450,8 @@ export function seedSunOutdoor(): void {
     const nwayId = fixtureProfileId(NWAY_PROFILE);
     const reviewDate = shiftDateStr(today(nwayId), -3);
     const journalDate = shiftDateStr(today(nwayId), -2);
-    seedNwayMergeFixture(db, nwayId, reviewDate, journalDate);
+    const conflictDate = shiftDateStr(today(nwayId), -4);
+    seedNwayMergeFixture(db, nwayId, reviewDate, journalDate, conflictDate);
     seedMemberLogin(E2E_LOGIN_NWAY, nwayId, "write");
     console.log(
       `e2e: seeded N-way merge fixture — profile ${nwayId} (${NWAY_PROFILE}) (#1081)`

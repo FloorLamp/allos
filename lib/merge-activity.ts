@@ -10,7 +10,10 @@
 // mis-merge can be undone from a toast (issue #64 / #30).
 
 import { db } from "./db";
-import { foldActivityFieldsWithOverrides } from "./import-review/conflicts";
+import {
+  foldActivityFieldsWithOverrides,
+  type OverrideChoices,
+} from "./import-review/conflicts";
 import {
   ACTIVITY_FOLD_FIELDS,
   orderDropsForFold,
@@ -36,12 +39,13 @@ export interface DropFoldMove {
 // already verified both rows are the acting profile's. `keep`/`drop` are the full
 // activity rows the caller SELECTed.
 //
-// `overrideFields` (issue #100): the conflict-preview per-field overrides — a
-// validated list of fold-field names where the user chose the DISCARDED row's value
-// instead of the keeper's. For those fields the discarded row's own value wins; all
-// other fields fold exactly as before. Empty (the default) is the unchanged
-// keeper-wins fold. The values are ALWAYS taken from the re-read `drop` row here —
-// the caller only forwards NAMES, never client-supplied values.
+// `overrides` (issue #100, per-member since #1431): the conflict-picker per-field
+// choices — a validated map of fold-field name → the MEMBER row id (keeper or any
+// drop) whose value should win that field. For those fields the chosen member's own
+// value wins regardless of fold order; all other fields fold exactly as before.
+// Empty (the default) is the unchanged keeper-wins fold. The values are ALWAYS
+// taken from the re-read rows here — the caller only forwards NAMES and IDS, never
+// client-supplied values, and an id outside the merge resolves to nothing.
 //
 // RE-PARENTING (issue #199): before the caller deletes the discarded row, its
 // `exercise_sets` are moved onto the keeper so a merge can NEVER lose typed-in
@@ -54,28 +58,19 @@ export function writeActivityFold(
   keepId: number,
   keep: Record<string, unknown>,
   drops: Record<string, unknown>[],
-  overrideFields: Iterable<string> = []
+  overrides: OverrideChoices = {}
 ): DropFoldMove[] {
   // Fold every drop into the keeper in a DETERMINISTIC order (by activityToken, #1081)
   // so an N-way fold is reproducible across a re-sync. Each step is the same
-  // keeper-wins COALESCE gap-fill (foldActivityFieldsWithOverrides); the accumulated
-  // keeper only ever GAINS a value where it had a gap, so the fold is associative and
-  // the order only decides which drop fills a shared gap first. The per-field
-  // conflict overrides (#100) are a pairwise affordance — they apply to the FIRST
-  // drop in the order (the only meaningful case is a 2-row merge, drops.length === 1).
+  // keeper-wins COALESCE gap-fill; the accumulated keeper only ever GAINS a value
+  // where it had a gap, so the fold is associative and the order only decides which
+  // drop fills a shared gap first. The per-field member choices (#100/#1431) are
+  // applied AFTER the fold, so a chosen value wins regardless of fold order.
   const ordered = orderDropsForFold(
     drops as unknown as Parameters<typeof orderDropsForFold>[0]
   ) as unknown as Record<string, unknown>[];
-  let folded: Record<string, unknown> = keep;
-  ordered.forEach((drop, i) => {
-    const step = foldActivityFieldsWithOverrides(
-      folded,
-      drop,
-      i === 0 ? overrideFields : []
-    );
-    folded = { ...folded, ...step };
-  });
-  const f = folded as Record<(typeof ACTIVITY_FOLD_FIELDS)[number], unknown>;
+  const f: Record<(typeof ACTIVITY_FOLD_FIELDS)[number], unknown> =
+    foldActivityFieldsWithOverrides(keep, ordered, overrides);
   // Session-level equipment link (#342): keeper-wins COALESCE across the keeper then
   // every drop in order — the keeper's gear stands, the drops only fill a gap.
   // Handled explicitly (not via ACTIVITY_FOLD_FIELDS) so the link stays out of the

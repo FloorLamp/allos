@@ -244,7 +244,7 @@ function staleSyncIssues(
 // compares. Extra fields flow through the generic detectors untouched.
 export interface ActivityDupRow extends ActivityDupInput {
   title: string;
-  // Numeric magnitude fold-fields — the ones detectFieldConflicts can surface as a
+  // Numeric magnitude fold-fields — the ones detectClusterFieldConflicts can surface as a
   // per-field conflict (duration_min/distance_km already on ActivityDupInput).
   elevation_m: number | null;
   avg_hr: number | null;

@@ -4,26 +4,43 @@ import { useState } from "react";
 import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
-import MergeConflictDialog from "@/components/MergeConflictDialog";
+import MergeConflictDialog, {
+  type ConflictDialogMember,
+} from "@/components/MergeConflictDialog";
 import { useResumeSyncUpdates } from "@/components/EditLockNotice";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
-import type { FieldConflict } from "@/lib/import-review/conflicts";
+import {
+  detectClusterFieldConflicts,
+  type ClusterFieldConflict,
+  type OverrideChoices,
+} from "@/lib/import-review/conflicts";
 import { mergeActivities } from "./activity-actions";
 
-// A same-day sibling this card can absorb: id + label, plus the pre-computed
-// conflicts between THIS card (keeper) and the sibling (issue #100). Conflicts are
-// computed upstream (JournalView) from both rows' full fold-field values.
+// A same-day sibling this card can absorb: id + label, plus its fold-field values
+// (from JournalView's unfiltered scope group) so the shared conflict picker
+// (#100/#1431) can be computed for whatever member set + keeper the user assembles.
 export interface MergeSibling {
   id: number;
   title: string;
   // Provenance label for the sibling's values ("Manual" / "Strava" / …).
   sourceLabel: string;
-  // Fields where both rows carry differing values — empty in the common case.
-  conflicts: FieldConflict[];
+  // The sibling's fold-field values (pickFoldValues) — the picker's conflict input.
+  foldValues: Record<string, unknown>;
   // How many exercise sets this sibling carries — moved onto the keeper by the merge
   // (#199); surfaced in the conflict preview so the user sees what's moving.
   setCount: number;
+}
+
+// A merge awaiting per-field conflict resolution in the shared picker: the chosen
+// keeper + drops, the detected conflicts across ALL members, and the labels/set
+// count the dialog shows.
+interface PendingConflictMerge {
+  keepId: number;
+  dropIds: number[];
+  conflicts: ClusterFieldConflict[];
+  members: ConflictDialogMember[];
+  movedSetCount: number;
 }
 
 // The kebab (⋯) action menu on a Journal activity card. Its affordances:
@@ -44,6 +61,7 @@ export default function ActivityCardMenu({
   activity,
   siblings,
   keeperLabel,
+  foldValues,
   editLocked,
   units,
   canWrite = true,
@@ -52,8 +70,10 @@ export default function ActivityCardMenu({
   activity: ActivityEditData;
   // The same-day, same-profile activities this one can absorb.
   siblings: MergeSibling[];
-  // Provenance label for THIS card's values (the keeper side in a conflict).
+  // Provenance label for THIS card's values (its side in a conflict).
   keeperLabel: string;
+  // THIS card's fold-field values (pickFoldValues) — the picker's conflict input.
+  foldValues: Record<string, unknown>;
   // A hand-edited integration row keeps its compact lock marker in provenance;
   // the deliberate re-enable action lives here rather than lengthening the card.
   editLocked: boolean;
@@ -76,10 +96,11 @@ export default function ActivityCardMenu({
   // ALL members (this card + checked siblings). Default keeper = card.
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [keeperId, setKeeperId] = useState<number>(activity.id);
-  // The sibling whose merge is awaiting per-field conflict resolution, or null. Only
-  // the pairwise case (card keeper + one drop) opens the #100 dialog; the N-way
-  // multi-value picker is a fast-follow, so a 3+ merge is keeper-wins gap-fill.
-  const [conflictFor, setConflictFor] = useState<MergeSibling | null>(null);
+  // The merge awaiting per-field conflict resolution in the shared picker
+  // (#100/#1431), or null. BOTH flows use it: the quick single-pick (card keeper +
+  // one drop) and the multi-select with any chosen keeper.
+  const [pendingConflict, setPendingConflict] =
+    useState<PendingConflictMerge | null>(null);
   const undoable = useUndoableDelete();
   const { openRepeat } = useActivityEditor();
   const { busy: resumingSync, resumeSyncUpdates } = useResumeSyncUpdates(
@@ -94,22 +115,58 @@ export default function ActivityCardMenu({
     setKeeperId(activity.id);
   }
 
-  // Quick single-pick (the #64 flow): absorb ONE sibling into THIS card (card keeper),
-  // opening the #100 conflict preview first when the two rows disagree.
-  function pick(sibling: MergeSibling) {
+  // ONE decision for both merge flows (#1431): assemble the members (this card +
+  // the involved siblings), detect the per-field conflicts across ALL of them, and
+  // either merge in one click (no conflicts, unchanged) or park the merge behind
+  // the shared picker so the user chooses per field.
+  function startMerge(keepId: number, siblingMembers: MergeSibling[]) {
+    const memberVals = [
+      { id: activity.id, values: foldValues },
+      ...siblingMembers.map((s) => ({ id: s.id, values: s.foldValues })),
+    ];
+    const dropIds = memberVals.map((m) => m.id).filter((id) => id !== keepId);
+    const conflicts = detectClusterFieldConflicts(memberVals);
     setOpen(false);
     resetPicker();
-    if (sibling.conflicts.length > 0) {
-      setConflictFor(sibling);
+    if (conflicts.length === 0) {
+      void runMerge(keepId, dropIds, {});
       return;
     }
-    void runMerge(activity.id, [sibling.id], []);
+    setPendingConflict({
+      keepId,
+      dropIds,
+      conflicts,
+      // Label options by title + provenance: the title matches what the merge
+      // picker lists; the provenance says whose measurement a value is.
+      members: [
+        { id: activity.id, label: `${activity.title} · ${keeperLabel}` },
+        ...siblingMembers.map((s) => ({
+          id: s.id,
+          label: `${s.title} · ${s.sourceLabel}`,
+        })),
+      ],
+      // The training history that will move: every DROP's sets (#199) — including
+      // this card's own when a sibling keeper absorbs it.
+      movedSetCount: dropIds.reduce(
+        (n, id) =>
+          n +
+          (id === activity.id
+            ? (activity.sets?.length ?? 0)
+            : (siblingMembers.find((s) => s.id === id)?.setCount ?? 0)),
+        0
+      ),
+    });
+  }
+
+  // Quick single-pick (the #64 flow): absorb ONE sibling into THIS card (card keeper).
+  function pick(sibling: MergeSibling) {
+    startMerge(activity.id, [sibling]);
   }
 
   async function runMerge(
     keepId: number,
     dropIds: number[],
-    overrideFields: string[]
+    choices: OverrideChoices
   ) {
     const fd = new FormData();
     fd.set("keep_id", String(keepId));
@@ -118,8 +175,8 @@ export default function ActivityCardMenu({
     // drop deletes) write-gates on it; absent single-view falls back to acting.
     if (activity.subjectProfileId != null)
       fd.set("profile_id", String(activity.subjectProfileId));
-    if (overrideFields.length > 0)
-      fd.set("overrides", JSON.stringify(overrideFields));
+    if (Object.keys(choices).length > 0)
+      fd.set("overrides", JSON.stringify(choices));
     await undoable(mergeActivities, fd, {
       deletedMessage: "Activities merged.",
     });
@@ -146,34 +203,19 @@ export default function ActivityCardMenu({
   }
 
   function runPickerMerge() {
-    const includedSiblingIds = siblings
-      .filter((s) => checked.has(s.id))
-      .map((s) => s.id);
-    if (includedSiblingIds.length === 0) return;
-    const memberIds = [activity.id, ...includedSiblingIds];
+    const includedSiblings = siblings.filter((s) => checked.has(s.id));
+    if (includedSiblings.length === 0) return;
+    const memberIds = [activity.id, ...includedSiblings.map((s) => s.id)];
     const keep = memberIds.includes(keeperId) ? keeperId : activity.id;
-    const dropIds = memberIds.filter((id) => id !== keep);
-    // Pairwise + card keeper + a genuinely-conflicting drop → open the #100 preview;
-    // every other shape (multi-select, or a chosen-away card) merges keeper-wins.
-    if (keep === activity.id && dropIds.length === 1) {
-      const sib = siblings.find((s) => s.id === dropIds[0]);
-      if (sib && sib.conflicts.length > 0) {
-        setOpen(false);
-        setConflictFor(sib);
-        return;
-      }
-    }
-    setOpen(false);
-    resetPicker();
-    void runMerge(keep, dropIds, []);
+    // The same conflict decision as the quick pick — any member set, any keeper.
+    startMerge(keep, includedSiblings);
   }
 
-  async function confirmConflict(overrideFields: string[]) {
-    const sibling = conflictFor;
-    if (!sibling) return;
-    setConflictFor(null);
-    resetPicker();
-    await runMerge(activity.id, [sibling.id], overrideFields);
+  async function confirmConflict(choices: OverrideChoices) {
+    const merge = pendingConflict;
+    if (!merge) return;
+    setPendingConflict(null);
+    await runMerge(merge.keepId, merge.dropIds, choices);
   }
 
   return (
@@ -325,15 +367,15 @@ export default function ActivityCardMenu({
         }
       </OverflowMenu>
 
-      {conflictFor && (
+      {pendingConflict && (
         <MergeConflictDialog
-          conflicts={conflictFor.conflicts}
-          keeperLabel={keeperLabel}
-          dropLabel={conflictFor.sourceLabel}
+          conflicts={pendingConflict.conflicts}
+          members={pendingConflict.members}
+          keeperId={pendingConflict.keepId}
           units={units}
-          dropSetCount={conflictFor.setCount}
-          onConfirm={(overrideFields) => void confirmConflict(overrideFields)}
-          onCancel={() => setConflictFor(null)}
+          movedSetCount={pendingConflict.movedSetCount}
+          onConfirm={(choices) => void confirmConflict(choices)}
+          onCancel={() => setPendingConflict(null)}
         />
       )}
     </>

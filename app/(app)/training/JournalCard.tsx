@@ -55,6 +55,7 @@ export default function JournalCard({
   routePolyline = null,
   mergeSiblings = [],
   keeperLabel,
+  foldValues = {},
   units,
   videos = [],
   canWrite = false,
@@ -93,11 +94,15 @@ export default function JournalCard({
   // simply shows no thumbnail.
   routePolyline?: string | null;
   // Same-day siblings this activity can be manually merged with (issue #64), each
-  // carrying its per-field conflicts vs this card (issue #100). Empty (the default)
-  // hides the merge affordance — a lone activity has nothing to fold.
+  // carrying its fold-field values for the shared conflict picker (#100/#1431).
+  // Empty (the default) hides the merge affordance — a lone activity has nothing
+  // to fold.
   mergeSiblings?: MergeSibling[];
-  // Provenance label for THIS card's values — the keeper side of a merge conflict.
+  // Provenance label for THIS card's values — its side of a merge conflict.
   keeperLabel: string;
+  // THIS card's fold-field values (pickFoldValues) — the picker's conflict input.
+  // Defaults to none so a render site without merge affordances needs no data.
+  foldValues?: Record<string, unknown>;
   units: UnitPrefs;
   // Form-check video clips attached to this activity (#1224), empty when none.
   videos?: JournalCardVideo[];
@@ -312,6 +317,7 @@ export default function JournalCard({
                 activity={activity}
                 siblings={mergeSiblings}
                 keeperLabel={keeperLabel}
+                foldValues={foldValues}
                 editLocked={provenance.editLocked}
                 units={units}
                 canWrite={subjectCanWrite}

@@ -516,10 +516,12 @@ calm, dismissible observations over your recent training — a push/pull volume
 imbalance, an exercise that's gone quiet (in your rotation but untrained for a
 few weeks), and a lift whose estimated 1RM has **plateaued** (~6 weeks flat →
 try a deload or a variation) — kept separate from the next-workout suggestion; a
-workout's **⋯ → Merge with…** menu folds two of that day's activities into one
-for duplicates no auto-detector caught (undoable) — and when the two genuinely
-disagree on a field (e.g. duration 42 vs 51 min) a quick preview lets you pick
-which value to keep per field. Manually logged activities also get an
+workout's **⋯ → Merge with…** menu folds that day's duplicates into one for
+cases no auto-detector caught (undoable) — absorb one in a click, or combine
+several and choose which record survives — and when the records genuinely
+disagree on a field (e.g. duration 42 vs 51 min) a quick preview lists every
+record's value (the keeper's pre-selected) so you pick which to keep per field.
+Manually logged activities also get an
 **estimated calorie burn** — computed from a baked MET (metabolic-equivalent)
 table, the activity's type/intensity/duration, and your nearest bodyweight —
 which auto-fills on the activity form (editable, so you can override it) and
@@ -1981,8 +1983,10 @@ failing**, and **possible duplicates**—a Strava run and a manual/Health Connec
 run on the same day, two same-source imports of one workout (upstream
 double-feeding, e.g. Strava ingesting the same session from both Garmin and
 Health Connect), or two body-metric rows that would double-count, detected
-across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (Merge
-shows a per-field preview when the two rows disagree on a value), with the
+across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (a
+group of three-plus copies collapses to one card with a keeper radio, and when
+the rows disagree on a value Merge shows a per-field preview listing every
+copy's value — the keeper's pre-selected — so any copy's number can win), with the
 decision remembered so a later re-sync won't undo it — a device row you merge
 away or delete stays gone instead of silently re-importing on the next
 rolling-window sync (counted as **suppressed** in the feed split), and if a

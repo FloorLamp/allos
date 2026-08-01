@@ -18,7 +18,7 @@ import {
   clearDocumentTombstone,
   type AllowReacquisitionResult,
 } from "@/lib/document-tombstones";
-import { parseOverrideFields } from "@/lib/import-review/conflicts";
+import { parseOverrideChoices } from "@/lib/import-review/conflicts";
 import { mergeBodyMetric } from "@/lib/body-metric-extract";
 import type { PairDecision } from "@/lib/import-review/detect";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -149,10 +149,11 @@ export async function mergeActivityPair(formData: FormData) {
   const dropId = Number(formData.get("drop_id"));
   const signature = String(formData.get("signature") ?? "").trim();
   if (!keepId || !dropId || keepId === dropId || !signature) return;
-  // Conflict-preview overrides (issue #100): validated to real fold-field names
-  // only; each overridden field takes the discarded row's re-read value, never a
-  // client value. Empty for the common one-click merge.
-  const overrideFields = parseOverrideFields(formData.get("overrides"));
+  // Conflict-picker overrides (issue #100/#1431): validated to real fold-field
+  // names + member ids only; each overridden field takes the chosen row's re-read
+  // value, never a client value. Empty for the common one-click merge. The legacy
+  // pairwise array shape resolves against the single discarded row.
+  const overrides = parseOverrideChoices(formData.get("overrides"), dropId);
 
   const ok = writeTx(() => {
     const keep = db
@@ -168,7 +169,7 @@ export async function mergeActivityPair(formData: FormData) {
     // delete below can no longer take typed-in sets down with it — the sets now
     // belong to the keeper before its parent row is removed. (The N-way core takes a
     // drops[] list; a pair is the drops.length === 1 case.)
-    writeActivityFold(profile.id, keepId, keep, [drop], overrideFields);
+    writeActivityFold(profile.id, keepId, keep, [drop], overrides);
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
       dropId,
       profile.id
@@ -200,7 +201,9 @@ export async function mergeActivityCluster(formData: FormData) {
   );
   const pairSignatures = parseStringList(formData.get("pair_signatures"));
   if (!keepId || dropIds.length === 0 || pairSignatures.length === 0) return;
-  const overrideFields = parseOverrideFields(formData.get("overrides"));
+  // Per-field member choices from the shared conflict picker (#1431) — field name +
+  // member id only; values come from the re-read rows below.
+  const overrides = parseOverrideChoices(formData.get("overrides"));
 
   const ok = writeTx(() => {
     const keep = db
@@ -218,7 +221,7 @@ export async function mergeActivityCluster(formData: FormData) {
     }
     if (drops.length === 0) return false;
 
-    writeActivityFold(profile.id, keepId, keep, drops, overrideFields);
+    writeActivityFold(profile.id, keepId, keep, drops, overrides);
     for (const drop of drops) {
       db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
         drop.id as number,
