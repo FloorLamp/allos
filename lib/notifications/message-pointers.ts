@@ -1,5 +1,5 @@
 // The live-message pointer STORE (issue #1779) — one row per delivered
-// keyboard-bearing Telegram message (migration 134's `notify_messages`).
+// keyboard-bearing Telegram message (migration 135's `notify_messages`).
 //
 // Auth-blind and profileId-first, like every other lib/ write core. Every statement
 // filters on `profile_id`, so the new owned table needs no scoping exemption.
@@ -17,6 +17,7 @@
 // sweep drops them on every pass — see `pruneMessagePointers`.
 
 import { db } from "../db";
+import { sqlNow } from "../clock";
 import { createLogger } from "../log";
 import type { InlineKeyboard } from "./telegram-render";
 
@@ -90,7 +91,7 @@ export function recordMessagePointer(p: {
     db.prepare(
       `INSERT INTO notify_messages
          (profile_id, chat_id, message_id, kind, date, keyboard, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(chat_id, message_id) DO UPDATE SET
          profile_id = excluded.profile_id,
          kind       = excluded.kind,
@@ -103,7 +104,8 @@ export function recordMessagePointer(p: {
       p.messageId,
       p.kind,
       p.date,
-      JSON.stringify(p.keyboard)
+      JSON.stringify(p.keyboard),
+      sqlNow()
     );
   } catch (e) {
     log.info("message pointer store failed (ignored)", {
@@ -185,8 +187,8 @@ export function pruneMessagePointers(profileId: number): number {
     .prepare(
       `DELETE FROM notify_messages
         WHERE profile_id = ?
-          AND sent_at < datetime('now', ?)`
+          AND sent_at < datetime(?, ?)`
     )
-    .run(profileId, `-${MESSAGE_POINTER_RETENTION_DAYS} days`);
+    .run(profileId, sqlNow(), `-${MESSAGE_POINTER_RETENTION_DAYS} days`);
   return res.changes;
 }

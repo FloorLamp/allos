@@ -52,7 +52,10 @@ describe("keyboardTokens", () => {
 
   it("ignores deep-link buttons — a url carries no claim", () => {
     const keyboard: InlineKeyboard = [
-      [{ text: "Open", url: "https://example.invalid/x" }, { text: "t", callback_data: TAKE_A }],
+      [
+        { text: "Open", url: "https://example.invalid/x" },
+        { text: "t", callback_data: TAKE_A },
+      ],
     ];
     expect(keyboardTokens(keyboard)).toEqual([TAKE_A]);
   });
@@ -60,7 +63,10 @@ describe("keyboardTokens", () => {
 
 describe("stripTokens", () => {
   it("removes named buttons and collapses rows left empty", () => {
-    const out = stripTokens(kb([TAKE_A, SKIP_A], [TAKE_B]), new Set([TAKE_A, SKIP_A]));
+    const out = stripTokens(
+      kb([TAKE_A, SKIP_A], [TAKE_B]),
+      new Set([TAKE_A, SKIP_A])
+    );
     expect(out).toHaveLength(1);
     expect(keyboardTokens(out)).toEqual([TAKE_B]);
   });

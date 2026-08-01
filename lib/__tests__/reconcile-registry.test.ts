@@ -112,7 +112,9 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
     // A sample from three different modules and all three mint styles, so a regex that
     // silently stops matching fails here rather than turning the guard into a no-op.
     for (const known of ["take", "hh", "pvdone", "food", "offer", "tunet"]) {
-      expect(minted.has(known), `scan missed the "${known}:" prefix`).toBe(true);
+      expect(minted.has(known), `scan missed the "${known}:" prefix`).toBe(
+        true
+      );
     }
     expect(minted.size).toBeGreaterThan(20);
   });
@@ -129,7 +131,9 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
         continue;
       }
       if (!entry.family && !entry.inert) {
-        unanswered.push(`"${prefix}:" has an entry but neither a family nor a reason`);
+        unanswered.push(
+          `"${prefix}:" has an entry but neither a family nor a reason`
+        );
       }
     }
     expect(unanswered, `\n${unanswered.join("\n")}\n`).toEqual([]);
@@ -139,15 +143,19 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
     const stale = RECONCILE_PREFIXES.filter((e) => !minted.has(e.prefix)).map(
       (e) => e.prefix
     );
-    expect(stale, `retired prefixes still in the registry: ${stale.join(", ")}`).toEqual(
-      []
-    );
+    expect(
+      stale,
+      `retired prefixes still in the registry: ${stale.join(", ")}`
+    ).toEqual([]);
   });
 
   it("every inert declaration carries a real reason, not a placeholder", () => {
     for (const e of RECONCILE_PREFIXES) {
       if (!e.inert) continue;
-      expect(e.inert.length, `"${e.prefix}" needs a real reason`).toBeGreaterThan(30);
+      expect(
+        e.inert.length,
+        `"${e.prefix}" needs a real reason`
+      ).toBeGreaterThan(30);
     }
   });
 
@@ -163,7 +171,9 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
   it("no duplicate prefixes", () => {
     const seen = new Set<string>();
     for (const e of RECONCILE_PREFIXES) {
-      expect(seen.has(e.prefix), `duplicate entry for "${e.prefix}"`).toBe(false);
+      expect(seen.has(e.prefix), `duplicate entry for "${e.prefix}"`).toBe(
+        false
+      );
       seen.add(e.prefix);
     }
   });
@@ -176,15 +186,14 @@ describe("owningFamily / inertTokens", () => {
     // A dose reminder carries its take/skip rows first and the offer tail last, so the
     // dose family owns the message even though the tail is also on it.
     expect(
-      owningFamily(
-        [`take:7:11:3:${DATE}`, `offer:7:${DATE}`],
-        tokenPrefix
-      )
+      owningFamily([`take:7:11:3:${DATE}`, `offer:7:${DATE}`], tokenPrefix)
     ).toBe("intake-dose");
   });
 
   it("a keyboard of pure view controls has no owner — nothing to reconcile", () => {
-    expect(owningFamily([`offer:7:${DATE}`, `tune:7:${DATE}`], tokenPrefix)).toBeNull();
+    expect(
+      owningFamily([`offer:7:${DATE}`, `tune:7:${DATE}`], tokenPrefix)
+    ).toBeNull();
   });
 
   it("an unknown prefix is NOT treated as inert — an unreasoned button fails safe", () => {
@@ -193,8 +202,8 @@ describe("owningFamily / inertTokens", () => {
   });
 
   it("inert tokens are picked out by their registry declaration", () => {
-    expect([...inertTokens([`tune:7:${DATE}`, `take:7:1:1:${DATE}`], tokenPrefix)]).toEqual([
-      `tune:7:${DATE}`,
-    ]);
+    expect([
+      ...inertTokens([`tune:7:${DATE}`, `take:7:1:1:${DATE}`], tokenPrefix),
+    ]).toEqual([`tune:7:${DATE}`]);
   });
 });

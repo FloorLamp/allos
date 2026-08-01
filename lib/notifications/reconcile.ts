@@ -48,10 +48,7 @@ import {
 } from "../refill";
 import { getProfileFoodTelegram, getUserAge } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
-import {
-  collectWindowDoses,
-  slotSessionForKeyboard,
-} from "./supplements";
+import { collectWindowDoses, slotSessionForKeyboard } from "./supplements";
 import {
   renderMergedIntakeMessage,
   type IntakeSendSlot,
@@ -79,7 +76,11 @@ import {
   type MessagePointer,
 } from "./message-pointers";
 import { messageKeyboard } from "./telegram-render";
-import { closeMessage, rebuildMessage, updateMessageKeyboard } from "./telegram";
+import {
+  closeMessage,
+  rebuildMessage,
+  updateMessageKeyboard,
+} from "./telegram";
 import type { NotificationMessage } from "./types";
 
 const log = createLogger("notify");
@@ -88,7 +89,11 @@ const log = createLogger("notify");
 
 interface FamilyReconciler {
   // The tokens on this keyboard whose tap is no longer actionable.
-  dead(profileId: number, tokens: readonly string[], p: MessagePointer): Set<string>;
+  dead(
+    profileId: number,
+    tokens: readonly string[],
+    p: MessagePointer
+  ): Set<string>;
   // Optional whole-message re-render from CURRENT state, used instead of
   // button-stripping. Returning null means "there is no message left to show".
   rebuild?(
@@ -310,9 +315,7 @@ const refill: FamilyReconciler = {
       );
       if (isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS)) lowIds.add(s.id);
     }
-    return new Set(
-      wanted.filter((t) => !lowIds.has(Number(fields(t)[2])))
-    );
+    return new Set(wanted.filter((t) => !lowIds.has(Number(fields(t)[2]))));
   },
 };
 
@@ -331,7 +334,9 @@ const symptom: FamilyReconciler = {
         const f = fields(t);
         const slug =
           f[0] === "symp" ? f[2] : f[0] === "symsev" ? f[3] : undefined;
-        return slug != null && logged.has(slug.replace(/_/g, " ").toLowerCase());
+        return (
+          slug != null && logged.has(slug.replace(/_/g, " ").toLowerCase())
+        );
       })
     );
   },

@@ -81,8 +81,7 @@ export function stripTokens(
   return keyboard
     .map((row) =>
       row.filter(
-        (b) =>
-          typeof b.callback_data !== "string" || !dead.has(b.callback_data)
+        (b) => typeof b.callback_data !== "string" || !dead.has(b.callback_data)
       )
     )
     .filter((row) => row.length > 0);
@@ -135,8 +134,12 @@ export function decideReconcile(input: ReconcileInput): ReconcileDecision {
 
   const dead = claims.filter((t) => input.dead.has(t));
   if (dead.length === 0) return { action: "none" };
-  if (dead.length === claims.length) return { action: "close", reason: "resolved" };
-  return { action: "strip", keyboard: stripTokens(input.keyboard, new Set(dead)) };
+  if (dead.length === claims.length)
+    return { action: "close", reason: "resolved" };
+  return {
+    action: "strip",
+    keyboard: stripTokens(input.keyboard, new Set(dead)),
+  };
 }
 
 // The closing line a fully-resolved message collapses to. Deliberately states WHY the

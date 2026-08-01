@@ -58,7 +58,10 @@ const editText = vi.mocked(editMessageTextRaw);
 
 beforeEach(() => {
   // One bot token for the whole file — the channel is only "configured" with one.
-  setTelegramBotConfig({ telegramBotToken: "bot-for-tests", telegramMode: "poll" });
+  setTelegramBotConfig({
+    telegramBotToken: "bot-for-tests",
+    telegramMode: "poll",
+  });
   editKeyboard.mockClear();
   editText.mockClear();
 });
@@ -73,7 +76,10 @@ function newProfile(name: string): number {
 }
 
 // A daily `must` supplement with one morning dose — the safety-tier shape.
-function seedDose(profileId: number, name: string): { itemId: number; doseId: number } {
+function seedDose(
+  profileId: number,
+  name: string
+): { itemId: number; doseId: number } {
   const itemId = Number(
     db
       .prepare(
@@ -97,13 +103,18 @@ function seedDose(profileId: number, name: string): { itemId: number; doseId: nu
 // Send this profile's real morning reminder through the real chokepoint.
 async function sendMorningReminder(profileId: number): Promise<void> {
   const built = buildIntakeReminderForSlots(profileId, ["Morning"]);
-  expect(built, "the fixture should have something to remind about").not.toBeNull();
+  expect(
+    built,
+    "the fixture should have something to remind about"
+  ).not.toBeNull();
   await dispatch(profileId, built!.message);
 }
 
 // The tokens the pointers for this profile currently carry, flattened.
 function liveTokens(profileId: number): string[] {
-  return liveMessagePointers(profileId).flatMap((p) => keyboardTokens(p.keyboard));
+  return liveMessagePointers(profileId).flatMap((p) =>
+    keyboardTokens(p.keyboard)
+  );
 }
 
 describe("the pointer is recorded for every delivered keyboard (#1779)", () => {
@@ -116,17 +127,26 @@ describe("the pointer is recorded for every delivered keyboard (#1779)", () => {
     await sendMorningReminder(pid);
 
     const pointers = liveMessagePointers(pid);
-    expect(pointers.map((p) => p.chatId).sort()).toEqual(["5551779", "5551780"]);
+    expect(pointers.map((p) => p.chatId).sort()).toEqual([
+      "5551779",
+      "5551780",
+    ]);
     // Each carries the delivered keyboard, not an empty placeholder.
     for (const p of pointers) {
-      expect(keyboardTokens(p.keyboard).some((t) => t.startsWith("take:"))).toBe(true);
+      expect(
+        keyboardTokens(p.keyboard).some((t) => t.startsWith("take:"))
+      ).toBe(true);
     }
   });
 
   it("a button-less message records nothing — it can never display a stale claim", async () => {
     const pid = newProfile("Plain Pim");
     seedLoginTelegram(pid, "5551781");
-    await dispatch(pid, { title: "Note", body: "no buttons here", kind: "other" });
+    await dispatch(pid, {
+      title: "Note",
+      body: "no buttons here",
+      kind: "other",
+    });
     expect(liveMessagePointers(pid)).toEqual([]);
   });
 });
@@ -177,8 +197,12 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
     expect(out.closed).toBe(0);
     const tokens = liveTokens(pid);
     // A's buttons are gone; B's survive, because B really is still outstanding.
-    expect(tokens.some((t) => t.startsWith(`take:${pid}:${a.doseId}:`))).toBe(false);
-    expect(tokens.some((t) => t.startsWith(`take:${pid}:${b.doseId}:`))).toBe(true);
+    expect(tokens.some((t) => t.startsWith(`take:${pid}:${a.doseId}:`))).toBe(
+      false
+    );
+    expect(tokens.some((t) => t.startsWith(`take:${pid}:${b.doseId}:`))).toBe(
+      true
+    );
   });
 });
 
@@ -265,7 +289,9 @@ describe("dead pointers and retention", () => {
       messageId: 77,
       kind: "dose",
       date: today(pid),
-      keyboard: [[{ text: "x", callback_data: `take:${pid}:1:1:${today(pid)}` }]],
+      keyboard: [
+        [{ text: "x", callback_data: `take:${pid}:1:1:${today(pid)}` }],
+      ],
     });
     db.prepare(
       `UPDATE notify_messages
@@ -333,10 +359,21 @@ describe("class 1 — the other state-claim families", () => {
       date: td,
       keyboard: [
         [
-          { text: "✅ Confirmed", callback_data: `esctake:${pid}:${doseId}:${itemId}:${td}` },
-          { text: "⏭ Skipped", callback_data: `escskip:${pid}:${doseId}:${itemId}:${td}` },
+          {
+            text: "✅ Confirmed",
+            callback_data: `esctake:${pid}:${doseId}:${itemId}:${td}`,
+          },
+          {
+            text: "⏭ Skipped",
+            callback_data: `escskip:${pid}:${doseId}:${itemId}:${td}`,
+          },
         ],
-        [{ text: "👍 On it", callback_data: `escack:${pid}:${doseId}:${itemId}:${td}` }],
+        [
+          {
+            text: "👍 On it",
+            callback_data: `escack:${pid}:${doseId}:${itemId}:${td}`,
+          },
+        ],
       ],
     });
 
@@ -435,10 +472,9 @@ describe("class 3 — decision buttons", () => {
     expect((await reconcileProfileMessages(pid)).edited).toBe(0);
 
     // The user accepts the demotion in the app.
-    db.prepare(`UPDATE intake_items SET obligation = 'may' WHERE id = ? AND profile_id = ?`).run(
-      itemId,
-      pid
-    );
+    db.prepare(
+      `UPDATE intake_items SET obligation = 'may' WHERE id = ? AND profile_id = ?`
+    ).run(itemId, pid);
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
   });
 });

@@ -1241,7 +1241,9 @@ export function getIntakeItemObligation(
   itemId: number
 ): string | null {
   const row = db
-    .prepare("SELECT obligation FROM intake_items WHERE id = ? AND profile_id = ?")
+    .prepare(
+      "SELECT obligation FROM intake_items WHERE id = ? AND profile_id = ?"
+    )
     .get(itemId, profileId) as { obligation: string | null } | undefined;
   return row?.obligation ?? null;
 }
