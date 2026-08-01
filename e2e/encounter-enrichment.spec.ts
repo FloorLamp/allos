@@ -44,6 +44,15 @@ test.describe("encounter detail enrichment (#1350/#1353)", () => {
     await expect(context).toBeVisible();
     await expect(context).toContainText("2nd visit with Dr. Enid Enrich (e2e)");
     await expect(context).toContainText("this year");
+
+    // ProviderName owns the stethoscope glyph; the detail row must not prepend a
+    // second copy around that shared component.
+    const providerRow = page
+      .getByTestId("encounter-detail-card")
+      .locator("dt")
+      .filter({ hasText: /^Provider$/ })
+      .locator("..");
+    await expect(providerRow.locator("svg")).toHaveCount(1);
   });
 
   test("provenance chain resolves: scheduling origin + timeline day", async () => {

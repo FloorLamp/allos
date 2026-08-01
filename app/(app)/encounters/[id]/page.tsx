@@ -5,7 +5,6 @@ import {
   IconBuildingHospital,
   IconCalendarClock,
   IconFileText,
-  IconStethoscope,
   IconTimeline,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -323,17 +322,11 @@ export default async function EncounterDetailPage(props: {
             <dl className="divide-y divide-black/5 dark:divide-white/10">
               {encounter.provider_name ? (
                 <DetailRow label="Provider">
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconStethoscope
-                      className="h-4 w-4 shrink-0 text-slate-400"
-                      stroke={1.75}
-                    />
-                    <ProviderName
-                      name={encounter.provider_name}
-                      providerId={encounter.provider_id}
-                      className=""
-                    />
-                  </span>
+                  <ProviderName
+                    name={encounter.provider_name}
+                    providerId={encounter.provider_id}
+                    className=""
+                  />
                 </DetailRow>
               ) : null}
 
