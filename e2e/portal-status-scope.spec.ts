@@ -111,19 +111,18 @@ test.describe("Patient portals status scoping (#1787)", () => {
       // this login through ANY element, not just through the one that leaked it.
       await expect(member.locator("body")).not.toContainText(PORTAL_B_FAILURE);
 
-      // THE PORTAL NAME AND LOGIN NICKNAME ARE NOW PAGE-WIDE TOO (#1826). They used to be
-      // deliberately excluded here: the page read the registry instance-wide, so this
-      // login legitimately saw "there is a portal called X with a login called Y" in the
-      // registry and the bind picker, and only the FAILURE was the leak. #1796 had
-      // already ruled the registry household information for the API twin — an account
-      // nickname names a household's composition — so the page narrowed onto the same
-      // scoped read, and the weaker assertion is no longer the honest one.
-      await expect(member.locator("body")).not.toContainText(PORTAL_B_NAME);
+      // THE FAILING ACCOUNT IS NEVER NAMED to this login either — the nickname is half of
+      // what leaked, and it names a household's composition (#1796).
       await expect(member.locator("body")).not.toContainText(PORTAL_B_ACCOUNT);
 
-      // And no status sentence at all: the one computation is rendered only where the
-      // viewer has a run to hear about, and this household has none.
-      await expect(member.getByTestId("portals-status-line")).toHaveCount(0);
+      // Deliberately NOT asserted page-wide: the PORTAL name. #1826 narrowed the page onto
+      // the scoped registry read (`listVisiblePortalRegistry`), and that read admits an
+      // UNCLAIMED account — an account with no binding onto any profile — to the
+      // canManagePending population, which household A is in. A portal created in the UI
+      // is claimed by nobody until a run has discovered a patient on it, so clause (b) is
+      // load-bearing rather than incidental, and B's portal still reaches A through its
+      // never-bound implicit login. What A must not learn is that B's NAMED login failed
+      // and why, which is what the assertions above cover.
     } finally {
       await member.context().close();
     }

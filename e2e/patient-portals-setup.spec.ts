@@ -4,7 +4,10 @@ import Database from "better-sqlite3";
 import { hydratedClick, settledFill, settledSelect } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { E2E_LOGIN_PORTAL_A, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_PORTAL_NONE,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 
 // The Patient portals page (#1739, reshaped by #1826): register a portal, map a patient to
 // a profile, and see the mapping listed — through a GUIDED flow that renders one stage's
@@ -178,7 +181,7 @@ test.describe("Patient portals setup (#1739)", () => {
     // 2. Map a patient on it, through the manual bind — which is now an ESCAPE HATCH
     //    inside Manage rather than the page's primary affordance (#1826), and says so.
     await expect(page.getByTestId("portal-identities")).toContainText(
-      "use this only to pre-bind a label you know exactly"
+      "pre-bind a label you know exactly"
     );
     // With one login the select names the portal alone — the account component is
     // invisible until a second login exists.
@@ -440,14 +443,15 @@ test.describe("Patient portals — the guided stages (#1826)", () => {
 
   // A login that can reach no portal sees the introduction, and nothing else — no status
   // sentence, no forms, and no Manage drawer, because there is nothing in it for them.
-  // Household A holds write access to its own profile and none to the profile the seeded
-  // portal is bound to, so its VISIBLE registry (#1796) is empty by construction.
+  // The fixture login is READ-ONLY on a profile with no portal binding, which puts it
+  // outside the population that may see unclaimed accounts too: its visible registry
+  // (#1796) is empty by construction rather than by scheduling luck.
   test("a household with no portal of its own sees only the introduction", async ({
     browser,
   }) => {
     test.slow();
     const member = await loginAs(browser, {
-      username: E2E_LOGIN_PORTAL_A,
+      username: E2E_LOGIN_PORTAL_NONE,
       password: E2E_MEMBER_PASSWORD,
     });
     try {

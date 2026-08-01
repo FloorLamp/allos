@@ -354,7 +354,7 @@ export default function PortalManage({
                 <input
                   value={accountName}
                   onChange={(e) => setAccountName(e.target.value)}
-                  placeholder="Add a login — “Mom”, “Dad”"
+                  placeholder="Add a login — “Mom”, “dad@example.com”"
                   aria-label="Login nickname"
                   className="input"
                   data-testid="account-name"
@@ -378,8 +378,10 @@ export default function PortalManage({
             )}
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Add a login only when two people sign in to the same portal with
-              their own accounts. A nickname is all allos keeps — never a
-              username or a password.
+              their own accounts. A nickname or the account&apos;s email address
+              is all allos keeps — never a password, and never the web address
+              you sign in at. Both stay in the companion tool on the machine
+              that uses them.
             </p>
           </div>
         )}
