@@ -24,7 +24,9 @@ test("Records panes do not render cards inside cards", async ({ page }) => {
 
   for (const href of RECORD_PANES) {
     await page.goto(href);
-    await expect(page.getByTestId("records-group-tabs")).toBeVisible();
+    await expect(
+      page.getByTestId("records-page").getByTestId("records-group-tabs")
+    ).toBeVisible();
 
     await page.locator("details").evaluateAll((details) => {
       for (const detail of details) (detail as HTMLDetailsElement).open = true;

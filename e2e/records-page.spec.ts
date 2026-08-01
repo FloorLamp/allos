@@ -39,6 +39,49 @@ test("bare /records redirects to History › Visits and renders the Visits list 
   await expect(page.getByTestId("records-conditions")).toHaveCount(0);
 });
 
+test("mobile Health record starts with four shell-owned group tabs", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/records/history/visits");
+
+  await expect(page.getByTestId("records-page-title")).toBeHidden();
+  const shell = page.getByTestId("shell-chrome");
+  const strip = shell.getByTestId("shell-tab-strip");
+  const tabs = strip.getByTestId("records-group-tabs");
+  await expect(tabs).toBeVisible();
+  await expect(tabs).toHaveCSS("overflow-y", "hidden");
+  await expect(tabs.getByRole("tab")).toHaveCount(4);
+
+  const boxes = await Promise.all(
+    ["History", "Problems", "Care", "Specialty"].map(async (name) => {
+      const tab = tabs.getByRole("tab", { name });
+      await expect(tab).toHaveCSS("font-size", "14px");
+      return tab.boundingBox();
+    })
+  );
+  expect(boxes.every(Boolean)).toBe(true);
+  expect(boxes[0]!.height).toBeGreaterThanOrEqual(44);
+  for (const box of boxes.slice(1)) {
+    expect(box!.width).toBeCloseTo(boxes[0]!.width, 0);
+  }
+
+  await expect(tabs.getByRole("tab", { name: "History" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await followLink(
+    page,
+    tabs.getByRole("tab", { name: "Problems" }),
+    /\/records\/problems\/conditions$/
+  );
+  await expect(
+    page.getByTestId("shell-tab-strip").getByRole("tab", { name: "Problems" })
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("records-sub-tabs")).toBeVisible();
+  await expect(page.getByTestId("records-conditions")).toBeVisible();
+});
+
 test("two-level tabs navigate group → sub-tab across the panes (#1079)", async ({
   page,
 }) => {
@@ -68,7 +111,7 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   // Care group tab → its Overview pane.
   await followLink(
     page,
-    page.getByTestId("records-group-tabs").getByRole("link", { name: "Care" }),
+    page.getByTestId("records-group-tabs").getByRole("tab", { name: "Care" }),
     /\/records\/care\/overview$/
   );
   // Care › Overview is a STACKED pane — all four light sections render together.
@@ -102,7 +145,7 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   // themselves with page-scale in-page headings.
   await followLink(
     page,
-    groups.getByRole("link", { name: "Problems" }),
+    groups.getByRole("tab", { name: "Problems" }),
     /\/records\/problems\/conditions$/
   );
   const problemSubs = page.getByTestId("records-sub-tabs");
