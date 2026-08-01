@@ -14,6 +14,7 @@ import type {
   UrgencyBand,
 } from "../upcoming";
 import type { Reason } from "../reasons";
+import type { IntakeDeltas } from "../intake-deltas";
 
 let n = 0;
 const item = (
@@ -67,7 +68,9 @@ describe("buildDigest", () => {
     // come from collectUpcoming, not a hand-computed goal line) — issue #1108.
     expect(model?.sections[0].lines).toEqual([
       "💊 3 supplement doses scheduled",
-      "This week: 1 goal",
+      // One item in the band, so it is NAMED rather than counted (#1819 item 5), and
+      // the band line carries the section's bullet emoji like every other line.
+      "🗓️ This week: Legs",
     ]);
   });
 
@@ -177,6 +180,97 @@ describe("buildDigest", () => {
   });
 });
 
+// ---- The delta and the fraction, merged when redundant (#1819 item 6) -----
+//
+// "🔁 Missed: Glycine (1 day)" above "💊 Supplements: 8/9 taken" stated one fact
+// twice — the 1 missing IS the Glycine. #1505 part 3's "delta leads, fraction
+// supports" survives intact wherever the two genuinely diverge.
+describe("buildDigest — the intake delta and the adherence fraction", () => {
+  const missed = (names: string[]): IntakeDeltas => ({
+    missed: names.map((name, i) => ({
+      kind: "missed" as const,
+      itemId: i + 1,
+      name,
+      days: 1,
+    })),
+    resumed: [],
+  });
+
+  const yesterday = (input: Parameters<typeof buildDigest>[0]) =>
+    buildDigest(input)?.sections.find((s) => s.heading === "Yesterday")?.lines;
+
+  it("MERGES into one line when the delta fully explains the gap", () => {
+    expect(
+      yesterday({
+        ...empty,
+        intakeDeltas: missed(["Glycine (test)"]),
+        adherence: { taken: 8, skipped: 0, due: 9 },
+      })
+    ).toEqual(["💊 Supplements: 8/9 taken — missed Glycine (test) (1 day)"]);
+  });
+
+  it("keeps two lines when several misses cannot ride one fraction", () => {
+    expect(
+      yesterday({
+        ...empty,
+        intakeDeltas: missed(["Glycine (test)", "Magnesium (test)"]),
+        adherence: { taken: 7, skipped: 0, due: 9 },
+      })
+    ).toEqual([
+      "🔁 Missed: Glycine (test) (1 day), Magnesium (test) (1 day)",
+      "💊 Supplements: 7/9 taken",
+    ]);
+  });
+
+  it("keeps two lines when a RESUME is the news — a resume is not a gap", () => {
+    expect(
+      yesterday({
+        ...empty,
+        intakeDeltas: {
+          missed: [],
+          resumed: [
+            { kind: "resumed", itemId: 1, name: "Vitamin D (test)", days: 2 },
+          ],
+        },
+        adherence: { taken: 8, skipped: 0, due: 9 },
+      })
+    ).toEqual([
+      "🔁 Resumed: Vitamin D (test) (2 days)",
+      "💊 Supplements: 8/9 taken",
+    ]);
+  });
+
+  it("keeps two lines when a SKIP, not the miss, moved the fraction", () => {
+    // 1 skipped leaves 8 intended and 8 taken — no gap for the delta to explain.
+    expect(
+      yesterday({
+        ...empty,
+        intakeDeltas: missed(["Glycine (test)"]),
+        adherence: { taken: 8, skipped: 1, due: 9 },
+      })
+    ).toEqual([
+      "🔁 Missed: Glycine (test) (1 day)",
+      "💊 Supplements: 8/8 taken · 1 skipped",
+    ]);
+  });
+
+  it("still leads with the delta when there is no fraction beside it", () => {
+    expect(
+      yesterday({ ...empty, intakeDeltas: missed(["Glycine (test)"]) })
+    ).toEqual(["🔁 Missed: Glycine (test) (1 day)"]);
+  });
+
+  it("a quiet delta window leaves the fraction alone", () => {
+    expect(
+      yesterday({
+        ...empty,
+        intakeDeltas: { missed: [], resumed: [] },
+        adherence: { taken: 8, skipped: 0, due: 9 },
+      })
+    ).toEqual(["💊 Supplements: 8/9 taken"]);
+  });
+});
+
 describe("buildDigest — merged Today section (issue #1108)", () => {
   const risk = (text: string): Reason => ({
     code: "risk-elevated",
@@ -188,16 +282,72 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
     const model = buildDigest({
       ...empty,
       todayGroups: [
-        band("overdue", "Overdue", [item("biomarker")]),
-        band("today", "Today", [item("appointment")]),
-        band("week", "This week", [item("goal"), item("training")]),
+        band("overdue", "Overdue", [
+          item("screening", { title: "Colonoscopy" }),
+          item("biomarker", { title: "CBC" }),
+          item("biomarker", { title: "Lipid panel" }),
+        ]),
+        band("today", "Today", [item("appointment", { title: "Dentist" })]),
+        band("week", "This week", [
+          item("goal", { title: "Legs" }),
+          item("training", { title: "Back" }),
+          item("training", { title: "Chest" }),
+          item("training", { title: "Cardio" }),
+        ]),
       ],
     });
     const today = model?.sections.find((s) => s.heading === "Today");
     expect(today?.lines).toEqual([
-      "Overdue: 1 lab",
-      "Today: 1 appointment",
-      "This week: 1 goal, 1 training target",
+      // <= 3 items: named, peers joined by ", " and domains by " · " (#1819 item 5).
+      "🗓️ Overdue: Colonoscopy · CBC, Lipid panel",
+      "🗓️ Today: Dentist",
+      // Above the naming threshold the count is genuinely the right shape.
+      "🗓️ This week: 1 goal, 3 training targets",
+    ]);
+  });
+
+  // #1819 item 4: a bare count of unmet targets is neither progress nor what is
+  // lagging. The weekly-progress phrase replaces it — over the SAME paced set.
+  it("states weekly training PROGRESS instead of counting unmet targets", () => {
+    const model = buildDigest({
+      ...empty,
+      trainingPaceLine: "2 of 4 training targets on pace — behind on Back, Chest",
+      todayGroups: [
+        band("week", "This week", [
+          item("training", { key: "training:1", title: "Back" }),
+          item("training", { key: "training:2", title: "Chest" }),
+          item("training", { key: "training:3", title: "Cardio" }),
+          item("training", { key: "training:4", title: "Lower body" }),
+        ]),
+      ],
+    });
+    const today = model?.sections.find((s) => s.heading === "Today");
+    expect(today?.lines).toEqual([
+      "🗓️ This week: 2 of 4 training targets on pace — behind on Back, Chest",
+    ]);
+  });
+
+  it("never lets the pace phrase stand in for a training item it is not about", () => {
+    // An endurance event and an outdoor plan share the `training` DOMAIN but not the
+    // weekly-target key namespace, so the phrase must decline rather than absorb them.
+    const model = buildDigest({
+      ...empty,
+      trainingPaceLine: "2 of 4 training targets on pace",
+      todayGroups: [
+        band("week", "This week", [
+          item("training", { key: "training:1", title: "Back" }),
+          item("training", {
+            key: "endurance-event:9",
+            title: "Event: 10 km Run",
+          }),
+          item("goal", { title: "Legs" }),
+          item("appointment", { title: "Dentist" }),
+        ]),
+      ],
+    });
+    const today = model?.sections.find((s) => s.heading === "Today");
+    expect(today?.lines).toEqual([
+      "🗓️ This week: 1 appointment, 1 goal, 2 training targets",
     ]);
   });
 
@@ -218,7 +368,7 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
     // The dose headline counts the doses; the band line lists everything BUT doses.
     expect(today?.lines).toEqual([
       "💊 3 supplement doses scheduled",
-      "Today: 1 appointment",
+      "🗓️ Today: appointment",
     ]);
   });
 
@@ -247,7 +397,7 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
     });
     const today = model?.sections.find((s) => s.heading === "Today");
     expect(today?.lines).toEqual([
-      "Overdue: 1 lab",
+      "🗓️ Overdue: Retest LDL Cholesterol",
       "⚑ Retest LDL Cholesterol — Family history of heart disease",
     ]);
   });
@@ -372,12 +522,15 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
     expect(sleep).toBeTruthy();
     // 15m above a 7h5m baseline is inside the typical band — the line says so rather
     // than manufacturing a "+15m" delta (#1712).
+    // #1819 item 7: the verdict is a clause about the figure, so it takes the em-dash.
     expect(sleep?.lines[0]).toBe(
-      "😴 Last night: 7h 20m about typical · deep 1h 5m, REM 1h 35m"
+      "😴 Last night: 7h 20m — about typical · deep 1h 5m, REM 1h 35m"
     );
     // The nap is a SEPARATE line, never folded into the overnight figure.
     expect(sleep?.lines).toContain("💤 + 45m nap");
-    expect(sleep?.lines).toContain("📈 Sleep regularity · SRI 82");
+    // The acronym and the naked number are gone: the banded qualifier says what the
+    // index means, about the SCHEDULE and never about the sleeper (#992/#1819 item 7).
+    expect(sleep?.lines).toContain("📈 Sleep regularity 82 — very consistent");
   });
 
   it("omits stages, nap, and SRI when absent (calm, minimal)", () => {
@@ -386,7 +539,7 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       sleep: { lastNightMin: 480, baselineMin: 470 },
     });
     const sleep = model?.sections.find((s) => s.heading === "Sleep");
-    expect(sleep?.lines).toEqual(["😴 Last night: 8h about typical"]);
+    expect(sleep?.lines).toEqual(["😴 Last night: 8h — about typical"]);
   });
 
   // #1712 §3: the line printed two numbers and left the conclusion to the reader.
@@ -396,7 +549,7 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       sleep: { lastNightMin: 445, baselineMin: 404 }, // 7h25 vs ~6h44
     });
     const sleep = model?.sections.find((s) => s.heading === "Sleep");
-    expect(sleep?.lines[0]).toBe("😴 Last night: 7h 25m ▲ 41m above typical");
+    expect(sleep?.lines[0]).toBe("😴 Last night: 7h 25m — ▲ 41m above typical");
   });
 
   it("reads a short night neutrally — the digest never nags about sleep", () => {
@@ -405,7 +558,7 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       sleep: { lastNightMin: 330, baselineMin: 425 }, // 5h30 vs ~7h5
     });
     const line = model?.sections.find((s) => s.heading === "Sleep")?.lines[0]!;
-    expect(line).toBe("😴 Last night: 5h 30m ▼ 1h 35m below typical");
+    expect(line).toBe("😴 Last night: 5h 30m — ▼ 1h 35m below typical");
     // #1292's poor-sleep acknowledgment owns the "rough night" framing; the digest
     // must not double up with alarm of its own.
     expect(line.toLowerCase()).not.toMatch(/rough|poor|bad|short night|only/);

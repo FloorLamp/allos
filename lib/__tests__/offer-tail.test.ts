@@ -103,11 +103,18 @@ describe("isOfferedOn", () => {
 });
 
 describe("the collapsed tail", () => {
-  it("names the slot it will open into, and carries the expand token", () => {
+  // #1819 item 8: the label is a sentence about what tapping does, not a slot and a
+  // count crammed into one bar. Same guaranteed-access semantics, same slot rule.
+  it("says what tapping does, naming the slot and the count", () => {
     const a = collapsedOfferAction(7, "2026-07-29", "22:30", 3);
-    expect(a.label).toContain("Bedtime".toLowerCase());
-    expect(a.label).toContain("(3)");
+    expect(a.label).toBe("➕ Log other (3 for bedtime)");
     expect(a.data).toBe(`${OFFER_EXPAND_PREFIX}:7:2026-07-29`);
+  });
+
+  it("names the slot alone when there is no count to state", () => {
+    expect(collapsedOfferAction(7, "2026-07-29", "12:30", 0).label).toBe(
+      "➕ Log other (midday)"
+    );
   });
 
   it("relabels with the clock, which is what the tick refresh keeps true", () => {

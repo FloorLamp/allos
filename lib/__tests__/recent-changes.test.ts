@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   applyRecentChangeDemotion,
+  arrivalKind,
+  arrivalKindsPhrase,
+  MAX_ARRIVAL_KINDS,
   inRecentChangeWindow,
   rankRecentChanges,
   recentChangeWindowStart,
@@ -285,5 +288,58 @@ describe("applyRecentChangeDemotion (#1714)", () => {
       new Set<RecentChangeCategory>(["vitals"])
     );
     expect(kept.map((c) => c.id)).toEqual(["vitals:bp"]);
+  });
+});
+
+// ---- Data arrival: KINDS, not counts (#1819 item 2) -----------------------
+
+describe("arrivalKind", () => {
+  it("names the record kind a provenance row stands for", () => {
+    expect(arrivalKind("activities", null)).toBe("workouts");
+    expect(arrivalKind("body_metrics", null)).toBe("body measurements");
+    expect(arrivalKind("medical_records", null)).toBe("lab results");
+    expect(arrivalKind("practice_logs", null)).toBe("wellness sessions");
+  });
+
+  it("names a daily metric by its own vocabulary, not its storage key", () => {
+    expect(arrivalKind("metric_samples", "sleep_min")).toBe("sleep");
+    expect(arrivalKind("metric_samples", "steps")).toBe("steps");
+    expect(arrivalKind("metric_samples", "resting_hr")).toBe(
+      "resting heart rate"
+    );
+  });
+
+  it("reads sensibly for a metric that has no entry yet", () => {
+    expect(arrivalKind("metric_samples", "skin_temp_delta")).toBe(
+      "skin temp delta"
+    );
+    expect(arrivalKind("metric_samples", "")).toBe("daily metrics");
+  });
+});
+
+describe("arrivalKindsPhrase", () => {
+  it("joins the distinct kinds in the order given", () => {
+    expect(arrivalKindsPhrase(["sleep", "heart rate", "steps"])).toBe(
+      "sleep, heart rate, steps"
+    );
+  });
+
+  it("dedupes, because two written rows of one kind are still one kind", () => {
+    expect(arrivalKindsPhrase(["steps", "steps", "sleep"])).toBe(
+      "steps, sleep"
+    );
+  });
+
+  it("caps the list — and the tail counts KINDS, never records", () => {
+    const many = Array.from(
+      { length: MAX_ARRIVAL_KINDS + 2 },
+      (_, i) => `kind${i}`
+    );
+    expect(arrivalKindsPhrase(many)).toBe("kind0, kind1, kind2, kind3, +2 more");
+  });
+
+  it("says NOTHING when nothing nameable arrived — no count stands in for news", () => {
+    expect(arrivalKindsPhrase([])).toBeNull();
+    expect(arrivalKindsPhrase(["", "  "])).toBeNull();
   });
 });

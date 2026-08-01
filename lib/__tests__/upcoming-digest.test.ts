@@ -195,3 +195,78 @@ describe("digestHighlights (issue #656)", () => {
     ]);
   });
 });
+
+// ---- Naming a small band, and the per-domain phrase (#1819 items 4/5) -----
+
+describe("summarizeBand — names a small band instead of counting it", () => {
+  const named = (
+    b: BandGroup["band"],
+    label: string,
+    entries: [UpcomingDomain, string][]
+  ): BandGroup => ({
+    band: b,
+    label,
+    items: entries.map(([domain, title]) => ({ ...mk(domain), title })),
+  });
+
+  it("names the items, peers by comma and domains by the middle dot", () => {
+    const g = named("overdue", "Overdue", [
+      ["screening", "Colonoscopy"],
+      ["biomarker", "CBC"],
+      ["biomarker", "Lipid panel"],
+    ]);
+    expect(summarizeBand(g, undefined, { nameAtMost: 3 })).toBe(
+      "Colonoscopy · CBC, Lipid panel"
+    );
+  });
+
+  it("falls back to counts once naming would stop fitting on a line", () => {
+    const g = named("overdue", "Overdue", [
+      ["biomarker", "CBC"],
+      ["biomarker", "Lipid panel"],
+      ["biomarker", "HbA1c"],
+      ["biomarker", "TSH"],
+    ]);
+    expect(summarizeBand(g, undefined, { nameAtMost: 3 })).toBe("4 labs");
+  });
+
+  it("counts by default — naming is opt-in per surface", () => {
+    const g = named("overdue", "Overdue", [["screening", "Colonoscopy"]]);
+    expect(summarizeBand(g)).toBe("1 screening");
+  });
+
+  it("counts what the exclusion left, so an excluded domain cannot force a count", () => {
+    const g = named("today", "Today", [
+      ["dose", "Magnesium"],
+      ["dose", "Vitamin D"],
+      ["dose", "Creatine"],
+      ["appointment", "Dentist"],
+    ]);
+    expect(
+      summarizeBand(g, new Set<UpcomingDomain>(["dose"]), { nameAtMost: 3 })
+    ).toBe("Dentist");
+  });
+});
+
+describe("summarizeBand — a per-domain phrase replaces its count", () => {
+  it("uses the phrase the caller supplies for that domain", () => {
+    const g = band("week", "This week", ["training", "training", "goal"]);
+    expect(
+      summarizeBand(g, undefined, {
+        phraseFor: (d) => (d === "training" ? "2 of 4 on pace" : null),
+      })
+    ).toBe("1 goal, 2 of 4 on pace");
+  });
+
+  it("hands the domain's items over so the caller can decline", () => {
+    const g = band("week", "This week", ["training", "training"]);
+    const seen: number[] = [];
+    summarizeBand(g, undefined, {
+      phraseFor: (_d, items) => {
+        seen.push(items.length);
+        return null;
+      },
+    });
+    expect(seen).toEqual([2]);
+  });
+});
