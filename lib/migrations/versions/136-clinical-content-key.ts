@@ -117,7 +117,8 @@ export function up(db: Database.Database): void {
   // document simply contributes to a group that will not match any document, rather than
   // silently folding one profile's ids into another's key.
   const idsByDoc = new Map<string, Set<string>>();
-  const groupKey = (profileId: number, docId: number) => `${profileId}:${docId}`;
+  const groupKey = (profileId: number, docId: number) =>
+    `${profileId}:${docId}`;
   for (const { table, prefix } of KEYED_TABLES) {
     if (!tableExists(db, table)) continue;
     const cols = columnNames(db, table);
