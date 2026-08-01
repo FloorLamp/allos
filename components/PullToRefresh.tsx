@@ -6,8 +6,8 @@ import { IconRefresh } from "@tabler/icons-react";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import {
   classifyPull,
+  indicatorPresentation,
   shouldRefresh,
-  PTR_MAX_PX,
   type PullState,
 } from "@/lib/pull-to-refresh";
 
@@ -21,10 +21,10 @@ import {
 // tab.
 //
 // The decision (at the top? far enough? downward? vertical?) is the pure
-// `classifyPull` in lib/pull-to-refresh.ts; this file owns only the DOM. The
-// indicator animates with transform + opacity exclusively — never layout — and
-// under `prefers-reduced-motion` it stops travelling and simply appears once
-// armed (the preference asks for no motion, not for no feedback).
+// `classifyPull` in lib/pull-to-refresh.ts, and so is the indicator's position,
+// opacity and rotation (`indicatorPresentation`); this file owns only the DOM.
+// Keeping the style decision pure is what makes it testable at all: the
+// standalone gate below means no browser test ever sees this render.
 //
 // `router.refresh()` is the whole refresh: the app has no client cache to
 // invalidate, so re-running the Server Components IS the fresh page. This is one
@@ -114,10 +114,11 @@ export default function PullToRefresh() {
 
   if (!enabled) return null;
 
-  const active = state.kind !== "idle";
-  const visible = active || pending;
-  const distance = active ? state.distance : pending ? PTR_MAX_PX / 2 : 0;
-  const progress = active ? state.progress : 1;
+  const { translateY, opacity, rotation } = indicatorPresentation(
+    state,
+    pending,
+    reduceMotion
+  );
 
   return (
     <div
@@ -127,26 +128,15 @@ export default function PullToRefresh() {
       aria-hidden
       className="pointer-events-none fixed inset-x-0 top-0 z-[90] flex justify-center print:hidden"
       style={{
-        // Transform + opacity only. Under reduced motion the indicator does not
-        // travel with the finger — it sits at its resting offset and fades in
-        // once the pull is armed.
-        transform: reduceMotion
-          ? `translateY(${visible ? PTR_MAX_PX / 2 : 0}px)`
-          : `translateY(${distance}px)`,
-        opacity: reduceMotion
-          ? state.kind === "armed" || pending
-            ? 1
-            : 0
-          : progress,
+        // Transform + opacity only — never layout. Both numbers, and the badge's
+        // rotation below, come from the pure `indicatorPresentation`.
+        transform: `translateY(${translateY}px)`,
+        opacity,
       }}
     >
       <span
         className="mt-[max(0.5rem,env(safe-area-inset-top))] flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white shadow-md dark:border-white/10 dark:bg-ink-850"
-        style={
-          reduceMotion
-            ? undefined
-            : { transform: `rotate(${Math.round(progress * 270)}deg)` }
-        }
+        style={{ transform: `rotate(${rotation}deg)` }}
       >
         <IconRefresh
           className={`h-5 w-5 ${
