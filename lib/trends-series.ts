@@ -16,6 +16,7 @@ import {
   getSupplements,
   getAppointments,
   getProtocolWindows,
+  getPracticeTrends,
 } from "./queries";
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import {
@@ -56,6 +57,13 @@ import { fullBodyMetricSeries } from "./body-metric-series";
 import { activeRangeLabel } from "./trends-context";
 import { bioSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
+import type { DigestSeries } from "./trends-digest";
+import {
+  practiceDigestEligible,
+  practiceDigestKey,
+  practiceTrendWindow,
+  PRACTICE_DIGEST_MIN_CHANGE,
+} from "./trends-practices";
 import type { DateRange } from "./timeline-format";
 import { biomarkerViewHref, metricDetailHref, type AppRoute } from "./hrefs";
 
@@ -551,6 +559,43 @@ export function buildProtocolTrendWindows(
   range: DateRange
 ): TrendWindow[] {
   return buildProtocolWindows(getProtocolWindows(profileId), range);
+}
+
+// A wellness practice's CADENCE as a digest candidate (#1632).
+//
+// The digest is a %-move engine over a windowed numeric series, and "days logged
+// per completed week" is exactly that shape — so a practice whose cadence really
+// moved can say so beside the metrics that moved. What the digest's pattern does
+// NOT support is a streak or a range verdict: it has no notion of a floor, and the
+// one thing it does with a `range` is paint a crossing amber/rose, which is the
+// attention badge a coaching-tier practice signal must never grow. So these series
+// deliberately carry NO range — the chip stays neutral — and the consistency and
+// streak half of #1632 lives in the Trends wellness lens, which can state it
+// properly.
+//
+// Strict by construction: TRACKED practices only (an untracked practice's session
+// count moving is not a commitment moving), at least PRACTICE_DIGEST_MIN_WEEKS of
+// completed history, and a third-of-a-cadence bar instead of the global 5% — one
+// extra sauna in a 3×/week habit is already a 33% move, so the default threshold
+// is meaningless on small integers.
+export function buildPracticeDigestSeries(
+  profileId: number,
+  range: DateRange,
+  todayStr: string
+): DigestSeries[] {
+  const window = practiceTrendWindow(range, todayStr);
+  return getPracticeTrends(profileId, window.weeks, window.asOf)
+    .filter((practice) => practiceDigestEligible(practice))
+    .map((practice) => ({
+      key: practiceDigestKey(practice.identity),
+      label: `${practice.name} cadence`,
+      unit: "/wk",
+      points: practice.weeks.map((week) => ({
+        date: week.start,
+        value: week.count,
+      })),
+      minPctChange: PRACTICE_DIGEST_MIN_CHANGE,
+    }));
 }
 
 // Assemble every candidate series for the "what's trending" digest: the standard

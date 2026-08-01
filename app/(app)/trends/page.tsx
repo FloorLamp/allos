@@ -30,6 +30,7 @@ import { parseBodyView } from "./body-view";
 import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
+import PracticesSection from "./PracticesSection";
 import SectionHashScroll from "./SectionHashScroll";
 import StreamedCensus from "./StreamedCensus";
 import TrendsSectionShell, {
@@ -68,7 +69,10 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 //   2. Starred grid — the cross-domain curation surface (tile zoom, drag order via
 //      SortableOrder → reorderSaved). STILL the only curated area: nothing renders
 //      there unconditionally.
-//   3. The body census — exactly what the Body tab rendered, skeleton intact
+//   3. The wellness lens (#1632) — per-practice weeks-in-range, cadence against the
+//      declared min–max band, session length. Conditional on a tracked practice
+//      existing; an anchored part of this surface, not a fifth tab.
+//   4. The body census — exactly what the Body tab rendered, skeleton intact
 //      (Today strip → cards starred-first-then-ranked → source comparison →
 //      history table), streamed below the head.
 //
@@ -255,7 +259,15 @@ export default async function TrendsPage(props: {
               <StarredSection range={range} />
             </TrendsSectionShell>
 
-            {/* 3. The census, streamed so the head never waits on it. */}
+            {/* 3. The wellness lens (#1632) — practice consistency, which had no
+                Trends presence in any tab. Inline rather than streamed: two
+                bounded reads, and it renders NOTHING for a profile with no
+                tracked practice, so the head pays for it only where it speaks.
+                It carries its OWN section shell for exactly that reason — an
+                empty heading band would be worse than no section. */}
+            <PracticesSection range={range} />
+
+            {/* 4. The census, streamed so the head never waits on it. */}
             <TrendsSectionShell
               id="body"
               heading="Body"

@@ -17,9 +17,15 @@ import { weekWindow } from "../week-window";
 // computation (lib/week-window.ts) so the weekly-routine counters, the journal
 // week summary, and the weekly recap all agree on which days count (issue #223).
 export function weekWindowStart(profileId: number): string {
-  return weekWindow(
-    today(profileId),
-    getWeekMode(profileId),
-    getWeekStart(profileId)
-  ).start;
+  return weekWindowStartOn(profileId, today(profileId));
+}
+
+// The same window resolved around an ARBITRARY day rather than today (#1632). A
+// windowed analytics surface can end its range in the past, and "which week does
+// this day belong to" is the profile's own question either way — calendar mode
+// answers with the week containing it, rolling mode with the trailing 7 days that
+// end on it. `weekWindowStart` is this with `today`.
+export function weekWindowStartOn(profileId: number, date: string): string {
+  return weekWindow(date, getWeekMode(profileId), getWeekStart(profileId))
+    .start;
 }

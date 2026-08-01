@@ -296,6 +296,9 @@ sessions per day, and retain editable session history. **Stop tracking** removes
 the weekly target and its reminders without deleting logged sessions; any
 protocol using that target is explicitly unlinked.
 
+Consistency over time is on **Trends → Practices** (see [Trends](#trends)):
+weeks in range, cadence against your declared band, and session length.
+
 A tracked practice is one tap away from anywhere: the quick-actions menu's **Log
 practice** overlay lists each one with this week's standing, and the command
 palette commits a session from `log sauna`. Both go through the same write the
@@ -598,10 +601,10 @@ Charts and analysis live in four tabs:
 - **Overview** is the landing surface, and answers "how am I doing" in one
   scroll: the **"what's trending" digest**, then your **starred grid** — your own
   cross-domain set of saved, drag-orderable tiles, the one curated area where
-  nothing appears unless you put it there — then the **body census**: vitals,
-  acute temperature, sleep and outdoor-time signals, body composition, and the
-  shared **Log measurements** form. A **Data check** card catches probable
-  weight-entry errors before they skew charts.
+  nothing appears unless you put it there — then the **Practices** lens, and
+  finally the **body census**: vitals, acute temperature, sleep and outdoor-time
+  signals, body composition, and the shared **Log measurements** form. A **Data
+  check** card catches probable weight-entry errors before they skew charts.
 - **Fitness** combines the workout-density heatmap, strength/cardio/sport
   progress, heart-rate-zone volume, the Zone 2 target, and polarization. Zones
   use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
@@ -609,6 +612,16 @@ Charts and analysis live in four tabs:
 - **Nutrition** charts macros, fiber, hydration, and related intake trends.
 - **Insights** combines comparison tools with daily analysis and weekly/monthly
   recap narratives.
+
+**Practices** (`/trends#practices`) is the wellness lens: for each practice you
+have given a weekly cadence, one cell per completed week — at your weekly
+maximum, floor met, or under floor — a consistency line with the current streak,
+sessions per week charted against the min–max band you declared, and an average
+session length for the modalities that record minutes. It renders only where you
+track a practice, is calm by design (an under-floor week is a neutral cell, never
+a warning), and every card taps through to **Wellness**, which still owns
+logging, editing, and the full session history. A practice with sessions but no
+weekly cadence has no range to be in and stays on Wellness.
 
 The body census **streams in below** the digest and starred grid, so the landing
 surface paints as fast as it did when Body was its own tab. Links that used to
