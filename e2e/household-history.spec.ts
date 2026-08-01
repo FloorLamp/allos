@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick, followLink } from "./helpers";
+import { settledClick, followLink, expectInView } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_HHHIST,
@@ -87,16 +87,16 @@ async function loginAs(
   return { page, close: () => ctx.close() };
 }
 
-// Toggle a profile INTO the session view-set via the profile menu's eye toggle (the
-// #1096 mechanism the banner drives). The view-set persists on the session, so a later
-// navigation reloads multi-view.
+// Toggle a profile INTO the session view-set via the switcher panel's eye toggle (the
+// #1096 mechanism the identity bar reports). The view-set persists on the session, so
+// a later navigation reloads multi-view.
 async function addToView(page: Page, targetProfileId: number): Promise<void> {
-  const trigger = page.getByTestId("user-menu-trigger");
+  const trigger = page.getByTestId("profile-identity-bar");
   await expect(trigger).toBeEnabled();
   await trigger.click();
-  await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+  await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
   await settledClick(page, page.getByTestId(`view-toggle-${targetProfileId}`));
-  await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+  await expectInView(page, 2);
 }
 
 test.describe("Care-trail surface (#1373 Part 2)", () => {
@@ -107,11 +107,12 @@ test.describe("Care-trail surface (#1373 Part 2)", () => {
     const { page, close } = await loginAs(browser, E2E_LOGIN_HHHIST);
     const childId = profileId(HH_HISTORY_CHILD_PROFILE);
 
-    // Single-view default: the acting parent's episodes, the kind toggle, no view strip.
+    // Single-view default: the acting parent's episodes, the kind toggle, one
+    // avatar on the identity bar.
     await page.goto("/medical/episodes");
     await expect(page.getByTestId("care-trail-kind-toggle")).toBeVisible();
     await expect(page.getByTestId("care-trail-list")).toBeVisible();
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expectInView(page, 1);
     // The child's Cold is not in view yet.
     await expect(
       page.getByTestId("care-trail-row").filter({ hasText: "Cold" })
@@ -198,11 +199,13 @@ test.describe("Care-trail surface (#1373 Part 2)", () => {
     await page.goto("/records/history/visits");
     await expect(page.getByTestId("household-view-link")).toHaveCount(0);
 
-    // The episodes surface renders their own trail — no view strip, no bounce (the old
-    // /household/history route is gone).
+    // The episodes surface renders their own trail — and a single-profile login
+    // grows no identity chrome at all (#1801 gates the whole apparatus on
+    // multiProfile), so there is nothing to switch or merge here. No bounce
+    // either: the old /household/history route is gone.
     await page.goto("/medical/episodes");
     await expect(page.getByTestId("care-trail-kind-toggle")).toBeVisible();
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expect(page.getByTestId("profile-identity-bar")).toHaveCount(0);
 
     await close();
   });

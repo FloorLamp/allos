@@ -11,9 +11,6 @@ import { ConfirmProvider } from "@/components/ConfirmDialog";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
-import ProfileViewStrip, {
-  viewStripVisible,
-} from "@/components/ProfileViewStrip";
 import ShellChrome from "@/components/ShellChrome";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
@@ -37,7 +34,7 @@ import { getUserAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
-import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
 import {
@@ -91,19 +88,17 @@ export default async function AppLayout({
 }) {
   const session = await requireSession();
   const { login, profile } = session;
-  const profiles = await getAccessibleProfiles();
   // The cross-profile scope (issue #1096): the persisted view-set (∩ accessible),
-  // resolved once at the shell so the profile menu's view toggles and the
-  // persistent view strip both read the SAME validated viewIds. Its disambiguated
-  // `profiles` (#534) name the in-view chips.
+  // resolved once at the shell so the identity bar's stacked avatars and the
+  // switcher panel's view toggles read the SAME validated viewIds. Its
+  // disambiguated `profiles` (#534) name every row and avatar.
   const scope = await requireScope();
-  const inViewProfiles = scope.viewIds
-    .map((id) => scope.profiles.find((p) => p.id === id))
-    .filter((p): p is (typeof scope.profiles)[number] => p != null);
-  // Whether the view banner renders at all — the SAME predicate the strip itself
-  // uses (viewStripVisible), read here because the sticky chrome owns the top
-  // padding when the banner is present (issue #1416).
-  const showViewStrip = viewStripVisible(inViewProfiles);
+  // Accessible profiles this login holds only READ access on (issue #33) — the
+  // per-row hint in the switcher panel. Read off the scope's already-resolved
+  // access map, so no surface re-runs accessForProfile.
+  const readOnlyIds = scope.profiles
+    .filter((p) => scope.access.get(p.id) === "read")
+    .map((p) => p.id);
   // Own-profile link (#1013): the acting profile's subject name when the login is
   // acting as someone OTHER than its own profile (null when acting as self / no
   // own-profile set). Threaded to the live workout editor + dock — the fastest-
@@ -187,7 +182,7 @@ export default async function AppLayout({
   // The Household overview is cross-profile; show it only when the caller can
   // reach 2+ profiles (issue #31) — an admin sees every profile, a caregiver
   // member sees their granted set, and a single-profile login never sees it.
-  const multiProfile = profiles.length > 1;
+  const multiProfile = scope.profiles.length > 1;
   // Hides the Nutrition nav entry for an infant profile (< 1 y) — the adult
   // food-group serving catalog is meaningless there (issue #591). Cosmetic; the
   // /nutrition page independently gates on the same predicate. Eligible on
@@ -256,8 +251,12 @@ export default async function AppLayout({
                           version={version}
                           active={session.profile}
                           username={login.username}
-                          profiles={profiles}
+                          // The scope's DISAMBIGUATED set (#534) — two accessible
+                          // profiles can share a name, and the bar/panel must name
+                          // a specific one.
+                          profiles={scope.profiles}
                           viewIds={scope.viewIds}
+                          readOnlyIds={readOnlyIds}
                           restricted={restricted}
                           isAdmin={isAdmin}
                           multiProfile={multiProfile}
@@ -275,25 +274,15 @@ export default async function AppLayout({
             without it, wide tables/rows blow the whole page out horizontally. */}
                       <main className="min-w-0 flex-1 overflow-x-clip">
                         {/* The ONE sticky top chrome (issue #1416): the phone top
-                    bar and the multi-profile view banner ride together, hiding
-                    on scroll-down and returning on scroll-up, so "whose data am
-                    I looking at?" stays answerable mid-scroll instead of
-                    scrolling away with the content. On desktop the wrapper drops
-                    to `static` and the banner sits exactly where it always did.
-                    The banner is passed in (not rendered inside the container)
-                    so there is ONE strip in the DOM on every viewport — never a
-                    hidden md:* / md:hidden pair. */}
+                    bar hides on scroll-down and returns on scroll-up, so "whose
+                    data am I looking at?" stays answerable mid-scroll instead of
+                    scrolling away with the content. Since #1801 the identity bar
+                    IS that answer and rides inside the bar itself, so the
+                    separate view-banner slot the chrome used to carry is gone —
+                    one surface, not two. */}
                         <ShellChrome
                           disabledTabFirstPageIds={
                             restricted ? ["training"] : undefined
-                          }
-                          banner={
-                            showViewStrip ? (
-                              <ProfileViewStrip
-                                profiles={inViewProfiles}
-                                actingProfileId={scope.actingProfileId}
-                              />
-                            ) : null
                           }
                         >
                           <MobileNav
@@ -301,8 +290,9 @@ export default async function AppLayout({
                             version={version}
                             active={session.profile}
                             username={login.username}
-                            profiles={profiles}
+                            profiles={scope.profiles}
                             viewIds={scope.viewIds}
+                            readOnlyIds={readOnlyIds}
                             restricted={restricted}
                             isAdmin={isAdmin}
                             multiProfile={multiProfile}
@@ -318,18 +308,12 @@ export default async function AppLayout({
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover).
               Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
-              the unchanged pt-8 / 1.25rem from `md` up. The top padding all but
-              disappears when the view banner is showing — ShellChrome already
-              spends it above the banner, and doubling it would push the page
-              heading a third of the way down a phone screen. Below `md` a token
-              pt-2 survives, because #1539 cut the band's own bottom padding from
-              12px to 6px: at zero the page heading would sit 7px under a bordered
-              bar. From `md` up the band's md:pb-4 still supplies the whole gap. */}
+              the unchanged pt-8 / 1.25rem from `md` up. The conditional variant
+              this used to carry went with the view banner (#1801): the chrome no
+              longer grows a second row, so the padding is unconditional again. */}
                         <div
                           data-testid="app-content-container"
-                          className={`mx-auto pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem] ${
-                            showViewStrip ? "pt-2 md:pt-0" : "pt-4 md:pt-8"
-                          }`}
+                          className="mx-auto pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-8 md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
                         >
                           {/* This slot is OnboardingReturnBanner's alone again
                             (#1795). The deploy notice used to render here too, as a

@@ -42,7 +42,7 @@ async function tapMood(page: Page, card: Locator, n: number): Promise<void> {
 test.afterEach(async ({ page }) => {
   await page.goto("/");
   if (
-    (await page.getByTestId("user-menu-trigger").textContent())?.includes(
+    (await page.getByTestId("profile-identity-bar").textContent())?.includes(
       ADMIN_PROFILE
     )
   ) {

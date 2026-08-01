@@ -212,12 +212,24 @@ test.describe("outbound email — login lifecycle (#985)", () => {
       username: invitee,
       password: SET_PW,
     });
-    // `exact` — the granted fixture profile is empty, so the dashboard also renders
-    // an "Import health data" CTA pointing at /data.
+    // ^-anchored and sidebar-scoped: the granted fixture profile is empty, so the
+    // dashboard also renders an "Import health data" CTA pointing at /data, and the
+    // sidebar entry itself can carry the #1801 review badge.
     await expect(
-      inviteeSession.getByRole("link", { name: "Data", exact: true })
+      inviteeSession.locator("aside nav").getByRole("link", { name: /^Data/ })
     ).toBeVisible();
-    await expect(inviteeSession.getByTestId("user-menu-trigger")).toContainText(
+    // The invitee reaches exactly ONE profile, so there is deliberately no identity
+    // bar to read the acting profile off (#1801 gates the whole apparatus on
+    // multiProfile — brand chrome when identity is unambiguous). The Passport names
+    // the profile the session actually landed on.
+    await inviteeSession.goto("/profile");
+    await expect(
+      inviteeSession.getByRole("heading", { name: "Health passport" })
+    ).toBeVisible();
+    await expect(
+      inviteeSession.getByTestId("profile-identity-bar")
+    ).toHaveCount(0);
+    await expect(inviteeSession.locator("main")).toContainText(
       INVITE_TARGET_PROFILE
     );
     await inviteeSession.context().close();
@@ -264,7 +276,7 @@ test.describe("outbound email — login lifecycle (#985)", () => {
       password: SET_PW,
     });
     await expect(
-      resetterSession.getByRole("link", { name: "Data" })
+      resetterSession.locator("aside nav").getByRole("link", { name: /^Data/ })
     ).toBeVisible();
     await resetterSession.context().close();
 

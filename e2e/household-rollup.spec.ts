@@ -104,7 +104,7 @@ test.describe("Household view for members (issue #31)", () => {
 
     // The active profile is the first accessible one (profile 1, named "admin"),
     // NOT the profile whose dose we're about to confirm.
-    await expect(memberPage.getByTestId("user-menu-trigger")).toContainText(
+    await expect(memberPage.getByTestId("profile-identity-bar")).toContainText(
       "admin"
     );
 
@@ -135,7 +135,7 @@ test.describe("Household view for members (issue #31)", () => {
         .filter({ hasText: HOUSEHOLD_DUE_DOSE })
     ).toHaveCount(0);
     await expect(memberPage).toHaveURL(/\/household/);
-    await expect(memberPage.getByTestId("user-menu-trigger")).toContainText(
+    await expect(memberPage.getByTestId("profile-identity-bar")).toContainText(
       "admin"
     );
 

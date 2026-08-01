@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { IconSearch, IconX } from "@tabler/icons-react";
+import { IconLogout, IconSearch, IconX } from "@tabler/icons-react";
 import Nav from "@/components/Nav";
 import { openGlobalSearch } from "@/components/CommandPalette";
 import Wordmark from "@/components/Wordmark";
-import UserMenu from "@/components/UserMenu";
+import ProfileIdentityBar from "@/components/ProfileIdentityBar";
+import { clearEmergencyPayload } from "@/components/emergency-offline";
+import { clearQueue } from "@/lib/offline/queue-db";
+import { logoutAction } from "@/app/(app)/user-actions";
 import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
 import JournalCalendar from "@/components/JournalCalendar";
@@ -32,6 +35,16 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 //     (e.g. "log activity" opens a modal); navigations already close it via the
 //     drawer's pathname effect.
 //   - onClose: when set, renders the drawer's close (✕) button beside the wordmark.
+//   - showIdentityBar: the desktop sidebar carries the #1801 identity bar at its
+//     TOP; the drawer does NOT, because on a phone the bar lives in the top bar
+//     itself (that is the whole point — the acting profile must be answerable
+//     without opening anything). Same component either way, placed once.
+//
+// The profile MENU that used to sit at the bottom of this file is gone (#1801):
+// the identity bar + its switcher panel are the one switcher now. What stayed at
+// the bottom is the LOGIN half — "Signed in as <username>" (#1013) beside the
+// control that ends the login — because login identity belongs with logout, not
+// in a profile switcher.
 export default function SidebarContent({
   activityDates,
   version,
@@ -39,6 +52,8 @@ export default function SidebarContent({
   username,
   profiles,
   viewIds = [],
+  readOnlyIds = [],
+  showIdentityBar = true,
   restricted = false,
   isAdmin = false,
   multiProfile = false,
@@ -61,8 +76,15 @@ export default function SidebarContent({
   username: string;
   profiles: SessionProfile[];
   // The session's multi-profile VIEW-SET (issue #1096) — threaded through to the
-  // profile menu's per-profile view toggles. Defaults empty (single-view).
+  // identity bar's stacked avatars and the panel's per-profile view toggles.
+  // Defaults empty (single-view).
   viewIds?: number[];
+  // Accessible profiles this login holds READ-only (issue #33); each carries the
+  // hint on its switcher row.
+  readOnlyIds?: number[];
+  // See the note above: true for the desktop sidebar, false for the mobile
+  // drawer (whose identity bar lives in the phone top bar).
+  showIdentityBar?: boolean;
   restricted?: boolean;
   // Reveals any admin-only nav entries; the pages themselves still call
   // requireAdmin().
@@ -84,8 +106,11 @@ export default function SidebarContent({
   // Count of integrations currently needing attention (failed syncs) — shown as
   // a badge on the profile menu, linking to Data → Review. Resolved server-side.
   reviewCount?: number;
-  // The active profile is shared with this login as READ-ONLY (issue #33); shows
-  // a "read-only" badge in the profile menu. Server-side enforcement is authority.
+  // The active profile is shared with this login as READ-ONLY (issue #33). On a
+  // multi-profile instance the hint rides the identity bar; on a single-profile
+  // one (where there is no bar) it rides the login footer beside "Signed in as",
+  // so the hint never disappears just because there is nothing to switch to.
+  // Server-side enforcement is the authority either way.
   readOnly?: boolean;
   // The bundled release notes hold something this LOGIN hasn't opened (issue
   // #1421) — resolved once by the layout from the ONE pure comparison
@@ -114,6 +139,20 @@ export default function SidebarContent({
           </button>
         )}
       </div>
+      {/* The identity bar (#1801) at the TOP of the sidebar — "whose data am I
+      looking at, and who am I acting as?" answered before anything else on the
+      page. Gated on multiProfile: identity chrome when identity is ambiguous,
+      brand chrome when it isn't. */}
+      {showIdentityBar && multiProfile && (
+        <ProfileIdentityBar
+          profiles={profiles}
+          actingProfileId={active.id}
+          viewIds={viewIds}
+          readOnlyIds={readOnlyIds}
+          readOnly={readOnly}
+          surface="sidebar"
+        />
+      )}
       {/* Global search trigger — lives in the shared content so it appears in
       both the desktop sidebar and the mobile drawer. Opens the
       Cmd-K command palette (mounted once in the app layout) via a custom event;
@@ -147,19 +186,53 @@ export default function SidebarContent({
         foodLoggingRelevant={foodLoggingRelevant}
         hasIntakeItems={hasIntakeItems}
         relevance={relevance}
+        reviewCount={reviewCount}
       />
-      {/* Profile switcher/logout above one bordered box holding the theme toggle
-      and version hash as equal, borderless halves (a single segmented control). */}
+      {/* The LOGIN block above one bordered box holding the theme toggle and
+      version hash as equal, borderless halves (a single segmented control).
+      "Signed in as <username>" (#1013) sits with logout because it names the
+      thing logout ends — it was never a fact about the acting PROFILE, which is
+      why it left the switcher in #1801. */}
       <div className="mt-auto flex flex-col gap-2">
-        <UserMenu
-          active={active}
-          username={username}
-          profiles={profiles}
-          viewIds={viewIds}
-          reviewCount={reviewCount}
-          readOnly={readOnly}
-          onNavigate={onNavigate}
-        />
+        <div className="flex flex-col gap-1 rounded-lg border border-black/10 bg-white/70 p-1 dark:border-white/10 dark:bg-ink-850">
+          <p
+            data-testid="signed-in-as"
+            className="px-2 pt-1 text-xs text-slate-500 dark:text-slate-400"
+          >
+            Signed in as{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-200">
+              {username}
+            </span>
+          </p>
+          {/* On a single-profile instance there is no identity bar to carry the
+          #33 hint, so it rides here instead — one fact, two mutually exclusive
+          homes, never both. */}
+          {readOnly && !multiProfile && (
+            <p
+              data-testid="read-only-badge"
+              aria-label={`Viewing ${active.name} — read-only`}
+              className="px-2 text-xs font-semibold text-amber-700 dark:text-amber-300"
+            >
+              Read-only
+            </p>
+          )}
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              onClick={() => {
+                // Wipe offline PHI on logout: the emergency card copy (#42) and
+                // any queued offline writes (#28) — never leave them for the
+                // next login.
+                clearEmergencyPayload();
+                void clearQueue();
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
+            >
+              <IconLogout className="h-4 w-4 shrink-0" stroke={1.75} />
+              Log out
+            </button>
+          </form>
+        </div>
         <div className="grid grid-cols-2 rounded-lg border border-black/10 bg-white/70 p-1 dark:border-white/10 dark:bg-ink-850">
           <ThemeToggle bare />
           {/* The wrapper (not the link) fills the cell, so the clickable area

@@ -296,7 +296,7 @@ test("multi-sick: a caregiver logs a temperature for one child cross-profile wit
   const page = await loginAs(browser, creds(E2E_LOGIN_CARE));
 
   // Acting as the well base profile — no own cockpit, two children as accordions.
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(
+  await expect(page.getByTestId("profile-identity-bar")).toContainText(
     "Care Parent"
   );
   const hero = page.getByTestId("illness-hero");
@@ -324,7 +324,7 @@ test("multi-sick: a caregiver logs a temperature for one child cross-profile wit
   await expect(
     kidA.locator('[data-testid^="illness-cockpit-line-"]')
   ).toContainText("103.4");
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(
+  await expect(page.getByTestId("profile-identity-bar")).toContainText(
     "Care Parent"
   );
 

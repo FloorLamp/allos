@@ -417,8 +417,9 @@ list feeds the optional Telegram "what's due" digest and the calendar feed.
 
 ### Multi-profile viewing
 
-When you toggle other accessible profiles into your **view** (the eye control in
-the profile menu; a thin banner strip names who's in view), Upcoming **merges**
+When you toggle other accessible profiles into your **view** (the eye control on
+each row of the profile switcher; the identity bar's stacked avatars name who's
+in view), Upcoming **merges**
 everyone's due items into one list with a **subject chip** on each row — each
 member's dueness computed in that member's **own timezone/today** (never a
 shared clock), so "Overdue" and "Today" stay correct per person. A row's actions
@@ -812,6 +813,32 @@ N" back-link — the same suggest-and-accept mechanism as record↔visit, no
 auto-link and no notification. The per-person **Visits** page gains an **Illness
 episodes** link for multi-profile logins.
 
+### The identity bar and the profile switcher
+
+On a **multi-profile** instance one **identity bar** answers "whose data is this,
+and who am I acting as?" everywhere: stacked avatars of the profiles currently in
+your **view** plus a name line — `Alice`, `Alice, Bob`, `Alice, Bob +2 more`. The
+**acting** profile is always **first** and visually distinct (ringed avatar,
+emphasized name), because the bar shows who is _visible_ while writes land on who
+is _acting_. If your grant on the acting profile is read-only, the bar says so.
+
+It sits at the **top of the desktop sidebar**, and on a phone it takes the
+**wordmark's slot in the top bar** — the brand line spent ~90px of a 390px bar
+saying nothing while "whose data is this?" had no answer on that screen at all
+(home stays one tap away in the drawer, and the desktop sidebar and login screen
+keep the wordmark).
+
+Tapping it opens one **switcher panel** — a drawer dropping from the bar on a
+phone, an expanding container below it on desktop, both rendering the same rows.
+Every accessible profile gets a row with **two** controls, never one ambiguous
+tap: the **name** switches who you are acting as, and the **eye** toggles that
+profile in and out of your view. You cannot un-view the profile you are acting
+as, and a read-only profile carries its hint on its own row.
+
+A **single-profile** instance grows none of this: the phone keeps its wordmark
+and the sidebar is unchanged — identity chrome when identity is ambiguous, brand
+chrome when it isn't.
+
 **Whose record am I acting on? (#1013)** You can mark one accessible profile as
 **your own** under **Settings → Account & security** (optional — a
 caregiver-only login leaves it unset; an admin can set it for anyone under
@@ -821,9 +848,9 @@ grants no access — it's purely a label — but once set, any write whose targe
 card's dose confirm reads "Confirm — Mia", the dashboard weigh-in "Log today's
 weight for Mia", the live workout editor "Finish workout — Mia". No confirmation
 interstitial (routine caregiving stays one-tap) — the passive naming just makes
-a wrong-profile dose or weigh-in obvious at the point of action. The expanded
-profile menu also shows **"Signed in as …"** so it's clear which login is
-acting. Deleting a profile or revoking a grant clears the own-profile link
+a wrong-profile dose or weigh-in obvious at the point of action. The sidebar (or
+drawer) footer also shows **"Signed in as …"** beside Log out, so it's clear
+which login is acting. Deleting a profile or revoking a grant clears the own-profile link
 automatically.
 
 ## Goals
@@ -1829,7 +1856,7 @@ decision remembered so a later re-sync won't undo it — a device row you merge
 away or delete stays gone instead of silently re-importing on the next
 rolling-window sync (counted as **suppressed** in the feed split), and if a
 resync ever does re-form a merged pair it resurfaces here rather than hiding —
-all surfaced with a badge on the profile menu.
+all surfaced with a badge on the **Data** nav entry.
 
 ### Coverage and export
 

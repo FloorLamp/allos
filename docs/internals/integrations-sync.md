@@ -30,9 +30,10 @@ manual/document rows), so its upsert uses `ON CONFLICT DO UPDATE` like the other
 tables. The **Data → Review** tab (`components/ReviewInbox.tsx`; profile-scoped
 reads in `lib/queries/integrations.ts`; pure count/window helpers in
 `lib/integrations/sync-log.ts`) shows a recent-imports feed ("N new · N changed
-· N unchanged") plus any currently-failing provider, and a **profile-menu
-badge** (`reviewCount` threaded layout → `SidebarContent` → `UserMenu`) links to
-`/data?section=review`.
+· N unchanged") plus any currently-failing provider, and a **badge on the Data
+nav entry** (`reviewCount` threaded layout → `SidebarContent` → `Nav`) — it is
+Data → Review's own count, so since #1801 it badges that entry rather than a
+profile menu that no longer exists.
 
 An uploaded document's row in the "Imports" feed also carries the **extraction
 confidence** badge (`· N to check`, #1601): the count of extracted rows the

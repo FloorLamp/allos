@@ -208,10 +208,10 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
       //    was driven from is not part of what this test asserts.
       await page.setViewportSize(DESKTOP);
       await page.goto("/timeline");
-      const trigger = page.getByTestId("user-menu-trigger");
+      const trigger = page.getByTestId("profile-identity-bar");
       await expect(trigger).toBeEnabled();
       await trigger.click();
-      await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+      await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
       await settledClick(page, page.getByTestId(`switch-to-${sickId}`));
       // Settle on the server-rendered result of the switch before navigating — a
       // goto over an in-flight action loses the write (#1437).

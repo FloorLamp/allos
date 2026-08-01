@@ -153,7 +153,7 @@ async function profileRowExists(page: Page, name: string): Promise<boolean> {
     );
 }
 
-// Switch the shared session's active profile via the sidebar UserMenu, retry-clicking
+// Switch the shared session's active profile via the sidebar identity bar, retry-clicking
 // through the hydration window (#730) as the household/front-door specs do.
 export async function switchToProfile(page: Page, name: string): Promise<void> {
   // Target the act-as switch button by its data-testid (#1096) — the popover now
@@ -165,11 +165,11 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
   // it never matches). Robust regardless of avatar alt text — the repo's
   // data-testid-hook convention over a brittle accessible-name match.
   const target = page
-    .getByTestId("user-menu-popover")
+    .getByTestId("profile-switcher-panel")
     .locator('[data-testid^="switch-to-"]')
     .filter({ hasText: name });
   await expect(async () => {
-    await page.getByTestId("user-menu-trigger").click();
+    await page.getByTestId("profile-identity-bar").click();
     await expect(target).toBeVisible({ timeout: 2_000 });
     // The popover trigger can be clicked pre-hydration; no single awaitable event
     // covers "trigger opened AND target rendered", so re-open until it does.
@@ -186,7 +186,7 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
   // the default 5s (the dashboard and the merged Trends surface are the heavy
   // cases). A named ceiling, not a sleep — this still fails if the switch never
   // lands.
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name, {
+  await expect(page.getByTestId("profile-identity-bar")).toContainText(name, {
     timeout: 20_000,
   });
 }

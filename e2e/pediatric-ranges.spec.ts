@@ -13,9 +13,9 @@ import { type Page } from "@playwright/test";
 
 async function switchProfile(page: Page, name: string) {
   await page.goto("/");
-  await page.getByTestId("user-menu-trigger").click();
+  await page.getByTestId("profile-identity-bar").click();
   await page
-    .getByTestId("user-menu-popover")
+    .getByTestId("profile-switcher-panel")
     .locator("form")
     .filter({ hasText: name })
     .getByRole("button")
@@ -23,7 +23,7 @@ async function switchProfile(page: Page, name: string) {
   // Server-truth budget (#1556): the trigger names the new profile only after
   // setActiveProfile's Server Action + refresh round-trip; observed losing the 5s
   // default under CI shard load at retries=0 (2026-07-31, run 30664837925).
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name, {
+  await expect(page.getByTestId("profile-identity-bar")).toContainText(name, {
     timeout: 30_000,
   });
 }

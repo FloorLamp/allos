@@ -478,6 +478,29 @@ export async function openMobileDrawer(page: Page): Promise<Locator> {
   return drawer;
 }
 
+// The identity bar's view-set readout (issue #1801).
+//
+// The multi-profile view used to be asserted through ProfileViewStrip's chips;
+// the strip is gone and the identity bar carries the same information, so the
+// strip-era assertions moved onto this helper. `data-view-count` is how many
+// profiles are currently IN VIEW, acting included — 1 is the single-view default
+// every session starts in.
+//
+// Desktop mount by default (the sidebar's bar). The phone's bar is a separate
+// mount (`profile-identity-bar-mobile`) because both exist in the DOM at every
+// width, one `md:hidden` and one `hidden md:flex`.
+export async function expectInView(
+  page: Page,
+  count: number,
+  opts: { mobile?: boolean } = {}
+): Promise<void> {
+  await expect(
+    page.getByTestId(
+      opts.mobile ? "profile-identity-bar-mobile" : "profile-identity-bar"
+    )
+  ).toHaveAttribute("data-view-count", String(count));
+}
+
 // Toggle a checkbox so the change durably lands in React STATE — the checkbox analog
 // of settledFill.
 //

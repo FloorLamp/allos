@@ -3,19 +3,28 @@
 Status: shipped (issues #1425, #1469; the decision rule is #1428's owner
 comment)
 
-The app has three bottom/edge-anchored overlay surfaces. They look and move as
-one system and they resolve the same gesture to three different outcomes — on
-purpose. This file is the reasoning behind that split, because "unify the
+The app has four edge-anchored overlay surfaces. They look and move as one
+system and they resolve the same gesture to different outcomes — on purpose. This file is the reasoning behind that split, because "unify the
 overlays" is a tempting cleanup that would break the one part that must not be
 unified.
 
-## The three surfaces
+## The four surfaces
 
-| Surface                           | Lifecycle     | Swipe-down/left resolves to         |
-| --------------------------------- | ------------- | ----------------------------------- |
-| `components/BottomSheet.tsx`      | transactional | **discard** (dismiss, nothing kept) |
-| `components/MobileNav.tsx` drawer | transient     | **close**                           |
-| `components/ActivityOverlay.tsx`  | **session**   | **minimize** — never discard        |
+| Surface                             | Anchor | Lifecycle     | The swipe resolves to               |
+| ----------------------------------- | ------ | ------------- | ----------------------------------- |
+| `components/BottomSheet.tsx`        | bottom | transactional | **discard** (dismiss, nothing kept) |
+| `components/MobileNav.tsx` drawer   | left   | transient     | **close**                           |
+| `components/ActivityOverlay.tsx`    | bottom | **session**   | **minimize** — never discard        |
+| `components/ProfileIdentityBar.tsx` | top    | transient     | **close**                           |
+
+The profile switcher (#1801) is the only TOP-anchored panel: it drops from the
+identity bar in the phone's top bar, so the target appears where the finger
+already is, and it retreats upward through the bar it came from. A bottom sheet
+would have sent the thumb to the opposite end of the screen from the control
+that opened it. It shares everything else — the scrim, the `--overlay-ms`
+token pair, `useOverlayDrag` (whose axis/sign table gained the `up` row), and
+the drag handle, mounted at the panel's BOTTOM edge because that is the edge
+facing the reader.
 
 The dock is the one that matters. A live workout runs for an hour, survives
 navigation as the minimized bar, and "away" means STILL RUNNING. Wiring its

@@ -58,6 +58,24 @@ type Leaf = {
   // /records specialty sections instead. Cosmetic — every gated page still renders
   // on a direct URL.
   relevanceKey?: NavRelevanceKey;
+  // Entries carrying a `badgeKey` render the matching count from the `badges`
+  // record as a pill on the right of the row (issue #1801). Only `review` exists:
+  // the import-review count moved here from the retired profile menu, because it
+  // is Data → Review's number and belongs on the Data entry.
+  badgeKey?: NavBadgeKey;
+};
+
+export type NavBadgeKey = "review";
+export type NavBadges = Partial<Record<NavBadgeKey, number>>;
+
+// How each badge announces itself. The pill's digits alone say "3"; the label is
+// what a screen reader hears.
+const BADGE_LABEL: Record<NavBadgeKey, (n: number) => string> = {
+  review: (n) => `${n} import ${n === 1 ? "item" : "items"} need attention`,
+};
+
+const BADGE_TESTID: Record<NavBadgeKey, string> = {
+  review: "review-badge",
 };
 
 type Group = {
@@ -224,7 +242,7 @@ const entries: Entry[] = [
   // One "Data" umbrella covering both halves — bringing data in (upload/paste/
   // connect) and managing/exporting what's logged. The former standalone /import
   // hub folded into /data as its "Import" tab; nav label and URL match.
-  { href: "/data", label: "Data", icon: IconDatabase },
+  { href: "/data", label: "Data", icon: IconDatabase, badgeKey: "review" },
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];
 
@@ -247,10 +265,19 @@ const leafClass = (active: boolean, nested: boolean) =>
       : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
   }`;
 
-function NavLink({ leaf, nested }: { leaf: Leaf; nested: boolean }) {
+function NavLink({
+  leaf,
+  nested,
+  badges,
+}: {
+  leaf: Leaf;
+  nested: boolean;
+  badges: NavBadges;
+}) {
   const pathname = usePathname();
   const active = isRouteActive(leaf.href, pathname);
   const Icon = leaf.icon;
+  const badgeCount = leaf.badgeKey ? (badges[leaf.badgeKey] ?? 0) : 0;
   return (
     // `aria-current` carries what the gradient carries: a screen-reader user is told
     // which entry is the page they're on, and it gives the orphan-highlight fix
@@ -261,7 +288,18 @@ function NavLink({ leaf, nested }: { leaf: Leaf; nested: boolean }) {
       className={leafClass(active, nested)}
     >
       <Icon className="h-5 w-5 shrink-0" stroke={1.75} />
-      {leaf.label}
+      <span className="flex-1">{leaf.label}</span>
+      {leaf.badgeKey && badgeCount > 0 && (
+        <span
+          data-testid={BADGE_TESTID[leaf.badgeKey]}
+          aria-label={BADGE_LABEL[leaf.badgeKey](badgeCount)}
+          className={`flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-semibold ${
+            active ? "bg-white/25 text-white" : "bg-rose-500 text-white"
+          }`}
+        >
+          {badgeCount}
+        </span>
+      )}
     </Link>
   );
 }
@@ -274,6 +312,7 @@ function NavGroup({
   foodLoggingRelevant,
   hasIntakeItems,
   relevance,
+  badges,
 }: {
   group: Group;
   restricted: boolean;
@@ -282,6 +321,7 @@ function NavGroup({
   foodLoggingRelevant: boolean;
   hasIntakeItems: boolean;
   relevance: NavRelevance;
+  badges: NavBadges;
 }) {
   const pathname = usePathname();
   // Reuse the same visibility predicate as the top-level entries so a group
@@ -339,7 +379,7 @@ function NavGroup({
       {expanded && (
         <div id={panelId} className="flex flex-col gap-0.5">
           {children.map((c) => (
-            <NavLink key={c.href} leaf={c} nested />
+            <NavLink key={c.href} leaf={c} nested badges={badges} />
           ))}
         </div>
       )}
@@ -354,6 +394,7 @@ export default function Nav({
   foodLoggingRelevant = true,
   hasIntakeItems = false,
   relevance = DEFAULT_NAV_RELEVANCE,
+  reviewCount = 0,
 }: {
   restricted?: boolean;
   isAdmin?: boolean;
@@ -374,7 +415,12 @@ export default function Nav({
   // Vision/Dental bits gate the /records specialty sections). Defaults all-true
   // so a caller that doesn't thread it never over-hides.
   relevance?: NavRelevance;
+  // Integrations needing attention + unresolved import duplicates (Data →
+  // Review). Badges the Data entry (issue #1801) — it used to badge the profile
+  // menu, which was never where that number lived. Resolved server-side.
+  reviewCount?: number;
 }) {
+  const badges: NavBadges = { review: reviewCount };
   const visible = entries.filter((e) =>
     isGroup(e)
       ? true
@@ -401,9 +447,10 @@ export default function Nav({
             foodLoggingRelevant={foodLoggingRelevant}
             hasIntakeItems={hasIntakeItems}
             relevance={relevance}
+            badges={badges}
           />
         ) : (
-          <NavLink key={e.href} leaf={e} nested={false} />
+          <NavLink key={e.href} leaf={e} nested={false} badges={badges} />
         )
       )}
     </nav>
