@@ -92,6 +92,13 @@ test.describe("Visit detail page", () => {
 
   test("the Visits list row links to the detail page", async ({ page }) => {
     await page.goto("/records/history/visits");
+    const past = page.getByTestId("visits-past");
+    await expect(
+      past.getByRole("columnheader", { name: "Chief complaint" })
+    ).toBeVisible();
+    await expect(
+      past.getByRole("columnheader", { name: "Source" })
+    ).toHaveCount(0);
     // Provider/facility links should hug their visible content. A column flex stack
     // without items-start stretches inline-flex children into full-width hit areas.
     const providerCells = page.getByTestId("encounter-provider-cell");
@@ -112,7 +119,7 @@ test.describe("Visit detail page", () => {
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
   });
 
-  test("mobile visit rows omit Source and put the chief complaint on its own line", async ({
+  test("mobile visit rows use a dedicated Chief complaint row and omit Source", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -125,7 +132,11 @@ test.describe("Visit detail page", () => {
       .first(); // first-ok: either seeded Annual physical row exercises the same responsive EncounterList columns
     await expect(row).toBeVisible();
 
-    await expect(row.getByText("Source", { exact: true })).toBeHidden();
+    await expect(row.getByText("Source", { exact: true })).toHaveCount(0);
+    await expect(
+      row.getByText("Chief complaint", { exact: true })
+    ).toBeVisible();
+    await expect(row.getByText("Ambulatory", { exact: true })).toBeHidden();
     const visit = row.getByRole("link", { name: "Office Visit" });
     const complaint = row.getByText("Annual physical", { exact: true });
     const [visitBox, complaintBox] = await Promise.all([
