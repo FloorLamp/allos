@@ -15,6 +15,7 @@ describe("import side-effect inventory", () => {
     expect(keys).toEqual(
       [
         "canonical-name-registration",
+        "episode-stopped-med-link",
         "demographics-adoption",
         "flag-reconciliation",
         "immunization-dismissal-sweep",

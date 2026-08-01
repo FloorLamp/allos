@@ -65,3 +65,38 @@ row on the Import tab (that tab carries paste/CSV jobs, the integrations grid,
 and a link to Review). The footer "Import history & review →" link and the
 profile-menu badge both point at the Review tab; "Review" means the tab, one
 destination.
+
+## The delete-set is an FK contract (#1808)
+
+`IMPORT_FOOTPRINT_TABLES` (`lib/import-footprint.ts`) is the set of rows a
+document delete **and** a reprocess remove — `persistDocumentImport` clears the
+old set through the same `clearImportedDocumentRows` the delete uses, so the two
+can never disagree. That makes every foreign key pointing INTO those rows part
+of the contract:
+
+- **CASCADE or SET NULL** — the FK handles it, nothing else to do.
+- **NO ACTION** — the reference is a live refusal. It must be freed before the
+  footprint loop runs (`clearImportedDocumentRows`) **and** re-enforced on
+  reassign (`moveImportedDocumentRows`, which moves rows by a `profile_id`
+  UPDATE — no FK fires on an UPDATE, so a link left alone silently becomes a
+  cross-profile reference).
+
+A NO ACTION reference that nobody freed does not fail loudly at the FK: it rolls
+the whole clear transaction back, so the document becomes undeletable **and**
+unreprocessable and the user sees one generic constraint error. That is what
+`episode_stopped_meds` did from migration 095 until #1808, and its `course_id`
+did it a second time one CASCADE hop later (through `medication_courses`).
+
+Two things keep the class from recurring:
+
+- `lib/__db_tests__/import-footprint-fk-scan.test.ts` walks
+  `PRAGMA foreign_key_list` over the real migrated schema, computes the delete-set
+  **plus its CASCADE closure**, and fails any NO ACTION reference into it that
+  is not declared with the code that frees it. It also fails any table carrying a
+  `document_id` FK that is neither in the footprint list nor explicitly declared.
+- `IMPORT_SIDE_EFFECTS` in the same module inventories the effects that have no
+  statement at the delete site. `episode-stopped-med-link` is the `"unlink"`
+  entry: an illness episode's stop record keeps its `med_name` snapshot and loses
+  only its `item_id`/`course_id` (migration 137), because the record is
+  episode-owned narrative rather than import data — deleting it with the document,
+  or CASCADEing it away on a routine reprocess, would destroy history silently.
