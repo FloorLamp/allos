@@ -44,10 +44,12 @@ test.describe("Visit detail page", () => {
       detail.getByRole("heading", { name: "Clinical summary" })
     ).toBeVisible();
 
-    // The detail is a centered reading flow, not a stack of elevated cards. Its
-    // label/value pairs also share one left edge instead of creating an awkward
-    // mostly-empty metadata column.
-    await expect(detail.locator(".card")).toHaveCount(0);
+    // The detail is one centered reading card with flat sections inside it—not a
+    // stack of cards or cards nested inside cards. Its label/value pairs also share
+    // one left edge instead of creating an awkward mostly-empty metadata column.
+    await expect(detail.getByTestId("encounter-detail-card")).toBeVisible();
+    await expect(detail.locator(".card")).toHaveCount(1);
+    await expect(detail.locator(".card .card")).toHaveCount(0);
     const layout = await detail.evaluate((element) => {
       const content = element.closest<HTMLElement>(
         '[data-testid="app-content-container"]'
@@ -110,7 +112,9 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
   function cleanup() {
     const handle = new Database(DB_PATH);
     try {
-      handle.prepare("DELETE FROM encounters WHERE reason = ?").run(MARKER);
+      handle
+        .prepare("DELETE FROM encounters WHERE reason LIKE ?")
+        .run(`${MARKER}%`);
     } finally {
       handle.close();
     }
@@ -148,6 +152,28 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
     // The logged visit appears in the Past (visit-history) section by its reason.
     const past = page.getByTestId("visits-past");
     await expect(past.getByText(MARKER)).toBeVisible({ timeout: 15_000 });
+
+    // The detail owns a real edit CTA. It opens the shared form in a modal, saves
+    // through the encounter update action, then refreshes the detail in place.
+    const visitRow = past.getByRole("row").filter({ hasText: MARKER });
+    await followLink(
+      page,
+      visitRow.getByRole("link", { name: "Office Visit" }),
+      /\/encounters\/\d+$/
+    );
+    const edit = page.getByTestId("edit-encounter");
+    await expect(edit).toHaveClass(/\bbtn\b/);
+    await edit.click();
+    const dialog = page.getByRole("dialog", { name: "Edit visit" });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByLabel("Reason (chief complaint)")
+      .fill(`${MARKER} edited`);
+    await settledClick(page, dialog.getByRole("button", { name: "Save" }));
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId("encounter-reason")).toHaveText(
+      `${MARKER} edited`
+    );
   });
 });
 

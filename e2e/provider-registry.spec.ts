@@ -66,9 +66,8 @@ test.describe("Provider registry closeout", () => {
       };
     });
     expect(Math.abs(margins.left - margins.right)).toBeLessThan(2);
-    await expect(page.getByTestId("provider-identity")).not.toHaveClass(
-      /\bcard\b/
-    );
+    await expect(page.getByTestId("provider-identity")).toHaveClass(/\bcard\b/);
+    await expect(detail.locator(".card .card")).toHaveCount(0);
     await expect(page.getByTestId("provider-identity-details")).toHaveCSS(
       "flex-direction",
       "column"

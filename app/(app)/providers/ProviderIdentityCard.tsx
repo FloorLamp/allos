@@ -51,7 +51,7 @@ export default function ProviderIdentityCard({
     return (
       <form
         action={handle}
-        className="space-y-3 border-y border-black/5 py-5 dark:border-white/5"
+        className="card space-y-3"
         data-testid="provider-edit-form"
       >
         <input type="hidden" name="id" value={provider.id} />
@@ -189,10 +189,7 @@ export default function ProviderIdentityCard({
   }
 
   return (
-    <section
-      className="border-y border-black/5 py-4 dark:border-white/5"
-      data-testid="provider-identity"
-    >
+    <section className="card" data-testid="provider-identity">
       {provider.archived ? (
         <div
           className="mb-3 inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300"
