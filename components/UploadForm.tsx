@@ -116,10 +116,23 @@ export default function UploadForm({
       result.ingested === 1
         ? "Upload received — we’re reading it in the background."
         : `${result.ingested} uploads received — we’re reading them in the background.`;
-    const message =
+    const capped =
       result.overflow > 0
         ? `${lead} Uploaded the first ${MEDICAL_UPLOAD_BATCH_CAP} files — add the remaining ${result.overflow} in another batch.`
         : lead;
+    // RESTORATION IS NEVER SILENT (#1777). These bytes were deleted before, so a
+    // content-hash tombstone was blocking portal re-acquisition of them; uploading the
+    // file by hand IS the un-delete, and it also un-blocks the acquirer. Saying so is
+    // what keeps the Data → Review blocked list from appearing to lose an entry on its
+    // own — and it tells the user the portal may now bring this document back.
+    const message =
+      result.restored > 0
+        ? `${capped} ${
+            result.restored === 1
+              ? "This document was previously deleted — it's restored, and portal sync can bring it back again."
+              : `${result.restored} of these were previously deleted — they're restored, and portal sync can bring them back again.`
+          }`
+        : capped;
     // Post under the shared lifecycle key (#1315): this confirmation occupies the
     // ONE upload slot, and the headless ExtractionToaster dismisses it and posts the
     // per-document result the moment real extraction output arrives — so the toast

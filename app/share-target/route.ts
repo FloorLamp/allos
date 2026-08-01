@@ -107,7 +107,11 @@ export async function POST(req: Request): Promise<Response> {
   const landed: number[] = [];
   try {
     for (const file of toIngest) {
-      landed.push(await ingestMedicalUpload(login.id, profile.id, file));
+      // A share is a HUMAN path, so the engine's two acquirer-only no-row refusals
+      // (#1776/#1777) are off and every file lands a row; the null-check is what makes
+      // that readable to the type system rather than asserted away.
+      const out = await ingestMedicalUpload(login.id, profile.id, file);
+      if (out.docId !== null) landed.push(out.docId);
     }
   } catch (err) {
     log.error("share-target ingest failed", {

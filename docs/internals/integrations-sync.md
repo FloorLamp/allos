@@ -153,6 +153,33 @@ restores it with the reading. Sources that state a result status thread it throu
 `NormVital.result_status`; the deterministic FHIR importer maps
 `Observation.status` onto the same four-value vocabulary.
 
+**A deleted DOCUMENT stays deleted (#1776/#1777).** The re-import tombstone
+(#507/#508) protects rows a keyed upsert would re-insert; documents needed the
+same protection at a different consult point. `deleteMedicalDocument` writes a
+tombstone into the SAME `import_tombstones` table under
+`target_table = 'medical_documents'`, `natural_key = <content_hash>` — the hash is
+already the document's identity (`findDedupTarget`). It is deliberately NOT a
+member of `TOMBSTONE_TABLES`: those entries are loaded by the keyed upserts in
+`normalize.ts`, while this one is consulted by the acquirer ingest path in
+`lib/medical-pipeline.ts`, which refuses a tombstoned offer before any row is
+reserved. Migration 134 adds a nullable `label` (the filename at delete time) so
+the block can be named in Data → Review, where each entry carries a one-tap
+"Allow re-acquisition"; existing tombstone rows stay null and are never
+backfilled. A refused offer is counted `suppressed` in the run's sync report —
+the same column and the same `formatSplitLabel` rendering the re-import
+tombstones already use — and creates NO `medical_documents` row, so an
+acquirer's retry is idempotent in the table. Deletion is authoritative only
+against automation: a HUMAN upload of the same bytes clears the tombstone and
+stores, the manual-wins stance the edit lock already takes, and the upload form
+says the document was restored rather than un-blocking it silently. The
+inventory endpoint (`GET /api/documents/held`) returns these hashes as `deleted`
+beside `held`, which is what lets a client with no local state diff and send
+safely; the two lists are disjoint by construction, since a delete removes the
+stored row as it writes the tombstone and a reassignment clears the
+destination's. There is deliberately **no retention sweep** — a swept tombstone
+is a delayed resurrection — and `import_tombstones` is already in
+`lib/owned-tables.ts`, so profile deletion cleanup is covered.
+
 **Weather / UV — keyless pull + a GLOBAL location cache (#1172).** The
 Open-Meteo weather/UV provider (`registry.ts` id `weather`, kind `public` — a
 keyless pull needing no account/credential, only the profile's home location)

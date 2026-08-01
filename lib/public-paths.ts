@@ -60,6 +60,9 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   // for being listed: a bearer POST from a tool on the user's own machine, which has no
   // cookie, and which the coarse middleware check would answer with a 307 at /login.
   "/api/documents/sync-report",
+  // The per-identity document INVENTORY a client diffs against before sending bytes
+  // (#1776). Same token, same scope, same reason for being listed as its siblings.
+  "/api/documents/held",
 ]);
 
 export function isPublicPath(pathname: string): boolean {

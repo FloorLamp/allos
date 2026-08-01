@@ -131,5 +131,6 @@
   "130-acquirer-provenance.ts": "3797fe0f99a92135f7d6e78beb1c65067cfc21457667b69cc7197bc7bab4288e",
   "131-portal-accounts.ts": "474246896b4be0843a68f70050ae0ced9a6f23a3eaf5f61cbe1a84226d201441",
   "132-portal-run-reports.ts": "debfa95f77d2c16d9f6d39ceb6d91237086b3373d9fbc9e57da4afba919b0868",
-  "133-portal-sync-requests.ts": "3d599f574d6415110da1bfb59a3707523680eb8a6ae5cbe167ce369091e1bb52"
+  "133-portal-sync-requests.ts": "3d599f574d6415110da1bfb59a3707523680eb8a6ae5cbe167ce369091e1bb52",
+  "134-tombstone-label.ts": "ca9e2b9fadffc5f5f827b765e74b44e15fb3247b5664ff86213bde2e2ba483f3"
 }
