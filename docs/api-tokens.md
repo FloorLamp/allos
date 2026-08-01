@@ -355,10 +355,17 @@ curl -H "Authorization: Bearer $ALLOS_TOKEN" \
 - **No patient labels.** Mapped, pending and ignored bindings are all absent — the tool
   discovers patients from the portal itself, and which patients a household mapped or
   declined is household information this token never reveals.
+- **Only the portals and logins this token can reach.** An account nickname is household
+  composition spelled out, so an account claimed by profiles this login cannot reach is
+  withheld, and a portal whose accounts are _all_ withheld does not appear at all. An
+  admin reaches every profile and therefore still gets the whole registry. A portal
+  nobody has bound a patient to yet is visible to anyone who could set it up — bindings
+  only exist after a run, so otherwise `init` could never learn the slug of a portal
+  created a minute ago.
 
 Same `upload:documents` scope: knowing where you may push is part of the push capability.
 The visibility gate mirrors the card's — a login with write access to at least one profile
-— so a read-only-everywhere caregiver token gets a `403`.
+— so a read-only-everywhere caregiver token gets a `403` rather than an empty list.
 
 **`tool init` recipe.** Fetch the list, write the slugs into local config, and prompt only
 for what allos genuinely does not know:
