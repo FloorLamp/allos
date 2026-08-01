@@ -469,6 +469,27 @@ one session for TODAY through the shared write core (`logPracticeByTargetId` →
 days are supported) and CONSUMES the tapped button (siblings survive) so a stale
 message can’t double-log.
 
+**The right-sizing ride-along (#1670).** When a practice's shortfall has been
+CHRONIC — every one of the last four completed weeks under its floor — this same
+message carries one extra **"⤓ <name> → N×/wk"** button
+(`rslower:<profileId>:<targetId>`, ids only) offering to lower the weekly floor to
+the cadence actually kept. It is the entire push presence of the frequency-target
+right-sizing engine: **no message is ever sent because of a suggestion**, and a
+target that has stopped generating this nudge simply has no delivery path, which
+is correct rather than a gap (the ride-the-nag rule,
+`docs/internals/findings.md` § the attention doctrine).
+
+Three properties: the token deliberately does NOT carry the new floor — the
+handler (`handleRightSizeLowerTap`) re-derives the live candidate and writes
+through the same `lowerFrequencyTargetFloor` core the in-app card uses, so a stale
+button on a practice whose cadence recovered refuses with a typed outcome instead
+of shrinking a commitment nobody is suggesting shrinking; the write is DOWNWARD
+and user-initiated, the two properties that make it (like the ⤓ May tap) safe for
+the notification layer to perform at all; and the button is governed by DETECTION
+STATE ALONE rather than the suppression bus — an in-app dismiss means "keep asking
+me about this practice", a statement about the card, not about whether a message
+already being sent may offer relief.
+
 **Recap-led finish nudge (#924).** `runPostWorkoutFinish` now OPENS with a
 one-line **session recap** ("Push day done · 47 min · 14 sets · Bench press PR ·
 all targets hit"), then the due post-workout supplement section. The composition
