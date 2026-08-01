@@ -4,6 +4,34 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1803,
+          "kind": "feature",
+          "issues": [1670],
+          "title": "Weekly targets you've been under for a month get a gentle right-size offer",
+          "body": "When a weekly goal — a wellness practice, a training routine, or a food habit — has been under its target for four straight completed weeks, its page now offers to lower the target to the pace you actually keep, or to stop tracking it while keeping every logged session. Nothing changes unless you tap it, substance limits are never touched, and the Telegram pace nudge carries the same one-tap offer only when it was already messaging you."
+        },
+        {
+          "pr": 1800,
+          "kind": "feature",
+          "issues": [1705],
+          "title": "Shared bottles and your items now exchange product details",
+          "body": "Creating a shared bottle from a supplement or medication carries over its name and strength instead of making you retype them, and the medicine cabinet gained \"Add for another person\": pick a household member and their add form opens pre-filled from the bottle and already linked to it. A bottle's strength and form now show wherever it appears, and editing the bottle updates every linked item's display automatically."
+        },
+        {
+          "pr": 1799,
+          "kind": "fix",
+          "issues": [1796],
+          "title": "The portal name list an import tool can fetch is scoped to your household",
+          "body": "The API endpoint that lets the document-import tool read portal and account names now returns only accounts claimed by people you can access, matching how portal sync reports were scoped earlier. Admins still see the full list, and a brand-new portal stays visible so setup keeps working."
+        },
+        {
+          "pr": 1798,
+          "kind": "fix",
+          "issues": [1794],
+          "title": "The pull-to-refresh icon no longer sits permanently on screen",
+          "body": "In the installed app, the pull-to-refresh indicator now fades out when you're not pulling and no refresh is running. It previously stayed fully visible at the top of the screen from the moment a page loaded."
+        },
+        {
           "pr": 1791,
           "kind": "fix",
           "issues": [1787],
