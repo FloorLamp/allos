@@ -181,6 +181,12 @@ export interface DigestInput {
   // nudge uses (#1712 §2 / #221). Null when there's no recommendation — no routine, a
   // restricted profile, or the presence gates hold.
   workoutPreview?: string | null;
+  // The collapsed ⚙️ Tune control (#1714), or null when today's message carries
+  // nothing tunable. Unlike the offer tail it does NOT lower the "is there anything to
+  // say?" bar: a message that exists only to offer its own preferences is not a
+  // message, so buildDigest still returns null when there are no sections and no offer
+  // tail. The control tunes a digest; it never justifies one.
+  tuneTail?: NotificationAction | null;
 }
 
 export interface DigestSection {
@@ -198,6 +204,9 @@ export interface DigestModel {
   // FIRST inline button — first because it is the one affordance that is always
   // correct to offer, regardless of what else the day held.
   offerTail?: NotificationAction | null;
+  // The collapsed ⚙️ Tune control (#1714), rendered AFTER the offer tail: access to
+  // your own items outranks tuning what the message says about them.
+  tuneTail?: NotificationAction | null;
 }
 
 // Human sleep duration: "7h 20m", "8h", "45m". Minutes in, rounded.
@@ -448,6 +457,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       title: `☀️ Morning digest — ${input.profileName}`,
       sections,
       offerTail: input.offerTail ?? null,
+      // A tail-only digest has no category content, so there is nothing to tune.
+      tuneTail: null,
     };
   }
   return {
@@ -455,6 +466,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     sections,
     offerCount: input.offerCount ?? 0,
     offerTail: input.offerTail ?? null,
+    tuneTail: input.tuneTail ?? null,
   };
 }
 
@@ -473,9 +485,12 @@ export function renderDigestMessage(model: DigestModel): NotificationMessage {
   const textTailBody = availableLine
     ? joinBody([body, `➕ ${availableLine}`], "\n\n")
     : null;
-  // The offer tail is the message's ONLY action and deliberately its first (and
-  // only) row: a digest carries no other buttons, so "first" is trivially satisfied
-  // today and stays honest if the digest ever grows more.
+  // Actions, in reach order: the guaranteed access tail first (#1505 — it is the one
+  // affordance that is always correct to offer), then the collapsed ⚙️ Tune control
+  // (#1714). Both are keyboard-only; a message with neither carries no buttons at all.
+  const actions = [model.offerTail, model.tuneTail].filter(
+    (a): a is NotificationAction => a != null
+  );
   return {
     title: model.title,
     body,
@@ -488,6 +503,6 @@ export function renderDigestMessage(model: DigestModel): NotificationMessage {
         }
       : {}),
     kind: "digest",
-    ...(model.offerTail ? { actions: [model.offerTail] } : {}),
+    ...(actions.length ? { actions } : {}),
   };
 }

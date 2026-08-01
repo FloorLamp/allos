@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { TierConfigView } from "@/lib/settings/ai-tiers";
 import type { ApiShape, TierName } from "@/lib/ai-tiers";
 import { saveAiTierConfig, testAiTier } from "./actions";
@@ -63,7 +62,6 @@ function TierBlock({
   note: string;
   view: TierConfigView;
 }) {
-  const router = useRouter();
   const [apiShape, setApiShape] = useState<ApiShape>(view.apiShape);
   const [baseUrl, setBaseUrl] = useState(view.baseUrl);
   const [model, setModel] = useState(view.model);

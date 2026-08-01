@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
+import { settledFill, settledSelect } from "./helpers";
 
 // Close the care-plan loop on appointment completion (issue #658): completing a
 // visit OFFERS to close the open care-plan items it matches (by kind/title/date
@@ -35,8 +36,9 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     // Add an OPEN care-plan item (undated intentions still match — the matcher
     // only date-gates DATED items).
     await page.goto("/records/care/overview");
-    await page.locator("#cp-desc-new").fill(ITEM);
-    await page.locator("#cp-status-new").fill("planned");
+    await settledFill(page, page.locator("#cp-desc-new"), ITEM);
+    // Status is an enum picker since #1676.
+    await settledSelect(page, page.locator("#cp-status-new"), "planned");
     // Scope the "Add" to the Care plan section — the merged Health record page
     // (#1042 phase 6) has one "Add" per section.
     await page

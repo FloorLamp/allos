@@ -1,7 +1,17 @@
 import crypto from "node:crypto";
 import { db, writeTx } from "../db";
 import type { NotificationKind } from "../notifications/types";
-import { profilesManagedByLogin } from "../notifications/managing-logins";
+import {
+  managingLoginIdsForProfile,
+  profilesManagedByLogin,
+} from "../notifications/managing-logins";
+import {
+  intersectDigestDemotions,
+  parseDigestDemotions,
+  serializeDigestDemotions,
+  toggleDigestDemotion,
+  type DigestCategory,
+} from "../notifications/digest-tune";
 import {
   parseDisabledKinds,
   serializeDisabledKinds,
@@ -588,6 +598,55 @@ export function setLoginPushDisabledKinds(
     loginId,
     "push_notify_disabled_kinds",
     serializeDisabledKinds(kinds)
+  );
+}
+
+// ---- Per-category digest demotion (#1714) ----
+// "Demote" = notable-only, never hidden — the vocabulary and every predicate live in
+// the pure ../notifications/digest-tune. Stored per LOGIN, beside the login's Telegram
+// channel config: which lines a digest routinely carries is a DISPLAY preference of
+// the person reading it, not a fact about the data subject. Two logins watching one
+// profile therefore hold independent preferences. Plain KV, no schema change.
+
+const DIGEST_DEMOTE_KEY = "digest_demoted_categories";
+
+export function getLoginDigestDemotions(loginId: number): DigestCategory[] {
+  return parseDigestDemotions(getLoginSetting(loginId, DIGEST_DEMOTE_KEY));
+}
+
+export function setLoginDigestDemotions(
+  loginId: number,
+  cats: readonly DigestCategory[]
+): void {
+  setLoginSetting(loginId, DIGEST_DEMOTE_KEY, serializeDigestDemotions(cats));
+}
+
+// Flip ONE category for ONE login and report the resulting state. Read-modify-write
+// inside a single immediate transaction: the Telegram tap and the Settings mirror
+// write the same row from different processes, and a last-write-wins read outside the
+// lock could drop a concurrent toggle of a DIFFERENT category. Returns the typed
+// outcome the caller answers from — never an unconditional "done" (AGENTS.md).
+export function toggleLoginDigestDemotion(
+  loginId: number,
+  category: DigestCategory
+): { demoted: boolean; categories: DigestCategory[] } {
+  return writeTx(() => {
+    const next = toggleDigestDemotion(
+      parseDigestDemotions(getLoginSetting(loginId, DIGEST_DEMOTE_KEY)),
+      category
+    );
+    setLoginSetting(loginId, DIGEST_DEMOTE_KEY, serializeDigestDemotions(next));
+    return { demoted: next.includes(category), categories: next };
+  });
+}
+
+// The demotion that applies to a PROFILE's one digest message. The message is built
+// once and fans out to every managing login, so the per-login preferences collapse
+// conservatively (intersectDigestDemotions): a category is demoted only when EVERY
+// recipient declared it. No login is ever shown less than it asked for.
+export function digestDemotionsForProfile(profileId: number): DigestCategory[] {
+  return intersectDigestDemotions(
+    managingLoginIdsForProfile(profileId).map(getLoginDigestDemotions)
   );
 }
 

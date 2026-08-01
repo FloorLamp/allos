@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Genomic variants CRUD on the #genomics section of /results (#709, #1042 phase 5): add a structured variant through the
@@ -38,7 +38,10 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await expect(form).toBeVisible();
 
     // Add a hereditary-risk variant with an ACMG significance.
-    await form.getByLabel("Gene").fill(GENE);
+    // Gene is a controlled Combobox over the PGx symbols since #1676; a non-PGx
+    // gene is still free text, and settledFill keeps the value out of the
+    // pre-hydration revert window.
+    await settledFill(page, form.getByLabel("Gene"), GENE);
     await form.getByLabel("Variant (rsID / HGVS)").fill("c.123A>G");
     await form.getByLabel("Zygosity").selectOption("heterozygous");
     await form.getByLabel("Result type").selectOption("hereditary-risk");

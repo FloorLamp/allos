@@ -1,4 +1,7 @@
 import type { ImportResult } from "../health-import";
+// The care-plan CATEGORY vocabulary is owned by the care-plan domain module (#1676)
+// so the importer and the entry form can never disagree about the bucket names.
+import type { CarePlanCategory } from "../care-plan-upcoming";
 
 export class CdaError extends Error {}
 
@@ -384,14 +387,15 @@ export const FAMILY_RELATION_LABELS: Record<string, string> = {
 // The planned-activity element carried under a Plan-of-Treatment entry and a
 // friendly category label for it. A section entry wraps exactly one of these (the
 // mood is planned/ordered — INT/RQO/PRMS/PRP/…); the element type IS the category.
-export const CARE_PLAN_ELEMENTS: { key: string; category: string }[] = [
-  { key: "act", category: "activity" },
-  { key: "encounter", category: "encounter" },
-  { key: "observation", category: "observation" },
-  { key: "substanceAdministration", category: "medication" },
-  { key: "supply", category: "supply" },
-  { key: "procedure", category: "procedure" },
-];
+export const CARE_PLAN_ELEMENTS: { key: string; category: CarePlanCategory }[] =
+  [
+    { key: "act", category: "activity" },
+    { key: "encounter", category: "encounter" },
+    { key: "observation", category: "observation" },
+    { key: "substanceAdministration", category: "medication" },
+    { key: "supply", category: "supply" },
+    { key: "procedure", category: "procedure" },
+  ];
 
 // A human title for a section: its own <title>, else a known catalog name, else the
 // LOINC code. Epic sets titles ("Insurance", "Plan of Treatment"), which is exactly

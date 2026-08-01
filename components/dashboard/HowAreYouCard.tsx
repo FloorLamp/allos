@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import CheckInSection from "@/components/dashboard/CheckInSection";
 import { useToast } from "@/components/Toast";
@@ -159,7 +158,6 @@ export default function HowAreYouCard({
   // The count of symptoms already logged today, for the Report summary line (#1300).
   symptomCount?: number;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
   const [pending, start] = useTransition();

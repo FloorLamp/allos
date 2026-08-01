@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconClock, IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import TodayMedRow from "@/components/medications/TodayMedRow";
@@ -61,7 +60,6 @@ export default function QuickLogPrnControl({
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [time, setTime] = useState("");
-  const router = useRouter();
   const toast = useToast();
   const doseDetail = formatMedicationDoseProduct(doseAmount, product);
 

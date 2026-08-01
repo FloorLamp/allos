@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { setAllergyReactions } from "@/lib/allergy-write";
+import { normalizeAllergenSubstance } from "@/lib/allergen-vocabulary";
 import { encounterIdForProfile } from "@/lib/queries";
 import {
   resolveProviderIdByName,
@@ -72,7 +73,13 @@ function postedReactions(
 
 export async function addAllergy(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  const substance = String(formData.get("substance") ?? "").trim();
+  // Canonicalize a RECOGNIZED allergen spelling on write (#1676): the drug-allergy
+  // cross-check and the cross-reactivity matcher both key on this string, so storing
+  // "soy" rather than the vocabulary's "Soybean" silently costs the profile a check.
+  // An unrecognized substance is stored exactly as typed — the field is free text.
+  const substance = normalizeAllergenSubstance(
+    String(formData.get("substance") ?? "")
+  );
   if (!substance) return formError("Enter the substance you're allergic to.");
   const reactions = postedReactions(formData);
   // The parent's reaction/severity are the CACHED first manifestation (see
@@ -141,7 +148,9 @@ export async function updateAllergy(formData: FormData): Promise<FormResult> {
   // to the acting profile.
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
-  const substance = String(formData.get("substance") ?? "").trim();
+  const substance = normalizeAllergenSubstance(
+    String(formData.get("substance") ?? "")
+  );
   if (!id) return formError("Couldn't find that allergy.");
   if (!substance) return formError("Enter the substance you're allergic to.");
   const reactions = postedReactions(formData);

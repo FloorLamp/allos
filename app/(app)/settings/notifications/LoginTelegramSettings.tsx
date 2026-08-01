@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { LoginTelegram } from "@/lib/settings";
 import { saveLoginTelegram, sendTestNotification } from "../actions";
 import SaveStatus from "@/components/SaveStatus";
@@ -23,7 +22,6 @@ export default function LoginTelegramSettings({
   // channel migration couldn't derive an unambiguous chat for this login.
   reviewNeeded: boolean;
 }) {
-  const router = useRouter();
   const [enabled, setEnabled] = useState(telegram.telegramEnabled);
   const [chatId, setChatId] = useState(telegram.telegramChatId);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();

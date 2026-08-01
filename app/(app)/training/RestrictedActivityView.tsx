@@ -1,7 +1,11 @@
 import { PageHeader } from "@/components/ui";
 import { requireSession } from "@/lib/auth";
 import { getUnitPrefs } from "@/lib/settings";
-import { getActivities, getJournalWeekSummary } from "@/lib/queries";
+import {
+  getActivities,
+  getActivitySuggestions,
+  getJournalWeekSummary,
+} from "@/lib/queries";
 import { isDurationActivityType } from "@/lib/age-gate";
 import { today } from "@/lib/db";
 import ActivityLogPanel from "./ActivityLogPanel";
@@ -23,6 +27,9 @@ export default async function RestrictedActivityView() {
     isDurationActivityType(a.type)
   );
   const week = getJournalWeekSummary(profile.id);
+  // The frequency-ranked activity names the full editor's picker already uses — the
+  // restricted panel reads the SAME source rather than offering nothing (#1676).
+  const suggestions = getActivitySuggestions(profile.id);
 
   return (
     <div>
@@ -43,6 +50,8 @@ export default async function RestrictedActivityView() {
         activities={activities.slice(0, 30)}
         distanceUnit={units.distanceUnit}
         defaultDate={today(profile.id)}
+        sportOptions={suggestions.sports}
+        cardioOptions={suggestions.cardio}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
+import Combobox from "@/components/Combobox";
 import EncounterField from "@/components/EncounterField";
 import { useToast } from "@/components/Toast";
 import {
@@ -12,7 +13,16 @@ import {
   type Allergy,
   type FormResult,
 } from "@/lib/types";
-import { composeAllergyReactions } from "@/lib/allergy-reactions";
+import {
+  composeAllergyReactions,
+  ALLERGY_REACTION_SEVERITIES,
+  ALLERGY_REACTION_SEVERITY_LABELS,
+  isCanonicalReactionSeverity,
+} from "@/lib/allergy-reactions";
+import {
+  ALLERGEN_OPTIONS,
+  allergenSearchTerms,
+} from "@/lib/allergen-vocabulary";
 
 // Labels for the two CHECK-pinned safety vocabularies (#1405). "Not stated" is the
 // default option in both — an unstated criticality is not "low", and an unstated
@@ -59,6 +69,10 @@ export default function AllergyForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!allergy;
   const [error, setError] = useState<string | null>(null);
+  // Substance is a controlled Combobox over the curated allergen vocabulary (#1676)
+  // — form.reset() can't clear it, so the add path clears this state explicitly on a
+  // successful save, the way the family-history relation picker does.
+  const [substance, setSubstance] = useState(allergy?.substance ?? "");
   // Repeatable manifestation rows (#1405): a peanut allergy that causes BOTH hives
   // AND anaphylaxis is two graded rows, not one string. Seeded through the SAME pure
   // composition every read surface uses, so an imported row whose reactions live
@@ -71,7 +85,12 @@ export default function AllergyForm({
       (allergy?.reactions ?? []).map((r, i) => ({ ...r, position: i }))
     ).map((r) => ({
       manifestation: r.manifestation,
-      severity: r.severity ?? "",
+      // Case-fold a canonical grade so it selects in the enum below; a source's own
+      // wording ("Life-threatening") is left exactly as recorded and gets its own
+      // option.
+      severity: isCanonicalReactionSeverity(r.severity)
+        ? r.severity!.trim().toLowerCase()
+        : (r.severity ?? ""),
     }));
     return seeded.length > 0 ? seeded : [{ ...EMPTY_ROW }];
   });
@@ -96,6 +115,7 @@ export default function AllergyForm({
     toast(editing ? "Allergy updated" : "Allergy saved");
     if (!editing) {
       formRef.current?.reset();
+      setSubstance("");
       setReactions([{ ...EMPTY_ROW }]);
     }
     onDone?.();
@@ -117,13 +137,20 @@ export default function AllergyForm({
         <label className="label" htmlFor={`allergy-substance-${uid}`}>
           Substance
         </label>
-        <input
+        {/* The substance string is what the drug-allergy cross-check (#1029) and the
+            cross-reactivity matcher (#153) key on, so a drifted spelling silently
+            defeats both. The picker offers the curated allergen vocabulary (#1676);
+            free text still saves, and the action canonicalizes a recognized alias. */}
+        <Combobox
           id={`allergy-substance-${uid}`}
           name="substance"
-          className="input"
-          defaultValue={allergy?.substance ?? ""}
+          ariaLabel="Substance"
+          value={substance}
+          onChange={setSubstance}
+          options={ALLERGEN_OPTIONS}
+          searchTermsFor={allergenSearchTerms}
+          allowFreeText
           placeholder="e.g. Penicillin, Peanut, Latex"
-          required
         />
       </div>
       <fieldset className="space-y-2" data-testid={`allergy-reactions-${uid}`}>
@@ -146,7 +173,12 @@ export default function AllergyForm({
               placeholder="e.g. Hives, Anaphylaxis"
             />
             <div className="flex gap-2">
-              <input
+              {/* A grade is an enum at the ENTRY surface (#1676) — the three FHIR
+                  reaction.severity values. The column stays free TEXT because
+                  importers pass a source's own wording through, so a loaded
+                  non-standard grade is preserved as its own option rather than
+                  silently rewritten to the nearest canonical one. */}
+              <select
                 name="reaction_severity"
                 className="input"
                 aria-label={`Severity ${i + 1}`}
@@ -159,8 +191,17 @@ export default function AllergyForm({
                     )
                   )
                 }
-                placeholder="e.g. Moderate"
-              />
+              >
+                <option value="">Not stated</option>
+                {ALLERGY_REACTION_SEVERITIES.map((sev) => (
+                  <option key={sev} value={sev}>
+                    {ALLERGY_REACTION_SEVERITY_LABELS[sev]}
+                  </option>
+                ))}
+                {r.severity && !isCanonicalReactionSeverity(r.severity) && (
+                  <option value={r.severity}>{r.severity} — as recorded</option>
+                )}
+              </select>
               {reactions.length > 1 && (
                 <button
                   type="button"

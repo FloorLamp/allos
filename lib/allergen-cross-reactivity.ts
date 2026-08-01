@@ -61,6 +61,10 @@ function normalize(s: string): string {
 // The set of comparable forms for a string: its normalized form plus a naive
 // depluralized form (trailing "s" dropped) so "peanuts" matches "peanut" and
 // "crabs" matches "crab". Short words (<= 3 chars) are not depluralized.
+// Exported as `allergenComparableForms` below so the allergen VOCABULARY
+// (lib/allergen-vocabulary.ts, the entry picker's option source) folds a typed
+// allergen exactly the way this matcher folds a stored one — one folding rule for
+// the whole allergen family, never a second copy that can drift (#221/#482).
 function forms(s: string): Set<string> {
   const n = normalize(s);
   const out = new Set<string>();
@@ -69,6 +73,8 @@ function forms(s: string): Set<string> {
   if (n.length > 3 && n.endsWith("s")) out.add(n.slice(0, -1));
   return out;
 }
+
+export const allergenComparableForms = forms;
 
 function overlaps(a: Set<string>, b: Set<string>): boolean {
   for (const x of a) if (b.has(x)) return true;

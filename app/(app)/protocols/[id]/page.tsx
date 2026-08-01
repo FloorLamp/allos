@@ -16,6 +16,9 @@ import {
   getPracticeSpellingsMap,
   practiceSpellingsFor,
 } from "@/lib/queries";
+import { getSituations } from "@/lib/settings";
+import { mergedSituationOptions } from "@/lib/situations";
+import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { getEquipment, getEquipmentById } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
 import { getUnitPrefs } from "@/lib/settings";
@@ -156,19 +159,27 @@ export default async function ProtocolDetailPage(props: {
       </Link>
 
       <div className="space-y-6">
-        <ProtocolControls
-          protocol={protocol}
-          options={options}
-          equipment={equipment}
-          intakeItems={intakeItems}
-          practice={practice}
-          updateAction={updateProtocol}
-          endAction={endProtocol}
-          resumeAction={resumeProtocol}
-          runAgainAction={runProtocolAgain}
-          deleteAction={deleteProtocol}
-          asOf={todayStr}
-        />
+        {/* The edit form's situation picker reads the SAME merged vocabulary the
+            supplement and medication forms do (#1676). */}
+        <SituationOptionsProvider
+          options={mergedSituationOptions(getSituations(profile.id)).map(
+            (o) => o.name
+          )}
+        >
+          <ProtocolControls
+            protocol={protocol}
+            options={options}
+            equipment={equipment}
+            intakeItems={intakeItems}
+            practice={practice}
+            updateAction={updateProtocol}
+            endAction={endProtocol}
+            resumeAction={resumeProtocol}
+            runAgainAction={runProtocolAgain}
+            deleteAction={deleteProtocol}
+            asOf={todayStr}
+          />
+        </SituationOptionsProvider>
 
         <div className="grid gap-6">
           {hasPracticeCard && (

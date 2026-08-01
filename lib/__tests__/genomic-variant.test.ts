@@ -6,7 +6,11 @@ import {
   variantDisplayLabel,
   resultTypeLabel,
   significanceLabel,
+  canonicalGeneSymbol,
+  normalizeGeneSymbol,
+  PGX_GENE_SYMBOLS,
 } from "../genomic-variant";
+import { crossCheckPgx } from "../pgx";
 
 // Pure coercion + label logic for structured genomic variants (#709). These map a
 // report's raw strings onto the DB CHECK vocabularies so an import can never trip a
@@ -141,5 +145,55 @@ describe("labels", () => {
     );
     // No risk / prognosis words — factual classification only.
     expect(significanceLabel("pathogenic")).toBe("Pathogenic");
+  });
+});
+
+// The gene picker's vocabulary (#1676). crossCheckPgx matches a gene by an exact
+// case-insensitive symbol compare, so a drifted spelling produces a variant row no
+// CPIC guidance can ever reach — silently, with no error anywhere.
+describe("the PGx gene vocabulary (#1676)", () => {
+  it("offers the ten symbols the CPIC dataset actually covers", () => {
+    expect([...PGX_GENE_SYMBOLS]).toEqual([
+      "CYP2C19",
+      "CYP2C9",
+      "CYP2D6",
+      "DPYD",
+      "HLA-A",
+      "HLA-B",
+      "NUDT15",
+      "SLCO1B1",
+      "TPMT",
+      "VKORC1",
+    ]);
+  });
+
+  it("folds case and separator drift back onto the canonical symbol", () => {
+    expect(canonicalGeneSymbol("cyp2c19")).toBe("CYP2C19");
+    expect(canonicalGeneSymbol(" CYP 2C19 ")).toBe("CYP2C19");
+    expect(canonicalGeneSymbol("hla_b")).toBe("HLA-B");
+  });
+
+  it("leaves a gene outside the PGx set alone — it is still a real variant", () => {
+    expect(canonicalGeneSymbol("BRCA1")).toBeNull();
+    expect(normalizeGeneSymbol("  BRCA1 ")).toBe("BRCA1");
+  });
+
+  it("a drifted symbol drops the cross-check; the canonical one keeps it", () => {
+    const meds = [{ id: 1, name: "Clopidogrel 75 mg", rxcui: null }];
+    const drifted = [
+      {
+        id: 1,
+        gene: "cyp 2c19",
+        variant: null,
+        genotype: null,
+        star_allele: "*2/*2",
+        zygosity: null,
+        interpretation: "Poor metabolizer",
+        result_type: "pharmacogenomic",
+      },
+    ];
+    expect(crossCheckPgx(drifted, meds)).toEqual([]);
+    const fixed = [{ ...drifted[0], gene: normalizeGeneSymbol("cyp 2c19") }];
+    expect(crossCheckPgx(fixed, meds).length).toBeGreaterThan(0);
   });
 });

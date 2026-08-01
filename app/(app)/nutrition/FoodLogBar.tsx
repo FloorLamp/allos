@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   IconAdjustmentsHorizontal,
   IconPlus,
@@ -115,7 +114,6 @@ export default function FoodLogBar({
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
   // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const router = useRouter();
   const toast = useToast();
 
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
