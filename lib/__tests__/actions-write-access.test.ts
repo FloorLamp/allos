@@ -213,6 +213,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/settings/actions.ts",
+    fn: "saveDigestDemotions",
+    why: "login-scoped: the caller's OWN per-category morning-digest demotion (#1714) — which lines a digest routinely carries is a display preference of the reader (login_settings), never profile-owned data",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
     fn: "saveLoginTelegramNotifyKinds",
     why: "login-scoped: persists the caller's OWN Telegram per-kind matrix column (login_settings), moved from profile to login by #1072",
   },

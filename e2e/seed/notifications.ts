@@ -5,7 +5,12 @@
 
 import "../../scripts/load-env";
 
-import { E2E_LOGIN_HA_NOTIFY, HA_NOTIFY_PROFILE } from "../fixture-logins";
+import {
+  DIGEST_TUNE_PROFILE,
+  E2E_LOGIN_DIGEST_TUNE,
+  E2E_LOGIN_HA_NOTIFY,
+  HA_NOTIFY_PROFILE,
+} from "../fixture-logins";
 import { seedMemberLogin, fixtureProfileId } from "./common";
 
 // ── Home Assistant notification config ──
@@ -21,5 +26,19 @@ export function seedHaConfig(): void {
   seedMemberLogin(E2E_LOGIN_HA_NOTIFY, haNotifyId, "write");
   console.log(
     `e2e: seeded HA notification-config fixture — profile ${haNotifyId} (${HA_NOTIFY_PROFILE})`
+  );
+}
+
+// ── Morning-digest ⚙️ Tune mirror (#1714) ──
+export function seedDigestTune(): void {
+  // A dedicated adult profile + login for digest-tune.spec.ts. The spec toggles
+  // LOGIN-scoped digest preferences that persist for the worker's whole run, so it
+  // must not share a login with any other spec. No health data is needed — the mirror
+  // lists every tunable category unconditionally, and what a demotion does to an
+  // actual digest is pinned in the pure and DB tiers.
+  const id = fixtureProfileId(DIGEST_TUNE_PROFILE);
+  seedMemberLogin(E2E_LOGIN_DIGEST_TUNE, id, "write");
+  console.log(
+    `e2e: seeded digest-tune fixture — profile ${id} (${DIGEST_TUNE_PROFILE})`
   );
 }
