@@ -86,6 +86,11 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
 
   // Practice pace nudge (#1259): a session logged in the app clears the shortfall.
   { prefix: "pdone", family: "practice" },
+  // ⤓ Right-size rides that same nudge (#1670) and dies with the same message — and
+  // separately once the floor has been lowered in the app, when the offer is moot.
+  // The `demote`-on-a-dose-reminder shape one domain over: a ride-along inherits the
+  // family of the message it decorates rather than earning one of its own.
+  { prefix: "rslower", family: "practice" },
 
   // ── Class 2: additive quick-log buttons ────────────────────────────────────
   // The buttons don't lie — logging another serving stays valid all day — but the

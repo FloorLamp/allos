@@ -106,15 +106,13 @@ test("a chronically under-floor practice is offered its own cadence, and accepti
 
     await settledClick(page, lower);
 
-    // The stored commitment really moved — the user's tap is the write.
-    await expect(async () => {
-      expect(floorOf(db, targetId!)).toBe(1);
-    }).toPass();
-    // …and the suggestion cleared itself: every week in its window now clears the new
+    // The suggestion cleared itself: every week in its window now clears the new
     // floor, so there is nothing left to suggest. No dismissal was needed.
     await expect(
       page.getByTestId("right-size-item").filter({ hasText: PRACTICE_NAME })
     ).toHaveCount(0);
+    // The stored commitment really moved — the user's tap is the write.
+    expect(floorOf(db, targetId)).toBe(1);
     // The practice keeps its card and its sessions.
     await expect(
       page
@@ -149,9 +147,10 @@ test("accepting a practice suggestion's stop lands in the logs-only state (#1670
     await settledClick(page, card.getByTestId("right-size-stop"));
 
     // The weekly goal is gone; the practice and every logged session are not.
-    await expect(async () => {
-      expect(floorOf(db, targetId!)).toBeNull();
-    }).toPass();
+    await expect(
+      page.getByTestId("right-size-item").filter({ hasText: name })
+    ).toHaveCount(0);
+    expect(floorOf(db, targetId)).toBeNull();
     const practiceCard = page
       .getByTestId("wellness-practice-card")
       .filter({ hasText: name });
@@ -164,9 +163,6 @@ test("accepting a practice suggestion's stop lands in the logs-only state (#1670
         )
         .get(name)
     ).toEqual({ n: ONE_PER_WEEK.length });
-    await expect(
-      page.getByTestId("right-size-item").filter({ hasText: name })
-    ).toHaveCount(0);
   } finally {
     db.prepare("DELETE FROM practice_logs WHERE practice = ?").run(name);
     dropTarget(db, targetId);
@@ -194,13 +190,11 @@ test("a chronically under-floor food habit can be untracked without touching the
     await expect(card).toContainText("food log");
     await settledClick(page, card.getByTestId("right-size-stop"));
 
-    await expect(async () => {
-      expect(floorOf(db, targetId!)).toBeNull();
-    }).toPass();
     // The habit has left the weekly-habits list…
     await expect(
       page.getByTestId("weekly-habits").getByTestId(`habit-${FOOD_GROUP}`)
     ).toHaveCount(0);
+    expect(floorOf(db, targetId)).toBeNull();
     // …and the record of what was actually eaten is exactly as it was.
     expect(
       db
