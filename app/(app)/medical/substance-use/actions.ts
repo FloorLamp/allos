@@ -27,6 +27,7 @@ import {
   undoSubstanceUnitCore,
 } from "@/lib/substance-log-write";
 import { getSubstanceWeekState } from "@/lib/queries";
+import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import { isMinor } from "@/lib/life-stage";
 import { getUserAge } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -223,10 +224,10 @@ export async function setSubstanceTargetAction(
   return formOk();
 }
 
-// Remove the reduction target. Nulls any protocol that referenced it FIRST (the
-// row-ops side-state rule — a live protocols.frequency_target_id FK would block
-// the delete), then removes the target. Scoped to a substance target so it can't
-// touch a training/food row.
+// Remove the reduction target through the shared delete core (lib/frequency-target-delete),
+// which nulls any protocol that referenced it FIRST — the row-ops side-state rule, since a
+// live protocols.frequency_target_id FK would block the delete. The lookup above scopes it
+// to a substance target so it can't touch a training/food row.
 export async function clearSubstanceTargetAction(
   formData: FormData
 ): Promise<FormResult> {
@@ -241,15 +242,7 @@ export async function clearSubstanceTargetAction(
     )
     .get(profile.id, substance) as { id: number } | undefined;
   if (!target) return formOk(); // idempotent — nothing to clear
-  writeTx(() => {
-    db.prepare(
-      `UPDATE protocols SET frequency_target_id = NULL, owns_frequency_target = 0
-        WHERE profile_id = ? AND frequency_target_id = ?`
-    ).run(profile.id, target.id);
-    db.prepare(
-      `DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?`
-    ).run(target.id, profile.id);
-  });
+  deleteFrequencyTargetRow(profile.id, target.id);
   revalidateSubstanceUse();
   return formOk();
 }

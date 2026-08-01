@@ -6,6 +6,7 @@ import { db, today, writeTx } from "@/lib/db";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
+import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
   addProteinGramsCore,
   undoProteinGramsCore,
@@ -228,19 +229,11 @@ export async function untrackFoodHabit(
     )
     .get(id, profile.id) as { id: number } | undefined;
   if (!target) return formError("Couldn't find that habit.");
-  // Null any referencing protocol's link FIRST (the row-ops side-state rule — a live
-  // protocols.frequency_target_id FK would block the delete), THEN remove the target.
-  // One IMMEDIATE transaction (#468, #748 item 5) so the two statements can't half-apply
-  // and strand a protocol pointing at a deleted target.
-  writeTx(() => {
-    db.prepare(
-      `UPDATE protocols SET frequency_target_id = NULL, owns_frequency_target = 0
-        WHERE profile_id = ? AND frequency_target_id = ?`
-    ).run(profile.id, id);
-    db.prepare(
-      `DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?`
-    ).run(id, profile.id);
-  });
+  // The shared delete core nulls any referencing protocol's link FIRST (the row-ops
+  // side-state rule — a live protocols.frequency_target_id FK would block the delete),
+  // THEN removes the target, in one IMMEDIATE transaction (#468, #748 item 5) so the two
+  // statements can't half-apply and strand a protocol pointing at a deleted target.
+  deleteFrequencyTargetRow(profile.id, id);
   revalidatePath("/nutrition");
   revalidatePath("/");
   return formOk();

@@ -103,14 +103,19 @@ export const IMPORT_FOOTPRINT_TABLES: readonly ImportFootprintTable[] = [
 //     of now-orphaned keys after the rows move/leave (#203/#327).
 //   - "global": a shared cross-profile registry (providers, canonical names) that
 //     no single document owns, so a delete/reassign touches nothing.
+//   - "unlink": a row OUTSIDE the footprint that REFERENCES a footprint row keeps its
+//     own content and loses only the reference — the link degrades to NULL while the
+//     row (and any snapshot it took at write time) survives. Used where the referring
+//     row is narrative someone else owns, so neither deleting it nor moving it with the
+//     document would be honest (#1808).
 export interface ImportSideEffect {
   key: string;
   what: string;
   where: string;
   // In the persist transaction, or a post-commit best-effort followup?
   inTransaction: boolean;
-  onDelete: "one-way" | "recompute" | "sweep" | "global";
-  onReassign: "one-way" | "recompute" | "sweep" | "global";
+  onDelete: "one-way" | "recompute" | "sweep" | "global" | "unlink";
+  onReassign: "one-way" | "recompute" | "sweep" | "global" | "unlink";
   // Does this effect contribute a row to the extracted_count footprint tally?
   // Always false — side EFFECTS are not footprint ROWS (that's the distinction).
   countsTowardFootprint: false;
@@ -173,6 +178,16 @@ export const IMPORT_SIDE_EFFECTS: readonly ImportSideEffect[] = [
     inTransaction: true,
     onDelete: "sweep",
     onReassign: "sweep",
+    countsTowardFootprint: false,
+  },
+  {
+    key: "episode-stopped-med-link",
+    what: "an illness episode's stopped-med reversal record (episode_stopped_meds, #1140 Part B) may point at an intake_items med THIS document extracted, and at the medication_courses row that med owns. The record is EPISODE-owned narrative, not import data, so it is neither deleted with the document nor moved with it: its `med_name` snapshot (#1808, migration 137) keeps saying what the episode stopped while `item_id`/`course_id` degrade to NULL. A nulled record simply stops appearing in the reopen-restore checklist, which already skips a link that died between end and reopen",
+    where:
+      "the ON DELETE SET NULL on episode_stopped_meds.item_id/course_id (migration 137) covers delete + reprocess with no statement at the delete site; moveImportedDocumentRows re-enforces the same-profile invariant on reassign",
+    inTransaction: true,
+    onDelete: "unlink",
+    onReassign: "unlink",
     countsTowardFootprint: false,
   },
 ];
