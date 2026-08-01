@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { settledClick, expectInView } from "./helpers";
 import { loginAs } from "./nav";
@@ -23,7 +23,11 @@ import { workerDbPath } from "./worker-env";
 //   * the SAFETY RULE, made structural — after any switch the FIRST stacked
 //     avatar is the acting profile, and it is the one carrying `data-acting`.
 //     Writes land on that profile, so its position is not decoration;
-//   * switching from the bar on BOTH viewports, with the page's data following;
+//   * switching from the bar on BOTH viewports, with the page's data following —
+//     on desktop that switch is dispatched from the OVERLAID panel, which is the
+//     kept-mounted guarantee (#1823) re-pinned under `absolute`;
+//   * the desktop expando OVERLAYING the sidebar rather than reflowing it
+//     (#1823): opening it must not move a single thing below the bar;
 //   * the #33 read-only hint on the bar AND on the row it describes;
 //   * the multiProfile gate — a single-profile instance keeps the wordmark and
 //     grows no identity chrome at all;
@@ -52,6 +56,17 @@ function profileId(name: string): number {
   } finally {
     db.close();
   }
+}
+
+// The laid-out rect, or a failure that names the element — `boundingBox()` is
+// nullable (a display:none element has no box) and the #1823 geometry pins below
+// are arithmetic, not optional.
+async function boxOf(
+  locator: Locator
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error(`no layout box for ${locator}`);
+  return box;
 }
 
 // Open the switcher past the pre-hydration disable gate (#830): the bar renders
@@ -133,7 +148,11 @@ test.describe("Unified profile switcher (issue #1801)", () => {
 
       // Switch to the read-only profile through the panel's switch-to control —
       // the existing switchProfileAction/setActiveProfile boundary, no new write
-      // path.
+      // path. This is also the kept-mounted guarantee under `absolute` (#1823):
+      // the row's <form> lives in an out-of-flow panel that `onSelect` hides via
+      // a class, so React still has it mounted when it dispatches the Server
+      // Action. If the overlay rewrite had reached for an unmount, the switch
+      // below would silently never land.
       await settledClick(page, panel.getByTestId(`switch-to-${roId}`));
 
       // The bar reorders: the newly acting profile is FIRST and ringed.
@@ -241,6 +260,73 @@ test.describe("Unified profile switcher (issue #1801)", () => {
     } finally {
       await page.context().close();
     }
+  });
+
+  test("the desktop expando overlays the sidebar instead of shifting it", async ({
+    page,
+  }) => {
+    // Issue #1823. Read-only: opening and Escape-closing the switcher writes
+    // nothing, so this is safe on the shared admin session (which is
+    // multi-profile, hence has the bar).
+    await page.goto("/");
+    const sidebar = page.locator("aside", {
+      has: page.getByTestId("profile-identity-bar"),
+    });
+    // Two witnesses below the bar: the control immediately beneath it (which the
+    // panel now paints over) and a nav entry much further down (which the old
+    // in-flow panel shoved by up to 50vh).
+    const search = sidebar.getByRole("button", { name: /Search/ });
+    const dashboard = sidebar.locator("nav").getByRole("link", {
+      name: "Dashboard",
+    });
+    await expect(dashboard).toBeVisible();
+    const searchBefore = await boxOf(search);
+    const dashboardBefore = await boxOf(dashboard);
+
+    await openSwitcher(page);
+    const panel = page.getByTestId("profile-switcher-panel");
+    const panelBox = await boxOf(panel);
+
+    // THE NO-REFLOW PIN: an out-of-flow panel takes no space, so nothing below
+    // the bar moves. `y` is the axis reflow acts on; a vertical scrollbar
+    // appearing or leaving could legitimately move `x`.
+    expect((await boxOf(search)).y).toBe(searchBefore.y);
+    expect((await boxOf(dashboard)).y).toBe(dashboardBefore.y);
+
+    // …and it is genuinely OVER them, not merely beside them: the panel's box
+    // covers the band the search control still occupies.
+    const overlapTop = Math.max(panelBox.y, searchBefore.y);
+    const overlapBottom = Math.min(
+      panelBox.y + panelBox.height,
+      searchBefore.y + searchBefore.height
+    );
+    expect(overlapBottom).toBeGreaterThan(overlapTop);
+
+    // Stacking, proven by hit-testing rather than by reading a class: the point
+    // inside that overlap belongs to the panel, so the z-index really does beat
+    // the sidebar's own content.
+    const hit = await page.evaluate(
+      ([x, y]) =>
+        Boolean(
+          document
+            .elementFromPoint(x, y)
+            ?.closest('[data-testid="profile-switcher-panel"]')
+        ),
+      [
+        searchBefore.x + searchBefore.width / 2,
+        (overlapTop + overlapBottom) / 2,
+      ]
+    );
+    expect(hit).toBe(true);
+
+    // Escape light-dismisses, and the sidebar was never disturbed to begin with.
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId("profile-identity-bar")).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    expect((await boxOf(dashboard)).y).toBe(dashboardBefore.y);
   });
 
   test("the retired sidebar profile menu and view strip are gone", async ({
