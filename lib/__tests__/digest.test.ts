@@ -311,7 +311,8 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
   it("states weekly training PROGRESS instead of counting unmet targets", () => {
     const model = buildDigest({
       ...empty,
-      trainingPaceLine: "2 of 4 training targets on pace — behind on Back, Chest",
+      trainingPaceLine:
+        "2 of 4 training targets on pace — behind on Back, Chest",
       todayGroups: [
         band("week", "This week", [
           item("training", { key: "training:1", title: "Back" }),

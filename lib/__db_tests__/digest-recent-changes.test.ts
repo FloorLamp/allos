@@ -209,7 +209,9 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
     }
     seedMood(pid, yd, 3);
     seedFlaggedVital(pid, yd, "Oxygen Saturation", "88", "low");
-    seedSyncArrival(pid, "oura", [{ table: "metric_samples", metric: "sleep_min" }]);
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+    ]);
     seedSyncArrival(pid, "strava", [{ table: "activities" }]);
 
     const out = collectRecentChanges(pid, {

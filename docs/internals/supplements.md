@@ -383,8 +383,9 @@ is always available.
   the page total. Demotion is therefore a visible MOVE, not a disappearance.
 - _User-initiated access — always reachable_: the Supplements page and quick-log in
   app; on Telegram the **guaranteed** path is the daily digest's slot-labelled
-  "Log other (N for <slot>)" tail (its first inline button), which expands IN PLACE into one-tap
-  log buttons for the may items whose hint covers **now** — evaluated at TAP time,
+  "Log other (N for <slot>)" tail (its first inline button), which expands IN PLACE
+  into one-tap log buttons for the may items whose hint covers **now** — evaluated
+  at TAP time,
   never at message-build time, because a morning digest may be tapped at bedtime.
   The tick relabels the collapsed tail at each slot boundary and strips it at day
   rollover; both are keyboard edits, which do not notify. `buildDigest` may return

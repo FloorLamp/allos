@@ -1738,8 +1738,7 @@ where to offer it, it still shows on Supplements & Meds, and on Upcoming it move
 into an "available when you want them" section rather than disappearing. If you
 only use the app through Telegram, the daily digest carries a
 **"Log other (3 for midday)"** button that opens into whatever is available right
-now — so a May item is always
-one tap away even though it never interrupts you.
+now — so a May item is always one tap away even though it never interrupts you.
 
 **Medications start as Must**, and moving one lower asks first, spelling out
 exactly what you would be giving up ("no reminders, no escalation, no missed-dose

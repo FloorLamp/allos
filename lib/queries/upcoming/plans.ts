@@ -65,20 +65,18 @@ export function trainingPaceLine(profileId: number): string | null {
 // each unmet target sits in This week with a progress due-text.
 export function trainingItems(profileId: number): UpcomingItem[] {
   if (isTrainingRestricted(profileId)) return [];
-  return (
-    weeklyTrainingTargets(profileId)
-      .filter((p) => !p.met)
-      .map((p) => ({
-        key: trainingSignalKey(p.target.id),
-        domain: "training" as const,
-        title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
-        detail: "Weekly training target",
-        href: "/training",
-        dueDate: null,
-        band: "week" as const,
-        dueText: `${p.count}/${p.per_week} this week`,
-      }))
-  );
+  return weeklyTrainingTargets(profileId)
+    .filter((p) => !p.met)
+    .map((p) => ({
+      key: trainingSignalKey(p.target.id),
+      domain: "training" as const,
+      title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
+      detail: "Weekly training target",
+      href: "/training",
+      dueDate: null,
+      band: "week" as const,
+      dueText: `${p.count}/${p.per_week} this week`,
+    }));
 }
 
 // The outdoor-session PLANNING item (#1724 part 5) — Upcoming is the planning surface,

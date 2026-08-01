@@ -431,9 +431,7 @@ describe("#1505 part 3 — the digest reports state changes", () => {
       logTaken(item.doseId, item.itemId, shiftDateStr(day, -back));
     }
     expect(
-      intakeDeltaLine(
-        gatherDigestInput(p, "Deltas Quiet (test)").intakeDeltas!
-      )
+      intakeDeltaLine(gatherDigestInput(p, "Deltas Quiet (test)").intakeDeltas!)
     ).toBeNull();
   });
 });

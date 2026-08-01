@@ -651,8 +651,8 @@ had drifted into reporting the storage layer at the reader.
 - The **band summaries carry the section's bullet emoji** (`🗓️`) — they were the
   only lines in the whole message without one.
 - A band whose `training` items are all **weekly targets** states weekly PROGRESS
-  instead of counting unmet ones: `🗓️ This week: 2 of 4 training targets on pace —
-  behind on Back, Chest`, formatted by the shared `weeklyTargetPaceLine` over the
+  instead of counting unmet ones — "This week: 2 of 4 training targets on pace —
+  behind on Back, Chest" — formatted by the shared `weeklyTargetPaceLine` over the
   SAME paced set (`getFrequencyTargetProgress`) the Training chips render. The
   guard is the `training:` key namespace, not the domain — an endurance event and
   an outdoor plan also live in `training`, and the phrase is not about them.

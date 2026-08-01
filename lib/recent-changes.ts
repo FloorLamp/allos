@@ -278,9 +278,7 @@ export const MAX_ARRIVAL_KINDS = 4;
 // provider whose writes name no user record has no arrival to report (its accounting
 // lives in Data → Review), and manufacturing one would be the vocabulary disease
 // #1772 named.
-export function arrivalKindsPhrase(
-  kinds: readonly string[]
-): string | null {
+export function arrivalKindsPhrase(kinds: readonly string[]): string | null {
   const distinct = [...new Set(kinds.map((k) => k.trim()).filter(Boolean))];
   if (distinct.length === 0) return null;
   const named = distinct.slice(0, MAX_ARRIVAL_KINDS);

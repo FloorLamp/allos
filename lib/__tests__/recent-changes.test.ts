@@ -335,7 +335,9 @@ describe("arrivalKindsPhrase", () => {
       { length: MAX_ARRIVAL_KINDS + 2 },
       (_, i) => `kind${i}`
     );
-    expect(arrivalKindsPhrase(many)).toBe("kind0, kind1, kind2, kind3, +2 more");
+    expect(arrivalKindsPhrase(many)).toBe(
+      "kind0, kind1, kind2, kind3, +2 more"
+    );
   });
 
   it("says NOTHING when nothing nameable arrived — no count stands in for news", () => {

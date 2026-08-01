@@ -247,7 +247,8 @@ export function weeklyTargetPaceLine(
   if (behind.length === 0) return head;
   const named = behind.slice(0, WEEKLY_PACE_MAX_NAMED).map((e) => e.label);
   const rest = behind.length - named.length;
-  const tail = rest > 0 ? `${named.join(", ")}, +${rest} more` : named.join(", ");
+  const tail =
+    rest > 0 ? `${named.join(", ")}, +${rest} more` : named.join(", ");
   return `${head} — behind on ${tail}`;
 }
 

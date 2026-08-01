@@ -432,8 +432,7 @@ export interface SriPresentation {
 export function sriPresentation(sri: number): SriPresentation {
   const rounded = Math.round(sri);
   const value = rounded < 0 ? `−${Math.abs(rounded)}` : String(rounded);
-  const tone: SriTone =
-    rounded >= 80 ? "good" : rounded >= 60 ? "warn" : "bad";
+  const tone: SriTone = rounded >= 80 ? "good" : rounded >= 60 ? "warn" : "bad";
   return {
     text: `SRI ${value}`,
     tone,

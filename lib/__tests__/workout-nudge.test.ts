@@ -278,7 +278,10 @@ describe("digestWorkoutLine (#1712)", () => {
         )
       ).toBe("🏋️ Back — Lat Pulldown");
       expect(
-        digestWorkoutLine(rec({ rest: { title: "Rest day", detail: "…" } }), bare)
+        digestWorkoutLine(
+          rec({ rest: { title: "Rest day", detail: "…" } }),
+          bare
+        )
       ).toBe("🛌 Rest day");
       expect(
         digestWorkoutLine(
