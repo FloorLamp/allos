@@ -21,6 +21,16 @@
 // counts) calls the same `buildFoodNudge` the send called, then edits only if the render
 // actually differs — so an unchanged tick still performs zero Telegram calls.
 //
+// ── OVERLAPPING TICKS ────────────────────────────────────────────────────────
+//
+// scripts/notify.ts already warns that an instance can end up with two schedulers (a
+// compose poll sidecar plus a host crontab); two app replicas on one volume and a
+// manual `notify` run during the hourly one produce the same overlap. This sweep does
+// not assume the operator got that right. Each edit is CLAIMED with a compare-and-swap
+// on the pointer's stored keyboard before any network call, so a second concurrent pass
+// refuses the duplicate work instead of spending a second Bot API call on an identical
+// result (#1788). See ./message-pointers.ts for the claim itself.
+//
 // ── EDITS, NEVER SENDS ───────────────────────────────────────────────────────
 //
 // Everything below goes through `closeMessage` / `updateMessageKeyboard` /
@@ -59,6 +69,7 @@ import { getIntakeItemObligation } from "../queries/intake/adherence";
 import {
   decideReconcile,
   keyboardTokens,
+  type ReconcileDecision,
   RECONCILE_CLOSING,
   stripTokens,
   tokenPrefix,
@@ -69,10 +80,11 @@ import {
   type ReconcileFamily,
 } from "./reconcile-registry";
 import {
+  claimMessagePointerClose,
+  claimMessagePointerKeyboard,
   dropMessagePointer,
   liveMessagePointers,
   pruneMessagePointers,
-  updateMessagePointerKeyboard,
   type MessagePointer,
 } from "./message-pointers";
 import { messageKeyboard } from "./telegram-render";
@@ -81,6 +93,7 @@ import {
   rebuildMessage,
   updateMessageKeyboard,
 } from "./telegram";
+import type { InlineKeyboard } from "./telegram-render";
 import type { NotificationMessage } from "./types";
 
 const log = createLogger("notify");
@@ -430,6 +443,10 @@ export interface ReconcileResult {
   closed: number;
   dropped: number;
   pruned: number;
+  // Edits another overlapping tick had already claimed (#1788). Non-zero means two
+  // reconcile passes are running against one profile — benign, and the whole point is
+  // that the SECOND one costs no Telegram calls.
+  skipped: number;
 }
 
 // Reconcile every live message for one profile. Best-effort throughout: a failed edit
@@ -444,6 +461,7 @@ export async function reconcileProfileMessages(
     closed: 0,
     dropped: 0,
     pruned: 0,
+    skipped: 0,
   };
   result.pruned = pruneMessagePointers(profileId);
   const td = today(profileId);
@@ -468,64 +486,56 @@ export async function reconcileProfileMessages(
       rolledOver: pointer.date < td,
     });
 
+    // WHAT this pass intends to do, decided BEFORE anything touches the network — so
+    // the claim below can be made against the same plan the edit will perform.
+    const plan = planEdit(profileId, pointer, tokens, reconciler, decision);
+    if (!plan) continue;
+
+    // CLAIM FIRST, EDIT SECOND (#1788). Two overlapping ticks read the same pre-edit
+    // keyboard and would otherwise both call the Bot API for an identical result: the
+    // end state converges, but the rate-limit budget this sweep's zero-call steady
+    // state exists to protect is spent twice. The compare-and-swap on the pointer's
+    // stored blob lets exactly one pass through; the loser skips without a call.
+    const claimed =
+      plan.kind === "close"
+        ? claimMessagePointerClose(profileId, pointer.id, pointer.version)
+        : claimMessagePointerKeyboard(
+            profileId,
+            pointer.id,
+            pointer.version,
+            plan.keyboard
+          );
+    if (!claimed) {
+      result.skipped++;
+      continue;
+    }
+
     try {
-      if (decision.action === "none") {
-        // The additive class still re-renders: its buttons never die, but their
-        // labels carry counts that do. The edit is gated on the render actually
-        // differing, so a quiet tick stays at zero calls.
-        if (await maybeRerender(profileId, pointer, tokens, reconciler))
-          result.edited++;
-        continue;
-      }
-      if (decision.action === "close") {
-        await closeMessage(
-          pointer.chatId,
-          pointer.messageId,
-          RECONCILE_CLOSING[decision.reason]
-        );
-        dropMessagePointer(profileId, pointer.id);
+      if (plan.kind === "close") {
+        await closeMessage(pointer.chatId, pointer.messageId, plan.text);
+        // The claim already removed the row — closing IS forgetting the pointer.
         result.closed++;
-        continue;
-      }
-      if (decision.action === "strip-all") {
-        await updateMessageKeyboard(
-          pointer.chatId,
-          pointer.messageId,
-          decision.keyboard
-        );
-        updateMessagePointerKeyboard(profileId, pointer.id, decision.keyboard);
-        result.edited++;
-        continue;
-      }
-      // Partial resolution. A family with a rebuilder re-renders the whole message
-      // from current state (the same computation the tap rebuild runs); everything
-      // else has exactly the dead buttons removed.
-      const rebuilt = reconciler?.rebuild?.(profileId, tokens, pointer) ?? null;
-      if (rebuilt) {
+      } else if (plan.kind === "rebuild") {
         await rebuildMessage(
           profileId,
           pointer.chatId,
           pointer.messageId,
-          rebuilt
+          plan.message
         );
-        updateMessagePointerKeyboard(
-          profileId,
-          pointer.id,
-          messageKeyboard(rebuilt)
-        );
+        result.edited++;
       } else {
         await updateMessageKeyboard(
           pointer.chatId,
           pointer.messageId,
-          decision.keyboard
+          plan.keyboard
         );
-        updateMessagePointerKeyboard(profileId, pointer.id, decision.keyboard);
+        result.edited++;
       }
-      result.edited++;
     } catch (e) {
       // A dead pointer: Telegram refuses edits on a deleted message, a chat the bot
       // was removed from, or a message past its edit horizon. Nothing is recoverable,
-      // so forget it rather than retry forever.
+      // so forget it rather than retry forever. (A no-op for a close, whose claim
+      // already deleted the row.)
       log.info("message reconcile failed (pointer dropped)", {
         profile: profileId,
         chat: pointer.chatId,
@@ -538,24 +548,54 @@ export async function reconcileProfileMessages(
   return result;
 }
 
-// The additive-class re-render. Returns whether an edit was actually made — the render
-// is compared against the DELIVERED keyboard, so an unchanged nudge performs no call.
-async function maybeRerender(
+// WHAT an edit will be, resolved with no network and no writes. Null means this
+// pointer needs nothing this pass.
+//
+// It exists as its own step because of #1788: the claim has to know the exact keyboard
+// it is swapping IN before the edit is issued, so deciding and performing can no longer
+// be the same statement.
+type EditPlan =
+  | { kind: "close"; text: string }
+  | { kind: "keyboard"; keyboard: InlineKeyboard }
+  | { kind: "rebuild"; message: NotificationMessage; keyboard: InlineKeyboard };
+
+function planEdit(
   profileId: number,
   pointer: MessagePointer,
   tokens: readonly string[],
-  reconciler: FamilyReconciler | null
-): Promise<boolean> {
-  if (!reconciler?.rebuild) return false;
-  // Only the families whose buttons never die re-render from the "none" branch; a
-  // family with real dead tokens has already been handled by the decision above.
-  const rebuilt = reconciler.rebuild(profileId, tokens, pointer);
-  if (!rebuilt) return false;
-  const next = messageKeyboard(rebuilt);
-  if (JSON.stringify(next) === JSON.stringify(pointer.keyboard)) return false;
-  await rebuildMessage(profileId, pointer.chatId, pointer.messageId, rebuilt);
-  updateMessagePointerKeyboard(profileId, pointer.id, next);
-  return true;
+  reconciler: FamilyReconciler | null,
+  decision: ReconcileDecision
+): EditPlan | null {
+  if (decision.action === "close") {
+    return { kind: "close", text: RECONCILE_CLOSING[decision.reason] };
+  }
+  if (decision.action === "strip-all") {
+    return { kind: "keyboard", keyboard: decision.keyboard };
+  }
+  if (decision.action === "none") {
+    // The additive class still re-renders: its buttons never die, but their labels
+    // carry counts that do. Gated on the render actually DIFFERING from what was
+    // delivered, so a quiet tick stays at zero calls.
+    if (!reconciler?.rebuild) return null;
+    const rebuilt = reconciler.rebuild(profileId, tokens, pointer);
+    if (!rebuilt) return null;
+    const keyboard = messageKeyboard(rebuilt);
+    if (JSON.stringify(keyboard) === JSON.stringify(pointer.keyboard))
+      return null;
+    return { kind: "rebuild", message: rebuilt, keyboard };
+  }
+  // Partial resolution. A family with a rebuilder re-renders the whole message from
+  // current state (the same computation the tap rebuild runs); everything else has
+  // exactly the dead buttons removed.
+  const rebuilt = reconciler?.rebuild?.(profileId, tokens, pointer) ?? null;
+  if (rebuilt) {
+    return {
+      kind: "rebuild",
+      message: rebuilt,
+      keyboard: messageKeyboard(rebuilt),
+    };
+  }
+  return { kind: "keyboard", keyboard: decision.keyboard };
 }
 
 // Re-exported for the DB tier's assertions and the tick's logging.
