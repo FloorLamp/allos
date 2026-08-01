@@ -109,7 +109,9 @@ export function curatedSpecialtyOptions(): string[] {
 // leads its own picker. No usage ⇒ `curatedSpecialtyOptions()` byte for byte.
 export function rankedSpecialtyOptions(used: readonly string[]): string[] {
   const counts = new Map<string, { name: string; c: number }>();
-  const canonical = new Map(NUCC_LABEL_OPTIONS.map((s) => [s.toLowerCase(), s]));
+  const canonical = new Map(
+    NUCC_LABEL_OPTIONS.map((s) => [s.toLowerCase(), s])
+  );
   for (const raw of used) {
     const value = raw.trim();
     if (!value) continue;

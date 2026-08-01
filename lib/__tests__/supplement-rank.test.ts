@@ -13,9 +13,7 @@ const head = (options: string[]) => options.slice(0, PICKER_ROWS);
 
 describe("the curated supplement head", () => {
   it("names only real catalog entries", () => {
-    const known = new Set(
-      supplementCatalogNames().map((n) => n.toLowerCase())
-    );
+    const known = new Set(supplementCatalogNames().map((n) => n.toLowerCase()));
     for (const name of COMMON_SUPPLEMENTS) {
       expect(known.has(name.toLowerCase())).toBe(true);
     }
@@ -37,14 +35,16 @@ describe("the curated supplement head", () => {
   it("breaks the all-vitamins first screen the category grouping produced", () => {
     // Category order puts the vitamins block first, so all eight visible rows were
     // vitamins — the picker looked like a vitamin picker.
-    expect(head(supplementCatalogNames()).every((n) => /^(Vitamin|B-)/.test(n))).toBe(
-      true
-    );
+    expect(
+      head(supplementCatalogNames()).every((n) => /^(Vitamin|B-)/.test(n))
+    ).toBe(true);
     const ranked = head(curatedSupplementOptions());
     expect(ranked[0]).toBe("Vitamin D3");
     expect(ranked).toContain("Magnesium Glycinate");
     expect(ranked).toContain("Omega-3");
-    expect(ranked.filter((n) => n.startsWith("Vitamin")).length).toBeLessThan(4);
+    expect(ranked.filter((n) => n.startsWith("Vitamin")).length).toBeLessThan(
+      4
+    );
   });
 
   it("keeps the non-head catalog in its category order behind the head", () => {
@@ -74,10 +74,7 @@ describe("rankedSupplementOptions", () => {
       { name: "Ashwagandha", current: false },
       { name: "Creatine Monohydrate", current: true },
     ]);
-    expect(ranked.slice(0, 2)).toEqual([
-      "Creatine Monohydrate",
-      "Ashwagandha",
-    ]);
+    expect(ranked.slice(0, 2)).toEqual(["Creatine Monohydrate", "Ashwagandha"]);
   });
 
   it("still offers a retired supplement ahead of the untouched catalog", () => {

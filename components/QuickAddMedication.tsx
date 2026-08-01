@@ -7,7 +7,10 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import PediatricDoseBandPicker from "@/components/medications/PediatricDoseBandPicker";
 import PediatricWeightUpdate from "@/components/medications/PediatricWeightUpdate";
-import { resolveMedicationPick, getMedicationInfo } from "@/lib/medication-info";
+import {
+  resolveMedicationPick,
+  getMedicationInfo,
+} from "@/lib/medication-info";
 import { prnDefaultsFor } from "@/lib/prn-defaults";
 import type { PediatricBand } from "@/lib/datasets/prn-defaults";
 import {

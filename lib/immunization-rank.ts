@@ -65,7 +65,8 @@ export function rankedVaccineOptions(
     const bucket = BUCKETS[fact.status];
     if (bucket === undefined) continue;
     const prev = bucketByCode.get(fact.code);
-    if (prev === undefined || bucket < prev) bucketByCode.set(fact.code, bucket);
+    if (prev === undefined || bucket < prev)
+      bucketByCode.set(fact.code, bucket);
   }
 
   const rows: { name: string; bucket: number; order: number }[] = [];

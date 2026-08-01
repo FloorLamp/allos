@@ -62,7 +62,11 @@ describe("rankProvidersByUse", () => {
 
   it("keeps alphabetical order among the providers with no links", () => {
     const ranked = names(
-      rankProvidersByUse(REGISTRY, [{ providerId: 4, date: "2026-07-01" }], TODAY)
+      rankProvidersByUse(
+        REGISTRY,
+        [{ providerId: 4, date: "2026-07-01" }],
+        TODAY
+      )
     );
     expect(ranked).toEqual([
       "Delgado Imaging",
@@ -74,7 +78,11 @@ describe("rankProvidersByUse", () => {
 
   it("ignores a link to a provider that is not offered (archived, other registry)", () => {
     const ranked = names(
-      rankProvidersByUse(REGISTRY, [{ providerId: 99, date: "2026-07-01" }], TODAY)
+      rankProvidersByUse(
+        REGISTRY,
+        [{ providerId: 99, date: "2026-07-01" }],
+        TODAY
+      )
     );
     expect(ranked).toEqual(names(REGISTRY));
   });

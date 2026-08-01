@@ -1,7 +1,9 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 import {
   medicationRow,
   medicationRowLink,
@@ -17,6 +19,10 @@ import {
 // edits produces a valid medication row. Naproxen (curated `typical` + OTC PRN
 // defaults, not in the seed) drives the flow without colliding with the seeded
 // Ibuprofen.
+
+// #1677 fixture: a medication + brand this spec owns and deletes.
+const RANK_MED = "Cetirizine";
+const RANK_BRAND = "Zyrtec";
 
 async function openFullAdd(page: Page) {
   await page.getByTestId("medication-add-toggle").click();
@@ -244,5 +250,91 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await expect(row).toContainText("240 mg / 7.5 mL");
   } finally {
     await page.context().close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// #1677 — the picker's ORDER is the whole affordance. The Combobox shows 8 rows and
+// an empty query keeps source order, so the option array's first eight entries ARE
+// the medication picker. Alphabetical over 242 curated generics showed a household
+// Adalimumab and Alendronate; ranked, it shows what this profile actually takes.
+// ---------------------------------------------------------------------------
+
+// The visible option labels of the combobox that is currently open, in DOM order.
+async function openOptionLabels(scope: Locator, field: string) {
+  await scope.getByLabel(field).click();
+  const listbox = scope.page().getByRole("listbox");
+  await expect(listbox).toBeVisible();
+  return (await listbox.getByRole("button").allInnerTexts()).map((t) =>
+    t.trim()
+  );
+}
+
+test("the medication picker opens on this profile's own medications (#1677)", async ({
+  page,
+}) => {
+  await page.goto("/medications");
+  const addCard = await openFullAdd(page);
+
+  const full = await openOptionLabels(addCard, "Name");
+
+  // Ibuprofen is on the seeded regimen, so usage floats it into the visible eight —
+  // the curated head can only put Acetaminophen ahead of it, whatever else this
+  // worker's database has accumulated.
+  expect(full.some((label) => label.startsWith("Ibuprofen"))).toBe(true);
+  // Adalimumab led the alphabetical list purely by spelling. A household picker that
+  // opens on a biologic is the bug.
+  expect(full.some((label) => label.startsWith("Adalimumab"))).toBe(false);
+
+  // ONE options source, both call sites (#221): the quick-add's head must be the full
+  // form's head, byte for byte.
+  await page.keyboard.press("Escape");
+  await page.getByTestId("medication-add-quick").click();
+  const quickAdd = page
+    .getByTestId("medication-add-panel")
+    .getByTestId("quick-add-medication");
+  await expect(quickAdd).toBeVisible();
+  expect(await openOptionLabels(quickAdd, "Medication")).toEqual(full);
+});
+
+test("recording a medication promotes it and its brand into the pickers (#1677)", async ({
+  page,
+}) => {
+  // Spec-owned fixture: Cetirizine/Zyrtec is nowhere near the head of either flat
+  // list (Zyrtec is the LAST brand alphabetically), so seeing it proves usage ranking
+  // rather than a coincidence of spelling.
+  const db = new Database(workerDbPath());
+  try {
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, name, brand, kind, active, obligation,
+                                 condition, source)
+       VALUES (1, ?, ?, 'medication', 1, 'should', 'daily', 'manual')`
+    ).run(RANK_MED, RANK_BRAND);
+  } finally {
+    db.close();
+  }
+
+  try {
+    await page.goto("/medications");
+    const addCard = await openFullAdd(page);
+
+    const names = await openOptionLabels(addCard, "Name");
+    expect(names.some((label) => label.startsWith(RANK_MED))).toBe(true);
+
+    // The BRAND field before any name is picked: the profile's own brands lead, so
+    // the person who reaches for Brand first is not stranded in the A's.
+    await page.keyboard.press("Escape");
+    const brands = await openOptionLabels(addCard, "Brand");
+    expect(brands[0]).toBe("Generic");
+    expect(brands).toContain(RANK_BRAND);
+  } finally {
+    const cleanup = new Database(workerDbPath());
+    try {
+      cleanup
+        .prepare("DELETE FROM intake_items WHERE profile_id = 1 AND name = ?")
+        .run(RANK_MED);
+    } finally {
+      cleanup.close();
+    }
   }
 });

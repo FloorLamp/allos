@@ -137,7 +137,9 @@ describe("getRankedMedicationOptions", () => {
     const mine = makeProfile();
     const sibling = makeProfile();
     addItem(sibling, { name: "Metformin", kind: "medication" });
-    expect(getRankedMedicationOptions(mine)).toEqual(curatedMedicationOptions());
+    expect(getRankedMedicationOptions(mine)).toEqual(
+      curatedMedicationOptions()
+    );
     expect(getRankedMedicationOptions(sibling)[0]).toMatch(/^Metformin/);
   });
 });
@@ -162,9 +164,9 @@ describe("getRankedMedicationBrandOptions", () => {
       kind: "medication",
       brand: "Motrin",
     });
-    expect(head(getRankedMedicationBrandOptions(profileId)).slice(0, 3)).toEqual(
-      [GENERIC_BRAND_OPTION, "Motrin", "Tylenol"]
-    );
+    expect(
+      head(getRankedMedicationBrandOptions(profileId)).slice(0, 3)
+    ).toEqual([GENERIC_BRAND_OPTION, "Motrin", "Tylenol"]);
   });
 });
 
@@ -216,9 +218,7 @@ describe("getRankedPickerProviders", () => {
     const profileId = makeProfile();
     const before = getRankedPickerProviders(profileId).map((p) => p.name);
     expect(before).toEqual(
-      [...before].sort((a, b) =>
-        a.toLowerCase().localeCompare(b.toLowerCase())
-      )
+      [...before].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
     );
   });
 

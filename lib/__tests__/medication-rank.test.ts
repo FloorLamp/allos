@@ -59,7 +59,9 @@ describe("the curated medication head", () => {
 
     expect(head(curatedMedicationOptions())[0]).toMatch(/^Acetaminophen/);
     expect(head(curatedMedicationOptions()).join("|")).toMatch(/Ibuprofen/);
-    expect(head(curatedMedicationOptions()).join("|")).not.toMatch(/Adalimumab/);
+    expect(head(curatedMedicationOptions()).join("|")).not.toMatch(
+      /Adalimumab/
+    );
   });
 
   it("keeps the non-head catalog alphabetical behind it", () => {
@@ -135,9 +137,9 @@ describe("rankedMedicationBrandOptions", () => {
   it("passes the post-pick narrowing through unchanged", () => {
     // Once a medication is picked its own brands already lead; "Generic" keeps its
     // #851-item-3 place and nothing else is offered.
-    expect(rankedMedicationBrandOptions(["Advil"], ["Advil", "Motrin"])).toEqual(
-      [GENERIC_BRAND_OPTION, "Advil", "Motrin"]
-    );
+    expect(
+      rankedMedicationBrandOptions(["Advil"], ["Advil", "Motrin"])
+    ).toEqual([GENERIC_BRAND_OPTION, "Advil", "Motrin"]);
   });
 
   it("leads the PRE-PICK list with the profile's own brands", () => {

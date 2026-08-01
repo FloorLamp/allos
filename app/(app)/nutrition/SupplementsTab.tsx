@@ -796,368 +796,368 @@ export default async function SupplementsTab({
 
   return (
     <SituationOptionsProvider options={situationOptionNames}>
-     <IntakeOptionsProvider options={getIntakeCatalogOptions(profile.id)}>
-      <div>
-        {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
+      <IntakeOptionsProvider options={getIntakeCatalogOptions(profile.id)}>
+        <div>
+          {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
           the profile's own data, NOT a manual toggle — rendered distinctly and NON-
           toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
           only the DERIVED contribution for today. The same lines appear on the
           check-in disclosure + digest. */}
-        {(derivedLines.poorSleep ||
-          derivedLines.period ||
-          derivedLines.weather.length > 0) && (
-          <div
-            className="-mt-2 mb-4 space-y-1"
-            data-testid="derived-situations"
-          >
-            {derivedLines.poorSleep && (
-              <div
-                className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="derived-poor-sleep"
-              >
-                <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                  Auto
-                </span>
-                <span>{derivedLines.poorSleep}</span>
-                {showPoorSleepOverride && (
-                  <form
-                    action={async () => {
-                      "use server";
-                      await dismissDerivedPoorSleep();
-                    }}
-                  >
-                    <SubmitButton
-                      data-testid="derived-poor-sleep-override"
-                      className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-500 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-ink-800"
+          {(derivedLines.poorSleep ||
+            derivedLines.period ||
+            derivedLines.weather.length > 0) && (
+            <div
+              className="-mt-2 mb-4 space-y-1"
+              data-testid="derived-situations"
+            >
+              {derivedLines.poorSleep && (
+                <div
+                  className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                  data-testid="derived-poor-sleep"
+                >
+                  <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                    Auto
+                  </span>
+                  <span>{derivedLines.poorSleep}</span>
+                  {showPoorSleepOverride && (
+                    <form
+                      action={async () => {
+                        "use server";
+                        await dismissDerivedPoorSleep();
+                      }}
                     >
-                      Not today
-                    </SubmitButton>
-                  </form>
-                )}
-              </div>
-            )}
-            {derivedLines.period && (
-              <div
-                className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="derived-period"
-              >
-                <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-                  Auto
-                </span>
-                <span>{derivedLines.period}</span>
-              </div>
-            )}
-            {derivedLines.weather.map((line) => (
-              <div
-                key={line}
-                className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="derived-weather"
-              >
-                <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-                  Auto
-                </span>
-                <span>{line}</span>
-              </div>
-            ))}
-          </div>
-        )}
+                      <SubmitButton
+                        data-testid="derived-poor-sleep-override"
+                        className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-500 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-ink-800"
+                      >
+                        Not today
+                      </SubmitButton>
+                    </form>
+                  )}
+                </div>
+              )}
+              {derivedLines.period && (
+                <div
+                  className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                  data-testid="derived-period"
+                >
+                  <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+                    Auto
+                  </span>
+                  <span>{derivedLines.period}</span>
+                </div>
+              )}
+              {derivedLines.weather.map((line) => (
+                <div
+                  key={line}
+                  className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                  data-testid="derived-weather"
+                >
+                  <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                    Auto
+                  </span>
+                  <span>{line}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
+          {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
           that toggling a situation changed the shape of the due dose list, counted
           from the SAME dueness computation the list uses (never a second count). */}
-        {situationActivationLine(countSituationalDue(supplements, ctx)) && (
-          <p
-            className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-400"
-            data-testid="situation-activation"
-          >
-            {situationActivationLine(countSituationalDue(supplements, ctx))}
-          </p>
-        )}
-
-        {/* Condition bridge (#560 part 2): suggest a clinical situation implied by an
-          active illness/injury condition, so it isn't a second manual toggle. */}
-        {bridgeSuggestions.length > 0 && (
-          <div
-            className="mb-4 flex flex-wrap items-center gap-2"
-            data-testid="situation-bridge"
-          >
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              Suggested from your conditions:
-            </span>
-            {bridgeSuggestions.map((sit) => (
-              <form
-                action={async (fd) => {
-                  "use server";
-                  await toggleSituation(fd);
-                }}
-                key={sit}
-              >
-                <input type="hidden" name="situation" value={sit} />
-                <SubmitButton
-                  data-testid={`situation-bridge-${sit}`}
-                  className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-60 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
-                >
-                  + {sit}
-                </SubmitButton>
-              </form>
-            ))}
-          </div>
-        )}
-
-        {/* Pre-surgery / Post-op bridge (#1299): a scheduled surgical visit inside its
-          lead window suggests activating Pre-surgery — the consented producer for the
-          #1296 pause. The chip carries what it will do ("Surgery scheduled … — activate
-          Pre-surgery? N items will be held"). Dismissible per-procedure. */}
-        {surgeryBridge.map((card) => {
-          const { suggestion: sug, activateSituation, heldCount } = card;
-          const dateLabel = sug.scheduledDate;
-          const isPre = sug.phase === "pre";
-          const copy = isPre
-            ? `Surgery scheduled ${dateLabel} — activate ${activateSituation}?${
-                heldCount > 0
-                  ? ` ${heldCount} item${heldCount === 1 ? "" : "s"} will be held.`
-                  : ""
-              }`
-            : `Surgery date ${dateLabel} passed — ${
-                sug.presurgeryActive
-                  ? `clear ${BUILTIN_PRESURGERY_SITUATION}${
-                      heldCount > 0
-                        ? ` (${heldCount} item${heldCount === 1 ? "" : "s"} resume)`
-                        : ""
-                    }? `
-                  : ""
-              }Activate ${activateSituation}?`;
-          return (
-            <div
-              key={card.dismissKey}
-              className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-brand-400 p-2 dark:border-brand-700"
-              data-testid={`surgery-bridge-${sug.phase}-${sug.visitId}`}
+          {situationActivationLine(countSituationalDue(supplements, ctx)) && (
+            <p
+              className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="situation-activation"
             >
-              <span className="text-xs text-slate-600 dark:text-slate-300">
-                {copy}
+              {situationActivationLine(countSituationalDue(supplements, ctx))}
+            </p>
+          )}
+
+          {/* Condition bridge (#560 part 2): suggest a clinical situation implied by an
+          active illness/injury condition, so it isn't a second manual toggle. */}
+          {bridgeSuggestions.length > 0 && (
+            <div
+              className="mb-4 flex flex-wrap items-center gap-2"
+              data-testid="situation-bridge"
+            >
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Suggested from your conditions:
               </span>
-              <form
-                action={async (fd) => {
-                  "use server";
-                  await activateSurgerySituation(fd);
-                }}
-              >
-                <input
-                  type="hidden"
-                  name="situation"
-                  value={activateSituation}
-                />
-                <SubmitButton
-                  data-testid={`surgery-bridge-activate-${sug.visitId}`}
-                  className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-60"
-                >
-                  Activate {activateSituation}
-                </SubmitButton>
-              </form>
-              {!isPre && sug.presurgeryActive && (
+              {bridgeSuggestions.map((sit) => (
                 <form
                   action={async (fd) => {
                     "use server";
-                    await clearSurgerySituation(fd);
+                    await toggleSituation(fd);
+                  }}
+                  key={sit}
+                >
+                  <input type="hidden" name="situation" value={sit} />
+                  <SubmitButton
+                    data-testid={`situation-bridge-${sit}`}
+                    className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-60 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
+                  >
+                    + {sit}
+                  </SubmitButton>
+                </form>
+              ))}
+            </div>
+          )}
+
+          {/* Pre-surgery / Post-op bridge (#1299): a scheduled surgical visit inside its
+          lead window suggests activating Pre-surgery — the consented producer for the
+          #1296 pause. The chip carries what it will do ("Surgery scheduled … — activate
+          Pre-surgery? N items will be held"). Dismissible per-procedure. */}
+          {surgeryBridge.map((card) => {
+            const { suggestion: sug, activateSituation, heldCount } = card;
+            const dateLabel = sug.scheduledDate;
+            const isPre = sug.phase === "pre";
+            const copy = isPre
+              ? `Surgery scheduled ${dateLabel} — activate ${activateSituation}?${
+                  heldCount > 0
+                    ? ` ${heldCount} item${heldCount === 1 ? "" : "s"} will be held.`
+                    : ""
+                }`
+              : `Surgery date ${dateLabel} passed — ${
+                  sug.presurgeryActive
+                    ? `clear ${BUILTIN_PRESURGERY_SITUATION}${
+                        heldCount > 0
+                          ? ` (${heldCount} item${heldCount === 1 ? "" : "s"} resume)`
+                          : ""
+                      }? `
+                    : ""
+                }Activate ${activateSituation}?`;
+            return (
+              <div
+                key={card.dismissKey}
+                className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-brand-400 p-2 dark:border-brand-700"
+                data-testid={`surgery-bridge-${sug.phase}-${sug.visitId}`}
+              >
+                <span className="text-xs text-slate-600 dark:text-slate-300">
+                  {copy}
+                </span>
+                <form
+                  action={async (fd) => {
+                    "use server";
+                    await activateSurgerySituation(fd);
                   }}
                 >
                   <input
                     type="hidden"
                     name="situation"
-                    value={BUILTIN_PRESURGERY_SITUATION}
+                    value={activateSituation}
                   />
                   <SubmitButton
-                    data-testid={`surgery-bridge-clear-${sug.visitId}`}
-                    className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-600 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300"
+                    data-testid={`surgery-bridge-activate-${sug.visitId}`}
+                    className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-60"
                   >
-                    Clear {BUILTIN_PRESURGERY_SITUATION}
+                    Activate {activateSituation}
                   </SubmitButton>
                 </form>
-              )}
-              <form
-                action={async (fd) => {
-                  "use server";
-                  await dismissSurgeryBridge(fd);
-                }}
-              >
-                <input type="hidden" name="key" value={card.dismissKey} />
-                <SubmitButton
-                  data-testid={`surgery-bridge-dismiss-${sug.visitId}`}
-                  className="badge cursor-pointer bg-transparent text-slate-500 hover:text-slate-700 disabled:opacity-60 dark:text-slate-400"
+                {!isPre && sug.presurgeryActive && (
+                  <form
+                    action={async (fd) => {
+                      "use server";
+                      await clearSurgerySituation(fd);
+                    }}
+                  >
+                    <input
+                      type="hidden"
+                      name="situation"
+                      value={BUILTIN_PRESURGERY_SITUATION}
+                    />
+                    <SubmitButton
+                      data-testid={`surgery-bridge-clear-${sug.visitId}`}
+                      className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-600 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300"
+                    >
+                      Clear {BUILTIN_PRESURGERY_SITUATION}
+                    </SubmitButton>
+                  </form>
+                )}
+                <form
+                  action={async (fd) => {
+                    "use server";
+                    await dismissSurgeryBridge(fd);
+                  }}
                 >
-                  Dismiss
-                </SubmitButton>
-              </form>
-            </div>
-          );
-        })}
+                  <input type="hidden" name="key" value={card.dismissKey} />
+                  <SubmitButton
+                    data-testid={`surgery-bridge-dismiss-${sug.visitId}`}
+                    className="badge cursor-pointer bg-transparent text-slate-500 hover:text-slate-700 disabled:opacity-60 dark:text-slate-400"
+                  >
+                    Dismiss
+                  </SubmitButton>
+                </form>
+              </div>
+            );
+          })}
 
-        {/* Stack-total UL warnings (issue #148) */}
-        {ulWarnings.length > 0 && (
-          <div className="mb-4 space-y-2" data-testid="ul-warnings">
-            {ulWarnings.map((w) => (
-              <FindingCard
-                key={w.key}
-                testid={`ul-warning-${w.key}`}
-                tone="amber"
-                title={ulWarningTitle(w)}
-                detail={ulWarningDetail(w, w.conditionCaveat)}
-                evidence={`From: ${ulWarningEvidence(w)}`}
-                dismissKey={dietaryLimitSignalKey(w.key)}
-                dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Stack RDA-adequacy (issue #578) — calm, informational; distinct from the
-          amber UL hazard blocks (slate, not a warning). Links to food-first sources. */}
-        {rdaAdequacy.length > 0 && (
-          <div className="mb-4 space-y-2" data-testid="rda-adequacy">
-            {rdaAdequacy.map((a) => {
-              const foods = foodSourcesForDriNutrient(a.key, excludedGroups);
-              return (
+          {/* Stack-total UL warnings (issue #148) */}
+          {ulWarnings.length > 0 && (
+            <div className="mb-4 space-y-2" data-testid="ul-warnings">
+              {ulWarnings.map((w) => (
                 <FindingCard
-                  key={a.key}
-                  testid={`rda-adequacy-${a.key}`}
-                  tone="slate"
-                  icon={false}
-                  title={rdaAdequacyTitle(a)}
-                  detail={rdaAdequacyDetail(a)}
-                  evidence={`From: ${rdaAdequacyEvidence(a)}`}
-                  dismissKey={rdaAdequacySignalKey(a.key)}
-                  dismissLabel={`Dismiss ${rdaAdequacyTitle(a)}`}
-                >
-                  {foods.length > 0 && (
-                    <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
-                      Food sources: {foods.join("; ")}.
-                    </p>
-                  )}
-                </FindingCard>
-              );
-            })}
-          </div>
-        )}
+                  key={w.key}
+                  testid={`ul-warning-${w.key}`}
+                  tone="amber"
+                  title={ulWarningTitle(w)}
+                  detail={ulWarningDetail(w, w.conditionCaveat)}
+                  evidence={`From: ${ulWarningEvidence(w)}`}
+                  dismissKey={dietaryLimitSignalKey(w.key)}
+                  dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
+                />
+              ))}
+            </div>
+          )}
 
-        {/* Priority demotion suggestions (#1505): high/mandatory supplements that have
+          {/* Stack RDA-adequacy (issue #578) — calm, informational; distinct from the
+          amber UL hazard blocks (slate, not a warning). Links to food-first sources. */}
+          {rdaAdequacy.length > 0 && (
+            <div className="mb-4 space-y-2" data-testid="rda-adequacy">
+              {rdaAdequacy.map((a) => {
+                const foods = foodSourcesForDriNutrient(a.key, excludedGroups);
+                return (
+                  <FindingCard
+                    key={a.key}
+                    testid={`rda-adequacy-${a.key}`}
+                    tone="slate"
+                    icon={false}
+                    title={rdaAdequacyTitle(a)}
+                    detail={rdaAdequacyDetail(a)}
+                    evidence={`From: ${rdaAdequacyEvidence(a)}`}
+                    dismissKey={rdaAdequacySignalKey(a.key)}
+                    dismissLabel={`Dismiss ${rdaAdequacyTitle(a)}`}
+                  >
+                    {foods.length > 0 && (
+                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                        Food sources: {foods.join("; ")}.
+                      </p>
+                    )}
+                  </FindingCard>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Priority demotion suggestions (#1505): high/mandatory supplements that have
           gone sustainedly untaken, offered for the `low` tag. Calm and hideable —
           accepting is the user's own obligation write, never the system's. */}
-        {demotionFindings.length > 0 && (
-          <div className="mb-4">
-            <DemotionSuggestions findings={demotionFindings} />
-          </div>
-        )}
+          {demotionFindings.length > 0 && (
+            <div className="mb-4">
+              <DemotionSuggestions findings={demotionFindings} />
+            </div>
+          )}
 
-        {/* Supplement-related interaction warnings. Cross-kind findings also render on
+          {/* Supplement-related interaction warnings. Cross-kind findings also render on
           Medications with the same dedupeKey, so dismissing either twin silences both.
           Medication-only interaction and PGx findings stay on Medications. */}
-        <IntakeWarnings
-          interactionWarnings={interactionWarnings}
-          pgxWarnings={pgxWarnings}
-          coverage={safetyCoverage}
-        />
+          <IntakeWarnings
+            interactionWarnings={interactionWarnings}
+            pgxWarnings={pgxWarnings}
+            coverage={safetyCoverage}
+          />
 
-        {supplementItems.length === 0 ? (
-          <div
-            data-testid="supplement-workspace"
-            className="grid gap-6 lg:grid-cols-[1fr_320px]"
-          >
-            <EmptyState message="No supplements yet. Add one when you're ready. Medications live on their own page." />
-            <aside
-              data-testid="supplement-sidebar"
-              className="min-w-0 self-start"
+          {supplementItems.length === 0 ? (
+            <div
+              data-testid="supplement-workspace"
+              className="grid gap-6 lg:grid-cols-[1fr_320px]"
             >
-              <div
-                data-testid="supplement-sidebar-surface"
-                className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
+              <EmptyState message="No supplements yet. Add one when you're ready. Medications live on their own page." />
+              <aside
+                data-testid="supplement-sidebar"
+                className="min-w-0 self-start"
               >
-                <section className="p-4">
-                  <h2 className="mb-3 section-label">Insights</h2>
-                  <SupplementInsightBadges
-                    patternCount={adherenceFindings.length}
-                    suggestionCount={suggestions.length}
-                    patterns={
-                      <AdherenceFindings findings={adherenceFindings} />
-                    }
-                    suggestions={suggestionPanel}
-                  />
-                </section>
-                <section className="p-4">
-                  <h2 className="mb-3 section-label">Manage</h2>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                <div
+                  data-testid="supplement-sidebar-surface"
+                  className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
+                >
+                  <section className="p-4">
+                    <h2 className="mb-3 section-label">Insights</h2>
+                    <SupplementInsightBadges
+                      patternCount={adherenceFindings.length}
+                      suggestionCount={suggestions.length}
+                      patterns={
+                        <AdherenceFindings findings={adherenceFindings} />
+                      }
+                      suggestions={suggestionPanel}
+                    />
+                  </section>
+                  <section className="p-4">
+                    <h2 className="mb-3 section-label">Manage</h2>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <AddSupplementModal
+                        initialSupply={initialSupply}
+                        allSupplements={supplements}
+                        stackItems={stackItems}
+                        pgxVariants={pgxVariants}
+                        trainingRestricted={trainingRestricted}
+                      />
+                      <SharedSuppliesLink count={cabinetCount} />
+                    </div>
+                  </section>
+                </div>
+              </aside>
+            </div>
+          ) : (
+            <div
+              data-testid="supplement-workspace"
+              className="grid gap-6 lg:grid-cols-[1fr_320px]"
+            >
+              <div className="min-w-0">
+                <SupplementSchedule
+                  today={todayStr}
+                  days={scheduleDays}
+                  secondary={secondarySchedule}
+                  context={dayContext}
+                  action={
                     <AddSupplementModal
+                      key="add-supplement"
                       initialSupply={initialSupply}
                       allSupplements={supplements}
                       stackItems={stackItems}
                       pgxVariants={pgxVariants}
                       trainingRestricted={trainingRestricted}
                     />
-                    <SharedSuppliesLink count={cabinetCount} />
-                  </div>
-                </section>
-              </div>
-            </aside>
-          </div>
-        ) : (
-          <div
-            data-testid="supplement-workspace"
-            className="grid gap-6 lg:grid-cols-[1fr_320px]"
-          >
-            <div className="min-w-0">
-              <SupplementSchedule
-                today={todayStr}
-                days={scheduleDays}
-                secondary={secondarySchedule}
-                context={dayContext}
-                action={
-                  <AddSupplementModal
-                    key="add-supplement"
-                    initialSupply={initialSupply}
-                    allSupplements={supplements}
-                    stackItems={stackItems}
-                    pgxVariants={pgxVariants}
-                    trainingRestricted={trainingRestricted}
-                  />
-                }
-              />
-            </div>
-            <aside
-              data-testid="supplement-sidebar"
-              className="min-w-0 self-start"
-            >
-              <div
-                data-testid="supplement-sidebar-surface"
-                className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
-              >
-                <SupplementWeeklyAdherence
-                  days={weeklyAdherenceDays}
-                  labels={weeklyAdherenceLabels}
+                  }
                 />
-                <section className="p-4">
-                  <h2 className="mb-3 section-label">Insights</h2>
-                  <SupplementInsightBadges
-                    patternCount={adherenceFindings.length}
-                    suggestionCount={suggestions.length}
-                    patterns={
-                      <AdherenceFindings findings={adherenceFindings} />
-                    }
-                    suggestions={suggestionPanel}
-                  />
-                </section>
-                <section className="p-4">
-                  <h2 className="mb-3 section-label">Manage</h2>
-                  <SharedSuppliesLink count={cabinetCount} />
-                </section>
               </div>
-            </aside>
-          </div>
-        )}
+              <aside
+                data-testid="supplement-sidebar"
+                className="min-w-0 self-start"
+              >
+                <div
+                  data-testid="supplement-sidebar-surface"
+                  className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
+                >
+                  <SupplementWeeklyAdherence
+                    days={weeklyAdherenceDays}
+                    labels={weeklyAdherenceLabels}
+                  />
+                  <section className="p-4">
+                    <h2 className="mb-3 section-label">Insights</h2>
+                    <SupplementInsightBadges
+                      patternCount={adherenceFindings.length}
+                      suggestionCount={suggestions.length}
+                      patterns={
+                        <AdherenceFindings findings={adherenceFindings} />
+                      }
+                      suggestions={suggestionPanel}
+                    />
+                  </section>
+                  <section className="p-4">
+                    <h2 className="mb-3 section-label">Manage</h2>
+                    <SharedSuppliesLink count={cabinetCount} />
+                  </section>
+                </div>
+              </aside>
+            </div>
+          )}
 
-        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
-          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
-        ) : null}
-      </div>
-     </IntakeOptionsProvider>
+          {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
+            <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
+          ) : null}
+        </div>
+      </IntakeOptionsProvider>
     </SituationOptionsProvider>
   );
 }

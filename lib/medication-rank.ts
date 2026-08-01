@@ -203,8 +203,7 @@ export function rankedMedicationBrandOptions(
     GENERIC_BRAND_OPTION,
     ...lead,
     ...catalog.filter(
-      (b) =>
-        b !== GENERIC_BRAND_OPTION && !taken.has(b.toLowerCase())
+      (b) => b !== GENERIC_BRAND_OPTION && !taken.has(b.toLowerCase())
     ),
   ];
 }
