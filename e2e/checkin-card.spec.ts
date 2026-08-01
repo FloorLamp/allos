@@ -205,7 +205,9 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // Rate the day, pick the calmest slot, save. Stored anxiety is 1 (the #1313
     // involution), which the server-truth marker reports in STORE semantics.
     await tapMood(page, card, 4);
-    await card.getByTestId("checkin-section-rate-toggle").click();
+    // The Rate detail is already open from the assertions above and stays open
+    // across the tap's refresh (the expander is client state).
+    await expect(card.getByTestId("mood-anxiety-5")).toBeVisible();
     await card.getByTestId("mood-anxiety-5").click();
     await card.getByTestId("mood-save").click();
     await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
