@@ -8,7 +8,7 @@
 // retest machinery (pinned by lib/__tests__/mood-guardrails.test.ts).
 
 import { db } from "../db";
-import { parseMoodFactors } from "../mood";
+import { parseMoodFactors, type MoodRatingColumn } from "../mood";
 
 export interface MoodLog {
   id: number;
@@ -95,20 +95,48 @@ export function hasPriorAnxietyLog(profileId: number): boolean {
 // A plain profile-scoped read of the same rows the trend draws — kept HERE, in the
 // mood store's read layer, so the mood_logs table stays store-private (#992): the
 // detail page and its row-CRUD talk to this module rather than naming the table.
+//
+// `column` picks WHICH of the row's three 1–5 ratings the table lists (#1408): energy
+// and the Calm scale got trends and detail pages of their own, and each lists only the
+// days that actually carry that rating — an unanswered scale is an absent reading, not
+// a zero. Values come out in STORED semantics; the anxiety→calm relabel is the
+// caller's display boundary, the same place weight's unit conversion happens.
 export function getMoodReadings(
   profileId: number,
-  limit: number
-): { id: number; date: string; valence: number; notes: string | null }[] {
-  return db
-    .prepare(
-      `SELECT id, date, valence, notes
-         FROM mood_logs WHERE profile_id = ?
-        ORDER BY date DESC, id DESC LIMIT ?`
-    )
-    .all(profileId, limit) as {
+  limit: number,
+  column: MoodRatingColumn = "valence"
+): { id: number; date: string; value: number; notes: string | null }[] {
+  return moodReadingSelect(column).all(profileId, limit) as {
     id: number;
     date: string;
-    valence: number;
+    value: number;
     notes: string | null;
   }[];
+}
+
+// Three literal statements rather than one interpolated column, for the same reason
+// `bodyMetricSelect` in lib/metric-readings.ts has several: the profile-scoping
+// scanner verifies `profile_id` in LITERAL prepare() text, so a scannable statement
+// beats a clever one in the layer that decides whose rows you see.
+function moodReadingSelect(column: MoodRatingColumn) {
+  switch (column) {
+    case "valence":
+      return db.prepare(
+        `SELECT id, date, valence AS value, notes
+           FROM mood_logs WHERE profile_id = ?
+          ORDER BY date DESC, id DESC LIMIT ?`
+      );
+    case "energy":
+      return db.prepare(
+        `SELECT id, date, energy AS value, notes
+           FROM mood_logs WHERE profile_id = ? AND energy IS NOT NULL
+          ORDER BY date DESC, id DESC LIMIT ?`
+      );
+    case "anxiety":
+      return db.prepare(
+        `SELECT id, date, anxiety AS value, notes
+           FROM mood_logs WHERE profile_id = ? AND anxiety IS NOT NULL
+          ORDER BY date DESC, id DESC LIMIT ?`
+      );
+  }
 }

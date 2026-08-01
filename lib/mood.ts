@@ -80,6 +80,76 @@ export function anxietyStoredValue(displaySlot: number): number {
   return 6 - displaySlot;
 }
 
+// ---- The three charted check-in series (issue #1408) -------------------------
+//
+// A check-in row carries THREE 1–5 self-ratings — valence, energy, and the gated
+// anxiety scale — but only valence was ever plotted, so a user who rated energy or
+// anxiety every day had nowhere to review it. These are the series ids the Body
+// census cards, the metric tiles and the `/trends/metric/<slug>` detail pages key
+// on, and they are the SAME strings as the metric slugs (`mood` aside, whose slug
+// predates this and stays).
+//
+// `calm`, not `anxiety`, deliberately: the charted value is the #1313 DISPLAY slot
+// (high = calm), the same relabelled axis the check-in card offers, so the trend and
+// the input can't disagree about which end is the good end. The STORE is untouched —
+// `anxiety` stays anxiety in the column, in the normalizer, and in the query layer;
+// the map lives here at the presentation boundary exactly as #1313 requires.
+export const MOOD_CHART_SERIES = ["valence", "energy", "calm"] as const;
+export type MoodChartSeries = (typeof MOOD_CHART_SERIES)[number];
+
+// The STORED counterpart — the check-in row's three rating columns, named as the
+// store names them. The read layer and the write core both switch on this, and the
+// pair of vocabularies is what keeps `calm` a display word and `anxiety` a storage
+// word instead of one leaking into the other.
+export const MOOD_RATING_COLUMNS = ["valence", "energy", "anxiety"] as const;
+export type MoodRatingColumn = (typeof MOOD_RATING_COLUMNS)[number];
+
+// Which column a charted series reads. The only place the two vocabularies meet.
+export function moodRatingColumn(series: MoodChartSeries): MoodRatingColumn {
+  return series === "calm" ? "anxiety" : series;
+}
+
+// One check-in's value on one series, or null when that scale went unanswered
+// (energy and the Calm scale are expand-only, so most rows carry valence alone).
+export function moodSeriesValue(
+  log: { valence: number; energy: number | null; anxiety: number | null },
+  series: MoodChartSeries
+): number | null {
+  switch (series) {
+    case "valence":
+      return log.valence;
+    case "energy":
+      return log.energy;
+    case "calm":
+      return log.anxiety == null ? null : anxietyDisplaySlot(log.anxiety);
+  }
+}
+
+// The chartable points for one series — the ONE computation behind every surface
+// that plots a check-in (#221): the census card, its tile, the detail page and a
+// starred reconstruction all read the SAME mood rows and map them here, so three
+// series can never be windowed, rounded, or relabelled three different ways.
+//
+// Unanswered days are DROPPED rather than emitted as null holes: a skipped scale is
+// an absent reading, not a zero, and the chart bridges the gap like every other
+// sparse body series.
+export function moodSeriesPoints(
+  logs: readonly {
+    date: string;
+    valence: number;
+    energy: number | null;
+    anxiety: number | null;
+  }[],
+  series: MoodChartSeries
+): { date: string; value: number }[] {
+  const out: { date: string; value: number }[] = [];
+  for (const log of logs) {
+    const value = moodSeriesValue(log, series);
+    if (value != null) out.push({ date: log.date, value });
+  }
+  return out;
+}
+
 // A 1–5 scale value, or null for "not answered" (energy/anxiety are expand-only).
 function scaleOrNull(v: unknown): number | null | "invalid" {
   if (v === null || v === undefined || v === "") return null;

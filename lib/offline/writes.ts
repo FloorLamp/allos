@@ -24,7 +24,12 @@ import {
   reconcileFlags,
 } from "@/lib/queries";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
-import { normalizeMoodInput } from "@/lib/mood";
+import {
+  MOOD_MAX,
+  MOOD_MIN,
+  normalizeMoodInput,
+  type MoodRatingColumn,
+} from "@/lib/mood";
 import { resetMoodCheckinIgnored } from "@/lib/settings";
 import {
   classifyDoseReplay,
@@ -292,21 +297,67 @@ export function upsertMoodLog(
 // write core owns every mutation of the table, so no engine elsewhere names it.
 // Profile-scoped by the WHERE clause; return false when nothing matched (a wrong id,
 // or another profile's row).
-export function updateMoodValence(
+// `column` names WHICH of the row's three 1–5 ratings the correction lands on
+// (#1408) — energy and anxiety are charted and detail-paged now, so each is
+// correctable from its own readings table. The value is always in STORED semantics:
+// the Calm relabel is a display map that never reaches this layer.
+export function updateMoodRating(
   profileId: number,
   id: number,
-  valence: number
+  column: MoodRatingColumn,
+  value: number
 ): boolean {
   // The same 1-5 scale the pure normalizeMoodInput guard enforces on insert; a
   // correction may not smuggle in an off-scale value the check-in couldn't produce.
-  if (!Number.isInteger(valence) || valence < 1 || valence > 5) return false;
-  const info = db
-    .prepare(
-      `UPDATE mood_logs SET valence = ?, updated_at = datetime('now')
-        WHERE id = ? AND profile_id = ?`
-    )
-    .run(valence, id, profileId);
-  return info.changes > 0;
+  if (!Number.isInteger(value) || value < MOOD_MIN || value > MOOD_MAX)
+    return false;
+  return moodRatingUpdate(column).run(value, id, profileId).changes > 0;
+}
+
+// One literal statement per column — the column can't be interpolated without making
+// the SQL unreadable to the profile-scoping scanner, which verifies `profile_id` in
+// LITERAL prepare() text.
+function moodRatingUpdate(column: MoodRatingColumn) {
+  switch (column) {
+    case "valence":
+      return db.prepare(
+        `UPDATE mood_logs SET valence = ?, updated_at = datetime('now')
+          WHERE id = ? AND profile_id = ?`
+      );
+    case "energy":
+      return db.prepare(
+        `UPDATE mood_logs SET energy = ?, updated_at = datetime('now')
+          WHERE id = ? AND profile_id = ?`
+      );
+    case "anxiety":
+      return db.prepare(
+        `UPDATE mood_logs SET anxiety = ?, updated_at = datetime('now')
+          WHERE id = ? AND profile_id = ?`
+      );
+  }
+}
+
+// Clear ONE optional rating off a check-in (#1408) — the body_metrics precedent, one
+// store down: a check-in row carries up to three ratings, so removing a mis-tapped
+// energy must not take that day's mood, note and factors with it. Valence has no
+// clear (it is NOT NULL and IS the check-in); deleting it deletes the day's row,
+// which is what `deleteMoodLog` below has always done.
+export function clearMoodRating(
+  profileId: number,
+  id: number,
+  column: Exclude<MoodRatingColumn, "valence">
+): boolean {
+  const stmt =
+    column === "energy"
+      ? db.prepare(
+          `UPDATE mood_logs SET energy = NULL, updated_at = datetime('now')
+            WHERE id = ? AND profile_id = ? AND energy IS NOT NULL`
+        )
+      : db.prepare(
+          `UPDATE mood_logs SET anxiety = NULL, updated_at = datetime('now')
+            WHERE id = ? AND profile_id = ? AND anxiety IS NOT NULL`
+        );
+  return stmt.run(id, profileId).changes > 0;
 }
 
 export function deleteMoodLog(profileId: number, id: number): boolean {

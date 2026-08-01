@@ -18,6 +18,7 @@ import { shiftDateStr } from "@/lib/date";
 import { setUserBirthdate, setUserSex } from "@/lib/settings";
 import { buildTrendsSubjectContext, getBodyCardPins } from "@/lib/queries";
 import { saveItem, setSavedOrder } from "@/lib/queries/saved";
+import { upsertMoodLog } from "@/lib/offline/writes";
 import {
   BODY_CARD_LAYOUT,
   bodyCardOrder,
@@ -264,6 +265,24 @@ describe("buildTrendsSubjectContext — data presence", () => {
     const ctx = buildTrendsSubjectContext(profileId, anchor);
     expect(ctx.presence.weight).toBe("rich");
     expect(ctx.presence.bmi).toBe("none");
+  });
+
+  it("measures each check-in rating on the days that carry IT (#1408)", () => {
+    // The three ratings share one row, so counting the mood rows for all of them
+    // would rank two mostly-empty cards as rich: a daily one-tap user who answered
+    // energy twice and never opened Calm would get an energy card ranked as though
+    // it were tracked daily, and a Calm card ranked above metrics they do track.
+    const { profileId, anchor } = makeProfile("rank-checkin-ratings");
+    for (let i = 0; i < 20; i++) {
+      upsertMoodLog(profileId, shiftDateStr(anchor, -i), {
+        valence: 4,
+        energy: i < 2 ? 3 : null,
+      });
+    }
+    const ctx = buildTrendsSubjectContext(profileId, anchor);
+    expect(ctx.presence.mood).toBe("rich");
+    expect(ctx.presence.energy).toBe("sparse");
+    expect(ctx.presence.calm).toBe("none");
   });
 });
 

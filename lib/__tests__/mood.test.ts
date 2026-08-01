@@ -12,11 +12,23 @@ import {
   shouldSendMoodCheckin,
   moodFace,
   moodLabel,
+  anxietyDisplaySlot,
+  moodRatingColumn,
+  moodSeriesPoints,
+  moodSeriesValue,
+  MOOD_CHART_SERIES,
   MOOD_FACES,
   MOOD_LABELS,
   MOOD_FACTORS,
   MOOD_CHECKIN_AUTOPAUSE_DAYS,
 } from "@/lib/mood";
+import { chartSeries } from "@/lib/chart-colors";
+import { BODY_CARD_LAYOUT } from "@/lib/trends-card-rank";
+import {
+  BODY_METRIC_META,
+  CHECK_IN_METRIC_SLUGS,
+  isBodyMetricSlug,
+} from "@/lib/trends-body-metrics";
 import {
   detectLowMoodWindow,
   decideSleepMoodBridge,
@@ -132,6 +144,92 @@ describe("scales", () => {
     expect(MOOD_FACTORS.length).toBeGreaterThan(0);
     expect(moodFace(5)).toBe(MOOD_FACES[4]);
     expect(moodLabel(1)).toBe("Rough");
+  });
+});
+
+// ---- The three charted check-in series (#1408) --------------------------------
+//
+// The check-in has always STORED valence + energy + anxiety and plotted valence
+// alone. These pin the one mapper every plotting surface now shares: which column a
+// series reads, that an unanswered scale is an absent reading rather than a zero,
+// and that Calm crosses the #1313 relabel exactly once on the way out.
+
+const CHECK_INS = [
+  { date: "2026-03-02", valence: 4, energy: 2, anxiety: 5 },
+  { date: "2026-03-03", valence: 2, energy: null, anxiety: null },
+  { date: "2026-03-04", valence: 5, energy: 5, anxiety: 1 },
+];
+
+describe("moodSeriesPoints (#1408)", () => {
+  it("reads each series off the same rows, in date order", () => {
+    expect(moodSeriesPoints(CHECK_INS, "valence")).toEqual([
+      { date: "2026-03-02", value: 4 },
+      { date: "2026-03-03", value: 2 },
+      { date: "2026-03-04", value: 5 },
+    ]);
+    expect(moodSeriesPoints(CHECK_INS, "energy")).toEqual([
+      { date: "2026-03-02", value: 2 },
+      { date: "2026-03-04", value: 5 },
+    ]);
+  });
+
+  it("drops the days a scale went unanswered rather than plotting a zero", () => {
+    // Energy and Calm are expand-only, so most days carry valence alone. A skipped
+    // scale must not read as "rated 0" or drag a mean.
+    expect(
+      moodSeriesPoints(CHECK_INS, "energy").map((p) => p.date)
+    ).not.toContain("2026-03-03");
+    expect(
+      moodSeriesPoints(CHECK_INS, "calm").map((p) => p.date)
+    ).not.toContain("2026-03-03");
+    expect(moodSeriesPoints([], "valence")).toEqual([]);
+  });
+
+  it("plots Calm on the card's relabelled axis — the good end is high (#1313)", () => {
+    // Stored anxiety 5 (most anxious) plots at 1; stored 1 (calmest) plots at 5, so
+    // "up is better" holds on all three cards. The store is untouched either way.
+    expect(moodSeriesPoints(CHECK_INS, "calm")).toEqual([
+      { date: "2026-03-02", value: 1 },
+      { date: "2026-03-04", value: 5 },
+    ]);
+    expect(
+      moodSeriesValue({ valence: 3, energy: null, anxiety: 2 }, "calm")
+    ).toBe(anxietyDisplaySlot(2));
+  });
+
+  it("maps each charted series to the column it is stored in", () => {
+    expect(MOOD_CHART_SERIES.map(moodRatingColumn)).toEqual([
+      "valence",
+      "energy",
+      // Calm is a DISPLAY word; the column it reads is still `anxiety`.
+      "anxiety",
+    ]);
+  });
+});
+
+describe("the check-in metric registry (#1408)", () => {
+  it("registers all three check-in ratings as body metrics", () => {
+    // Registry membership is what earns a series its tile, chart, detail page and
+    // star — the treatment valence already had and the other two never did.
+    for (const slug of CHECK_IN_METRIC_SLUGS) {
+      expect(isBodyMetricSlug(slug)).toBe(true);
+      expect(BODY_METRIC_META[slug].unit).toBe("");
+    }
+    expect(CHECK_IN_METRIC_SLUGS).toEqual(["mood", "energy", "calm"]);
+  });
+
+  it("gives the three neighbouring 1–5 cards distinct blessed hues", () => {
+    const colors = CHECK_IN_METRIC_SLUGS.map((s) => BODY_METRIC_META[s].color);
+    expect(new Set(colors).size).toBe(colors.length);
+    for (const color of colors) {
+      expect(Object.values(chartSeries)).toContain(color);
+    }
+  });
+
+  it("ranks the three together, in the order the card asks them", () => {
+    const at = (id: string) => BODY_CARD_LAYOUT.indexOf(id as never);
+    expect(at("energy")).toBe(at("mood") + 1);
+    expect(at("calm")).toBe(at("energy") + 1);
   });
 });
 

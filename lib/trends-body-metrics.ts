@@ -57,7 +57,19 @@ export const BODY_METRIC_SLUGS = [
   "bmr",
   "hydration",
   "calories",
+  // The daily check-in's three 1–5 self-ratings (#992, charted in full by #1408).
+  // `mood` is valence; `energy` and `calm` are the two scales the check-in has always
+  // COLLECTED and never plotted. All three are members of this registry rather than
+  // extra lines on the mood card: they are separate questions with separate presence
+  // (most days carry valence alone), and registry membership is what earns each one a
+  // tile, a chart, a detail page and a star — the same treatment valence already had.
+  //
+  // `calm`, not `anxiety` — the charted value is the #1313 DISPLAY slot (high = calm),
+  // the relabelled axis the check-in card offers. The COLUMN is still `anxiety`; the
+  // map is applied at the same display boundary weight's unit conversion is.
   "mood",
+  "energy",
+  "calm",
 ] as const;
 export type BodyMetricSlug = (typeof BODY_METRIC_SLUGS)[number];
 
@@ -374,11 +386,44 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     goalMetric: null,
     quickAdd: null,
   },
+  // The two check-in scales #1408 brought out of the store. Same shape as mood — a
+  // unitless 1–5 self-rating, never range-flagged, no goal and no quick-add (the
+  // check-in card IS the entry form) — with their own blessed hues so three
+  // neighbouring 1–5 cards read as three series rather than one repeated.
+  energy: {
+    slug: "energy",
+    label: "Energy",
+    title: "Energy",
+    unit: "",
+    color: chartSeries.violet,
+    decimals: 1,
+    windowed: false,
+    goalMetric: null,
+    quickAdd: null,
+  },
+  calm: {
+    slug: "calm",
+    label: "Calm",
+    title: "Calm",
+    unit: "",
+    color: chartSeries.sky,
+    decimals: 1,
+    windowed: false,
+    goalMetric: null,
+    quickAdd: null,
+  },
 };
 
 export function isBodyMetricSlug(v: string): v is BodyMetricSlug {
   return (BODY_METRIC_SLUGS as readonly string[]).includes(v);
 }
+
+// The subset of the registry that comes off the daily check-in card (#1408), in the
+// order the card asks them: the one-tap mood hero, then the two scales behind its
+// expansion. Named ONCE here so the census card builder, the detail page's gate and
+// the tests all mean the same three metrics.
+export const CHECK_IN_METRIC_SLUGS = ["mood", "energy", "calm"] as const;
+export type CheckInMetricSlug = (typeof CHECK_IN_METRIC_SLUGS)[number];
 
 // The first saved metric ids predate the detail-page slug registry. Preserve those
 // stored keys while every newer metric uses its slug directly.

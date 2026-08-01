@@ -58,7 +58,10 @@ import {
   stableEmptyLast,
   type BodyMetricSlug,
   type BodyMetricTile,
+  type CheckInMetricSlug,
 } from "@/lib/trends-body-metrics";
+import { moodSeriesPoints } from "@/lib/mood";
+import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
@@ -909,14 +912,21 @@ export default async function BodySection({
     }))
   ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
   const bmiChart = filterSeriesByRange(bmiAll, range);
-  // Mood trend (#992): the daily wellbeing check-ins as a chartable 1–5 series —
-  // like a vital in shape, but DELIBERATELY never reference-range flagged and never
-  // retested (a subjective self-rating, not a lab).
-  const moodAll = getMoodLogs(profile.id).map((m) => ({
-    date: m.date,
-    value: m.valence,
-  }));
+  // Check-in trends (#992, completed by #1408): the daily wellbeing check-ins as
+  // chartable 1–5 series — like a vital in shape, but DELIBERATELY never
+  // reference-range flagged and never retested (subjective self-ratings, not labs).
+  //
+  // ONE read of the mood rows feeds all THREE series through the one pure mapper
+  // (#221). The check-in has always stored energy and anxiety beside valence and
+  // plotted only valence; these are the two that had nowhere to be reviewed. `calm`
+  // arrives on its #1313 display axis (high = calm), matching the card's own scale.
+  const moodLogs = getMoodLogs(profile.id);
+  const moodAll = moodSeriesPoints(moodLogs, "valence");
   const moodChart = filterSeriesByRange(moodAll, range);
+  const energyAll = moodSeriesPoints(moodLogs, "energy");
+  const energyChart = filterSeriesByRange(energyAll, range);
+  const calmAll = moodSeriesPoints(moodLogs, "calm");
+  const calmChart = filterSeriesByRange(calmAll, range);
 
   const hrAll = getHrDailySummary(profile.id, 3650).map((r) => ({
     date: r.date,
@@ -1250,6 +1260,15 @@ export default async function BodySection({
 
   // ONE presence boolean per block, shared by its menu item and its render.
   const hasMood = moodAll.length > 0;
+  const hasEnergy = energyAll.length > 0;
+  // Calm carries the INPUT's gate as well as presence (#1313/#1408): a trend must
+  // never be the thing that surfaces an anxiety scale to a profile the card itself
+  // wouldn't offer it to. In practice presence implies relevance — prior use is the
+  // gate's first signal, so any profile with an anxiety rating already passes — and
+  // the resolver is only consulted when there IS something to plot, so a profile
+  // that never used the scale pays nothing. The two are asserted together anyway,
+  // because "the trend follows the card" must survive a future change to either.
+  const hasCalm = calmAll.length > 0 && isAnxietyScaleRelevant(profile.id);
 
   // ── The FLAT ranked stack (#1674) ───────────────────────────────────────────
   // The census used to render titled runs ("Vitals", "Composition") ordered as
@@ -1270,13 +1289,19 @@ export default async function BodySection({
   // The page's FIXED anatomy is untouched: the Today strip stays at the head (it
   // keeps #1486's vitals-first narrative; the stack stops inheriting it) and the
   // source comparison + history table stay at the foot — skeleton, not cards.
-  const moodCard = (
+  //
+  // The check-in's THREE ratings share ONE card builder (#1408). They are the same
+  // kind of reading asked three ways — a 1–5 self-rating from the same daily card,
+  // on the same scale, with the same never-range-checked contract — so any drift
+  // between their scaffolds, footers or colors would be an accident rather than a
+  // decision. Colors come from the registry the tile and the detail page also read.
+  const checkInCard = (slug: CheckInMetricSlug, data: Point[]) => (
     <ChartCard
-      anchorId="mood"
-      testid="mood-trend"
-      title={BODY_METRIC_META.mood.title}
+      anchorId={slug}
+      testid={`${slug}-trend`}
+      title={BODY_METRIC_META[slug].title}
       description="1–5 daily check-ins · selected date range"
-      detailHref={metricDetailHref("mood")}
+      detailHref={metricDetailHref(slug)}
       footer={
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           A subjective self-rating from your daily check-ins — informational
@@ -1285,9 +1310,9 @@ export default async function BodySection({
       }
     >
       <LineChartCard
-        data={moodChart}
-        label={BODY_METRIC_META.mood.title}
-        color={chartSeries.amber}
+        data={data}
+        label={BODY_METRIC_META[slug].title}
+        color={BODY_METRIC_META[slug].color}
       />
     </ChartCard>
   );
@@ -1335,8 +1360,33 @@ export default async function BodySection({
           },
         ]
       : []),
+    // The check-in trio, each an ordinary ranked member on its own presence.
     ...(hasMood
-      ? [{ id: "mood", label: BODY_METRIC_META.mood.title, node: moodCard }]
+      ? [
+          {
+            id: "mood",
+            label: BODY_METRIC_META.mood.title,
+            node: checkInCard("mood", moodChart),
+          },
+        ]
+      : []),
+    ...(hasEnergy
+      ? [
+          {
+            id: "energy",
+            label: BODY_METRIC_META.energy.title,
+            node: checkInCard("energy", energyChart),
+          },
+        ]
+      : []),
+    ...(hasCalm
+      ? [
+          {
+            id: "calm",
+            label: BODY_METRIC_META.calm.title,
+            node: checkInCard("calm", calmChart),
+          },
+        ]
       : []),
     ...(intraday
       ? []
@@ -1397,9 +1447,15 @@ export default async function BodySection({
     ["hydration", hydrationAll],
     ["calories", caloriesAll],
     ["mood", moodAll],
+    ["energy", energyAll],
+    ["calm", calmAll],
   ];
   const metricTiles: BodyMetricTile[] = tileSeries
     .filter(([slug]) => slug !== "body-fat" || bodyFatShown)
+    // Calm follows the check-in card's own gate in BOTH view modes (#1313/#1408) —
+    // `view=tiles` and `view=all` are two renderings of one metric set, so a tile
+    // may not surface a scale the chart above is gating away.
+    .filter(([slug]) => slug !== "calm" || hasCalm)
     .map(([slug, arr]) =>
       buildBodyMetricTile(BODY_METRIC_META[slug], arr, wu, range)
     )

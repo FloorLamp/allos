@@ -12,6 +12,7 @@ import {
 } from "./queries";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "./vitals-input";
 import { bmiSeriesDatePaired } from "./growth-series";
+import { moodSeriesPoints } from "./mood";
 import { dispWeight, round } from "./units";
 import { lastNDates } from "./date";
 import { ALL_ROWS } from "./trends";
@@ -140,10 +141,14 @@ export function fullBodyMetricSeries(
       return getMetricDailyTotals(profileId, "nutrition_kcal", ALL_ROWS).map(
         (row) => ({ date: row.date, value: Math.round(row.value) })
       );
+    // The daily check-in's three ratings (#1408) — ONE read of the mood rows, mapped
+    // by the ONE pure series function every check-in surface shares (#221). `calm`
+    // comes out on its #1313 display axis, exactly as the card and the census draw it.
     case "mood":
-      return getMoodLogs(profileId).map((row) => ({
-        date: row.date,
-        value: row.valence,
-      }));
+      return moodSeriesPoints(getMoodLogs(profileId), "valence");
+    case "energy":
+      return moodSeriesPoints(getMoodLogs(profileId), "energy");
+    case "calm":
+      return moodSeriesPoints(getMoodLogs(profileId), "calm");
   }
 }

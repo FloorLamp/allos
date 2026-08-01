@@ -53,6 +53,8 @@ import {
   type BodyMetricSlug,
   type PeriodStat,
 } from "@/lib/trends-body-metrics";
+import { anxietyDisplaySlot } from "@/lib/mood";
+import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 import { metricSeriesKey } from "@/lib/saved-items";
 import { isItemSaved } from "@/lib/queries/saved";
 import type { AppRoute } from "@/lib/hrefs";
@@ -147,7 +149,13 @@ function readingRowsFor(
     const shown =
       slug === "weight"
         ? dispWeight(r.value, weightUnit)
-        : round(r.value, decimals);
+        : // Calm is the stored `anxiety` rating on its #1313 display axis (high =
+          // calm) — the SAME map the chart above and the check-in card apply, so the
+          // table can't contradict the plot it explains. A second display boundary
+          // beside weight's unit conversion, and the action converts back on write.
+          slug === "calm"
+          ? anxietyDisplaySlot(r.value)
+          : round(r.value, decimals);
     return {
       id: r.id,
       date: r.date,
@@ -229,6 +237,22 @@ export default async function BodyMetricDetailPage(props: {
   }
 
   const { login, profile } = await requireSession();
+
+  // Calm carries the check-in card's own relevance gate (#1313/#1408). A profile the
+  // scale was never offered to has no Calm surface AT ALL — not an empty one — so a
+  // typed or shared `/trends/metric/calm` reads exactly like any unknown metric. The
+  // copy deliberately names nothing: the scale simply appears or doesn't, and this
+  // page may no more explain its absence than the card may.
+  if (kind === "calm" && !isAnxietyScaleRelevant(profile.id)) {
+    return (
+      <PageContainer width="reading" className="space-y-4">
+        <BackLink />
+        <PageHeader title="Metric" />
+        <EmptyState message="Unknown metric." />
+      </PageContainer>
+    );
+  }
+
   const meta = BODY_METRIC_META[kind];
   const weightUnit = getUnitPrefs(login.id).weightUnit;
   const formatPrefs = getDisplayFormatPrefs(login.id);

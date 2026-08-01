@@ -238,9 +238,18 @@ Context combines ongoing situations with today-only factors such as Work or
 Social while clearly labeling which kind persists. There is one check-in per
 day; another entry updates it.
 
-Mood, energy, and calm chart under **Trends → Body**, but they are never
-reference-range checked. A low day is not an abnormal result, does not create a
-retest, and never contributes to a streak, score, badge, or milestone.
+Mood, Energy, and Calm each chart under **Trends → Body** as their own metric —
+a card in the census, a sparkline tile, and a detail page at
+`/trends/metric/mood`, `/trends/metric/energy`, and `/trends/metric/calm` with
+the shared range control and an editable readings table. Each plots only the
+days that carry that rating, since energy and Calm are answered behind the
+card's expansion. Calm charts on the same relabelled axis the card offers (high
+is calm) and carries the card's relevance gate everywhere: a profile the scale
+was never offered has no Calm chart, tile, or page.
+
+None of the three is ever reference-range checked. A low day is not an abnormal
+result, does not create a retest, and never contributes to a streak, score,
+badge, or milestone.
 
 The coaching layer may show a calm, dismissible observation for a sustained
 low-mood window or a sleep drop that co-occurs with one. It describes
