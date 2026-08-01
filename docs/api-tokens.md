@@ -97,8 +97,16 @@ success:
 `outcome` is one of:
 
 - `stored` — the file is in the record; extraction continues on the server.
-- `duplicate` — this profile already had these exact bytes. Nothing new was stored.
-  Re-running an upload is safe by design.
+- `duplicate` — this profile already had this content. Nothing new was stored. Re-running
+  an upload is safe by design. Two recognitions answer `duplicate`, and `reason` says
+  which: the same **bytes**, or — for a health record (CCD/XDM/SMART Health Card/FHIR) —
+  the same **clinical entries** arriving in different packaging. The second one matters if
+  you collect from a portal: a portal regenerates its export container on every request,
+  so two collections of the same visit list never share a content hash while every entry
+  id inside is identical. allos compares those ids, so repackaging the same records will
+  keep landing here — the thing to change is what you collect, not how you package it. A
+  partly overlapping export (one that genuinely carries a visit the other did not) is
+  **not** a duplicate and is stored.
 - `failed` — the engine refused it, and `reason` says why (too large, unsupported type,
   contents that contradict the file name).
 - `blocked` — **a person deleted these exact bytes in allos**, and the deletion is
@@ -114,7 +122,10 @@ per-file `outcome`.
 created on either path**. Both are events, not documents, and the run's sync report is
 their record — count them `unchanged` and `suppressed` respectively. (The in-app upload
 form still lands a visible "skipped" row for a duplicate: there the row is the feedback a
-person needs. A retry through this endpoint stays idempotent in the table.)
+person needs. A retry through this endpoint stays idempotent in the table.) This holds for
+the clinical-entry duplicate too, and it is load-bearing there: since a portal's container
+is never byte-stable, a daily re-collection would otherwise land a fresh marker row every
+single run.
 
 You can send several `file` parts in one request; they are ingested one at a time, up to
 the same batch cap the upload form uses, and any overflow is reported in a `skipped`

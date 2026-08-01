@@ -76,8 +76,8 @@ const EXTRA_ENCOUNTER = `
 // One portal collection. `stamp` stands in for the per-request packaging metadata a portal
 // regenerates every time, so two calls differ byte for byte with identical clinical
 // content — the exact thing that defeats the content hash.
-function archive(stamp: string, extra = ""): Buffer {
-  return Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+function archive(stamp: string, extra = ""): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <ClinicalDocument xmlns="urn:hl7-org:v3">
   <id root="1.2.3.4" extension="${stamp}"/>
   <effectiveTime value="${stamp}"/>
@@ -89,11 +89,11 @@ function archive(stamp: string, extra = ""): Buffer {
     ${RESULTS}
     ${extra}
   </structuredBody></component>
-</ClinicalDocument>`);
+</ClinicalDocument>`;
 }
 
-function upload(buffer: Buffer, name: string): File {
-  return new File([buffer], name, { type: "application/xml" });
+function upload(xml: string, name: string): File {
+  return new File([Buffer.from(xml)], name, { type: "application/xml" });
 }
 
 function docRows(profileId: number) {
@@ -137,7 +137,7 @@ describe("two portal logins, one profile, one set of records (#1780)", () => {
     const first = archive("20260101090000");
     const second = archive("20260714113000");
     // The premise: a portal never hands back the same bytes twice.
-    expect(second.equals(first)).toBe(false);
+    expect(second).not.toBe(first);
 
     await ingestMedicalUpload(
       login.id,
@@ -276,9 +276,8 @@ describe("two portal logins, one profile, one set of records (#1780)", () => {
     const { login, profile } = seedActor();
     // Looks like a CDA to the sniffer, but the body is broken. The probe must yield no
     // key and get out of the way so the real import records the parse error on the row.
-    const broken = Buffer.from(
-      '<?xml version="1.0"?><ClinicalDocument xmlns="urn:hl7-org:v3"><component>'
-    );
+    const broken =
+      '<?xml version="1.0"?><ClinicalDocument xmlns="urn:hl7-org:v3"><component>';
     await ingestMedicalUpload(
       login.id,
       profile.id,
