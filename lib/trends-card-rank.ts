@@ -91,8 +91,13 @@ export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
   "hr",
   "hr-day",
   "hrv",
-  // Daily subjective + environment. `sun` is outdoor time, not a vital.
+  // Daily subjective + environment. The check-in's three ratings sit together and in
+  // the order the card itself asks them (#1408: mood is the one-tap hero, energy and
+  // the gated Calm scale live behind its expansion). `sun` is outdoor time, not a
+  // vital.
   "mood",
+  "energy",
+  "calm",
   "sun",
   // Clinical vitals — condition and goal signals still lift these when they matter.
   "systolic",

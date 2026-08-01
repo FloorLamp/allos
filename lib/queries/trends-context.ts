@@ -43,6 +43,7 @@ import { getGoals } from "./training";
 import { getBiomarkerSeries } from "./medical";
 import { getLatestHrDay } from "./metrics";
 import { getMoodLogs } from "./mood";
+import { moodSeriesPoints } from "../mood";
 import { getSavedItems } from "./saved";
 
 // Card → `metric_samples.metric`. One grouped query answers all of them.
@@ -171,12 +172,28 @@ export function buildTrendsSubjectContext(
   // store-private, so nothing outside lib/queries/mood.ts may name it; the guard in
   // lib/__tests__/mood-guardrails.test.ts fails CI on a direct query). One row per
   // day, so reading the series to count it is cheap.
+  //
+  // All THREE check-in ratings rank as their own cards since #1408, and all three
+  // come off this ONE read: energy and Calm are answered far less often than the
+  // one-tap valence, so counting the mood rows for them would rank two mostly-empty
+  // cards as rich. Each counts the days that actually carry ITS rating.
   const moodLogs = getMoodLogs(profileId);
   presence.mood = presenceLevel(
     moodLogs.length,
     moodLogs.length > 0 ? moodLogs[moodLogs.length - 1].date : null,
     todayStr
   );
+  for (const [card, series] of [
+    ["energy", "energy"],
+    ["calm", "calm"],
+  ] as const) {
+    const points = moodSeriesPoints(moodLogs, series);
+    presence[card] = presenceLevel(
+      points.length,
+      points.length > 0 ? points[points.length - 1].date : null,
+      todayStr
+    );
+  }
 
   // Vitals charted from lab-shaped records.
   for (const [card, canonical] of Object.entries(BIOMARKER_CARDS)) {

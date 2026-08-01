@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
 import { getUnitPrefs } from "@/lib/settings";
+import { anxietyStoredValue } from "@/lib/mood";
 import { toKg } from "@/lib/units";
 import {
   deleteMetricReading as deleteReadingCore,
@@ -56,11 +57,16 @@ export async function updateMetricReading(
     return { ok: false, error: "Enter a number." };
 
   // The ONE unit boundary (see the header): weight arrives in the login's display
-  // unit; everything else is already stored in the unit it is charted in.
+  // unit; everything else is already stored in the unit it is charted in. Calm is
+  // the one non-unit display map (#1313/#1408) — the table offers the relabelled
+  // axis (high = calm), the store keeps `anxiety` semantics — so it converts back
+  // here, at the same boundary, rather than letting a display slot reach the store.
   const value =
     target.slug === "weight"
       ? toKg(entered, getUnitPrefs(login.id).weightUnit)
-      : entered;
+      : target.slug === "calm"
+        ? anxietyStoredValue(entered)
+        : entered;
   if (value == null || !Number.isFinite(value))
     return { ok: false, error: "Enter a number." };
 
