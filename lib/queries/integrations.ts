@@ -512,6 +512,10 @@ export interface ConnectedSource {
   canSyncNow: boolean;
   latest: IntegrationSyncEvent | null;
   history: IntegrationSyncEvent[];
+  // The ids, among `latest` + `history`, whose sync actually recorded row provenance
+  // (#1771). The "What this wrote" drill-in is offered ONLY for these; an event that
+  // recorded none gets no expander at all rather than one that apologizes on open.
+  provenanceEventIds: number[];
 }
 
 // Pull-integration ids the app can sync on demand ("Sync now"): Strava (OAuth),
@@ -542,6 +546,10 @@ export function getConnectedSources(profileId: number): ConnectedSource[] {
   )
     .map((i) => {
       const status = getConnection(profileId, i.id)?.status;
+      const latest = getLatestSyncEvent(profileId, i.id);
+      const history = getIntegrationSyncEvents(profileId, i.id, 10);
+      const ids = history.map((e) => e.id);
+      if (latest) ids.push(latest.id);
       return {
         id: i.id,
         name: i.name,
@@ -549,8 +557,11 @@ export function getConnectedSources(profileId: number): ConnectedSource[] {
         connected: status === "connected",
         needsReauth: status === "needs_reauth",
         canSyncNow: SYNC_NOW_PROVIDERS.has(i.id),
-        latest: getLatestSyncEvent(profileId, i.id),
-        history: getIntegrationSyncEvents(profileId, i.id, 10),
+        latest,
+        history,
+        provenanceEventIds: ids.length
+          ? eventsWithProvenance(profileId, i.id, Math.min(...ids))
+          : [],
       };
     })
     .filter((s) =>
@@ -559,6 +570,36 @@ export function getConnectedSources(profileId: number): ConnectedSource[] {
         hasHistory: s.history.length > 0,
       })
     );
+}
+
+// Which of a provider's recent sync events actually RECORDED row provenance (#1771).
+// The "What this wrote" drill-in promises record-level detail, so it may only be
+// offered for an event that has some — and whether an event has any is a fact about
+// the EVENT, not about the provider: Weather legitimately records none (it writes
+// cells of the global location-keyed forecast cache, which name no user record —
+// #1212's scoping decision), and genuine pre-#1333 legacy events of the other
+// providers have none either. Both used to render an expander that apologized 100%
+// of the time.
+//
+// One indexed seek per provider rather than a per-event existence check: sync-event
+// ids are monotonic, so the events being rendered are exactly those at or above the
+// oldest id in the rendered set, and `integration_sync_rows` is keyed on event_id.
+// PROFILE-SCOPED through the parent event (the child-table convention — the table has
+// no own profile_id).
+export function eventsWithProvenance(
+  profileId: number,
+  provider: string,
+  minEventId: number
+): number[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT r.event_id AS event_id
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+        WHERE e.profile_id = ? AND e.provider = ? AND r.event_id >= ?`
+    )
+    .all(profileId, provider, minEventId) as { event_id: number }[];
+  return rows.map((r) => r.event_id);
 }
 
 // The captured raw-payload ref for one sync event, scoped to the profile — powers

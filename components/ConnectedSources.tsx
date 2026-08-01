@@ -22,6 +22,8 @@ import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
 // Records a sync actually wrote (inserted + updated) — the count the provenance
 // drill-in (#1333) can resolve to deep links. Unchanged re-sends aren't recorded, so
 // this is exactly what the drill-in lists. A failure or an all-unchanged sync is 0.
+// It is the SUMMARY count, shown either way; whether the DRILL-IN is offered is a
+// separate question answered by recorded provenance (#1771), not by this number.
 function writtenCount(ev: IntegrationSyncEvent): number {
   if (!ev.ok) return 0;
   return (ev.inserted ?? 0) + (ev.updated ?? 0);
@@ -110,6 +112,11 @@ function SourceCard({
   isAdmin: boolean;
 }) {
   const { latest, history } = source;
+  // The drill-in is gated on provenance ACTUALLY existing for the event (#1771) —
+  // never on a provider hardcode. An expander that promises record detail and then
+  // apologizes reads as broken, and for a cache provider (Weather) it apologized on
+  // every single sync.
+  const provenance = new Set(source.provenanceEventIds);
   const reconnectHref = integrationDetailHref(source.id as IntegrationId);
   return (
     <li
@@ -167,7 +174,7 @@ function SourceCard({
         </p>
       )}
       {latest && <SyncDetails ev={latest} />}
-      {latest && writtenCount(latest) > 0 && (
+      {latest && writtenCount(latest) > 0 && provenance.has(latest.id) && (
         <SyncRowsDrilldown eventId={latest.id} count={writtenCount(latest)} />
       )}
 
@@ -240,7 +247,7 @@ function SourceCard({
                 </div>
                 {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
                 <SyncDetails ev={ev} />
-                {writtenCount(ev) > 0 && (
+                {writtenCount(ev) > 0 && provenance.has(ev.id) && (
                   <SyncRowsDrilldown eventId={ev.id} count={writtenCount(ev)} />
                 )}
               </li>

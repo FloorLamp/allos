@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { setHomeLocation, setTimezone, setSkinType } from "@/lib/settings";
 import {
   runWeatherSync,
+  WEATHER_FORECAST_DAYS,
   type WeatherSyncResult,
 } from "@/lib/integrations/weather-sync";
 import type {
@@ -151,6 +152,77 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       )
       .get(p) as { ok: number };
     expect(ev.ok).toBe(0);
+  });
+
+  // #1771 defect 2: the daily half (#1743) reaches WEATHER_FORECAST_DAYS ahead, but
+  // the hourly-fetch FAILURE paths used to stamp the hourly half's shorter window —
+  // so interleaved events of one provider described two different window shapes, and
+  // Review implied a failure had shrunk the coverage target. The window describes what
+  // the RUN SET OUT TO COVER, so every event of a run now stamps the same one.
+  it("stamps the same window on a failed run as on a successful one", async () => {
+    const p = newProfile("weather-window");
+    const failing: WeatherSource = {
+      id: "fixture",
+      async fetchHourly() {
+        return { ok: false, rows: [], status: 503, error: "upstream down" };
+      },
+      async fetchDaily() {
+        return { ok: false, rows: [], status: 503, error: "upstream down" };
+      },
+    };
+    await runWeatherSync(p, failing);
+    await runWeatherSync(p, fixtureSource([uvRow(`${DATE}T10:00`, 6)]));
+
+    const events = db
+      .prepare(
+        `SELECT ok, window_start, window_end FROM integration_sync_events
+          WHERE profile_id = ? AND provider = 'weather' ORDER BY id`
+      )
+      .all(p) as {
+      ok: number;
+      window_start: string | null;
+      window_end: string | null;
+    }[];
+    expect(events).toHaveLength(2);
+    const [failure, success] = events;
+    expect(failure.ok).toBe(0);
+    expect(success.ok).toBe(1);
+    expect(failure.window_start).toBe(success.window_start);
+    expect(failure.window_end).toBe(success.window_end);
+    // And that shared window is the run's full intended reach — the daily half's, a
+    // week past today, not the hourly half's today+1.
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    const expectedEnd = new Date(`${todayUtc}T00:00:00Z`);
+    expectedEnd.setUTCDate(expectedEnd.getUTCDate() + WEATHER_FORECAST_DAYS);
+    expect(success.window_end).toBe(expectedEnd.toISOString().slice(0, 10));
+  });
+
+  // A failure that happens in the WRITE half (the upsert throws) takes the second
+  // failure path — it stamps the same run window too.
+  it("stamps the run window on a cache-write failure as well", async () => {
+    const p = newProfile("weather-window-write");
+    const bad = fixtureSource([
+      // An hour timestamp the cache upsert refuses — drives the catch path.
+      { ...uvRow(`${DATE}T10:00`, 6), hourTs: null as unknown as string },
+    ]);
+    await runWeatherSync(p, bad);
+    await runWeatherSync(p, fixtureSource([uvRow(`${DATE}T11:00`, 6)]));
+    const events = db
+      .prepare(
+        `SELECT ok, window_start, window_end FROM integration_sync_events
+          WHERE profile_id = ? AND provider = 'weather' ORDER BY id`
+      )
+      .all(p) as {
+      ok: number;
+      window_start: string | null;
+      window_end: string | null;
+    }[];
+    const failure = events.find((e) => e.ok === 0);
+    const success = events.find((e) => e.ok === 1);
+    expect(failure).toBeTruthy();
+    expect(success).toBeTruthy();
+    expect(failure!.window_end).toBe(success!.window_end);
+    expect(failure!.window_start).toBe(success!.window_start);
   });
 });
 
