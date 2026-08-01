@@ -37,6 +37,8 @@ import { dispatch } from "@/lib/notifications";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/supplements";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import {
+  claimMessagePointerClose,
+  claimMessagePointerKeyboard,
   liveMessagePointers,
   recordMessagePointer,
   parseStoredKeyboard,
@@ -515,5 +517,130 @@ describe("class 2 — additive quick-log buttons", () => {
     expect(out.closed).toBe(0);
     // The keyboard stays LIVE — logging another serving is still valid all day.
     expect(liveTokens(pid).some((t) => t.startsWith("food:"))).toBe(true);
+  });
+});
+
+// ── Overlapping ticks (#1788) ───────────────────────────────────────────────
+//
+// The repo already documents the overlap risk class for the SEND path (scripts/notify.ts:
+// "operators should run exactly ONE tick scheduler"). The reconcile sweep inherits it: a
+// compose poll sidecar plus a host crontab, two app instances on one volume, or a manual
+// `notify` run during the hourly one all put two passes on one profile at once. Both
+// would read the same pre-edit keyboard and both call the Bot API for an identical
+// result — converging, so nothing is corrupted, but spending twice the rate-limit budget
+// the sweep's zero-call steady state exists to protect.
+//
+// The pointer's keyboard is therefore a lifecycle field with an atomic transition: a
+// pass CLAIMS old-blob → new-blob before it touches the network, and only the winner
+// calls Telegram.
+
+describe("concurrent reconcile passes edit each message exactly once", () => {
+  it("two overlapping sweeps close two messages with two calls, not four", async () => {
+    const pid = newProfile("Race Rita");
+    const { itemId, doseId } = seedDose(pid, "Rita D3");
+    // TWO chats, so the passes genuinely interleave: the second claims the pointer the
+    // first has not reached yet, and the first then finds its own witness stale.
+    seedLoginTelegram(pid, "5551801");
+    seedLoginTelegram(pid, "5551802");
+    await sendMorningReminder(pid);
+    expect(liveMessagePointers(pid)).toHaveLength(2);
+
+    markDoseTaken(pid, doseId, itemId, today(pid));
+
+    const [a, b] = await Promise.all([
+      reconcileProfileMessages(pid),
+      reconcileProfileMessages(pid),
+    ]);
+
+    // Each message is closed once — never twice.
+    expect(a.closed + b.closed).toBe(2);
+    expect(editText).toHaveBeenCalledTimes(2);
+    // And the duplicate work was refused rather than performed.
+    expect(a.skipped + b.skipped).toBeGreaterThan(0);
+    expect(liveMessagePointers(pid)).toEqual([]);
+  });
+
+  it("a strip is claimed once, so the second pass makes no call", async () => {
+    const pid = newProfile("Race Reza");
+    const a = seedDose(pid, "Reza A");
+    seedDose(pid, "Reza B");
+    seedLoginTelegram(pid, "5551803");
+    seedLoginTelegram(pid, "5551804");
+    await sendMorningReminder(pid);
+
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+    const [x, y] = await Promise.all([
+      reconcileProfileMessages(pid),
+      reconcileProfileMessages(pid),
+    ]);
+
+    // Two deliveries, two rebuilds — not four.
+    expect(x.edited + y.edited).toBe(2);
+    expect(editText).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the pointer claim is a compare-and-swap (#1788)", () => {
+  function onePointer(profileId: number) {
+    const [p] = liveMessagePointers(profileId);
+    expect(p, "fixture should have recorded a pointer").toBeDefined();
+    return p;
+  }
+
+  it("the witness READ from the store is one the claim accepts", async () => {
+    // The regression this pins: the witness is the stored blob VERBATIM, never a
+    // re-serialization. A round-trip that reordered a key would produce a witness that
+    // never matches — and the sweep would silently stop editing anything, forever.
+    const pid = newProfile("Witness Wren");
+    seedDose(pid, "Wren D3");
+    seedLoginTelegram(pid, "5551805");
+    await sendMorningReminder(pid);
+
+    const p = onePointer(pid);
+    expect(claimMessagePointerKeyboard(pid, p.id, p.version, [])).toBe(true);
+  });
+
+  it("two passes holding the SAME witness — exactly one wins", async () => {
+    const pid = newProfile("Swap Sven");
+    seedDose(pid, "Sven D3");
+    seedLoginTelegram(pid, "5551806");
+    await sendMorningReminder(pid);
+
+    // Both processes read before either wrote: the cross-process shape, which no amount
+    // of in-process ordering can prevent.
+    const p = onePointer(pid);
+    const first = claimMessagePointerKeyboard(pid, p.id, p.version, [
+      [{ text: "a", callback_data: "x:1" }],
+    ]);
+    const second = claimMessagePointerKeyboard(pid, p.id, p.version, [
+      [{ text: "b", callback_data: "x:2" }],
+    ]);
+    expect([first, second]).toEqual([true, false]);
+    // The winner's keyboard stands; the loser overwrote nothing.
+    expect(onePointer(pid).keyboard[0][0].text).toBe("a");
+  });
+
+  it("closing is claimed the same way — a message cannot be closed twice", async () => {
+    const pid = newProfile("Close Coby");
+    seedDose(pid, "Coby D3");
+    seedLoginTelegram(pid, "5551807");
+    await sendMorningReminder(pid);
+
+    const p = onePointer(pid);
+    expect(claimMessagePointerClose(pid, p.id, p.version)).toBe(true);
+    expect(claimMessagePointerClose(pid, p.id, p.version)).toBe(false);
+    expect(liveMessagePointers(pid)).toEqual([]);
+  });
+
+  it("a claim never reaches another profile's pointer", async () => {
+    const mine = newProfile("Mine Mabel");
+    const theirs = newProfile("Theirs Tarek");
+    seedDose(theirs, "Tarek D3");
+    seedLoginTelegram(theirs, "5551808");
+    await sendMorningReminder(theirs);
+
+    const p = onePointer(theirs);
+    expect(claimMessagePointerClose(mine, p.id, p.version)).toBe(false);
+    expect(liveMessagePointers(theirs)).toHaveLength(1);
   });
 });

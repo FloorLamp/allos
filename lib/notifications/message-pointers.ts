@@ -16,7 +16,7 @@
 // roughly 48 hours, so a pointer past that horizon can never be acted on again. The
 // sweep drops them on every pass — see `pruneMessagePointers`.
 
-import { db } from "../db";
+import { db, writeTx } from "../db";
 import { sqlNow } from "../clock";
 import { createLogger } from "../log";
 import type { InlineKeyboard } from "./telegram-render";
@@ -37,6 +37,15 @@ export interface MessagePointer {
   date: string;
   keyboard: InlineKeyboard;
   sentAt: string;
+  // The stored keyboard blob VERBATIM — the optimistic-concurrency witness (#1788).
+  //
+  // It is the raw column text and never a re-serialization of `keyboard`, because the
+  // compare-and-swap below matches on bytes: a round-trip through parseStoredKeyboard
+  // that reordered a key or dropped an unknown one would produce a witness that never
+  // matches, and the sweep would silently stop editing anything. Carrying the original
+  // string makes the CAS correct by construction rather than by the two serializers
+  // agreeing forever.
+  version: string;
 }
 
 // Parse a stored keyboard blob. Robust to a corrupt or partial value: a bad row
@@ -151,23 +160,68 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
       date: r.date,
       keyboard,
       sentAt: r.sent_at,
+      version: r.keyboard,
     });
   }
   return out;
 }
 
-// Replace a pointer's stored keyboard after a successful edit, so the next tick
-// reconciles against what the chat now shows rather than re-deciding the same change
-// forever (the idempotence the "unchanged ⇒ no edit" rule depends on).
-export function updateMessagePointerKeyboard(
+// ---- Claiming an edit (issue #1788) ---------------------------------------
+//
+// THE RACE. The sweep reads a pointer, `await`s a Telegram edit, and only then writes
+// the new keyboard back. Two overlapping ticks for one profile — the compose poll
+// sidecar plus a host crontab, two app instances on one volume, a manual `notify` run
+// during the hourly one — both read the same pre-edit keyboard, both compute the same
+// edit, and both call the Bot API. The end state converges (the edits are identical),
+// so nothing is corrupted; what is spent is the rate-limit budget that reconcile.ts's
+// zero-call steady state exists to protect.
+//
+// THE FIX. The pointer's keyboard is a LIFECYCLE field, so it gets the atomic
+// transition the house convention requires (AGENTS.md; the `demoteIntakeObligation`
+// shape): a tick CLAIMS the transition — old blob → new blob — BEFORE it touches the
+// network, and only the winner makes the call. Claiming after the edit would still
+// leave both processes calling Telegram, which is the whole cost being avoided.
+//
+// Both claims run in ONE immediate transaction so the compare and the write cannot be
+// interleaved by the other writer, and so the loser waits for the lock instead of
+// reading a half-applied state.
+
+// Claim the right to replace this pointer's keyboard. True only for the tick that
+// still saw `version`; a loser gets false and skips its edit entirely.
+export function claimMessagePointerKeyboard(
   profileId: number,
   id: number,
-  keyboard: InlineKeyboard
-): void {
-  db.prepare(
-    `UPDATE notify_messages SET keyboard = ?
-      WHERE profile_id = ? AND id = ?`
-  ).run(JSON.stringify(keyboard), profileId, id);
+  version: string,
+  next: InlineKeyboard
+): boolean {
+  return writeTx(() => {
+    const res = db
+      .prepare(
+        `UPDATE notify_messages SET keyboard = ?
+          WHERE profile_id = ? AND id = ? AND keyboard = ?`
+      )
+      .run(JSON.stringify(next), profileId, id, version);
+    return res.changes === 1;
+  });
+}
+
+// Claim the right to CLOSE this message. The row is the claim: deleting it under the
+// same witness both wins the race and forgets the pointer, so a closed message can
+// never be closed twice.
+export function claimMessagePointerClose(
+  profileId: number,
+  id: number,
+  version: string
+): boolean {
+  return writeTx(() => {
+    const res = db
+      .prepare(
+        `DELETE FROM notify_messages
+          WHERE profile_id = ? AND id = ? AND keyboard = ?`
+      )
+      .run(profileId, id, version);
+    return res.changes === 1;
+  });
 }
 
 // Forget a pointer: the message is closed, its keyboard is gone, or the edit failed

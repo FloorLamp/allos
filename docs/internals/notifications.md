@@ -612,6 +612,22 @@ one pure decision (`lib/notifications/reconcile-core.ts`):
 - a dead pointer (message deleted, chat gone, past the edit horizon) → the
   best-effort edit fails, the pointer is dropped, nothing is retried forever.
 
+**Overlapping ticks (#1788).** The sweep does not assume an operator runs exactly
+one scheduler — a compose poll sidecar plus a host crontab, two replicas on one
+volume, or a manual `notify` run during the hourly one all put two passes on one
+profile at once, and both would read the same pre-edit keyboard and issue the same
+Bot API call. The end state converges (the edits are identical), so nothing is
+corrupted; what is spent twice is the rate-limit budget the zero-call steady state
+exists to protect. The pointer's keyboard is therefore treated as a lifecycle field
+with an atomic transition (AGENTS.md, the `demoteIntakeObligation` shape): each pass
+**claims** the transition — old blob → new blob, or a `DELETE` under the same witness
+for a close — *before* it touches the network, and only the winner calls Telegram
+(`claimMessagePointerKeyboard` / `claimMessagePointerClose`). Claiming afterwards
+would leave both passes calling the API, which is the whole cost being avoided. The
+witness is the stored blob **verbatim**, never a re-serialization: a round-trip that
+reordered a key would yield a witness that never matches and a sweep that silently
+stopped editing anything.
+
 **Edits, never sends.** Everything routes through the chokepoint's
 `closeMessage` / `updateMessageKeyboard` / `rebuildMessage`. Telegram does not
 notify on an edit, so no interruption is spent; reconciliation only ever REDUCES
