@@ -226,17 +226,23 @@ export default function ProfileIdentityBar({
           );
         })}
       </span>
+      {/* A FLEX row, not a truncating block with inline children: the emphasized
+      acting name and the quiet remainder are separate elements (one string cannot
+      carry two weights), and an inline child of an `overflow:hidden` box still
+      REPORTS a rect past the viewport even though it paints clipped — which is a
+      real overflow to the containment guard (expectNoClippedContent) and, at
+      390px, was one. As flex items with `min-w-0` they shrink instead. */}
       <span
         data-testid="identity-names"
-        className="min-w-0 flex-1 truncate text-left"
+        className="flex min-w-0 flex-1 items-baseline text-left"
       >
-        {/* The acting name is emphasized and always the prefix of the line (the
-        ordering guarantees it), so the remainder renders quietly beside it. */}
-        <span className="font-semibold text-slate-700 dark:text-slate-200">
+        <span className="min-w-0 truncate font-semibold text-slate-700 dark:text-slate-200">
           {view.acting.name}
         </span>
         {view.nameLine !== view.acting.name && (
-          <span className="font-normal text-slate-500 dark:text-slate-400">
+          // The acting name is always the line's prefix (the ordering guarantees
+          // it), so the remainder is the rest of the string.
+          <span className="min-w-0 truncate font-normal text-slate-500 dark:text-slate-400">
             {view.nameLine.slice(view.acting.name.length)}
           </span>
         )}
