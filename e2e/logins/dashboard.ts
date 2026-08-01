@@ -94,6 +94,23 @@ export const SUBSTANCE_PROFILE = "Substance Use (e2e)";
 export const E2E_LOGIN_PREVENTIVE = "e2e_preventive";
 export const PREVENTIVE_PROFILE = "Preventive Deeplinks (e2e)";
 
+// The RECORDED-HISTORY half of the #1433 cold-start pair. Same demographics as
+// PREVENTIVE_PROFILE above, but carrying deep-past preventive_events for two rules,
+// so their intervals have genuinely elapsed and they band as real "Overdue" work.
+// It is the negative control that keeps the never-recorded fix from degenerating
+// into "preventive care never alarms": one profile proves zero evidence produces no
+// alarm, the other proves evidence still does. Read-only in its spec, isolated
+// login, so concurrent workers and --repeat-each can't contend.
+export const E2E_LOGIN_PREVENTIVE_LAPSED = "e2e_preventive_lapsed";
+export const PREVENTIVE_LAPSED_PROFILE = "Preventive Lapsed (e2e)";
+// The two rules its seeded history covers, and the deep-past date they were last
+// done on. Named here so the seeder and the spec can never disagree.
+export const PREVENTIVE_LAPSED_RULES = [
+  "dental_cleaning",
+  "blood_pressure",
+] as const;
+export const PREVENTIVE_LAPSED_DATE = "2011-05-17";
+
 // A dedicated ADULT profile for the mental-health-visit sensitivity + crisis-
 // resources specs (#997/#996). Seeded with its calendar feed set to FULL detail and
 // a per-profile crisis-resources override; the spec OWNS every appointment it books

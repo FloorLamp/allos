@@ -281,38 +281,38 @@ export default function NeedsAttentionHero({
   if (count === 0) {
     return (
       <>
-      <section
-        data-testid="needs-attention"
-        aria-label="Needs attention"
-        className="card flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-emerald-500 py-3 dark:border-l-emerald-400"
-      >
-        {/* Clears the installed-PWA icon badge (#1424). Mounting it on THIS
+        <section
+          data-testid="needs-attention"
+          aria-label="Needs attention"
+          className="card flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-emerald-500 py-3 dark:border-l-emerald-400"
+        >
+          {/* Clears the installed-PWA icon badge (#1424). Mounting it on THIS
             branch too is the point: the card below isn't rendered at count 0, so
             a badge set on a previous visit would otherwise never come off. */}
-        <AppBadge count={count} />
-        <div
-          data-testid="attention-all-clear"
-          className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
-        >
-          <IconCircleCheck
-            className="h-5 w-5 text-emerald-500 dark:text-emerald-400"
-            stroke={1.75}
-            aria-hidden="true"
-          />
-          <span className="font-medium">All clear</span>
-          <span className="hidden text-slate-500 sm:inline dark:text-slate-400">
-            Nothing needs your attention right now.
-          </span>
-        </div>
-        <Link
-          href="/upcoming"
-          data-testid={more > 0 ? "attention-more-upcoming" : undefined}
-          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-        >
-          {more > 0 ? `${more} scheduled later` : "View upcoming"}
-        </Link>
-      </section>
-      <SetupDisclosure items={setupItems} now={today} />
+          <AppBadge count={count} />
+          <div
+            data-testid="attention-all-clear"
+            className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
+          >
+            <IconCircleCheck
+              className="h-5 w-5 text-emerald-500 dark:text-emerald-400"
+              stroke={1.75}
+              aria-hidden="true"
+            />
+            <span className="font-medium">All clear</span>
+            <span className="hidden text-slate-500 sm:inline dark:text-slate-400">
+              Nothing needs your attention right now.
+            </span>
+          </div>
+          <Link
+            href="/upcoming"
+            data-testid={more > 0 ? "attention-more-upcoming" : undefined}
+            className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            {more > 0 ? `${more} scheduled later` : "View upcoming"}
+          </Link>
+        </section>
+        <SetupDisclosure items={setupItems} now={today} />
       </>
     );
   }

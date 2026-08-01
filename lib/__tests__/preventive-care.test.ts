@@ -202,10 +202,7 @@ describe("screening age windows (never done)", () => {
   it("STAYS a setup item past the old grace period with nothing on record", () => {
     // The exact #1433 regression: this used to read "overdue", off nothing but a
     // birthdate the user had just typed in.
-    const a = statusOf(
-      "colorectal_cancer",
-      assess({ ageMonths: 45 * Y + 6 })
-    )!;
+    const a = statusOf("colorectal_cancer", assess({ ageMonths: 45 * Y + 6 }))!;
     expect(a.status).toBe("setup");
     expect(a.detail).toBe(PREVENTIVE_SETUP_SHORT);
     expect(a.nextLabel).toBe(PREVENTIVE_SETUP_DETAIL);

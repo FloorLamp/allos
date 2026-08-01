@@ -362,7 +362,9 @@ describe("preventiveAssessmentToUpcomingItem — the never-recorded setup state 
 
   it("keeps every affordance — deep link, named CTA, rule key, Book", () => {
     const item = setup();
-    expect(item.href).toBe("/records/history/procedures?new=1&name=Colonoscopy");
+    expect(item.href).toBe(
+      "/records/history/procedures?new=1&name=Colonoscopy"
+    );
     expect(item.actionLabel).toBe("Log or schedule a Colonoscopy");
     expect(item.preventiveRuleKey).toBe("colorectal_cancer");
     expect(item.bookHref).toContain("new=1");

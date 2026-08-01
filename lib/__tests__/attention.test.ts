@@ -701,7 +701,11 @@ describe("never-recorded preventive setup items (#1433)", () => {
   it("still subtracts real far-future work from the trailing link", () => {
     const model = [
       setupItem(),
-      up({ key: "appointment:1", domain: "appointment", dueDate: "2026-09-01" }),
+      up({
+        key: "appointment:1",
+        domain: "appointment",
+        dueDate: "2026-09-01",
+      }),
       up({ key: "dose:1", doseId: 1 }),
     ];
     // 3 items, 1 of them setup, 1 on the card → exactly 1 "scheduled later".

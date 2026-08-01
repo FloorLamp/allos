@@ -66,7 +66,8 @@ export function preventiveEvidence(
 // The copy for the never-recorded state. One string per surface, defined here (with
 // the decision) so the Upcoming row, the dashboard hero line, and any later formatter
 // say the identical thing (#221) rather than each inventing a calmer phrasing.
-export const PREVENTIVE_SETUP_DETAIL = "No record yet — add a past date or schedule";
+export const PREVENTIVE_SETUP_DETAIL =
+  "No record yet — add a past date or schedule";
 export const PREVENTIVE_SETUP_SHORT = "No record yet";
 
 // A per-profile manual override (issue #82's `preventive_overrides`). `declined`
