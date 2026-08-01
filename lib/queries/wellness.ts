@@ -591,7 +591,10 @@ export function getPracticeTrends(
   const windowStart = history[0].weeks[0]?.start ?? asOf;
   const rows = db
     .prepare(
-      `SELECT practice, date, COUNT(*) AS sessions, AVG(duration_min) AS mean_min
+      `SELECT practice, date,
+              COUNT(*) AS sessions,
+              COUNT(duration_min) AS timed,
+              COALESCE(SUM(duration_min), 0) AS minutes
          FROM practice_logs
         WHERE profile_id = ? AND date >= ? AND date <= ?
         GROUP BY practice, date
@@ -601,7 +604,8 @@ export function getPracticeTrends(
     practice: string;
     date: string;
     sessions: number;
-    mean_min: number | null;
+    timed: number;
+    minutes: number;
   }[];
 
   // Fold the stored spellings onto the one identity (SQL cannot call the
@@ -621,12 +625,11 @@ export function getPracticeTrends(
       withMinutes: 0,
     };
     day.sessions += row.sessions;
-    if (row.mean_min != null) {
-      // AVG ignores NULL rows, so weight the group's mean by how many of its
-      // sessions actually carried a duration before merging spellings.
-      day.minutes += row.mean_min * row.sessions;
-      day.withMinutes += row.sessions;
-    }
+    // SUM/COUNT rather than AVG, so a day that merges two spellings — or mixes
+    // timed and untimed sessions — averages over the sessions that actually
+    // carried minutes, never over the ones that didn't.
+    day.minutes += row.minutes;
+    day.withMinutes += row.timed;
     days.set(row.date, day);
   }
 
