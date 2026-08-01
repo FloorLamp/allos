@@ -4,6 +4,34 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1811,
+          "kind": "feature",
+          "issues": [1801],
+          "title": "One identity bar and one profile switcher, everywhere",
+          "body": "Multi-profile instances get a single identity bar — stacked avatars of the profiles in your view with the acting profile always first, ringed, and named. On a phone it replaces the wordmark in the top bar, so \"whose data is this?\" is answerable without opening anything; on desktop it sits at the top of the sidebar. Tapping it opens one switcher panel (a drawer from the top on phones, an expanding list on desktop) where each person has two separate controls: switch who you're acting as, or toggle them in and out of your view. The old bottom-of-sidebar profile menu and the view-strip banner are retired; \"Signed in as\" moved next to Log out, and the import-review count now badges the Data entry in navigation. Single-profile instances are unchanged."
+        },
+        {
+          "pr": 1812,
+          "kind": "fix",
+          "issues": [1808, 1809],
+          "title": "Documents and training goals delete cleanly again",
+          "body": "Deleting a document whose extracted medication an illness episode later stopped used to fail with a database error — the episode's stop record blocked it. Stop records now keep the medication's name as their own snapshot, so the episode still says what it stopped while the document deletes, reprocesses, and reassigns cleanly (a migration applies automatically). Deleting a training goal a protocol referenced was blocked the same way: the protocol now simply loses its adherence link and survives, matching how other areas already behave."
+        },
+        {
+          "pr": 1810,
+          "kind": "feature",
+          "issues": [1797],
+          "title": "Every digest category can now be tuned",
+          "body": "The morning digest's Tune control now covers all ten categories, including lab results and activities. Turning a category down only quiets its routine lines: a flagged lab result always comes through, and a training day that set a personal record still appears. The row copy states exactly what each toggle can never hide."
+        },
+        {
+          "pr": 1806,
+          "kind": "fix",
+          "issues": [1795],
+          "title": "One update notice per deploy",
+          "body": "A new deploy used to raise two separate notices — a banner at the top and a bar at the bottom, each with its own reload button, and taking one could re-offer the update you'd just taken. There is now a single \"Update ready\" notice that names what was deployed, and its reload always lands you on the new version with nothing re-offering it afterwards."
+        },
+        {
           "pr": 1803,
           "kind": "feature",
           "issues": [1670],
