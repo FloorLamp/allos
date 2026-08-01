@@ -11,7 +11,11 @@
 //                       verdict) still appears;
 //   • demoted mood / symptoms — routine lines stop; the category's OWN notable
 //                       definition (a shift from baseline, a severe symptom-day)
-//                       still passes.
+//                       still passes;
+//   • demoted activities — an ordinary training day stops; a day that set a personal
+//                       record still appears;
+//   • demoted labs    — nothing stops, because a lab line is never routine: every one
+//                       the digest carries is flagged, i.e. floor class.
 //
 // Each predicate is the classification the line ALREADY computes (#221). Demotion
 // never invents a second threshold, and it never reaches the safety floor: in
@@ -20,17 +24,29 @@
 // module exists to hold — a preference filter reduces ROUTINE contact and can never
 // override a safety floor (docs/internals/findings.md).
 //
-// WHAT IS NOT TUNABLE, and why.
-//   • `labs` — the digest's collector already excludes it (the flagged-lab lines come
-//     from the digest's own send cursor), and every lab line it would carry is
-//     `flagged`, i.e. floor class. A toggle that provably changes nothing is a lie.
-//   • the offer tail, the Today obligations and the minimal-digest guarantee (#1505)
-//     — they are the MESSAGE's job, not a category. Demoting everything still leaves
-//     the digest's non-demotable core; the message can get short, never vanish.
-//   • `activities` — named in the design's examples, deliberately deferred: its
-//     notable predicate ("a PR") does not exist on the digest's activity line today,
-//     and minting one here would be exactly the "second threshold" the design forbids.
-//     It joins the set the day the classification does.
+// WHAT IS NOT TUNABLE, and why. Only ONE thing: the offer tail, the Today obligations
+// and the minimal-digest guarantee (#1505) are the MESSAGE's job, not a category.
+// Demoting everything still leaves the digest's non-demotable core; the message can get
+// short, never vanish.
+//
+// EVERY CATEGORY IS TUNABLE (owner ruling 2026-08-01, #1797). #1774 shipped a
+// deliberately conservative launch set — the collector's categories minus `labs`, with
+// `activities` deferred — on the argument that a toggle over an all-floor category
+// changes nothing visible and would therefore be a lie. That intersection is retired.
+// The set is now DERIVED, per side, so there is no hand-maintained list to drift:
+//
+//   • the COLLECTOR owns its half — `RECENT_CHANGE_CATEGORIES`, so a category added to
+//     the collector tomorrow is tunable the day it exists, with nothing to update here;
+//   • this module owns the DIGEST'S OWN sections — `DIGEST_OWN_CATEGORIES` (`sleep`,
+//     `activities`), which the collector never produces and which apply where their
+//     section is gathered.
+//
+// `labs` back in the set does NOT weaken the floor, it demonstrates it: every lab line
+// the digest carries is `flagged`, `flagged` implies notable in
+// applyRecentChangeDemotion, so a reader who tunes labs down still receives every
+// flagged result. The toggle states the boundary rather than hiding it — the notable
+// copy beside it says exactly that. Tuning reduces ROUTINE contact and can never
+// override a safety floor (docs/internals/findings.md §8).
 
 import {
   RECENT_CHANGE_CATEGORIES,
@@ -39,20 +55,25 @@ import {
 import { sleepVerdict } from "../sleep-summary";
 import type { NotificationAction } from "./types";
 
-// A category the digest's ⚙️ Tune control can demote. Seven come from the
-// recent-changes collector (everything it collects except `labs`); `sleep` is the
-// digest's OWN section, tuned by the same control because a reader does not think in
-// terms of which module produced the line.
-export type DigestCategory = Exclude<RecentChangeCategory, "labs"> | "sleep";
+// The digest's OWN sections, tuned by the same control because a reader does not think
+// in terms of which module produced the line. NOT collector categories: the collector
+// never emits them, `recentChangeDemotions` strips them before a preference reaches it,
+// and each applies where its section is gathered (`gatherDigestSleep` for sleep, the
+// Yesterday activity list for activities).
+export const DIGEST_OWN_CATEGORIES = ["sleep", "activities"] as const;
+export type DigestOwnCategory = (typeof DIGEST_OWN_CATEGORIES)[number];
+
+// A category the digest's ⚙️ Tune control can demote: everything the collector
+// produces, plus the digest's own sections.
+export type DigestCategory = RecentChangeCategory | DigestOwnCategory;
 
 // Declaration order = the order the Tune keyboard and the Settings mirror list them.
-// Derived from the collector's own list so a new collector category cannot silently
-// become untunable.
+// Derived from both registries so neither side can silently become untunable.
 export const DIGEST_TUNABLE_CATEGORIES: readonly DigestCategory[] = [
-  ...RECENT_CHANGE_CATEGORIES.filter(
-    (c): c is Exclude<RecentChangeCategory, "labs"> => c !== "labs"
-  ),
-  "sleep",
+  // collector-owned
+  ...RECENT_CHANGE_CATEGORIES,
+  // digest-owned
+  ...DIGEST_OWN_CATEGORIES,
 ];
 
 const TUNABLE = new Set<string>(DIGEST_TUNABLE_CATEGORIES);
@@ -63,6 +84,7 @@ export function isDigestCategory(value: unknown): value is DigestCategory {
 
 // The button/row label for a category.
 export const DIGEST_CATEGORY_LABELS: Record<DigestCategory, string> = {
+  labs: "Lab results",
   visits: "Visits",
   growth: "Growth",
   intake: "Supplements & meds",
@@ -71,12 +93,16 @@ export const DIGEST_CATEGORY_LABELS: Record<DigestCategory, string> = {
   mood: "Check-in",
   data: "Data arrival",
   sleep: "Sleep",
+  activities: "Activities",
 };
 
 // What SURVIVES a demotion, stated in the reader's words. The Settings mirror renders
 // it beside each row so "demote" can never be mistaken for "mute" — and so someone
 // auditing why their digest looks thin can see exactly what is still guaranteed.
 export const DIGEST_CATEGORY_NOTABLE: Record<DigestCategory, string> = {
+  // Stated as the boundary it is: every lab line the digest carries is flagged, and a
+  // flagged result is floor class, so this toggle cannot take one away.
+  labs: "A flagged result always appears — turning this down never hides one.",
   visits: "Appointments still appear on Upcoming.",
   growth: "A percentile-band crossing still ranks above routine lines.",
   intake: "Dose reminders and refill nudges are unaffected.",
@@ -85,11 +111,13 @@ export const DIGEST_CATEGORY_NOTABLE: Record<DigestCategory, string> = {
   mood: "A shift from your recent average still appears.",
   data: "Sync failures still surface on Data → Review.",
   sleep: "A notably short or long night still appears.",
+  activities: "A day that set a personal record still appears.",
 };
 
 // Short button labels — a Telegram inline button has ~30 usable characters beside an
 // icon, so the keyboard uses these rather than the Settings labels.
 export const DIGEST_CATEGORY_SHORT: Record<DigestCategory, string> = {
+  labs: "Labs",
   visits: "Visits",
   growth: "Growth",
   intake: "Supplements",
@@ -98,6 +126,7 @@ export const DIGEST_CATEGORY_SHORT: Record<DigestCategory, string> = {
   mood: "Check-in",
   data: "Data",
   sleep: "Sleep",
+  activities: "Training",
 };
 
 // ---- Stored form -----------------------------------------------------------
@@ -163,14 +192,15 @@ export function intersectDigestDemotions(
   return DIGEST_TUNABLE_CATEGORIES.filter((c) => sets.every((s) => s.has(c)));
 }
 
-// The subset the recent-changes collector understands (`sleep` is the digest's own
-// section and is applied there instead).
+// The subset the recent-changes collector understands. The digest's OWN sections
+// (`sleep`, `activities`) are applied where they are gathered, so the collector never
+// sees a preference it has no category for.
+const OWN = new Set<string>(DIGEST_OWN_CATEGORIES);
+
 export function recentChangeDemotions(
   cats: readonly DigestCategory[]
 ): RecentChangeCategory[] {
-  return cats.filter(
-    (c): c is Exclude<DigestCategory, "sleep"> => c !== "sleep"
-  );
+  return cats.filter((c): c is RecentChangeCategory => !OWN.has(c));
 }
 
 // Does last night's Sleep section survive the reader's preference? Demoted sleep keeps
@@ -186,6 +216,23 @@ export function sleepSurvivesDemotion(
   if (!demoted.includes("sleep")) return true;
   const verdict = sleepVerdict(lastNightMin, baselineMin);
   return verdict === "above" || verdict === "below";
+}
+
+// Does yesterday's Activities list survive the reader's preference? Demoted activities
+// keep only a day that set a PERSONAL RECORD — the predicate the #1714 design named
+// ("a PR"), read from the SAME recentPRs/recentCardioPRs classification the weekly
+// recap and the Trends fitness lens already render, never a threshold invented here. A
+// day of ordinary training has no record and so reads as routine, which is exactly the
+// line a demotion is asking to stop.
+//
+// The caller passes the COUNT rather than the records because resolving them costs two
+// history reads; the digest only pays for them when this category is actually demoted.
+export function activitiesSurviveDemotion(
+  demoted: readonly DigestCategory[],
+  personalRecords: number
+): boolean {
+  if (!demoted.includes("activities")) return true;
+  return personalRecords > 0;
 }
 
 // ---- The keyboard ----------------------------------------------------------
@@ -228,6 +275,13 @@ export function collapsedTuneAction(
 
 // How many category buttons share one keyboard row. Two keeps every label readable on
 // a phone; the ▲ Done button always gets its own row.
+//
+// SIZE. The widened set (#1797) is 10 categories, so the largest keyboard this can
+// produce is 5 rows + Done = 11 buttons — well inside Telegram's 100-button cap, which
+// `capTelegramKeyboard` enforces for every keyboard anyway (whole leading rows kept, so
+// a pair is never split). Nothing extra is needed here, and the practical keyboard is
+// smaller still: `tunableCategoriesFor` offers only the categories in TODAY's message
+// plus anything already demoted.
 const TUNE_ROW_WIDTH = 2;
 
 // The EXPANDED control: one toggle per category, then ▲ Done.

@@ -10,11 +10,14 @@ import { E2E_LOGIN_DIGEST_TUNE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // digest looks thin.
 //
 // What the other tiers already own, and this spec therefore does not re-assert: the
-// notable predicates and the floor composition (lib/__tests__/digest-tune.test.ts),
-// the login-scoped write and the demoted digest (lib/__db_tests__/digest-tune.test.ts),
-// and the Telegram keyboard (same DB spec, driven through the real dispatcher). What
-// only a browser can prove is that the mirror RENDERS the shared vocabulary and that a
-// tick round-trips through the real Server Action to SQLite.
+// tunable set and the notable predicates (lib/__tests__/digest-tune.test.ts), the
+// login-scoped write and what a demotion actually does to a rendered digest — including
+// the #1797 floor pin, that a tuned-down `labs` still delivers its flagged result
+// (lib/__db_tests__/digest-tune.test.ts). The digest is a NOTIFICATION and has no
+// browser surface, so those assertions live where the message exists. What only a
+// browser can prove is that the mirror RENDERS whatever the registry says — including
+// the categories #1797 opened up — and that a tick round-trips through the real Server
+// Action to SQLite.
 //
 // Runs on its OWN fixture login (#868): the preference is LOGIN-scoped and persists,
 // so sharing a login would thin another spec's session.
@@ -38,12 +41,19 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
       const card = section.getByTestId("digest-tune-list");
       await expect(card).toBeVisible();
       // The vocabulary comes from the shared registry, so the mirror can't drift from
-      // the keyboard: sleep and the check-in are both tunable, labs never is.
+      // the keyboard: every collector category plus the digest's own sections.
       await expect(card).toContainText("Sleep");
       await expect(card).toContainText("Check-in");
-      await expect(card).not.toContainText("Labs");
+      // #1797 opened the launch set's two exclusions. They render because the registry
+      // says so — nothing in this component decides which categories exist.
+      await expect(card).toContainText("Lab results");
+      await expect(card).toContainText("Activities");
       // "Demote" is not "mute": the card states what still gets through.
       await expect(card).toContainText("out-of-range reading still appears");
+      await expect(card).toContainText("personal record still appears");
+      // And for labs it states the floor plainly — this toggle cannot hide a flagged
+      // result, which is the whole reason it is safe to offer.
+      await expect(card).toContainText("never hides one");
 
       // Drive to a known state rather than assuming the entry one — a --repeat-each
       // run re-enters with the previous run's writes.
@@ -69,6 +79,68 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
           .getByTestId("notify-digest-tune")
           .getByTestId("digest-tune-sleep")
       ).not.toBeChecked();
+    } finally {
+      await member.close();
+    }
+  });
+
+  test("tunes the categories #1797 opened, and they persist independently", async ({
+    browser,
+  }) => {
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_DIGEST_TUNE,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/settings/notifications");
+      const section = member.getByTestId("notify-digest-tune");
+      await expect(section).toBeVisible();
+
+      // Drive both to a known state — the login persists across a --repeat-each run.
+      await settledCheckSave(
+        member,
+        section.getByTestId("digest-tune-labs"),
+        true,
+        section
+      );
+      await settledCheckSave(
+        member,
+        section.getByTestId("digest-tune-activities"),
+        true,
+        section
+      );
+
+      await member.reload();
+      const reloaded = member.getByTestId("notify-digest-tune");
+      await expect(reloaded.getByTestId("digest-tune-labs")).toBeChecked();
+      await expect(
+        reloaded.getByTestId("digest-tune-activities")
+      ).toBeChecked();
+      // A toggle writes ONE category: the neighbours this spec never touched are
+      // still on.
+      await expect(
+        reloaded.getByTestId("digest-tune-vitals")
+      ).not.toBeChecked();
+
+      // Reverse one and leave the other — the stored form is a set, not a mode.
+      await settledCheckSave(
+        member,
+        reloaded.getByTestId("digest-tune-labs"),
+        false,
+        reloaded
+      );
+      await member.reload();
+      const after = member.getByTestId("notify-digest-tune");
+      await expect(after.getByTestId("digest-tune-labs")).not.toBeChecked();
+      await expect(after.getByTestId("digest-tune-activities")).toBeChecked();
+
+      // Leave the fixture login as we found it.
+      await settledCheckSave(
+        member,
+        after.getByTestId("digest-tune-activities"),
+        false,
+        after
+      );
     } finally {
       await member.close();
     }

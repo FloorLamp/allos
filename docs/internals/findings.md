@@ -1065,11 +1065,16 @@ structural rather than a matter of ordering. Two properties carry it:
    out-of-range vital survives every preference no matter which category it belongs
    to. There is no filter ordering that can hide one, because there is no filter
    that accepts one.
-2. **A category whose every line is floor class is not tunable at all.** `labs`
-   carries no routine line, so offering its toggle would be a control that provably
-   changes nothing — a lie about what the user is deciding. The tunable set is
-   derived from the collector's own list minus that case, so a new category cannot
-   silently become untunable either.
+2. **A category whose every line is floor class is still tunable, and the floor is
+   what answers.** #1714 originally withheld `labs` on the argument that a toggle
+   which provably changes nothing is a lie about what the user is deciding; the
+   owner retired that intersection in #1797. The set is now derived from the
+   collector's registry plus the digest's own sections, with nothing subtracted, so
+   a new category cannot silently become untunable — and `labs` states the boundary
+   in its own copy ("A flagged result always appears — turning this down never hides
+   one") instead of hiding it behind a missing control. Property 1 is what makes
+   that safe: the toggle stores, the digest reads it, and the flagged result arrives
+   regardless.
 
 The corollary on the message side: the guaranteed-access core (#1505's
 minimal-digest rule, the offer tail, the Today obligations) is the MESSAGE's job,
@@ -1092,7 +1097,7 @@ as clinically interesting.
 | Conservative direction per aggregate (5a)               | `lib/__tests__/dri.test.ts` + `lib/__tests__/supplement-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions |
 | Suggest-never-write                                     | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                |
 | Reconciliation only ever REDUCES a message's claims     | `lib/notifications/reconcile-core.ts` emits close/strip only; predicates read the ledger and never the suppression bus (`lib/__db_tests__/message-reconcile.test.ts`)                                   |
-| Preference filters never override safety floors (8)     | `flagged` ⇒ notable in `applyRecentChangeDemotion`; `labs` absent from `DIGEST_TUNABLE_CATEGORIES`; `lib/__tests__/digest-tune.test.ts` + `lib/__db_tests__/digest-tune.test.ts`                        |
+| Preference filters never override safety floors (8)     | `flagged` ⇒ notable in `applyRecentChangeDemotion`, so a tuned-down `labs` still delivers its flagged result; `lib/__tests__/digest-tune.test.ts` + `lib/__db_tests__/digest-tune.test.ts`              |
 | Recovery clears a suggestion                            | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                    |
 | Window nesting                                          | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                 |
 | Reach tier per finding namespace                        | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                         |
