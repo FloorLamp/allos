@@ -450,6 +450,6 @@ export function decideWorkupPrompt(
       `You recorded ${input.ttcStart} as when you started trying. A fertility ` +
       `evaluation is commonly suggested after ${threshold} months` +
       (olderRule ? ` from age ${TTC_WORKUP_OLDER_AGE}` : "") +
-      `. Informational only — not a diagnosis, and not a statement about your chances.`,
+      `. Informational only — not a diagnosis.`,
   };
 }
