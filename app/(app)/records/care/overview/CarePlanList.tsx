@@ -35,6 +35,16 @@ const buildColumns = (
           notes={c.notes}
           className="ml-2 text-xs font-normal text-slate-400"
         />
+        {/* The #1866 terminator's record: how (and why) this follow-up was closed
+            by the user's own statement. The free-text reason renders through
+            NotesText like every other note. */}
+        {c.settled_disposition != null && (
+          <span className="ml-2 text-xs font-normal text-slate-400">
+            {c.settled_disposition === "declined" ? "Declined" : "Done"}
+            {c.settled_on ? ` ${formatRecordDate(c.settled_on, "", fmt)}` : ""}
+            <NotesText notes={c.settled_reason} className="ml-1" />
+          </span>
+        )}
       </>
     ),
   },

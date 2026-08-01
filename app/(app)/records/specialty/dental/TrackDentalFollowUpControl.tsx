@@ -1,6 +1,7 @@
 "use client";
 
 import SubmitButton from "@/components/SubmitButton";
+import { followUpStateLabel } from "@/lib/followup";
 import { trackDentalFollowUp } from "./actions";
 import type { DentalFollowUpSummary } from "@/lib/queries";
 
@@ -26,13 +27,7 @@ export default function TrackDentalFollowUpControl({
   existing?: DentalFollowUpSummary;
 }) {
   if (existing) {
-    const label = existing.resolution
-      ? `resolved · ${existing.resolution}`
-      : existing.status === "completed"
-        ? "done"
-        : existing.plannedDate
-          ? `due ${existing.plannedDate}`
-          : "tracked";
+    const label = followUpStateLabel(existing);
     return (
       <span
         data-testid={`dental-followup-state-${recordId}`}

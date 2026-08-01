@@ -15,7 +15,7 @@ import {
 } from "@/lib/queries";
 import { snoozeUntil } from "@/lib/upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
-import { resolveFollowUpCore } from "@/lib/followup-write";
+import { resolveFollowUpCore, settleFollowUpCore } from "@/lib/followup-write";
 import {
   formError,
   formOk,
@@ -213,6 +213,47 @@ export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
   revalidatePath("/upcoming");
   revalidatePath("/results");
   revalidatePath("/records");
+  revalidatePath("/");
+  return formOk();
+}
+
+// Settle a finding follow-up (#1866) — the per-item TERMINATOR that permanently ends
+// the overdue-push escalation AND closes the chain node: "done on <date>" (it
+// happened outside our records) or "declined" ("discussed, not doing it", optional
+// reason). Ids only; the core returns a typed outcome and this action renders each
+// refusal honestly — an already-closed follow-up (double-click, a stale surface) is
+// told so, never confirmed unconditionally. `settled_on` is optional and defaults to
+// the item-profile's own today; the reason is bounded free text.
+export async function settleFollowUp(formData: FormData): Promise<FormResult> {
+  const pid = await gateItemProfile(formData);
+  const carePlanItemId = Number(formData.get("care_plan_item_id"));
+  const disposition = String(formData.get("disposition") ?? "");
+  const now = today(pid);
+  const settledOn = String(formData.get("settled_on") ?? "").trim() || now;
+  const reason = String(formData.get("reason") ?? "")
+    .trim()
+    .slice(0, 500);
+  if (!carePlanItemId) return formError("Couldn't find that follow-up.");
+  const res = settleFollowUpCore(
+    pid,
+    carePlanItemId,
+    disposition,
+    settledOn,
+    reason || null,
+    now
+  );
+  if (res.kind === "invalid-disposition")
+    return formError("Choose done or not doing it.");
+  if (res.kind === "invalid-date")
+    return formError("Enter a valid date (today or earlier).");
+  if (res.kind === "already-closed")
+    return formError("This follow-up is already closed.");
+  if (res.kind === "not-found")
+    return formError("Couldn't find that follow-up.");
+  revalidatePath("/upcoming");
+  revalidatePath("/results");
+  revalidatePath("/records");
+  revalidatePath("/records/care/overview");
   revalidatePath("/");
   return formOk();
 }

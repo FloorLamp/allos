@@ -1,6 +1,7 @@
 "use client";
 
 import SubmitButton from "@/components/SubmitButton";
+import { followUpStateLabel } from "@/lib/followup";
 import { trackSkinFollowUp } from "./actions";
 import type { SkinLesionFollowUpSummary } from "@/lib/queries";
 
@@ -27,13 +28,7 @@ export default function TrackSkinFollowUpControl({
   existing?: SkinLesionFollowUpSummary;
 }) {
   if (existing) {
-    const label = existing.resolution
-      ? `resolved · ${existing.resolution}`
-      : existing.status === "completed"
-        ? "done"
-        : existing.plannedDate
-          ? `due ${existing.plannedDate}`
-          : "tracked";
+    const label = followUpStateLabel(existing);
     return (
       <span
         data-testid={`skin-followup-state-${recordId}`}
