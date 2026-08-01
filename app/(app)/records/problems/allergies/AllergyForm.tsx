@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -66,7 +65,6 @@ export default function AllergyForm({
   profileId?: number;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!allergy;
@@ -121,7 +119,6 @@ export default function AllergyForm({
       setReactions([{ ...EMPTY_ROW }]);
     }
     onDone?.();
-    router.refresh();
   }
 
   const uid = allergy?.id ?? "new";

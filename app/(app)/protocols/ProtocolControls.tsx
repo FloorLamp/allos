@@ -84,7 +84,6 @@ export default function ProtocolControls({
         return;
       }
       toast(success);
-      router.refresh();
     } finally {
       setBusy(false);
     }

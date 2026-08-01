@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -19,7 +18,6 @@ export default function CycleForm({
   period?: CyclePeriod;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!period;
@@ -46,7 +44,6 @@ export default function CycleForm({
     toast(editing ? "Period updated" : "Period saved");
     if (!editing) formRef.current?.reset();
     onDone?.();
-    router.refresh();
   }
 
   return (

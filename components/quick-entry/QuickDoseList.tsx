@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
@@ -34,9 +33,7 @@ export default function QuickDoseList({
   // rather than leaving an empty sheet on screen.
   onDone: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
-  const [, startTransition] = useTransition();
   // Doses resolved during THIS overlay session, dropped from the list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running
   // the gather mid-list would reorder rows under the user's finger.
@@ -73,7 +70,6 @@ export default function QuickDoseList({
     }
     // Keep the page behind the overlay honest — the user stays put, so what they
     // are looking at has to reflect the write.
-    startTransition(() => router.refresh());
   }
 
   if (remaining.length === 0) {

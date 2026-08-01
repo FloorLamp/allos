@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -48,7 +47,6 @@ export default function QuickAddMedication({
   // Called after a successful add (e.g. to collapse the inline symptom-card panel).
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [pediatricContext, setPediatricContext] = useState(pediatric);
 
@@ -171,7 +169,6 @@ export default function QuickAddMedication({
     setFormulationSlug("");
     setSelectedPediatricBandMinLbs(null);
     if (onDone) onDone();
-    else router.refresh();
   }
 
   return (

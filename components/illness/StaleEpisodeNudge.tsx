@@ -1,7 +1,6 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { IconClockQuestion } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
@@ -30,7 +29,6 @@ export default function StaleEpisodeNudge({
   medReconciliation?: EpisodeMedSuggestion[];
 }) {
   const [pending, start] = useTransition();
-  const router = useRouter();
   const toast = useToast();
 
   const withTarget = (fd: FormData) => {
@@ -79,7 +77,6 @@ export default function StaleEpisodeNudge({
                 return;
               }
               toast("Keeping the episode open.");
-              router.refresh();
             })
           }
           className="badge cursor-pointer border border-black/10 bg-transparent text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-ink-850"

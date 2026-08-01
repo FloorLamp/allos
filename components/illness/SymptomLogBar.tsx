@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   IconX,
   IconPlus,
@@ -147,7 +146,6 @@ export default function SymptomLogBar({
   const [noteEditing, setNoteEditing] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [, startTransition] = useTransition();
-  const router = useRouter();
   const toast = useToast();
 
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
@@ -247,7 +245,6 @@ export default function SymptomLogBar({
         ? `Logged ${count} symptom${count === 1 ? "" : "s"}.`
         : "Logged."
     );
-    startTransition(() => router.refresh());
   }
 
   function toggleSymptomPicker() {
@@ -309,7 +306,6 @@ export default function SymptomLogBar({
       if (res.redFlag) {
         toast(res.redFlag, { tone: "error" });
       }
-      startTransition(() => router.refresh());
     } else {
       setTempError(res.error);
       toast(res.error, { tone: "error" });
@@ -352,8 +348,8 @@ export default function SymptomLogBar({
   const rowMap = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
   // Freeze the picker order for the life of this mount: the server re-ranks on every
-  // read, so a router.refresh() after a tap must not reorder rows under the finger (the
-  // FoodLogBar #591 discipline). The order only changes on remount (navigate away + back).
+  // read, so the re-render each tap's action triggers must not reorder rows under the
+  // finger (the FoodLogBar #591 discipline). The order only changes on remount (navigate away + back).
   const frozenOrder = useRef<string[] | null>(null);
   if (frozenOrder.current === null) {
     frozenOrder.current = rankedKeys ?? [
@@ -410,7 +406,6 @@ export default function SymptomLogBar({
         tone: "error",
       });
     }
-    startTransition(() => router.refresh());
   }
 
   // Explicit LOWER — selecting a labeled lower chip is sufficient intent. Optimistically
@@ -429,7 +424,6 @@ export default function SymptomLogBar({
       setSeverity(key, prev);
       toast(res.error || "Couldn't lower that symptom.", { tone: "error" });
     }
-    startTransition(() => router.refresh());
   }
 
   async function saveNote(key: string, value: string) {
@@ -445,7 +439,6 @@ export default function SymptomLogBar({
       setNote(key, prev);
       toast(res.error || "Couldn't save that note.", { tone: "error" });
     }
-    startTransition(() => router.refresh());
   }
 
   async function clear(key: string) {
@@ -463,7 +456,6 @@ export default function SymptomLogBar({
       if (prevNote) setNote(key, prevNote);
       toast(res.error || "Couldn't remove that symptom.", { tone: "error" });
     }
-    startTransition(() => router.refresh());
   }
 
   function addCustom(name: string = customDraft) {
@@ -780,7 +772,6 @@ export default function SymptomLogBar({
             onClick={() =>
               startTransition(async () => {
                 await activateIllnessForSymptoms();
-                router.refresh();
               })
             }
             className="btn-ghost btn-sm border-dashed"

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   INSTRUMENTS,
   INSTRUMENT_OPTIONS,
@@ -27,7 +26,6 @@ export default function InstrumentsView({
   // param and passes it. Absent/unknown ⇒ the PHQ-9 default.
   initialInstrument?: Instrument;
 }) {
-  const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const [instrument, setInstrument] = useState<Instrument>(
     initialInstrument ?? "PHQ-9"
@@ -89,7 +87,6 @@ export default function InstrumentsView({
       return;
     }
     reset();
-    router.refresh();
   }
 
   return (

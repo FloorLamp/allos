@@ -6,9 +6,9 @@ import { settledClick } from "./helpers";
 // followups.spec, #856 item 11), and future accordion mounts (#858). ONE flow, no
 // per-mount drift.
 //
-// The bar is optimistic + reconciled: a tap writes via a Server Action and then fires
-// router.refresh(), which re-renders (and on some surfaces remounts) the bar. Two hazards
-// follow, handled by two composable mechanisms:
+// The bar is optimistic + reconciled: a tap writes via a Server Action whose revalidate
+// re-renders (and on some surfaces remounts) the bar. Two hazards follow, handled by two
+// composable mechanisms:
 //
 //   1. A trailing refresh can reset the bar's TRANSIENT client state (such as an open
 //      picker) mid-interaction. Every helper wraps its tap+assert in an auto-retrying

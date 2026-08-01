@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
@@ -24,7 +23,6 @@ export default function CrisisResourcesEditor({
   description: string;
   testid?: string;
 }) {
-  const router = useRouter();
   const [text, setText] = useState(initialText);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -34,7 +32,6 @@ export default function CrisisResourcesEditor({
     fd.set("crisis_resources", next);
     runSave(async () => {
       await action(fd);
-      router.refresh();
     });
   }
 

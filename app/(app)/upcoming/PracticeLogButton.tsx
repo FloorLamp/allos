@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { logUpcomingPractice } from "./actions";
@@ -13,7 +12,6 @@ export default function PracticeLogButton({
   targetId: number;
   profileId: number;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [pending, setPending] = useState(false);
 
@@ -32,7 +30,6 @@ export default function PracticeLogButton({
             ? "Logged today's session"
             : `Logged — ${result.outcome.count} sessions today`
         );
-        router.refresh();
       } else {
         toast("That practice is no longer available.", { tone: "error" });
       }

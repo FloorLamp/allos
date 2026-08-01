@@ -91,7 +91,8 @@ export async function deleteActivityVideoAction(
 // component reached from several entry points (Journal card, repeat, live resume),
 // so it can't be handed clips from a server component the way the Journal feed
 // hands them to the card — it asks for them when it opens, and again after an
-// upload/delete, since its own state outlives the grid's `router.refresh()`.
+// upload/delete, since its own client state outlives the server re-render these
+// actions trigger.
 //
 // Read-only, but still `requireWriteAccess`: the only caller is the editor's WRITE
 // surface, and matching the gate of the actions beside it keeps this file's auth

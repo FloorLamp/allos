@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveProfileSettings } from "./actions";
 import { ageFromBirthdate, dateStrInTz, isRealIsoDate } from "@/lib/date";
 import DateField from "@/components/DateField";
@@ -49,7 +48,6 @@ export default function ProfileForm({
   homeLng: number | null;
   skinType: number | null;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [fullName, setFullName] = useState(initialFullName ?? "");
   const [sex, setSex] = useState<Sex | "">(initialSex ?? "");
@@ -128,7 +126,6 @@ export default function ProfileForm({
       // Close the findings loop (#1305): if this save satisfied a structural data-quality
       // gap, acknowledge it via the shared toast — the settings autosave path (#794).
       if (res?.closureToast) toast(res.closureToast);
-      router.refresh();
     });
   }
 

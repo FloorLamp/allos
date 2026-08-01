@@ -1,7 +1,6 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { IconX } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
@@ -24,7 +23,6 @@ export default function UntrackHabitButton({
 }) {
   const confirm = useConfirm();
   const toast = useToast();
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   async function onClick() {
@@ -40,14 +38,16 @@ export default function UntrackHabitButton({
     }
     const fd = new FormData();
     fd.set("target_id", String(targetId));
-    const res = await untrackFoodHabit(fd);
-    if (!res.ok) {
-      toast(res.error || "Couldn't stop tracking that habit.", {
-        tone: "error",
-      });
-      return;
-    }
-    startTransition(() => router.refresh());
+    // The write itself is what `pending` disables the button for; the action's own
+    // revalidate repaints the list (#1473).
+    startTransition(async () => {
+      const res = await untrackFoodHabit(fd);
+      if (!res.ok) {
+        toast(res.error || "Couldn't stop tracking that habit.", {
+          tone: "error",
+        });
+      }
+    });
   }
 
   return (

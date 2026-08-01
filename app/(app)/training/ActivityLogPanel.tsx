@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import ActivityCombobox from "@/components/ActivityCombobox";
 import SubmitButton from "@/components/SubmitButton";
@@ -35,7 +34,6 @@ export default function ActivityLogPanel({
   sportOptions: string[];
   cardioOptions: string[];
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,12 +85,10 @@ export default function ActivityLogPanel({
     formRef.current?.reset();
     setType("sport");
     setTitle("");
-    router.refresh();
   }
 
   async function remove(formData: FormData) {
     await deleteActivity(formData);
-    router.refresh();
   }
 
   return (

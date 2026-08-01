@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
 import { IconX, IconRotateClockwise } from "@tabler/icons-react";
 import type { Equipment } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
@@ -240,7 +239,6 @@ export default function PlateBuilderModal({
   onCreated: (e: Equipment) => void;
   onClose: () => void;
 }) {
-  const router = useRouter();
   // Only equipment with a known weight can act as a bar.
   const bars = useMemo(
     () => equipment.filter((e) => e.weight_kg != null),
@@ -336,7 +334,6 @@ export default function PlateBuilderModal({
       setCreating(false);
       setNewName("");
       setNewWeight("");
-      router.refresh();
       return res.equipment;
     } finally {
       setSaving(false);

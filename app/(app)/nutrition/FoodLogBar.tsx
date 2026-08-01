@@ -1,8 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
 import {
   IconAdjustmentsHorizontal,
   IconPlus,
@@ -29,9 +28,9 @@ import { useFoodSelectedDate } from "./FoodSuggestionsLayout";
 // (frequency + recency, issue #591) — the `groups` prop arrives pre-ordered.
 //
 // The row order is FROZEN for the life of this mount: the server re-ranks by
-// recency-decayed frequency on every read, so the router.refresh() after a tap would
-// otherwise reorder the list under the user's finger — jarring right where they just
-// tapped. Tapping a row's label expands the (normally truncated) serving detail so it's
+// recency-decayed frequency on every read, so the server re-render each tap's action
+// triggers would otherwise reorder the list under the user's finger — jarring right
+// where they just tapped. Tapping a row's label expands the (normally truncated) serving detail so it's
 // readable on a narrow phone without leaving the page.
 
 const TIER_ORDER: FoodGroupTier[] = ["encourage", "neutral", "limit"];
@@ -115,8 +114,6 @@ export default function FoodLogBar({
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
   // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [, startTransition] = useTransition();
-  const router = useRouter();
   const toast = useToast();
 
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
@@ -284,7 +281,6 @@ export default function FoodLogBar({
         tone: "error",
       });
     }
-    startTransition(() => router.refresh());
   }
 
   function toggleDetail(slug: string) {

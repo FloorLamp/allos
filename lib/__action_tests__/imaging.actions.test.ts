@@ -57,8 +57,7 @@ describe("addImagingStudy", () => {
     expect(s.reading_provider_id).toBeNull();
     // The route that RENDERS the studies list. Bare `/results` is a `redirect()`
     // stub to `/results/biomarkers` and shows no imaging, so revalidating it left
-    // the client-side `router.refresh()` as the only thing that could repaint the
-    // list after a write.
+    // the list's own router-cache entry stale for the next navigation to it.
     expect(revalidate).toHaveBeenCalledWith("/results/imaging");
   });
 

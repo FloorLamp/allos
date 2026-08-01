@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { WEEKDAYS_LONG } from "@/lib/date";
 import { saveFreeDays } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
@@ -15,7 +14,6 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // unchanged. Renders all seven days so a submission is always complete (an empty set
 // is an explicit "no free days").
 export default function FreeDaysForm({ freeDays }: { freeDays: number[] }) {
-  const router = useRouter();
   const [set, setSet] = useState<Set<number>>(new Set(freeDays));
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -25,7 +23,6 @@ export default function FreeDaysForm({ freeDays }: { freeDays: number[] }) {
     for (const d of next) fd.append("free_days", String(d));
     runSave(async () => {
       await saveFreeDays(fd);
-      router.refresh();
     });
   }
 

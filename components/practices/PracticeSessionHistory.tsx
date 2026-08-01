@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import OverflowMenu, {
   MENU_ITEM,
@@ -42,7 +41,6 @@ export default function PracticeSessionHistory({
   totalCount?: number;
   emptyText?: string;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
   const formatPrefs = useFormatPrefs();
@@ -68,7 +66,6 @@ export default function PracticeSessionHistory({
     if (outcome.kind === "updated") {
       toast("Session updated");
       setEditingId(null);
-      router.refresh();
     } else if (outcome.kind === "invalid-date") {
       toast("Choose a date within 30 days of today.", { tone: "error" });
     } else {
@@ -99,7 +96,6 @@ export default function PracticeSessionHistory({
     setPendingId(null);
     if (outcome.kind === "deleted") {
       toast("Session deleted");
-      router.refresh();
     } else {
       toast("Couldn't find that session.", { tone: "error" });
     }

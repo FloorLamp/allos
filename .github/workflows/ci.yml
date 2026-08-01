@@ -52,10 +52,11 @@ jobs:
       # 2. Blocking gate at high severity — a high/critical advisory FAILS the
       #    check job instead of scrolling past unnoticed. Moderates stay
       #    advisory (step 1); highs are enforced. The gate runs through
-      #    scripts/audit-gate.mjs, which carries a small, justified,
+      #    scripts/audit-gate.mjs, which can carry a small, justified,
       #    issue-tracked allowlist for the rare advisory with NO installable
-      #    fix (the 2026-07-24 brace-expansion case, #1454) — a NEW
-      #    high/critical still fails the job exactly as before.
+      #    fix (the 2026-07-24 brace-expansion case, #1454, since resolved) —
+      #    a NEW high/critical still fails the job exactly as before. The
+      #    allowlist is empty today and empty is the healthy state.
       - name: Audit dependencies (visibility)
         run: npm audit
         continue-on-error: true

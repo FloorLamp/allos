@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import PracticeCardHeader from "@/components/practices/PracticeCardHeader";
 import PracticeHeatmap from "@/components/practices/PracticeHeatmap";
@@ -31,7 +30,6 @@ export default function PracticeCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [untracking, setUntracking] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const router = useRouter();
   const confirm = useConfirm();
   const toast = useToast();
   const undoable = useUndoableDelete();
@@ -57,7 +55,6 @@ export default function PracticeCard({
       }
       setEditing(false);
       toast("Weekly goal removed");
-      router.refresh();
     } catch {
       toast("Couldn't stop tracking that practice.", { tone: "error" });
     } finally {

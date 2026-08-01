@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconX } from "@tabler/icons-react";
 import type {
   Betterness,
@@ -134,7 +133,6 @@ export default function ProtocolCompare({
   updateAction: (formData: FormData) => Promise<FormResult>;
 }) {
   const formatPrefs = useFormatPrefs();
-  const router = useRouter();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [draftKeys, setDraftKeys] = useState(selectedKeys);
@@ -158,7 +156,6 @@ export default function ProtocolCompare({
       }
       toast("Outcomes updated");
       setEditing(false);
-      router.refresh();
     } catch {
       toast("Couldn't update outcomes. Try again.", { tone: "error" });
     }

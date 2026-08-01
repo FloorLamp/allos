@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -24,7 +23,6 @@ export default function OpticalPrescriptionForm({
   rx?: OpticalPrescription;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!rx;
@@ -50,7 +48,6 @@ export default function OpticalPrescriptionForm({
       setKind("glasses");
     }
     onDone?.();
-    router.refresh();
   }
 
   const uid = rx?.id ?? "new";

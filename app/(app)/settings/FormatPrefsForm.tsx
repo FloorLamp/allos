@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveDisplayFormatPrefs } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -46,7 +45,6 @@ export default function FormatPrefsForm({
 }: {
   prefs: DisplayFormatPrefs;
 }) {
-  const router = useRouter();
   const [timeFormat, setTimeFormat] = useState<TimeFormat>(prefs.timeFormat);
   const [dateFormat, setDateFormat] = useState<DateFormat>(prefs.dateFormat);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
@@ -57,7 +55,6 @@ export default function FormatPrefsForm({
     fd.set("date_format", next.dateFormat);
     runSave(async () => {
       await saveDisplayFormatPrefs(fd);
-      router.refresh();
     });
   }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconClock, IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import TodayMedRow from "@/components/medications/TodayMedRow";
@@ -19,8 +18,8 @@ import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 // A primary "Taken now" button records an administration NOW; "Earlier dose" reveals
 // retro offsets — 30m ago, 1h ago, or a specific time today — the retro-entry home
 // ("gave it at 4pm, logging it now"). Each successful log is a real administration
-// (the ledger allows multiples/day), and router.refresh() pulls the revalidated
-// "N today · last …" subtitle from the server.
+// (the ledger allows multiples/day), and the action's own revalidate brings back the
+// updated "N today · last …" subtitle with its response.
 export default function QuickLogPrnControl({
   itemId,
   name,
@@ -61,7 +60,6 @@ export default function QuickLogPrnControl({
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [time, setTime] = useState("");
-  const router = useRouter();
   const toast = useToast();
   const doseDetail = formatMedicationDoseProduct(doseAmount, product);
 
@@ -85,7 +83,6 @@ export default function QuickLogPrnControl({
         );
         setOpen(false);
         setTime("");
-        router.refresh();
       } else {
         toast(res.error, { tone: "error" });
       }

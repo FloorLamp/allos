@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveMentalHealthShareFull } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -16,7 +15,6 @@ export default function MentalHealthPrivacyForm({
 }: {
   shareFull: boolean;
 }) {
-  const router = useRouter();
   const [on, setOn] = useState(shareFull);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -25,7 +23,6 @@ export default function MentalHealthPrivacyForm({
     fd.set("mental_health_share_full", next ? "1" : "0");
     runSave(async () => {
       await saveMentalHealthShareFull(fd);
-      router.refresh();
     });
   }
 

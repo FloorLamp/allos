@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveTrainingZones } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
@@ -23,7 +22,6 @@ export default function TrainingZonesForm({
   // is the honest default: nothing counts steps against a number nobody chose.
   stepsTarget: number | null;
 }) {
-  const router = useRouter();
   const [maxHr, setMaxHr] = useState(
     maxHrOverride == null ? "" : String(maxHrOverride)
   );
@@ -42,7 +40,6 @@ export default function TrainingZonesForm({
     fd.set("steps_daily_target", next.steps);
     runSave(async () => {
       await saveTrainingZones(fd);
-      router.refresh();
     });
   }
 

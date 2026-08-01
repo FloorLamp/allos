@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   IconPrinter,
   IconShare,
@@ -60,7 +59,6 @@ export default function EpisodeControls({
   const [copied, setCopied] = useState(false);
   const [conditionBusy, setConditionBusy] = useState(false);
   const confirm = useConfirm();
-  const router = useRouter();
   const toast = useToast();
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -89,7 +87,6 @@ export default function EpisodeControls({
     try {
       const result = await promoteEpisodeToConditionAction(stateFormData());
       if (!result.ok) toast(result.error);
-      else router.refresh();
     } finally {
       setConditionBusy(false);
     }

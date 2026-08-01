@@ -154,7 +154,9 @@ export default function OfflineQueueProvider({
       if (now - lastSyncToastAt.current < 3000) return;
       lastSyncToastAt.current = now;
       toast(`Synced ${n} offline ${n === 1 ? "entry" : "entries"}.`);
-      // Reflect the newly-landed rows in the current view.
+      // Survives the #1473 sweep: the queue replays through the /api/offline-replay
+      // route handler (and the service worker), never a Server Action, so nothing
+      // else brings the newly-landed rows into the current view.
       router.refresh();
     },
     [toast, router]

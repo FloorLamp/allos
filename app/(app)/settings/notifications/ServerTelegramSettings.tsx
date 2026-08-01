@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatTimestamp } from "@/lib/format-date";
-import { useRouter } from "next/navigation";
 import type { TelegramBotConfig, TelegramMode } from "@/lib/settings";
 import type { NotifyErrorMarker } from "@/lib/notifications/delivery-status";
 import {
@@ -29,7 +28,6 @@ export default function ServerTelegramSettings({
   // the remediation path — a successful test clears this marker.
   lastError: NotifyErrorMarker | null;
 }) {
-  const router = useRouter();
   const formatPrefs = useFormatPrefs();
   const [botToken, setBotToken] = useState(config.telegramBotToken);
   const [mode, setMode] = useState<TelegramMode>(config.telegramMode);
@@ -53,7 +51,6 @@ export default function ServerTelegramSettings({
     runSave(async () => {
       await saveTelegramBotConfig(buildFormData());
       setResult(null);
-      router.refresh();
     });
   }
 
@@ -73,7 +70,6 @@ export default function ServerTelegramSettings({
           message: "Couldn’t register the webhook. Try again.",
         });
       }
-      router.refresh();
     });
   }
 

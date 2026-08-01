@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   DIETARY_PRESETS,
   DIETARY_PRESET_LABELS,
@@ -45,7 +44,6 @@ export default function DietaryPreferencesForm({
   // Modal consumers provide their own card shell and title.
   embedded?: boolean;
 }) {
-  const router = useRouter();
   const [set, setSet] = useState<Set<string>>(new Set(excluded));
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -57,7 +55,6 @@ export default function DietaryPreferencesForm({
     for (const slug of next) fd.append("excluded", slug);
     runSave(async () => {
       await saveDietaryPreferences(fd);
-      router.refresh();
     });
   }
 

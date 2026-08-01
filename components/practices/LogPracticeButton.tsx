@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { IconCheck, IconClock } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
@@ -35,7 +34,6 @@ export default function LogPracticeButton({
   defaultDurationMin?: number | null;
   showDetails?: boolean;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [pending, setPending] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -52,7 +50,6 @@ export default function LogPracticeButton({
           ? "Logged today's session"
           : `Logged — ${outcome.count} sessions today`
       );
-      router.refresh();
       return;
     }
     toast("Couldn't log that session.");

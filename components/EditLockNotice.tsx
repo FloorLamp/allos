@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconInfoCircle, IconLock } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
@@ -87,7 +86,6 @@ export default function EditLockNotice({
 export function useResumeSyncUpdates(table: EditLockTable, id: number) {
   const confirm = useConfirm();
   const toast = useToast();
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   async function resumeSyncUpdates() {
@@ -108,7 +106,6 @@ export function useResumeSyncUpdates(table: EditLockTable, id: number) {
       const res = await clearEditLock(fd);
       if (res.ok) {
         toast("Sync updates resumed for this row.");
-        router.refresh();
       } else {
         toast(res.error);
       }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveDigestDemotions } from "../actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -27,7 +26,6 @@ export default function DigestTuneSettings({
 }: {
   demoted: DigestCategory[];
 }) {
-  const router = useRouter();
   const [current, setCurrent] = useState<DigestCategory[]>(demoted);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -38,7 +36,6 @@ export default function DigestTuneSettings({
       const fd = new FormData();
       fd.set("demoted", serializeDigestDemotions(next));
       await saveDigestDemotions(fd);
-      router.refresh();
     });
   }
 
