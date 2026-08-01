@@ -115,10 +115,16 @@ describe("previewBulkCorrection / applyBulkCorrectionAction", () => {
       await previewBulkCorrection(req({ kind: "add", value: 1 }))
     ).toMatchObject({ ok: false, error: "empty" });
     expect(
-      await previewBulkCorrection({ ...req({ kind: "add", value: 1 }), field: "sessions" })
+      await previewBulkCorrection({
+        ...req({ kind: "add", value: 1 }),
+        field: "sessions",
+      })
     ).toMatchObject({ ok: false, error: "invalid" });
     expect(
-      await previewBulkCorrection({ ...req({ kind: "add", value: 1 }), from: "2026-04-01" })
+      await previewBulkCorrection({
+        ...req({ kind: "add", value: 1 }),
+        from: "2026-04-01",
+      })
     ).toMatchObject({ ok: false, error: "invalid" }); // from > to
     expect(
       await applyBulkCorrectionAction({

@@ -115,10 +115,14 @@ describe("applyBulkCorrection", () => {
   it("locks manual rows never, but corrects them (no source to re-push from)", () => {
     const pid = newProfile("bulkfix manual");
     const id = addWeight(pid, "2026-03-05", 90, null);
-    const res = applyRun(pid, { ...RANGE, source: null }, {
-      kind: "add",
-      amount: -2,
-    });
+    const res = applyRun(
+      pid,
+      { ...RANGE, source: null },
+      {
+        kind: "add",
+        amount: -2,
+      }
+    );
     expect(res).toMatchObject({ ok: true, applied: 1, locked: 0 });
     expect(weightRow(id)).toEqual({ weight_kg: 88, edited: 0 });
   });

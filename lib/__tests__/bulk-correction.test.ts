@@ -178,7 +178,9 @@ describe("correctionSignature", () => {
   ];
 
   it("is deterministic for the same (id, before) pairs", () => {
-    expect(correctionSignature(changes)).toBe(correctionSignature([...changes]));
+    expect(correctionSignature(changes)).toBe(
+      correctionSignature([...changes])
+    );
   });
 
   it("changes when any id, value, or the row count drifts", () => {
@@ -233,7 +235,9 @@ describe("labels and formatting", () => {
     expect(bulkCorrectionLabel("weight", 92)).toBe(
       "body_metrics · weight_kg · 92 rows"
     );
-    expect(bulkCorrectionLabel("hrv", 1)).toBe("metric_samples · value · 1 row");
+    expect(bulkCorrectionLabel("hrv", 1)).toBe(
+      "metric_samples · value · 1 row"
+    );
   });
 
   it("formats canonical values in the login's display unit", () => {

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { IconAdjustments } from "@tabler/icons-react";
+import DateField from "@/components/DateField";
 import type { WeightUnit, DistanceUnit } from "@/lib/settings";
 import {
   CORRECTION_FIELDS,
@@ -236,30 +237,28 @@ export default function BulkCorrectionCard({
             <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
               From
             </span>
-            <input
-              type="date"
-              className="input w-full"
-              data-testid="bulk-correction-from"
+            <DateField
               value={from}
-              onChange={(e) => {
-                setFrom(e.target.value);
+              onChange={(v) => {
+                setFrom(v);
                 resetPreview();
               }}
+              inputClassName="w-full"
+              data-testid="bulk-correction-from"
             />
           </label>
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
               To
             </span>
-            <input
-              type="date"
-              className="input w-full"
-              data-testid="bulk-correction-to"
+            <DateField
               value={to}
-              onChange={(e) => {
-                setTo(e.target.value);
+              onChange={(v) => {
+                setTo(v);
                 resetPreview();
               }}
+              inputClassName="w-full"
+              data-testid="bulk-correction-to"
             />
           </label>
         </div>
@@ -386,7 +385,8 @@ export default function BulkCorrectionCard({
                 {preview.lockNote}
               </p>
             )}
-            <table className="mt-2 w-full text-sm">
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
                   <th className="py-1 font-medium">Date</th>
@@ -405,8 +405,9 @@ export default function BulkCorrectionCard({
                     <td className="py-1">{row.after}</td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
             {preview.count > preview.sample.length && (
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Showing the first {preview.sample.length} of {preview.count}{" "}

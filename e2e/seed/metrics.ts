@@ -13,6 +13,8 @@ import { EDIT_LOCK_SIGNATURE } from "../edit-lock-fixture";
 import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_BADGE,
+  E2E_LOGIN_BULKFIX,
+  BULKFIX_PROFILE,
   E2E_LOGIN_SHELL,
   SHELL_PROFILE,
   SHELL_DOSE_ITEM,
@@ -806,4 +808,19 @@ export function seedVitalsToday(): void {
       `e2e: seeded app-badge fixture — ${E2E_LOGIN_BADGE} granted ${APP_BADGE_PROFILE} (${badgeId}) for the PWA badge set/clear spec (#1424)`
     );
   }
+}
+
+// ── Bulk corrections fixture ──
+export function seedBulkCorrection(): void {
+  // ── #1603 bulk corrections ("Fix a run of data" on Data → Review) ────────────
+  // A dedicated member login + adult profile, seeded EMPTY on purpose: the spec
+  // owns every body_metrics row on it, clearing and re-inserting its lb-as-kg
+  // Withings run at test start so every run (and --repeat-each) starts from the
+  // same series. Dedicated because the spec's apply/undo rewrites a whole run —
+  // a blast radius no shared profile's weight assertions could survive.
+  const bulkFixId = fixtureProfileId(BULKFIX_PROFILE);
+  seedMemberLogin(E2E_LOGIN_BULKFIX, bulkFixId, "write");
+  console.log(
+    `e2e: seeded bulk-correction fixture — profile ${bulkFixId} (${BULKFIX_PROFILE}) (#1603)`
+  );
 }
