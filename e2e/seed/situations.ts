@@ -11,6 +11,8 @@ import { setProfileSetting, getTimezone } from "../../lib/settings";
 import {
   E2E_LOGIN_CYCLE,
   CYCLE_PROFILE,
+  E2E_LOGIN_TTC,
+  TTC_PROFILE,
   E2E_LOGIN_CYCLE_STALE,
   CYCLE_STALE_PROFILE,
   E2E_LOGIN_DERIVED,
@@ -99,6 +101,59 @@ export function seedCycleAndDerived(): void {
   seedMemberLogin(E2E_LOGIN_CYCLE_STALE, staleProfileId, "write");
   console.log(
     `e2e: seeded stale-open-period fixture — profile ${staleProfileId} (${CYCLE_STALE_PROFILE}) (#1682)`
+  );
+
+  // ── Trying-to-conceive fixture (#1679/#1680) ─────────────────────────────────
+  // A dedicated adult FEMALE profile with SIX regular ~28-day cycles (so the next-period
+  // forecast is available and NARROW), a DECLARED trying-to-conceive start, and a
+  // follicular BBT baseline in the current cycle. The declared start is what turns the TTC
+  // surfaces on at all (declared-only doctrine), and it is set far enough back to count
+  // several cycles WITHOUT reaching the 12-month workup threshold — the spec asserts the
+  // surfaces, not the prompt. Hard-clear the fixture's rows first so a reused server
+  // re-seeds cleanly. All dates are relative to the profile's today; synthetic, no PHI.
+  const ttcId = fixtureProfileId(TTC_PROFILE);
+  const ttcAnchor = today(ttcId);
+  db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(ttcId);
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'bbt_f'`
+  ).run(ttcId);
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND name = 'Ovulation Test (LH)'`
+  ).run(ttcId);
+  db.prepare(
+    `DELETE FROM symptom_logs WHERE profile_id = ? AND symptom = 'cervical_mucus'`
+  ).run(ttcId);
+  setProfileSetting(ttcId, "sex", "female");
+  setProfileSetting(ttcId, "reproductive_status", "premenopausal");
+  // An adult birthdate, deep in the past and relative to the anchor (never a fixed
+  // near-present date) — the TTC section is adult-gated.
+  setProfileSetting(ttcId, "birthdate", shiftDateStr(ttcAnchor, -365 * 32));
+  // Declared ~5 months ago: TTC is on, and the 12-month prompt is not.
+  setProfileSetting(ttcId, "ttc_start_date", shiftDateStr(ttcAnchor, -150));
+  for (let i = 6; i >= 0; i--) {
+    const startAgo = 14 + i * 28;
+    db.prepare(
+      `INSERT INTO cycles (profile_id, period_start, period_end, flow)
+       VALUES (?, ?, ?, 'medium')`
+    ).run(
+      ttcId,
+      shiftDateStr(ttcAnchor, -startAgo),
+      shiftDateStr(ttcAnchor, -(startAgo - 4))
+    );
+  }
+  // A flat follicular baseline for the current cycle — deliberately NO sustained rise, so
+  // the spec's "no confirmation yet" read is stable and the log bar owns any change.
+  for (let i = 9; i >= 1; i--) {
+    const d = shiftDateStr(ttcAnchor, -i);
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, origin, metric, date, start_time, end_time, value)
+       VALUES (?, 'manual', NULL, 'bbt_f', ?, ?, ?, ?)`
+    ).run(ttcId, d, `${d}T00:00:00`, `${d}T00:00:00`, 97.3);
+  }
+  seedMemberLogin(E2E_LOGIN_TTC, ttcId, "write");
+  console.log(
+    `e2e: seeded trying-to-conceive fixture — profile ${ttcId} (${TTC_PROFILE}) (#1679/#1680)`
   );
 
   // ── Derived situations fixture (#1292 Poor sleep, #1298 Period) ───────────────

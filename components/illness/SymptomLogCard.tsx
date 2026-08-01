@@ -2,7 +2,7 @@ import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
-import { SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,
   getSymptomNotesOnDate,
@@ -63,7 +63,7 @@ export default function SymptomLogCard({
         initialAlt={getSymptomSeveritiesOnDate(profileId, yesterday)}
         initialNotes={getSymptomNotesOnDate(profileId, date)}
         initialAltNotes={getSymptomNotesOnDate(profileId, yesterday)}
-        symptoms={SYMPTOMS}
+        symptoms={PICKER_SYMPTOMS}
         customNames={getCustomSymptomNames(profileId)}
         rankedKeys={getSymptomLogOrder(profileId)}
         suggestActivateIllness={false}

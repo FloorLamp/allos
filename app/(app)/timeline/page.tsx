@@ -74,7 +74,7 @@ import {
   getCustomSymptomNames,
 } from "@/lib/queries";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
-import { SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import SymptomLogBar from "../../../components/illness/SymptomLogBar";
 import SymptomEntryCard from "./SymptomEntryCard";
 import { isTaskConfigured } from "@/lib/ai-resolve";
@@ -798,7 +798,7 @@ export default async function TimelinePage(props: {
             date={range.from}
             initial={daySymptomSeverities}
             initialNotes={daySymptomNotes}
-            symptoms={SYMPTOMS}
+            symptoms={PICKER_SYMPTOMS}
             customNames={getCustomSymptomNames(daySubjectId)}
             rankedKeys={getSymptomLogOrder(daySubjectId)}
             suggestActivateIllness={!dayIllnessActive}

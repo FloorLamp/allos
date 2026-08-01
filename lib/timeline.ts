@@ -53,7 +53,7 @@ import {
   intakeHref,
   timelineDayHref,
 } from "./hrefs";
-import { symptomLabel, severityLabel } from "./symptoms";
+import { symptomLabel, severityLabel, severityLabelFor } from "./symptoms";
 import {
   allEpisodesForProfile,
   assembleIllnessEpisode,
@@ -1153,7 +1153,7 @@ function collectEvents(
         tone: s.max_severity >= 3 ? "warn" : "default",
         detailItems: parsed.map((p) => ({
           label: symptomLabel(p.key),
-          value: Number.isFinite(p.sev) ? severityLabel(p.sev) : "",
+          value: Number.isFinite(p.sev) ? severityLabelFor(p.key, p.sev) : "",
         })),
       },
       options

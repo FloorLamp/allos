@@ -35,6 +35,18 @@ export interface Symptom {
   // Which context this symptom leads with (see SymptomDomain). Required on every curated
   // entry; custom free-text symptoms carry no domain (they're not in this catalog).
   domain: SymptomDomain;
+  // An ORDINAL scale of the symptom's own, replacing the default mild → very severe
+  // labels for the stored 1–4 (issue #1680). A categorical daily observation — cervical
+  // mucus is dry / sticky / creamy / egg-white — is genuinely ordinal (ascending fertility
+  // signal), so it reuses symptom_logs rather than earning a parallel store; what it
+  // cannot reuse is the SEVERITY vocabulary, because "moderate mucus" means nothing.
+  // Exactly MAX_SYMPTOM_SEVERITY entries when present, index 0 = severity 1.
+  scale?: string[];
+  // Kept out of the generic one-tap PICKER (issue #1680). An observation with its own
+  // dedicated entry point — and its own scale — would otherwise appear in the everyday
+  // symptom bar asking for a severity it doesn't have. It stays fully loggable, readable,
+  // and labelled everywhere; only the generic picker skips it.
+  pickerHidden?: boolean;
 }
 
 export const SYMPTOMS: Symptom[] = (symptomsData as { symptoms: Symptom[] })
@@ -45,6 +57,15 @@ const BY_SLUG = new Map(SYMPTOMS.map((s) => [s.slug, s]));
 export function symptomBySlug(slug: string): Symptom | undefined {
   return BY_SLUG.get(slug);
 }
+
+// Whether a symptom belongs in the generic one-tap picker (see Symptom.pickerHidden).
+export function isPickerSymptom(s: Symptom): boolean {
+  return !s.pickerHidden;
+}
+
+// The curated catalog MINUS the entries with their own dedicated entry point — the list
+// every generic symptom picker renders (the log bar, the Telegram quick-log grid).
+export const PICKER_SYMPTOMS: Symptom[] = SYMPTOMS.filter(isPickerSymptom);
 
 // A stored symptom key is "curated" iff it matches a catalog slug; everything else
 // is a custom free-text name.
@@ -68,7 +89,10 @@ export function symptomSlugs(): string[] {
 // resolveSymptomKey() collapses onto the curated slug. Free text stays allowed —
 // the catalog suggests, it never gates.
 export function symptomLabelOptions(): string[] {
-  return SYMPTOMS.map((s) => s.label);
+  // Picker-hidden entries are excluded: they have their own dedicated entry point and
+  // their own ordinal scale, so offering the label here would route a free-text match
+  // into a store expecting a severity it doesn't have (#1680).
+  return PICKER_SYMPTOMS.map((s) => s.label);
 }
 
 // The curated slugs in a given context, catalog order preserved — the per-mount "lead
@@ -132,4 +156,17 @@ export function severityLabel(n: number): string {
   return (
     SYMPTOM_SEVERITY_LEVELS.find((l) => l.value === n)?.label ?? `Level ${n}`
   );
+}
+
+// The label for a stored 1–4 ON A GIVEN symptom (issue #1680): a curated entry may carry
+// its own ordinal `scale` (cervical mucus reads dry/sticky/creamy/egg-white, never
+// mild/moderate/severe), and everything else falls back to the shared severity vocabulary.
+// The ONE label resolution — every reader of a stored severity goes through it, so a
+// scaled symptom can never render as a severity on one surface and its own scale on
+// another.
+export function severityLabelFor(key: string, n: number): string {
+  const scale = BY_SLUG.get(key)?.scale;
+  if (scale && n >= MIN_SYMPTOM_SEVERITY && n <= scale.length)
+    return scale[n - 1];
+  return severityLabel(n);
 }

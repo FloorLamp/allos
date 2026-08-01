@@ -5,7 +5,7 @@ import { PageHeader, EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
-import { SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,
   getSymptomNotesOnDate,
@@ -13,7 +13,10 @@ import {
   getSymptomLogOrder,
 } from "@/lib/queries";
 import { getUnitPrefs } from "@/lib/settings";
-import { listCyclePeriods } from "@/lib/cycle-store";
+import { getCycleForecast, listCyclePeriods } from "@/lib/cycle-store";
+import { getTtcState } from "@/lib/ttc-store";
+import { getUserAge } from "@/lib/settings";
+import { isMinor } from "@/lib/life-stage";
 import {
   cyclePhaseOnDate,
   cycleLengths,
@@ -22,6 +25,8 @@ import {
   CYCLE_REGULARITY_VARIATION_DAYS,
 } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
+import CycleForecastCard from "./CycleForecastCard";
+import TtcSection from "./TtcSection";
 import CycleForm from "./CycleForm";
 import PeriodQuickActions from "./PeriodQuickActions";
 import CycleHistoryRow from "./CycleHistoryRow";
@@ -32,8 +37,14 @@ export const dynamic = "force-dynamic";
 // The Cycle surface (issue #714), under Medical. Manual menstrual-cycle log: one-tap
 // "period started/ended", a full add/edit form, per-day cycle symptoms (the shipped
 // symptom bar led with the cycle context), the DERIVED current phase, and a cycle-length /
-// variability trend answering "is it regular / changing." Deliberately tracking, NOT
-// forecasting — no next-period or ovulation prediction. Informational, not medical advice.
+// variability trend answering "is it regular / changing."
+//
+// Since #1679 it ALSO forecasts — the #714 tracking-only exclusion was reversed by owner
+// ruling. The projection is always a confidence-framed window from the profile's own
+// measured variability, never a date, and it is absent entirely when the history can't
+// carry it. Since #1680 the adult-gated trying-to-conceive section sits below it, off
+// unless the user DECLARES it. Informational, not medical advice or diagnosis, and never
+// a contraceptive method.
 
 const REGULARITY_COPY: Record<string, string> = {
   regular: "Your recent cycles look regular.",
@@ -54,12 +65,18 @@ export default async function CyclePage() {
   const lengths = cycleLengths(periods); // oldest-first
   const trendData = lengths.map((l) => ({ date: l.start, value: l.days }));
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
+  // ONE forecast computation for the page (#221); the dashboard tile reads the same core.
+  const forecast = getCycleForecast(profile.id, todayStr);
+  // TTC is adult-only content — the same `!isMinor` line the other adult topics use
+  // (#1174) — and off entirely until the user declares a start (the declared-only rule).
+  const ttcEligible = !isMinor(getUserAge(profile.id));
+  const ttc = ttcEligible ? getTtcState(profile.id, todayStr) : null;
 
   return (
     <PageContainer width="reading" className="mx-auto space-y-6">
       <PageHeader
         title="Cycle"
-        subtitle="Log your period and see the derived phase and cycle-length trends. Informational only — no prediction."
+        subtitle="Log your period, see the derived phase and cycle-length trends, and a confidence-framed projection of the next one."
       />
 
       {/* Current status + one-tap logging. */}
@@ -96,9 +113,12 @@ export default async function CyclePage() {
         <PeriodQuickActions state={control} />
         <p className="text-xs text-slate-500 dark:text-slate-400">
           The luteal phase resolves once your next period is logged — the phase
-          is derived from history, never forecast.
+          says what already happened. The projection below is a separate,
+          separately-labelled estimate.
         </p>
       </section>
+
+      <CycleForecastCard forecast={forecast} />
 
       {/* Cycle-length + variability trend. */}
       <section className="space-y-2" data-testid="cycle-trend">
@@ -148,7 +168,7 @@ export default async function CyclePage() {
           date={todayStr}
           initial={getSymptomSeveritiesOnDate(profile.id, todayStr)}
           initialNotes={getSymptomNotesOnDate(profile.id, todayStr)}
-          symptoms={SYMPTOMS}
+          symptoms={PICKER_SYMPTOMS}
           customNames={getCustomSymptomNames(profile.id)}
           rankedKeys={getSymptomLogOrder(profile.id, "cycle")}
           suggestActivateIllness={false}
@@ -156,6 +176,14 @@ export default async function CyclePage() {
           showTitle={false}
         />
       </section>
+
+      {ttc && (
+        <TtcSection
+          state={ttc}
+          today={todayStr}
+          temperatureUnit={temperatureUnit}
+        />
+      )}
 
       {/* Add a period. */}
       <CycleForm action={saveCycleAction} />

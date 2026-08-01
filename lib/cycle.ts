@@ -5,11 +5,25 @@
 //   • the cycle PHASE on a date (menstrual/follicular/luteal), and
 //   • cycle-length + variability trends ("is it regular / changing").
 //
-// Deliberately TRACKING, not FORECASTING (issue #714 exclusions): we NEVER predict the
-// next period or ovulation, and there is no fertility-awareness / BBT logic. That shapes
-// the phase derivation below — the luteal phase (the ~14-day span before the NEXT period)
-// is only assigned RETROSPECTIVELY, once a following period is logged. Informational
-// only, not medical advice or diagnosis.
+// FORECASTING: REVERSED (issue #1679, owner ruling 2026-07-30). #714 shipped this module
+// with a hard non-goal — "we NEVER predict the next period or ovulation, and there is no
+// fertility-awareness / BBT logic". That exclusion is SUPERSEDED and recorded here rather
+// than left to be discovered: forecastNextPeriod() below projects the next period, always
+// as a CONFIDENCE-FRAMED RANGE whose width comes from the profile's own measured
+// variability, and never as a bare date. #714's caution was about false confidence, and
+// the answer is framing, not absence — withholding the derivation doesn't make the user's
+// planning question go away, it makes them estimate worse, elsewhere.
+//
+// Two things #714 got right survive the reversal:
+//   • The PHASE derivation stays RETROSPECTIVE. The luteal phase (the ~14-day span before
+//     the NEXT period) is still only assigned once a following period is LOGGED, because
+//     a phase is a claim about what the body did, not about what it will do. The forecast
+//     is a separate, separately-labelled output.
+//   • An `insufficient` history yields NO forecast at all. Silence is a valid output.
+//
+// Fertility-awareness evidence (LH / BBT / mucus) is #1680's, in lib/ttc.ts; the
+// ovulation ESTIMATE here is strictly the weaker, calendar-only claim. Informational
+// only, not medical advice or diagnosis, and never a contraceptive method.
 
 import { daysBetweenDateStr, shiftDateStr } from "./date";
 import { rangeContainsDate, INCLUSIVE_END } from "./date-range";
@@ -48,8 +62,11 @@ export const CYCLE_PHASE_LABELS: Record<CyclePhase, string> = {
 };
 
 // The luteal phase length — the one relatively FIXED part of the cycle (~14 days before
-// the next period). Used ONLY to split a COMPLETED cycle (bounded by two logged period
-// starts) into follicular vs luteal; never to forecast a future period.
+// the next period). Splits a COMPLETED cycle (bounded by two logged period starts) into
+// follicular vs luteal, and — since #1679 — anchors the calendar OVULATION ESTIMATE
+// (projected start − 14). That second use is the weaker claim by construction: it inherits
+// the projection's confidence tier and is labelled an estimate from history, never an
+// observation. Evidence-based ovulation lives in lib/ttc.ts (#1680).
 export const LUTEAL_PHASE_DAYS = 14;
 
 // A commonly-cited informational threshold: cycle-length variation of more than ~7–9 days
@@ -161,9 +178,10 @@ export function periodOnDate(
 //     logged): luteal if within LUTEAL_PHASE_DAYS before the next period's start, else
 //     follicular. This uses the ACTUAL next period — no forecast.
 //   • For a date in the OPEN cycle (no following period yet): follicular. We do NOT claim
-//     luteal here — that would require predicting the next period (ovulation timing), the
-//     issue's explicit out-of-scope forecast; the surfaces note that the luteal phase
-//     resolves once the next period is logged.
+//     luteal here — that would mean deriving a PHASE from a PROJECTION. #1679 added the
+//     projection (forecastNextPeriod), but kept it a separate, separately-labelled output:
+//     a phase says what the body did, so the luteal phase still resolves only once the
+//     next period is actually logged.
 export function cyclePhaseOnDate(
   periods: CyclePeriod[],
   date: string
@@ -309,3 +327,181 @@ export function cycleStats(
     regularity,
   };
 }
+
+// ---- Next-period forecast (issue #1679) -------------------------------------
+//
+// The #714 non-goal reversed. Everything below derives from the SAME completed-cycle
+// history cycleStats() already reads (#221: one question, one computation) — no new
+// inputs, no model the evidence can't carry.
+
+// The minimum number of COMPLETED cycles a forecast needs. Identical to the threshold
+// cycleStats() uses to leave `insufficient`, deliberately: the regularity verdict and the
+// forecast must never disagree about whether the history can carry a claim.
+export const FORECAST_MIN_CYCLES = 3;
+
+// The NARROWEST half-width a forecast window may have, in days (so the tightest possible
+// regular history still reads "±2 days", never a bare date). A range is the unit of the
+// claim; a point estimate would be a lie the data can't back.
+export const FORECAST_MIN_HALF_WIDTH_DAYS = 2;
+
+// The WIDEST half-width, in days. Past ~±10 days a "window" spans most of a cycle and
+// stops being information; the confidence tier and the evidence line carry the honesty
+// from there.
+export const FORECAST_MAX_HALF_WIDTH_DAYS = 10;
+
+// How confident the projection is — the tier every surface labels itself with.
+//   narrow    — a `regular` history (spread within CYCLE_REGULARITY_VARIATION_DAYS).
+//   wide      — an `irregular` history; the window is explicitly wide and says so.
+//   uncertain — the CURRENT cycle has already outrun its own projected window. The
+//               forecast is NOT re-projected onto a new date (that would be confidently
+//               predicting from the one cycle we can see is atypical); the window widens
+//               to cover the overrun and the confidence degrades. Widen, never shift.
+export type ForecastConfidence = "narrow" | "wide" | "uncertain";
+
+// Why a profile gets no forecast at all even with plenty of history. Both are states in
+// which a projected period is meaningless, so silence is the only honest output.
+//   pregnancy       — an ongoing pregnancy (#1402 will make this episode-derived; today
+//                     it is the shipped `risk_pregnant` profile attribute).
+//   postmenopausal  — an explicit reproductive status of postmenopausal.
+export type ForecastSuspension = "pregnancy" | "postmenopausal";
+
+// The evidence the projection stands on, carried on the result so EVERY surface can
+// explain itself from the one computation instead of re-deriving a justification.
+export interface ForecastEvidence {
+  cycleCount: number; // completed cycles used
+  meanLength: number; // rounded to 1 decimal, as cycleStats reports it
+  variabilityDays: number; // max − min over the window
+  regularity: CycleRegularity;
+  lastPeriodStart: string; // the anchor the projection counts from
+}
+
+export type CycleForecast =
+  | {
+      kind: "forecast";
+      // The projected first day — the CENTRE of the window, never rendered alone.
+      projectedStart: string;
+      // The inclusive window [windowStart, windowEnd] the period is expected in.
+      windowStart: string;
+      windowEnd: string;
+      halfWidthDays: number;
+      confidence: ForecastConfidence;
+      // True once `today` is past windowEnd: the current cycle has outrun the window,
+      // which is why the confidence degraded and the window grew.
+      overdue: boolean;
+      // The CALENDAR ovulation estimate: projectedStart − LUTEAL_PHASE_DAYS, carrying the
+      // same window width and the same confidence tier. Strictly the weaker claim — an
+      // estimate from history, never an observation (#1680 supplies the evidence-based
+      // one). Null when the estimate would fall on/before the anchoring period start,
+      // i.e. the arithmetic no longer describes this cycle.
+      ovulationEstimate: {
+        estimatedDate: string;
+        windowStart: string;
+        windowEnd: string;
+      } | null;
+      evidence: ForecastEvidence;
+    }
+  | {
+      // Too few completed cycles. No date, no window — "log a couple more cycles".
+      kind: "insufficient";
+      cycleCount: number;
+    }
+  | { kind: "suspended"; reason: ForecastSuspension };
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
+// The window half-width in days, from measured variability alone. MONOTONIC in variation
+// by construction (ceil of half the spread, clamped), so more variable history can only
+// ever produce a wider — never a narrower — claim, and the tightest history still gets a
+// range rather than a date.
+export function forecastHalfWidthDays(variabilityDays: number): number {
+  return clamp(
+    Math.ceil(variabilityDays / 2),
+    FORECAST_MIN_HALF_WIDTH_DAYS,
+    FORECAST_MAX_HALF_WIDTH_DAYS
+  );
+}
+
+// THE forecast (#1679). Pure: the recorded period history, the profile's today, and an
+// optional suspension the caller gathered. Every consumer — the Cycle surface, the
+// dashboard tile — formats THIS result; none of them re-derives a projection.
+//
+// Order matters: suspension beats everything (a projected period during a pregnancy is
+// noise at best), then sufficiency, then the projection itself.
+export function forecastNextPeriod(
+  periods: CyclePeriod[],
+  today: string,
+  suspension: ForecastSuspension | null = null
+): CycleForecast {
+  if (suspension) return { kind: "suspended", reason: suspension };
+
+  const stats = cycleStats(periods);
+  const sorted = sortByStart(periods);
+  const last = sorted[sorted.length - 1];
+  if (
+    stats.cycleCount < FORECAST_MIN_CYCLES ||
+    stats.meanLength == null ||
+    stats.variabilityDays == null ||
+    last == null
+  ) {
+    return { kind: "insufficient", cycleCount: stats.cycleCount };
+  }
+
+  const halfWidth = forecastHalfWidthDays(stats.variabilityDays);
+  const projectedStart = shiftDateStr(
+    last.period_start,
+    Math.round(stats.meanLength)
+  );
+  const windowStart = shiftDateStr(projectedStart, -halfWidth);
+  const baseWindowEnd = shiftDateStr(projectedStart, halfWidth);
+
+  // The current cycle has outrun its own window. Degrade, don't re-predict: the projected
+  // start and the window START stay exactly where the history put them, and only the END
+  // stretches to cover the days actually elapsed.
+  const overdue = today > baseWindowEnd;
+  const windowEnd = overdue ? today : baseWindowEnd;
+  const confidence: ForecastConfidence = overdue
+    ? "uncertain"
+    : stats.regularity === "regular"
+      ? "narrow"
+      : "wide";
+
+  // Calendar ovulation estimate — the same window shifted back by the luteal span. Drop it
+  // when it lands on or before the anchoring period start: past that the subtraction is
+  // describing the PREVIOUS cycle, and a wrong-cycle estimate is worse than none.
+  const estimatedDate = shiftDateStr(projectedStart, -LUTEAL_PHASE_DAYS);
+  const ovulationEstimate =
+    estimatedDate > last.period_start
+      ? {
+          estimatedDate,
+          windowStart: shiftDateStr(windowStart, -LUTEAL_PHASE_DAYS),
+          windowEnd: shiftDateStr(baseWindowEnd, -LUTEAL_PHASE_DAYS),
+        }
+      : null;
+
+  return {
+    kind: "forecast",
+    projectedStart,
+    windowStart,
+    windowEnd,
+    halfWidthDays: halfWidth,
+    confidence,
+    overdue,
+    ovulationEstimate,
+    evidence: {
+      cycleCount: stats.cycleCount,
+      meanLength: stats.meanLength,
+      variabilityDays: stats.variabilityDays,
+      regularity: stats.regularity,
+      lastPeriodStart: last.period_start,
+    },
+  };
+}
+
+// The one confidence LABEL every surface renders, so the tier can't be described two ways.
+export const FORECAST_CONFIDENCE_LABELS: Record<ForecastConfidence, string> = {
+  narrow: "Narrow window",
+  wide: "Wide window — your cycles vary",
+  uncertain: "Less certain — this cycle is running long",
+};

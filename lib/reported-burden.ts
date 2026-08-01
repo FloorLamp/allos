@@ -12,7 +12,7 @@
 // is self-report, so it's sufficient basis on its own: no sensor gets a veto (#1292's
 // user-wins symmetry).
 
-import { symptomLabel, severityLabel } from "./symptoms";
+import { symptomLabel, severityLabelFor } from "./symptoms";
 
 // One logged symptom-day the burden reads: its stored key + 1–4 severity.
 export interface BurdenSymptom {
@@ -104,9 +104,10 @@ export function reportedBurdenTiltCopy(
   if (!burden.tilts || burden.basis == null) return null;
 
   const symptomPhrase = burden.leadSymptom
-    ? `${severityLabel(burden.leadSymptom.severity)} ${symptomLabel(
-        burden.leadSymptom.symptom
-      )}`.toLowerCase()
+    ? `${severityLabelFor(
+        burden.leadSymptom.symptom,
+        burden.leadSymptom.severity
+      )} ${symptomLabel(burden.leadSymptom.symptom)}`.toLowerCase()
     : null;
   const periodFrame = burden.periodFramed ? " (during your period)" : "";
 
