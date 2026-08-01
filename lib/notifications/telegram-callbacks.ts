@@ -73,6 +73,7 @@ import {
   parseTuneCallback,
   parseDemoteCallback,
   parsePracticeDoneCallback,
+  parseRightSizeLowerCallback,
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
@@ -144,6 +145,7 @@ import {
   handleMoodTap,
   handleMoodKeepTap,
   handlePracticeDoneTap,
+  handleRightSizeLowerTap,
   handlePrnLogTap,
   handleOfferTailTap,
   handleTuneTap,
@@ -304,6 +306,15 @@ export async function handleCallbackQuery(
   const practiceDone = parsePracticeDoneCallback(cq.data);
   if (practiceDone) {
     await handlePracticeDoneTap(cq, practiceDone);
+    return;
+  }
+
+  // Right-sizing ride-along (#1670): the same practice nudge's ⤓ button lowers the
+  // weekly floor to the cadence actually kept — the floor is re-derived from the live
+  // detector on tap, never read off the button.
+  const rightSize = parseRightSizeLowerCallback(cq.data);
+  if (rightSize) {
+    await handleRightSizeLowerTap(cq, rightSize);
     return;
   }
 

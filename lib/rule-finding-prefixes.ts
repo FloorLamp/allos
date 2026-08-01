@@ -28,6 +28,7 @@ import { BODY_HYGIENE_PREFIX } from "./weight-anomaly";
 import { GOAL_PACE_PREFIX } from "./goal-pacing";
 import { ADHERENCE_PREFIX } from "./adherence-patterns";
 import { DEMOTION_PREFIX } from "./supplement-demotion";
+import { RIGHTSIZE_PREFIX } from "./target-rightsize";
 import { FOOD_SUGGEST_PREFIX, FOOD_REDUCE_PREFIX } from "./food-suggest";
 import { FOOD_HABIT_PREFIX } from "./food-habit";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
@@ -117,6 +118,25 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: DEMOTION_PREFIX,
     tier: "coaching",
     builder: "buildDemotionSuggestionFindings",
+    reasons: [],
+  },
+  {
+    // Frequency-target RIGHT-SIZING suggestions (#1670): a weekly floor the profile
+    // has been under for four completed weeks — a wellness practice, a training
+    // routine, or a food habit, all three of which declare their floor in the SAME
+    // `frequency_targets` row — is SUGGESTED for the cadence they actually keep, or
+    // for their domain's own no-expectation state. Never applied (#559: a declared
+    // commitment is the user's, and only their tap changes it).
+    //
+    // COACHING tier by hard product contract, and one prefix for all three domains
+    // because there is ONE detector: the tier decision, the suppression bus and the
+    // guardability property are properties of the SIGNAL, which is identical across
+    // them; only the wording and the surface differ. Its sole push presence is a
+    // ride-along on the practice pace nudge that was already sending — it never
+    // originates a message.
+    prefix: RIGHTSIZE_PREFIX,
+    tier: "coaching",
+    builder: "buildTargetRightSizeFindings",
     reasons: [],
   },
   {

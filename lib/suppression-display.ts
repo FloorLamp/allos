@@ -106,6 +106,9 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
   // #1505: keyed on the ITEM id, so there is no name in the key to render — the
   // label names the decision instead ("you chose to keep the current priority").
   "demote-obligation:": () => "Obligation demotion suggestion",
+  // #1670: keyed on the TARGET id, so there is no name in the key to render — the
+  // label names the decision instead ("you chose to keep the weekly target").
+  "right-size:": () => "Weekly-target right-sizing suggestion",
   "food-suggest:": (t) => {
     const n = titleize(t.replace(/[_-]/g, " "));
     return n ? `Food suggestion — ${n}` : "Food suggestion";
