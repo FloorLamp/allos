@@ -198,7 +198,10 @@ export default async function PatientPortalsPage() {
         className="card text-sm text-slate-600 dark:text-slate-300"
         data-testid="portals-how-it-works"
       >
-        <summary className="cursor-pointer font-medium text-slate-800 dark:text-slate-100">
+        <summary
+          className="cursor-pointer font-medium text-slate-800 dark:text-slate-100"
+          data-testid="portals-how-it-works-toggle"
+        >
           How this works, all five steps
         </summary>
         <p className="mt-3">{def.blurb}</p>
@@ -210,6 +213,7 @@ export default async function PatientPortalsPage() {
             <Link
               href="/settings/tokens"
               className="text-brand-700 hover:underline dark:text-brand-300"
+              data-testid="how-it-works-token-link"
             >
               Settings → API tokens
             </Link>

@@ -300,14 +300,31 @@ export default function PortalSetup({
                 ? "One patient to map"
                 : `${pending.length} patients to map`}
             </h2>
+            {/* ONE STATUS COMPUTATION, RENDERED WHERE IT APPLIES. This is the same
+                `portalStatusLine` element the steady card carries, never a second one —
+                the two stages are mutually exclusive. It leads here because its
+                first-contact branch (#1756) is exactly this card's sentence ("The tool
+                reported 3 patients on X — map them below to finish setup"), and because a
+                portal-level FAILURE must not be hidden behind a pending row. The page
+                formats the one result rather than writing its own version of it. */}
+            <p
+              data-testid="portals-status-line"
+              data-tone={statusLine.tone}
+              className={
+                statusLine.tone === "attention"
+                  ? "text-sm text-amber-700 dark:text-amber-300"
+                  : "text-sm text-slate-600 dark:text-slate-300"
+              }
+            >
+              {statusLine.text}
+            </p>
             {/* All three verbs are named, because "Ignore" and "Not now" look alike and
                 mean opposite things — one is a durable "never sync this person", the
                 other only clears the prompt. */}
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              The tool reported these and allos has not been told who they are,
-              so nothing is being filed for them. Map one to a profile and the
-              next run lands normally — or ignore a patient whose records belong
-              somewhere else.
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Map a patient to a profile and the next run lands normally; ignore
+              one whose records belong somewhere else; or choose Not now to
+              clear the prompt until the tool reports them again.
             </p>
 
             <ul className="space-y-2" data-testid="pending-identities">
