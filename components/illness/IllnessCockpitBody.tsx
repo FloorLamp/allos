@@ -1,7 +1,7 @@
 import { today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
-import { SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,
   getSymptomNotesOnDate,
@@ -118,7 +118,7 @@ export default function IllnessCockpitBody({
           initialAltNotes={
             altDate ? getSymptomNotesOnDate(profileId, altDate) : undefined
           }
-          symptoms={SYMPTOMS}
+          symptoms={PICKER_SYMPTOMS}
           customNames={getCustomSymptomNames(profileId)}
           rankedKeys={getSymptomLogOrder(profileId)}
           suggestActivateIllness={false}

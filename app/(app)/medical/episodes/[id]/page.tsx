@@ -35,7 +35,7 @@ import {
   getUnitPrefs,
 } from "@/lib/settings";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
-import { SYMPTOMS, symptomLabel } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
 import { isRealIsoDate } from "@/lib/date";
 import { episodeAlternateLogDate } from "@/lib/illness-episode-format";
 import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";
@@ -364,7 +364,7 @@ export default async function EpisodePage(props: {
                       ? getSymptomNotesOnDate(profileId, altLogDate)
                       : undefined
                   }
-                  symptoms={SYMPTOMS}
+                  symptoms={PICKER_SYMPTOMS}
                   customNames={getCustomSymptomNames(profileId)}
                   rankedKeys={getSymptomLogOrder(profileId)}
                   temperatureUnit={temperatureUnit}

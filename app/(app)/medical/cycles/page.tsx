@@ -5,7 +5,7 @@ import { PageHeader, EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
-import { SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,
   getSymptomNotesOnDate,
@@ -148,7 +148,7 @@ export default async function CyclePage() {
           date={todayStr}
           initial={getSymptomSeveritiesOnDate(profile.id, todayStr)}
           initialNotes={getSymptomNotesOnDate(profile.id, todayStr)}
-          symptoms={SYMPTOMS}
+          symptoms={PICKER_SYMPTOMS}
           customNames={getCustomSymptomNames(profile.id)}
           rankedKeys={getSymptomLogOrder(profile.id, "cycle")}
           suggestActivateIllness={false}

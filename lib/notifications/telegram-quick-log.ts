@@ -154,7 +154,7 @@ const SYMPTOM_GRID_CAP = 8;
 function symptomGridKeys(profileId: number): string[] {
   const ranked = getSymptomLogOrder(profileId).slice(0, SYMPTOM_GRID_CAP);
   if (ranked.length > 0) return ranked;
-  return SYMPTOMS.slice(0, SYMPTOM_GRID_CAP).map((s) => s.slug);
+  return PICKER_SYMPTOMS.slice(0, SYMPTOM_GRID_CAP).map((s) => s.slug);
 }
 
 // `/symptom` command (#859 item 5): list the chat's profiles' ranked symptoms, each a
@@ -485,7 +485,7 @@ export async function handleSymptomTextIntake(
 
   const outcome = await mapSymptomText(text, {
     slugs: symptomSlugs(),
-    labels: Object.fromEntries(SYMPTOMS.map((s) => [s.slug, s.label])),
+    labels: Object.fromEntries(PICKER_SYMPTOMS.map((s) => [s.slug, s.label])),
     customNames: getCustomSymptomNames(profileId),
   });
   if (outcome.status !== "ok") return false;
@@ -588,7 +588,7 @@ import { upsertMoodLog } from "../offline/writes";
 import { getMoodOnDate } from "../queries/mood";
 import { decideMoodKeep, moodFace, moodLabel } from "../mood";
 import { logTemperatureCore } from "../temperature-log";
-import { symptomLabel, symptomSlugs, SYMPTOMS } from "../symptoms";
+import { symptomLabel, symptomSlugs, PICKER_SYMPTOMS } from "../symptoms";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { episodeHref } from "../hrefs";
 import { isTaskConfigured } from "../ai-resolve";

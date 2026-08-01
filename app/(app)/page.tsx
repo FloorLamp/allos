@@ -159,7 +159,7 @@ import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
 import SymptomLogBar from "../../components/illness/SymptomLogBar";
-import { SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
@@ -979,7 +979,7 @@ export default async function Dashboard() {
                   date={on}
                   initial={getSymptomSeveritiesOnDate(profile.id, on)}
                   initialNotes={getSymptomNotesOnDate(profile.id, on)}
-                  symptoms={SYMPTOMS}
+                  symptoms={PICKER_SYMPTOMS}
                   customNames={getCustomSymptomNames(profile.id)}
                   rankedKeys={getSymptomLogOrder(profile.id)}
                   suggestActivateIllness={
