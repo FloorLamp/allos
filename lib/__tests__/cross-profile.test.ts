@@ -67,13 +67,16 @@ describe("usesProfileIdInList: the companion-rule detector", () => {
 });
 
 describe("isCrossProfileSqlModule: registry membership (fixture-pinned)", () => {
-  it("registers exactly the #1328 Tier-1 set-based flat-list module", () => {
+  it("registers exactly the set-based readers that have landed", () => {
     // The FIRST set-based cross-profile reader landed with #1328 (Health goals /
-    // Genomics / Imaging read the view-set with a bound `profile_id IN`); its module is
-    // the only registered entry. A NEW set-based reader adds its module here in the same
-    // PR as the scope.ids-fed reader it protects.
+    // Genomics / Imaging read the view-set with a bound `profile_id IN`). The second is
+    // #1787's portal run-report visibility read, which decides whether a portal ACCOUNT
+    // is reachable by testing its bindings against the viewer's accessible set. A NEW
+    // set-based reader adds its module here in the same PR as the ids-fed reader it
+    // protects — this list is the reviewed record of every one of them.
     expect(CROSS_PROFILE_SQL_MODULES).toEqual([
       "lib/queries/multi-view-lists.ts",
+      "lib/portal-visibility.ts",
     ]);
   });
 
