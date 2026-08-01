@@ -448,7 +448,9 @@ describe("the stored report's counts are the footprint tally (#1827)", () => {
           `SELECT COUNT(*) AS n FROM ${t.table}
             WHERE ${t.key} = ? AND profile_id = ?${t.extra ? ` AND ${t.extra}` : ""}`
         )
-        .get(t.key === "document_id" ? docC : source, profileC) as { n: number };
+        .get(t.key === "document_id" ? docC : source, profileC) as {
+        n: number;
+      };
       return row.n === 0;
     }).map((t) => `${t.table}${t.extra ? ` (${t.extra})` : ""}`);
     expect(empty).toEqual([]);

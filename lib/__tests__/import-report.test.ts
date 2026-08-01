@@ -391,7 +391,9 @@ describe("withFootprintCounts / reconcileStoredReportCounts", () => {
       { kind: "medication", label: "Unreadable sig", reason: "no_value" },
       { kind: "section", label: "Insurance", reason: "unrecognized_section" },
     ],
-    coverage: [{ key: "results", title: "Results", consumed: true, present: 4 }],
+    coverage: [
+      { key: "results", title: "Results", consumed: true, present: 4 },
+    ],
     // What a parse guessed — here, blind to the medications it kept.
     imported: 2,
     considered: 4,
