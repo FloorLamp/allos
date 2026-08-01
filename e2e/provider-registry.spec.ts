@@ -126,20 +126,36 @@ test.describe("Provider registry closeout", () => {
     handle.close();
 
     try {
+      await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(`/providers/${id}`);
       const detail = page.getByTestId("provider-detail");
+      const tablist = detail.getByRole("tablist");
+      await expect(tablist).toHaveCSS("overflow-x", "auto");
+      await expect(
+        detail.getByRole("tab", { name: /^Visits/ })
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(
+        detail.getByTestId("provider-activity-panel-visits")
+      ).toBeVisible();
 
-      await detail.getByTestId("activity-summary-visits").click();
       await expect(
         detail.getByRole("link", { name: /Provider href visit \(e2e\)/ })
       ).toHaveAttribute("href", `/encounters/${visitId}`);
 
-      await detail.getByTestId("activity-summary-labs").click();
+      await followLink(
+        page,
+        detail.getByRole("tab", { name: /^Labs/ }),
+        /[?&]activity=labs/
+      );
       await expect(
         detail.getByRole("link", { name: /Glucose/ })
       ).toHaveAttribute("href", "/biomarkers/view?name=Glucose");
 
-      await detail.getByTestId("activity-summary-medications").click();
+      await followLink(
+        page,
+        detail.getByRole("tab", { name: /^Medications/ }),
+        /[?&]activity=medications/
+      );
       await expect(
         detail.getByRole("link", {
           name: /Provider href medication \(e2e\)/,
@@ -223,7 +239,10 @@ test.describe("Provider registry closeout", () => {
     // On the provider's detail, the Rx surfaces under the Vision activity section.
     const detail = page.getByTestId("provider-detail");
     await expect(detail).toContainText("Dr. Vision E2E");
-    await detail.getByTestId("activity-summary-vision").click();
+    await expect(detail.getByRole("tab", { name: /^Vision/ })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
     const rxEntry = detail.getByText(/Glasses|Contact lenses/).first(); // first-ok: spec-owned provider's own Rx list
     await expect(rxEntry).toBeVisible();
   });

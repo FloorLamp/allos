@@ -100,9 +100,12 @@ test.describe("Providers registry", () => {
     // The activity is explicitly labeled as the active profile's.
     await expect(detail.getByText(/records with this provider/i)).toBeVisible();
     // The duplicate's linked visit + procedure show under Activity.
-    await detail.getByTestId("activity-summary-visits").click();
     await expect(detail.getByText("Follow-up")).toBeVisible();
-    await detail.getByTestId("activity-summary-procedures").click();
+    await followLink(
+      page,
+      detail.getByRole("tab", { name: /^Procedures/ }),
+      /[?&]activity=procedures/
+    );
     await expect(detail.getByText("Blood pressure check")).toBeVisible();
   });
 
@@ -156,9 +159,12 @@ test.describe("Providers registry", () => {
 
     // The absorbed provider's linked records now live on the survivor.
     const detail = page.getByTestId("provider-detail");
-    await detail.getByTestId("activity-summary-visits").click();
     await expect(detail.getByText("Follow-up")).toBeVisible();
-    await detail.getByTestId("activity-summary-procedures").click();
+    await followLink(
+      page,
+      detail.getByRole("tab", { name: /^Procedures/ }),
+      /[?&]activity=procedures/
+    );
     await expect(detail.getByText("Blood pressure check")).toBeVisible();
 
     // The absorbed provider is gone — its detail renders the not-found page.

@@ -84,13 +84,12 @@ test.describe("Import detail: type-appropriate produced panels (#1182)", () => {
       page.getByRole("heading", { name: /E2E Panels Lab/ })
     ).toBeVisible();
 
-    // Provider activity follows the record back to the source report when one
-    // exists, instead of dropping the reader onto the generic Biomarkers index.
+    // Provider activity follows the clinical item to its biomarker detail; the
+    // import remains provenance, not the item's navigation destination.
     const detail = page.getByTestId("provider-detail");
-    await detail.getByTestId("activity-summary-labs").click();
     await expect(detail.getByRole("link", { name: /^Sodium/ })).toHaveAttribute(
       "href",
-      DOC
+      "/biomarkers/view?name=Sodium"
     );
   });
 });
