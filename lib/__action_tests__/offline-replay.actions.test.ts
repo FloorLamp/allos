@@ -439,3 +439,306 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     expect(logFor(doseId, longAgo)).toBeUndefined();
   });
 });
+
+// ── #1596: the queued workout session rides the SHARED activity core ──────────
+//
+// Driven end-to-end through the route (cookie-authed, real DB) because the point
+// is that the replay is not a private writer: applySetIntent rebuilds the form's
+// own submit fields and runs saveActivityCore — the same implementation the live
+// auto-save posts to — so a replayed session inherits the identical validation
+// (title/date guard, captured-unit conversion, per-set canonicalization) and the
+// replayed_keys ledger makes it exactly-once across racing flushes.
+describe("offline replay — workout sessions (issue #1596)", () => {
+  function setIntent(
+    profileId: number,
+    title: string,
+    date: string,
+    extraFields: Record<string, string> = {}
+  ): QueuedIntent {
+    return {
+      key: uniqueKey(),
+      flow: "set",
+      date,
+      capturedAt: `${date}T18:05:00.000Z`,
+      payload: {
+        fields: {
+          type: "strength",
+          title,
+          date,
+          weight_unit: "lb",
+          distance_unit: "km",
+          components: JSON.stringify([
+            {
+              name: "Back Squat",
+              type: "strength",
+              distance: null,
+              duration_min: null,
+            },
+          ]),
+          sets: JSON.stringify([
+            {
+              exercise: "Back Squat",
+              weight: 225,
+              reps: 5,
+              weightRight: null,
+              repsRight: null,
+              durationSec: null,
+              durationSecRight: null,
+              equipmentId: null,
+            },
+            {
+              exercise: "Back Squat",
+              weight: 225,
+              reps: 3,
+              weightRight: null,
+              repsRight: null,
+              durationSec: null,
+              durationSecRight: null,
+              equipmentId: null,
+              warmup: true,
+            },
+          ]),
+          ...extraFields,
+        },
+      },
+      profileId,
+      attempts: 0,
+    };
+  }
+
+  function activityRows(profileId: number, title: string) {
+    return db
+      .prepare(
+        "SELECT id, date, type FROM activities WHERE profile_id = ? AND title = ?"
+      )
+      .all(profileId, title) as { id: number; date: string; type: string }[];
+  }
+
+  it("creates the session + its sets exactly once, converting the CAPTURED unit", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`SetReplay ${uniqueKey()}`);
+    actAs(admin, profile);
+    const title = `Offline squats ${uniqueKey()}`;
+    const date = today(profile.id);
+
+    const intent = setIntent(profile.id, title, date);
+    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+    // The SAME idempotency key (racing flush triggers) is a no-op duplicate…
+    expect((await replay([intent])).body.results?.[0].status).toBe("duplicate");
+
+    // …so exactly ONE activity row exists, with its two sets in submitted order.
+    const rows = activityRows(profile.id, title);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].date).toBe(date);
+    expect(rows[0].type).toBe("strength");
+    const sets = db
+      .prepare(
+        "SELECT set_number, weight_kg, reps, warmup FROM exercise_sets WHERE activity_id = ? ORDER BY set_number"
+      )
+      .all(rows[0].id) as {
+      set_number: number;
+      weight_kg: number;
+      reps: number;
+      warmup: number;
+    }[];
+    expect(sets.map((s) => s.set_number)).toEqual([1, 2]);
+    expect(sets.map((s) => s.reps)).toEqual([5, 3]);
+    expect(sets.map((s) => s.warmup)).toEqual([0, 1]);
+    // 225 lb converted with the unit CAPTURED in the payload (#630), not a pref.
+    expect(sets[0].weight_kg).toBeCloseTo(102.1, 1);
+  });
+
+  it("is CREATE-ONLY: a smuggled `id` field cannot retarget an existing row", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`SetCreateOnly ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+    const victimTitle = `Victim session ${uniqueKey()}`;
+    const victimId = Number(
+      db
+        .prepare(
+          "INSERT INTO activities (date, type, title, profile_id) VALUES (?, 'strength', ?, ?)"
+        )
+        .run(date, victimTitle, profile.id).lastInsertRowid
+    );
+
+    const title = `Smuggler ${uniqueKey()}`;
+    const intent = setIntent(profile.id, title, date, { id: String(victimId) });
+    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+
+    // The victim row is untouched; the replay inserted a NEW session.
+    expect(activityRows(profile.id, victimTitle)).toHaveLength(1);
+    expect(activityRows(profile.id, title)).toHaveLength(1);
+    expect(activityRows(profile.id, title)[0].id).not.toBe(victimId);
+  });
+
+  it("lands on the intent's CAPTURED date, not the fields' (the #28 stamp is authoritative)", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`SetDate ${uniqueKey()}`);
+    actAs(admin, profile);
+    const captured = shiftDateStr(today(profile.id), -2);
+    const title = `Two days ago ${uniqueKey()}`;
+    const intent = setIntent(profile.id, title, captured, {
+      date: today(profile.id), // a fields/date mismatch loses to the stamp
+    });
+    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+    expect(activityRows(profile.id, title)[0].date).toBe(captured);
+  });
+
+  it("dead-letters an invalid payload with the typed reason — never a silent drop", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`SetInvalid ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+    const intent = setIntent(profile.id, "", date); // empty title → invalid
+    const { body } = await replay([intent]);
+    expect(body.results?.[0].status).toBe("rejected");
+    expect(body.results?.[0].reason).toMatch(/couldn't be validated/i);
+    expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")
+          .get(profile.id) as { n: number }
+      ).n
+    ).toBe(0);
+  });
+});
+
+// ── #1596: the queued food/protein quick-adds ride the SHARED nutrition cores ──
+describe("offline replay — food quick-adds (issue #1596)", () => {
+  function servingIntent(
+    profileId: number,
+    date: string,
+    groupKey: string,
+    mealSlot: string | null,
+    capturedAt: string
+  ): QueuedIntent {
+    return {
+      key: uniqueKey(),
+      flow: "food",
+      date,
+      capturedAt,
+      payload: { entry: "serving", groupKey, mealSlot, grams: null },
+      profileId,
+      attempts: 0,
+    };
+  }
+
+  function proteinIntent(
+    profileId: number,
+    date: string,
+    grams: number
+  ): QueuedIntent {
+    return {
+      key: uniqueKey(),
+      flow: "food",
+      date,
+      capturedAt: `${date}T08:12:00.000Z`,
+      payload: { entry: "protein", groupKey: null, mealSlot: null, grams },
+      profileId,
+      attempts: 0,
+    };
+  }
+
+  function servingsFor(profileId: number, date: string, group: string): number {
+    const row = db
+      .prepare(
+        "SELECT servings FROM food_log WHERE profile_id = ? AND date = ? AND group_key = ?"
+      )
+      .get(profileId, date, group) as { servings: number } | undefined;
+    return row?.servings ?? 0;
+  }
+
+  it("logs one serving exactly once per intent, stamping the CAPTURED tap instant + meal slot", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`FoodReplay ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = shiftDateStr(today(profile.id), -1);
+    const capturedAt = `${date}T07:45:00.000Z`;
+
+    const first = servingIntent(
+      profile.id,
+      date,
+      "leafy_greens",
+      "Morning",
+      capturedAt
+    );
+    expect((await replay([first])).body.results?.[0].status).toBe("done");
+    // Same key (a racing flush) → duplicate; the count must NOT move.
+    expect((await replay([first])).body.results?.[0].status).toBe("duplicate");
+    expect(servingsFor(profile.id, date, "leafy_greens")).toBe(1);
+
+    // A DIFFERENT key is a second real tap → the day's count increments.
+    const second = servingIntent(
+      profile.id,
+      date,
+      "leafy_greens",
+      "Morning",
+      capturedAt
+    );
+    expect((await replay([second])).body.results?.[0].status).toBe("done");
+    expect(servingsFor(profile.id, date, "leafy_greens")).toBe(2);
+
+    // The ledger events carry the captured tap instant + asserted meal window,
+    // so slot frecency ranks the tap where the user actually made it.
+    const events = db
+      .prepare(
+        "SELECT logged_at, meal_slot FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = 'leafy_greens'"
+      )
+      .all(profile.id, date) as { logged_at: string; meal_slot: string }[];
+    expect(events).toHaveLength(2);
+    expect(events[0].logged_at).toBe(capturedAt);
+    expect(events[0].meal_slot).toBe("Morning");
+  });
+
+  it("dead-letters an unknown food group with a reason, writing nothing", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`FoodUnknown ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+    const { body } = await replay([
+      servingIntent(
+        profile.id,
+        date,
+        "unobtainium",
+        null,
+        `${date}T09:00:00.000Z`
+      ),
+    ]);
+    expect(body.results?.[0].status).toBe("rejected");
+    expect(body.results?.[0].reason).toMatch(/no longer available/i);
+    expect(servingsFor(profile.id, date, "unobtainium")).toBe(0);
+  });
+
+  it("sums protein grams exactly once per intent, and rejects an off-bounds amount", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`ProteinReplay ${uniqueKey()}`);
+    actAs(admin, profile);
+    const date = today(profile.id);
+
+    const intent = proteinIntent(profile.id, date, 30);
+    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+    expect((await replay([intent])).body.results?.[0].status).toBe("duplicate");
+    const gramsRow = () =>
+      (
+        db
+          .prepare(
+            "SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?"
+          )
+          .get(profile.id, date) as { grams: number } | undefined
+      )?.grams ?? 0;
+    expect(gramsRow()).toBe(30);
+
+    // A second real tap sums; an over-cap amount dead-letters with its reason.
+    expect(
+      (await replay([proteinIntent(profile.id, date, 25)])).body.results?.[0]
+        .status
+    ).toBe("done");
+    expect(gramsRow()).toBe(55);
+
+    const { body } = await replay([proteinIntent(profile.id, date, 5000)]);
+    expect(body.results?.[0].status).toBe("rejected");
+    expect(body.results?.[0].reason).toMatch(/protein amount/i);
+    expect(gramsRow()).toBe(55);
+  });
+});

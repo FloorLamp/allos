@@ -2044,12 +2044,16 @@ Logging often happens exactly where the signal doesn't: a set at a gym with dead
 reception, a dose on a flight, a weigh-in during an outage. For a small set of
 **idempotent quick-logs** — confirming a **dose taken** or **skipped**
 (Supplements & Meds), a **body-metric** weigh-in (Trends → Body), a **vitals**
-entry (Trends → Body), and a daily **mood check-in** (the Dashboard "How are you
-today?" card — idempotent per day, so a replay updates the day's one entry) —
-the app no longer fails when you're offline: it **queues the entry on your
-device** (in this browser's IndexedDB) and shows a "Saved offline — will sync
-when you reconnect" confirmation plus a **pending badge** counting the queued
-writes.
+entry (Trends → Body), a daily **mood check-in** (the Dashboard "How are you
+today?" card — idempotent per day, so a replay updates the day's one entry), a
+**workout session** logged entirely offline (the Training editor: if the
+connection is gone for the whole session, closing the editor queues the
+complete workout — sets, loads, times — instead of stranding it on the device),
+and the **food quick-adds** (a one-tap food-group serving or protein grams on
+Nutrition) — the app no longer fails when you're offline: it **queues the entry
+on your device** (in this browser's IndexedDB) and shows a "Saved offline —
+will sync when you reconnect" confirmation plus a **pending badge** counting
+the queued writes.
 
 On reconnect the queue **replays automatically** — on the browser's `online`
 event, on the next page load, and (on Chromium/Android, where it's supported)
@@ -2068,7 +2072,13 @@ cleared on logout and profile switch.
 Everything else still needs connectivity: this is a queue for a few one-tap
 logs, not a general offline mode. Forms with server-derived state (anything that
 reads or computes against your existing data) stay online-only, and page
-navigation while offline still shows the reconnect screen.
+navigation while offline still shows the reconnect screen. Two nearby cases are
+deliberately excluded (documented in the queue's scope): **editing a workout
+that already reached the server** relies on the editor's own retrying auto-save
+and local draft rather than the queue (a replayed stale edit would overwrite a
+session that may have moved), and the food/protein **"−" undo taps** are
+online-only (an undo is a decrement against the current total, not a captured
+entry).
 
 ## App updates
 

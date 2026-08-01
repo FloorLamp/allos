@@ -66,9 +66,9 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "immunization_overrides.created_at — audit stamp on an upsert keyed by (profile_id, vaccine). Never day-reduced.",
   },
-  "app/(app)/training/activity-actions.ts": {
+  "lib/activity-write.ts": {
     count: 1,
-    why: "journal updated_at — a 'last modified' audit stamp.",
+    why: "journal updated_at — a 'last modified' audit stamp. (Moved with saveActivityCore's extraction out of app/(app)/training/activity-actions.ts, #1596.)",
   },
   "app/(app)/settings/family/page.tsx": {
     count: 1,

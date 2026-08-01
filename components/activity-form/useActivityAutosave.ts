@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
+import { shouldQueueOffline } from "@/lib/offline/queue";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a
 // self-contained hook (#1207). It owns the whole save lifecycle: a 700ms debounced
@@ -40,6 +41,7 @@ export function useActivityAutosave({
   isPrefillCreate,
   buildFormData,
   toast,
+  onQueueOffline,
 }: {
   formSig: string;
   canSave: boolean;
@@ -50,6 +52,15 @@ export function useActivityAutosave({
   isPrefillCreate: boolean;
   buildFormData: (savedId: number | null) => FormData;
   toast: (msg: string) => void;
+  // Offline capture for a NEVER-CREATED session (#1596): called from the CLOSE-path
+  // flushes only, when the final save dies on a dead connection and the form has no
+  // server row — the one moment the whole session is a pure capture (see the
+  // lib/offline/queue.ts scope comment for why a server-rowed edit never queues,
+  // and why nothing queues while the form is still open: the open form's own
+  // reconnect auto-save would race the replay into a duplicate row). Returns true
+  // once the intent is durably queued; the hook then treats the close like a save
+  // (signature advanced, no dirty prompt) — the queue owns the data now.
+  onQueueOffline?: (formData: FormData) => Promise<boolean>;
 }): ActivityAutosave {
   const [status, setStatus] = useState<SaveStatus>("idle");
   // Timestamp of the last successful save; drives the SaveStatus check + fade.
@@ -66,7 +77,9 @@ export function useActivityAutosave({
   // create is the exception (see isPrefillCreate).
   const savedSigRef = useRef<string>(isPrefillCreate ? "" : formSig);
   // Keep the latest persist available to the unmount flush without re-running it.
-  const persistRef = useRef<() => void>(() => {});
+  const persistRef = useRef<(opts?: { queueOnOffline?: boolean }) => unknown>(
+    () => {}
+  );
   // Serialize saves: only one in flight at a time, so concurrent debounces can't
   // both create a fresh row before the first returns its id (duplicate insert).
   const inFlightRef = useRef(false);
@@ -78,6 +91,10 @@ export function useActivityAutosave({
   // unmount persist without re-arming the machine on every keystroke.
   const buildFormDataRef = useRef(buildFormData);
   buildFormDataRef.current = buildFormData;
+  // Same for the offline-capture callback (#1596) — it closes over the parent's
+  // queue context + draft handle.
+  const onQueueOfflineRef = useRef(onQueueOffline);
+  onQueueOfflineRef.current = onQueueOffline;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -86,7 +103,13 @@ export function useActivityAutosave({
     };
   }, []);
 
-  async function persist() {
+  // `queueOnOffline` marks a CLOSE-path persist (flushBeforeClose / the unmount
+  // flush): when that final save dies on a dead connection and the session never
+  // got a server row, the whole form is captured into the offline queue instead of
+  // being stranded in the local draft (#1596). Debounced mid-session persists
+  // never pass it — nothing may queue while the form is still open (see
+  // onQueueOffline's doc above).
+  async function persist(opts?: { queueOnOffline?: boolean }) {
     if (!canSave) return;
     if (formSig === savedSigRef.current) return; // nothing changed
     if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
@@ -115,7 +138,37 @@ export function useActivityAutosave({
         setStatus("saved");
         setSavedAt(Date.now());
       }
-    } catch {
+    } catch (err) {
+      // Close-path save on a dead connection, session never created server-side
+      // (#1596): capture the whole form into the offline queue. On success the
+      // signature advances — the close proceeds clean, and the queue (not the
+      // draft) is the durable owner of the entry.
+      if (
+        opts?.queueOnOffline &&
+        savableId() == null &&
+        onQueueOfflineRef.current &&
+        shouldQueueOffline(
+          typeof navigator === "undefined" ? true : navigator.onLine,
+          err
+        )
+      ) {
+        try {
+          const queued = await onQueueOfflineRef.current(
+            buildFormDataRef.current(null)
+          );
+          if (queued) {
+            savedSigRef.current = sigAtSave;
+            saved = true;
+            if (mountedRef.current) {
+              setStatus("saved");
+              setSavedAt(Date.now());
+            }
+            return;
+          }
+        } catch {
+          /* IndexedDB unavailable — fall through to the honest failure below */
+        }
+      }
       if (mountedRef.current) setStatus("error");
       // Failed after the form closed (the unmount flush): the status icon is
       // gone, so this toast is the only signal the change didn't stick.
@@ -149,9 +202,10 @@ export function useActivityAutosave({
   }, [formSig, canSave, savedAt]);
 
   // Flush any pending change when the form goes away (e.g. switching cards,
-  // dismissing the modal, navigating off the page).
+  // dismissing the modal, navigating off the page). A close path, so an offline
+  // failure on a never-created session may capture to the queue (#1596).
   useEffect(() => {
-    return () => void persistRef.current();
+    return () => void persistRef.current({ queueOnOffline: true });
   }, []);
 
   // Durably commit the latest edit BEFORE the form closes. The 700ms debounced
@@ -171,7 +225,10 @@ export function useActivityAutosave({
         await new Promise((r) => setTimeout(r, 25));
         continue;
       }
-      await persistRef.current();
+      // A close path (#1596): a dead-connection failure on a never-created
+      // session captures to the offline queue, which advances the signature and
+      // ends this loop like a successful save.
+      await persistRef.current({ queueOnOffline: true });
     }
   }
 
