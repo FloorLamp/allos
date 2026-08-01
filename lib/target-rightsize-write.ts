@@ -24,7 +24,10 @@ interface TargetRow {
   per_week: number;
 }
 
-function readTarget(profileId: number, targetId: number): TargetRow | undefined {
+function readTarget(
+  profileId: number,
+  targetId: number
+): TargetRow | undefined {
   return db
     .prepare(
       `SELECT id, scope_kind, per_week FROM frequency_targets

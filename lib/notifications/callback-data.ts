@@ -583,6 +583,46 @@ export function parsePracticeDoneCallback(
   return { profileId, targetId, token };
 }
 
+// ---- The right-sizing ride-along on the practice nudge (#1670) ----
+// The pace nudge already fires for a practice that is behind its weekly floor. When
+// that shortfall has been CHRONIC — every one of the last four completed weeks under
+// the floor — the same message carries one extra button offering to lower the floor to
+// the cadence actually kept. It is a ride-along in the strict sense: no message is ever
+// sent because of a right-sizing suggestion, and a target that has stopped generating
+// this nudge has no delivery path, which is correct rather than a gap.
+//
+// The token carries the TARGET id (plus the profile id as a cross-check, resolved
+// against the chat like a dose tap) and DELIBERATELY NOT the new floor. The handler
+// re-derives the live candidate before writing, exactly as the in-app accept does, so
+// a stale button on a recovered practice refuses instead of applying a number nobody
+// is suggesting any more.
+export interface RightSizeLowerCallback {
+  profileId: number;
+  targetId: number;
+}
+
+// Encode the "rslower:<profileId>:<targetId>" button token (minted by the nudge
+// builder, read by the parser below — one source of truth for the shape).
+export function rightSizeLowerCallback(
+  profileId: number,
+  targetId: number
+): string {
+  return `rslower:${profileId}:${targetId}`;
+}
+
+// Parse a "rslower:<profileId>:<targetId>" token. Malformed (wrong prefix, bad ids)
+// -> null.
+export function parseRightSizeLowerCallback(
+  data: unknown
+): RightSizeLowerCallback | null {
+  if (typeof data !== "string" || !data.startsWith("rslower:")) return null;
+  const [, profStr, targStr] = data.split(":");
+  const profileId = Number(profStr);
+  const targetId = Number(targStr);
+  if (!profileId || !targetId) return null;
+  return { profileId, targetId };
+}
+
 // The toast answer for a practice Done tap is `practiceLogOutcomeText` in lib/practice.ts
 // — the SAME sentence the Wellness card's button, the quick-entry overlay row, and the
 // command palette's inline quick log say, because they all answer from one write core's

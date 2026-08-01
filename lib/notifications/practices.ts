@@ -16,7 +16,8 @@ import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
 import { practiceSignalKey, practiceCadenceText } from "../practice";
 import { today as todayFor } from "../db";
-import { practiceDoneCallback } from "./callback-data";
+import { collectRightSizeCandidates } from "../rule-findings";
+import { practiceDoneCallback, rightSizeLowerCallback } from "./callback-data";
 import { PRACTICES_HREF } from "../hrefs";
 import type { NotificationAction, NotificationMessage } from "./types";
 
@@ -85,16 +86,38 @@ export function buildPracticeReminder(
   const behind = behindPractices(profileId);
   if (behind.length === 0) return null;
 
+  // RIGHT-SIZING RIDE-ALONG (#1670). A practice whose shortfall has been chronic —
+  // every one of the last four completed weeks under the floor — gets one extra button
+  // on the message this nudge was already sending, offering the cadence actually kept.
+  // No message exists because of a suggestion; this only decorates one that fires for
+  // its own reasons (the ride-the-nag rule).
+  //
+  // Deliberately NOT bus-gated, unlike the nudge itself: an in-app dismiss means "keep
+  // asking me about this practice", which is a statement about the CARD, not about
+  // whether the offer to shrink the commitment should exist on a message that is being
+  // sent anyway. The button is governed by detection state alone (#1505's posture).
+  const rightSizeFloor = new Map<number, number>();
+  for (const c of collectRightSizeCandidates(profileId, todayFor(profileId)))
+    if (c.domain === "practice" && c.suggestedFloor != null)
+      rightSizeFloor.set(c.targetId, c.suggestedFloor);
+
   // Per-item lines adopt the recap's VERDICT shape (#1722 item 5b): numbers, then
   // what they mean and what's next — never a bare ratio. Silent about the next step
   // when there is nothing true to say.
   const lines = behind.map((b) => `• ${practiceShortfallLine(b)}`);
-  const actions: NotificationAction[] = behind
-    .slice(0, MAX_PRACTICE_BUTTONS)
-    .map((b) => ({
+  const actions: NotificationAction[] = [];
+  for (const b of behind.slice(0, MAX_PRACTICE_BUTTONS)) {
+    actions.push({
       label: `✓ ${b.name}`,
       data: practiceDoneCallback(profileId, b.targetId, nonce),
-    }));
+    });
+    const floor = rightSizeFloor.get(b.targetId);
+    if (floor != null)
+      actions.push({
+        label: `⤓ ${b.name} → ${floor}×/wk`,
+        data: rightSizeLowerCallback(profileId, b.targetId),
+      });
+  }
   // A deep link so the message works on EVERY channel (#1718). Web Push and Home
   // Assistant strip the "✓ Done" buttons, and the old body then told those users to
   // "tap when you've done a session" — an instruction to tap nothing. The link is the

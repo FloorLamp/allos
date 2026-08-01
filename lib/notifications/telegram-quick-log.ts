@@ -548,6 +548,9 @@ import type {
 } from "./callback-data";
 import { demoteIntakeObligation } from "../intake-obligation-write";
 import { DEMOTION_OUTCOME_TEXT } from "../supplement-demotion";
+import { collectRightSizeCandidates } from "../rule-findings";
+import { lowerFrequencyTargetFloor } from "../target-rightsize-write";
+import { RIGHTSIZE_OUTCOME_TEXT } from "../target-rightsize";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { messageKeyboard } from "./telegram-render";
 import { zonedDateParts } from "../date";
@@ -614,6 +617,7 @@ import {
   type MoodCheckinCallback,
   type MoodKeepCallback,
   type PracticeDoneCallback,
+  type RightSizeLowerCallback,
   type PrnLogCallback,
   type SymptomPickCallback,
   type SymptomSeverityCallback,
@@ -740,6 +744,57 @@ export async function handleDemoteTap(
   const outcome = demoteIntakeObligation(profileId, token.itemId);
   await answerCallbackQuery(cq.id, DEMOTION_OUTCOME_TEXT[outcome]);
   if (outcome !== "demoted" || chatId == null || messageId == null) return;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (rows.length === 0) return;
+  await updateMessageKeyboard(
+    chatId,
+    messageId,
+    removeButton(rows, cq.data as string)
+  );
+}
+
+// A ⤓ right-size tap on the practice nudge (#1670): lower the tapped practice's weekly
+// floor to the cadence the profile actually keeps.
+//
+// This is the notification layer's ONLY frequency-target write, and the two properties
+// that make it safe are the same ones the ⤓ May tap has: it is DOWNWARD, and it is
+// initiated by the user. It goes through the SAME write core the in-app card uses and,
+// critically, re-derives the suggested floor from the live detector rather than reading
+// a number off the button — a stale button on a practice whose cadence recovered
+// refuses instead of shrinking a commitment nobody is suggesting shrinking.
+//
+// The tapped ROW is consumed on success (both the ✓ and the ⤓ for that practice become
+// stale once its floor moved); the rest of the nudge's buttons survive so the message
+// stays usable.
+export async function handleRightSizeLowerTap(
+  cq: TelegramCallbackQuery,
+  token: RightSizeLowerCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const candidate = collectRightSizeCandidates(
+    profileId,
+    today(profileId)
+  ).find((c) => c.targetId === token.targetId);
+  if (!candidate || candidate.suggestedFloor == null) {
+    await answerCallbackQuery(cq.id, RIGHTSIZE_OUTCOME_TEXT.stale);
+    return;
+  }
+  const outcome = lowerFrequencyTargetFloor(
+    profileId,
+    candidate.targetId,
+    candidate.suggestedFloor
+  );
+  await answerCallbackQuery(cq.id, RIGHTSIZE_OUTCOME_TEXT[outcome]);
+  if (outcome !== "lowered" || chatId == null || messageId == null) return;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (rows.length === 0) return;
   await updateMessageKeyboard(
