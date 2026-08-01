@@ -23,6 +23,7 @@ import {
 import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import { upsertMoodLog } from "@/lib/offline/writes";
 import { getMetricReadings } from "@/lib/metric-readings";
+import { getMoodOnDate } from "@/lib/queries";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { seedActor, createProfile, fd } from "./harness";
 
@@ -141,6 +142,39 @@ describe("updateMetricReading", () => {
     expect(hrvRows(profile.id)).toEqual([]);
   });
 
+  it("corrects an energy rating without disturbing the day's other ratings (#1408)", async () => {
+    const { profile } = seedActor();
+    upsertMoodLog(profile.id, DATE, { valence: 4, energy: 2, anxiety: 5 });
+    const [row] = getMetricReadings(profile.id, "energy");
+
+    expect(
+      await updateMetricReading(fd({ kind: "energy", id: row.id, value: 5 }))
+    ).toEqual({ ok: true });
+    expect(getMetricReadings(profile.id, "energy")[0].value).toBe(5);
+    expect(getMetricReadings(profile.id, "mood")[0].value).toBe(4);
+  });
+
+  it("submits Calm on the display axis and stores it as anxiety (#1313/#1408)", async () => {
+    const { profile } = seedActor();
+    upsertMoodLog(profile.id, DATE, { valence: 4, anxiety: 5 });
+    const [row] = getMetricReadings(profile.id, "calm");
+    // The table shows the relabelled slot (stored 5 = most anxious → shown 1); the
+    // core still reads the raw column, so the two must not be confused.
+    expect(row.value).toBe(5);
+
+    // "4" means fairly calm on the axis the user sees → stored anxiety 2.
+    expect(
+      await updateMetricReading(fd({ kind: "calm", id: row.id, value: 4 }))
+    ).toEqual({ ok: true });
+    expect(getMoodOnDate(profile.id, DATE)?.anxiety).toBe(2);
+    // An off-scale display slot converts to an off-scale stored value and is refused
+    // rather than wrapping around into a plausible-looking rating.
+    expect(
+      await updateMetricReading(fd({ kind: "calm", id: row.id, value: 9 }))
+    ).toMatchObject({ ok: false });
+    expect(getMoodOnDate(profile.id, DATE)?.anxiety).toBe(2);
+  });
+
   it("rejects an unknown metric kind rather than guessing a store", async () => {
     seedActor();
     expect(
@@ -190,6 +224,28 @@ describe("deleteMetricReading", () => {
 
     await deleteMetricReading(fd({ kind: "mood", id: row.id }));
     expect(getMetricReadings(profile.id, "mood")).toEqual([]);
+  });
+
+  it("clears ONE rating off a shared check-in row, keeping the day (#1408)", async () => {
+    const { profile } = seedActor();
+    upsertMoodLog(profile.id, DATE, {
+      valence: 4,
+      energy: 2,
+      anxiety: 5,
+      note: "long day",
+    });
+    const [row] = getMetricReadings(profile.id, "energy");
+
+    // The body_metrics rule one store down: removing a mis-tapped energy must not
+    // take that day's mood, note and Calm with it.
+    await deleteMetricReading(fd({ kind: "energy", id: row.id }));
+    expect(getMetricReadings(profile.id, "energy")).toEqual([]);
+    expect(getMoodOnDate(profile.id, DATE)).toMatchObject({
+      valence: 4,
+      energy: null,
+      anxiety: 5,
+      notes: "long day",
+    });
   });
 
   it("never deletes another profile's reading", async () => {
