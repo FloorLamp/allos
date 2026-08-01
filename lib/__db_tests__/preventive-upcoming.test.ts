@@ -7,6 +7,9 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
+import { bandForItem } from "@/lib/upcoming";
+import { attentionCardItems } from "@/lib/attention";
+import { collectAttentionModel } from "@/lib/queries/attention";
 import { setUserBirthdate, setUserSex } from "@/lib/settings";
 import {
   collectUpcoming,
@@ -43,12 +46,61 @@ describe("preventive Upcoming integration", () => {
     const items = collectUpcoming(profileId, now);
     expect(items.some((i) => i.domain === "visit")).toBe(true);
     expect(items.some((i) => i.domain === "screening")).toBe(true);
-    // The adult physical is a due visit with no history and carries its rule key
+    // The adult physical surfaces with no history and carries its rule key
     // (drives the inline mark-done / override forms).
     const visit = items.find((i) => i.key === "visit:adult_physical");
     expect(visit?.preventiveRuleKey).toBe("adult_physical");
-    // No visit on record well past the entry age → an actionable (due/overdue) band.
-    expect(["today", "overdue"]).toContain(visit?.band);
+    // NOTHING on record → the never-recorded setup state (#1433), not an urgency
+    // band. Present, actionable by the user, but not claiming lateness.
+    expect(visit?.signalGroup).toBe("setup");
+    expect(visit?.band).toBe("later");
+    expect(visit?.dueText).toBe("No record yet");
+  });
+
+  // The end-to-end cold-start guarantee (#1433) through the REAL builder, on the
+  // fixture that reproduced the bug: a profile whose only data is a birthdate.
+  it("a bare profile produces NO overdue/attention preventive findings", () => {
+    const bare = makeProfile("Cold Start");
+    const items = collectUpcoming(bare, today(bare)).filter(
+      (i) => i.domain === "visit" || i.domain === "screening"
+    );
+    // The catalog does apply to a 46-year-old — the rules are not silenced.
+    expect(items.length).toBeGreaterThan(0);
+    // …but not one of them bands as work, and none reaches the hero.
+    expect(items.every((i) => i.signalGroup === "setup")).toBe(true);
+    expect(items.every((i) => bandForItem(i, today(bare)) === "later")).toBe(
+      true
+    );
+    expect(items.some((i) => /overdue/i.test(i.dueText ?? ""))).toBe(false);
+    expect(items.some((i) => /overdue/i.test(i.detail ?? ""))).toBe(false);
+    // Nothing preventive reaches the dashboard hero's act-now card. (Scoped to the
+    // preventive domains on purpose: the immunization schedule is a separate engine
+    // and legitimately has age-based dueness of its own.)
+    const card = attentionCardItems(
+      collectAttentionModel(bare, today(bare)),
+      today(bare)
+    );
+    expect(
+      card.filter((i) => i.domain === "visit" || i.domain === "screening")
+    ).toEqual([]);
+  });
+
+  // The other half: evidence still produces the red row it should.
+  it("a RECORDED-then-lapsed rule still bands as overdue", () => {
+    const lapsed = makeProfile("Lapsed History");
+    recordPreventiveDone(lapsed, "dental_cleaning", "2013-04-09");
+    const item = collectUpcoming(lapsed, today(lapsed)).find(
+      (i) => i.key === "visit:dental_cleaning"
+    );
+    expect(item?.signalGroup).toBeUndefined();
+    expect(item?.band).toBe("overdue");
+    expect(item?.dueText).toBe("Overdue");
+    expect(
+      attentionCardItems(
+        collectAttentionModel(lapsed, today(lapsed)),
+        today(lapsed)
+      ).some((i) => i.key === "visit:dental_cleaning")
+    ).toBe(true);
   });
 
   it("recordPreventiveDone writes an idempotent satisfaction that clears the item", () => {
