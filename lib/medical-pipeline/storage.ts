@@ -31,10 +31,19 @@ export interface DedupTarget {
 //
 // Shared verbatim by the dedup probe and the inventory list, so "what does allos hold"
 // can never mean two different things on the two paths that ask it.
-const HELD_PREDICATE = `(
-            (stored_path IS NOT NULL AND stored_path <> '')
-            OR extraction_status IN ('processing', 'pending')
+//
+// ALIAS-AWARE because the #1828 coverage read asks the same question inside a correlated
+// subquery, where the columns must be qualified. One definition, three call sites: an
+// unqualified copy would be the second thing to keep consistent with the first.
+export function heldDocumentPredicate(alias = ""): string {
+  const c = alias ? `${alias}.` : "";
+  return `(
+            (${c}stored_path IS NOT NULL AND ${c}stored_path <> '')
+            OR ${c}extraction_status IN ('processing', 'pending')
           )`;
+}
+
+const HELD_PREDICATE = heldDocumentPredicate();
 
 export function findDedupTarget(
   profileId: number,

@@ -274,6 +274,34 @@ row backed by two documents does on delete, on reprocess and on conflicting valu
 nothing is deleted retroactively — documents that already double-imported keep both
 copies.
 
+**A refused duplicate is REMEMBERED, so an acquirer stops re-sending it (#1828).** The
+two lists above could not express the `duplicate` outcome: it stores nothing (#1781), so
+the refused hash was in neither `held` nor `deleted` and the documented "send what is in
+neither list" rule made every acquirer re-offer it on every run, forever — 1.7 MB
+re-uploaded and re-parsed per run on the instance that reported it, never converging.
+#1786 turned that from an anomaly into an ordinary configuration (one person, two portal
+logins, one profile), so the seam became permanent. The fix is a third list, `covered`,
+over a small dedicated table (`document_coverage_markers`, migration 138): a
+records-duplicate refusal on the ACQUIRER path writes
+`(profile_id, content_hash, clinical_key, refused_at)`, idempotent per (profile, hash) and
+refreshed on re-offer. **Validity is recomputed at read, never stored** —
+`coveredDocumentHashes` asks, per marker, whether the profile still holds a document
+carrying that clinical key, using the same alias-aware `heldDocumentPredicate` the ingest
+probe uses, and additionally omits a marker whose own bytes have since become held (which
+is what keeps the three lists disjoint). So a delete, a reassignment away, or a reprocess
+into a different entry set makes the hash leave `covered` on the very next read, with no
+invalidation hook, no sweep, and nothing signalled to the client — the same
+storage-of-evidence / verdict-at-read shape as canonical flag recomputation. It is
+deliberately **not** `import_tombstones`: that records a person's decision and this records
+the engine's, and their rules differ in both directions (a human re-upload CLEARS a
+tombstone, while a human re-upload of a covered file simply earns the duplicate verdict
+again). It is equally deliberately not folded into `held`, which also serves the symmetric
+diff a client uses to notice documents IT lost. The marker is written only on the acquirer
+path — a person's duplicate still lands the visible `'skipped'` row that IS their feedback
+— and it is profile-owned (`lib/owned-tables.ts`), out of the portable export, and
+untouched by document delete, reassignment and extracted-count accounting, because it
+records an offer that was never stored rather than anything a document import wrote.
+
 **Weather / UV — keyless pull + a GLOBAL location cache (#1172).** The
 Open-Meteo weather/UV provider (`registry.ts` id `weather`, kind `public` — a
 keyless pull needing no account/credential, only the profile's home location)
