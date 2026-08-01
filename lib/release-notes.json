@@ -4,6 +4,34 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1835,
+          "kind": "feature",
+          "issues": [1826],
+          "title": "Patient portals is now a guided setup flow",
+          "body": "The portals page shows one step at a time — from \"register your first portal\" through mapping discovered patients to a steady-state status view — with a single next-step button instead of eight cards of forms. Everything else lives under a collapsed Manage section (where portals can now also be renamed), copy is shorter, and the page is narrower. Setup surfaces you've finished simply stop appearing."
+        },
+        {
+          "pr": 1834,
+          "kind": "fix",
+          "issues": [1822],
+          "title": "Nudges say things worth reading",
+          "body": "\"With 0 days left\" now reads \"only today left\" everywhere, praise skips generic session names instead of saying \"Nice workout today\", the workout nudge no longer states the same shortfall twice, limit-tier food groups sink to the end of the quick-log keyboard, the protein line drops its hedging, and a message that resolves itself now says what it was about (\"Morning food log — handled in the app\")."
+        },
+        {
+          "pr": 1833,
+          "kind": "fix",
+          "issues": [1828, 1829],
+          "title": "Duplicate documents stop being re-uploaded forever, and logins can be named by email",
+          "body": "When the import tool offers a file whose records are already fully imported, allos now remembers that verdict and tells the tool not to send it again — and forgets automatically if you later delete the covering document, so nothing is ever silently skipped. Portal logins can now be named with an email address (\"mom@gmail.com\"); web addresses remain rejected everywhere. A migration applies automatically."
+        },
+        {
+          "pr": 1832,
+          "kind": "fix",
+          "issues": [1827],
+          "title": "One import, one count",
+          "body": "The import coverage card's \"imported\" number now always equals the document's extracted count. It previously missed medications, imaging, and several other domains, so the two numbers could disagree about the same import."
+        },
+        {
           "pr": 1830,
           "kind": "fix",
           "issues": [1823],
