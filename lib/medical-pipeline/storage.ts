@@ -52,6 +52,41 @@ export function findDedupTarget(
     .get(contentHash, profileId) as DedupTarget | undefined;
 }
 
+// A document whose CLINICAL CONTENT already covers an offered health record (issue
+// #1780) — the entry-id twin of findDedupTarget.
+//
+// Same question, different identity. `findDedupTarget` asks "do we hold these BYTES",
+// which a portal defeats by regenerating its export container on every request. This asks
+// "do we already hold these RECORDS", keyed on the digest of the file's source-minted
+// entry ids (lib/clinical-content-key.ts, stored by migration 136).
+//
+// It reuses HELD_PREDICATE verbatim, for exactly the reason the predicate exists: a
+// file-less marker row carries a key but no reprocessable document, so letting it match
+// would make a health record permanently un-importable after the document that really
+// held it was deleted. An in-flight row still matches, so two simultaneous collections of
+// one visit list cannot both pass the check.
+//
+// `clinicalKey` NULL means "this file has no trustworthy clinical identity" (too few
+// entry ids, or an AI-extracted document that mints none) and must never match — hence
+// the early return rather than a SQL `IS NULL` comparison that would pair every
+// keyless document with every other.
+export function findClinicalDuplicate(
+  profileId: number,
+  clinicalKey: string | null
+): DedupTarget | undefined {
+  if (!clinicalKey) return undefined;
+  return db
+    .prepare(
+      `SELECT id, filename, extraction_status AS status, stored_path
+         FROM medical_documents
+        WHERE clinical_key = ? AND profile_id = ?
+          AND ${HELD_PREDICATE}
+        ORDER BY (stored_path IS NULL OR stored_path = ''), id
+        LIMIT 1`
+    )
+    .get(clinicalKey, profileId) as DedupTarget | undefined;
+}
+
 // Every content hash this profile currently HOLDS — the `held` half of #1776's inventory
 // answer, and nothing else reads it.
 //
@@ -110,6 +145,52 @@ export function persistUploadedFile(
   return storedPath;
 }
 
+// THE duplicate-marker row, shared by both recognitions (#612 bytes, #1780 records).
+//
+// A marker is a file-less 'skipped' row: it carries the identity that was recognized and
+// the reason, but no stored file — which is precisely what lib/document-upload-api.ts
+// reads to answer `duplicate` rather than `stored`, and what HELD_PREDICATE reads to keep
+// it out of the inventory. Both duplicates land the same SHAPE so those two consumers
+// never have to learn a second one; only the reason line differs, and each caller owns
+// its own wording.
+//
+// `clinicalKey` is stamped when the recognition WAS the clinical key, so the marker says
+// which identity matched. NULL on the byte path — the marker's whole point there is that
+// the bytes matched, and asserting a clinical identity for a file that was never parsed
+// would be an invented fact.
+function insertDuplicateMarker(
+  profileId: number,
+  filename: string,
+  mime: string,
+  size: number,
+  contentHash: string,
+  clinicalKey: string | null,
+  error: string,
+  acquiredPortalId: number | null
+): number {
+  const info = db
+    .prepare(
+      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, clinical_key, extraction_status, extraction_error, uploaded_at, profile_id, acquired_portal_id)
+       VALUES (?,?,?,?,?,?, 'skipped', ?, ?, ?, ?)`
+    )
+    // uploaded_at from the clock seam (#1534) — `date(uploaded_at)` is the document's
+    // episode-window / Timeline day. Same seam as the primary insert in
+    // lib/medical-pipeline.ts, so sibling rows can't straddle two clocks.
+    .run(
+      filename,
+      "",
+      mime,
+      size,
+      contentHash,
+      clinicalKey,
+      error,
+      sqlNow(),
+      profileId,
+      acquiredPortalId
+    );
+  return Number(info.lastInsertRowid);
+}
+
 export function insertDuplicateDoc(
   profileId: number,
   filename: string,
@@ -132,26 +213,42 @@ export function insertDuplicateDoc(
       ? "Skipped."
       : "Reprocess that document instead of re-uploading.";
   const error = `Duplicate upload — ${target}. ${advice}`;
-  const info = db
-    .prepare(
-      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, extraction_error, uploaded_at, profile_id, acquired_portal_id)
-       VALUES (?,?,?,?,?, 'skipped', ?, ?, ?, ?)`
-    )
-    // uploaded_at from the clock seam (#1534) — `date(uploaded_at)` is the document's
-    // episode-window / Timeline day. Same seam as the primary insert in
-    // lib/medical-pipeline.ts, so sibling rows can't straddle two clocks.
-    .run(
-      filename,
-      "",
-      mime,
-      size,
-      contentHash,
-      error,
-      sqlNow(),
-      profileId,
-      acquiredPortalId
-    );
-  return Number(info.lastInsertRowid);
+  return insertDuplicateMarker(
+    profileId,
+    filename,
+    mime,
+    size,
+    contentHash,
+    null,
+    error,
+    acquiredPortalId
+  );
+}
+
+// The RECORDS-duplicate marker (#1780): different bytes, same clinical entries. The
+// reason line is owned by lib/clinical-content-key.ts so the Review row, the JSON upload
+// outcome and the tests all quote one sentence, and the clinical key is stamped so the
+// row states which identity was recognized.
+export function insertClinicalDuplicateDoc(
+  profileId: number,
+  filename: string,
+  mime: string,
+  size: number,
+  contentHash: string,
+  clinicalKey: string,
+  reason: string,
+  acquiredPortalId: number | null = null
+): number {
+  return insertDuplicateMarker(
+    profileId,
+    filename,
+    mime,
+    size,
+    contentHash,
+    clinicalKey,
+    reason,
+    acquiredPortalId
+  );
 }
 
 export function insertFailedDoc(
