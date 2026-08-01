@@ -132,6 +132,13 @@ export interface ImportReport {
   // Kept-vs-considered counts: `imported` rows survived; `considered` is
   // imported + the row-level drops (section/resource-level "not consumed" entries
   // are NOT candidate rows and don't count toward considered).
+  //
+  // On a STORED report both are the post-persist footprint tally, not the parse's
+  // own guess (#1827): persistDocumentImport rebinds them through
+  // withFootprintCounts in the same UPDATE that writes `extracted_count`, so the
+  // coverage card's "imported" and the document's extracted count are the same
+  // number. A report held in memory before persist carries the parse-time estimate
+  // (keptRowCount).
   imported: number;
   considered: number;
   // Lab/observation LOINCs that imported but carry NO canonical mapping (Fix 3) —
@@ -294,6 +301,90 @@ export function isRowDrop(d: ImportDrop): boolean {
 
 export function rowDropCount(report: ImportReport): number {
   return report.drops.filter(isRowDrop).length;
+}
+
+// ---- kept-row counting (parse time) ----
+
+// THE registry of row-bearing kept lists a parse produces (#1827). Every parse-time
+// report builder — the CCD single-document path, the CCD/XDM merge, the FHIR bundle
+// mapper, and the AI extraction adapter — counts its kept rows through this ONE
+// list, so a new clinical domain lands in exactly one place. Each builder used to
+// carry its own hand-maintained sum instead, and the four had drifted from each
+// other and from the truth: the CCD copies summed nine terms and silently omitted
+// the imaging studies they were already keeping.
+//
+// A parse-time count is an ESTIMATE, not the answer. Whether a kept candidate
+// becomes a stored row is a PERSIST-time decision (a prescription that renews an
+// existing medication attaches as a course instead of a new item; a body metric
+// defers to a date another source already covers), so the authoritative number is
+// the post-persist footprint tally that also writes `extracted_count`.
+// persistDocumentImport rebinds the stored report's counts onto it — see
+// withFootprintCounts.
+const KEPT_ROW_LISTS = [
+  "records",
+  "immunizations",
+  "allergies",
+  "conditions",
+  "encounters",
+  "procedures",
+  "familyHistory",
+  "carePlanItems",
+  "careGoals",
+  "appointments",
+  "genomicVariants",
+  "imagingStudies",
+  "opticalPrescriptions",
+  "dentalProcedures",
+  "bodyMetrics",
+  "heights",
+  "headCircs",
+] as const;
+
+// Structural, so both the parse-layer ImportResult and the persist-layer
+// PersistInput satisfy it without either shape importing the other. Every list is
+// optional: a parser that doesn't produce a domain simply omits it.
+export type KeptRowLists = {
+  [K in (typeof KEPT_ROW_LISTS)[number]]?: readonly unknown[] | null;
+};
+
+export function keptRowCount(lists: KeptRowLists): number {
+  let total = 0;
+  for (const key of KEPT_ROW_LISTS) total += lists[key]?.length ?? 0;
+  return total;
+}
+
+// ---- footprint reconciliation (persist time) ----
+
+// Rebind a report's kept-vs-considered counts to the authoritative post-persist
+// footprint tally (#1827): `imported` IS the number of rows the import actually
+// wrote (the same tally stamped into `extracted_count`, off the ONE
+// IMPORT_FOOTPRINT_TABLES registry), and `considered` follows it as
+// footprint + row drops. One question — "how many rows did this import keep?" —
+// answered once, so the coverage card and the document's extracted count cannot
+// disagree the way they did when the parse layer owned a count it couldn't verify.
+export function withFootprintCounts(
+  report: ImportReport,
+  footprint: number
+): ImportReport {
+  return {
+    ...report,
+    imported: footprint,
+    considered: footprint + rowDropCount(report),
+  };
+}
+
+// The stored-string form persistDocumentImport uses, applied in the SAME UPDATE
+// that writes `extracted_count`. A report-less path (AI extraction before #918's
+// adapter, any parser producing none) passes null and stores null; an unparseable
+// blob is left exactly as it came rather than being rewritten or dropped — the
+// debugger already ignores it, and persist is not the place to destroy input.
+export function reconcileStoredReportCounts(
+  raw: string | null,
+  footprint: number
+): string | null {
+  const report = parseImportReport(raw);
+  if (!report) return raw;
+  return serializeImportReport(withFootprintCounts(report, footprint));
 }
 
 // ---- reason labels ----

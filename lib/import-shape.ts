@@ -18,6 +18,7 @@ import type {
 import {
   serializeImportReport,
   isRowDrop,
+  keptRowCount,
   tallyUnresolvedNames,
   type ImportReport,
   type ReconciliationSummary,
@@ -915,23 +916,27 @@ export function extractionToPersistInput(
   // A real import report so the AI path stops being the only one without drop
   // accounting (item 4). No section/resource coverage on the AI path (there are no
   // sections), but every rejected clinical entity is reported as a row-level drop.
-  const imported =
-    records.length +
-    immunizations.length +
-    allergies.length +
-    conditions.length +
-    encounters.length +
-    procedures.length +
-    familyHistory.length +
-    carePlanItems.length +
-    careGoals.length +
-    genomicVariants.length +
-    imagingStudies.length +
-    opticalPrescriptions.length +
-    dentalProcedures.length +
-    bodyMetrics.length +
-    heights.length +
-    headCircs.length;
+  // Kept rows off the ONE shared registry (#1827) — the same one the CCD and FHIR
+  // parsers count through. persistDocumentImport rebinds these to the post-persist
+  // footprint tally, so this path's card agrees with its extracted count too.
+  const imported = keptRowCount({
+    records,
+    immunizations,
+    allergies,
+    conditions,
+    encounters,
+    procedures,
+    familyHistory,
+    carePlanItems,
+    careGoals,
+    genomicVariants,
+    imagingStudies,
+    opticalPrescriptions,
+    dentalProcedures,
+    bodyMetrics,
+    heights,
+    headCircs,
+  });
   // Lab readings whose canonical NAME matched no curated entry import under that raw
   // name with no reference band and never flag — the AI path's silent analogue of an
   // unmapped LOINC (#918 §4). Surface them so the miss is self-reporting. Labs only:

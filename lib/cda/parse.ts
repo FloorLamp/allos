@@ -13,7 +13,12 @@ import type {
   ImportedProvider,
   ImportedRecord,
 } from "../health-import";
-import type { ImportDrop, ImportReport } from "../import-report";
+import {
+  isRowDrop,
+  keptRowCount,
+  type ImportDrop,
+  type ImportReport,
+} from "../import-report";
 import { dedupeProviders } from "../providers";
 import { isZip, readZip } from "../zip";
 import { CdaError } from "./constants";
@@ -633,19 +638,24 @@ export function extractFromCcda(
       () => "Goals"
     )
   );
-  const imported =
-    keptRecords.length +
-    keptImmunizations.length +
-    keptAllergies.length +
-    keptConditions.length +
-    keptEncounters.length +
-    keptProcedures.length +
-    keptFamilyHistory.length +
-    keptCarePlanItems.length +
-    keptCareGoals.length;
-  const rowDrops = drops.filter(
-    (d) => d.reason !== "unrecognized_section"
-  ).length;
+  // Kept rows, counted off the ONE shared registry (#1827) rather than a
+  // hand-maintained sum this path and the XDM merge below could each forget a
+  // domain in — as both had forgotten the imaging studies they were already
+  // keeping. persistDocumentImport rebinds these counts to the post-persist
+  // footprint tally, so the stored report can never disagree with extracted_count.
+  const imported = keptRowCount({
+    records: keptRecords,
+    immunizations: keptImmunizations,
+    allergies: keptAllergies,
+    conditions: keptConditions,
+    encounters: keptEncounters,
+    procedures: keptProcedures,
+    familyHistory: keptFamilyHistory,
+    carePlanItems: keptCarePlanItems,
+    careGoals: keptCareGoals,
+    imagingStudies: keptImagingStudies,
+  });
+  const rowDrops = drops.filter(isRowDrop).length;
   const report: ImportReport = {
     drops,
     coverage,
@@ -837,19 +847,22 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
     .filter((r): r is ImportReport => r != null);
   const mergedDrops = [...perDoc.flatMap((r) => r.drops), ...crossDocDrops];
   const mergedCoverage = perDoc.flatMap((r) => r.coverage);
-  const imported =
-    keptRecords.length +
-    keptImmunizations.length +
-    keptAllergies.length +
-    keptConditions.length +
-    keptEncounters.length +
-    keptProcedures.length +
-    keptFamilyHistory.length +
-    keptCarePlanItems.length +
-    keptCareGoals.length;
-  const rowDrops = mergedDrops.filter(
-    (d) => d.reason !== "unrecognized_section"
-  ).length;
+  // The SAME registry the single-document path counts through (#1827), so the two
+  // can't drift from each other — the merged package's kept total is the merged
+  // kept lists, whatever domains those are.
+  const imported = keptRowCount({
+    records: keptRecords,
+    immunizations: keptImmunizations,
+    allergies: keptAllergies,
+    conditions: keptConditions,
+    encounters: keptEncounters,
+    procedures: keptProcedures,
+    familyHistory: keptFamilyHistory,
+    carePlanItems: keptCarePlanItems,
+    careGoals: keptCareGoals,
+    imagingStudies: keptImagingStudies,
+  });
+  const rowDrops = mergedDrops.filter(isRowDrop).length;
   const report: ImportReport = {
     drops: mergedDrops,
     coverage: mergedCoverage,
