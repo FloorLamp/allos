@@ -12,7 +12,10 @@
 // item is STATUS-driven (no calendar due date), so it carries an explicit band +
 // due-text exactly like immunizationItems.
 
-import type { PreventiveAssessment } from "./preventive-status";
+import {
+  PREVENTIVE_SETUP_SHORT,
+  type PreventiveAssessment,
+} from "./preventive-status";
 import { biomarkerAddHref, type AppRoute } from "./hrefs";
 import type { UpcomingItem, UrgencyBand } from "./upcoming";
 import {
@@ -182,6 +185,32 @@ export function preventiveAssessmentToUpcomingItem(
       dueText: "Scheduled",
       preventiveRuleKey: a.key,
       scheduled: true,
+    };
+  }
+  // NEVER RECORDED (#1433) — the calm setup state. Same key, same rule key, same
+  // deep link and Book CTA as the actionable row, so a dismissal survives the relabel
+  // (#203) and the affordances are identical; only the FRAMING changes. It carries
+  // its own `signalGroup` (so the page groups it apart from the date bands and the
+  // hero excludes it from its bands) AND an explicit `later` band, because the older
+  // date-only banders — groupUpcoming, which the digest reads — see the band, not the
+  // group, and "no history on file" must never band as work due today.
+  if (a.status === "setup") {
+    return {
+      key: preventiveSignalKey(a.kind, a.key),
+      domain: a.kind,
+      title: a.name,
+      detail: a.nextLabel ?? a.detail,
+      href: a.href ?? preventiveHref(a.kind, a.key),
+      dueDate: null,
+      band: "later",
+      dueText: PREVENTIVE_SETUP_SHORT,
+      signalGroup: "setup",
+      actionLabel:
+        a.href != null
+          ? undefined
+          : (preventiveActionLabel(a.kind, a.key) ?? undefined),
+      preventiveRuleKey: a.key,
+      bookHref: bookHrefForRule(a, ctx.today),
     };
   }
   const overdue = a.status === "overdue";

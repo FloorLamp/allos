@@ -292,6 +292,13 @@ export function gatherDigestInput(
       (i) => i.domain !== "visit" && i.domain !== "screening"
     );
   }
+  // Never-recorded preventive rules (#1433) never reach a SEND. They are the absence
+  // of history, not a due signal, and a system-initiated message about them would be
+  // the app telling a brand-new user they are behind on twelve things it has no
+  // evidence about. They stay on the pull surfaces (the Upcoming setup group, the
+  // hero's collapsed line), where the user goes looking. Dropping them here is a
+  // strict REDUCTION in contact — the doctrine's one unilateral direction.
+  upcoming = upcoming.filter((i) => i.signalGroup !== "setup");
   // Broken syncs join the banded set (#1685) — the ONE place the digest learns about a
   // dead integration. They are built by the SAME integrationToItem the dashboard hero and
   // the Upcoming page render, from the SAME getIntegrationAttention list the Data → Review

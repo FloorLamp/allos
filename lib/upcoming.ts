@@ -349,10 +349,18 @@ export interface UpcomingItem {
   signalGroup?: SignalGroup;
 }
 
-// The two non-date groupings the "something's off" signals surface under on the
-// Upcoming page (issue #524). Flagged = out-of-range lab readings; review = the
-// import-review count and failing-integration signals (both act on /data?section=review).
-export type SignalGroup = "flagged" | "review";
+// The non-date groupings a non-scheduled signal surfaces under on the Upcoming page
+// (issue #524). Flagged = out-of-range lab readings; review = the import-review count
+// and failing-integration signals (both act on /data?section=review).
+//
+// `setup` (issue #1433) is the odd one out and deliberately so: it is not a
+// "something's off" signal at all, it is the ABSENCE of history — an in-window
+// preventive rule with nothing on record. It rides the same mechanism because it
+// needs the same things (its own page grouping, no date band, the shared suppression
+// bus and dedupe key), but it is excluded from the dashboard hero's bands
+// (cardBandForItem) and from the digest, because a state derived from zero evidence
+// must never occupy an attention slot.
+export type SignalGroup = "flagged" | "review" | "setup";
 
 // Whether an item participates in snooze/dismiss (issue #524). Undefined defaults
 // to suppressible so every existing date-scheduled due-signal keeps its menu; only

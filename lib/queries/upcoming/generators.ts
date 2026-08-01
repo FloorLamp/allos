@@ -270,7 +270,13 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
   // says why, in a calm line. Cadence of the catalog is unchanged — this is the
   // ranking + explanation side only.
   const riskFactors = getRiskFactors(profileId);
-  return assessProfilePreventive(profileId, today).actionable.map((a) => {
+  const summary = assessProfilePreventive(profileId, today);
+  // The evidence-based slice PLUS the never-recorded setup slice (#1433). Both go
+  // through the SAME adapter and the same suppression bus — a setup row keeps its
+  // dedupe key, its "Mark done" fast path and its Book CTA — and the adapter is what
+  // decides the framing: `actionable` bands as work, `setup` carries `signalGroup:
+  // "setup"` and is excluded from the hero's bands and the digest.
+  return [...summary.actionable, ...summary.setup].map((a) => {
     const item = preventiveAssessmentToUpcomingItem(a, {
       today,
       scheduledDate: scheduledMatchForRule(a.key, scheduled, today),

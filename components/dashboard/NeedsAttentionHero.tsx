@@ -27,8 +27,10 @@ import {
   attentionCardItems,
   attentionCountLabel,
   attentionHeroState,
+  attentionSetupItems,
   moreInUpcomingCount,
   planAttentionMoreLinks,
+  SETUP_GROUP_LABEL,
   type CardBand,
 } from "@/lib/attention";
 import AttentionHeroCard from "@/components/dashboard/AttentionHeroCard";
@@ -186,6 +188,66 @@ function Row({
   );
 }
 
+// The COLLAPSED cold-start line (issue #1433). A preventive rule with nothing on
+// record is not overdue — it is unknown — so on a brand-new profile the hero used to
+// open with a dozen red "Overdue — none on record" rows about a person it had known
+// for thirty seconds. That is manufactured obligation: it buries the day-one
+// onboarding content, and it teaches the reader that the red rows on this card do not
+// mean anything.
+//
+// The replacement is ONE line, closed by default, that states the count and opens to
+// the same rows with the same deep links. It sits BELOW the card and outside its
+// bands and count (cardBandForItem excludes these), so it can never present as
+// attention — and it renders on the all-clear branch too, because a fresh profile's
+// hero is exactly the case with zero real items and a full setup list.
+function SetupDisclosure({
+  items,
+  now,
+}: {
+  items: UpcomingItem[];
+  now: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <details className="mt-3" data-testid="attention-setup">
+      <summary className="cursor-pointer text-xs font-medium text-slate-600 hover:text-brand-700 dark:text-slate-300 dark:hover:text-brand-400">
+        {SETUP_GROUP_LABEL}{" "}
+        <span
+          data-testid="attention-setup-count"
+          className="text-slate-500 dark:text-slate-400"
+        >
+          ({items.length})
+        </span>
+      </summary>
+      <div className="mt-2 space-y-0.5">
+        {items.map((item) => {
+          const Icon = DOMAIN_ICON[item.domain] ?? IconClipboardPlus;
+          return (
+            <Link
+              key={item.key}
+              href={item.href}
+              data-testid={`attention-setup-item-${item.key}`}
+              className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-ink-850"
+            >
+              <Icon
+                className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                stroke={1.75}
+                aria-hidden="true"
+              />
+              <span className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200">
+                {item.title}
+              </span>
+              <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                {upcomingDueText(item, now)}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
 export default function NeedsAttentionHero({
   items,
   today,
@@ -212,9 +274,13 @@ export default function NeedsAttentionHero({
   // "+N more" link copy that names each link's referent and merges the last-band
   // overflow with the card remainder when they'd otherwise stack (issue #538).
   const moreLinks = planAttentionMoreLinks(groups, more);
+  // The never-recorded preventive rules (#1433) — present, counted, and calm. Not
+  // part of `count`, `more`, the badge, or any band.
+  const setupItems = attentionSetupItems(items);
 
   if (count === 0) {
     return (
+      <>
       <section
         data-testid="needs-attention"
         aria-label="Needs attention"
@@ -246,6 +312,8 @@ export default function NeedsAttentionHero({
           {more > 0 ? `${more} scheduled later` : "View upcoming"}
         </Link>
       </section>
+      <SetupDisclosure items={setupItems} now={today} />
+      </>
     );
   }
 
@@ -320,6 +388,7 @@ export default function NeedsAttentionHero({
           )}
         </div>
       </AttentionHeroCard>
+      <SetupDisclosure items={setupItems} now={today} />
     </>
   );
 }

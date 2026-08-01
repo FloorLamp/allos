@@ -3,6 +3,8 @@ import {
   ATTENTION_CARD_CAP,
   attentionCardItems,
   attentionCountLabel,
+  attentionSetupItems,
+  SETUP_GROUP_LABEL,
   buildAttentionModel,
   buildFlaggedItem,
   cardBandForItem,
@@ -619,5 +621,90 @@ describe("planAttentionMoreLinks — disambiguated '+N more' copy (issue #538)",
       perBand: {},
       trailing: null,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The never-recorded setup group (issue #1433)
+// ---------------------------------------------------------------------------
+//
+// A preventive rule with nothing on record rides the shared model (so it keeps its
+// dedupe key, its suppression and its row affordances) but must never occupy an
+// attention slot. These pin the three places that could quietly re-inflate it: the
+// card bands, the count, and the "+N scheduled later" link.
+describe("never-recorded preventive setup items (#1433)", () => {
+  const setupItem = (key = "screening:colorectal_cancer") =>
+    up({
+      key,
+      domain: "screening",
+      title: "Colorectal cancer screening",
+      band: "later",
+      signalGroup: "setup",
+      dueText: "No record yet",
+    });
+
+  it("is excluded from every card band — so it can never render as attention", () => {
+    expect(cardBandForItem(setupItem(), TODAY)).toBeNull();
+  });
+
+  it("does not count toward the hero count or the badge", () => {
+    const model = [
+      setupItem("screening:colorectal_cancer"),
+      setupItem("visit:dental_cleaning"),
+      up({ key: "dose:1", doseId: 1 }),
+    ];
+    expect(attentionCardItems(model, TODAY).map((i) => i.key)).toEqual([
+      "dose:1",
+    ]);
+  });
+
+  it("a cold-start model of ONLY setup items reads as all clear", () => {
+    const model = [
+      setupItem("screening:colorectal_cancer"),
+      setupItem("visit:dental_cleaning"),
+      setupItem("visit:adult_physical"),
+    ];
+    expect(attentionCardItems(model, TODAY)).toEqual([]);
+    expect(groupAttentionForCard(model, TODAY)).toEqual([]);
+    // And the trailing link does not re-announce them as "scheduled later".
+    expect(moreInUpcomingCount(model, 0)).toBe(0);
+    expect(planAttentionMoreLinks([], 0).trailing).toBeNull();
+  });
+
+  it("surfaces them as ONE collected, alphabetized line for the hero", () => {
+    const model = [
+      setupItem("visit:dental_cleaning"),
+      setupItem("screening:colorectal_cancer"),
+      up({ key: "dose:1", doseId: 1 }),
+    ];
+    model[0].title = "Dental check-up & cleaning";
+    const setup = attentionSetupItems(model);
+    expect(setup.map((i) => i.title)).toEqual([
+      "Colorectal cancer screening",
+      "Dental check-up & cleaning",
+    ]);
+  });
+
+  it("groups LAST on the Upcoming page, below everything actually due", () => {
+    const groups = groupAttentionForPage(
+      [
+        setupItem(),
+        up({ key: "appointment:1", domain: "appointment", dueDate: TODAY }),
+        up({ key: "review", domain: "review", signalGroup: "review" }),
+      ],
+      TODAY
+    );
+    expect(groups.map((g) => g.kind)).toEqual(["today", "review", "setup"]);
+    expect(groups.at(-1)!.label).toBe(SETUP_GROUP_LABEL);
+  });
+
+  it("still subtracts real far-future work from the trailing link", () => {
+    const model = [
+      setupItem(),
+      up({ key: "appointment:1", domain: "appointment", dueDate: "2026-09-01" }),
+      up({ key: "dose:1", doseId: 1 }),
+    ];
+    // 3 items, 1 of them setup, 1 on the card → exactly 1 "scheduled later".
+    expect(moreInUpcomingCount(model, 1)).toBe(1);
   });
 });

@@ -210,8 +210,14 @@ export function buildAttentionModel(input: AttentionInput): UpcomingItem[] {
 // with the "something's off" signals under their own groupings.
 // ---------------------------------------------------------------------------
 
-// A page group is either an urgency date band or one of the two signal groupings.
+// A page group is either an urgency date band or one of the signal groupings.
 export type PageGroupKind = UrgencyBand | SignalGroup;
+
+// The one label for the never-recorded preventive group (issue #1433), shared by the
+// Upcoming page section and the dashboard hero's collapsed line so the two surfaces
+// name the same thing identically (#221). It counts rather than alarms: the number is
+// a to-do list length, not a backlog.
+export const SETUP_GROUP_LABEL = "Set up your screening history";
 
 const PAGE_GROUP_ORDER: PageGroupKind[] = [
   "overdue",
@@ -220,12 +226,17 @@ const PAGE_GROUP_ORDER: PageGroupKind[] = [
   "later",
   "flagged",
   "review",
+  // Last on the page, always (issue #1433): the never-recorded preventive rules are
+  // the only group that describes what the app does NOT know, so nothing that is
+  // actually due can ever sort below them.
+  "setup",
 ];
 
 const PAGE_GROUP_LABELS: Record<PageGroupKind, string> = {
   ...BAND_LABELS,
   flagged: "Flagged",
   review: "For review",
+  setup: SETUP_GROUP_LABEL,
 };
 
 export interface AttentionPageGroup {
@@ -426,6 +437,12 @@ export function cardBandForItem(
   today: string
 ): CardBand | null {
   if (CARD_EXCLUDED_DOMAINS.has(item.domain)) return null;
+  // A never-recorded preventive rule (#1433) is never a card row and never counts.
+  // The hero is the one surface a user cannot choose not to look at, so an item whose
+  // entire basis is "you just told us your age" has no claim on it. It still reaches
+  // the hero — as ONE collapsed setup line (attentionSetupItems) — but not as an
+  // attention row and not in the count/badge.
+  if (item.signalGroup === "setup") return null;
   if (item.signalGroup) return "review";
   const band = bandForItem(item, today);
   if (band === "overdue") return "urgent";
@@ -532,11 +549,27 @@ export function attentionCountLabel(shown: number, overflow: number): string {
 // the far-future scheduled work the card deliberately hides. Because the card set is
 // a strict subset of the model, this is exactly model − card, so "N shown · +M more
 // in Upcoming" always reconciles with the page's total.
+//
+// The never-recorded setup items (#1433) are subtracted first: the link they'd
+// inflate reads "+N scheduled later", and nothing about them is scheduled. They get
+// their own counted line on the hero (attentionSetupItems) and their own page group,
+// so they are described exactly once, by copy that is true of them.
 export function moreInUpcomingCount(
   model: UpcomingItem[],
   cardCount: number
 ): number {
-  return Math.max(0, model.length - cardCount);
+  const scheduled = model.filter((i) => i.signalGroup !== "setup").length;
+  return Math.max(0, scheduled - cardCount);
+}
+
+// The never-recorded preventive rules in the model (issue #1433), in a stable display
+// order. The hero renders these as ONE collapsed "Set up your screening history (N)"
+// line and the Upcoming page renders them as its own trailing group — the same items,
+// two formatters, one decision (#221).
+export function attentionSetupItems(items: UpcomingItem[]): UpcomingItem[] {
+  return items
+    .filter((i) => i.signalGroup === "setup")
+    .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 // ---------------------------------------------------------------------------
