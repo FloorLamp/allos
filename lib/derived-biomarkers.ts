@@ -35,6 +35,8 @@ import { ADULT_MIN_AGE, isAdultForClinical } from "./life-stage";
 // any other analyte (ranges, badges, digest classification).
 export const DERIVED_NAMES = [
   "Non-HDL Cholesterol",
+  "Cholesterol/HDL Ratio",
+  "LDL/HDL Ratio",
   "Triglyceride/HDL Ratio",
   "HOMA-IR",
   "eGFR",
@@ -69,7 +71,12 @@ export interface DerivedReading {
   name: DerivedName;
   date: string;
   value: number;
-  unit: string;
+  // The canonical OUTPUT unit — mirroring the index's canonical_biomarkers row, so a
+  // computed reading is labelled exactly like a lab-reported one of the same analyte.
+  // Null for an index whose canonical entry carries no unit (a dimensionless ratio the
+  // curated dataset records as unitless); convertToCanonical treats a null canonical
+  // unit as "already canonical", so the flag still derives.
+  unit: string | null;
   formula: string;
   inputs: { name: string; value: number; unit: string }[];
 }
@@ -87,7 +94,7 @@ interface InputSpec {
 
 interface DerivedDef {
   name: DerivedName;
-  unit: string; // canonical output unit
+  unit: string | null; // canonical output unit (null = the canonical row is unitless)
   decimals: number; // display precision for the computed value
   inputs: InputSpec[];
   // A generic caption of the formula (no values), e.g. "Total − HDL".
@@ -239,6 +246,55 @@ const DERIVED_DEFS: DerivedDef[] = [
     compute: (v) => {
       const nonHdl = v["Total Cholesterol"] - v["HDL Cholesterol"];
       return nonHdl >= 0 ? nonHdl : null;
+    },
+  },
+  // ── The two cholesterol ratios (#1582) ──────────────────────────────────────
+  //
+  // Some labs print them, some don't, so before this they appeared and disappeared
+  // across a profile's history even though every input was on both reports. Both are
+  // computed from the SAME mg/dL component pair the indices above already declare, so
+  // they inherit this file's unit handling wholesale: each input is converted to
+  // mg/dL before the division, and a reading that cannot be converted (an
+  // unrecognized or wrong-dimension unit) drops out of the pairing, which declines
+  // the ratio for that draw instead of dividing incomparable numbers.
+  //
+  // They stay SEPARATE identities (#482): different numerators, different reference
+  // bands, so one ratio's in-range reading must never grant an all-clear for the
+  // other. And both derive from STORED components only — LDL is frequently a lab's
+  // own Friedewald calculation, and this file never chains a derivation off another
+  // derivation, so a computed LDL (if one ever ships) would be an explicit, separate
+  // decision rather than a silent second inference.
+  {
+    name: "Cholesterol/HDL Ratio",
+    unit: "ratio",
+    decimals: 2,
+    formulaLabel: "Total Cholesterol ÷ HDL (mg/dL)",
+    inputs: [
+      { canonical: "Total Cholesterol", unit: "mg/dL", label: "Total" },
+      { canonical: "HDL Cholesterol", unit: "mg/dL", label: "HDL" },
+    ],
+    compute: (v) => {
+      const hdl = v["HDL Cholesterol"];
+      if (hdl <= 0) return null;
+      return v["Total Cholesterol"] / hdl;
+    },
+  },
+  {
+    name: "LDL/HDL Ratio",
+    // The curated entry records this one as unitless ("a calculated value with no
+    // units"), so the computed reading carries no unit either — a derived row is
+    // labelled like a reported one of the same analyte.
+    unit: null,
+    decimals: 2,
+    formulaLabel: "LDL ÷ HDL (mg/dL)",
+    inputs: [
+      { canonical: "LDL Cholesterol", unit: "mg/dL", label: "LDL" },
+      { canonical: "HDL Cholesterol", unit: "mg/dL", label: "HDL" },
+    ],
+    compute: (v) => {
+      const hdl = v["HDL Cholesterol"];
+      if (hdl <= 0) return null;
+      return v["LDL Cholesterol"] / hdl;
     },
   },
   {

@@ -31,10 +31,13 @@
 // analytes (a 6-analyte lipid panel with 12 draws is 72 rows), so a row-denominated
 // page could be smaller than a single panel — one panel then rendered on two pages
 // with partial counts on each, and the header's "6" described the sliver that
-// happened to land there. Ungrouped, the collapsed index is bounded by CONSTRUCTION
-// instead: PANEL_IDS is a closed 35-entry taxonomy, so the header list can never
-// exceed it however long a lab history grows. A header's counts are now the panel's,
-// full stop, and they are still the same object the expansion draws from.
+// happened to land there. The index itself is bounded by CONSTRUCTION instead:
+// PANEL_IDS is a closed 35-entry taxonomy, so the header list can never exceed it
+// however long a lab history grows. A header's counts are now the panel's, full
+// stop, and they are still the same object the expansion draws from.
+//
+// That is a bound on the INDEX, not on the readings inside it (#1651) — see
+// boundPanelGroups below, which bounds what actually crosses the wire.
 
 import {
   OTHER_PANEL,
@@ -186,6 +189,72 @@ export function defaultOpenPanels<T>(
   if (narrowed || groups.length <= 1 || total <= rowLimit)
     return groups.map((g) => g.panel);
   return [];
+}
+
+// ── The payload bound (#1651) ─────────────────────────────────────────────────
+//
+// #1581 dropped the row pager on the reasoning that the closed 35-entry panel
+// taxonomy bounds the collapsed index. It bounds the number of HEADERS, and that is
+// a DOM bound. The client component's props are serialized into the RSC payload
+// whatever the component then chooses to render, so shipping every reading and
+// hiding most of them behind `{open && …}` left the NETWORK footprint exactly where
+// #114 found it: the sum of the profile's readings, growing with lab history.
+//
+// So the two bounds are separated here. The header list stays taxonomy-bounded; the
+// READINGS that cross the server→client boundary are bounded by this pair of rules:
+//
+//   1. A group that arrives COLLAPSED ships no readings at all. It renders none, so
+//      sending them buys nothing; expanding it is a user action that can fetch them.
+//   2. A group that arrives OPEN ships at most PANEL_ROW_LIMIT of them, and says how
+//      many it is holding back, so the reader can ask for the rest.
+//
+// The worst case is therefore a constant — the taxonomy size × the limit — instead of
+// a number that grows with the record set, and the ordinary arrival (nothing opened,
+// nothing narrowed) ships no readings whatsoever.
+export const PANEL_ROW_LIMIT = 25;
+
+// A panel group as the CLIENT receives it: the whole-panel header facts (label and
+// the two counts, computed over every row the panel holds), plus a bounded slice of
+// its readings and the panel's true `total` so the UI can say what it is holding
+// back and ask for the rest.
+export interface BoundedPanelGroup<T> {
+  panel: PanelId;
+  label: string;
+  analyteCount: number;
+  flaggedCount: number;
+  // At most `limit` rows, in the caller's sort order — empty for a group that
+  // arrives collapsed.
+  rows: T[];
+  // How many readings the panel actually holds. `rows.length < total` is the whole
+  // signal the client needs: it has a partial view and must ask for the rest.
+  total: number;
+}
+
+/**
+ * Apply the payload bound to already-grouped rows.
+ *
+ * `open` is the set of groups that arrive expanded (`defaultOpenPanels`), resolved
+ * on the SERVER so the decision and the payload it implies are one computation
+ * rather than a client-side re-derivation over rows that were already sent.
+ *
+ * The header facts are untouched: `analyteCount` / `flaggedCount` describe the whole
+ * panel, exactly as they did before, so a truncated group still publishes an honest
+ * count. Only `rows` is bounded.
+ */
+export function boundPanelGroups<T>(
+  groups: readonly PanelGroup<T>[],
+  open: readonly PanelId[],
+  limit: number = PANEL_ROW_LIMIT
+): BoundedPanelGroup<T>[] {
+  const opened = new Set(open);
+  return groups.map((g) => ({
+    panel: g.panel,
+    label: g.label,
+    analyteCount: g.analyteCount,
+    flaggedCount: g.flaggedCount,
+    rows: opened.has(g.panel) ? g.rows.slice(0, limit) : [],
+    total: g.rows.length,
+  }));
 }
 
 // True when a group holds at least one flagged analyte — the "flagged groups

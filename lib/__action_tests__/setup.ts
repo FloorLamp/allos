@@ -121,6 +121,11 @@ vi.mock("@/lib/auth", async () => {
       return s;
     },
     requireAdmin: () => getActingSession(),
+    // The persisted cross-profile VIEW (#1331). Prod reads it off the view cookie;
+    // this tier has no cookie, and null is exactly what prod returns for a session
+    // that has not chosen one — resolveScope then scopes to the acting profile
+    // alone, so a requireScope()-gated action runs in single view here.
+    getCurrentViewProfileIds: async () => null,
     // Session-teardown helpers some login-scoped actions call after their write
     // (change-own-password evicts other devices; the revoke actions delegate
     // here). Prod reads the live cookie token, which doesn't exist in this tier,
