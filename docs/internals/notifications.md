@@ -693,19 +693,36 @@ per category, then **▲ Done**.
   surfaces when it crosses its own notable threshold — and that predicate is
   always the classification the line ALREADY computes (#221), never a second
   threshold: `sleepVerdict` for sleep (#1712), the mood shift against the
-  subject's own recent average, a severe symptom-day, a growth band crossing.
+  subject's own recent average, a severe symptom-day, a growth band crossing, a
+  personal record for a training day (`recentPRs` / `recentCardioPRs`, the same
+  pair the weekly recap reads).
+- **Every category is tunable** (owner ruling 2026-08-01, #1797). #1774 shipped a
+  deliberately conservative launch set — the collector's categories minus `labs`,
+  with `activities` deferred — and that intersection is retired. The set is
+  DERIVED per side, so there is no hand-maintained list to drift: the collector
+  owns its half through `RECENT_CHANGE_CATEGORIES` (a category added to the
+  collector is tunable the day it exists), and `digest-tune.ts` owns the digest's
+  own sections through `DIGEST_OWN_CATEGORIES` (`sleep`, `activities`) — the two
+  the collector never produces. Ten categories today, so the largest possible Tune
+  keyboard is 5 rows + ▲ Done = 11 buttons, well inside the 100-button cap
+  `capTelegramKeyboard` already enforces.
 - **Preference filtering can never reach a safety floor.** `flagged` implies
   notable inside `applyRecentChangeDemotion`, so a flagged lab or an out-of-range
-  vital survives every preference, structurally. `labs` is not tunable at all
-  (the digest excludes it and every line it would carry is floor class), and
-  neither are the offer tail, the Today obligations or the minimal-digest
-  guarantee — those are the MESSAGE's job, not a category. Demoting everything
-  makes the digest short, never silent.
+  vital survives every preference, structurally. `labs` back in the set
+  demonstrates that rather than weakening it: every lab line the digest carries is
+  flagged, so a reader who tunes labs down still receives every flagged result, and
+  the row's copy says so ("A flagged result always appears — turning this down
+  never hides one"). The offer tail, the Today obligations and the minimal-digest
+  guarantee are not tunable at all — those are the MESSAGE's job, not a category.
+  Demoting everything makes the digest short, never silent.
 - **Vocabulary and predicates:** `lib/notifications/digest-tune.ts` (pure) —
-  `DIGEST_TUNABLE_CATEGORIES`, the labels, the stored form, the toggle, the
-  keyboard builders and `sleepSurvivesDemotion`. The collector half applies
-  through `collectRecentChanges({ demoted })`; the Sleep section applies through
-  `gatherDigestSleep(profileId, demoted)`.
+  `DIGEST_TUNABLE_CATEGORIES`, `DIGEST_OWN_CATEGORIES`, the labels, the stored
+  form, the toggle, the keyboard builders, `sleepSurvivesDemotion` and
+  `activitiesSurviveDemotion`. The collector half applies through
+  `collectRecentChanges({ demoted })`; the Sleep section applies through
+  `gatherDigestSleep(profileId, demoted)`; the Yesterday activity list applies in
+  `gatherDigestInput`, which resolves the PR count only when the category is
+  actually demoted (`personalRecordsOn`).
 - **Storage is per LOGIN** (`login_settings.digest_demoted_categories`), beside
   the login's Telegram channel config: which lines a digest routinely carries is a
   display preference of the person reading it, not a fact about the data subject.

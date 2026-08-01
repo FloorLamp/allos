@@ -49,6 +49,7 @@ import {
   sendMessageRaw,
 } from "@/lib/notifications/telegram-api";
 import {
+  DIGEST_TUNABLE_CATEGORIES,
   tuneExpandToken,
   tuneCollapseToken,
   tuneToggleToken,
@@ -76,6 +77,32 @@ function seedFlaggedVital(profileId: number, date: string, value: string) {
      VALUES (?, ?, 'Blood Pressure Systolic', 'Blood Pressure Systolic',
              'vitals', ?, 'high', datetime('now'))`
   ).run(profileId, date, value);
+}
+
+// A newly flagged LAB result — the digest renders these from its own send cursor
+// (`newFlaggedBiomarkers`), not from the collector, and every one of them is floor
+// class.
+function seedFlaggedLab(profileId: number, date: string, value: string) {
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, name, canonical_name, category, value, flag, created_at)
+     VALUES (?, ?, 'Ferritin', 'Ferritin', 'lab', ?, 'low', datetime('now'))`
+  ).run(profileId, date, value);
+}
+
+// One logged cardio session. No components column, so it groups by title — two rows
+// sharing a title are two sessions of one activity, which is what a PR needs.
+function seedCardio(
+  profileId: number,
+  date: string,
+  title: string,
+  distanceKm: number,
+  durationMin: number
+) {
+  db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, distance_km, duration_min)
+     VALUES (?, ?, 'cardio', ?, ?, ?)`
+  ).run(profileId, date, title, distanceKm, durationMin);
 }
 
 function seedMood(profileId: number, date: string, valence: number) {
@@ -225,19 +252,59 @@ describe("the demoted digest (#1714)", () => {
        VALUES (?, '1 cap', 'morning', 'any', 0)`
     ).run(itemId);
 
-    setLoginDigestDemotions(login, [
-      "visits",
-      "growth",
-      "intake",
-      "vitals",
-      "symptoms",
-      "mood",
-      "data",
-      "sleep",
-    ]);
+    // EVERY tunable category, read from the registry — so a category added to the
+    // collector tomorrow is covered by this case with no edit here.
+    setLoginDigestDemotions(login, [...DIGEST_TUNABLE_CATEGORIES]);
     const model = buildDigest(gatherDigestInput(pid, "Silent Sam"));
     expect(model).not.toBeNull();
     expect(model?.sections.some((s) => s.heading === "Today")).toBe(true);
+  });
+
+  it("a tuned-down LABS category still delivers the flagged result (#1797)", () => {
+    // The safety-floor pin for the category #1774 refused to offer. Labs is tunable
+    // now; the toggle stores, the digest reads it — and the flagged result arrives
+    // anyway, because a lab line is never routine. Tuning reduces contact and can
+    // never reach a floor.
+    const pid = newProfile("Floor Fiona");
+    const login = seedLoginTelegram(pid, "5551015");
+    const yd = shiftDateStr(today(pid), -1);
+    seedFlaggedLab(pid, yd, "9");
+
+    setLoginDigestDemotions(login, ["labs"]);
+    expect(digestDemotionsForProfile(pid)).toEqual(["labs"]);
+
+    const lines = digestLines(pid, "Floor Fiona");
+    expect(lines.some((l) => l.includes("Ferritin"))).toBe(true);
+  });
+
+  it("a demoted ACTIVITIES section drops an ordinary training day (#1797)", () => {
+    const pid = newProfile("Routine Robin");
+    const login = seedLoginTelegram(pid, "5551016");
+    const yd = shiftDateStr(today(pid), -1);
+    // One session ever: no record can have been set, so the line is routine.
+    seedCardio(pid, yd, "Riverside Loop", 6, 35);
+
+    const before = digestLines(pid, "Routine Robin");
+    expect(before.some((l) => l.includes("Riverside Loop"))).toBe(true);
+
+    setLoginDigestDemotions(login, ["activities"]);
+    const after = digestLines(pid, "Routine Robin");
+    expect(after.some((l) => l.includes("Riverside Loop"))).toBe(false);
+  });
+
+  it("a demoted ACTIVITIES section keeps a day that set a personal record", () => {
+    const pid = newProfile("Record Remy");
+    const login = seedLoginTelegram(pid, "5551017");
+    const td = today(pid);
+    const yd = shiftDateStr(td, -1);
+    // An earlier, shorter session of the SAME activity, then yesterday's longest —
+    // a distance record, by the same recentCardioPRs the weekly recap reads.
+    seedCardio(pid, shiftDateStr(td, -20), "Harbour Run", 5, 30);
+    seedCardio(pid, yd, "Harbour Run", 14, 80);
+
+    setLoginDigestDemotions(login, ["activities"]);
+    const lines = digestLines(pid, "Record Remy");
+    expect(lines.some((l) => l.includes("Harbour Run"))).toBe(true);
   });
 
   it("the ⚙️ Tune button rides a digest that HAS tunable content, and only then", () => {
@@ -252,6 +319,14 @@ describe("the demoted digest (#1714)", () => {
 
     const model = buildDigest(gatherDigestInput(noisy, "Noisy Nell"));
     expect(model?.tuneTail?.data).toBe(tuneExpandToken(noisy, today(noisy)));
+  });
+
+  it("a training day puts the Activities toggle on offer (#1797)", () => {
+    const pid = newProfile("Active Ada");
+    seedLoginTelegram(pid, "5551018");
+    const td = today(pid);
+    seedCardio(pid, shiftDateStr(td, -1), "Towpath Walk", 4, 50);
+    expect(digestTunableCategories(pid, td)).toEqual(["activities"]);
   });
 });
 
