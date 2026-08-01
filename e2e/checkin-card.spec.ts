@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledCheck, settledClick } from "./helpers";
+import { followLink, settledCheck, settledClick } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
 import {
@@ -164,6 +164,13 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await expect(card.getByTestId("mood-anxiety-1")).toHaveCount(0);
     await expect(card).not.toContainText(/anxiety|Calm/i);
 
+    // The gate reaches the TREND too (#1408): the Calm metric page does not exist
+    // for this profile, and it reads exactly like any unknown metric — a page that
+    // explained its own absence would leak the gate the card keeps silent.
+    await page.goto("/trends/metric/calm");
+    await expect(page.getByText("Unknown metric.")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/anxiety/i);
+
     // Flip the Settings → Profile opt-in (signal 6). The form autosaves on change, but
     // settledCheck only guarantees the box reached React STATE — NOT that the fire-and-
     // forget Server Action POST committed (the documented settledCheck gap); a bare
@@ -194,6 +201,35 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await expect(card.getByTestId("mood-anxiety-5")).toBeVisible();
     await expect(card.getByTestId("mood-detail")).toContainText("calm");
     await expect(card.getByTestId("mood-detail")).toContainText("anxious");
+
+    // Rate the day, pick the calmest slot, save. Stored anxiety is 1 (the #1313
+    // involution), which the server-truth marker reports in STORE semantics.
+    await tapMood(page, card, 4);
+    await card.getByTestId("checkin-section-rate-toggle").click();
+    await card.getByTestId("mood-anxiety-5").click();
+    await card.getByTestId("mood-save").click();
+    await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
+      "data-anxiety",
+      "1",
+      { timeout: 15_000 }
+    );
+
+    // With the scale relevant AND rated, the Calm trend is reviewable — plotted on
+    // the card's own axis, so the calmest day sits at the TOP of the 1–5 range
+    // rather than the bottom.
+    await page.goto("/trends");
+    const calmTrend = page.getByTestId("calm-trend");
+    await expect(calmTrend).toBeVisible();
+    await expect(calmTrend).toContainText("never range-checked");
+    await followLink(
+      page,
+      calmTrend.getByTestId("chart-card-header-link"),
+      /\/trends\/metric\/calm/
+    );
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Calm" })
+    ).toBeVisible();
+    await expect(page.getByTestId("metric-latest-value")).toHaveText("5");
     expect(name).toContain("checkincalm");
   });
 });

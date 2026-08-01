@@ -192,9 +192,9 @@ describe("moodSeriesPoints (#1408)", () => {
       { date: "2026-03-02", value: 1 },
       { date: "2026-03-04", value: 5 },
     ]);
-    expect(moodSeriesValue(CHECK_INS[0], "calm")).toBe(
-      anxietyDisplaySlot(CHECK_INS[0].anxiety)
-    );
+    expect(
+      moodSeriesValue({ valence: 3, energy: null, anxiety: 2 }, "calm")
+    ).toBe(anxietyDisplaySlot(2));
   });
 
   it("maps each charted series to the column it is stored in", () => {

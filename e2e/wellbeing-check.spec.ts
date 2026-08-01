@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
+import { followLink } from "./helpers";
 
 // The unified "How are you today?" daily check-in card (issue #992): the one-tap
 // mood log composed with the illness front door in ONE shell. Covered states:
@@ -148,12 +149,34 @@ test.describe("Daily wellbeing check (#992)", () => {
     );
     await expect(card.getByTestId("mood-note")).toHaveValue("short night");
 
-    // The logged series surfaces on Trends → Body (never flag-checked — the card
-    // copy says so in plain words).
+    // The logged series surface on Trends → Body (never flag-checked — the card
+    // copy says so in plain words). Energy charts beside mood since #1408: it was
+    // stored from the start and plotted nowhere, so a profile that just rated it
+    // must be able to find it.
     await page.goto("/trends");
     const trend = page.getByTestId("mood-trend");
     await expect(trend).toBeVisible();
     await expect(trend).toContainText("never range-checked");
+    const energyTrend = page.getByTestId("energy-trend");
+    await expect(energyTrend).toBeVisible();
+    await expect(energyTrend).toContainText("never range-checked");
+    // Calm has no card here: this fresh profile never got the gated scale, so it
+    // rated no anxiety — and a trend may not be what surfaces a scale the card
+    // itself withheld.
+    await expect(page.getByTestId("calm-trend")).toHaveCount(0);
+
+    // Each card taps through to its own detail page, where the reading is listed
+    // and correctable — the treatment mood already had.
+    await followLink(
+      page,
+      energyTrend.getByTestId("chart-card-header-link"),
+      /\/trends\/metric\/energy/
+    );
+    await expect(page.getByTestId("metric-detail-page")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Energy" })
+    ).toBeVisible();
+    await expect(page.getByTestId("metric-latest-value")).toHaveText("2");
   });
 
   test("active-episode state: the cockpit takes the hero, and the mood tap coexists", async ({
