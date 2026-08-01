@@ -7,31 +7,36 @@
           "pr": 1768,
           "kind": "feature",
           "title": "The morning digest now tells you what changed",
-          "body": "Out-of-range vitals, your daily check-in, new symptoms, and what synced overnight can now appear in the digest's New section — ranked so a flagged result always leads, capped so a busy day says “+2 more” instead of flooding. On favorable days a sunlight line names the window (“Sunny, UV moderate until 4pm”), and an optional daily step target adds a calm verdict for yesterday plus one quiet afternoon note when the day is well behind — counted, never escalated, and stale sync data stays silent rather than guessing."
+          "body": "Out-of-range vitals, your daily check-in, new symptoms, and what synced overnight can now appear in the digest's New section — ranked so a flagged result always leads, capped so a busy day says “+2 more” instead of flooding. On favorable days a sunlight line names the window (“Sunny, UV moderate until 4pm”), and an optional daily step target adds a calm verdict for yesterday plus one quiet afternoon note when the day is well behind — counted, never escalated, and stale sync data stays silent rather than guessing.",
+          "issues": [1713, 1723]
         },
         {
           "pr": 1769,
           "kind": "feature",
           "title": "Lipid ratios computed for you — and a lighter Biomarkers page",
-          "body": "LDL/HDL and Cholesterol/HDL ratios now appear beside your labs even when the lab didn't print them, computed from the same draw and flagged against their reference bands. The Biomarkers browser also stops shipping your entire lab history to the browser on every visit: panels load their readings when you open them, so decades of results cost nothing until asked for."
+          "body": "LDL/HDL and Cholesterol/HDL ratios now appear beside your labs even when the lab didn't print them, computed from the same draw and flagged against their reference bands. The Biomarkers browser also stops shipping your entire lab history to the browser on every visit: panels load their readings when you open them, so decades of results cost nothing until asked for.",
+          "issues": [1651, 1582]
         },
         {
           "pr": 1770,
           "kind": "feature",
           "title": "Pickers instead of blank boxes across ten medical forms",
-          "body": "Allergen, gene, condition, family-history, visit-type, care-plan, side-effect and activity fields now offer their real vocabularies as you type — with free text always allowed. This matters for safety: a recognized allergen or gene spelling is stored in the exact form the drug-allergy and pharmacogenomic cross-checks match on. Picking a condition by name now applies its ICD-10 code automatically, the way medication picks apply their RxNorm code, and the care-plan status picker says plainly which statuses keep nudging Upcoming and which stop."
+          "body": "Allergen, gene, condition, family-history, visit-type, care-plan, side-effect and activity fields now offer their real vocabularies as you type — with free text always allowed. This matters for safety: a recognized allergen or gene spelling is stored in the exact form the drug-allergy and pharmacogenomic cross-checks match on. Picking a condition by name now applies its ICD-10 code automatically, the way medication picks apply their RxNorm code, and the care-plan status picker says plainly which statuses keep nudging Upcoming and which stop.",
+          "issues": [1676]
         },
         {
           "pr": 1774,
           "kind": "feature",
           "title": "Tune your morning digest from the digest itself",
-          "body": "A ⚙️ Tune button on the digest expands in place into per-category toggles: turn a category down to notable-only and routine lines stop while anything important still comes through — an out-of-range reading, a notable mood shift, an unusual night's sleep. Flagged results can never be silenced, demoting everything makes the digest short but never gone, and the same toggles live in Settings → Notifications. In a household, no one's tap thins anyone else's digest."
+          "body": "A ⚙️ Tune button on the digest expands in place into per-category toggles: turn a category down to notable-only and routine lines stop while anything important still comes through — an out-of-range reading, a notable mood shift, an unusual night's sleep. Flagged results can never be silenced, demoting everything makes the digest short but never gone, and the same toggles live in Settings → Notifications. In a household, no one's tap thins anyone else's digest.",
+          "issues": [1714]
         },
         {
           "pr": 1781,
           "kind": "feature",
           "title": "Deleted documents stay deleted — and portal syncs stop re-uploading what you already have",
-          "body": "The portal tool can now ask Allos what it already holds before sending anything, so daily syncs stop re-uploading megabytes and stop inflating the import feed with skipped rows — and a document that quietly went missing gets noticed and re-sent on the next run. Deleting a document now leaves a memory: an automated sync can never bring it back, a new “blocked from re-acquisition” list in Data → Review shows what's blocked with a one-tap Allow again, and re-uploading the file yourself also unblocks it. Operators: migration 134 applies automatically."
+          "body": "The portal tool can now ask Allos what it already holds before sending anything, so daily syncs stop re-uploading megabytes and stop inflating the import feed with skipped rows — and a document that quietly went missing gets noticed and re-sent on the next run. Deleting a document now leaves a memory: an automated sync can never bring it back, a new “blocked from re-acquisition” list in Data → Review shows what's blocked with a one-tap Allow again, and re-uploading the file yourself also unblocks it. Operators: migration 134 applies automatically.",
+          "issues": [1776, 1777]
         }
       ]
     },
@@ -42,19 +47,22 @@
           "pr": 1764,
           "kind": "fix",
           "title": "Training, Longevity and Timeline pages do less work per visit",
-          "body": "Three heavy pages stopped repeating themselves: the Training overview no longer scans your whole strength history twice per view, the Longevity page no longer recomputes a heatmap for every experiment you've ever finished, and the Timeline evaluates its weather context once per page instead of once per day. Long histories load noticeably lighter; nothing changes in what's shown."
+          "body": "Three heavy pages stopped repeating themselves: the Training overview no longer scans your whole strength history twice per view, the Longevity page no longer recomputes a heatmap for every experiment you've ever finished, and the Timeline evaluates its weather context once per page instead of once per day. Long histories load noticeably lighter; nothing changes in what's shown.",
+          "issues": [1654, 1655, 1749, 1750]
         },
         {
           "pr": 1765,
           "kind": "fix",
           "title": "Caregivers can view a family member's symptom photos and videos again",
-          "body": "Opening a household member's illness episode as a caregiver used to show the clip tiles but fail to play them. The media now follows the same access rules as the episode page itself: if you can see the episode, you can play its clips and photos. Access stays strictly grants-based, and every cross-profile view is recorded in the audit trail."
+          "body": "Opening a household member's illness episode as a caregiver used to show the clip tiles but fail to play them. The media now follows the same access rules as the episode page itself: if you can see the episode, you can play its clips and photos. Access stays strictly grants-based, and every cross-profile view is recorded in the audit trail.",
+          "issues": [1696]
         },
         {
           "pr": 1767,
           "kind": "feature",
           "title": "Monday's workout suggestion remembers Saturday",
-          "body": "Next-workout focus now respects muscle recovery across the week boundary: big muscle groups rest a couple of days, small ones a day, and the least-recently-trained region leads. When everything you train is still fresh, the day is framed as a recovery day instead of forcing a pick — and when the week genuinely can't be met without today, the suggestion says both facts out loud (“Back was Saturday — 1/2 with today left.”). Phones also regain the Equipment door on the Training header."
+          "body": "Next-workout focus now respects muscle recovery across the week boundary: big muscle groups rest a couple of days, small ones a day, and the least-recently-trained region leads. When everything you train is still fresh, the day is framed as a recovery day instead of forcing a pick — and when the week genuinely can't be met without today, the suggestion says both facts out loud (“Back was Saturday — 1/2 with today left.”). Phones also regain the Equipment door on the Training header.",
+          "issues": [1673, 1661]
         },
         {
           "pr": 1761,
