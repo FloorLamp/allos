@@ -113,10 +113,14 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
       await member.reload();
       const reloaded = member.getByTestId("notify-digest-tune");
       await expect(reloaded.getByTestId("digest-tune-labs")).toBeChecked();
-      await expect(reloaded.getByTestId("digest-tune-activities")).toBeChecked();
+      await expect(
+        reloaded.getByTestId("digest-tune-activities")
+      ).toBeChecked();
       // A toggle writes ONE category: the neighbours this spec never touched are
       // still on.
-      await expect(reloaded.getByTestId("digest-tune-vitals")).not.toBeChecked();
+      await expect(
+        reloaded.getByTestId("digest-tune-vitals")
+      ).not.toBeChecked();
 
       // Reverse one and leave the other — the stored form is a set, not a mode.
       await settledCheckSave(
