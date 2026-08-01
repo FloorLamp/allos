@@ -1,7 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { IconGitMerge, IconCopyCheck, IconEyeOff } from "@tabler/icons-react";
+import type { UnitPrefs } from "@/lib/settings";
+import {
+  detectClusterFieldConflicts,
+  type OverrideChoices,
+} from "@/lib/import-review/conflicts";
+import MergeConflictDialog from "@/components/MergeConflictDialog";
 import {
   mergeActivityCluster,
   resolveActivityCluster,
@@ -11,9 +17,11 @@ import {
 // 3+ activity rows that pairwise matched, collapsed into ONE card. It lists every
 // member with a keeper RADIO (defaulted to preferActivityKeeperId, any member
 // selectable), one "Merge N into keeper" button, and cluster-level Keep all / Dismiss.
-// Merging folds keeper-wins + gap-fill across all drops through the shared N-way core;
-// the per-field multi-value conflict picker (#100 across N) is a deliberate fast-follow
-// — this ships keeper-wins gap-fill, which never loses a value the keeper lacked.
+// Merging folds keeper-wins + gap-fill across all drops through the shared N-way
+// core; when the members genuinely disagree on a field, the merge opens the SHARED
+// per-field picker (#100/#1431) first — a radio across every member's value,
+// pre-selected to the current keeper's — so picking a new keeper and re-opening
+// re-orients the preview.
 //
 // A 2-row cluster renders through the pairwise ActivityMergeControls instead (the
 // N=2 case, unchanged); this component is only used for 3+ members.
@@ -23,6 +31,8 @@ export interface ClusterMemberView {
   sourceLabel: string;
   title: string;
   facts: string[];
+  // The member's fold-field values (pickFoldValues) — the picker's conflict input.
+  foldValues: Record<string, unknown>;
   // Ordinal badge shown when two members' source labels collide (#531) — the on-card
   // referent for the keeper radio. Undefined when every label is distinct.
   badge?: string;
@@ -33,25 +43,57 @@ export default function ActivityClusterControls({
   pairSignatures,
   members,
   defaultKeeperId,
+  units,
 }: {
   clusterSignature: string;
   pairSignatures: string[];
   members: ClusterMemberView[];
   defaultKeeperId: number;
+  units: UnitPrefs;
 }) {
   const [keeperId, setKeeperId] = useState(defaultKeeperId);
   const [pending, startTransition] = useTransition();
+  // Whether the merge is awaiting per-field conflict resolution in the picker.
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  function submitMerge() {
+  const conflicts = useMemo(
+    () =>
+      detectClusterFieldConflicts(
+        members.map((m) => ({ id: m.id, values: m.foldValues }))
+      ),
+    [members]
+  );
+  // Picker option labels: the member's source label, suffixed with its ordinal
+  // badge when labels collide (#531) so every option keeps an on-card referent.
+  const dialogMembers = useMemo(
+    () =>
+      members.map((m) => ({
+        id: m.id,
+        label: m.badge ? `${m.sourceLabel} ${m.badge}` : m.sourceLabel,
+      })),
+    [members]
+  );
+
+  function submitMerge(choices: OverrideChoices) {
     const dropIds = members.map((m) => m.id).filter((id) => id !== keeperId);
     if (dropIds.length === 0) return;
     const fd = new FormData();
     fd.set("keep_id", String(keeperId));
     fd.set("drop_ids", JSON.stringify(dropIds));
     fd.set("pair_signatures", JSON.stringify(pairSignatures));
+    if (Object.keys(choices).length > 0)
+      fd.set("overrides", JSON.stringify(choices));
     startTransition(() => {
       void mergeActivityCluster(fd);
     });
+  }
+
+  function onMergeClick() {
+    if (conflicts.length > 0) {
+      setPickerOpen(true);
+      return;
+    }
+    submitMerge({});
   }
 
   function submitResolve(decision: "kept-both" | "dismissed") {
@@ -127,7 +169,7 @@ export default function ActivityClusterControls({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={submitMerge}
+          onClick={onMergeClick}
           disabled={pending}
           data-testid="dup-cluster-merge"
           className="btn btn-sm"
@@ -154,6 +196,21 @@ export default function ActivityClusterControls({
           Dismiss
         </button>
       </div>
+
+      {pickerOpen && (
+        <MergeConflictDialog
+          conflicts={conflicts}
+          members={dialogMembers}
+          keeperId={keeperId}
+          units={units}
+          busy={pending}
+          onConfirm={(choices) => {
+            setPickerOpen(false);
+            submitMerge(choices);
+          }}
+          onCancel={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -20,7 +20,7 @@ import {
   activityToken,
   pairSignature,
 } from "@/lib/import-review/detect";
-import { parseOverrideFields } from "@/lib/import-review/conflicts";
+import { parseOverrideChoices } from "@/lib/import-review/conflicts";
 import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
 import {
   getUnitPrefs,
@@ -530,11 +530,15 @@ export async function mergeActivities(
   // for the pairwise callers and the in-flight-form back-compat.
   const dropIds = parseMergeDropIds(formData).filter((id) => id !== keepId);
   if (!keepId || dropIds.length === 0) return { undoIds: [] };
-  // Conflict-preview overrides (issue #100): validated to real fold-field names
-  // only — the value for each is taken from the re-read discarded row, never the
-  // client. Empty for the common (no-conflict) one-click merge; applies to the first
-  // drop in the fold order (the pairwise case).
-  const overrideFields = parseOverrideFields(formData.get("overrides"));
+  // Conflict-picker overrides (issue #100/#1431): validated to real fold-field
+  // names + member ids only — the value for each is taken from the chosen member's
+  // re-read row, never the client. Empty for the common (no-conflict) one-click
+  // merge. The legacy pairwise array shape ("take the discarded row's value") can
+  // only resolve when there is exactly one drop.
+  const overrides = parseOverrideChoices(
+    formData.get("overrides"),
+    dropIds.length === 1 ? dropIds[0] : undefined
+  );
 
   let undoIds: number[] = [];
   const ok = writeTx((): boolean => {
@@ -564,13 +568,7 @@ export async function mergeActivities(
     // The N-way core folds every drop into the keeper and re-parents their children,
     // returning the ACTUAL per-drop route move so each undo context inverts exactly
     // what happened (#569).
-    const moves = writeActivityFold(
-      profile.id,
-      keepId,
-      keep,
-      drops,
-      overrideFields
-    );
+    const moves = writeActivityFold(profile.id, keepId, keep, drops, overrides);
     const movedRouteByDrop = new Map(
       moves.map((m) => [m.dropId, m.movedRouteId])
     );

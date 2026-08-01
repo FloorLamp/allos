@@ -132,6 +132,40 @@ describe("writeActivityFold — N-way core (#1081/#199)", () => {
     expect(merged.max_hr).toBe(180);
     expect(merged.edited).toBe(1);
   });
+
+  it("lands a per-field member choice regardless of fold order (#1431)", () => {
+    // Keeper carries a real distance; the CHOSEN drop sorts LAST in the fold
+    // order (token order: ext: before id:, and the keeper's own value would win
+    // anyway) — so only the override can make its value land.
+    const keepId = insertActivity({ title: "keeper", distance_km: 5 });
+    const d1 = insertActivity({
+      title: "d1",
+      source: "strava",
+      external_id: "strava:o1",
+      distance_km: 8,
+      avg_hr: 150,
+    });
+    const d2 = insertActivity({ title: "d2", distance_km: 12 });
+
+    const keep = db
+      .prepare("SELECT * FROM activities WHERE id = ?")
+      .get(keepId) as Record<string, unknown>;
+    const drops = [d1, d2].map(
+      (id) =>
+        db.prepare("SELECT * FROM activities WHERE id = ?").get(id) as Record<
+          string,
+          unknown
+        >
+    );
+    writeActivityFold(profileId, keepId, keep, drops, { distance_km: d2 });
+
+    const merged = db
+      .prepare("SELECT * FROM activities WHERE id = ?")
+      .get(keepId) as Record<string, unknown>;
+    expect(merged.distance_km).toBe(12); // the chosen member's value
+    expect(merged.avg_hr).toBe(150); // un-chosen fields still gap-fill
+    expect(merged.edited).toBe(1);
+  });
 });
 
 describe("autoMergeActivityDuplicates (#1081)", () => {

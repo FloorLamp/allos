@@ -10,7 +10,7 @@ import {
   type ActivityDupCluster,
   type BodyMetricConflictPair,
 } from "@/lib/import-review/detect";
-import { detectFieldConflicts } from "@/lib/import-review/conflicts";
+import { pickFoldValues } from "@/lib/import-review/conflicts";
 import { disambiguationLabels } from "@/lib/import-review/disambiguate";
 import ActivityMergeControls from "@/components/ActivityMergeControls";
 import ActivityClusterControls, {
@@ -274,10 +274,12 @@ export default function DuplicateReview({
                   bId={other.id}
                   aLabel={dis.a}
                   bLabel={dis.b}
-                  // Oriented with the default keeper as A; the dialog flips values
-                  // for the "keep other" button (issue #100).
-                  conflicts={detectFieldConflicts(
-                    keeper as unknown as Record<string, unknown>,
+                  // Both rows' fold values — the shared picker (#100/#1431)
+                  // computes and orients the conflicts per pressed keeper.
+                  aFoldValues={pickFoldValues(
+                    keeper as unknown as Record<string, unknown>
+                  )}
+                  bFoldValues={pickFoldValues(
                     other as unknown as Record<string, unknown>
                   )}
                   units={units}
@@ -296,6 +298,9 @@ export default function DuplicateReview({
               sourceLabel: labels[i],
               title: m.title,
               facts: activityFacts(m, units),
+              foldValues: pickFoldValues(
+                m as unknown as Record<string, unknown>
+              ),
               badge: collision ? String(i + 1) : undefined,
             })
           );
@@ -317,6 +322,7 @@ export default function DuplicateReview({
                 pairSignatures={cluster.pairSignatures}
                 members={memberViews}
                 defaultKeeperId={preferActivityKeeperId(cluster.members)}
+                units={units}
               />
             </li>
           );
