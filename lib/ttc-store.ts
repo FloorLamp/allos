@@ -109,9 +109,13 @@ export function logLhTestCore(
   result: LhResult,
   intensity: number | null = null
 ): TtcWriteOutcome {
-  if (!isRealIsoDate(date)) return { kind: "invalid", error: "Enter a valid date." };
+  if (!isRealIsoDate(date))
+    return { kind: "invalid", error: "Enter a valid date." };
   if (!isLhResult(result))
-    return { kind: "invalid", error: "Record the test as positive or negative." };
+    return {
+      kind: "invalid",
+      error: "Record the test as positive or negative.",
+    };
   if (intensity != null && (!Number.isFinite(intensity) || intensity < 0)) {
     return { kind: "invalid", error: "Enter a valid test intensity." };
   }
@@ -123,7 +127,12 @@ export function logLhTestCore(
           ORDER BY id DESC LIMIT 1`
       )
       .get(profileId, date, LH_TEST_RECORD_NAME) as
-      | { id: number; value: string | null; value_num: number | null; edited: number }
+      | {
+          id: number;
+          value: string | null;
+          value_num: number | null;
+          edited: number;
+        }
       | undefined;
     if (found && isEditLocked(found.edited)) return { kind: "locked" };
 
@@ -142,7 +151,14 @@ export function logLhTestCore(
         `INSERT INTO medical_records
            (profile_id, date, category, name, value, value_num, source, external_id)
          VALUES (?, ?, 'lab', ?, ?, ?, ?, NULL)`
-      ).run(profileId, date, LH_TEST_RECORD_NAME, result, intensity, MANUAL_SOURCE);
+      ).run(
+        profileId,
+        date,
+        LH_TEST_RECORD_NAME,
+        result,
+        intensity,
+        MANUAL_SOURCE
+      );
     }
     const counts = emptyCounts();
     tallyUpsert(counts, disposition);
@@ -177,7 +193,8 @@ export function logBbtCore(
   date: string,
   degF: number
 ): TtcWriteOutcome {
-  if (!isRealIsoDate(date)) return { kind: "invalid", error: "Enter a valid date." };
+  if (!isRealIsoDate(date))
+    return { kind: "invalid", error: "Enter a valid date." };
   if (!Number.isFinite(degF))
     return { kind: "invalid", error: "Enter a valid temperature." };
   if (degF < BBT_MIN_F || degF > BBT_MAX_F) {
@@ -195,8 +212,7 @@ export function logBbtCore(
             AND start_time = ?`
       )
       .get(profileId, BBT_METRIC, MANUAL_SOURCE, ts) as
-      | { id: number; value: number; edited: number }
-      | undefined;
+      { id: number; value: number; edited: number } | undefined;
     if (found && isEditLocked(found.edited)) return { kind: "locked" };
 
     const same = found != null && found.value === degF;
@@ -247,7 +263,8 @@ export function logMucusCore(
   date: string,
   quality: MucusQuality
 ): TtcWriteOutcome {
-  if (!isRealIsoDate(date)) return { kind: "invalid", error: "Enter a valid date." };
+  if (!isRealIsoDate(date))
+    return { kind: "invalid", error: "Enter a valid date." };
   if (!isMucusQuality(quality))
     return { kind: "invalid", error: "Pick a cervical-mucus observation." };
   const ordinal = mucusOrdinal(quality);
@@ -257,8 +274,7 @@ export function logMucusCore(
         WHERE profile_id = ? AND date = ? AND symptom = ?`
     )
     .get(profileId, date, CERVICAL_MUCUS_SYMPTOM) as
-    | { severity: number }
-    | undefined;
+    { severity: number } | undefined;
   const disposition = classifyUpsert(
     existing != null,
     existing != null && existing.severity === ordinal
@@ -415,10 +431,15 @@ export function getTtcState(profileId: number, todayStr: string): TtcState {
     const prevStart = [...starts].reverse().find((d) => d < currentStart);
     if (prevStart) {
       const prevConfirm = confirmOvulation(
-        observations.bbt.filter((r) => r.date >= prevStart && r.date < currentStart)
+        observations.bbt.filter(
+          (r) => r.date >= prevStart && r.date < currentStart
+        )
       );
       if (prevConfirm) {
-        lutealDays = lutealPhaseLengthDays(prevConfirm.ovulationDate, currentStart);
+        lutealDays = lutealPhaseLengthDays(
+          prevConfirm.ovulationDate,
+          currentStart
+        );
       }
     }
   }
@@ -450,9 +471,7 @@ export function getTtcState(profileId: number, todayStr: string): TtcState {
     ttcStart,
     active: ttcStart != null && !pregnant,
     pregnant,
-    duration: ttcStart
-      ? tryingDuration(ttcStart, todayStr, starts)
-      : null,
+    duration: ttcStart ? tryingDuration(ttcStart, todayStr, starts) : null,
     window,
     confirmation,
     lutealDays,

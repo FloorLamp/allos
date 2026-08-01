@@ -77,11 +77,16 @@ describe("forecastNextPeriod — sufficiency (silence is a valid output)", () =>
 
 describe("forecastNextPeriod — the window, and its width", () => {
   it("projects a WINDOW around last start + mean, never a bare date", () => {
-    const f = forecastNextPeriod(REGULAR.periods, shiftDateStr(REGULAR.last, 5));
+    const f = forecastNextPeriod(
+      REGULAR.periods,
+      shiftDateStr(REGULAR.last, 5)
+    );
     expect(f.kind).toBe("forecast");
     if (f.kind !== "forecast") return;
     expect(f.projectedStart).toBe(shiftDateStr(REGULAR.last, 28));
-    expect(f.windowStart).toBe(shiftDateStr(f.projectedStart, -f.halfWidthDays));
+    expect(f.windowStart).toBe(
+      shiftDateStr(f.projectedStart, -f.halfWidthDays)
+    );
     expect(f.windowEnd).toBe(shiftDateStr(f.projectedStart, f.halfWidthDays));
     // The window is a real span, not a collapsed point.
     expect(daysBetweenDateStr(f.windowStart, f.windowEnd)).toBe(
@@ -125,7 +130,12 @@ describe("forecastNextPeriod — the window, and its width", () => {
     expect(atF.kind === "forecast" && atF.confidence).toBe("narrow");
 
     // One day more spread flips it to irregular → wide.
-    const over = history([28, 28 + CYCLE_REGULARITY_VARIATION_DAYS + 1, 28, 28]);
+    const over = history([
+      28,
+      28 + CYCLE_REGULARITY_VARIATION_DAYS + 1,
+      28,
+      28,
+    ]);
     const overF = forecastNextPeriod(over.periods, shiftDateStr(over.last, 3));
     expect(overF.kind === "forecast" && overF.confidence).toBe("wide");
   });
@@ -160,7 +170,10 @@ describe("forecastNextPeriod — an outlier current cycle widens, never shifts",
 
 describe("forecastNextPeriod — the ovulation estimate is the weaker claim", () => {
   it("is projected start − LUTEAL_PHASE_DAYS, with the same window width", () => {
-    const f = forecastNextPeriod(REGULAR.periods, shiftDateStr(REGULAR.last, 5));
+    const f = forecastNextPeriod(
+      REGULAR.periods,
+      shiftDateStr(REGULAR.last, 5)
+    );
     expect(f.kind).toBe("forecast");
     if (f.kind !== "forecast" || !f.ovulationEstimate) return;
     expect(f.ovulationEstimate.estimatedDate).toBe(
@@ -206,7 +219,11 @@ describe("forecastNextPeriod — suspension beats everything", () => {
 
   it("suspends even when the history is insufficient (no mixed message)", () => {
     const h = history([28]);
-    const f = forecastNextPeriod(h.periods, shiftDateStr(h.last, 5), "pregnancy");
+    const f = forecastNextPeriod(
+      h.periods,
+      shiftDateStr(h.last, 5),
+      "pregnancy"
+    );
     expect(f.kind).toBe("suspended");
   });
 });

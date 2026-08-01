@@ -18,7 +18,11 @@
 // NOT CONTRACEPTION. Every fertile-window rendering carries NOT_CONTRACEPTION_NOTE. This
 // is non-negotiable copy, and the constant exists so no surface can paraphrase it away.
 
-import { ageInMonthsFromBirthdate, daysBetweenDateStr, shiftDateStr } from "./date";
+import {
+  ageInMonthsFromBirthdate,
+  daysBetweenDateStr,
+  shiftDateStr,
+} from "./date";
 
 // The line every fertile-window rendering carries, verbatim.
 export const NOT_CONTRACEPTION_NOTE =

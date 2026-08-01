@@ -143,9 +143,10 @@ describe("fertileWindow — evidence ranking (LH > mucus > calendar)", () => {
 describe("confirmOvulation — a sustained rise, read retrospectively", () => {
   it("finds the classic three-over-six rise and dates ovulation the day before", () => {
     // Six baseline mornings around 97.3, then three clearly elevated ones.
-    const readings = series("2019-05-20", [
-      97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 97.9, 98.0, 97.9,
-    ]);
+    const readings = series(
+      "2019-05-20",
+      [97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 97.9, 98.0, 97.9]
+    );
     const c = confirmOvulation(readings);
     expect(c).not.toBeNull();
     expect(c?.firstHighDate).toBe("2019-05-26");
@@ -155,16 +156,18 @@ describe("confirmOvulation — a sustained rise, read retrospectively", () => {
   });
 
   it("ignores a noisy blip that isn't sustained", () => {
-    const readings = series("2019-05-20", [
-      97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 98.1, 97.2, 97.3, 97.2,
-    ]);
+    const readings = series(
+      "2019-05-20",
+      [97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 98.1, 97.2, 97.3, 97.2]
+    );
     expect(confirmOvulation(readings)).toBeNull();
   });
 
   it("ignores a sustained rise smaller than the threshold", () => {
-    const readings = series("2019-05-20", [
-      97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 97.5, 97.5, 97.5,
-    ]);
+    const readings = series(
+      "2019-05-20",
+      [97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 97.5, 97.5, 97.5]
+    );
     expect(confirmOvulation(readings)).toBeNull();
   });
 
@@ -194,9 +197,10 @@ describe("confirmOvulation — a sustained rise, read retrospectively", () => {
   });
 
   it("sorts an out-of-order series before reading it", () => {
-    const ordered = series("2019-05-20", [
-      97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 97.9, 98.0, 97.9,
-    ]);
+    const ordered = series(
+      "2019-05-20",
+      [97.3, 97.2, 97.4, 97.3, 97.2, 97.3, 97.9, 98.0, 97.9]
+    );
     const shuffled = [...ordered].reverse();
     expect(confirmOvulation(shuffled)).toEqual(confirmOvulation(ordered));
   });

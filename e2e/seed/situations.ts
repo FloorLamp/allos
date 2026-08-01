@@ -103,7 +103,6 @@ export function seedCycleAndDerived(): void {
     `e2e: seeded stale-open-period fixture — profile ${staleProfileId} (${CYCLE_STALE_PROFILE}) (#1682)`
   );
 
-
   // ── Trying-to-conceive fixture (#1679/#1680) ─────────────────────────────────
   // A dedicated adult FEMALE profile with SIX regular ~28-day cycles (so the next-period
   // forecast is available and NARROW), a DECLARED trying-to-conceive start, and a

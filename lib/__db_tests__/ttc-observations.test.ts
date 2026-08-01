@@ -194,7 +194,11 @@ describe("getTtcState — the assembled gather", () => {
       db.prepare(
         `INSERT INTO cycles (profile_id, period_start, period_end, flow)
          VALUES (?, ?, ?, 'medium')`
-      ).run(profileId, shiftDateStr(anchor, -ago), shiftDateStr(anchor, -(ago - 4)));
+      ).run(
+        profileId,
+        shiftDateStr(anchor, -ago),
+        shiftDateStr(anchor, -(ago - 4))
+      );
       ago -= 28;
     }
   }
@@ -268,8 +272,18 @@ describe("getTtcState — the assembled gather", () => {
 describe("latestTtcObservations — one canonical identity per kind", () => {
   it("keys on the observation kind and takes the newest per kind", () => {
     const rows = [
-      { id: 1, date: "2019-05-01", kind: "lh" as const, lhResult: "negative" as const },
-      { id: 2, date: "2019-05-04", kind: "lh" as const, lhResult: "positive" as const },
+      {
+        id: 1,
+        date: "2019-05-01",
+        kind: "lh" as const,
+        lhResult: "negative" as const,
+      },
+      {
+        id: 2,
+        date: "2019-05-04",
+        kind: "lh" as const,
+        lhResult: "positive" as const,
+      },
       { id: 3, date: "2019-05-03", kind: "bbt" as const, degF: 97.6 },
     ];
     expect(ttcObservationKey(rows[0])).toBe("lh");

@@ -97,9 +97,8 @@ export default function CycleForecastCard({
           className="text-xs text-slate-500 dark:text-slate-400"
           data-testid="cycle-forecast-ovulation"
         >
-          Ovulation estimated around{" "}
-          {forecast.ovulationEstimate.estimatedDate} (
-          {forecast.ovulationEstimate.windowStart} –{" "}
+          Ovulation estimated around {forecast.ovulationEstimate.estimatedDate}{" "}
+          ({forecast.ovulationEstimate.windowStart} –{" "}
           {forecast.ovulationEstimate.windowEnd}). Calculated from your cycle
           lengths — an estimate from history, not an observation.
         </p>

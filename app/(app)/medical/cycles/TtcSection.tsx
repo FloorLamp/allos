@@ -39,8 +39,8 @@ export default function TtcSection({
         >
           Paused while a pregnancy is recorded. Fertile windows and ovulation
           estimates don&rsquo;t apply, and the months-trying count stops at
-          {state.ttcStart ? ` ${state.ttcStart}` : " your recorded start"} and is
-          kept for your history.
+          {state.ttcStart ? ` ${state.ttcStart}` : " your recorded start"} and
+          is kept for your history.
         </p>
       </section>
     );
@@ -115,9 +115,9 @@ export default function TtcSection({
         <div className="section-label">Ovulation confirmation</div>
         {state.confirmation ? (
           <p className="text-sm text-slate-700 dark:text-slate-200">
-            A sustained temperature rise from{" "}
-            {state.confirmation.firstHighDate} puts estimated ovulation on{" "}
-            {state.confirmation.ovulationDate}, above a baseline of{" "}
+            A sustained temperature rise from {state.confirmation.firstHighDate}{" "}
+            puts estimated ovulation on {state.confirmation.ovulationDate},
+            above a baseline of{" "}
             {fmtTemp(state.confirmation.baselineF, temperatureUnit)}. This is a
             reading of what already happened, not a prediction.
           </p>

@@ -166,6 +166,7 @@ export function severityLabel(n: number): string {
 // another.
 export function severityLabelFor(key: string, n: number): string {
   const scale = BY_SLUG.get(key)?.scale;
-  if (scale && n >= MIN_SYMPTOM_SEVERITY && n <= scale.length) return scale[n - 1];
+  if (scale && n >= MIN_SYMPTOM_SEVERITY && n <= scale.length)
+    return scale[n - 1];
   return severityLabel(n);
 }
