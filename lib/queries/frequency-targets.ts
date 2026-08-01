@@ -1,7 +1,7 @@
 import { db, today } from "../db";
 import type { FrequencyPace } from "../goals";
 import { frequencyRangeState, practiceIdentity } from "../practice";
-import { daysBetweenDateStr } from "../date";
+import { daysBetweenDateStr, shiftDateStr } from "../date";
 import type { BodyGroup, MuscleRegion } from "../lifts";
 import { regionForExercise, regionsForGroup } from "../lifts";
 import type { FrequencyTarget } from "../types";
@@ -230,6 +230,220 @@ export function getFrequencyTargetProgress(
       atCeiling: range.atCeiling,
       pace: range.pace,
       daysLeftInWindow: Math.max(0, 7 - elapsedDays),
+    };
+  });
+}
+
+// ---- Completed-week history (#1670) ---------------------------------------
+
+// One completed target week for a target: the window's inclusive start date and the
+// count that week produced under the SAME per-scope counting rules
+// getFrequencyTargetProgress applies to the current week.
+export interface FrequencyTargetWeek {
+  start: string;
+  count: number;
+}
+
+// A target's trailing history: its COMPLETED weeks (oldest first — the current,
+// in-progress week is deliberately absent, see below) plus whether the target itself
+// existed for the whole of that window.
+export interface FrequencyTargetHistory {
+  target: FrequencyTarget;
+  weeks: FrequencyTargetWeek[];
+  existedWholeWindow: boolean;
+}
+
+// Per-target weekly counts over the `weeks` COMPLETED target weeks before the current
+// one — the revealed-preference ledger the #1670 right-sizing detector reads.
+//
+// Three properties are load-bearing:
+//
+//   • The weeks are the profile's OWN weekly windows, walked backwards from
+//     weekWindowStart, so calendar mode (resetting on the configured week-start day)
+//     and rolling mode (trailing 7-day blocks) both get the answer their surfaces
+//     already show. Nothing here re-derives the week.
+//   • The CURRENT week is excluded. It is under its floor by construction on every
+//     day but the last, so including it would make almost every target look chronic.
+//   • Counting is the same per-scope rule as the current-week rollup — distinct
+//     training days by region/group/type, distinct mobilized days via the shared
+//     mobilityRegionDays gather, summed servings for a food group, distinct logged
+//     days for a practice — so a suggestion can never disagree with the card beside
+//     it. Substance CAPS are excluded here exactly as they are there: a cap is not a
+//     floor, and "chronically under it" is that scope's success state.
+//
+// One gather per event source over the WHOLE window, bucketed in JS — never one query
+// per week.
+export function getFrequencyTargetWeeklyHistory(
+  profileId: number,
+  weeks: number
+): FrequencyTargetHistory[] {
+  const targets = getFrequencyTargets(profileId).filter(
+    (t) => t.scope_kind !== "substance"
+  );
+  if (targets.length === 0 || weeks < 1) return [];
+
+  const currentStart = weekWindowStart(profileId);
+  const historyStart = shiftDateStr(currentStart, -7 * weeks);
+  const weekStarts = Array.from({ length: weeks }, (_, i) =>
+    shiftDateStr(historyStart, 7 * i)
+  );
+  // The window's last completed day — the anchor mobilityRegionDays windows against.
+  const lastDay = shiftDateStr(currentStart, -1);
+
+  // Which completed week a date falls in, or null when it is outside the window.
+  const bucketOf = (date: string): number | null => {
+    const delta = daysBetweenDateStr(historyStart, date);
+    if (delta == null || delta < 0) return null;
+    const idx = Math.floor(delta / 7);
+    return idx < weeks ? idx : null;
+  };
+  const dayBuckets = () =>
+    Array.from({ length: weeks }, () => new Set<string>());
+
+  const setRows = db
+    .prepare(
+      `SELECT DISTINCT a.date AS date, s.exercise AS exercise
+       FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+       WHERE a.profile_id = ? AND a.date >= ? AND a.date < ?`
+    )
+    .all(profileId, historyStart, currentStart) as {
+    date: string;
+    exercise: string;
+  }[];
+  const regionWeeks = new Map<MuscleRegion, Set<string>[]>();
+  for (const r of setRows) {
+    const region = regionForExercise(r.exercise);
+    if (!region) continue;
+    const b = bucketOf(r.date);
+    if (b == null) continue;
+    let arr = regionWeeks.get(region);
+    if (!arr) regionWeeks.set(region, (arr = dayBuckets()));
+    arr[b].add(r.date);
+  }
+
+  const actRows = db
+    .prepare(
+      `SELECT date, type, components FROM activities
+        WHERE profile_id = ? AND date >= ? AND date < ?`
+    )
+    .all(profileId, historyStart, currentStart) as {
+    date: string;
+    type: string;
+    components: string | null;
+  }[];
+  const typeWeeks = new Map<string, Set<string>[]>();
+  const addType = (type: string, date: string, bucket: number) => {
+    let arr = typeWeeks.get(type);
+    if (!arr) typeWeeks.set(type, (arr = dayBuckets()));
+    arr[bucket].add(date);
+  };
+  for (const a of actRows) {
+    const b = bucketOf(a.date);
+    if (b == null) continue;
+    addType(a.type, a.date, b);
+    for (const c of parseComponents(a.components))
+      if (c?.type) addType(c.type, a.date, b);
+  }
+
+  const mobilityWeeks = new Map<MuscleRegion, Set<string>[]>();
+  if (targets.some((t) => t.scope_kind === "mobility_region")) {
+    const sessions: MobilitySessionInput[] = actRows
+      .filter((a) => a.type === "recovery")
+      .map((a) => ({
+        date: a.date,
+        moves: parseComponents(a.components)
+          .filter((c) => c?.type === "recovery" && typeof c.name === "string")
+          .map((c) => c.name),
+      }));
+    for (const [region, dates] of mobilityRegionDays(
+      sessions,
+      lastDay,
+      7 * weeks
+    )) {
+      const arr = dayBuckets();
+      for (const d of dates) {
+        const b = bucketOf(d);
+        if (b != null) arr[b].add(d);
+      }
+      mobilityWeeks.set(region, arr);
+    }
+  }
+
+  const foodWeeks = new Map<string, number[]>();
+  if (targets.some((t) => t.scope_kind === "food_group")) {
+    for (const r of db
+      .prepare(
+        `SELECT group_key, date, COALESCE(SUM(servings), 0) AS n FROM food_log
+          WHERE profile_id = ? AND date >= ? AND date < ?
+          GROUP BY group_key, date`
+      )
+      .all(profileId, historyStart, currentStart) as {
+      group_key: string;
+      date: string;
+      n: number;
+    }[]) {
+      const b = bucketOf(r.date);
+      if (b == null) continue;
+      let arr = foodWeeks.get(r.group_key);
+      if (!arr) foodWeeks.set(r.group_key, (arr = Array(weeks).fill(0)));
+      arr[b] += r.n;
+    }
+  }
+
+  const practiceWeeks = new Map<string, Set<string>[]>();
+  if (targets.some((t) => t.scope_kind === "practice")) {
+    for (const r of db
+      .prepare(
+        `SELECT practice, date FROM practice_logs
+          WHERE profile_id = ? AND date >= ? AND date < ?`
+      )
+      .all(profileId, historyStart, currentStart) as {
+      practice: string;
+      date: string;
+    }[]) {
+      const b = bucketOf(r.date);
+      if (b == null) continue;
+      const key = practiceIdentity(r.practice);
+      let arr = practiceWeeks.get(key);
+      if (!arr) practiceWeeks.set(key, (arr = dayBuckets()));
+      arr[b].add(r.date);
+    }
+  }
+
+  const zeros = Array(weeks).fill(0) as number[];
+  const sizes = (buckets: Set<string>[] | undefined): number[] =>
+    buckets ? buckets.map((s) => s.size) : zeros;
+
+  return targets.map((t) => {
+    let counts: number[];
+    if (t.scope_kind === "region") {
+      counts = sizes(regionWeeks.get(t.scope_value as MuscleRegion));
+    } else if (t.scope_kind === "group") {
+      const unions = dayBuckets();
+      for (const reg of regionsForGroup(t.scope_value as BodyGroup)) {
+        const arr = regionWeeks.get(reg);
+        if (!arr) continue;
+        arr.forEach((set, i) => {
+          for (const d of set) unions[i].add(d);
+        });
+      }
+      counts = unions.map((s) => s.size);
+    } else if (t.scope_kind === "food_group") {
+      counts = foodWeeks.get(t.scope_value) ?? zeros;
+    } else if (t.scope_kind === "mobility_region") {
+      counts = sizes(mobilityWeeks.get(t.scope_value as MuscleRegion));
+    } else if (t.scope_kind === "practice") {
+      counts = sizes(practiceWeeks.get(practiceIdentity(t.scope_value)));
+    } else {
+      counts = sizes(typeWeeks.get(t.scope_value));
+    }
+    return {
+      target: t,
+      weeks: weekStarts.map((start, i) => ({ start, count: counts[i] })),
+      // `created_at` is a UTC `datetime('now')` stamp; its calendar day is what the
+      // cold-start exclusion compares. A target created ON the window's first day
+      // counts as having existed for it.
+      existedWholeWindow: t.created_at.slice(0, 10) <= historyStart,
     };
   });
 }
