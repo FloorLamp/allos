@@ -62,6 +62,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "intake_item_suggestions",
     why: "AI-proposed, not-yet-accepted supplement suggestions; not user-entered data",
   },
+  {
+    table: "notify_messages",
+    why: "live Telegram message pointers (#1779): chat/message ids plus the delivered keyboard, kept only until Telegram's ~48h edit horizon so the tick can un-stale what a chat displays. Delivery plumbing about a THIRD-PARTY chat, not the user's health record, and worthless outside this instance's bot — the health facts every button refers to export via their own datasets (doses, food log, mood, symptoms).",
+  },
   // Operational / non-portable machinery (credentials, ledgers, tombstones, queues).
   {
     table: "integration_connections",

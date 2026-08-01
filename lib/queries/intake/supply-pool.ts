@@ -25,6 +25,7 @@ import {
 } from "../../refill";
 import { getRefillRates } from "./refill";
 import { isPushedIntake } from "../../supplement-schedule";
+import type { SupplyOption } from "../../supply-product";
 import type { IntakeObligation } from "../../types";
 
 // A shared bottle as stored.
@@ -86,6 +87,95 @@ export function listSharedSupplies(): SharedSupply[] {
   return db
     .prepare(`SELECT ${SUPPLY_COLUMNS} FROM shared_supplies ORDER BY name, id`)
     .all() as SharedSupply[];
+}
+
+// The bottles a caller may LINK an item to, or CREATE an item from (#1705) — the same
+// set the /supplies cabinet lists, through the SAME `isPoolVisibleTo` rule rather than a
+// second hand-rolled copy of it. A picker can therefore never offer a bottle the cabinet
+// would hide, nor hide one it lists. Cross-profile reader convention: already-authorized
+// ids first, no lib/auth import.
+export function listLinkableSupplies(
+  profileIds: readonly number[]
+): SharedSupply[] {
+  const accessible = new Set(profileIds);
+  return listSharedSupplies().filter((s) =>
+    isPoolVisibleTo(
+      poolMembers(s.id).map((m) => m.profileId),
+      accessible
+    )
+  );
+}
+
+// ONE bottle as an offerable option, or null — the same question the list answers, asked
+// about a single id, so the write path validating a posted `supply_id` and the page
+// resolving a `?supply=` deep link agree with the picker that offered it.
+export function findLinkableSupply(
+  profileIds: readonly number[],
+  supplyId: number
+): SupplyOption | null {
+  const supply = getSharedSupply(supplyId);
+  if (!supply) return null;
+  const visible = isPoolVisibleTo(
+    poolMembers(supplyId).map((m) => m.profileId),
+    new Set(profileIds)
+  );
+  return visible ? supplyOption(supply) : null;
+}
+
+export function isLinkableSupply(
+  profileIds: readonly number[],
+  supplyId: number
+): boolean {
+  return findLinkableSupply(profileIds, supplyId) != null;
+}
+
+export function supplyOption(supply: SharedSupply): SupplyOption {
+  return {
+    id: supply.id,
+    name: supply.name,
+    strength: supply.strength,
+    form: supply.form,
+  };
+}
+
+// One item's product identity, for the item → bottle seeding (#1705): the name and the
+// active dose amounts the pure `poolSeedFromItem` reads a strength off, plus the on-hand
+// count the pool starts with. ONE read where the create-pool action used to do its own
+// inline quantity lookup, so name, strength and count are seeded from one row.
+// Profile-scoped: a forged id cannot seed a pool from another profile's item.
+export function getItemProductFacts(
+  profileId: number,
+  itemId: number
+): {
+  name: string;
+  doseAmounts: string[];
+  quantityOnHand: number | null;
+} | null {
+  const rows = db
+    .prepare(
+      `SELECT i.name, i.quantity_on_hand, d.amount AS dose_amount
+         FROM intake_items i
+         LEFT JOIN intake_item_doses d
+           ON d.item_id = i.id AND d.retired = 0
+        WHERE i.id = ? AND i.profile_id = ?
+        ORDER BY d.sort, d.id`
+    )
+    .all(itemId, profileId) as {
+    name: string;
+    quantity_on_hand: number | null;
+    dose_amount: string | null;
+  }[];
+  if (rows.length === 0) return null;
+  const doseAmounts: string[] = [];
+  for (const r of rows) {
+    const amount = r.dose_amount?.trim();
+    if (amount && !doseAmounts.includes(amount)) doseAmounts.push(amount);
+  }
+  return {
+    name: rows[0].name,
+    doseAmounts,
+    quantityOnHand: rows[0].quantity_on_hand,
+  };
 }
 
 // Every intake item linked to `supplyId`, across ALL profiles. Cross-profile by
@@ -254,6 +344,11 @@ export function poolIdsForProfiles(profileIds: readonly number[]): number[] {
 export interface PoolChipData {
   supplyId: number;
   name: string;
+  // The bottle's PRODUCT FACTS, carried so a linked item DERIVES them at render time
+  // (#1705) instead of storing a second copy that can drift: edit the bottle's strength
+  // and every member's chip follows, with no write to any item row.
+  strength: string | null;
+  form: string | null;
   daysLeft: number | null;
   memberCount: number;
   low: boolean;
@@ -276,6 +371,8 @@ export function getPoolChips(profileId: number): Map<number, PoolChipData> {
     out.set(r.id, {
       supplyId: pool.id,
       name: pool.name,
+      strength: pool.strength,
+      form: pool.form,
       daysLeft: pool.daysLeft,
       memberCount: pool.members.length,
       low: pool.low,

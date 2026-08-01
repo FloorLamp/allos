@@ -5,14 +5,21 @@ import {
 } from "@/lib/trends-sections";
 import { TRENDS_TABS, parseTab } from "@/lib/trends-tabs";
 
-// The Trends landing surface's two anchored parts (#1644): the starred grid and
-// the body census that merged onto it. Small on purpose — this registry answers
+// The Trends landing surface's anchored parts (#1644, #1632): the starred grid,
+// the wellness lens, and the body census that merged onto it. Small on purpose —
+// this registry answers
 // "where does a deep link land", while lib/trends-tabs.ts answers "which tabs
 // exist"; the tests below pin that the two vocabularies stay separate.
 
 describe("the landing surface's parts", () => {
-  it("is the starred grid then the body census, in reading order", () => {
-    expect([...TRENDS_LANDING_SECTIONS]).toEqual(["starred", "body"]);
+  it("is the grid, the wellness lens, then the census, in reading order", () => {
+    // The order IS the design: what you curated, then the small conditional lens
+    // (#1632), then the domain census that deliberately reads last.
+    expect([...TRENDS_LANDING_SECTIONS]).toEqual([
+      "starred",
+      "practices",
+      "body",
+    ]);
   });
 
   it("names no tab — the strip is a different vocabulary", () => {
@@ -34,6 +41,7 @@ describe("trendsSectionHref", () => {
   it("names the anchors the landing surface renders", () => {
     expect(trendsSectionHref("body")).toBe("/trends#body");
     expect(trendsSectionHref("starred")).toBe("/trends#starred");
+    expect(trendsSectionHref("practices")).toBe("/trends#practices");
   });
 
   // The half of the retirement a link sweep can't see: a body deep link now says

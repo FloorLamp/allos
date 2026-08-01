@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import Combobox from "@/components/Combobox";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
+import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -29,10 +29,14 @@ import PediatricDoseBandPicker from "@/components/medications/PediatricDoseBandP
 import PediatricWeightUpdate from "@/components/medications/PediatricWeightUpdate";
 import { useIntakeRxcui } from "@/components/intake/useIntakeRxcui";
 import { serializeRxcuiIngredients } from "@/lib/rxnorm";
+import {
+  applyProductSeed,
+  itemSeedFromPool,
+  type SupplyOption,
+} from "@/lib/supply-product";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
-  medicationCatalogOptions,
   medicationBrandOptions,
   resolveMedicationPick,
   getMedicationInfo,
@@ -66,15 +70,6 @@ import type {
   MedicationCourse,
 } from "@/lib/types";
 
-// The medication name combobox source (#817): generics + brand names from the curated
-// medication-descriptions set, so adding a med suggests "Ibuprofen"/"Advil" — not the
-// supplement catalog. The RxNorm lookup stays the long tail for anything unlisted.
-// One combobox option per medication, "Generic (Brand, Brand)" (#851 item 14) — the
-// brands ride in the label so a typed brand token still filters to the entry.
-const MED_CATALOG_OPTIONS = medicationCatalogOptions();
-// Brand suggestions with "Generic" first (#851 item 3); narrowed to a picked med's own
-// brands by the prefill resolver.
-const MED_BRAND_OPTIONS = medicationBrandOptions();
 // A medication's condition is either scheduled (daily) or context-gated (situational);
 // the workout/rest-day scheduling is a SUPPLEMENT concept and lives only on the
 // supplement form. PRN is the separate `as_needed` toggle below.
@@ -124,6 +119,7 @@ export default function MedicationForm({
   course,
   todayStr,
   conditions = [],
+  initialSupply = null,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: Supplement;
@@ -151,9 +147,11 @@ export default function MedicationForm({
   // A new medication starts today unless the user chooses another date.
   course?: MedicationCourse;
   todayStr?: string;
+  // Opened FROM a shared bottle (#1705) — the cabinet's "Add for another person". The
+  // product fields are seeded from it and it links on save.
+  initialSupply?: SupplyOption | null;
 }) {
   const s = supplement;
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const fid = s?.id ?? "new";
@@ -163,7 +161,12 @@ export default function MedicationForm({
     setPediatricContext(pediatric);
   }, [pediatric]);
 
-  const [name, setName] = useState(s?.name ?? "");
+  // Seeded FROM the bottle (#1705): the pool is authoritative for the product, so its
+  // name and strength prefill the fields this form owns the inputs for. Editable — the
+  // DOSE is this person's, so the seed is a starting point, never a lock.
+  const supplySeed = initialSupply ? itemSeedFromPool(initialSupply) : null;
+  const seededRef = useRef(supplySeed);
+  const [name, setName] = useState(s?.name ?? supplySeed?.name ?? "");
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [situation, setSituation] = useState(s?.situation ?? "");
@@ -171,9 +174,21 @@ export default function MedicationForm({
     s?.pause_situation ?? ""
   );
   const situationOptions = useSituationOptions();
+  // The medication name + brand combobox sources (#817/#851 item 14): one option per
+  // medication, "Generic (Brand, Brand)", with the brands riding in the label so a typed
+  // brand token still filters to the entry. Their ORDER is a per-PROFILE fact (#1677) —
+  // what this profile actually takes, then the curated common head, then A–Z — so it
+  // arrives through IntakeOptionsContext rather than being a module constant. The RxNorm
+  // lookup stays the long tail for anything unlisted.
+  const catalogOptions = useIntakeOptions();
   const confirm = useConfirm();
   const [brand, setBrand] = useState(s?.brand ?? "");
-  const [brandOptions, setBrandOptions] = useState<string[]>(MED_BRAND_OPTIONS);
+  // Brand narrowing (#851 item 3): null is the PRE-PICK state, which uses the ranked
+  // per-profile list (#1677); picking a med with known brands replaces it with that
+  // drug's own brands. The narrowing never becomes "the whole catalog again" — a pick
+  // that carries no brands leaves the ranked list in place.
+  const [brandNarrowing, setBrandNarrowing] = useState<string[] | null>(null);
+  const brandOptions = brandNarrowing ?? catalogOptions.medicationBrands;
   // Rx / OTC (#851 items 1–2). A prescription (rxFlag=1) reveals the prescriber/
   // pharmacy/Rx-number/provider fields; an OTC med hides them behind a small "this is
   // a prescription" disclosure. Defaults from the stored flag, or OTC for a new med;
@@ -225,7 +240,7 @@ export default function MedicationForm({
           start_date: d.start_date ?? "",
           end_date: d.end_date ?? "",
         }))
-      : [emptyDose()]
+      : [{ ...emptyDose(), amount: supplySeed?.amount ?? "" }]
   );
 
   // Item-level calendar (#1602). Seeded from the stored row so an edit round-trips
@@ -371,8 +386,12 @@ export default function MedicationForm({
     });
 
     // Brand suggestions narrow to this med's brands when known, always led by "Generic"
-    // (#851 item 3).
-    setBrandOptions(medicationBrandOptions(pf.brandSuggestions));
+    // (#851 item 3); with none known the ranked pre-pick list stays (#1677).
+    setBrandNarrowing(
+      pf.brandSuggestions?.length
+        ? medicationBrandOptions(pf.brandSuggestions)
+        : null
+    );
     if (pf.asNeeded !== undefined) setObligation(pf.asNeeded ? "may" : "must");
     if (pf.minIntervalHours !== undefined)
       setMinIntervalHours(String(pf.minIntervalHours));
@@ -405,6 +424,34 @@ export default function MedicationForm({
     setSelectedPediatricBandMinLbs(null);
     markTouched("doseAmount", "foodTiming", "timeOfDay");
     setDoses(update);
+  }
+
+  // Picking a shared bottle (#1705) seeds the same two product fields the cabinet
+  // deep link seeds, and only them. A value the user typed is never overwritten
+  // (applyProductSeed), and the amount is marked TOUCHED so a later catalog pick
+  // doesn't quietly replace the strength the household's actual bottle carries.
+  function onPickSupply(supply: SupplyOption | null): void {
+    const seed = supply ? itemSeedFromPool(supply) : null;
+    const previous = seededRef.current;
+    setName((current) =>
+      applyProductSeed(current, previous?.name ?? null, seed?.name ?? "")
+    );
+    if (seed) markTouched("doseAmount");
+    setDoses((ds) =>
+      ds.map((d, i) =>
+        i === 0
+          ? {
+              ...d,
+              amount: applyProductSeed(
+                d.amount,
+                previous?.amount ?? null,
+                seed?.amount ?? ""
+              ),
+            }
+          : d
+      )
+    );
+    seededRef.current = seed;
   }
 
   function selectPediatricBand(band: PediatricBand) {
@@ -584,7 +631,7 @@ export default function MedicationForm({
       setSituation("");
       setPauseSituation("");
       setBrand("");
-      setBrandOptions(MED_BRAND_OPTIONS);
+      setBrandNarrowing(null);
       setRxFlag(false);
       setObligation("must");
       setStartedOn(todayStr ?? "");
@@ -600,7 +647,6 @@ export default function MedicationForm({
       setPairRows([]);
       setSuggested(new Set());
       setTouched(new Set());
-      router.refresh();
     }
   }
 
@@ -649,7 +695,7 @@ export default function MedicationForm({
                 rx.onNameChange();
               }}
               onPick={onPickName}
-              options={MED_CATALOG_OPTIONS}
+              options={catalogOptions.medications}
               placeholder="e.g. Ibuprofen"
             />
             <RxNormAffordance name={name} rx={rx} />
@@ -1096,7 +1142,12 @@ export default function MedicationForm({
         setCritical={setCritical}
       />
 
-      <RefillTracking fid={fid} supplement={s} />
+      <RefillTracking
+        fid={fid}
+        supplement={s}
+        initialSupply={initialSupply}
+        onPickSupply={onPickSupply}
+      />
 
       <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
         {/* Pediatric label context precedes the fields it can populate. The complete

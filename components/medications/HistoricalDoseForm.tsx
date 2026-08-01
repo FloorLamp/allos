@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -56,7 +55,6 @@ export default function HistoricalDoseForm({
     editing?.amount ?? initialDose?.amount ?? ""
   );
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
   const toast = useToast();
 
   if (!initialDose) return null;
@@ -78,7 +76,6 @@ export default function HistoricalDoseForm({
             : `Logged past dose of ${medicationName}.`
         );
         onDone();
-        router.refresh();
       }}
       className="mt-3 space-y-3 border-y border-black/5 py-3 dark:border-white/5"
       data-testid="historical-dose-form"

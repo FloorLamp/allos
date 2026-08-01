@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { openMobileDrawer, settledClick } from "./helpers";
+import { openMobileDrawer, settledClick, expectInView } from "./helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -146,7 +146,7 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
   });
 });
 
-test("the multi-profile view banner rides in the sticky chrome (#1416 C)", async ({
+test("the identity bar rides in the sticky chrome and opens the top drawer (#1416 C / #1801)", async ({
   browser,
 }) => {
   // Read-only over the multi-view fixture, in its OWN cookie context: the view-set
@@ -160,50 +160,55 @@ test("the multi-profile view banner rides in the sticky chrome (#1416 C)", async
   );
   try {
     await page.goto("/upcoming");
-    // Single-view default: no banner at all (zero chrome change for the common case).
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    // Single-view default: one avatar on the bar.
+    await expectInView(page, 1, { mobile: true });
 
-    // Toggle the second profile into view. On a phone the profile menu lives in
-    // the drawer (the shared SidebarContent), so this is also a small proof that
-    // the animated drawer still reaches the same controls the desktop sidebar does.
-    const drawer = await openMobileDrawer(page);
-    const trigger = drawer.getByTestId("user-menu-trigger");
-    await expect(trigger).toBeEnabled();
-    await trigger.click();
-    // Scope to the drawer: the (hidden) desktop sidebar renders the same popover
-    // markup at every viewport, so an unscoped testid is two elements.
-    await expect(drawer.getByTestId("user-menu-popover")).toBeVisible();
-    await settledClick(page, drawer.getByTestId(`view-toggle-${sharedId}`));
-    // Close the drawer so the banner underneath is the thing being asserted.
-    await page.keyboard.press("Escape");
-    await expect(drawer).toHaveCount(0);
-
-    // THE assertion: the banner is a descendant of the sticky chrome, not of the
-    // scrolling content container. One strip in the DOM — never a hidden md:*
-    // pair — so this holds on every viewport.
-    const banner = page.getByTestId(CHROME).getByTestId("profile-view-strip");
-    await expect(banner).toBeVisible();
+    // THE #1416 C assertion, inherited by the surface that replaced the view strip:
+    // the thing that answers "whose data am I looking at?" is a descendant of the
+    // STICKY chrome, not of the scrolling content container — so it stays on screen
+    // mid-scroll instead of scrolling away with the page.
+    const bar = page
+      .getByTestId(CHROME)
+      .getByTestId("profile-identity-bar-mobile");
+    await expect(bar).toBeVisible();
     await expect(
       page
         .getByTestId("app-content-container")
-        .getByTestId("profile-view-strip")
+        .getByTestId("profile-identity-bar-mobile")
     ).toHaveCount(0);
-
-    // It travels WITH the bar because it IS inside the bar's one transformed
-    // element — that containment, asserted above, is the whole mechanism. The
-    // hide/reveal behavior itself is pinned on /timeline (the tests above), where
-    // there is guaranteed scroll range; re-driving it here on a fixture profile's
-    // short page would only prove the scroll bar's height.
     await chromeReady(page);
     const chromeBox = await page.getByTestId(CHROME).boundingBox();
-    const box = await banner.boundingBox();
+    const box = await bar.boundingBox();
     expect(chromeBox, "the chrome should be laid out").not.toBeNull();
-    expect(box, "the banner should be laid out").not.toBeNull();
-    // Pinned under the bar, above the fold, inside the sticky element's box.
+    expect(box, "the bar should be laid out").not.toBeNull();
     expect(box!.y).toBeGreaterThanOrEqual(chromeBox!.y);
     expect(box!.y + box!.height).toBeLessThanOrEqual(
       chromeBox!.y + chromeBox!.height + 1
     );
+
+    // Tapping the bar drops the TOP drawer — the switcher panel appears where the
+    // finger already is, not at the far end of the screen. The drawer is portalled
+    // to <body> (the chrome transforms itself on scroll), so scope the row lookup to
+    // the panel: the hidden desktop expando carries the same row testids.
+    await expect(bar).toBeEnabled();
+    await bar.click();
+    const panel = page.getByTestId("profile-switcher-panel-mobile");
+    await expect(panel).toBeVisible();
+    const panelBox = await panel.boundingBox();
+    expect(panelBox, "the panel should be laid out").not.toBeNull();
+    // Anchored to the TOP of the viewport, under the finger that opened it.
+    expect(panelBox!.y).toBeLessThan(40);
+
+    await settledClick(page, panel.getByTestId(`view-toggle-${sharedId}`));
+
+    // The bar now stacks both profiles — the view-set round-trip, read off the ONE
+    // surface that reports it.
+    await expectInView(page, 2, { mobile: true });
+    await expect(
+      page
+        .getByTestId("profile-identity-bar-mobile")
+        .getByTestId(`identity-avatar-${sharedId}`)
+    ).toBeVisible();
   } finally {
     await page.context().close();
   }

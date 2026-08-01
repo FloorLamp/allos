@@ -213,6 +213,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/settings/actions.ts",
+    fn: "saveDigestDemotions",
+    why: "login-scoped: the caller's OWN per-category morning-digest demotion (#1714) — which lines a digest routinely carries is a display preference of the reader (login_settings), never profile-owned data",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
     fn: "saveLoginTelegramNotifyKinds",
     why: "login-scoped: persists the caller's OWN Telegram per-kind matrix column (login_settings), moved from profile to login by #1072",
   },
@@ -334,6 +339,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // requireProfileWriteAccess for the refusal path, and to requireWriteAccess for an
   // orphaned pool that links nobody); LINK/UNLINK gate on the ITEM's own profile
   // (requireItemWriteAccess → requireProfileWriteAccess). ---
+  {
+    file: "app/(app)/results/actions.ts",
+    fn: "loadBiomarkerPanelRows",
+    why: "read-only (#1651): returns ONE panel group's readings when the reader expands it, so the Biomarkers index can ship a bounded payload instead of every reading up front; writes nothing, and it re-resolves requireScope() and re-parses the URL filters with the same helpers the page used, so it can only return rows that reader's own page render would have shown",
+  },
   {
     file: "app/(app)/supplies/actions.ts",
     fn: "listSharedSupplyOptions",

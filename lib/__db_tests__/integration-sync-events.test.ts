@@ -9,6 +9,7 @@ import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
   recordSyncEvent,
+  recordSyncRows,
   enableWeather,
   getConnection,
   setStravaCredentials,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/integrations/connections";
 import { runStravaSync } from "@/lib/integrations/strava-sync";
 import {
+  eventsWithProvenance,
   getConnectedSources,
   getIntegrationSyncEvents,
   getLastSuccessfulSyncAt,
@@ -322,8 +324,15 @@ describe("getConnectedSources includes the keyless Weather stream", () => {
     expect(weather).toBeTruthy();
     expect(weather!.kind).toBe("public");
     expect(weather!.connected).toBe(true);
-    // Keyless and tick-driven: no on-demand pull button on this card.
-    expect(weather!.canSyncNow).toBe(false);
+    // Keyless and tick-driven, but still pullable on demand — #1772 unified the
+    // setup page's redirecting sync form and Review's inline button into ONE
+    // affordance, so weather joined the on-demand set instead of keeping a private
+    // one. Healthy providers collapse in Review, so the button only renders where
+    // there is something to act on.
+    expect(weather!.canSyncNow).toBe(true);
+    // It speaks the cache dialect: its counts are revised forecast cells, not records.
+    expect(weather!.vocabulary).toBe("forecast");
+    expect(weather!.standing).toBe("healthy");
     expect(weather!.latest?.inserted).toBe(336);
     expect(weather!.history.length).toBe(1);
   });
@@ -337,5 +346,88 @@ describe("getConnectedSources includes the keyless Weather stream", () => {
     const ids = getConnectedSources(weatherProfile).map((s) => s.id);
     expect(ids).not.toContain("calendar-feed");
     expect(ids).not.toContain("fitbit-takeout");
+  });
+
+  // #1771: Weather's events carry real inserted/updated counts (hourly UV cells plus
+  // the #1726 daily rows), so the old `inserted + updated > 0` gate rendered a
+  // "What this wrote" expander on every successful weather sync — which then
+  // apologized, permanently, because runWeatherSync records no provenance and is
+  // RIGHT not to (it writes cells of a GLOBAL location-keyed cache, per #1212).
+  it("reports no provenance for the weather stream, so no drill-in is offered", () => {
+    const weather = getConnectedSources(weatherProfile).find(
+      (s) => s.id === "weather"
+    )!;
+    // The split is real …
+    expect(
+      (weather.latest!.inserted ?? 0) + (weather.latest!.updated ?? 0)
+    ).toBeGreaterThan(0);
+    // … and yet nothing was recorded to drill into.
+    expect(weather.provenanceEventIds).toEqual([]);
+  });
+});
+
+// The other half of the #1771 gate: a provider that DOES record provenance still
+// resolves it, so the drill-in stays reachable exactly where it can deliver.
+describe("eventsWithProvenance — the drill-in gate", () => {
+  let p: number;
+  let withRows: number;
+  let withoutRows: number;
+
+  beforeAll(() => {
+    p = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('PROV-GATE')").run()
+        .lastInsertRowid
+    );
+    const activityId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, source)
+           VALUES (?, '2026-07-08', 'cardio', 'Provenance run', 'strava')`
+        )
+        .run(p).lastInsertRowid
+    );
+    withoutRows = recordSyncEvent(p, "strava", {
+      ok: true,
+      inserted: 0,
+      updated: 0,
+      unchanged: 5,
+    })!;
+    withRows = recordSyncEvent(p, "strava", {
+      ok: true,
+      inserted: 1,
+      updated: 0,
+      unchanged: 4,
+    })!;
+    recordSyncRows(withRows, [
+      {
+        target_table: "activities",
+        target_id: activityId,
+        disposition: "inserted",
+      },
+    ]);
+  });
+
+  it("names only the events that recorded rows", () => {
+    const ids = eventsWithProvenance(
+      p,
+      "strava",
+      Math.min(withRows, withoutRows)
+    );
+    expect(ids).toContain(withRows);
+    expect(ids).not.toContain(withoutRows);
+  });
+
+  it("is profile-scoped through the parent event", () => {
+    const other = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('PROV-GATE-B')").run()
+        .lastInsertRowid
+    );
+    expect(eventsWithProvenance(other, "strava", 1)).toEqual([]);
+  });
+
+  it("threads through to the Connected-sources card", () => {
+    const strava = getConnectedSources(p).find((s) => s.id === "strava")!;
+    expect(strava.provenanceEventIds).toContain(withRows);
+    expect(strava.provenanceEventIds).not.toContain(withoutRows);
   });
 });

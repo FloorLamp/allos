@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { savePublicUrl } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -14,7 +13,6 @@ export default function PublicUrlSettings({
 }: {
   publicUrl: string;
 }) {
-  const router = useRouter();
   const [url, setUrl] = useState(publicUrl);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
   // A server-side validation message (a rejected URL). Distinct from the hook's
@@ -35,7 +33,6 @@ export default function PublicUrlSettings({
       // Reflect the normalization (added scheme, stripped trailing slash).
       setUrl(res.url);
       setValidationError(null);
-      router.refresh();
     });
   }
 

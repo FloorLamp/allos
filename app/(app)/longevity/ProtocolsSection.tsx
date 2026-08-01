@@ -9,13 +9,15 @@ import {
   getProtocolIntakeOptions,
 } from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
+import { mergedSituationOptions } from "@/lib/situations";
+import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
 import ProtocolFormModal from "@/app/(app)/protocols/ProtocolFormModal";
 import ProtocolList from "@/app/(app)/protocols/ProtocolList";
 import { createProtocol } from "@/app/(app)/protocols/actions";
 import type { ProtocolTemplate } from "@/lib/protocol-templates";
 import { today } from "@/lib/db";
-import { getWeekStart } from "@/lib/settings";
+import { getSituations, getWeekStart } from "@/lib/settings";
 
 // Longevity §5 — Protocols / N-of-1 experiments (#1042 phase 4): the absorbed
 // /protocols hub (issue #161), now the page's INTERVENTIONS section — the
@@ -55,6 +57,11 @@ export default async function ProtocolsSection({
   const equipment = recoveryGearOptions(getEquipment(profile.id));
   // The profile's supplements + medications for the direct intervention link (#660).
   const intakeItems = getProtocolIntakeOptions(profile.id);
+  // The SAME merged situation vocabulary the supplement and medication forms read
+  // (#1676) — the protocol's "Activate situation" names the same thing they do.
+  const situationOptions = mergedSituationOptions(
+    getSituations(profile.id)
+  ).map((o) => o.name);
 
   return (
     <section
@@ -86,17 +93,19 @@ export default async function ProtocolsSection({
             <IconSparkles className="h-4 w-4" aria-hidden />
             Wellness practices
           </Link>
-          <ProtocolFormModal
-            // A legacy ?template= navigation remounts the modal and opens it with
-            // the linked template. In-form template changes use ProtocolForm's
-            // keyed field seed instead.
-            key={template?.id ?? "blank"}
-            action={createProtocol}
-            options={options}
-            equipment={equipment}
-            intakeItems={intakeItems}
-            template={template}
-          />
+          <SituationOptionsProvider options={situationOptions}>
+            <ProtocolFormModal
+              // A legacy ?template= navigation remounts the modal and opens it with
+              // the linked template. In-form template changes use ProtocolForm's
+              // keyed field seed instead.
+              key={template?.id ?? "blank"}
+              action={createProtocol}
+              options={options}
+              equipment={equipment}
+              intakeItems={intakeItems}
+              template={template}
+            />
+          </SituationOptionsProvider>
         </div>
       </div>
 

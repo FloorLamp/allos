@@ -36,34 +36,6 @@ export async function connectOura(formData: FormData) {
   revalidatePath("/data");
 }
 
-// Pull from Oura on demand (form action on the setup page). runOuraSync returns
-// { error } for graceful failures and can throw on an unexpected error — catch both
-// so neither becomes an unhandled error page; surface the failure via ?error=.
-export async function syncOuraAction() {
-  const { profile } = await requireWriteAccess();
-  let failed = false;
-  try {
-    const res = await runOuraSync(profile.id);
-    if (res && "error" in res) {
-      log.error("oura sync failed", { error: res.error });
-      failed = true;
-    }
-  } catch (err) {
-    log.error("oura sync threw", { err: String(err) });
-    failed = true;
-  }
-  for (const p of [
-    "/",
-    "/training",
-    "/trends",
-    "/integrations/oura",
-    "/data",
-  ]) {
-    revalidatePath(p);
-  }
-  if (failed) redirect("/integrations/oura?error=sync_failed");
-}
-
 export interface SyncNowResult {
   status: "done" | "error";
   message: string;

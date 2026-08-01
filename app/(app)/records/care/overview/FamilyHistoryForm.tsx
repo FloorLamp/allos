@@ -1,10 +1,15 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import SubmitButton from "@/components/SubmitButton";
 import Combobox from "@/components/Combobox";
 import { useToast } from "@/components/Toast";
+import {
+  icd10CodeForName,
+  icd10SearchTerms,
+  ICD10_CONDITION_NAMES,
+  ICD10_SYSTEM,
+} from "@/lib/icd10";
 import type { FamilyHistory, FormResult } from "@/lib/types";
 
 // Common relatives, offered as a pick-or-type Combobox (allowFreeText).
@@ -41,7 +46,6 @@ export default function FamilyHistoryForm({
   profileId?: number;
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!entry;
@@ -49,6 +53,43 @@ export default function FamilyHistoryForm({
   // Relation is a controlled Combobox (#1177) — form.reset() can't clear it, so the
   // add path clears this state explicitly on a successful save.
   const [relation, setRelation] = useState(entry?.relation ?? "");
+  // Condition draws on the SAME curated ICD-10-CM vocabulary the conditions form
+  // does (#1676) — lib/condition-codes' recognizers read family-history names too,
+  // and this field previously offered no suggestion at all.
+  const [condition, setCondition] = useState(entry?.condition ?? "");
+  // Code and code system are controlled so a catalog PICK can fill them, per the
+  // owner's ruling that a pick applies its code the way the medication form's
+  // RxNorm confirm does. Same picker, same two fields, same behaviour as
+  // ConditionForm — the ruling is about the pick, not about which form it is in.
+  const [code, setCode] = useState(entry?.code ?? "");
+  const [codeSystem, setCodeSystem] = useState(entry?.code_system ?? "");
+  // The code THIS form applied from a pick, so a later name edit can retract it
+  // without ever touching a code the user typed or an import carried in
+  // (ConditionForm's pickedCode, itself the medication form's rxcuiRef).
+  const pickedCode = useRef<string | null>(null);
+
+  // An explicit pick applies that entry's curated code immediately. Nothing here
+  // fires for typed text: unlike the conditions form, family history has no
+  // confirm-to-apply chip, so a typed condition simply carries no code — exactly as
+  // it did before.
+  function onPickCondition(picked: string) {
+    const picked10 = icd10CodeForName(picked);
+    if (!picked10) return; // free-text row: nothing curated to apply
+    pickedCode.current = picked10;
+    setCode(picked10);
+    setCodeSystem(ICD10_SYSTEM);
+  }
+
+  // Editing the condition away from the picked entry retracts the code the pick
+  // applied — and only that code.
+  function onConditionChange(next: string) {
+    setCondition(next);
+    if (pickedCode.current && code === pickedCode.current) {
+      pickedCode.current = null;
+      setCode("");
+      setCodeSystem("");
+    }
+  }
 
   async function handle(formData: FormData) {
     setError(null);
@@ -71,9 +112,12 @@ export default function FamilyHistoryForm({
     if (!editing) {
       formRef.current?.reset();
       setRelation("");
+      setCondition("");
+      setCode("");
+      setCodeSystem("");
+      pickedCode.current = null;
     }
     onDone?.();
-    router.refresh();
   }
 
   const uid = entry?.id ?? "new";
@@ -107,13 +151,22 @@ export default function FamilyHistoryForm({
         <label className="label" htmlFor={`fh-condition-${uid}`}>
           Condition
         </label>
-        <input
+        <Combobox
           id={`fh-condition-${uid}`}
           name="condition"
-          className="input"
-          defaultValue={entry?.condition ?? ""}
+          ariaLabel="Condition"
+          value={condition}
+          onChange={onConditionChange}
+          onPick={onPickCondition}
+          options={[...ICD10_CONDITION_NAMES]}
+          searchTermsFor={icd10SearchTerms}
+          badgeFor={(option) => (
+            <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+              {icd10CodeForName(option)}
+            </span>
+          )}
+          allowFreeText
           placeholder="e.g. Type 2 diabetes, Breast cancer"
-          required
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -125,7 +178,8 @@ export default function FamilyHistoryForm({
             id={`fh-code-${uid}`}
             name="code"
             className="input"
-            defaultValue={entry?.code ?? ""}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
             placeholder="e.g. E11.9"
           />
         </div>
@@ -137,7 +191,8 @@ export default function FamilyHistoryForm({
             id={`fh-codesys-${uid}`}
             name="code_system"
             className="input"
-            defaultValue={entry?.code_system ?? ""}
+            value={codeSystem}
+            onChange={(e) => setCodeSystem(e.target.value)}
             placeholder="SNOMED CT / ICD-10"
           />
         </div>

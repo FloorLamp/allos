@@ -41,16 +41,16 @@ function ownProfileIds(): { selfId: number; otherId: number } {
   }
 }
 
-// Open the profile-menu popover past the pre-hydration disable gate (#830).
-async function openProfileMenu(page: Page): Promise<void> {
-  const trigger = page.getByTestId("user-menu-trigger");
+// Open the switcher panel past the pre-hydration disable gate (#830).
+async function openProfileSwitcher(page: Page): Promise<void> {
+  const trigger = page.getByTestId("profile-identity-bar");
   await expect(trigger).toBeEnabled();
   await trigger.click();
-  await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+  await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
 }
 
 test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
-  test("menu shows 'Signed in as'; self affordance is plain, not-self names the subject", async ({
+  test("sidebar shows 'Signed in as'; self affordance is plain, not-self names the subject", async ({
     browser,
   }) => {
     test.slow(); // local `next dev` compiles the dashboard/household on first hit
@@ -61,15 +61,13 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
     });
 
     // Acting profile is SELF (lowest id / first accessible).
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       OWN_SELF_PROFILE
     );
 
-    // The menu overlay answers "which login am I?".
-    await openProfileMenu(page);
+    // The sidebar footer answers "which login am I?" — beside logout since
+    // #1801, so no overlay has to be opened to read it.
     await expect(page.getByTestId("signed-in-as")).toContainText(E2E_LOGIN_OWN);
-    // Close the popover (outside click) before navigating.
-    await page.keyboard.press("Escape");
 
     // Dashboard weigh-in, acting as SELF → the affordance stays PLAIN (self needs no
     // naming): the save button is just "Log".
@@ -97,9 +95,9 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
     // Switch the ACTING profile to the OTHER (not the login's own) via the #1096
     // switch-to-<id> control, then the dashboard weigh-in NAMES the subject.
     await page.goto("/");
-    await openProfileMenu(page);
+    await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`switch-to-${otherId}`));
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       OWN_OTHER_PROFILE
     );
     const saveOther = page.getByTestId("weight-quick-add-save");
@@ -120,9 +118,9 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
     });
 
     // Act as the OTHER profile (not the login's own).
-    await openProfileMenu(page);
+    await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`switch-to-${otherId}`));
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       OWN_OTHER_PROFILE
     );
 
@@ -165,12 +163,9 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
         { timeout: 20_000 }
       )
       .toBe(true);
-    // Open the profile menu WITHIN the drawer (the desktop aside also carries a
-    // hidden trigger on mobile, so scope every lookup to the drawer).
-    const trigger = drawer.getByTestId("user-menu-trigger");
-    await expect(trigger).toBeEnabled();
-    await trigger.click();
-    await expect(drawer.getByTestId("user-menu-popover")).toBeVisible();
+    // "Signed in as <username>" lives at the drawer's BOTTOM beside logout since
+    // #1801 — no menu to open. Scope to the drawer: the desktop aside renders the
+    // same footer at every width, hidden below `md`.
     await expect(drawer.getByTestId("signed-in-as")).toContainText(
       E2E_LOGIN_OWN
     );

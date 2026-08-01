@@ -1,27 +1,25 @@
 import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
-import RelativeTime from "./RelativeTime";
+import SyncTimestamp from "./integrations/SyncTimestamp";
 
-// Replaces the old per-setup-page "Recent activity" table (IntegrationDebugPanel,
-// retired). Sync history is rendered in exactly ONE place now — Data → Review's
-// "Connected sources" (ConnectedSources), the richer latest-state + expandable-
-// history card with the #674 inserted/updated/unchanged split. Rendering the same
-// events twice was the #221 "one question, one computation" disease at the
-// component layer (the two copies had already drifted — the debug panel still
-// showed the legacy flat Recv/Wrote/Skipped triple), so the setup page keeps only
-// this LINK to the single history, never a second copy (#1212). The link is a real
-// destination, not a dead-end CTA (#1219).
+// The link from a ONE-OFF archive importer's page (Fitbit Takeout) to its entries in
+// Data → Review's chronological Imports feed.
+//
+// It used to serve the recurring providers too, pointing at Review's Connected
+// sources — because #1212 had made Review the single home of sync history and the
+// setup pages kept only a link to it. #1772 inverted that: a recurring provider's page
+// IS its home, so it renders the real history table (SyncHistoryTable) and Review
+// became an inbox that links back here. History still lives in exactly one place per
+// stream; it moved.
+//
+// An archive import is different in kind — a one-off event in a chronological feed,
+// not a recurring stream with a per-provider history — so its page still links out to
+// where that feed lives.
 export default function IntegrationSyncHistoryLink({
   lastSuccessAt,
-  connected,
-  surface = "sources",
 }: {
   lastSuccessAt: string | null;
-  connected: boolean;
-  surface?: "sources" | "imports";
 }) {
-  const destination =
-    surface === "imports" ? "Review’s Imports" : "Review’s Connected sources";
   return (
     <Link
       href="/data?section=review"
@@ -30,25 +28,22 @@ export default function IntegrationSyncHistoryLink({
     >
       <div>
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Sync history
+          Import history
         </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {lastSuccessAt ? (
             <>
-              Last successful sync{" "}
-              <RelativeTime
+              Last successful import{" "}
+              <SyncTimestamp
                 value={lastSuccessAt}
                 className="font-medium text-slate-600 dark:text-slate-300"
+                relativeOnly
               />
-              . See every sync — what it wrote, skipped, or errored — in{" "}
-              {destination}.
+              . See every attempt — what it wrote, skipped, or errored — in
+              Review’s Imports.
             </>
-          ) : surface === "imports" ? (
-            `No successful import yet. Track each attempt — what it wrote, skipped, or errored — in ${destination}.`
-          ) : connected ? (
-            `No successful sync yet. Track each sync — what it wrote, skipped, or errored — in ${destination}.`
           ) : (
-            `Not connected. Once this syncs, follow each run in ${destination}.`
+            "No successful import yet. Track each attempt — what it wrote, skipped, or errored — in Review’s Imports."
           )}
         </p>
       </div>

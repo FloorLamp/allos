@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick, followLink, expectNoClippedContent } from "./helpers";
+import {
+  settledClick,
+  followLink,
+  expectNoClippedContent,
+  expectInView,
+} from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -103,18 +108,26 @@ function resetMultiviewHint(): void {
   }
 }
 
-// Open the profile menu popover reliably past the pre-hydration disable gate (#830):
-// the trigger renders disabled until mounted, so wait for it to enable, then click,
-// then wait for the popover to show.
-async function openProfileMenu(page: Page): Promise<void> {
-  const trigger = page.getByTestId("user-menu-trigger");
+// Open the switcher panel reliably past the pre-hydration disable gate (#830):
+// the identity bar renders disabled until mounted, so wait for it to enable, then
+// click, then wait for the panel to show. Desktop viewport — the phone's top
+// drawer is `profile-switcher-panel-mobile` (see shell.mobile.spec.ts).
+async function openProfileSwitcher(page: Page): Promise<void> {
+  const trigger = page.getByTestId("profile-identity-bar");
   await expect(trigger).toBeEnabled();
   await trigger.click();
-  await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+  await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
+}
+
+// Remove a profile from the view-set. The strip's per-chip × retired with the
+// strip; the ONE control that owns view membership is the panel's eye toggle.
+async function removeFromView(page: Page, profileId: number): Promise<void> {
+  await openProfileSwitcher(page);
+  await settledClick(page, page.getByTestId(`view-toggle-${profileId}`));
 }
 
 test.describe("Multi-profile viewing (issue #1096)", () => {
-  test("toggle a second profile into view → merged Upcoming with subject chips, cross-profile confirm, strip toggles", async ({
+  test("toggle a second profile into view → merged Upcoming with subject chips, cross-profile confirm, bar toggles", async ({
     browser,
   }) => {
     // Local `next dev` compiles /upcoming on first hit.
@@ -127,31 +140,36 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     });
 
     // Acting profile is the owner (lowest id / first accessible).
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       MULTI_OWNER_PROFILE
     );
 
     await page.goto("/upcoming");
 
-    // Single-view default: only the owner's dose, no subject chips, no view strip.
+    // Single-view default: only the owner's dose, no subject chips, one avatar
+    // on the identity bar.
     await expect(
       page.getByText(MULTI_OWNER_DOSE, { exact: false })
     ).toBeVisible();
     await expect(
       page.getByText(MULTI_SHARED_DOSE, { exact: false })
     ).toHaveCount(0);
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expectInView(page, 1);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
 
-    // Toggle the shared profile INTO the view via the profile menu's eye toggle.
-    await openProfileMenu(page);
+    // Toggle the shared profile INTO the view via the switcher panel's eye toggle.
+    await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
 
-    // Multi-view now: the persistent strip appears, the shared profile's chip shows,
-    // and the shared profile's due dose is merged in with a subject chip on ITS row
-    // (the display rule: names show iff >1 profile in view).
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
-    await expect(page.getByTestId(`view-chip-${sharedId}`)).toBeVisible();
+    // Multi-view now: the bar stacks a second avatar, and the shared profile's due
+    // dose is merged in with a subject chip on ITS row (the display rule: names
+    // show iff >1 profile in view).
+    await expectInView(page, 2);
+    await expect(
+      page
+        .getByTestId("profile-identity-bar")
+        .getByTestId(`identity-avatar-${sharedId}`)
+    ).toBeVisible();
     const sharedRow = page
       .locator('[data-testid^="upcoming-item-"]')
       .filter({ hasText: MULTI_SHARED_DOSE });
@@ -170,30 +188,30 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
       page.getByText(MULTI_SHARED_DOSE, { exact: false })
     ).toHaveCount(0);
     // Acting profile is unchanged by a cross-profile confirm.
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       MULTI_OWNER_PROFILE
     );
 
-    // Remove the shared profile from the view via the strip's × — the strip and
-    // all subject chips disappear (back to single-view).
-    await settledClick(page, page.getByTestId(`view-chip-remove-${sharedId}`));
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    // Remove the shared profile from the view via the panel's eye — the stacked
+    // avatar and all subject chips disappear (back to single-view).
+    await removeFromView(page, sharedId);
+    await expectInView(page, 1);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
 
     await page.context().close();
   });
 
-  // Add the shared profile to the view via the profile menu (shared setup for the
+  // Add the shared profile to the view via the switcher panel (shared setup for the
   // presentation tests below). The view-set persists on the session, so a fresh
-  // navigation reloads multi-view with the profile menu popover closed — no stale
-  // overlay to intercept a later click. Returns after the multi-view strip is showing.
+  // navigation reloads multi-view with the panel closed — no stale overlay to
+  // intercept a later click. Returns once the bar shows both profiles.
   async function enterMultiView(page: Page, sharedId: number): Promise<void> {
     await page.goto("/upcoming");
-    await openProfileMenu(page);
+    await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
     await page.goto("/upcoming");
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
   }
 
   test("chips only on non-acting rows + phone-width title integrity (issue #1327 fix 1)", async ({
@@ -247,7 +265,7 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     await page.context().close();
   });
 
-  test("the view strip reads as bar content at 390px: no card frame, chips uncipped (issue #1539)", async ({
+  test("the identity bar reads as bar content at 390px and names both in-view profiles (#1801)", async ({
     browser,
   }) => {
     test.slow();
@@ -261,62 +279,52 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/upcoming");
 
-    const strip = page.getByTestId("profile-view-strip");
-    await expect(strip).toBeVisible();
-    await expect(page.getByTestId(`view-chip-${ownerId}`)).toBeVisible();
-    await expect(page.getByTestId(`view-chip-${sharedId}`)).toBeVisible();
+    // The phone bar carries the identity, not the wordmark (#1801): both in-view
+    // profiles are stacked, acting FIRST and ringed. This is the assertion the
+    // retired view strip used to make about its chips.
+    const bar = page.getByTestId("profile-identity-bar-mobile");
+    await expect(bar).toBeVisible();
+    await expect(bar.getByTestId(`identity-avatar-${ownerId}`)).toBeVisible();
+    await expect(bar.getByTestId(`identity-avatar-${sharedId}`)).toBeVisible();
+    await expect(bar.getByTestId(`identity-avatar-${ownerId}`)).toHaveAttribute(
+      "data-acting",
+      "true"
+    );
+    await expect(bar.getByTestId("identity-names")).toContainText(
+      `${MULTI_OWNER_PROFILE}, ${MULTI_SHARED_PROFILE}`
+    );
 
-    // No card frame below `md`: the band the strip lives in is the surface, so the
-    // strip itself carries neither border nor background of its own. Two
-    // translucent layers used to stack here and page content bled through.
-    const frame = await strip.evaluate((el) => {
+    // Bar CONTENT, not a card floating inside a bar: the top bar is the surface,
+    // so the identity control draws no frame and no background of its own. Two
+    // translucent layers stacked here in the strip era and page content bled
+    // through the gaps (#1539's finding, inherited by its replacement).
+    const frame = await bar.evaluate((el) => {
       const s = getComputedStyle(el);
       return { border: s.borderTopWidth, bg: s.backgroundColor };
     });
-    expect(frame.border, "the strip still draws a card border at 390px").toBe(
-      "0px"
-    );
-    expect(frame.bg, "the strip still tints itself at 390px").toBe(
-      "rgba(0, 0, 0, 0)"
-    );
+    expect(frame.border, "the bar draws a card border at 390px").toBe("0px");
+    expect(frame.bg, "the bar tints itself at 390px").toBe("rgba(0, 0, 0, 0)");
 
-    // The label is not PAINTED — it used to spend 41% of the row restating what the
-    // chips beside it already say — but it stays in the accessibility tree, so a
-    // screen reader still hears it.
-    const label = await page.getByTestId("view-strip-label").boundingBox();
-    expect(label, "the label should still be in the tree").not.toBeNull();
-    expect(label!.width, "the label is still painted at 390px").toBeLessThan(4);
-    await expect(strip).toContainText("Viewing 2 profiles");
-
-    // …so the chips now start at the strip's left edge (past only the IconUsers and
-    // its gap) instead of 146px into a 356px row. Containment, not a pixel budget
-    // (#868): the assertion is "the chips get the row", not "the row is N px".
-    const stripBox = await strip.boundingBox();
-    const firstChip = await page
-      .getByTestId(`view-chip-${ownerId}`)
-      .boundingBox();
-    expect(stripBox, "the strip should be laid out").not.toBeNull();
-    expect(firstChip, "the first chip should be laid out").not.toBeNull();
-    expect(
-      firstChip!.x - stripBox!.x,
-      "the label is still pushing the chips right"
-    ).toBeLessThan(40);
-
-    // The strip itself is a working overflow-x:auto container that fits the
-    // viewport — the blessed element-level clip check (#1063).
+    // Avatars have a FIXED footprint, so a long name costs nothing: the name line
+    // truncates inside the bar instead of pushing the stack off the row.
+    const barBox = await bar.boundingBox();
+    expect(barBox, "the bar should be laid out").not.toBeNull();
+    expect(barBox!.width, "the bar overflows a 390px row").toBeLessThan(390);
     await expectNoClippedContent(page);
 
-    // Desktop is out of scope and stays a card in the reading column.
+    // Desktop keeps its own mount at the TOP of the sidebar — same component, same
+    // acting-first ordering, framed like the sidebar control it is.
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/upcoming");
-    const desktopFrame = await page
-      .getByTestId("profile-view-strip")
-      .evaluate((el) => getComputedStyle(el).borderTopWidth);
+    const desktopBar = page.getByTestId("profile-identity-bar");
+    await expect(desktopBar).toBeVisible();
+    await expect(
+      desktopBar.getByTestId(`identity-avatar-${sharedId}`)
+    ).toBeVisible();
+    const desktopFrame = await desktopBar.evaluate(
+      (el) => getComputedStyle(el).borderTopWidth
+    );
     expect(desktopFrame).not.toBe("0px");
-    const desktopLabel = await page
-      .getByTestId("view-strip-label")
-      .boundingBox();
-    expect(desktopLabel!.width).toBeGreaterThan(40);
 
     await page.context().close();
   });
@@ -436,19 +444,19 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
     await expect(
       page.getByText(MULTI_SHARED_CONDITION, { exact: false })
     ).toHaveCount(0);
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expectInView(page, 1);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
 
     // Toggle the shared profile into view.
-    const trigger = page.getByTestId("user-menu-trigger");
+    const trigger = page.getByTestId("profile-identity-bar");
     await expect(trigger).toBeEnabled();
     await trigger.click();
-    await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
 
     // Multi view: the strip appears, the shared condition merges in with a subject chip
     // on ITS row, and the acting (owner) row never carries a chip.
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
     await expect(
       page.getByText(MULTI_SHARED_CONDITION, { exact: false })
     ).toBeVisible();
@@ -485,13 +493,13 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
     ).toBeVisible();
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
 
-    const trigger = page.getByTestId("user-menu-trigger");
+    const trigger = page.getByTestId("profile-identity-bar");
     await expect(trigger).toBeEnabled();
     await trigger.click();
-    await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
 
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
     // The shared allergy's row carries the shared subject chip; the owner never does.
     const sharedRow = page
       .locator("tr")
@@ -517,16 +525,16 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
     });
 
     await page.goto("/records/care/overview");
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expectInView(page, 1);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
 
-    const trigger = page.getByTestId("user-menu-trigger");
+    const trigger = page.getByTestId("profile-identity-bar");
     await expect(trigger).toBeEnabled();
     await trigger.click();
-    await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
 
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
     await expect(
       page.getByText(MULTI_SHARED_GOAL, { exact: false })
     ).toBeVisible();
@@ -614,13 +622,13 @@ test.describe("Multi-view Training Journal (issue #1330)", () => {
         .filter({ hasText: MULTI_OWNER_ACTIVITY_B })
     ).toBeVisible();
     await expect(page.getByText(MULTI_SHARED_ACTIVITY)).toHaveCount(0);
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expectInView(page, 1);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
 
     // Toggle the shared profile into view via the profile menu.
-    await openProfileMenu(page);
+    await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
 
     // Multi view: the merged feed now carries the shared member's card WITH a subject
     // chip on ITS card; the acting (owner) cards never carry a chip.
@@ -677,9 +685,9 @@ test.describe("Multi-view Training Journal (issue #1330)", () => {
 
     // Enter multi-view, then open the Journal.
     await page.goto("/training");
-    await openProfileMenu(page);
+    await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
     await page.goto("/training");
 
     const sharedCard = page
@@ -738,11 +746,11 @@ async function enterTimelineMultiView(
   westId: number
 ): Promise<void> {
   await page.goto("/timeline");
-  await openProfileMenu(page);
+  await openProfileSwitcher(page);
   await settledClick(page, page.getByTestId(`view-toggle-${westId}`));
-  await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+  await expectInView(page, 2);
   await page.goto("/timeline");
-  await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+  await expectInView(page, 2);
 }
 
 test.describe("Multi-view Timeline divergent-day (issue #1329)", () => {
@@ -757,7 +765,7 @@ test.describe("Multi-view Timeline divergent-day (issue #1329)", () => {
     });
 
     // Acting profile is EAST (lowest id / first accessible).
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       TL_EAST_PROFILE
     );
 
@@ -769,7 +777,7 @@ test.describe("Multi-view Timeline divergent-day (issue #1329)", () => {
     await expect(
       page.getByText(TL_WEST_ACTIVITY, { exact: false })
     ).toHaveCount(0);
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expectInView(page, 1);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
     await expect(
       page.locator('[data-testid^="timeline-daymark-"]')
@@ -868,12 +876,12 @@ test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
     page: Page,
     sharedId: number
   ): Promise<void> {
-    const trigger = page.getByTestId("user-menu-trigger");
+    const trigger = page.getByTestId("profile-identity-bar");
     await expect(trigger).toBeEnabled();
     await trigger.click();
-    await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
   }
 
   test("Visits (Past encounters): single-view no chip; multi-view chips the non-acting visit row only", async ({
@@ -895,7 +903,7 @@ test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
     await expect(
       page.getByText(MULTI_SHARED_VISIT, { exact: false })
     ).toHaveCount(0);
-    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expectInView(page, 1);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
 
     await toggleSharedIntoView(page, sharedId);
@@ -941,7 +949,7 @@ test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
     // The view-set persists on the session — re-navigate for a deterministic reload
     // (details reset to collapsed), then expand once so the open state is unambiguous.
     await page.goto("/records/history/immunizations");
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
     await page
       .locator("summary")
       .filter({ hasText: "All recorded doses" })
@@ -985,9 +993,9 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
   }
 
   async function toggleIntoView(page: Page, id: number): Promise<void> {
-    await openProfileMenu(page);
+    await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${id}`));
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
   }
 
   test("single-view renders ONE board with no subject header (byte-identical structure)", async ({
@@ -1030,7 +1038,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
     await toggleIntoView(page, roId);
     // The view-set persists on the session — re-navigate for a deterministic reload.
     await page.goto("/medications");
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
 
     // The merged "Today across everyone" strip leads the page.
     await expect(page.getByTestId("med-today-everyone")).toBeVisible();
@@ -1086,9 +1094,9 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
   }
 
   async function toggleIntoView(page: Page, id: number): Promise<void> {
-    await openProfileMenu(page);
+    await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${id}`));
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
   }
 
   test("single-view: only the acting member's readings, no Profile column, no chip", async ({
@@ -1132,7 +1140,7 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
     await toggleIntoView(page, roId);
     // The view-set persists on the session — re-navigate for a deterministic reload.
     await page.goto("/results/biomarkers");
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
 
     // The leading Profile column appears in multi-view.
     await expect(
@@ -1154,7 +1162,7 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
     // Filter to the SHARED family: BOTH members' Vitamin D rows survive — the family
     // dedup never collapsed the two people into one series (per-member partitions).
     await page.goto("/results/biomarkers?q=vitamin+d");
-    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expectInView(page, 2);
     await expect(
       page.getByRole("link", { name: MVBIO_SHARED_ANALYTE, exact: true })
     ).toHaveCount(2);

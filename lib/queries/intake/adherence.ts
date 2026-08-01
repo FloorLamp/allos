@@ -1232,6 +1232,22 @@ export function supplementExists(
     .get(supplementId, profileId);
 }
 
+// One item's declared obligation, or null when the item isn't this profile's (#1779).
+// Profile-scoped, so a forged item id from a stale callback token reads nothing. Used
+// by the message reconcile to decide whether a ⤓ May suggestion still has anything to
+// offer — the same already-`may` refusal the tap's own typed outcome would answer with.
+export function getIntakeItemObligation(
+  profileId: number,
+  itemId: number
+): string | null {
+  const row = db
+    .prepare(
+      "SELECT obligation FROM intake_items WHERE id = ? AND profile_id = ?"
+    )
+    .get(itemId, profileId) as { obligation: string | null } | undefined;
+  return row?.obligation ?? null;
+}
+
 // The escalate_chat_id (caregiver chat) configured on one of the profile's
 // intake items, or null. Used to AUTHORIZE an escalation-button tap (issue #233):
 // a tap from this chat may confirm/ack on the profile's behalf. Profile-scoped, so

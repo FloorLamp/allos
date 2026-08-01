@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import { IconCheck } from "@tabler/icons-react";
 import type { MobilityMove } from "@/lib/mobility-moves";
 import { regionsForMove } from "@/lib/mobility-coverage";
@@ -52,8 +51,6 @@ export default function MobilityLogBar({
   const [duration, setDuration] = useState(
     initialDurationMin != null ? String(initialDurationMin) : ""
   );
-  const [, startTransition] = useTransition();
-  const router = useRouter();
   const toast = useToast();
 
   const sections = useMemo(() => {
@@ -98,7 +95,6 @@ export default function MobilityLogBar({
         tone: "error",
       });
     }
-    startTransition(() => router.refresh());
   }
 
   async function saveDuration(raw: string) {
@@ -113,7 +109,6 @@ export default function MobilityLogBar({
     } else {
       toast(res.error || "Couldn't save the duration.", { tone: "error" });
     }
-    startTransition(() => router.refresh());
   }
 
   const count = selected.size;

@@ -20,21 +20,19 @@ import {
   linkItemToPool,
   unlinkItemFromPool,
   poolMembers,
-  poolIdsForProfiles,
-  listSharedSupplies,
+  listLinkableSupplies,
+  getItemProductFacts,
   getSharedSupply,
+  supplyOption,
   type SharedSupplyFields,
 } from "@/lib/queries/intake";
 import { parseQuantityOnHand } from "@/lib/refill";
+import { poolSeedFromItem, type SupplyOption } from "@/lib/supply-product";
 
 export interface SupplyResult {
   ok: boolean;
   error?: string;
-  supply?: {
-    id: number;
-    name: string;
-    strength: string | null;
-  } | null;
+  supply?: SupplyOption | null;
 }
 
 const ok = (supply?: SupplyResult["supply"]): SupplyResult =>
@@ -98,8 +96,15 @@ async function requireItemWriteAccess(itemId: number): Promise<number> {
   return row.profile_id;
 }
 
-function fields(formData: FormData): SharedSupplyFields | null {
-  const name = String(formData.get("name") ?? "").trim();
+// `seed` carries the product facts inherited from the item a pool is being created FROM
+// (#1705). A field the form POSTS always wins — including one the user deliberately
+// cleared — and the seed fills only what the form OMITS, which is exactly the rule the
+// on-hand count already follows.
+function fields(
+  formData: FormData,
+  seed?: { name: string; strength: string | null } | null
+): SharedSupplyFields | null {
+  const name = String(formData.get("name") ?? "").trim() || (seed?.name ?? "");
   if (!name) return null;
   const text = (k: string): string | null => {
     const v = String(formData.get(k) ?? "").trim();
@@ -109,7 +114,9 @@ function fields(formData: FormData): SharedSupplyFields | null {
   const days = rawDays === "" ? null : Number(rawDays);
   return {
     name,
-    strength: text("strength"),
+    strength: formData.has("strength")
+      ? text("strength")
+      : (seed?.strength ?? null),
     form: text("form"),
     lowSupplyDays:
       days != null && Number.isFinite(days) && days > 0
@@ -122,47 +129,51 @@ function fields(formData: FormData): SharedSupplyFields | null {
 // Read-only: the pools the caller may link an item to. Scoped through the caller's
 // accessible profiles (requireScope) — a member sees the bottles their OWN people
 // already draw from — plus ORPHANED pools, which name nobody and so leak nothing.
-export async function listSharedSupplyOptions(): Promise<
-  { id: number; name: string; strength: string | null }[]
-> {
+// `form` rides along since #1705: the picker no longer only LINKS an existing item, it
+// also seeds a NEW one, and the bottle's form is part of what it seeds.
+export async function listSharedSupplyOptions(): Promise<SupplyOption[]> {
   const scope = await requireScope();
-  const reachable = new Set(poolIdsForProfiles(scope.ids));
-  return listSharedSupplies()
-    .filter((s) => reachable.has(s.id) || poolMembers(s.id).length === 0)
-    .map((s) => ({ id: s.id, name: s.name, strength: s.strength }));
+  return listLinkableSupplies(scope.ids).map(supplyOption);
 }
 
 // Create a shared bottle. Creating an EMPTY cabinet entry touches nobody's data, so the
 // ordinary active-profile write gate is the right one; when `item_id` is posted the
 // creating item is linked in the same step and its own gate applies too — that is the
-// "create a pool from the item's current on-hand" flow, which migrates the item's count
-// INTO the pool once, one-way and explicitly.
+// "create a pool from the item" flow.
+//
+// It INHERITS the item's product identity (#1705), not just its count: name and strength
+// (the item's first active dose amount — where a strength is actually typed) seed the
+// bottle so it is recognisably the same substance as the item drawing on it, instead of
+// a retyped near-miss. Anything the form posts still wins. The count seeding is unchanged
+// — a one-way, explicit migration of the item's on-hand INTO the pool — and from here on
+// the pool is the authority for both.
 export async function createPoolAction(
   formData: FormData
 ): Promise<SupplyResult> {
   await requireWriteAccess();
-  const f = fields(formData);
-  if (!f) return fail("Enter a name for the shared bottle.");
   const itemId = Number(formData.get("item_id") ?? 0);
-  let seed = parseQuantityOnHand(formData.get("quantity_on_hand"));
+  let quantity = parseQuantityOnHand(formData.get("quantity_on_hand"));
   let itemProfileId = 0;
+  let productSeed: { name: string; strength: string | null } | null = null;
   if (itemId) {
     itemProfileId = await requireItemWriteAccess(itemId);
     if (!itemProfileId) return fail("Couldn't find that item.");
-    if (!formData.has("quantity_on_hand")) {
-      const row = db
-        .prepare(
-          "SELECT quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
-        )
-        .get(itemId, itemProfileId) as
-        { quantity_on_hand: number | null } | undefined;
-      seed = row?.quantity_on_hand ?? null;
-    }
+    const facts = getItemProductFacts(itemProfileId, itemId);
+    if (!facts) return fail("Couldn't find that item.");
+    productSeed = poolSeedFromItem(facts);
+    if (!formData.has("quantity_on_hand")) quantity = facts.quantityOnHand;
   }
-  const supplyId = createSharedSupply(f, seed);
+  const f = fields(formData, productSeed);
+  if (!f) return fail("Enter a name for the shared bottle.");
+  const supplyId = createSharedSupply(f, quantity);
   if (itemId && itemProfileId) linkItemToPool(itemProfileId, itemId, supplyId);
   revalidateSupplies();
-  return ok({ id: supplyId, name: f.name, strength: f.strength });
+  return ok({
+    id: supplyId,
+    name: f.name,
+    strength: f.strength,
+    form: f.form,
+  });
 }
 
 // Edit a shared bottle: name/strength/form/threshold/notes plus the counter, which goes
@@ -228,11 +239,7 @@ export async function linkItemAction(
   if (!supply) return fail("Couldn't find that shared bottle.");
   linkItemToPool(profileId, itemId, supplyId);
   revalidateSupplies();
-  return ok({
-    id: supply.id,
-    name: supply.name,
-    strength: supply.strength,
-  });
+  return ok(supplyOption(supply));
 }
 
 export async function unlinkItemAction(

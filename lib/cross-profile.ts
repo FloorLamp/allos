@@ -61,6 +61,13 @@ export const CROSS_PROFILE_SQL_MODULES: readonly string[] = [
   // deduped / age-derived Tier-1 lists stay loop-composed (readForProfiles) and never
   // reach the set-based shape, so they don't register here.
   "lib/queries/multi-view-lists.ts",
+  // #1787: the Patient portals status card's run-report reader. `portal_run_reports`
+  // carries no profile_id and cannot (#1756), so the account's VISIBILITY is decided by
+  // whether any of its portal_identities bindings lands on a profile the viewer can
+  // reach — a bound `profile_id IN (…)` over the accessible set the page resolved at the
+  // auth boundary, which is the same authority the card's `identities` list already
+  // filters by. One reader, its own module, so the registry entry stays reviewable.
+  "lib/portal-visibility.ts",
 ];
 
 // True when a repo-relative path is a registered cross-profile module. Suffix match

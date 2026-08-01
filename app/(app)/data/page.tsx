@@ -13,6 +13,7 @@ import DataExport from "@/components/DataExport";
 import ReviewInbox from "@/components/ReviewInbox";
 import CoverageSection from "@/app/(app)/data/CoverageSection";
 import { getImportJobs } from "@/app/(app)/data/actions";
+import { listDocumentTombstones } from "@/lib/document-tombstones";
 import {
   getImportDocumentsFeed,
   getConnectedSources,
@@ -93,6 +94,9 @@ export default async function DataPage(
         sources={getConnectedSources(profile.id)}
         // The one-off "Imports" feed (documents + archives + paste jobs) behind Review.
         feed={getImportDocumentsFeed(profile.id)}
+        // Documents this profile deleted, whose re-acquisition an acquirer is refused
+        // (#1777) — rendered so the standing block is findable and reversible.
+        blockedDocuments={listDocumentTombstones(profile.id)}
         // The profile's own name(s), for the document provenance-mismatch flag.
         knownNames={[getUserFullName(profile.id), profile.name]}
         activityClusters={activityClusters}

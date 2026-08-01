@@ -404,6 +404,44 @@ export function setZone2WeeklyTargetMin(profileId: number, min: number): void {
   );
 }
 
+// ---- Daily step target (issue #1723 part 2) — profile scope, no migration --------
+// The DECLARED daily step expectation. Unset (null) is the default and the honest
+// resting state: nothing counts steps against a number the user never chose, and no
+// code path writes this without a user action (the obligation-is-declared-only rule).
+//
+// Stored here rather than in `frequency_targets` because that table's rows are
+// weekly-SESSION shaped (`per_week` counts days a thing happened) and cannot express a
+// daily value sum; a new scope kind would have needed a CHECK-enum rebuild to model a
+// shape it still could not carry. A single declared scalar is what profile_settings is
+// for — least machinery, no schema.
+//
+// `should`-tier semantics (#1723): counted, never escalated. A 0 clears the target.
+export const STEPS_TARGET_MAX = 100000;
+
+export function getStepsDailyTarget(profileId: number): number | null {
+  const raw = getProfileSetting(profileId, "steps_daily_target");
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(STEPS_TARGET_MAX, Math.round(n));
+}
+
+// Set, or clear with null/0 — clearing is a first-class state, not an error.
+export function setStepsDailyTarget(
+  profileId: number,
+  steps: number | null
+): void {
+  if (steps == null || !Number.isFinite(steps) || steps <= 0) {
+    deleteProfileSetting(profileId, "steps_daily_target");
+    return;
+  }
+  setProfileSetting(
+    profileId,
+    "steps_daily_target",
+    String(Math.min(STEPS_TARGET_MAX, Math.round(steps)))
+  );
+}
+
 // ---- Fitness-check retest cadence (issue #834) — profile scope, no migration ----
 // How many days between guided Fitness checks before the coaching-tier "check due" nudge
 // surfaces (~quarterly default). A generic profile_settings KV — no schema change.

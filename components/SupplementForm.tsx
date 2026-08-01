@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import Combobox from "@/components/Combobox";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
+import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import RxNormAffordance from "@/components/intake/RxNormAffordance";
@@ -25,6 +25,11 @@ import RefillTracking from "@/components/intake/RefillTracking";
 import IntakeNotesField from "@/components/intake/IntakeNotesField";
 import { useIntakeRxcui } from "@/components/intake/useIntakeRxcui";
 import { serializeRxcuiIngredients } from "@/lib/rxnorm";
+import {
+  applyProductSeed,
+  itemSeedFromPool,
+  type SupplyOption,
+} from "@/lib/supply-product";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { IntakeObligation } from "@/lib/types";
@@ -49,7 +54,6 @@ import type {
   SupplementPair,
 } from "@/lib/types";
 
-const CATALOG_NAMES = SUPPLEMENT_CATALOG.map((c) => c.name);
 const CATALOG_BY_NAME = new Map(
   SUPPLEMENT_CATALOG.map((c) => [c.name.toLowerCase(), c])
 );
@@ -72,6 +76,7 @@ export default function SupplementForm({
   pairs: initialPairs = [],
   onDone,
   trainingRestricted = false,
+  initialSupply = null,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: Supplement;
@@ -82,18 +87,25 @@ export default function SupplementForm({
   pairs?: SupplementPair[];
   onDone?: () => void;
   trainingRestricted?: boolean;
+  // Opened FROM a shared bottle (#1705) — the cabinet's "Add for another person". The
+  // product fields are seeded from it and it links on save.
+  initialSupply?: SupplyOption | null;
 }) {
   const s = supplement;
   const conditionOptions = availableConditions(
     trainingRestricted,
     s?.condition
   );
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const fid = s?.id ?? "new";
 
-  const [name, setName] = useState(s?.name ?? "");
+  // Seeded FROM the bottle (#1705): the pool is authoritative for the product, so its
+  // name and strength prefill the fields the item form owns the inputs for. Editable —
+  // the DOSE is this person's, so the seed is a starting point, never a lock.
+  const supplySeed = initialSupply ? itemSeedFromPool(initialSupply) : null;
+  const seededRef = useRef(supplySeed);
+  const [name, setName] = useState(s?.name ?? supplySeed?.name ?? "");
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [situation, setSituation] = useState(s?.situation ?? "");
@@ -104,6 +116,11 @@ export default function SupplementForm({
     s?.pause_situation ?? ""
   );
   const situationOptions = useSituationOptions();
+  // The supplement name combobox source. Its ORDER is a per-PROFILE fact (#1677) — this
+  // shelf first (retired items included), then a commonality head, then the rest of the
+  // catalog — so it arrives through IntakeOptionsContext instead of being the catalog's
+  // own category grouping, whose first eight rows were all vitamins.
+  const catalogOptions = useIntakeOptions();
   const confirm = useConfirm();
   const [brand, setBrand] = useState(s?.brand ?? "");
   const [critical, setCritical] = useState(s?.critical === 1);
@@ -119,8 +136,33 @@ export default function SupplementForm({
           start_date: d.start_date ?? "",
           end_date: d.end_date ?? "",
         }))
-      : [emptyDose()]
+      : [{ ...emptyDose(), amount: supplySeed?.amount ?? "" }]
   );
+
+  // A later pick in the form's own bottle selector re-seeds the same two fields, and
+  // only them: a value the user has typed is never overwritten (applyProductSeed).
+  function onPickSupply(supply: SupplyOption | null): void {
+    const seed = supply ? itemSeedFromPool(supply) : null;
+    const previous = seededRef.current;
+    setName((current) =>
+      applyProductSeed(current, previous?.name ?? null, seed?.name ?? "")
+    );
+    setDoses((ds) =>
+      ds.map((d, i) =>
+        i === 0
+          ? {
+              ...d,
+              amount: applyProductSeed(
+                d.amount,
+                previous?.amount ?? null,
+                seed?.amount ?? ""
+              ),
+            }
+          : d
+      )
+    );
+    seededRef.current = seed;
+  }
 
   // Item-level calendar (#1602). Seeded from the stored row so an edit round-trips
   // rather than silently resetting a weekly medication to daily.
@@ -267,7 +309,6 @@ export default function SupplementForm({
       setCritical(false);
       setDoses([emptyDose()]);
       setPairRows([]);
-      router.refresh();
     }
   }
 
@@ -350,7 +391,12 @@ export default function SupplementForm({
         setCritical={setCritical}
       />
 
-      <RefillTracking fid={fid} supplement={s} />
+      <RefillTracking
+        fid={fid}
+        supplement={s}
+        initialSupply={initialSupply}
+        onPickSupply={onPickSupply}
+      />
 
       <KeepApartPairsEditor
         pairRows={pairRows}
@@ -390,7 +436,7 @@ export default function SupplementForm({
             rx.onNameChange();
           }}
           onPick={onPickName}
-          options={CATALOG_NAMES}
+          options={catalogOptions.supplements}
           placeholder="e.g. Vitamin D3"
         />
         <RxNormAffordance name={name} rx={rx} />
@@ -490,6 +536,9 @@ export default function SupplementForm({
       ) : (
         <details
           data-testid="supplement-more-options"
+          // Opened FROM a bottle (#1705): the shared-supply control lives inside this
+          // disclosure, and a link the user never sees is a link they can't correct.
+          open={initialSupply != null}
           className="group sm:col-span-2"
         >
           <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750">

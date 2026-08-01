@@ -1,9 +1,10 @@
 // PURE TIER — the Telegram food-log nudge renderer + callback tokens (issues #682, #1016,
-// #1073, #1075). DB-free: the gather (lib/notifications/food.ts) hands ranked KEYS + slot-
-// scoped counts + day totals here; this pins that the top-N ranked keys become quick-log
+// #1073, #1075, #1807). DB-free: the gather (lib/notifications/food.ts) hands ranked KEYS +
+// slot-scoped counts + day totals here; this pins that the top-N ranked keys become quick-log
 // buttons in order, the button "(n)" suffix is SLOT-scoped while the tally is the DAY total
-// (labeled "Today:"), the reserved __protein__ key renders the "+Xg protein" button, and the
-// progressive-expansion window + "Show more" behave per visibleCount.
+// (labeled "Today:"), the reserved __protein__ key renders the "+Xg protein" button, the
+// progressive-expansion window + "Show more"/"Show less" behave per visibleCount, and the
+// keyboard carries no deep link at all (#1807).
 
 import { describe, it, expect } from "vitest";
 import {
@@ -11,6 +12,7 @@ import {
   foodLogCallbackData,
   foodProteinCallbackData,
   foodMoreCallbackData,
+  foodLessCallbackData,
   foodOptInCallbackData,
   countVisibleFoodButtons,
   FOOD_NUDGE_BUTTON_COUNT,
@@ -151,30 +153,22 @@ describe("renderFoodNudge", () => {
     expect(msg.body).not.toContain("✓");
   });
 
-  it("adds a More… deep link only when a base URL is configured", () => {
-    const withBase = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map(),
-      new Map(),
-      {
-        deepLinkBase: "https://allos.example.com/",
-      }
-    );
-    const more = (withBase.actions ?? []).find((a) => a.url);
-    expect(more?.url).toBe("https://allos.example.com/nutrition");
-
-    const noBase = renderFoodNudge(
-      1,
-      "Morning",
-      DATE,
-      RANKED,
-      new Map(),
-      new Map()
-    );
-    expect((noBase.actions ?? []).some((a) => a.url)).toBe(false);
+  // #1807 pin: the nudge carries NO url button at all. The renderer no longer takes a
+  // deep-link base, so there is no configuration under which one can come back — the
+  // keyboard is the whole surface, and the long tail is reached with "Show more".
+  it("renders no deep-link button, compact or fully expanded", () => {
+    for (const visibleCount of [undefined, RANKED.length]) {
+      const msg = renderFoodNudge(
+        1,
+        "Morning",
+        DATE,
+        RANKED,
+        new Map(),
+        new Map(),
+        { visibleCount }
+      );
+      expect((msg.actions ?? []).some((a) => a.url)).toBe(false);
+    }
   });
 
   it("only exposes the three non-bedtime windows", () => {
@@ -325,9 +319,82 @@ describe("renderFoodNudge progressive expansion (#1075)", () => {
   });
 });
 
+// ---- #1807: the collapse direction, deferred from #1075 ----
+function expandControls(msg: ReturnType<typeof renderFoodNudge>) {
+  return (msg.actions ?? []).filter(
+    (a) => a.data?.startsWith("foodmore:") || a.data?.startsWith("foodless:")
+  );
+}
+
+describe("renderFoodNudge 'Show less' (#1807)", () => {
+  it("is absent from the default compact send", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map()
+    );
+    expect(
+      (msg.actions ?? []).some((a) => a.data?.startsWith("foodless:"))
+    ).toBe(false);
+  });
+
+  it("appears once expanded past the default, sharing the Show more row", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map(),
+      { visibleCount: FOOD_NUDGE_BUTTON_COUNT * 2 }
+    );
+    const controls = expandControls(msg);
+    expect(controls.map((a) => a.label)).toEqual([
+      "➕ Show more",
+      "➖ Show less",
+    ]);
+    // One shared row key → Telegram renders them side by side (messageKeyboard merges
+    // consecutive actions carrying the same `row`).
+    expect(new Set(controls.map((a) => a.row)).size).toBe(1);
+    expect(controls[1].data).toBe(foodLessCallbackData(1, "Morning", DATE));
+  });
+
+  it("stands alone at full expansion, where Show more has dropped", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map(),
+      { visibleCount: RANKED.length }
+    );
+    expect(expandControls(msg).map((a) => a.label)).toEqual(["➖ Show less"]);
+  });
+
+  // The button is offered against what is RENDERED, not what was requested: a short
+  // ranked list can't produce a collapse button whose tap would change nothing.
+  it("is absent when the request exceeds the ranked list but the render is still compact", () => {
+    const short = RANKED.slice(0, 4);
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      short,
+      new Map(),
+      new Map(),
+      { visibleCount: 12 }
+    );
+    expect(expandControls(msg)).toEqual([]);
+  });
+});
+
 // ---- #1075: stateless count-from-keyboard derivation ----
 describe("countVisibleFoodButtons (#1075)", () => {
-  it("counts food + protein buttons, ignoring the Show more, deep link, and non-buttons", () => {
+  it("counts food + protein buttons, ignoring both view controls", () => {
     const keyboard = [
       [
         {
@@ -347,10 +414,14 @@ describe("countVisibleFoodButtons (#1075)", () => {
           text: "➕ Show more",
           callback_data: "foodmore:1:Morning:2026-07-13",
         },
+        {
+          text: "➖ Show less",
+          callback_data: "foodless:1:Morning:2026-07-13",
+        },
       ],
-      [{ text: "＋ More…", url: "https://allos.example.com/nutrition" }],
     ];
-    // 2 food buttons + 1 protein button = 3; the show-more, deep-link (no callback_data) ignored.
+    // 2 food buttons + 1 protein button = 3; neither expansion control is counted, so a
+    // collapse steps down from what's loggable rather than from the row it sits in.
     expect(countVisibleFoodButtons(keyboard)).toBe(3);
   });
 
@@ -392,6 +463,11 @@ describe("token builders", () => {
   it("foodMoreCallbackData encodes profile/window/date", () => {
     expect(foodMoreCallbackData(7, "Evening", DATE)).toBe(
       `foodmore:7:Evening:${DATE}`
+    );
+  });
+  it("foodLessCallbackData mirrors it under its own prefix (#1807)", () => {
+    expect(foodLessCallbackData(7, "Evening", DATE)).toBe(
+      `foodless:7:Evening:${DATE}`
     );
   });
   it("foodOptInCallbackData encodes the choice", () => {

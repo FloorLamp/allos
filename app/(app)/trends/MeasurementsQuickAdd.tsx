@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -100,7 +100,6 @@ export default function MeasurementsQuickAdd({
   metric,
   presentation = "card",
 }: MeasurementsQuickAddProps) {
-  const router = useRouter();
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
@@ -258,7 +257,6 @@ export default function MeasurementsQuickAdd({
     toast(metric ? `${metric.label} saved` : "Measurements saved");
     formRef.current?.reset();
     tempUnitDetection.reset();
-    router.refresh();
     onSaved?.();
   }
 

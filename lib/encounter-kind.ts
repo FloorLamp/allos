@@ -42,6 +42,19 @@ export const ENCOUNTER_CLASS_LABELS: Record<string, string> = {
   VR: "Virtual",
 };
 
+// The visit-type ENTRY vocabulary (issue #1676): the canonical class labels above, in
+// their curated order, offered by the encounter form's type picker. A manually added
+// visit carries no `class_code` — its free-text `type` is the ONLY signal
+// encounterKind() has — so a hand-typed "checkup" used to land in `other` and drop
+// out of every kind filter. Offering the labels the app already displays makes the
+// typed value and the derived kind agree by construction; kindFromTypeText() below
+// recognizes each of these labels, and the pairing is pinned by
+// lib/__tests__/encounter-kind.test.ts. Free text stays allowed — a source's own
+// wording ("Office Visit") is still the better `type` when the user has it.
+export const ENCOUNTER_TYPE_OPTIONS: readonly string[] = Object.values(
+  ENCOUNTER_CLASS_LABELS
+);
+
 // A friendly display label for a raw ActEncounterCode class. Falls back to the raw
 // (upper-cased) code for a class we haven't catalogued — never invents meaning —
 // and null when there is no class at all.
@@ -154,9 +167,12 @@ function kindFromTypeText(
   const t = type?.trim().toLowerCase();
   if (!t) return null;
   if (/\bemergency\b|\be\.?d\.? visit\b/.test(t)) return "emergency";
-  if (/\binpatient\b|\bhospital admission\b/.test(t)) return "inpatient";
+  // "short stay" is the SS class's own label — an inpatient subtype in CLASS_KIND, so
+  // the text path must agree with the class path (#1676).
+  if (/\binpatient\b|\bhospital admission\b|\bshort stay\b/.test(t))
+    return "inpatient";
   if (/\bobservation\b/.test(t)) return "observation";
-  if (/\b(telehealth|telemedicine|virtual visit|video visit)\b/.test(t))
+  if (/\b(telehealth|telemedicine|virtual|video visit)\b/.test(t))
     return "virtual";
   if (/\bhome (?:health|visit|care)\b/.test(t)) return "home_health";
   if (
@@ -165,7 +181,13 @@ function kindFromTypeText(
     )
   )
     return "preventive";
-  if (/\b(office visit|outpatient|clinic visit|follow[-\s]?up)\b/.test(t))
+  // "ambulatory" is the AMB class's own label; a user who PICKS it from the visit-type
+  // vocabulary means exactly what an AMB class code means (#1676).
+  if (
+    /\b(office visit|outpatient|clinic visit|ambulatory|follow[-\s]?up)\b/.test(
+      t
+    )
+  )
     return "ambulatory";
   return null;
 }

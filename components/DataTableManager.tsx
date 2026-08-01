@@ -146,7 +146,6 @@ export default function DataTableManager({
                   toast(
                     `Restored ${restored} row${restored === 1 ? "" : "s"}.`
                   );
-                  router.refresh();
                 } else {
                   toast("Couldn’t undo — it may have expired.", {
                     tone: "error",
@@ -160,7 +159,6 @@ export default function DataTableManager({
         toast(msg);
       }
       reset();
-      router.refresh();
     } finally {
       setPending(null);
     }

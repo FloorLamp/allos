@@ -28,7 +28,8 @@ feature. Architecture and implementation invariants live in
 - **Finding things:** [Global search and record Q&A](#global-search-and-record-qa)
 - **Data and reliability:** [Data hub](#data-hub),
   [Offline quick-log queue](#offline-quick-log-queue),
-  [Mobile shell](#mobile-shell), [Undo delete](#undo-delete),
+  [App updates](#app-updates), [Mobile shell](#mobile-shell),
+  [Undo delete](#undo-delete),
   [AI activity log](#ai-activity-log), [Server error log](#server-error-log),
   and [Audit log](#audit-log).
 
@@ -295,6 +296,9 @@ sessions per day, and retain editable session history. **Stop tracking** removes
 the weekly target and its reminders without deleting logged sessions; any
 protocol using that target is explicitly unlinked.
 
+Consistency over time is on **Trends → Practices** (see [Trends](#trends)):
+weeks in range, cadence against your declared band, and session length.
+
 A tracked practice is one tap away from anywhere: the quick-actions menu's **Log
 practice** overlay lists each one with this week's standing, and the command
 palette commits a session from `log sauna`. Both go through the same write the
@@ -416,8 +420,9 @@ list feeds the optional Telegram "what's due" digest and the calendar feed.
 
 ### Multi-profile viewing
 
-When you toggle other accessible profiles into your **view** (the eye control in
-the profile menu; a thin banner strip names who's in view), Upcoming **merges**
+When you toggle other accessible profiles into your **view** (the eye control on
+each row of the profile switcher; the identity bar's stacked avatars name who's
+in view), Upcoming **merges**
 everyone's due items into one list with a **subject chip** on each row — each
 member's dueness computed in that member's **own timezone/today** (never a
 shared clock), so "Overdue" and "Today" stay correct per person. A row's actions
@@ -511,6 +516,15 @@ available equipment, an open illness recovery hold, recorded injuries, and
 curated condition-specific training considerations. These considerations are
 informational and cite their source; they never silently forbid an activity.
 
+Recovery is judged on a rolling per-region window, not on the calendar week.
+Weekly counts still reset with the week — that is what a weekly target means —
+but which region to train next is decided by how long ago it was actually
+trained: larger groups want a couple of days, smaller ones a day, and within
+that constraint the least-recently-trained region leads. When every region you
+train is still inside its window the day is framed as a recovery day rather than
+forced into a suggestion. A week that can no longer be met without today
+overrides the window, and says so — naming both the recent session and the pace.
+
 Routines may come from templates or be built from custom workouts. They carry
 weekly targets and a mesocycle/deload context without replacing the user's own
 exercise choices. Repeating a prior session, accepting today's recommendation,
@@ -587,10 +601,10 @@ Charts and analysis live in four tabs:
 - **Overview** is the landing surface, and answers "how am I doing" in one
   scroll: the **"what's trending" digest**, then your **starred grid** — your own
   cross-domain set of saved, drag-orderable tiles, the one curated area where
-  nothing appears unless you put it there — then the **body census**: vitals,
-  acute temperature, sleep and outdoor-time signals, body composition, and the
-  shared **Log measurements** form. A **Data check** card catches probable
-  weight-entry errors before they skew charts.
+  nothing appears unless you put it there — then the **Practices** lens, and
+  finally the **body census**: vitals, acute temperature, sleep and outdoor-time
+  signals, body composition, and the shared **Log measurements** form. A **Data
+  check** card catches probable weight-entry errors before they skew charts.
 - **Fitness** combines the workout-density heatmap, strength/cardio/sport
   progress, heart-rate-zone volume, the Zone 2 target, and polarization. Zones
   use Karvonen heart-rate reserve when resting HR is known, otherwise percent of
@@ -598,6 +612,16 @@ Charts and analysis live in four tabs:
 - **Nutrition** charts macros, fiber, hydration, and related intake trends.
 - **Insights** combines comparison tools with daily analysis and weekly/monthly
   recap narratives.
+
+**Practices** (`/trends#practices`) is the wellness lens: for each practice you
+have given a weekly cadence, one cell per completed week — at your weekly
+maximum, floor met, or under floor — a consistency line with the current streak,
+sessions per week charted against the min–max band you declared, and an average
+session length for the modalities that record minutes. It renders only where you
+track a practice, is calm by design (an under-floor week is a neutral cell, never
+a warning), and every card taps through to **Wellness**, which still owns
+logging, editing, and the full session history. A practice with sessions but no
+weekly cadence has no range to be in and stays on Wellness.
 
 The body census **streams in below** the digest and starred grid, so the landing
 surface paints as fast as it did when Body was its own tab. Links that used to
@@ -802,6 +826,32 @@ N" back-link — the same suggest-and-accept mechanism as record↔visit, no
 auto-link and no notification. The per-person **Visits** page gains an **Illness
 episodes** link for multi-profile logins.
 
+### The identity bar and the profile switcher
+
+On a **multi-profile** instance one **identity bar** answers "whose data is this,
+and who am I acting as?" everywhere: stacked avatars of the profiles currently in
+your **view** plus a name line — `Alice`, `Alice, Bob`, `Alice, Bob +2 more`. The
+**acting** profile is always **first** and visually distinct (ringed avatar,
+emphasized name), because the bar shows who is _visible_ while writes land on who
+is _acting_. If your grant on the acting profile is read-only, the bar says so.
+
+It sits at the **top of the desktop sidebar**, and on a phone it takes the
+**wordmark's slot in the top bar** — the brand line spent ~90px of a 390px bar
+saying nothing while "whose data is this?" had no answer on that screen at all
+(home stays one tap away in the drawer, and the desktop sidebar and login screen
+keep the wordmark).
+
+Tapping it opens one **switcher panel** — a drawer dropping from the bar on a
+phone, an expanding container below it on desktop, both rendering the same rows.
+Every accessible profile gets a row with **two** controls, never one ambiguous
+tap: the **name** switches who you are acting as, and the **eye** toggles that
+profile in and out of your view. You cannot un-view the profile you are acting
+as, and a read-only profile carries its hint on its own row.
+
+A **single-profile** instance grows none of this: the phone keeps its wordmark
+and the sidebar is unchanged — identity chrome when identity is ambiguous, brand
+chrome when it isn't.
+
 **Whose record am I acting on? (#1013)** You can mark one accessible profile as
 **your own** under **Settings → Account & security** (optional — a
 caregiver-only login leaves it unset; an admin can set it for anyone under
@@ -811,9 +861,9 @@ grants no access — it's purely a label — but once set, any write whose targe
 card's dose confirm reads "Confirm — Mia", the dashboard weigh-in "Log today's
 weight for Mia", the live workout editor "Finish workout — Mia". No confirmation
 interstitial (routine caregiving stays one-tap) — the passive naming just makes
-a wrong-profile dose or weigh-in obvious at the point of action. The expanded
-profile menu also shows **"Signed in as …"** so it's clear which login is
-acting. Deleting a profile or revoking a grant clears the own-profile link
+a wrong-profile dose or weigh-in obvious at the point of action. The sidebar (or
+drawer) footer also shows **"Signed in as …"** beside Log out, so it's clear
+which login is acting. Deleting a profile or revoking a grant clears the own-profile link
 automatically.
 
 ## Goals
@@ -921,11 +971,18 @@ so a flagged group self-identifies while collapsed.
 The index is the **whole** filtered set — there is no pager. A row cap would be
 the wrong unit here (one panel with a few years of draws can be dozens of rows,
 so a page could split a panel and print partial counts on each half); the panel
-taxonomy is a closed set, so the collapsed index has a hard ceiling by
+taxonomy is a closed set, so the list of headers has a hard ceiling by
 construction. Groups arrive collapsed unless the result set is short, there is
 only one group, or a filter is active — any narrowing means you already asked
 for the rows, so every matching group opens and a search can never read as
 "no results" because its hit was folded.
+
+The **readings** are bounded separately from the headers: a group that arrives
+collapsed is sent none of them, and one that arrives open is sent at most
+twenty-five, saying how many it is holding back ("Showing 25 of 72 readings").
+Opening a group, or asking a truncated one for the rest, loads that one panel's
+readings on the spot. So the page you land on costs the index, never the whole
+lab history, however many years of it there are.
 
 Readings sort by **name** (A–Z, newest reading first within an analyte) or by
 date; panel is not a sort, because the groups are already emitted in clinical
@@ -1187,7 +1244,8 @@ dates, or profile). A tracked gap that a later catalog update covers shows a
 
 ### Derived indices
 
-Standard derived indices (Non-HDL cholesterol, triglyceride/HDL ratio, HOMA-IR,
+Standard derived indices (Non-HDL cholesterol, the cholesterol/HDL, LDL/HDL and
+triglyceride/HDL ratios, HOMA-IR,
 race-free CKD-EPI 2021 eGFR, and Levine **PhenoAge** — a biological-age estimate
 in years) are computed from your existing labs and shown alongside them, marked
 "derived" with their formula (eGFR/HOMA-IR/PhenoAge only appear when the needed
@@ -1755,18 +1813,30 @@ Bring data in (upload documents, paste logs, connect a device or service) under
 
 ### Connected sources
 
-Connected sources lists only the recurring providers you've actually set up —
-each currently connected, one you connected before and later removed (which
-keeps showing its historical logs as a **Not connected** card with a
-**Reconnect** link), or one whose token expired or was revoked (a **Needs
-reconnect** card — a dead connection self-marks and stops silently retrying
-forever, instead of looking healthy while never syncing); a provider you never
-configured is left out entirely rather than shown as an empty card. Each source
-collapses to one card showing its latest sync outcome + relative time + the
-new/changed/unchanged split, with an expandable recent-sync history, a
-per-provider **Sync now** for connected pull providers (Strava, Oura, and
-Withings; Health Connect is push-only, so its card explains the phone exporter
-drives it), and an admin **View raw** to inspect the exact provider payload.
+Connected sources is an **inbox**: it lists only the recurring providers you've
+actually set up, and it expands the ones that need you. A provider whose last run
+failed, whose token expired or was revoked (**Needs reconnect** — a dead
+connection self-marks and stops silently retrying forever, instead of looking
+healthy while never syncing), whose run stopped early (**Partial sync**), or that
+you connected before and later removed (**Not connected**, with its historical
+logs and a **Reconnect** link) gets a card with the reason, the action —
+**Sync now** for connected pull providers (Strava, Oura, Withings, Weather;
+Health Connect is push-only, so its card explains the phone exporter drives it) —
+and a link to its full history. Everything healthy collapses to a single line
+showing the same badge and the same outcome sentence. A provider you never
+configured is left out entirely.
+
+The provider's **own page** is its home: the same status header, its
+connect/disconnect/sync controls, and the full **Sync history** table — when each
+run happened (absolute _and_ relative), whether it worked, what it changed, and
+the window it covered where that differs from the norm. Every failed run states
+its reason, not just "Failed"; a stretch of hourly runs that brought nothing new
+collapses to one line; and an admin **View raw** inspects the exact provider
+payload. A run that actually wrote records offers **What this wrote**, which
+lists them with links; a provider that legitimately records none — Weather
+refreshes a shared forecast cache, which contains no records of yours — simply
+doesn't offer it, and reports its runs in its own words ("Forecast refreshed · 16
+readings revised") instead of counting cache cells as if they were your data.
 
 ### Imports
 
@@ -1799,7 +1869,7 @@ decision remembered so a later re-sync won't undo it — a device row you merge
 away or delete stays gone instead of silently re-importing on the next
 rolling-window sync (counted as **suppressed** in the feed split), and if a
 resync ever does re-form a merged pair it resurfaces here rather than hiding —
-all surfaced with a badge on the profile menu.
+all surfaced with a badge on the **Data** nav entry.
 
 ### Coverage and export
 
@@ -1877,6 +1947,22 @@ Everything else still needs connectivity: this is a queue for a few one-tap
 logs, not a general offline mode. Forms with server-derived state (anything that
 reads or computes against your existing data) stay online-only, and page
 navigation while offline still shows the reconnect screen.
+
+## App updates
+
+When the instance is updated while you have the app open, a new build never
+takes over the page you're on — your open tab keeps running the version it
+loaded, with everything you've typed. Instead a small **Update ready** notice
+appears at the bottom of the screen. It names the deployed change when the
+server can tell the app what shipped, and it is the **only** notice for that
+event: one deploy, one notice, one **Reload** button.
+
+Nothing happens until you tap it. Dismissing the notice leaves the page alone,
+and users who never tap get the new version on their next natural cold start.
+When a form is holding unsaved input the notice says so rather than hiding —
+the entry is kept on the device, so the reload is safe either way. Taking the
+reload lands you on the new build, and nothing re-offers the update you just
+took.
 
 ## Mobile shell
 

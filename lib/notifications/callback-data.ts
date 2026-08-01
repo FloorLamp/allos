@@ -17,6 +17,13 @@ import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { OFFER_COLLAPSE_PREFIX, OFFER_EXPAND_PREFIX } from "./offer-tail";
+import {
+  isDigestCategory,
+  TUNE_COLLAPSE_PREFIX,
+  TUNE_EXPAND_PREFIX,
+  TUNE_TOGGLE_PREFIX,
+  type DigestCategory,
+} from "./digest-tune";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
@@ -576,6 +583,46 @@ export function parsePracticeDoneCallback(
   return { profileId, targetId, token };
 }
 
+// ---- The right-sizing ride-along on the practice nudge (#1670) ----
+// The pace nudge already fires for a practice that is behind its weekly floor. When
+// that shortfall has been CHRONIC — every one of the last four completed weeks under
+// the floor — the same message carries one extra button offering to lower the floor to
+// the cadence actually kept. It is a ride-along in the strict sense: no message is ever
+// sent because of a right-sizing suggestion, and a target that has stopped generating
+// this nudge has no delivery path, which is correct rather than a gap.
+//
+// The token carries the TARGET id (plus the profile id as a cross-check, resolved
+// against the chat like a dose tap) and DELIBERATELY NOT the new floor. The handler
+// re-derives the live candidate before writing, exactly as the in-app accept does, so
+// a stale button on a recovered practice refuses instead of applying a number nobody
+// is suggesting any more.
+export interface RightSizeLowerCallback {
+  profileId: number;
+  targetId: number;
+}
+
+// Encode the "rslower:<profileId>:<targetId>" button token (minted by the nudge
+// builder, read by the parser below — one source of truth for the shape).
+export function rightSizeLowerCallback(
+  profileId: number,
+  targetId: number
+): string {
+  return `rslower:${profileId}:${targetId}`;
+}
+
+// Parse a "rslower:<profileId>:<targetId>" token. Malformed (wrong prefix, bad ids)
+// -> null.
+export function parseRightSizeLowerCallback(
+  data: unknown
+): RightSizeLowerCallback | null {
+  if (typeof data !== "string" || !data.startsWith("rslower:")) return null;
+  const [, profStr, targStr] = data.split(":");
+  const profileId = Number(profStr);
+  const targetId = Number(targStr);
+  if (!profileId || !targetId) return null;
+  return { profileId, targetId };
+}
+
 // The toast answer for a practice Done tap is `practiceLogOutcomeText` in lib/practice.ts
 // — the SAME sentence the Wellness card's button, the quick-entry overlay row, and the
 // command palette's inline quick log say, because they all answer from one write core's
@@ -718,22 +765,37 @@ export function foodProteinAnswerText(
   return `Logged ✅ ＋${grams} g protein — ${outcome.grams} g today`;
 }
 
-// A "➕ Show more" tap (#1075): "foodmore:<profileId>:<window>:<date>". Carries no count —
-// the handler derives the current visible count from the keyboard and rebuilds at +6.
-export interface FoodMoreCallback {
+// A food-nudge expansion tap — "➕ Show more" (#1075) or "➖ Show less" (#1807):
+//   "foodmore:<profileId>:<window>:<date>"  /  "foodless:<profileId>:<window>:<date>"
+// ONE parser for both directions, the ⚙️ Tune shape (#1714): the token carries a DIRECTION
+// and no count, because the expansion state IS the rendered keyboard — the handler counts
+// the ranked buttons already there and steps one page up or down from that. Nothing about
+// the tap is a state claim, which is why both prefixes are declared inert in the reconcile
+// registry.
+export interface FoodExpandCallback {
   profileId: number;
   window: FoodNudgeWindow;
   date: string;
+  action: "more" | "less";
 }
 
-export function parseFoodMoreCallback(data: unknown): FoodMoreCallback | null {
+export function parseFoodExpandCallback(
+  data: unknown
+): FoodExpandCallback | null {
   if (typeof data !== "string") return null;
-  const m = /^foodmore:(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2})$/.exec(data);
+  const m = /^food(more|less):(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2})$/.exec(
+    data
+  );
   if (!m) return null;
-  const profileId = Number(m[1]);
-  const window = m[2] as FoodNudgeWindow;
+  const profileId = Number(m[2]);
+  const window = m[3] as FoodNudgeWindow;
   if (!profileId || !FOOD_NUDGE_WINDOWS.includes(window)) return null;
-  return { profileId, window, date: m[3] };
+  return {
+    profileId,
+    window,
+    date: m[4],
+    action: m[1] === "more" ? "more" : "less",
+  };
 }
 
 export interface FoodOptInCallback {
@@ -1130,4 +1192,35 @@ export function parseDemoteCallback(data: unknown): DemoteCallback | null {
   const itemId = Number(itemStr);
   if (!profileId || !itemId || !date) return null;
   return { profileId, itemId, date };
+}
+
+// ---- The digest's ⚙️ Tune control (issue #1714) ------------------------------
+
+export interface TuneCallback {
+  profileId: number;
+  date: string;
+  // expand/collapse are pure keyboard edits — nothing is written. `toggle` is the
+  // ONE write this control makes, and it is the user's own declared preference.
+  action: "expand" | "collapse" | "toggle";
+  // Set only for `toggle`; a toggle token naming an unknown category is rejected
+  // outright rather than silently ignored.
+  category: DigestCategory | null;
+}
+
+// Parse a "tune:<profileId>:<date>" / "tunec:<profileId>:<date>" /
+// "tunet:<profileId>:<date>:<category>" token. `date` is the digest's own day: a tap
+// on YESTERDAY's message must not retune from a message whose content has rolled
+// over, the same staleness rule the offer tail applies.
+export function parseTuneCallback(data: unknown): TuneCallback | null {
+  if (typeof data !== "string") return null;
+  const [prefix, profStr, date, catStr] = data.split(":");
+  const profileId = Number(profStr);
+  if (!profileId || !date) return null;
+  if (prefix === TUNE_EXPAND_PREFIX)
+    return { profileId, date, action: "expand", category: null };
+  if (prefix === TUNE_COLLAPSE_PREFIX)
+    return { profileId, date, action: "collapse", category: null };
+  if (prefix === TUNE_TOGGLE_PREFIX && isDigestCategory(catStr))
+    return { profileId, date, action: "toggle", category: catStr };
+  return null;
 }

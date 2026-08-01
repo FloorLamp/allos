@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveProfileNotifyMute } from "../actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -25,7 +24,6 @@ export default function ProfileMuteToggle({
   // fan-out uses; independent of this login's own current mute state.
   lastUnmutedManaging: boolean;
 }) {
-  const router = useRouter();
   const [isMuted, setIsMuted] = useState(muted);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -36,7 +34,6 @@ export default function ProfileMuteToggle({
       fd.set("profile_id", String(profileId));
       fd.set("muted", next ? "1" : "0");
       await saveProfileNotifyMute(fd);
-      router.refresh();
     });
   }
 

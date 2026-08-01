@@ -13,6 +13,7 @@ import {
   getNotifyReviewNeeded,
   isProfileMutedForLogin,
   getProfileHouseholdRound,
+  getLoginDigestDemotions,
 } from "@/lib/settings";
 import { inferWorkoutSchedule, typicalWakeTime } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -36,6 +37,7 @@ import ProfileMuteToggle from "./ProfileMuteToggle";
 import HouseholdRoundSettings from "./HouseholdRoundSettings";
 import HomeAssistantNotificationSettings from "./HomeAssistantNotificationSettings";
 import NotificationPrefs from "./NotificationPrefs";
+import DigestTuneSettings from "./DigestTuneSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +83,12 @@ function Section({
 //                      channel routing. This replaced BOTH the old mega-card's
 //                      per-kind toggles AND the separate kind × channel matrix,
 //                      which used to answer the same question twice.
+//
+// Below them sit the two per-login REDUCTIONS — the morning digest's per-category
+// demotion (#1714) and the per-profile mute (#1072/#1324). Neither is a new
+// settings-only feature: each MIRRORS a control that already rides a message, so the
+// same preference is reachable both where it annoys you and where you go looking for
+// it (#221's one storage, two surfaces).
 //
 // (2 and 3 render from ONE client component because they write through one action —
 // see NotificationPrefs.)
@@ -174,6 +182,16 @@ export default async function NotificationsSettingsPage() {
                 pushConfigured={pushConfigured}
                 haConfigured={haConfigured}
               />
+            </PageContainer>
+          </Section>
+
+          <Section
+            testId="notify-digest-tune"
+            title="Morning digest"
+            scope={`Which lines your morning digest routinely carries — your login only, across every profile. This is the mirror of the digest message's own ⚙️ Tune control, not a second setting.`}
+          >
+            <PageContainer width="form">
+              <DigestTuneSettings demoted={getLoginDigestDemotions(login.id)} />
             </PageContainer>
           </Section>
 

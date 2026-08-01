@@ -12,6 +12,7 @@ import {
   type PracticeCadenceError,
 } from "./practice";
 import { renamePracticeSessions } from "./practice-log";
+import { deleteFrequencyTargetRow } from "./frequency-target-delete";
 import type { Row } from "./undo-delete";
 import { captureDelete } from "./undo-delete-db";
 import {
@@ -139,15 +140,10 @@ export function untrackWellnessPractice(
       .get(targetId, profileId) as { id: number } | undefined;
     if (!target) return { kind: "not-found" };
 
-    db.prepare(
-      `UPDATE protocols
-          SET frequency_target_id = NULL, owns_frequency_target = 0
-        WHERE profile_id = ? AND frequency_target_id = ?`
-    ).run(profileId, targetId);
-    db.prepare(
-      `DELETE FROM frequency_targets
-        WHERE id = ? AND profile_id = ? AND scope_kind = 'practice'`
-    ).run(targetId, profileId);
+    // The shared delete core unlinks any referencing protocol, then removes the row
+    // (#1809). The scope_kind = 'practice' guard lives on the lookup above, inside this
+    // same transaction, so the core's id-only delete cannot reach another scope's row.
+    deleteFrequencyTargetRow(profileId, targetId);
     db.prepare(
       `DELETE FROM upcoming_dismissals
         WHERE profile_id = ? AND signal_key = ?`

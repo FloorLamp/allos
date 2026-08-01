@@ -8,7 +8,7 @@ import { clearEmergencyPayload } from "@/components/emergency-offline";
 // device-local state whenever that id changes — so EVERY switch affordance (the
 // header switcher, the household card, the household strip, and any future one) is
 // covered by construction, instead of each having to hand-mirror the wipe. That
-// hand-mirroring is exactly what drifted: the wipe lived only in UserMenu's
+// hand-mirroring is exactly what drifted: the wipe lived only in the profile menu's
 // per-button onClick, so switching via a household chip left the previous profile's
 // emergency card readable session-free at /offline.
 //
@@ -16,7 +16,7 @@ import { clearEmergencyPayload } from "@/components/emergency-offline";
 // wiped on switch: its intents are profile-stamped (issue #599) and replay onto the
 // profile they were captured under regardless of the active profile, so wiping them
 // would only throw away pending writes for no safety gain. Logout still wipes both
-// (UserMenu), since the device is being handed back to the login screen.
+// (the sidebar logout), since the device is being handed back to the login screen.
 //
 // The wipe fires only on a CHANGE (never on first mount): a fresh mount already
 // reflects the current profile, and the emergency card is re-cached on the next

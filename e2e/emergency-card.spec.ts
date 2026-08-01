@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { settledClick } from "./helpers";
 // Offline Emergency Card (issue #42), living as the #emergency section of the
 // Passport page since the #1042 phase-3 merge (the old /emergency route was
 // removed outright in #1635 and 404s). This spec runs in its OWN unauthenticated
@@ -168,7 +169,7 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   // 5. Log out. The offline copy is wiped from this device, and the card is locked
   //    behind auth again.
   await page.goto("/");
-  await page.getByTestId("user-menu-trigger").click();
+  // Log out sits at the sidebar's bottom since #1801 — no menu to open first.
   await page.getByRole("button", { name: "Log out" }).click();
   await page.waitForURL(/\/login/, { timeout: 20_000 });
 
@@ -215,11 +216,19 @@ test("switching profiles via the household strip wipes the previous profile's em
 
   // Switch to profile 2 ("Riley (child)") via the dashboard household strip chip —
   // a switch affordance that never ran the old per-button cleanup. Wait on the
-  // user-menu naming the new profile: the definitive switch signal.
+  // identity bar naming the new profile: the definitive switch signal.
   await page.goto("/");
-  await page.getByRole("main").getByTestId("household-chip-2").click();
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(
-    "Riley (child)"
+  // settledClick, not a bare click: the chip is a `<form action={switchProfileAction}>`
+  // submit whose POST + revalidate + redirect re-renders the DASHBOARD — the heaviest
+  // page in the app — so a bare click leaves the assertion racing that render. Same
+  // named ceiling family-helpers' switchToProfile uses for the same reason.
+  await settledClick(
+    page,
+    page.getByRole("main").getByTestId("household-chip-2")
+  );
+  await expect(page.getByTestId("profile-identity-bar")).toContainText(
+    "Riley (child)",
+    { timeout: 20_000 }
   );
 
   // The previous profile's offline card is wiped from this device …

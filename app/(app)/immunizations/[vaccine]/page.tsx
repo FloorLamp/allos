@@ -7,7 +7,7 @@ import {
   getImmunityTiters,
   getImmunizationOverrides,
   getImmunizationOverride,
-  getPickerProviders,
+  getRankedPickerProviders,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { getUserSex, profileAgeMonths } from "@/lib/settings";
@@ -97,7 +97,7 @@ export default async function VaccineDetailPage(props: {
   const desc = vaccineDescription(code);
 
   return (
-    <ProviderOptionsProvider providers={getPickerProviders()}>
+    <ProviderOptionsProvider providers={getRankedPickerProviders(profile.id)}>
       <div>
         <Link
           href="/records/history/immunizations"

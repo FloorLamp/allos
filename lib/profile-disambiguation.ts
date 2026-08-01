@@ -8,7 +8,7 @@
 //
 // Ordinal — not birth-year or relationship — because it needs nothing beyond the
 // id+name the chrome already has (no schema/query change) and can't leak another
-// profile's DOB into shared layout. Pure + unit-tested; the surfaces (UserMenu,
+// profile's DOB into shared layout. Pure + unit-tested; the surfaces (the identity bar,
 // HouseholdStrip) are formatters over this one result so their labels can't drift.
 export function disambiguateProfileNames<
   T extends { id: number; name: string },

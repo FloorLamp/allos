@@ -12,6 +12,7 @@ import { getDayLoadInputs, getIntensitySignal } from "./zones";
 import { getWorkoutPresence } from "./presence";
 import { loadingDates } from "../training-zones";
 import {
+  isRecoverySignalRest,
   nextRestEpisode,
   recommendCoaching,
   type CoachingInput,
@@ -272,7 +273,10 @@ export function reconcileRestEpisode(
   todayStr: string
 ): RestEpisode | null {
   const prev = getRestEpisode(profileId);
-  const rest = recs.find((r) => r.kind === "rest") ?? null;
+  // Only a physiological under-recovery signal counts as an episode day. The #1673
+  // all-fresh reframe is a scheduling fact — every trained region is simply inside its
+  // recovery window — so it must not open or extend a "2nd day of resting" run.
+  const rest = recs.find(isRecoverySignalRest) ?? null;
   const next = nextRestEpisode(prev, rest, todayStr);
   if (JSON.stringify(prev) !== JSON.stringify(next))
     saveRestEpisode(profileId, next);

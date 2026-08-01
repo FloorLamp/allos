@@ -1,18 +1,19 @@
 import Link from "next/link";
-import { IconArrowLeft, IconCheck } from "@tabler/icons-react";
+import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection, getStravaConfig } from "@/lib/integrations/connections";
-import { getLastSuccessfulSyncAt } from "@/lib/queries";
+import { getIntegrationState, SETUP_HISTORY_LIMIT } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
+import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
+import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
+import SyncNowButton from "@/components/SyncNowButton";
 import { TokenRow } from "@/components/TokenRow";
 import { baseUrl, stravaCallbackUrl } from "./url";
 import {
   saveStravaCredentials,
   connectStrava,
-  syncStravaAction,
   disconnectStravaAction,
 } from "./actions";
 
@@ -27,8 +28,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   token_exchange_failed:
     "Couldn't exchange the code for tokens. Check your Client ID/Secret.",
   access_denied: "You declined access on Strava.",
-  sync_failed:
-    "Couldn't sync. Check your connection to Strava and try again in a moment.",
   set_public_url:
     "This app's callback URL resolves to localhost, so Strava can't redirect back. Set the Public app URL in Settings → Server to the address this app is reachable at, then reconnect.",
 };
@@ -37,7 +36,7 @@ export default async function StravaPage(props: {
   searchParams: Promise<{ error?: string }>;
 }) {
   const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const def = getIntegration("strava")!;
   const conn = getConnection(profile.id, "strava");
   const cfg = getStravaConfig(profile.id);
@@ -52,17 +51,11 @@ export default async function StravaPage(props: {
     ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;
 
-  let lastSummary: Record<string, number> | null = null;
-  try {
-    lastSummary = conn?.last_sync_summary
-      ? JSON.parse(conn.last_sync_summary)
-      : null;
-  } catch {
-    lastSummary = null;
-  }
-
-  // Profile-scoped sync-event history for the debug panel.
-  const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "strava");
+  // THE per-provider state (#1772) — the same computation Review's inbox and the
+  // Integrations grid read, so the three can no longer describe this provider
+  // differently. The raw `last_sync_summary` key:value echo this page used to render
+  // (a third accounting, with no formatter) is retired in favour of it.
+  const state = getIntegrationState(profile.id, "strava", SETUP_HISTORY_LIMIT)!;
 
   return (
     <div>
@@ -95,44 +88,21 @@ export default async function StravaPage(props: {
 
       {connected ? (
         <div className="grid max-w-3xl gap-6">
-          <div className="card space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="badge inline-flex items-center gap-1 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                <IconCheck className="h-3.5 w-3.5" /> Connected
-              </span>
-              {conn?.last_sync_at && (
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  Last sync: {conn.last_sync_at} UTC
-                </span>
-              )}
-            </div>
-
-            {lastSummary && (
-              <div>
-                <label className="label">Last sync</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(lastSummary).map(([k, v]) => (
-                    <span
-                      key={k}
-                      className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
-                    >
-                      {k}: {v}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <form action={syncStravaAction}>
-                <button className="btn">Sync now</button>
-              </form>
-              <form action={disconnectStravaAction}>
-                <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
-                  Disconnect
-                </button>
-              </form>
-            </div>
+          <div className="card">
+            <IntegrationStatusHeader
+              state={state}
+              isAdmin={login.role === "admin"}
+              controls={
+                <>
+                  <SyncNowButton provider="strava" />
+                  <form action={disconnectStravaAction}>
+                    <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
+                      Disconnect
+                    </button>
+                  </form>
+                </>
+              }
+            />
           </div>
 
           <SetupCard
@@ -140,10 +110,7 @@ export default async function StravaPage(props: {
             callbackDomain={callbackDomain}
           />
 
-          <IntegrationSyncHistoryLink
-            lastSuccessAt={lastSuccessAt}
-            connected={connected}
-          />
+          <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
         </div>
       ) : (
         <div className="grid max-w-3xl gap-6">

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import type { CycleControlState } from "@/lib/cycle-plausibility";
 import {
@@ -28,7 +27,6 @@ export default function PeriodQuickActions({
 }: {
   state: CycleControlState;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -50,11 +48,9 @@ export default function PeriodQuickActions({
         setError(result.error ?? "Couldn't update the period.");
         // A refusal means this page was out of date about what's recorded — re-render
         // into the state that actually holds rather than leaving a wrong control up.
-        router.refresh();
         return;
       }
       toast(okMsg);
-      router.refresh();
     });
   }
 

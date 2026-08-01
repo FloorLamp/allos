@@ -80,7 +80,6 @@ export default function RoutineStarter({
     }
     if (!result.ok) {
       toast(result.error);
-      if (result.needsConfirmation) router.refresh();
       return;
     }
     toast(`${result.routineName} is ready`);

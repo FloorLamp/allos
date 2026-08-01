@@ -109,6 +109,39 @@ export function practiceItems(profileId: number): UpcomingItem[] {
     }));
 }
 
+// The daily-step afternoon presence (#1723 part 2). RIDE-THE-NAG, not a new send:
+// this is one calm Upcoming row, which means it also appears in every surface that
+// already formats collectUpcoming — the Upcoming page, the dashboard bands, and any
+// message built from that aggregation. NO dedicated step nudge exists or is created;
+// the doctrine default (the system may reduce contact unilaterally, never increase
+// it) holds, and a later owner decision is what it would take to change that.
+//
+// Calm by construction: no due date, `should`-tier semantics (counted, never
+// escalated), dismissible through the shared bus like any other finding, and keyed
+// per DAY so a dismissal silences today's observation and tomorrow starts clean.
+// Silent by default — see getStepsPaceObservation for the five ways it says nothing,
+// including the stale-data case that stops a late sync batch manufacturing a verdict.
+export function stepsPaceItems(
+  profileId: number,
+  today: string
+): UpcomingItem[] {
+  if (isTrainingRestricted(profileId)) return [];
+  const obs = getStepsPaceObservation(profileId, today);
+  if (!obs) return [];
+  return [
+    {
+      key: stepsPaceKey(obs.date),
+      domain: "training" as const,
+      title: "Steps today",
+      detail: obs.detail,
+      href: trendsSectionHref("body"),
+      dueDate: null,
+      band: "today" as const,
+      dueText: "Today",
+    },
+  ];
+}
+
 // Endurance event days (#839): each active plan's event as a dated forward-looking item,
 // so the EVENT DAY rides the Upcoming page + the calendar feed (domain "training" is a
 // FeedCategory). Hidden for age-restricted profiles, mirroring the Training surface. The
@@ -188,3 +221,6 @@ import { getOutdoorPlans } from "../weather-training";
 import { getCarePlanItems } from "../clinical";
 import { getFrequencyTargetProgress } from "../frequency-targets";
 import { getGoals } from "../training";
+import { getStepsPaceObservation } from "../steps-target";
+import { stepsPaceKey } from "../../steps-target";
+import { trendsSectionHref } from "../../trends-sections";

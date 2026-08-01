@@ -43,3 +43,31 @@ test("add-mode form clears the critical flag for the next item (issue #627)", as
   await expect(critical).not.toBeChecked();
   await expect(addDialog.getByLabel("Name")).toHaveValue("");
 });
+
+// #1677 — the supplement picker's ORDER. The Combobox shows 8 rows and an empty query
+// keeps source order, so the catalog's category grouping made the visible eight all
+// vitamins (A, C, D3, D3+K2, E, K2, B12, B-Complex) whatever the profile actually
+// takes. Ranked, this profile's own shelf leads.
+test("the supplement picker opens on this profile's own shelf (#1677)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition?tab=supplements");
+  await page.getByTestId("supplement-add-toggle").click();
+  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+  await expect(addDialog).toBeVisible();
+
+  await addDialog.getByLabel("Name").click();
+  const listbox = page.getByRole("listbox");
+  await expect(listbox).toBeVisible();
+  const options = (await listbox.getByRole("button").allInnerTexts()).map((t) =>
+    t.trim()
+  );
+
+  // On the shelf, so usage floats them in.
+  expect(options).toContain("Magnesium Glycinate");
+  expect(options).toContain("Omega-3");
+  // Not on the shelf. These were visible before #1677 only because the catalog opens
+  // with its vitamins block.
+  expect(options).not.toContain("Vitamin A");
+  expect(options).not.toContain("Vitamin E");
+});

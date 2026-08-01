@@ -19,6 +19,10 @@ import {
   poolIdsForProfiles,
   listVisiblePoolViews,
   countVisiblePools,
+  listLinkableSupplies,
+  findLinkableSupply,
+  isLinkableSupply,
+  getItemProductFacts,
   markDoseTaken,
   refillSupply,
 } from "@/lib/queries";
@@ -502,5 +506,150 @@ describe("what the cabinet shows a caller (#1522)", () => {
     ]) {
       expect(countVisiblePools(ids)).toBe(listVisiblePoolViews(ids).length);
     }
+  });
+});
+
+// ── The product-fact exchange (#1705) ───────────────────────────────────────────
+//
+// The bottle is authoritative for what the product IS, and a linked item DERIVES
+// those facts at render time rather than storing a copy that can drift. Only this
+// tier can prove "no write to the item row" and the scoped reader boundaries.
+describe("a linked item derives the bottle's product facts", () => {
+  it("follows a pool edit with no write to any item row", () => {
+    const supplyId = createSharedSupply(
+      {
+        name: "Household D3",
+        strength: "5000 IU",
+        form: "capsule",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      100
+    );
+    const a = addItem(alice.profileId, "Alice D3", 1, null);
+    linkItemToPool(alice.profileId, a.itemId, supplyId);
+    const before = db
+      .prepare("SELECT * FROM intake_items WHERE id = ?")
+      .get(a.itemId);
+
+    expect(getPoolChips(alice.profileId).get(a.itemId)).toMatchObject({
+      strength: "5000 IU",
+      form: "capsule",
+    });
+
+    updateSharedSupply(
+      supplyId,
+      {
+        name: "Household D3",
+        strength: "1000 IU",
+        form: "softgel",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      100,
+      100
+    );
+
+    // The chip follows the bottle…
+    expect(getPoolChips(alice.profileId).get(a.itemId)).toMatchObject({
+      strength: "1000 IU",
+      form: "softgel",
+    });
+    // …and the member's own row — dose amounts, obligation, schedule — is untouched.
+    expect(
+      db.prepare("SELECT * FROM intake_items WHERE id = ?").get(a.itemId)
+    ).toEqual(before);
+    expect(
+      db
+        .prepare(
+          "SELECT amount FROM intake_item_doses WHERE item_id = ? AND retired = 0"
+        )
+        .get(a.itemId)
+    ).toEqual({ amount: "1 tablet" });
+  });
+});
+
+describe("the item → bottle seeding reads one profile-scoped row", () => {
+  it("returns the item's name, active dose amounts and on-hand count", () => {
+    const b = addItem(bruno.profileId, "Bruno Ibuprofen", 1, 24);
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '400 mg', 'evening', 'any', 1)`
+    ).run(b.itemId);
+    // A RETIRED dose is not part of the item's current product identity.
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, retired)
+       VALUES (?, '999 mg', 'night', 'any', 2, 1)`
+    ).run(b.itemId);
+
+    expect(getItemProductFacts(bruno.profileId, b.itemId)).toEqual({
+      name: "Bruno Ibuprofen",
+      doseAmounts: ["1 tablet", "400 mg"],
+      quantityOnHand: 24,
+    });
+    // Another profile cannot read it, so a forged id can't seed a bottle from it.
+    expect(getItemProductFacts(alice.profileId, b.itemId)).toBe(null);
+  });
+});
+
+describe("the offerable-bottle rule matches the cabinet's own list", () => {
+  it("offers a drawn-from bottle and an orphan, and hides another branch's", () => {
+    const mine = createSharedSupply(
+      {
+        name: "Mine 1705",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      10
+    );
+    const theirs = createSharedSupply(
+      {
+        name: "Theirs 1705",
+        strength: null,
+        form: null,
+        lowSupplyDays: null,
+        notes: null,
+      },
+      10
+    );
+    const orphan = createSharedSupply(
+      {
+        name: "Orphan 1705",
+        strength: "200 mg",
+        form: "tablet",
+        lowSupplyDays: null,
+        notes: null,
+      },
+      10
+    );
+    const a = addItem(alice.profileId, "Alice 1705", 1, null);
+    const b = addItem(bruno.profileId, "Bruno 1705", 1, null);
+    linkItemToPool(alice.profileId, a.itemId, mine);
+    linkItemToPool(bruno.profileId, b.itemId, theirs);
+
+    const offered = listLinkableSupplies([alice.profileId]).map((s) => s.id);
+    expect(offered).toContain(mine);
+    expect(offered).toContain(orphan);
+    expect(offered).not.toContain(theirs);
+
+    // The single-id question agrees with the list, and carries the product facts a
+    // seeded item form prefills from.
+    expect(findLinkableSupply([alice.profileId], orphan)).toEqual({
+      id: orphan,
+      name: "Orphan 1705",
+      strength: "200 mg",
+      form: "tablet",
+    });
+    expect(findLinkableSupply([alice.profileId], theirs)).toBe(null);
+    expect(isLinkableSupply([alice.profileId], theirs)).toBe(false);
+
+    // Exactly the set the cabinet page itself lists.
+    expect(offered.sort()).toEqual(
+      listVisiblePoolViews([alice.profileId])
+        .map((p) => p.id)
+        .sort()
+    );
   });
 });

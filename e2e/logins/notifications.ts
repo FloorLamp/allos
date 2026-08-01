@@ -13,3 +13,10 @@
 // never be dispatched to.
 export const E2E_LOGIN_HA_NOTIFY = "e2e_ha_notify";
 export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";
+
+// A member with a dedicated adult profile for the digest ⚙️ Tune mirror spec (#1714).
+// Isolated because the preference this spec writes is LOGIN-scoped and persists: on a
+// shared login it would silence digest categories for every other spec's session, and
+// a --repeat-each run would re-enter with the previous run's state.
+export const E2E_LOGIN_DIGEST_TUNE = "e2e_digest_tune";
+export const DIGEST_TUNE_PROFILE = "Digest Tune (e2e)";

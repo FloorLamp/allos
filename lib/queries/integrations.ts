@@ -14,6 +14,12 @@ import {
   shouldShowConnectedSource,
   type ProvenanceTable,
 } from "@/lib/integrations/sync-log";
+import {
+  providerStanding,
+  syncVocabularyForKind,
+  type ProviderStanding,
+  type SyncVocabulary,
+} from "@/lib/integrations/provider-state";
 import { timelineDayHref, biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
 import { INTEGRATIONS, getIntegration } from "@/lib/integrations/registry";
 import {
@@ -494,12 +500,16 @@ export function getLatestSyncEvent(
   return row ?? null;
 }
 
-// One recurring-stream provider's state for the Data → Review "Connected sources"
-// section (issue #208): its connection status, latest sync outcome, and a recent
-// history tail. `canSyncNow` marks a provider the app can pull on demand (Strava —
-// it has the sync machinery); a push-only provider (Health Connect) explains that
-// instead of offering the button.
-export interface ConnectedSource {
+// THE per-provider state record (#1772). One provider used to be described by four
+// surfaces in three visual languages — the Integrations grid card, the setup page's
+// status card (its own badge, a raw SQLite UTC timestamp, and the `last_sync_summary`
+// JSON echoed as key:value badges, a third accounting with no formatter),
+// IntegrationSyncHistoryLink, and Review's Connected-sources card. They now all read
+// THIS, and format it through the pure lib/integrations/provider-state helpers.
+//
+// `canSyncNow` marks a provider the app can pull on demand; a push-only provider
+// (Health Connect) explains that instead of offering the button.
+export interface IntegrationState {
   id: string;
   name: string;
   kind: string; // IntegrationKind: 'push' | 'oauth' | 'token' | 'public'
@@ -512,12 +522,27 @@ export interface ConnectedSource {
   canSyncNow: boolean;
   latest: IntegrationSyncEvent | null;
   history: IntegrationSyncEvent[];
+  // The ids, among `latest` + `history`, whose sync actually recorded row provenance
+  // (#1771). The "What this wrote" drill-in is offered ONLY for these; an event that
+  // recorded none gets no expander at all rather than one that apologizes on open.
+  provenanceEventIds: number[];
+  // The last run that SUCCEEDED, however long ago — what the setup page's status
+  // header reports when the latest attempt failed.
+  lastSuccessAt: string | null;
+  // The pure derivations, resolved once here so no surface re-derives them: which
+  // shape the provider is in, and which words its counts are reported in.
+  standing: ProviderStanding;
+  vocabulary: SyncVocabulary;
 }
+
+// Retained for the surfaces that speak of "connected sources" (Data → Review). Same
+// record — the name is the surface's, the shape is the model's.
+export type ConnectedSource = IntegrationState;
 
 // Pull-integration ids the app can sync on demand ("Sync now"): Strava (OAuth),
 // Oura (personal-access-token), and Withings (OAuth) all have a REST pull path;
 // Health Connect is push-only, so it shows an explainer instead of the button.
-const SYNC_NOW_PROVIDERS = new Set(["strava", "oura", "withings"]);
+const SYNC_NOW_PROVIDERS = new Set(["strava", "oura", "withings", "weather"]);
 
 // The integration kinds that produce a RECURRING sync stream, and therefore belong in
 // "Connected sources": push (Health Connect), oauth (Strava, Withings), token (Oura),
@@ -540,25 +565,87 @@ export function getConnectedSources(profileId: number): ConnectedSource[] {
   return INTEGRATIONS.filter(
     (i) => i.status === "available" && RECURRING_SOURCE_KINDS.has(i.kind)
   )
-    .map((i) => {
-      const status = getConnection(profileId, i.id)?.status;
-      return {
-        id: i.id,
-        name: i.name,
-        kind: i.kind,
-        connected: status === "connected",
-        needsReauth: status === "needs_reauth",
-        canSyncNow: SYNC_NOW_PROVIDERS.has(i.id),
-        latest: getLatestSyncEvent(profileId, i.id),
-        history: getIntegrationSyncEvents(profileId, i.id, 10),
-      };
-    })
+    .map((i) => getIntegrationState(profileId, i.id, REVIEW_HISTORY_LIMIT))
+    .filter((s): s is IntegrationState => s !== null)
     .filter((s) =>
       shouldShowConnectedSource({
         connected: s.connected,
         hasHistory: s.history.length > 0,
       })
     );
+}
+
+// How many events each surface loads. Review is an inbox — it shows the current
+// state, so it needs only enough history to say whether the latest run is typical.
+// The setup page is the provider's HOME and owns the full history table, so it reads
+// deeper (the #388 retention sweep already bounds how much exists).
+const REVIEW_HISTORY_LIMIT = 10;
+export const SETUP_HISTORY_LIMIT = 25;
+
+// ONE provider's complete state, for whichever surface is asking (#1772): the
+// Integrations grid card, its setup page's status header + history table, or Review's
+// Connected-sources entry. Returns null for an id that isn't a registered
+// integration. Profile-scoped through every read it composes.
+export function getIntegrationState(
+  profileId: number,
+  providerId: string,
+  historyLimit: number = REVIEW_HISTORY_LIMIT
+): IntegrationState | null {
+  const def = getIntegration(providerId as IntegrationId);
+  if (!def) return null;
+  const status = getConnection(profileId, def.id)?.status;
+  const latest = getLatestSyncEvent(profileId, def.id);
+  const history = getIntegrationSyncEvents(profileId, def.id, historyLimit);
+  const ids = history.map((e) => e.id);
+  if (latest) ids.push(latest.id);
+  const connected = status === "connected";
+  const needsReauth = status === "needs_reauth";
+  return {
+    id: def.id,
+    name: def.name,
+    kind: def.kind,
+    connected,
+    needsReauth,
+    canSyncNow: SYNC_NOW_PROVIDERS.has(def.id),
+    latest,
+    history,
+    provenanceEventIds: ids.length
+      ? eventsWithProvenance(profileId, def.id, Math.min(...ids))
+      : [],
+    lastSuccessAt: getLastSuccessfulSyncAt(profileId, def.id),
+    standing: providerStanding({ connected, needsReauth, latest }),
+    vocabulary: syncVocabularyForKind(def.kind),
+  };
+}
+
+// Which of a provider's recent sync events actually RECORDED row provenance (#1771).
+// The "What this wrote" drill-in promises record-level detail, so it may only be
+// offered for an event that has some — and whether an event has any is a fact about
+// the EVENT, not about the provider: Weather legitimately records none (it writes
+// cells of the global location-keyed forecast cache, which name no user record —
+// #1212's scoping decision), and genuine pre-#1333 legacy events of the other
+// providers have none either. Both used to render an expander that apologized 100%
+// of the time.
+//
+// One indexed seek per provider rather than a per-event existence check: sync-event
+// ids are monotonic, so the events being rendered are exactly those at or above the
+// oldest id in the rendered set, and `integration_sync_rows` is keyed on event_id.
+// PROFILE-SCOPED through the parent event (the child-table convention — the table has
+// no own profile_id).
+export function eventsWithProvenance(
+  profileId: number,
+  provider: string,
+  minEventId: number
+): number[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT r.event_id AS event_id
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+        WHERE e.profile_id = ? AND e.provider = ? AND r.event_id >= ?`
+    )
+    .all(profileId, provider, minEventId) as { event_id: number }[];
+  return rows.map((r) => r.event_id);
 }
 
 // The captured raw-payload ref for one sync event, scoped to the profile — powers

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconPackage } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { refillMedication } from "@/app/(app)/medications/actions";
@@ -27,7 +26,6 @@ export default function RefillButton({
   const [size, setSize] = useState(
     lastFillSize != null ? String(lastFillSize) : ""
   );
-  const router = useRouter();
   const toast = useToast();
 
   async function submit(fillSize?: string) {
@@ -41,7 +39,6 @@ export default function RefillButton({
       if (res.ok) {
         toast("Refill recorded.");
         setAsking(false);
-        router.refresh();
       } else {
         toast(res.error, { tone: "error" });
       }

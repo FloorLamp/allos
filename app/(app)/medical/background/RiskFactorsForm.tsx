@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { saveRiskFactors } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -62,7 +61,6 @@ export default function RiskFactorsForm({
 }: {
   attributes: RiskAttributes;
 }) {
-  const router = useRouter();
   const [attrs, setAttrs] = useState<RiskAttributes>(attributes);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
@@ -71,7 +69,6 @@ export default function RiskFactorsForm({
     for (const { key, name } of FIELDS) fd.set(name, next[key] ? "1" : "0");
     runSave(async () => {
       await saveRiskFactors(fd);
-      router.refresh();
     });
   }
 

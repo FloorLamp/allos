@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   IconVideo,
   IconMicrophone,
@@ -80,7 +79,6 @@ export default function VideoClipGrid({
   onEditCaption: (id: number, caption: string) => Promise<ActionResult>;
 }) {
   const [pending, start] = useTransition();
-  const router = useRouter();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -106,7 +104,6 @@ export default function VideoClipGrid({
       }
       setCaption("");
       toast("Clip attached.");
-      router.refresh();
     });
   }
 
@@ -119,7 +116,6 @@ export default function VideoClipGrid({
       }
       setEditingId(null);
       toast(captionDraft.trim() ? "Caption updated." : "Caption removed.");
-      router.refresh();
     });
   }
 
@@ -131,7 +127,6 @@ export default function VideoClipGrid({
         return;
       }
       if (openId === id) setOpenId(null);
-      router.refresh();
     });
   }
 

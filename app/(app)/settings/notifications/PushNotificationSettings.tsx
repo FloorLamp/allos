@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   getPushPublicKey,
   savePushSubscriptionAction,
@@ -32,7 +31,6 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 type Perm = "default" | "granted" | "denied";
 
 export default function PushNotificationSettings() {
-  const router = useRouter();
   // null = still probing; false = this browser can't do push.
   const [supported, setSupported] = useState<boolean | null>(null);
   const [permission, setPermission] = useState<Perm>("default");
@@ -103,7 +101,6 @@ export default function PushNotificationSettings() {
       }
       setSubscribed(true);
       setResult({ ok: true, message: "Push enabled on this browser ✅" });
-      router.refresh();
     } catch (e) {
       setResult({
         ok: false,
@@ -129,7 +126,6 @@ export default function PushNotificationSettings() {
       }
       setSubscribed(false);
       setResult({ ok: true, message: "Push disabled on this browser." });
-      router.refresh();
     } catch (e) {
       setResult({
         ok: false,

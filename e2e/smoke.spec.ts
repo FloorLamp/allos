@@ -49,13 +49,15 @@ const ROUTES = [
 // sidebar is `hidden md:flex` (app/(app)/layout.tsx) and MobileNav's top bar is
 // `md:hidden`, and the drawer holding the sidebar's links isn't even mounted
 // until the hamburger is tapped. Below the Tailwind `md` breakpoint (768px) the
-// anchor is that hamburger; at desktop widths it stays the sidebar's Data link
-// (exact:true avoids the Import tab's provider links that also contain "Data").
+// anchor is that hamburger; at desktop widths it stays the sidebar's Data link.
+// A ^-anchored regex, not exact text: the Import tab's provider links also contain
+// "Data", and since #1801 the sidebar entry itself carries the review-count badge,
+// so its accessible name is "Data <n>" whenever an import needs attention.
 function appShellAnchor(page: Page): Locator {
   const width = page.viewportSize()?.width ?? Number.POSITIVE_INFINITY;
   return width < 768
     ? page.getByRole("button", { name: "Open menu" })
-    : page.getByRole("link", { name: "Data", exact: true });
+    : page.locator("aside nav").getByRole("link", { name: /^Data/ });
 }
 
 // #181: with ALLOS_DEMO_MODE unset (the default webServer env), demo mode is fully
@@ -214,7 +216,7 @@ test("biological-age hero is absent for a child profile (#209)", async ({
     });
 
     // Switch to profile 2 ("Riley (child)") via its household chip, then confirm the
-    // switch by the user-menu naming the new profile.
+    // switch by the identity bar naming the new profile.
     await page.goto("/");
     // Same class as the Snooze above (#1513): the chip is a Server-Action form submit
     // whose RESULT this asserts, so wait for the action's POST rather than assuming a
@@ -229,7 +231,7 @@ test("biological-age hero is absent for a child profile (#209)", async ({
     // that action (#1437) — so the switch can still be in flight when this reads. The
     // retry IS the wait; it just needs longer than the default 5s on the app's
     // heaviest server render.
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       "Riley (child)",
       { timeout: 15_000 }
     );

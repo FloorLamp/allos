@@ -523,3 +523,311 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     }
   }
 });
+
+// ── Content-hash document tombstones (#1777) + the inventory endpoint (#1776) ──
+//
+// The property under test is the one the whole cluster exists for: a document the user
+// DELETED must not come back on the next acquirer run. Proving it needs both halves in
+// one place — the endpoint a client diffs against, and the refusal that holds even when
+// a client ignores it — so this drives the real bearer API alongside the real UI.
+//
+// FIXTURE OWNERSHIP: every document carries bytes unique to its own test (the stamp is
+// inside the file), so its content hash is this test's alone and no assertion here can
+// see or disturb another spec's rows.
+test.describe("Document tombstones and the held inventory (#1776/#1777)", () => {
+  // Mint a real `upload:documents` token through the UI — the same path an operator
+  // uses, and the only place the secret is ever shown.
+  async function mintToken(
+    page: import("@playwright/test").Page,
+    name: string
+  ): Promise<string> {
+    await page.goto("/settings/tokens");
+    await settledFill(page, page.getByTestId("api-token-name"), name);
+    await hydratedClick(page, page.getByTestId("api-token-create"));
+    const panel = page.getByTestId("api-token-secret");
+    await expect(panel).toBeVisible();
+    return (await panel.locator("code").innerText()).trim();
+  }
+
+  // The profile this browser session is acting as — the one whose Data → Review the
+  // blocked list renders, so the API pushes must target exactly it.
+  function activeProfileId(): number {
+    const handle = new Database(workerDbPath());
+    try {
+      const row = handle
+        .prepare(
+          `SELECT s.active_profile_id AS id
+             FROM sessions s JOIN logins l ON l.id = s.login_id
+            WHERE l.username = 'admin' AND s.active_profile_id IS NOT NULL
+            ORDER BY s.last_used_at DESC LIMIT 1`
+        )
+        .get() as { id: number } | undefined;
+      if (row) return row.id;
+      return (
+        handle.prepare("SELECT MIN(id) AS id FROM profiles").get() as {
+          id: number;
+        }
+      ).id;
+    } finally {
+      handle.close();
+    }
+  }
+
+  async function dropPortal(
+    page: import("@playwright/test").Page,
+    name: string
+  ) {
+    await hydratedClick(
+      page,
+      page
+        .getByTestId("portal-row")
+        .filter({ hasText: name })
+        .first() // first-ok: spec-owned row
+        .getByTestId("portal-remove")
+    );
+    await expect(page.getByTestId("portals-status")).toHaveText(
+      "Portal removed."
+    );
+  }
+
+  // A minimal, valid PDF whose bytes are unique to the caller — so its content hash is
+  // this test's own fixture identity.
+  function pdfBytes(marker: string): Buffer {
+    return Buffer.from(`%PDF-1.4\n% allos e2e document ${marker}\n%%EOF\n`);
+  }
+
+  test("delete blocks re-acquisition; the inventory says so; allow-again lifts it", async ({
+    page,
+    request,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-8); // clock-ok: a uniqueness suffix for this spec's own fixture bytes, never a stored timestamp
+    const filename = `tombstone-spec-${stamp}.pdf`;
+    const body = pdfBytes(stamp);
+    const token = await mintToken(page, `tombstone spec ${stamp}`);
+    const profileId = activeProfileId();
+    const auth = { authorization: `Bearer ${token}` };
+    const upload = () =>
+      request.post(`/api/documents?profile=${profileId}`, {
+        headers: auth,
+        multipart: {
+          file: { name: filename, mimeType: "application/pdf", buffer: body },
+        },
+      });
+    const inventory = async () => {
+      const res = await request.get(
+        `/api/documents/held?profile=${profileId}`,
+        { headers: auth }
+      );
+      expect(res.status()).toBe(200);
+      return (await res.json()) as { held: string[]; deleted: string[] };
+    };
+
+    // 1. The acquirer pushes the document and it stores.
+    const first = await upload();
+    expect(first.status()).toBe(200);
+    const firstBody = await first.json();
+    expect(firstBody.documents[0].outcome).toBe("stored");
+    const docId = firstBody.documents[0].id as number;
+
+    // 2. The inventory reports it HELD — this is what tells a client not to re-send it.
+    //    The hash is the server's to compute; the spec learns it from the answer rather
+    //    than re-deriving it, so a client and allos can never disagree here by accident.
+    const afterUpload = await inventory();
+    // Held and deleted are disjoint by construction, and the endpoint must say so.
+    expect(
+      afterUpload.held.filter((h) => afterUpload.deleted.includes(h))
+    ).toEqual([]);
+    const heldBefore = afterUpload.held.length;
+    expect(heldBefore).toBeGreaterThan(0);
+
+    // 3. The user deletes it, through the real confirm dialog.
+    await page.goto(`/import/${docId}`);
+    const del = page.getByTestId("delete-document");
+    const dialog = page.getByRole("dialog");
+    await expect(async () => {
+      if (!(await dialog.isVisible())) await del.click();
+      await expect(dialog).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15_000 }); // topass-ok: re-open the client confirm until it appears — no Server-Action POST to settle on, and the discrete onClick can be swallowed pre-hydration
+    await dialog
+      .getByRole("button", { name: "Delete document & its records" })
+      .click();
+    await page.waitForURL(/\/data/);
+
+    // 4. The inventory has moved it from held to deleted. A client diffing against this
+    //    now sends neither — which is the whole contract.
+    const afterDelete = await inventory();
+    const nowDeleted = afterDelete.deleted.filter(
+      (h) => !afterUpload.deleted.includes(h)
+    );
+    expect(nowDeleted).toHaveLength(1);
+    const blockedHash = nowDeleted[0];
+    expect(afterDelete.held).not.toContain(blockedHash);
+    expect(afterDelete.held).toHaveLength(heldBefore - 1);
+
+    // 5. The acquirer re-offers the very same bytes — the nightly reconciliation a
+    //    client that ignored the `deleted` list would perform. It is REFUSED, and no
+    //    document row is created, so the document count cannot creep with each attempt.
+    const reoffer = await upload();
+    expect(reoffer.status()).toBe(200);
+    const reofferDoc = (await reoffer.json()).documents[0];
+    expect(reofferDoc.outcome).toBe("blocked");
+    expect(reofferDoc.id).toBeNull();
+    expect(reofferDoc.reason).toContain("deleted in allos");
+
+    // 6. The block is VISIBLE and named, on Data → Review.
+    await page.goto("/data?section=review");
+    const blockedRow = page
+      .getByTestId("blocked-document-row")
+      .filter({ hasText: filename })
+      .first(); // first-ok: the filename is unique to this test, so this is spec-owned data
+    await expect(blockedRow).toBeVisible();
+
+    // 7. …and reversible with one tap. The action revalidates, so the entry LEAVES the
+    //    list — the block is gone, and a row still describing one would be stale.
+    await hydratedClick(page, blockedRow.getByTestId("allow-reacquisition"));
+    await expect(blockedRow).toHaveCount(0);
+
+    // 8. The next offer ingests again — the block is genuinely lifted, not just hidden.
+    const afterAllow = await upload();
+    const afterAllowDoc = (await afterAllow.json()).documents[0];
+    expect(afterAllowDoc.outcome).toBe("stored");
+
+    // Clean up this test's own document so the feed it shares stays as it was found.
+    await request.post(`/api/documents?profile=${profileId}`, {
+      headers: auth,
+      multipart: {
+        file: { name: filename, mimeType: "application/pdf", buffer: body },
+      },
+    });
+    const cleanupId = afterAllowDoc.id as number;
+    await page.goto(`/import/${cleanupId}`);
+    const del2 = page.getByTestId("delete-document");
+    const dialog2 = page.getByRole("dialog");
+    await expect(async () => {
+      if (!(await dialog2.isVisible())) await del2.click();
+      await expect(dialog2).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15_000 }); // topass-ok: same pre-hydration guard as the delete above
+    await dialog2
+      .getByRole("button", { name: "Delete document & its records" })
+      .click();
+    await page.waitForURL(/\/data/);
+    await page.goto("/data?section=review");
+    const leftover = page
+      .getByTestId("blocked-document-row")
+      .filter({ hasText: filename })
+      .first(); // first-ok: spec-owned row
+    await hydratedClick(page, leftover.getByTestId("allow-reacquisition"));
+    await expect(leftover).toHaveCount(0);
+  });
+
+  test("the delete confirm names the tombstone only for a portal-acquired document", async ({
+    page,
+    request,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-8); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Tombstone Copy Portal ${stamp}`;
+    const label = `Tombstone Patient ${stamp}`;
+    const token = await mintToken(page, `tombstone copy ${stamp}`);
+    const auth = { authorization: `Bearer ${token}` };
+
+    // Register a portal and bind a patient on it to the acting profile, so a push
+    // through the IDENTITY form lands a document carrying acquired-by provenance.
+    await page.goto("/integrations/patient-portals");
+    await settledFill(page, page.getByTestId("portal-name"), portal);
+    await hydratedClick(page, page.getByTestId("portal-add"));
+    await expect(page.getByTestId("portals-status")).toHaveText(
+      "Portal added."
+    );
+    await page.getByTestId("bind-account").selectOption({ label: portal });
+    await settledFill(page, page.getByTestId("bind-label"), label);
+    await hydratedClick(page, page.getByTestId("bind-add"));
+    await expect(page.getByTestId("portals-status")).toHaveText(
+      "Patient mapped."
+    );
+
+    const slug = `tombstone-copy-portal-${stamp}`;
+    const acquired = await request.post(
+      `/api/documents?portal=${slug}&patient=${encodeURIComponent(label)}`,
+      {
+        headers: auth,
+        multipart: {
+          file: {
+            name: `acquired-${stamp}.pdf`,
+            mimeType: "application/pdf",
+            buffer: pdfBytes(`acquired-${stamp}`),
+          },
+        },
+      }
+    );
+    expect(acquired.status()).toBe(200);
+    const acquiredDoc = (await acquired.json()).documents[0];
+    expect(acquiredDoc.outcome).toBe("stored");
+
+    // A PORTAL-ACQUIRED document's confirm states the consequence: the acquirer will
+    // not bring it back, and that is reversible from Data → Review.
+    await page.goto(`/import/${acquiredDoc.id}`);
+    const del = page.getByTestId("delete-document");
+    const dialog = page.getByRole("dialog");
+    await expect(async () => {
+      if (!(await dialog.isVisible())) await del.click();
+      await expect(dialog).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15_000 }); // topass-ok: re-open the client confirm until it appears — the discrete onClick can be swallowed pre-hydration
+    await expect(dialog.getByTestId("delete-tombstone-note")).toContainText(
+      "will not bring this back"
+    );
+    await expect(dialog.getByTestId("delete-tombstone-note")).toContainText(
+      "Data → Review"
+    );
+
+    // Go through with it, so the portal fixture can be removed cleanly below.
+    await dialog
+      .getByRole("button", { name: "Delete document & its records" })
+      .click();
+    await page.waitForURL(/\/data/);
+
+    // A MANUALLY uploaded document keeps the copy it always had — there is no acquirer
+    // to block, so the dialog says nothing about one.
+    const manual = await request.post(
+      `/api/documents?profile=${activeProfileId()}`,
+      {
+        headers: auth,
+        multipart: {
+          file: {
+            name: `manual-${stamp}.pdf`,
+            mimeType: "application/pdf",
+            buffer: pdfBytes(`manual-${stamp}`),
+          },
+        },
+      }
+    );
+    const manualDoc = (await manual.json()).documents[0];
+    await page.goto(`/import/${manualDoc.id}`);
+    const del2 = page.getByTestId("delete-document");
+    const dialog2 = page.getByRole("dialog");
+    await expect(async () => {
+      if (!(await dialog2.isVisible())) await del2.click();
+      await expect(dialog2).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15_000 }); // topass-ok: same pre-hydration guard as above
+    await expect(dialog2).toContainText("every record it imported");
+    await expect(dialog2.getByTestId("delete-tombstone-note")).toHaveCount(0);
+    await dialog2
+      .getByRole("button", { name: "Delete document & its records" })
+      .click();
+    await page.waitForURL(/\/data/);
+
+    // Remove this spec's own blocked entries and the portal it registered.
+    await page.goto("/data?section=review");
+    for (const name of [`acquired-${stamp}.pdf`, `manual-${stamp}.pdf`]) {
+      const row = page
+        .getByTestId("blocked-document-row")
+        .filter({ hasText: name })
+        .first(); // first-ok: the filename is unique to this test
+      await hydratedClick(page, row.getByTestId("allow-reacquisition"));
+      await expect(row).toHaveCount(0);
+    }
+    await page.goto("/integrations/patient-portals");
+    await dropPortal(page, portal);
+  });
+});

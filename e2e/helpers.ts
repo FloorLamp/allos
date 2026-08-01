@@ -5,8 +5,8 @@ import { expect, type Locator, type Page } from "@playwright/test";
 // The suite had reinvented "wait until the interaction actually took effect" per
 // spec — a zoo of `waitForLoadState("networkidle")` gates, `waitForTimeout(...)`
 // sleeps, and `toPass()` re-click loops. They disagree about WHAT they wait for,
-// so the same class of race (a Server-Action POST + trailing `router.refresh()`
-// that detaches elements mid-interaction, or a pre-hydration click that gets
+// so the same class of race (a Server-Action POST whose revalidated re-render
+// detaches elements mid-interaction, or a pre-hydration click that gets
 // swallowed — #730/#830) leaks through in whichever spec picked the weaker gate.
 // This module is the ONE home for settled interactions; new specs use it, and the
 // hygiene guard (`lib/__tests__/e2e-hygiene.test.ts`) freezes the legacy
@@ -478,6 +478,29 @@ export async function openMobileDrawer(page: Page): Promise<Locator> {
   return drawer;
 }
 
+// The identity bar's view-set readout (issue #1801).
+//
+// The multi-profile view used to be asserted through ProfileViewStrip's chips;
+// the strip is gone and the identity bar carries the same information, so the
+// strip-era assertions moved onto this helper. `data-view-count` is how many
+// profiles are currently IN VIEW, acting included — 1 is the single-view default
+// every session starts in.
+//
+// Desktop mount by default (the sidebar's bar). The phone's bar is a separate
+// mount (`profile-identity-bar-mobile`) because both exist in the DOM at every
+// width, one `md:hidden` and one `hidden md:flex`.
+export async function expectInView(
+  page: Page,
+  count: number,
+  opts: { mobile?: boolean } = {}
+): Promise<void> {
+  await expect(
+    page.getByTestId(
+      opts.mobile ? "profile-identity-bar-mobile" : "profile-identity-bar"
+    )
+  ).toHaveAttribute("data-view-count", String(count));
+}
+
 // Toggle a checkbox so the change durably lands in React STATE — the checkbox analog
 // of settledFill.
 //
@@ -531,7 +554,9 @@ export async function settledCheckSave(
 // Next App Router Server Actions POST to the CURRENT route URL (same origin) — a
 // `<form action={serverAction}>` submit posts natively before hydration and via a
 // `fetch` POST after, and either way the response completes only once the action
-// AND its `revalidatePath`/`router.refresh()` have run server-side. We arm a
+// AND its `revalidatePath` have run server-side (the revalidate is what puts the
+// re-rendered tree in that very response — see
+// docs/internals/server-action-refresh.md). We arm a
 // `waitForResponse` for that POST BEFORE clicking (so a fast action can't resolve
 // in the gap between click and wait), then click, then await the response. When it
 // resolves the mutation is durably applied; the follow-up `expect(...)` asserts the
@@ -552,7 +577,7 @@ export async function settledCheckSave(
 // dashboard's watchers/pollers): the wait can resolve on a bystander POST while
 // the mutation's own request is still in flight — and a follow-up `page.reload()`
 // then aborts it (the write is lost, not just late). There, prefer asserting a
-// SERVER-rendered marker that only the completed mutation + refresh can produce
+// SERVER-rendered marker that only the completed mutation can produce
 // (the wellbeing card's `mood-server-logged` marker is the precedent) — the
 // assertion's own retry is the settle.
 export async function settledClick(
@@ -678,7 +703,7 @@ export async function settledSelectSave(
 // Set files on a file `<input>` and await the Server-Action POST the resulting
 // change fires — the settledClick idiom for an upload input (which has no click to
 // drive). A hidden camera/file input's `onChange` submits a Server Action (upload
-// + `revalidatePath`/`router.refresh()`); we arm the POST wait BEFORE
+// + `revalidatePath`); we arm the POST wait BEFORE
 // `setInputFiles` (so a fast upload can't resolve in the gap), then await it, so
 // the follow-up `expect(...)` runs against the durably-applied strip rather than a
 // bare timed count poll. WORKS when the change definitely fires exactly one

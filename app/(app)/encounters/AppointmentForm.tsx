@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -49,7 +48,6 @@ export default function AppointmentForm({
   // it suppresses this form's built-in "Add appointment" heading.
   embedded?: boolean;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!appointment;
@@ -100,7 +98,6 @@ export default function AppointmentForm({
     toast(editing ? "Appointment updated" : "Appointment saved");
     if (!editing) formRef.current?.reset();
     onDone?.();
-    router.refresh();
   }
 
   return (

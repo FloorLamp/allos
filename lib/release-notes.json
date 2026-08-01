@@ -1,8 +1,174 @@
 {
   "days": [
     {
+      "date": "2026-08-01",
+      "entries": [
+        {
+          "pr": 1816,
+          "kind": "feature",
+          "issues": [1677],
+          "title": "Pickers now lead with what you actually use",
+          "body": "The medication, supplement, brand, provider, and specialty pickers no longer open on the alphabet. Your own current medications and supplements come first, then a sensible common-choices list, then everything else A–Z — and the vaccine picker is now age-aware, leading with the doses that are plausibly next for this person instead of an infant schedule. Everything stays searchable; only the order changed."
+        },
+        {
+          "pr": 1815,
+          "kind": "feature",
+          "issues": [1632],
+          "title": "Trends now shows how consistent your wellness practices have been",
+          "body": "The Trends overview gained a Practices section: one cell per completed week showing whether each practice hit its weekly range, your sessions-per-week charted against the band you declared, and average session length for practices that record minutes. It's calm by design — an under-target week is a neutral cell, never a warning — and every card links back to Wellness."
+        },
+        {
+          "pr": 1814,
+          "kind": "feature",
+          "issues": [1807],
+          "title": "The food nudge keyboard can now be collapsed",
+          "body": "The Telegram food nudge's \"Show more\" now has a matching \"Show less\" that folds the keyboard back a page (never below the compact default), and the \"More…\" link that left the chat for the app is gone — the buttons are the whole flow. A keyboard you've expanded also stays the size you chose when the message later updates itself."
+        },
+        {
+          "pr": 1811,
+          "kind": "feature",
+          "issues": [1801],
+          "title": "One identity bar and one profile switcher, everywhere",
+          "body": "Multi-profile instances get a single identity bar — stacked avatars of the profiles in your view with the acting profile always first, ringed, and named. On a phone it replaces the wordmark in the top bar, so \"whose data is this?\" is answerable without opening anything; on desktop it sits at the top of the sidebar. Tapping it opens one switcher panel (a drawer from the top on phones, an expanding list on desktop) where each person has two separate controls: switch who you're acting as, or toggle them in and out of your view. The old bottom-of-sidebar profile menu and the view-strip banner are retired; \"Signed in as\" moved next to Log out, and the import-review count now badges the Data entry in navigation. Single-profile instances are unchanged."
+        },
+        {
+          "pr": 1812,
+          "kind": "fix",
+          "issues": [1808, 1809],
+          "title": "Documents and training goals delete cleanly again",
+          "body": "Deleting a document whose extracted medication an illness episode later stopped used to fail with a database error — the episode's stop record blocked it. Stop records now keep the medication's name as their own snapshot, so the episode still says what it stopped while the document deletes, reprocesses, and reassigns cleanly (a migration applies automatically). Deleting a training goal a protocol referenced was blocked the same way: the protocol now simply loses its adherence link and survives, matching how other areas already behave."
+        },
+        {
+          "pr": 1810,
+          "kind": "feature",
+          "issues": [1797],
+          "title": "Every digest category can now be tuned",
+          "body": "The morning digest's Tune control now covers all ten categories, including lab results and activities. Turning a category down only quiets its routine lines: a flagged lab result always comes through, and a training day that set a personal record still appears. The row copy states exactly what each toggle can never hide."
+        },
+        {
+          "pr": 1806,
+          "kind": "fix",
+          "issues": [1795],
+          "title": "One update notice per deploy",
+          "body": "A new deploy used to raise two separate notices — a banner at the top and a bar at the bottom, each with its own reload button, and taking one could re-offer the update you'd just taken. There is now a single \"Update ready\" notice that names what was deployed, and its reload always lands you on the new version with nothing re-offering it afterwards."
+        },
+        {
+          "pr": 1803,
+          "kind": "feature",
+          "issues": [1670],
+          "title": "Weekly targets you've been under for a month get a gentle right-size offer",
+          "body": "When a weekly goal — a wellness practice, a training routine, or a food habit — has been under its target for four straight completed weeks, its page now offers to lower the target to the pace you actually keep, or to stop tracking it while keeping every logged session. Nothing changes unless you tap it, substance limits are never touched, and the Telegram pace nudge carries the same one-tap offer only when it was already messaging you."
+        },
+        {
+          "pr": 1800,
+          "kind": "feature",
+          "issues": [1705],
+          "title": "Shared bottles and your items now exchange product details",
+          "body": "Creating a shared bottle from a supplement or medication carries over its name and strength instead of making you retype them, and the medicine cabinet gained \"Add for another person\": pick a household member and their add form opens pre-filled from the bottle and already linked to it. A bottle's strength and form now show wherever it appears, and editing the bottle updates every linked item's display automatically."
+        },
+        {
+          "pr": 1799,
+          "kind": "fix",
+          "issues": [1796],
+          "title": "The portal name list an import tool can fetch is scoped to your household",
+          "body": "The API endpoint that lets the document-import tool read portal and account names now returns only accounts claimed by people you can access, matching how portal sync reports were scoped earlier. Admins still see the full list, and a brand-new portal stays visible so setup keeps working."
+        },
+        {
+          "pr": 1798,
+          "kind": "fix",
+          "issues": [1794],
+          "title": "The pull-to-refresh icon no longer sits permanently on screen",
+          "body": "In the installed app, the pull-to-refresh indicator now fades out when you're not pulling and no refresh is running. It previously stayed fully visible at the top of the screen from the moment a page loaded."
+        },
+        {
+          "pr": 1791,
+          "kind": "fix",
+          "issues": [1787],
+          "title": "Portal sync problems stay within their own household",
+          "body": "The patient-portals status card could show another household's portal failure message — including its free-text error — to anyone with a login on the instance. Portal run reports are now scoped by reachability: you see failures only for portal accounts bound to profiles you can access (plus unplaced first-contact runs, for the people who manage those). Portal names in the shared registry remain instance-wide, as designed."
+        },
+        {
+          "pr": 1786,
+          "kind": "fix",
+          "issues": [1780],
+          "title": "One person on two portal logins no longer imports twice",
+          "body": "Portals regenerate their export files on every request, so the same records could arrive looking like brand-new documents — especially when one person is reachable through two portal logins — and every visit ended up recorded twice. Allos now recognizes a health-record file by the clinical entry ids inside it, not just its bytes: an offer whose records exactly match a document already held is refused as already imported, a portal sync's repeat offers land no rows at all, and partly-overlapping exports still store normally. Existing documents are recognized retroactively. Operators: migration 136 applies automatically."
+        },
+        {
+          "pr": 1784,
+          "kind": "feature",
+          "issues": [1779],
+          "title": "Telegram messages now correct themselves when things change in the app",
+          "body": "Take a dose in the app, and the Telegram reminder that offered a ✅ Taken button stops presenting it as outstanding: on the next hourly tick, every live message re-checks its buttons against what actually happened — resolved actions are stripped, fully handled messages close with an honest line, and yesterday's buttons never stay tappable into today. A confirmation from one family member's chat also corrects everyone else's copy. Silent and cheap by design: an unchanged message is never edited."
+        },
+        {
+          "pr": 1782,
+          "kind": "feature",
+          "issues": [1771, 1772],
+          "title": "One language for integration status, and a sync history that reads like a log",
+          "body": "A provider's status now looks the same everywhere — the Integrations grid, its setup page, and Data → Review speak one vocabulary (Connected, Partial sync, Sync failing, Needs reconnect) with one timestamp style and one accounting. The setup page becomes the provider's home with a proper history table: a reason on every failure row, no-op runs collapsed, and weather reported in forecast language (“Forecast refreshed · 16 readings revised”) instead of record counts. Review is now an inbox: only providers needing attention expand; healthy ones collapse to a line. The “What this wrote” drill-down also stops appearing on syncs that never record per-record detail."
+        },
+        {
+          "pr": 1768,
+          "kind": "feature",
+          "title": "The morning digest now tells you what changed",
+          "body": "Out-of-range vitals, your daily check-in, new symptoms, and what synced overnight can now appear in the digest's New section — ranked so a flagged result always leads, capped so a busy day says “+2 more” instead of flooding. On favorable days a sunlight line names the window (“Sunny, UV moderate until 4pm”), and an optional daily step target adds a calm verdict for yesterday plus one quiet afternoon note when the day is well behind — counted, never escalated, and stale sync data stays silent rather than guessing.",
+          "issues": [1713, 1723]
+        },
+        {
+          "pr": 1769,
+          "kind": "feature",
+          "title": "Lipid ratios computed for you — and a lighter Biomarkers page",
+          "body": "LDL/HDL and Cholesterol/HDL ratios now appear beside your labs even when the lab didn't print them, computed from the same draw and flagged against their reference bands. The Biomarkers browser also stops shipping your entire lab history to the browser on every visit: panels load their readings when you open them, so decades of results cost nothing until asked for.",
+          "issues": [1651, 1582]
+        },
+        {
+          "pr": 1770,
+          "kind": "feature",
+          "title": "Pickers instead of blank boxes across ten medical forms",
+          "body": "Allergen, gene, condition, family-history, visit-type, care-plan, side-effect and activity fields now offer their real vocabularies as you type — with free text always allowed. This matters for safety: a recognized allergen or gene spelling is stored in the exact form the drug-allergy and pharmacogenomic cross-checks match on. Picking a condition by name now applies its ICD-10 code automatically, the way medication picks apply their RxNorm code, and the care-plan status picker says plainly which statuses keep nudging Upcoming and which stop.",
+          "issues": [1676]
+        },
+        {
+          "pr": 1774,
+          "kind": "feature",
+          "title": "Tune your morning digest from the digest itself",
+          "body": "A ⚙️ Tune button on the digest expands in place into per-category toggles: turn a category down to notable-only and routine lines stop while anything important still comes through — an out-of-range reading, a notable mood shift, an unusual night's sleep. Flagged results can never be silenced, demoting everything makes the digest short but never gone, and the same toggles live in Settings → Notifications. In a household, no one's tap thins anyone else's digest.",
+          "issues": [1714]
+        },
+        {
+          "pr": 1781,
+          "kind": "feature",
+          "title": "Deleted documents stay deleted — and portal syncs stop re-uploading what you already have",
+          "body": "The portal tool can now ask Allos what it already holds before sending anything, so daily syncs stop re-uploading megabytes and stop inflating the import feed with skipped rows — and a document that quietly went missing gets noticed and re-sent on the next run. Deleting a document now leaves a memory: an automated sync can never bring it back, a new “blocked from re-acquisition” list in Data → Review shows what's blocked with a one-tap Allow again, and re-uploading the file yourself also unblocks it. Operators: migration 134 applies automatically.",
+          "issues": [1776, 1777]
+        }
+      ]
+    },
+    {
       "date": "2026-07-31",
       "entries": [
+        {
+          "pr": 1764,
+          "kind": "fix",
+          "title": "Training, Longevity and Timeline pages do less work per visit",
+          "body": "Three heavy pages stopped repeating themselves: the Training overview no longer scans your whole strength history twice per view, the Longevity page no longer recomputes a heatmap for every experiment you've ever finished, and the Timeline evaluates its weather context once per page instead of once per day. Long histories load noticeably lighter; nothing changes in what's shown.",
+          "issues": [1654, 1655, 1749, 1750]
+        },
+        {
+          "pr": 1765,
+          "kind": "fix",
+          "title": "Caregivers can view a family member's symptom photos and videos again",
+          "body": "Opening a household member's illness episode as a caregiver used to show the clip tiles but fail to play them. The media now follows the same access rules as the episode page itself: if you can see the episode, you can play its clips and photos. Access stays strictly grants-based, and every cross-profile view is recorded in the audit trail.",
+          "issues": [1696]
+        },
+        {
+          "pr": 1767,
+          "kind": "feature",
+          "title": "Monday's workout suggestion remembers Saturday",
+          "body": "Next-workout focus now respects muscle recovery across the week boundary: big muscle groups rest a couple of days, small ones a day, and the least-recently-trained region leads. When everything you train is still fresh, the day is framed as a recovery day instead of forcing a pick — and when the week genuinely can't be met without today, the suggestion says both facts out loud (“Back was Saturday — 1/2 with today left.”). Phones also regain the Equipment door on the Training header.",
+          "issues": [1673, 1661]
+        },
         {
           "pr": 1761,
           "kind": "feature",

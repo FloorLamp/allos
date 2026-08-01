@@ -9,8 +9,8 @@ import {
 
 // Shared drivers for the Settings → Family screen (issue #868, phase-2 create-member
 // hardening). Family create/grant buttons are NOT native form submits — each is an
-// `onClick` handler that runs a Server Action and then `router.refresh()`es the RSC
-// tree (see app/(app)/settings/family/FamilyManager.tsx). Two failure modes fall out
+// `onClick` handler that runs a Server Action whose revalidate repaints the RSC tree
+// (see app/(app)/settings/family/FamilyManager.tsx). Two failure modes fall out
 // of that shape, and they are why every dynamic family spec had grown its own copy of
 // the same fragile goto→fill→click→verify dance (~9 copies before this module):
 //
@@ -20,8 +20,8 @@ import {
 //   2. The settings shell's background toasters poll via Server Action POSTs to the
 //      CURRENT route, indistinguishable from the create action's own POST — so a
 //      bare settledClick can FALSE-SETTLE on a bystander poll while the create never
-//      landed (the profile-switch-toasts precedent), and a `router.refresh()` under
-//      CI load can leave a STALE matrix that never shows the new row.
+//      landed (the profile-switch-toasts precedent), and a slow revalidated re-render
+//      under CI load can leave a STALE matrix that never shows the new row.
 //
 // The proven fix (surviving the retries=0 census in two-factor / view-only-access /
 // wellbeing-check) is to retry the WHOLE goto→fill→click cycle against the DURABLE
@@ -95,7 +95,7 @@ export async function createLoginViaFamily(
   const password = opts.passwordless ? "" : (opts.password ?? MEMBER_PASSWORD);
   const row = loginRowFor(page, username);
 
-  // The family create button is onClick+router.refresh() (not a form submit), so no
+  // The family create button is an onClick Server Action (not a form submit), so no
   // single awaitable event exists — re-goto→fill→click until the durable login-row
   // renders; idempotent via the NOCASE-unique username (#830/#1111).
   await expect(async () => {
@@ -153,7 +153,7 @@ async function profileRowExists(page: Page, name: string): Promise<boolean> {
     );
 }
 
-// Switch the shared session's active profile via the sidebar UserMenu, retry-clicking
+// Switch the shared session's active profile via the sidebar identity bar, retry-clicking
 // through the hydration window (#730) as the household/front-door specs do.
 export async function switchToProfile(page: Page, name: string): Promise<void> {
   // Target the act-as switch button by its data-testid (#1096) — the popover now
@@ -165,11 +165,11 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
   // it never matches). Robust regardless of avatar alt text — the repo's
   // data-testid-hook convention over a brittle accessible-name match.
   const target = page
-    .getByTestId("user-menu-popover")
+    .getByTestId("profile-switcher-panel")
     .locator('[data-testid^="switch-to-"]')
     .filter({ hasText: name });
   await expect(async () => {
-    await page.getByTestId("user-menu-trigger").click();
+    await page.getByTestId("profile-identity-bar").click();
     await expect(target).toBeVisible({ timeout: 2_000 });
     // The popover trigger can be clicked pre-hydration; no single awaitable event
     // covers "trigger opened AND target rendered", so re-open until it does.
@@ -186,7 +186,7 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
   // the default 5s (the dashboard and the merged Trends surface are the heavy
   // cases). A named ceiling, not a sleep — this still fails if the switch never
   // lands.
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name, {
+  await expect(page.getByTestId("profile-identity-bar")).toContainText(name, {
     timeout: 20_000,
   });
 }
@@ -205,7 +205,7 @@ export async function createProfileViaFamily(
   label: string
 ): Promise<string> {
   const name = `${label}-${Date.now()}-${++familySeq}`;
-  // The Add button is onClick+router.refresh() (not a form submit) — no single awaitable
+  // The Add button is an onClick Server Action (not a form submit) — no single awaitable
   // event exists; re-goto and re-check the durable profile row, clicking Add only when
   // it's absent so a landed-but-slow create never duplicates the un-unique name (#830).
   await expect(async () => {

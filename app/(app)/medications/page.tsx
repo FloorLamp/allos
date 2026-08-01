@@ -1,10 +1,12 @@
 import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
-  getPickerProviders,
+  getRankedPickerProviders,
+  getIntakeCatalogOptions,
   getConditions,
   collectHouseholdRollup,
   countVisiblePools,
+  findLinkableSupply,
 } from "@/lib/queries";
 import { mergedSituationOptions } from "@/lib/situations";
 import { loadMedicationsData, type MedicationsData } from "./med-data";
@@ -13,6 +15,7 @@ import MedicationTodayStrip from "./MedicationTodayStrip";
 import MedicationAddWorkspace from "./MedicationAddWorkspace";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
+import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
 import PageContainer from "@/components/PageContainer";
 import {
@@ -47,7 +50,10 @@ export const dynamic = "force-dynamic";
 // only (#1096 write-centric), a read-only member's board is view-only. One intake_items
 // table; supplements live on Nutrition → Supplements.
 export default async function MedicationsPage(props: {
-  searchParams: Promise<{ filter?: string | string[] }>;
+  searchParams: Promise<{
+    filter?: string | string[];
+    supply?: string | string[];
+  }>;
 }) {
   const searchParams = await props.searchParams;
   const scope = await requireScope();
@@ -64,6 +70,19 @@ export default async function MedicationsPage(props: {
   )
     ? (rawFilter as MedicationFilter)
     : null;
+
+  // Opened from the medicine cabinet's "Add for another person" (#1705): `?supply=`
+  // names the bottle this add should be seeded from and linked to. Resolved through the
+  // SAME offerability rule the item form's picker uses, so an id outside this caller's
+  // reach simply doesn't seed anything.
+  const initialSupply = findLinkableSupply(
+    scope.ids,
+    Number(
+      (Array.isArray(searchParams.supply)
+        ? searchParams.supply[0]
+        : searchParams.supply) ?? 0
+    )
+  );
 
   const weightUnit = getUnitPrefs(loginId).weightUnit;
   const timeFormat = getDisplayFormatPrefs(loginId).timeFormat;
@@ -124,52 +143,59 @@ export default async function MedicationsPage(props: {
 
   return (
     <PageContainer width="reading" className="mx-auto">
-      <ProviderOptionsProvider providers={getPickerProviders()}>
+      <ProviderOptionsProvider
+        providers={getRankedPickerProviders(actingProfileId)}
+      >
         <SituationOptionsProvider options={situationOptions}>
-          <MedicationAddWorkspace
-            // The medicine-cabinet door (#1522), counted over the WHOLE accessible
-            // set rather than the acting profile — the cabinet is household-scoped,
-            // and this is the number the /supplies page will list.
-            cabinetCount={countVisiblePools(scope.ids)}
-            subtitle={
-              medCount === 0
-                ? "Track prescriptions, over-the-counter medications, doses, and refills."
-                : subtitle
-            }
-            action={addSupplement}
-            allSupplements={actingData.allSupplements}
-            stackItems={actingData.stackItems}
-            pgxVariants={actingData.pgxVariants}
-            trainingRestricted={actingData.trainingRestricted}
-            pediatric={actingData.pediatric}
-            age={actingData.age}
-            todayStr={actingData.todayStr}
-            conditions={medConditions}
-          />
+          <IntakeOptionsProvider
+            options={getIntakeCatalogOptions(actingProfileId)}
+          >
+            <MedicationAddWorkspace
+              initialSupply={initialSupply}
+              // The medicine-cabinet door (#1522), counted over the WHOLE accessible
+              // set rather than the acting profile — the cabinet is household-scoped,
+              // and this is the number the /supplies page will list.
+              cabinetCount={countVisiblePools(scope.ids)}
+              subtitle={
+                medCount === 0
+                  ? "Track prescriptions, over-the-counter medications, doses, and refills."
+                  : subtitle
+              }
+              action={addSupplement}
+              allSupplements={actingData.allSupplements}
+              stackItems={actingData.stackItems}
+              pgxVariants={actingData.pgxVariants}
+              trainingRestricted={actingData.trainingRestricted}
+              pediatric={actingData.pediatric}
+              age={actingData.age}
+              todayStr={actingData.todayStr}
+              conditions={medConditions}
+            />
 
-          {multi && <MedicationTodayStrip members={stripMembers} />}
+            {multi && <MedicationTodayStrip members={stripMembers} />}
 
-          {/* Single-view renders the ONE board with no wrapper (byte-identical to the
+            {/* Single-view renders the ONE board with no wrapper (byte-identical to the
           pre-#1373 page body); multi-view stacks the per-member boards. */}
-          {(() => {
-            const boards = boardOrder.map((pid) => (
-              <MedicationBoard
-                key={pid}
-                data={boardData.get(pid)!}
-                timeFormat={timeFormat}
-                filter={filter}
-                subject={multi ? (subjectById.get(pid) ?? null) : null}
-                profileId={pid}
-                isActing={pid === actingProfileId}
-                canWrite={scope.access.get(pid) === "write"}
-              />
-            ));
-            return multi ? (
-              <div className="space-y-8">{boards}</div>
-            ) : (
-              boards[0]
-            );
-          })()}
+            {(() => {
+              const boards = boardOrder.map((pid) => (
+                <MedicationBoard
+                  key={pid}
+                  data={boardData.get(pid)!}
+                  timeFormat={timeFormat}
+                  filter={filter}
+                  subject={multi ? (subjectById.get(pid) ?? null) : null}
+                  profileId={pid}
+                  isActing={pid === actingProfileId}
+                  canWrite={scope.access.get(pid) === "write"}
+                />
+              ));
+              return multi ? (
+                <div className="space-y-8">{boards}</div>
+              ) : (
+                boards[0]
+              );
+            })()}
+          </IntakeOptionsProvider>
         </SituationOptionsProvider>
       </ProviderOptionsProvider>
     </PageContainer>

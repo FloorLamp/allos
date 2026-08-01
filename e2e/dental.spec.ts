@@ -56,7 +56,7 @@ test.describe("Dental records — add → view → filter → track recheck → 
     // It appears in the list with its display label, tooth, and a status badge.
     const list = page.getByTestId("dental-procedure-list");
     const row = list.getByRole("row").filter({ hasText: NAME });
-    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    // Renders on the save action's revalidated tree — a cold shard can outrun the default 5s (imaging/#1306 precedent).
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText(`#${TOOTH}`);
     await expect(row).toContainText("watch");

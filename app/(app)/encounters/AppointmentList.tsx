@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   IconPencil,
   IconTrash,
@@ -100,7 +99,6 @@ export default function AppointmentList({
   const [doneCareItems, setDoneCareItems] = useState<Set<number>>(new Set());
   const confirm = useConfirm();
   const toast = useToast();
-  const router = useRouter();
 
   // The open care-plan items the just-completed appointment plausibly satisfied —
   // the confirm-first close-the-loop offer (issue #658). Pure matcher over the
@@ -141,7 +139,6 @@ export default function AppointmentList({
     setLoggedId(a.id);
     setFollowUpFrom(null);
     toast("Visit logged");
-    router.refresh();
   }
 
   // Close a matched care-plan item from the completed-appointment offer (issue
@@ -151,7 +148,6 @@ export default function AppointmentList({
     await submit(completeCarePlanItemFromAppointment, item.id);
     setDoneCareItems((prev) => new Set(prev).add(item.id));
     toast("Care-plan item marked done");
-    router.refresh();
   }
 
   async function onDelete(a: Appointment) {

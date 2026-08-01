@@ -3,8 +3,12 @@ import {
   suggestIcd10,
   bestIcd10Suggestion,
   conditionCollapseKey,
+  icd10CodeForName,
+  icd10SearchTerms,
+  ICD10_CONDITION_NAMES,
   ICD10_SYSTEM,
 } from "@/lib/icd10";
+import { fuzzyFilterWithTerms } from "@/lib/fuzzy";
 
 // Pure tests for the ICD-10-CM suggestion + the condition de-dup collapse key (#155).
 // No DB/network — exercises the fuzzy name→code lookup and the code-beats-name rule.
@@ -90,5 +94,36 @@ describe("conditionCollapseKey", () => {
 describe("ICD10_SYSTEM", () => {
   it("is the FHIR-export/import round-trip label", () => {
     expect(ICD10_SYSTEM).toBe("ICD-10-CM");
+  });
+});
+
+// The condition-name picker's option source (#1676). The names and their synonyms
+// were always here — only the suggested CODE ever reached the UI — so these pin that
+// what the picker offers is the catalog the suggester and the code chip agree on.
+describe("the condition-name vocabulary (#1676)", () => {
+  it("offers a name for every curated code, each resolvable back to it", () => {
+    expect(ICD10_CONDITION_NAMES.length).toBeGreaterThan(100);
+    for (const name of ICD10_CONDITION_NAMES) {
+      const code = icd10CodeForName(name);
+      expect(code).toBeTruthy();
+      // Picking the name and confirming the chip must land on the same entry.
+      expect(bestIcd10Suggestion(name)?.code).toBe(code);
+    }
+  });
+
+  it("knows no code for a name outside the catalog", () => {
+    expect(icd10CodeForName("Sore left elbow on Tuesdays")).toBeNull();
+  });
+
+  it("a synonym query surfaces the catalog name through the picker's filter", () => {
+    // The dropdown filters on the visible name PLUS these hidden terms, which is how
+    // "high blood pressure" reaches an entry named "Essential (primary) hypertension".
+    const filtered = fuzzyFilterWithTerms(
+      [...ICD10_CONDITION_NAMES],
+      "high blood pressure",
+      icd10SearchTerms,
+      8
+    );
+    expect(filtered).toContain("Essential (primary) hypertension");
   });
 });

@@ -84,6 +84,14 @@ export async function runWeatherSync(
   const startDate = shiftDate(today, -(WEATHER_WINDOW_DAYS - 1));
   // End a day past today so the forecast endpoint covers the whole current local day.
   const endDate = shiftDate(today, 1);
+  // The DAILY half reaches further (below). Computed HERE, before the first fetch,
+  // because it is also the run's stamped window: every event this run records —
+  // success or failure — describes the window the RUN SET OUT TO COVER, not the half
+  // that happened to finish (#1771). Stamping an hourly-fetch failure with the hourly
+  // half's shorter reach made interleaved events of one provider describe two
+  // different window shapes, which read in Review as if a failure had shrunk the
+  // coverage target.
+  const dailyEnd = shiftDate(today, WEATHER_FORECAST_DAYS);
 
   const res = await source.fetchHourly(
     home.lat,
@@ -98,7 +106,7 @@ export async function runWeatherSync(
     recordSyncEvent(profileId, WEATHER_ID, {
       ok: false,
       windowStart: startDate,
-      windowEnd: endDate,
+      windowEnd: dailyEnd,
       error,
     });
     return { error };
@@ -112,7 +120,7 @@ export async function runWeatherSync(
     recordSyncEvent(profileId, WEATHER_ID, {
       ok: false,
       windowStart: startDate,
-      windowEnd: endDate,
+      windowEnd: dailyEnd,
       error: message,
     });
     return { error: message };
@@ -124,7 +132,6 @@ export async function runWeatherSync(
   // series is itself an input to the planning surfaces. Its failure does NOT fail the
   // run: the hourly UV series is already cached and the whole feature family degrades
   // rather than breaking (the derived situations simply have no data and stay silent).
-  const dailyEnd = shiftDate(today, WEATHER_FORECAST_DAYS);
   let dayCounts: UpsertCounts = emptyCounts();
   let partial: string | undefined;
   const daily = await source.fetchDaily(

@@ -24,6 +24,7 @@ import {
   getHouseholdRoundPointer,
   setHouseholdRoundPointer,
   getLoginTelegramDisabledKinds,
+  getProfilesByTelegramChatId,
   getTelegramBotConfig,
   getTimezone,
   setDigestTailPointer,
@@ -51,6 +52,8 @@ import {
   sendMessageRaw,
   type InlineKeyboard,
 } from "./telegram-api";
+import { capTelegramKeyboard } from "./telegram-limits";
+import { recordMessagePointer } from "./message-pointers";
 
 const log = createLogger("telegram");
 
@@ -109,7 +112,11 @@ export const telegramChannel: NotificationChannel = {
     const override = opts?.telegramChatIds;
     if (override?.length) {
       for (const chatId of Array.from(new Set(override))) {
-        await sendMessageRaw(chatId, msg);
+        const messageId = await sendMessageRaw(chatId, msg);
+        // An override chat is not a login, but the MESSAGE still goes stale exactly
+        // like a fan-out copy — a caregiver's escalation chat is the last place a
+        // false "still outstanding" belongs (#1779).
+        recordPointer(profileId, chatId, messageId, msg);
       }
       return;
     }
@@ -145,9 +152,47 @@ export const telegramChannel: NotificationChannel = {
       // a failed one.
       if (msg.kind === "digest" && messageId != null && msg.actions?.length)
         recordDigestTailPointer(profileId, chatId, messageId);
+      // The UNIVERSAL live-message pointer (#1779). Recorded HERE, in the chokepoint,
+      // for the same reason the two special-purpose pointers above are: this is the
+      // only place that has both the delivered message id and the message it was
+      // rendered from — and it is per RECIPIENT, so a dose confirmed from a family
+      // group's copy can correct the copies in every other subscriber's chat.
+      recordPointer(profileId, chatId, messageId, msg);
     }
   },
 };
+
+// Store the pointer for one delivered message, or do nothing when there is nothing to
+// reconcile later (no message id, or no keyboard — a button-less message can never
+// display a stale claim).
+//
+// THE KEYBOARD IS RE-DERIVED, NOT PASSED BACK. sendMessageRaw applies the pure
+// `capTelegramKeyboard(messageKeyboard(msg))` pair internally to decide what rides the
+// wire; calling the same pure pair here reproduces it exactly rather than widening the
+// guarded primitive's return type, which every test that stubs the transport would
+// then have to know about. Both are total functions of `msg`.
+function recordPointer(
+  profileId: number,
+  chatId: string | number,
+  messageId: number | undefined,
+  msg: NotificationMessage
+): void {
+  if (messageId == null || !msg.actions?.length) return;
+  // No resolvable subject (an explicit-chat send to a chat that maps to no profile):
+  // there is nobody for the sweep to reconcile on behalf of, so store nothing rather
+  // than invent an owner.
+  if (!profileId) return;
+  const { keyboard } = capTelegramKeyboard(messageKeyboard(msg));
+  if (keyboard.length === 0) return;
+  recordMessagePointer({
+    profileId,
+    chatId,
+    messageId,
+    kind: msg.kind ?? "other",
+    date: today(profileId),
+    keyboard,
+  });
+}
 
 // After a food nudge sends, strip the PREVIOUS nudge's keyboard and record the new
 // message as the pointer (#947). Best-effort throughout: Telegram refuses edits on
@@ -269,7 +314,17 @@ export async function sendTelegramMessage(
   chatId: string | number,
   msg: NotificationMessage
 ): Promise<void> {
-  await sendMessageRaw(chatId, msg);
+  const messageId = await sendMessageRaw(chatId, msg);
+  recordPointer(profileIdForExplicitSend(chatId), chatId, messageId, msg);
+}
+
+// The subject a chat-addressed send is ABOUT, for the pointer's profile scope. An
+// explicit-chat send names a CHAT, not a profile, so the subject is resolved the same
+// way an inbound tap from that chat resolves one — the lowest profile the chat can act
+// as. Zero when the chat maps to nothing, which suppresses the pointer entirely rather
+// than inventing a subject for it.
+function profileIdForExplicitSend(chatId: string | number): number {
+  return getProfilesByTelegramChatId(String(chatId))[0] ?? 0;
 }
 
 // ---- Chokepoint: outbound edits (callback rebuilds/consumption) ----

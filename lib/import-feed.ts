@@ -71,6 +71,13 @@ export interface FeedDocument {
   // the ordinary human upload. Optional so a fixture or caller predating the column
   // simply has none — the row then says nothing about acquisition, which is correct.
   acquired_portal_name?: string | null;
+  // Does this row have a file on disk? 0 for a MARKER row — the file-less 'skipped' row a
+  // recognized duplicate lands (#612 bytes, #1780 records) — and 1 for a real document.
+  // The SAME distinction lib/document-upload-api.ts uses to answer `duplicate` rather
+  // than `stored`, read here so the feed can say which of the two a 'skipped' row is
+  // instead of flattening both to one word. Optional: a fixture predating the field has
+  // none, and an absent value reads as "a real document", which is the safe default.
+  has_file?: number;
   uploaded_at: string;
 }
 
@@ -254,7 +261,17 @@ function documentDetail(doc: FeedDocument): { detail: string; muted: boolean } {
     case "failed":
       return { detail: "import failed", muted: false };
     default:
-      return { detail: "skipped", muted: true };
+      // 'skipped' covers two very different things, and the feed used to say the same
+      // bare word for both. A row with NO file is a duplicate MARKER — the engine
+      // recognized the upload and stored nothing — whereas a 'skipped' row that DOES have
+      // a file is a real document whose extraction declined or was shed by the AI queue,
+      // and is reprocessable. Saying "duplicate" for the first is the honest reading
+      // (#1780): a person scanning Review after a second portal collection should see
+      // that nothing was lost, not a word that looks like a failure. Muted either way —
+      // neither is an error, and neither needs action.
+      return doc.has_file === 0
+        ? { detail: "duplicate — nothing imported", muted: true }
+        : { detail: "skipped", muted: true };
   }
 }
 

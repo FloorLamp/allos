@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import type { NotifySchedule } from "@/lib/settings";
 import type { NotificationKind } from "@/lib/notifications/types";
 import {
@@ -108,8 +107,6 @@ export default function NotificationPrefs({
   pushConfigured: boolean;
   haConfigured: boolean;
 }) {
-  const router = useRouter();
-
   // ONE bag of form-field values keyed by the saveNotificationPrefs field name, so a
   // registry row renders and writes generically — adding a kind is a registry entry,
   // not a new piece of hand-wired state.
@@ -158,7 +155,6 @@ export default function NotificationPrefs({
       const fd = new FormData();
       for (const [k, val] of Object.entries(next)) fd.set(k, val);
       await saveNotificationPrefs(fd);
-      router.refresh();
     });
   }
 
@@ -213,7 +209,6 @@ export default function NotificationPrefs({
       const fd = new FormData();
       fd.set("disabled_kinds", serializeDisabledKinds([...next]));
       await saver[channel](fd);
-      router.refresh();
     } finally {
       setRouting(false);
     }

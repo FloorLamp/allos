@@ -13,7 +13,7 @@ import {
   getProteinQuickAddPreset,
   getProteinToday,
 } from "../queries";
-import { getPublicUrl, getUserAge } from "../settings";
+import { getUserAge } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { proteinTodayNudgeParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
@@ -42,8 +42,9 @@ export function buildFoodNudge(
   window: FoodNudgeWindow,
   date: string,
   // How many ranked buttons to render (#1075). Defaults to the compact FOOD_NUDGE_BUTTON_COUNT
-  // for a fresh send; the "Show more" handler + a food/protein tap after expansion pass the
-  // current visible count (read off the keyboard) so the per-tap rebuild preserves it.
+  // for a fresh send; the "Show more"/"Show less" handler, a food/protein tap after expansion,
+  // and the tick-time reconcile (#1779/#1807) all pass the current visible count (read off the
+  // live keyboard) so no rebuild silently resizes a keyboard the user sized.
   visibleCount?: number
 ): NotificationMessage | null {
   if (!isFoodLoggingRelevant(getUserAge(profileId))) return null;
@@ -80,7 +81,6 @@ export function buildFoodNudge(
     slotServings,
     dayServings,
     {
-      deepLinkBase: getPublicUrl(),
       proteinLine,
       visibleCount,
       proteinPresetGrams: presetGrams,

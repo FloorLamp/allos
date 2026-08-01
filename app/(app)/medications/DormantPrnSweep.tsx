@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconArchive, IconX, IconArrowBackUp } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { formatLongDate } from "@/lib/format-date";
@@ -29,7 +28,6 @@ export default function DormantPrnSweep({
 }) {
   const formatPrefs = useFormatPrefs();
   const [busyId, setBusyId] = useState<number | null>(null);
-  const router = useRouter();
   const toast = useToast();
 
   if (suggestions.length === 0 && dismissed.length === 0) return null;
@@ -44,7 +42,6 @@ export default function DormantPrnSweep({
       const res = await stopMedication(fd);
       if (res.ok) {
         toast(`Moved ${s.name} to Past.`);
-        router.refresh();
       } else {
         toast(res.error, { tone: "error" });
       }
@@ -64,7 +61,6 @@ export default function DormantPrnSweep({
     fd.set("dedupe_key", s.dedupeKey);
     try {
       await dismissDormantPrn(fd);
-      router.refresh();
     } catch {
       toast("Couldn't dismiss that suggestion. Try again.", {
         tone: "error",
@@ -81,8 +77,7 @@ export default function DormantPrnSweep({
     fd.set("dedupe_key", s.dedupeKey);
     try {
       const res = await restoreDormantPrn(fd);
-      if (res.ok) router.refresh();
-      else toast(res.error, { tone: "error" });
+      if (!res.ok) toast(res.error, { tone: "error" });
     } catch {
       toast("Couldn't restore that suggestion. Try again.", {
         tone: "error",

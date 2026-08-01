@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
 import { formatLongDate } from "@/lib/format-date";
@@ -16,7 +15,6 @@ import { saveCycleAction, deleteCycleAction } from "./actions";
 // own bleeding length.
 export default function CycleHistoryRow({ period }: { period: CyclePeriod }) {
   const formatPrefs = useFormatPrefs();
-  const router = useRouter();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -40,7 +38,6 @@ export default function CycleHistoryRow({ period }: { period: CyclePeriod }) {
         return;
       }
       toast("Period deleted");
-      router.refresh();
     });
   }
 

@@ -79,21 +79,33 @@ import {
   takePreviewInput,
   evictPreviewsForDocument,
 } from "@/lib/reprocess-preview-cache";
+import {
+  clearDocumentTombstone,
+  isDocumentTombstoned,
+} from "@/lib/document-tombstones";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
 export {
   findDedupTarget,
+  findClinicalDuplicate,
+  heldDocumentHashes,
   type DedupTarget,
   UPLOAD_DIR,
 } from "@/lib/medical-pipeline/storage";
 import {
   findDedupTarget,
+  findClinicalDuplicate,
+  insertClinicalDuplicateDoc,
   insertDuplicateDoc,
   insertFailedDoc,
   persistUploadedFile,
   type DedupTarget,
 } from "@/lib/medical-pipeline/storage";
+import {
+  clinicalDuplicateMessage,
+  clinicalKeyForInput,
+} from "@/lib/clinical-content-key";
 export { computeReprocessAllCost } from "@/lib/medical-pipeline/reprocess-cost";
 
 const log = createLogger("medical");
@@ -236,6 +248,82 @@ function dispatchExtraction(
 // stranded marker. The in-flight placeholder stays matchable so two simultaneous
 // identical uploads still dedup to one document (the reserve-row race the ingest
 // transaction guards). Kept as a named export so the DB tier can pin the decision.
+// What one ingest did (issues #1735, #1776, #1777).
+//
+// This grew a shape when the ACQUIRER path stopped always landing a row. Until then
+// "the id of the row this landed on" was a total answer, because every path landed
+// one; two decisions broke that, and both of them are the point:
+//
+//   • a TOMBSTONED hash offered by an automated client is refused outright — writing a
+//     marker row would be recording an event as a document;
+//   • a recognized DUPLICATE offered by an automated client lands no marker either
+//     (#1776's ruling), which is what restores table idempotency for a retry. The
+//     human upload form keeps its 'skipped' marker: there, the row IS the feedback
+//     surface, and a person who re-picks a file deserves to see why nothing happened.
+//
+// The sync report — not a row — is the acquirer's record of both, which is where the
+// integrations accounting rule already says a run's counts belong.
+export interface IngestOutcome {
+  // The medical_documents row this ingest landed on. NULL only on the acquirer path,
+  // and only for the two deliberate no-row refusals below.
+  docId: number | null;
+  // Why no row was written, when none was. NULL whenever docId is set.
+  //   blocked          — the user deleted these bytes; the tombstone refused the re-offer.
+  //   already-held     — this profile already has these exact bytes stored.
+  //   already-imported — different bytes, same records: every clinical entry in the
+  //                      offered health record is already imported from another document
+  //                      of this profile (#1780). The one an acquirer hits repeatedly,
+  //                      because a portal regenerates its container on every collection
+  //                      and the byte hash therefore never repeats.
+  refusal: "blocked" | "already-held" | "already-imported" | null;
+  // This upload CLEARED a content-hash tombstone: the user had deleted these bytes and
+  // a human has now put them back. Human paths only — an acquirer can never set it,
+  // because nothing an automated client does may un-delete. Callers surface it, so a
+  // restoration never happens silently (the Review list would appear to lose an entry
+  // with no explanation).
+  restored: boolean;
+  // The bytes' identity, once known. NULL when the file was refused before hashing
+  // (too large, unsupported type, contents contradicting the declared type).
+  contentHash: string | null;
+}
+
+// The CLINICAL identity of an OFFERED health-record file (issue #1780), computed before
+// anything is reserved or stored: parse it the way the import would and digest the
+// source-minted entry ids it carries.
+//
+// It runs the real parse rather than a cheaper sniff because the entry ids ARE the
+// answer — there is no shortcut to them — and it stops at the PersistInput, so the whole
+// cost is one XML/JSON walk with no DB write. The canonical-name snap
+// persistHealthRecordDoc applies is deliberately skipped: it rewrites `canonical`, never
+// an `external_id`, so it cannot move the key, and running it here would mean a DB read
+// on a path that is meant to be a cheap probe.
+//
+// A parse failure yields NULL rather than throwing. This is a DEDUP PROBE, not the
+// import: a file that cannot be parsed simply has no clinical identity to compare, and it
+// must still reach the storage path so the real import records the parse error on the
+// row — which is where a person can see it.
+function offeredClinicalKey(buffer: Buffer): string | null {
+  try {
+    const { parsed, source } = parseHealthRecord(buffer);
+    // The label only names the document type on `meta`; the key reads external_ids only,
+    // so it plays no part in the comparison.
+    return clinicalKeyForInput(
+      healthRecordToPersistInput(parsed, source, "Health record")
+    );
+  } catch {
+    return null;
+  }
+}
+
+// A row-landing outcome — the shape every human path returns.
+function landed(
+  docId: number,
+  contentHash: string | null,
+  restored = false
+): IngestOutcome {
+  return { docId, refusal: null, restored, contentHash };
+}
+
 // Ingest an uploaded medical document: validate + size-gate + content-sniff, store
 // it on disk under a per-profile subdirectory, dedup on content hash, then kick off
 // AI extraction (or a deterministic health-record import) in the background. Returns
@@ -244,13 +332,15 @@ function dispatchExtraction(
 // The whole File is passed so the pre-buffer size gate (file.size, known from the
 // multipart headers) can reject an oversized upload BEFORE reading its body.
 //
-// Returns the id of the medical_documents row this upload landed on — EVERY path
+// Returns the outcome of the ingest (see IngestOutcome). On every HUMAN path it
+// carries the id of the medical_documents row the upload landed on — each of them
 // lands one (a stored 'processing' doc, the pre-existing row a duplicate deduped
 // onto, or a 'failed'/'skipped' row carrying the reason), so a caller always has a
-// document to point the user at. The upload form ignores it (it toasts and sends
-// the user to Review); the PWA share-target route (#1423) redirects to it, which is
-// how a shared file reaches its stored document — and, when the share landed on the
-// wrong person, the detail page's "Wrong person?" reassign control.
+// document to point the user at. The upload form uses only the restored flag (it
+// toasts and sends the user to Review); the PWA share-target route (#1423) redirects
+// to the id, which is how a shared file reaches its stored document — and, when the
+// share landed on the wrong person, the detail page's "Wrong person?" reassign
+// control.
 export async function ingestMedicalUpload(
   loginId: number,
   profileId: number,
@@ -260,9 +350,16 @@ export async function ingestMedicalUpload(
   // and the resulting NULL is the positive statement "a person put this here". Stamped on
   // whichever row this call lands — stored, failed, or duplicate marker — so a portal
   // upload that was rejected for its type or size still says where it came from.
-  opts: { acquiredPortalId?: number | null } = {}
-): Promise<number> {
+  //
+  // `acquirer` is the AUTOMATION flag (#1776/#1777), and it is deliberately separate from
+  // the provenance id above: it selects the two behaviours that must differ for a
+  // non-human caller — a tombstoned hash is REFUSED rather than un-deleted, and a
+  // recognized duplicate lands NO marker row. Default false, so every human path keeps
+  // its existing behaviour by construction.
+  opts: { acquiredPortalId?: number | null; acquirer?: boolean } = {}
+): Promise<IngestOutcome> {
   const acquiredPortalId = opts.acquiredPortalId ?? null;
+  const acquirer = opts.acquirer ?? false;
   const mime = file.type || "application/octet-stream";
   // Reject an oversized upload BEFORE buffering the whole file into memory —
   // file.size is known from the multipart headers, so we needn't read a huge body
@@ -284,7 +381,7 @@ export async function ingestMedicalUpload(
       acquiredPortalId
     );
     revalidatePath("/data");
-    return failedId;
+    return landed(failedId, null);
   }
   const buffer = Buffer.from(await file.arrayBuffer());
   // A MyChart CCD/XDM or SMART Health Card is imported deterministically (no AI);
@@ -300,7 +397,7 @@ export async function ingestMedicalUpload(
       acquiredPortalId
     );
     revalidatePath("/data");
-    return failedId;
+    return landed(failedId, null);
   }
   // Enforce the per-path size cap now that the byte length AND the kind are known:
   // an AI-extracted file is bound by the Anthropic request limit (it's inlined as
@@ -317,7 +414,7 @@ export async function ingestMedicalUpload(
       acquiredPortalId
     );
     revalidatePath("/data");
-    return failedId;
+    return landed(failedId, null);
   }
 
   // Verify the CONTENT against its declared type/extension (issue #27). The
@@ -343,7 +440,7 @@ export async function ingestMedicalUpload(
       acquiredPortalId
     );
     revalidatePath("/data");
-    return failedId;
+    return landed(failedId, null);
   }
   // The byte-derived MIME is what we persist and pass onward. CSV/plain text carry
   // no reliable magic, so this falls back to a benign attachment-only type
@@ -355,6 +452,35 @@ export async function ingestMedicalUpload(
   // earliest one that still has its stored file (later skipped-duplicate rows
   // carry the hash but no file) — that's the original upload.
   const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
+
+  // ── THE DELETION IS REMEMBERED HERE (#1777) ────────────────────────────────
+  //
+  // The hash is the document's identity, so this — the moment it is known and before
+  // any row is reserved — is the only place the two paths can diverge on a deletion.
+  //
+  // AN ACQUIRER IS REFUSED. A tool that diffs against #1776's inventory and pushes the
+  // difference must not be able to resurrect a document the user deleted; deletion is
+  // authoritative, exactly as it is for the #507/#508 re-import tombstones. The refusal
+  // returns BEFORE the reserve transaction, so a blocked offer leaves no row at all —
+  // it is an event, and the sync report is its record (counted `suppressed`).
+  //
+  // A HUMAN WINS. A person uploading the file IS the un-delete intent, the same stance
+  // the manual-edit lock takes against a sync: clear the tombstone and carry on. The
+  // caller is told (`restored`) so it can say so — silently un-tombstoning would make
+  // the Review blocked-list appear to lose entries for no reason.
+  let restored = false;
+  if (acquirer) {
+    if (isDocumentTombstoned(profileId, contentHash)) {
+      return {
+        docId: null,
+        refusal: "blocked",
+        restored: false,
+        contentHash,
+      };
+    }
+  } else {
+    restored = clearDocumentTombstone(profileId, contentHash);
+  }
   // Do the dedup check and the placeholder-row insert atomically in one
   // transaction so two simultaneous uploads of the same bytes can't both pass the
   // check and both insert (better-sqlite3 is synchronous, so this closes the race
@@ -369,19 +495,45 @@ export async function ingestMedicalUpload(
   // real clock: it is an extraction LEASE (the reaper compares it to
   // `datetime('now', '-N minutes')`), i.e. a duration, which the seam must never own.
   const insertRow = db.prepare(
-    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, uploaded_at, profile_id, acquired_portal_id)
-     VALUES (?,?,?,?,?, 'processing', datetime('now'), ?, ?, ?)`
+    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, clinical_key, extraction_status, processing_started_at, uploaded_at, profile_id, acquired_portal_id)
+     VALUES (?,?,?,?,?,?, 'processing', datetime('now'), ?, ?, ?)`
   );
+  // ── THE RECORDS ARE RECOGNIZED HERE (#1780) ────────────────────────────────
+  //
+  // Computed BEFORE the reserve transaction so the parse never runs inside a write
+  // transaction, and only for a deterministic health record: an AI-extracted document
+  // mints no entry ids, so it has no clinical identity to compare and this stays NULL.
+  //
+  // It is the SECOND identity a file can be recognized by, and it sits beside the first
+  // rather than replacing it. The content hash still answers "the same file, picked
+  // twice"; this answers "the same records, packaged again" — the case a portal produces
+  // every single collection, because it regenerates the container per request while the
+  // clinical documents inside stay byte-identical.
+  const clinicalKey = healthKind ? offeredClinicalKey(buffer) : null;
   const reserved = writeTx(
-    (): { existing: DedupTarget } | { docId: number } => {
+    ():
+      | { existing: DedupTarget }
+      | { clinicalHolder: DedupTarget; key: string }
+      | { docId: number } => {
       const found = findDedupTarget(profileId, contentHash);
       if (found) return { existing: found };
+      // Bytes are unknown; are the RECORDS? Inside the same transaction as the reserve,
+      // for the same reason the hash probe is: two simultaneous collections of one visit
+      // list must not both pass the check and both insert.
+      if (clinicalKey) {
+        const holder = findClinicalDuplicate(profileId, clinicalKey);
+        if (holder) return { clinicalHolder: holder, key: clinicalKey };
+      }
       const info = insertRow.run(
         file.name,
         "",
         storedMime,
         buffer.length,
         contentHash,
+        // Stamped on the placeholder, not only at the 'done' finalize: a second
+        // collection arriving while this one is still extracting must be recognized
+        // against it, and HELD_PREDICATE already treats an in-flight row as held.
+        clinicalKey,
         sqlNow(),
         profileId,
         acquiredPortalId
@@ -389,6 +541,36 @@ export async function ingestMedicalUpload(
       return { docId: Number(info.lastInsertRowid) };
     }
   );
+  if ("clinicalHolder" in reserved) {
+    const holder = reserved.clinicalHolder;
+    // NO MARKER ROW ON THE ACQUIRER PATH, exactly as for a byte duplicate (#1776): an
+    // offer of records allos already holds is an EVENT, and the sync report is its
+    // record. This matters MORE here than it does for the hash: a portal's container is
+    // never byte-stable, so an acquirer re-collecting daily would land a fresh marker row
+    // every single day and inflate the import feed without bound.
+    if (acquirer) {
+      return {
+        docId: null,
+        refusal: "already-imported",
+        restored: false,
+        contentHash,
+      };
+    }
+    // A person, though, chose this file and deserves to be told why nothing happened —
+    // the row IS the feedback surface, same as the byte-duplicate marker.
+    const duplicateId = insertClinicalDuplicateDoc(
+      profileId,
+      file.name,
+      mime,
+      buffer.length,
+      contentHash,
+      reserved.key,
+      clinicalDuplicateMessage(holder.filename),
+      acquiredPortalId
+    );
+    revalidatePath("/data");
+    return landed(duplicateId, contentHash, restored);
+  }
   if ("existing" in reserved) {
     const existing = reserved.existing;
     // If the original's extraction failed and its file is still on disk, the
@@ -425,10 +607,24 @@ export async function ingestMedicalUpload(
           );
           revalidatePath("/data");
         }
-        return existing.id;
+        return landed(existing.id, contentHash, restored);
       }
       // Claim lost: a concurrent upload already claimed it — fall through to the
       // duplicate alert below rather than starting a second extraction.
+    }
+    // NO MARKER ROW ON THE ACQUIRER PATH (#1776). An offer of bytes allos already holds
+    // is an EVENT, not a document: the sync report counts it `unchanged` and that is its
+    // record. Landing a 'skipped' row per attempt made an idempotent retry non-idempotent
+    // in the table and visibly inflated the import feed — forcing 11 already-held
+    // documents took a test instance's portal-acquired count from 11 to 22. The human
+    // upload form still lands one below, because there the row IS the feedback.
+    if (acquirer) {
+      return {
+        docId: null,
+        refusal: "already-held",
+        restored: false,
+        contentHash,
+      };
     }
     const duplicateId = insertDuplicateDoc(
       profileId,
@@ -441,7 +637,7 @@ export async function ingestMedicalUpload(
       acquiredPortalId
     );
     revalidatePath("/data");
-    return duplicateId;
+    return landed(duplicateId, contentHash, restored);
   }
 
   // 1. The placeholder row (status 'processing') was reserved in the transaction
@@ -480,7 +676,7 @@ export async function ingestMedicalUpload(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(`Could not save file: ${errMsg(err)}`, docId, profileId);
     revalidatePath("/data");
-    return docId;
+    return landed(docId, contentHash, restored);
   }
 
   // 3. Import. A health record (CCD/XDM/SHC) is parsed deterministically (no AI):
@@ -491,7 +687,7 @@ export async function ingestMedicalUpload(
   //    carries this session's login/profile into the background extraction.
   if (healthKind) {
     runHealthImport(profileId, docId, buffer);
-    return docId;
+    return landed(docId, contentHash, restored);
   }
   dispatchExtraction(
     loginId,
@@ -504,7 +700,7 @@ export async function ingestMedicalUpload(
 
   // The doc row (status 'processing') is now visible; the page polls from here.
   revalidatePath("/data");
-  return docId;
+  return landed(docId, contentHash, restored);
 }
 
 // Above this size, a deterministic health-record parse+persist is pushed off the

@@ -150,6 +150,7 @@ import {
   goalItems,
   markCarePlanItemDone,
   practiceItems,
+  stepsPaceItems,
   trainingItems,
   outdoorPlanItems,
 } from "./plans";
@@ -612,6 +613,11 @@ const rawUpcoming = cache(function rawUpcoming(
     ...trainingItems(profileId),
     ...outdoorPlanItems(profileId),
     ...practiceItems(profileId),
+    // The daily-step afternoon presence (#1723). Rides THIS aggregation deliberately —
+    // that is the whole "ride the nag" mechanism: no send is created, and every surface
+    // that already formats collectUpcoming picks it up with one dedupe key and one
+    // dismissal (#221).
+    ...stepsPaceItems(profileId, today),
     ...enduranceEventItems(profileId, today, distanceUnit),
     // Open portal sync requests (#1757) — "run the portal tool on the computer with
     // Mom's login". Rides this aggregation deliberately: the morning digest's Today

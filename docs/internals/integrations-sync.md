@@ -30,9 +30,10 @@ manual/document rows), so its upsert uses `ON CONFLICT DO UPDATE` like the other
 tables. The **Data → Review** tab (`components/ReviewInbox.tsx`; profile-scoped
 reads in `lib/queries/integrations.ts`; pure count/window helpers in
 `lib/integrations/sync-log.ts`) shows a recent-imports feed ("N new · N changed
-· N unchanged") plus any currently-failing provider, and a **profile-menu
-badge** (`reviewCount` threaded layout → `SidebarContent` → `UserMenu`) links to
-`/data?section=review`.
+· N unchanged") plus any currently-failing provider, and a **badge on the Data
+nav entry** (`reviewCount` threaded layout → `SidebarContent` → `Nav`) — it is
+Data → Review's own count, so since #1801 it badges that entry rather than a
+profile menu that no longer exists.
 
 An uploaded document's row in the "Imports" feed also carries the **extraction
 confidence** badge (`· N to check`, #1601): the count of extracted rows the
@@ -44,22 +45,69 @@ through the one `feedItemView` shape. It is an ordering hint, never a failure:
 the produced-count detail, the failure badge, and the sync-event accounting are
 unchanged, and an in-flight or failed document never badges.
 
-**One rendering of sync history (#1212).** Per-provider sync history — the
-latest-state card + expandable recent history over `integration_sync_events`,
-with the #674 inserted/updated/unchanged split (`formatSplitLabel`) — renders in
-exactly ONE place: **Data → Review → "Connected sources"**
-(`components/ConnectedSources.tsx`). The provider **setup pages**
-(`app/(app)/integrations/{strava,health-connect,oura,withings,weather}/page.tsx`)
-used to render a SECOND copy — the "Recent activity" table in
-`components/IntegrationDebugPanel.tsx` — over the same rows, and the two had
-already drifted (the debug panel still showed the legacy flat
-`Recv/Wrote/Skipped` triple while ConnectedSources showed the split). That was
-the #221 "one question, one computation" disease at the component layer, so
-`IntegrationDebugPanel` was **retired**: each setup page now renders
-`components/IntegrationSyncHistoryLink.tsx` — a last-success line plus a LINK to
-the single Connected-sources history — never a second copy (the
-responsive/shared-content rule, one level up). The link is a real destination,
-not a dead-end CTA (#1219).
+**One rendering of sync history (#1212 → #1772).** Per-provider sync history —
+the events of `integration_sync_events` with the #674 inserted/updated/unchanged
+split — renders in exactly ONE place per stream. #1212 established that rule by
+retiring `components/IntegrationDebugPanel.tsx`, the setup pages' "Recent
+activity" table, which had already drifted from Review's card (the panel still
+showed the legacy flat `Recv/Wrote/Skipped` triple while ConnectedSources showed
+the split — the #221 "one question, one computation" disease at the component
+layer). #1772 kept the rule and **moved the one place**: a recurring provider's
+setup page is its HOME, so it renders the history table itself
+(`components/integrations/SyncHistoryTable.tsx`) and Data → Review became an
+inbox that links back to it. `components/IntegrationSyncHistoryLink.tsx` now
+serves only the ONE-OFF archive importers (Fitbit Takeout, patient portals),
+whose entries really do live in Review's chronological Imports feed.
+
+**One state model (#1772).** One provider used to be described by four surfaces
+in three visual languages: the Integrations grid card, the setup page's status
+card (its own badge, `Last sync: <raw SQLite UTC string> UTC`, and the
+`last_sync_summary` JSON echoed as unformatted `key: value` badges — a THIRD
+accounting alongside `formatSplitLabel` and the legacy `written` fallback),
+`IntegrationSyncHistoryLink`, and Review's Connected-sources card. Same question,
+different timestamps, different accountings, different affordances depending on
+where you stood. The computation is now `lib/integrations/provider-state.ts`
+(pure) over `getIntegrationState` (`lib/queries/integrations.ts`), and every
+surface FORMATS its answers:
+
+- **Standing + badge.** `providerStanding` folds connection status and the latest
+  event into one closed vocabulary (`healthy` / `partial` / `failing` /
+  `needs-reauth` / `not-connected` / `never-synced`); `standingBadge` names and
+  tones it, and `components/integrations/StatusBadge.tsx` is the ONE place a tone
+  becomes classes (the sibling of `NOTICE_TONE` for tinted blocks).
+- **One accounting, two dialects.** `formatSplitLabel` stays the record-language
+  engine and is reached only through `formatSyncChange`, which also owns the CACHE
+  dialect: a `public` provider writes cells of a global location-keyed cache, not
+  user records, so Weather reads _"Forecast refreshed · 16 readings revised ·
+  covers Jul 18 – Aug 7"_ rather than the technically-honest, meaningless "16
+  changed · 365 unchanged". The dialect comes from the provider KIND
+  (`syncVocabularyForKind`), never a provider id. The raw `last_sync_summary`
+  badges are retired.
+- **One timestamp treatment.** `components/integrations/SyncTimestamp.tsx` renders
+  the absolute local time AND the relative one, both in the login's date/time
+  shape (#964/#1020). The setup pages used to print the stored UTC string with a
+  " UTC" suffix, and Review showed relative-only labels that could collide.
+- **One Sync now.** The four redirecting per-provider form actions
+  (`sync{Strava,Oura,Withings,Weather}Action`) are gone; `SyncNowButton` serves
+  both the setup page and Review over the `sync*Now` actions, which revalidate the
+  surfaces they feed (so no client-side refresh).
+- **Deliberate surface roles.** The setup page is the provider's home — shared
+  status header (`IntegrationStatusHeader`), controls, and the full history table.
+  Review's Connected sources is an INBOX: `needsAttention` expands the providers
+  that are failing / needs-reauth / partial / disconnected with the reason and the
+  action, and collapses healthy ones to a single line linking home.
+
+**The history table (#1772).** The surviving history surface was still the #208
+debug feed — it had inherited primary duty from #1212 without a redesign. It is
+now a real table (`SyncHistoryTable`): aligned When / Outcome / What changed /
+Window columns; the failure REASON on EVERY failure row (it used to render only
+for the latest event, so a historical "Sync failed" row explained nothing and one
+success erased even the most recent failure's reason from the UI); the run window
+stated ONCE above the table and shown per row only where it departs from the norm
+(`runWindowNorm` — which is exactly where it carries signal, see #1771);
+absolute + relative times; consecutive no-ops collapsed per #137
+(`buildHistoryRows`, the same rule the Imports feed applies); and no nested
+expanders.
 
 **Per-row provenance drill-in (#1333, #1212 parts 1–2).** The deferred "what
 this sync wrote" drill-in now ships. A child table `integration_sync_rows`
@@ -87,9 +135,25 @@ ingest). `getSyncRowProvenance(profileId, eventId)` reads it back —
 profile-scoped at both ends (the event join + a `profile_id` filter on every
 target lookup) — resolving each row to a human label + a typed `AppRoute` deep
 link (`timelineDayHref` for a day, `biomarkerViewHref` for a lab), marking a
-since-deleted target as removed. `components/SyncRowsDrilldown.tsx` renders it
-lazily (on `<details>` open, the raw-payload-viewer pattern) under each
-Connected-sources event that wrote rows, via the `loadSyncRows` read action.
+since-deleted target as removed. `components/SyncRowsDrilldown.tsx` renders it lazily (on `<details>` open, the
+raw-payload-viewer pattern) via the `loadSyncRows` read action.
+
+**The drill-in is gated on provenance actually existing (#1771).** It used to
+render for any event with `inserted + updated > 0`, so its legacy empty state
+("Record-level detail wasn't captured for this sync.") was PERMANENT for Weather
+& UV: weather events carry real split counts (hourly UV cells plus the #1726
+daily rows) but `runWeatherSync` records no `integration_sync_rows` — and is
+right not to, because it writes cells of the GLOBAL location-keyed forecast cache,
+which name no user record (#1212's own scoping decision). An expander that
+promises record detail and apologizes 100% of the time reads as broken. The gate
+is what the EVENT carries, never a provider hardcode: `eventsWithProvenance`
+(`lib/queries/integrations.ts`) does ONE indexed seek per provider over
+`integration_sync_rows` — sync-event ids are monotonic, so the rendered set is
+bounded below by its oldest id — profile-scoped through the parent event per the
+child-table convention. The resolved ids ride on `IntegrationState`, the drill-in
+renders only for those, and the apologetic fallback branch is deleted (it is now
+unreachable for genuine pre-#1333 legacy events too). The split label stays as the
+summary either way.
 
 **Metric sample identity (#1101/#1102).** `metric_samples` keys a provider
 record on `(profile_id, metric, source, origin, start_time)`; nullable `origin`
@@ -153,6 +217,63 @@ restores it with the reading. Sources that state a result status thread it throu
 `NormVital.result_status`; the deterministic FHIR importer maps
 `Observation.status` onto the same four-value vocabulary.
 
+**A deleted DOCUMENT stays deleted (#1776/#1777).** The re-import tombstone
+(#507/#508) protects rows a keyed upsert would re-insert; documents needed the
+same protection at a different consult point. `deleteMedicalDocument` writes a
+tombstone into the SAME `import_tombstones` table under
+`target_table = 'medical_documents'`, `natural_key = <content_hash>` — the hash is
+already the document's identity (`findDedupTarget`). It is deliberately NOT a
+member of `TOMBSTONE_TABLES`: those entries are loaded by the keyed upserts in
+`normalize.ts`, while this one is consulted by the acquirer ingest path in
+`lib/medical-pipeline.ts`, which refuses a tombstoned offer before any row is
+reserved. Migration 134 adds a nullable `label` (the filename at delete time) so
+the block can be named in Data → Review, where each entry carries a one-tap
+"Allow re-acquisition"; existing tombstone rows stay null and are never
+backfilled. A refused offer is counted `suppressed` in the run's sync report —
+the same column and the same `formatSplitLabel` rendering the re-import
+tombstones already use — and creates NO `medical_documents` row, so an
+acquirer's retry is idempotent in the table. Deletion is authoritative only
+against automation: a HUMAN upload of the same bytes clears the tombstone and
+stores, the manual-wins stance the edit lock already takes, and the upload form
+says the document was restored rather than un-blocking it silently. The
+inventory endpoint (`GET /api/documents/held`) returns these hashes as `deleted`
+beside `held`, which is what lets a client with no local state diff and send
+safely; the two lists are disjoint by construction, since a delete removes the
+stored row as it writes the tombstone and a reassignment clears the
+destination's. There is deliberately **no retention sweep** — a swept tombstone
+is a delayed resurrection — and `import_tombstones` is already in
+`lib/owned-tables.ts`, so profile deletion cleanup is covered.
+
+**A health record is recognized by its ENTRY IDS, not only its bytes (#1780).** One
+person can be reachable through two portal logins — the account holder on one and a
+proxy patient on another — with both labels bound to one profile, which is correct
+(#1739). Collecting through both yields two archives of the same visits, and the content
+hash is structurally incapable of collapsing them: the portal regenerates its container
+per request, so the packaging always differs while every clinical document inside is
+byte-identical. Both used to upload as `stored`, both extracted, and the profile ended up
+with every encounter attested twice. The identifier that already matched is the entry id
+— each deterministically imported row carries
+`external_id = 'document:<id>|ccda:encounter:…'`, and the per-document namespace was the
+only thing preventing the comparison. `lib/clinical-content-key.ts` digests a file's
+sorted, de-duplicated, kind-prefixed entry-id set; migration 136 stores it on
+`medical_documents.clinical_key`, backfilled for existing documents from the
+`external_id`s their rows already carry, and `persistDocumentImport` refreshes it at the
+one `'done'` transition from the same `PersistInput` the ingest probe reads. The ingest
+path probes it beside `findDedupTarget`, with the same `HELD_PREDICATE` and the same
+per-profile scope, inside the same reserve transaction — so an acquirer gets the no-row
+`already-imported` refusal (counted `suppressed`, and load-bearing here because a
+never-byte-stable container would otherwise land a marker row per collection) and a
+person gets the same file-less `'skipped'` marker a byte duplicate lands, naming the
+document that holds the records. The match is **exact set equality** with a minimum-id
+floor: a dedup decision discards an offer, so a partly overlapping export is stored and
+an AI-extracted document (which mints no entry ids) never participates. Data → Review
+reads a file-less `'skipped'` row as "duplicate — nothing imported" rather than a bare
+"skipped", since the two are not the same event. What is deliberately **not** settled
+here: collapsing partly overlapping documents onto shared rows would mean deciding what a
+row backed by two documents does on delete, on reprocess and on conflicting values, and
+nothing is deleted retroactively — documents that already double-imported keep both
+copies.
+
 **Weather / UV — keyless pull + a GLOBAL location cache (#1172).** The
 Open-Meteo weather/UV provider (`registry.ts` id `weather`, kind `public` — a
 keyless pull needing no account/credential, only the profile's home location)
@@ -181,9 +302,9 @@ shared `classifyUpsert`/`tallyUpsert`, and each run appends one
 manually-entered rows, so the "never overwrite a manual row" invariant is
 satisfied by there being none). Since #1614 the `public` kind is admitted to
 `RECURRING_SOURCE_KINDS`, so Weather renders as a Connected source in Data →
-Review — latest state plus expandable history, no Sync-now button, a link back
-to its own settings — instead of surfacing only under Needs attention when
-failing. The two-sided **UV-dose model** is ONE pure
+Review instead of surfacing only under Needs attention when failing; since #1772
+that means a one-line healthy row there and the full history on its own setup
+page, reported in the CACHE dialect (revised forecast readings, not records). The two-sided **UV-dose model** is ONE pure
 computation (`lib/uv-dose.ts` `computeUvDose`, #221) that the read layer
 (`lib/queries/weather.ts` `getUvDoseForDay`) feeds after applying the
 **degradation ladder** live → clear-sky (`uv_index_clear_sky`, else the
@@ -214,11 +335,16 @@ Three properties are load-bearing:
   overwrites, so a re-fetch cannot destroy data it did not ask for. A day whose
   incoming values are all null-or-equal is therefore `unchanged`, not a
   destructive `updated`.
-- **One run, one accounting.** Both halves' insert/update/unchanged splits merge
-  into the single `integration_sync_events` row, so the Review feed reports the
-  run rather than one of its parts. The daily window reaches
+- **One run, one accounting, one WINDOW.** Both halves' insert/update/unchanged
+  splits merge into the single `integration_sync_events` row, so the Review feed
+  reports the run rather than one of its parts. The daily window reaches
   `WEATHER_FORECAST_DAYS` ahead (the planning surfaces need forecast), while the
-  situation predicates are handed a series ending TODAY.
+  situation predicates are handed a series ending TODAY. Every event a run records
+  — the success and BOTH failure paths — stamps `startDate → dailyEnd`, the window
+  the run SET OUT to cover (#1771). Stamping an hourly-fetch failure with the
+  hourly half's shorter reach made interleaved events of one provider describe two
+  different window shapes, and read in Review as if a failure had shrunk the
+  coverage target.
 
 **The session-to-weather join — one join, three consumers (#1724/#1728).**
 `lib/queries/weather-training.ts` joins a profile's logged cardio/sport sessions to the

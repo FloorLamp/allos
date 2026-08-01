@@ -51,7 +51,6 @@ export default function SmtpSettings({
       setResult(null);
       setPassword("");
       setClearPassword(false);
-      router.refresh();
     });
   }
 
@@ -72,6 +71,9 @@ export default function SmtpSettings({
       }
       setPassword("");
       setClearPassword(false);
+      // Survives the #1473 sweep: sendTestEmail PERSISTS the form through
+      // saveSmtpConfigSync and deliberately skips revalidatePath, so nothing else
+      // repaints the stored-config lines this card renders.
       router.refresh();
     });
   }

@@ -62,7 +62,9 @@ export default async function RootLayout({
 }) {
   // Stamp the service worker's cache name from the running commit, so a deploy
   // (new COMMIT_SHA) mints a fresh cache and the SW's activate step drops the
-  // old ones. Passed to the registrar as a query param on /sw.js.
+  // old ones. Passed to the registrar as a query param on /sw.js — and, since
+  // #1795, as the baseline the ONE update notice compares the server's commit
+  // against when this context has no worker to watch.
   const { sha } = getAppVersion();
 
   // Per-request CSP nonce (issue #595, step 3) set by middleware.ts on the
@@ -80,7 +82,7 @@ export default async function RootLayout({
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeBoot }} />
       </head>
       <body>
-        <ServiceWorkerRegister version={sha ?? "dev"} />
+        <ServiceWorkerRegister sha={sha} />
         {isDemoMode() && <DemoBanner />}
         <ToastProvider>{children}</ToastProvider>
       </body>

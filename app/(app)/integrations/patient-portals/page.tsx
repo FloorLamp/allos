@@ -15,9 +15,9 @@ import {
   listPendingIdentities,
   listPortalAccounts,
   listPortalIdentities,
-  listPortalRunReports,
   listPortals,
 } from "@/lib/portals";
+import { listVisiblePortalRunReports } from "@/lib/portal-visibility";
 import { portalStatusLine } from "@/lib/portal-status";
 import { openSyncRequests } from "@/lib/portal-requests";
 import {
@@ -121,7 +121,13 @@ export default async function PatientPortalsPage() {
   const statusLine = portalStatusLine({
     lastSuccessAt: lastSync,
     connected: conn !== undefined,
-    reports: listPortalRunReports(),
+    // Run reports are ACCOUNT-level and carry no profile_id — that is what puts a run
+    // there — so the account's reachability is what decides visibility (#1787): an
+    // account bound to a profile in `accessibleIds`, or (for the same population that
+    // sees `pending`) one bound to nobody yet. Scoped in the READ, not filtered here; a
+    // surface that filters what it was handed is one refactor away from leaking again,
+    // and the failure `message` is 500 characters of free text from an external tool.
+    reports: listVisiblePortalRunReports([...accessibleIds], canManagePending),
     // The same list the card renders, so the sentence never points at a card the viewer
     // cannot see.
     pending,
@@ -227,11 +233,7 @@ export default async function PatientPortalsPage() {
           broken.
         </p>
         <div className="mt-3">
-          <IntegrationSyncHistoryLink
-            lastSuccessAt={lastSync}
-            connected={conn?.status === "connected"}
-            surface="imports"
-          />
+          <IntegrationSyncHistoryLink lastSuccessAt={lastSync} />
         </div>
       </div>
     </div>

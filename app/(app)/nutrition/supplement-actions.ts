@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
@@ -21,6 +22,7 @@ import {
   ensureMedicationCourse,
   setMedicationActive,
   setMedicationEndDate,
+  isLinkableSupply,
 } from "@/lib/queries";
 import {
   resolveProviderIdByName,
@@ -435,6 +437,21 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const f = fields(formData);
+  // Created FROM a shared bottle (#1705): the item form's picker posts the bottle it was
+  // seeded from, so "there's a shared bottle of D3 5000 IU; add it for my daughter" is
+  // ONE step instead of create-then-find-the-link-control. Validated against the SAME
+  // offerability rule the picker used (isLinkableSupply over the caller's own scope), so
+  // a forged id can't attach this item to a household branch the caller can't reach — and
+  // a linked item keeps NO private count (the phantom-double-supply invariant), which is
+  // why quantity_on_hand is forced NULL below rather than trusted from the form.
+  const postedSupplyId = Number(formData.get("supply_id") ?? 0);
+  let supplyId: number | null = null;
+  if (postedSupplyId) {
+    const scope = await requireScope();
+    if (!isLinkableSupply(scope.ids, postedSupplyId))
+      return formError("Couldn't find that shared bottle.");
+    supplyId = postedSupplyId;
+  }
   const todayStr = today(profile.id);
   const hasStartedOn = formData.has("started_on");
   const startedOnRaw = String(formData.get("started_on") ?? "").trim();
@@ -503,8 +520,9 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
             min_interval_hours, max_daily_count, redose_notice,
             rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id,
             created_at,
-            cadence_kind, cadence_weekdays, cadence_interval_days, cadence_anchor_date)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?,?,?,?,?)`
+            cadence_kind, cadence_weekdays, cadence_interval_days, cadence_anchor_date,
+            supply_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?,?,?,?,?,?)`
       )
       .run(
         name,
@@ -520,7 +538,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.critical,
         f.escalateAfterMin,
         f.escalateChatId,
-        f.quantityOnHand,
+        supplyId != null ? null : f.quantityOnHand,
         f.qtyPerDose,
         f.kind,
         f.prescriber,
@@ -539,7 +557,8 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.cadenceKind,
         f.cadenceWeekdays,
         f.cadenceIntervalDays,
-        f.cadenceAnchorDate
+        f.cadenceAnchorDate,
+        supplyId
       );
     const suppId = Number(info.lastInsertRowid);
     insertDoses(suppId, doses);
@@ -556,6 +575,8 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
       );
     }
   });
+  // A newly pooled item changes what the cabinet and its doors show.
+  if (supplyId != null) revalidatePath("/supplies");
   revalidateIntake();
   return formOk();
 }

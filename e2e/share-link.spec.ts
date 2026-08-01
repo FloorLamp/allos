@@ -55,7 +55,7 @@ test.describe("Public passport share links (#391)", () => {
     await expect(anon.getByText(/Shared read-only copy/i)).toBeVisible();
     // No app chrome on this logged-out surface: no primary nav, no profile menu.
     await expect(anon.getByRole("link", { name: "Data" })).toHaveCount(0);
-    await expect(anon.getByTestId("user-menu-trigger")).toHaveCount(0);
+    await expect(anon.getByTestId("profile-identity-bar")).toHaveCount(0);
     await anonCtx.close();
 
     // Revoke it from the still-open modal's "Existing links" list (revalidatePath

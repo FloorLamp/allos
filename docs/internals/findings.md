@@ -694,8 +694,9 @@ the parallel mechanism is correct and this exemption is why.
 # The attention doctrine
 
 Status: **shipped** · first implemented by #1505 (intake obligation); extended by
-#1718 (channel honesty), #1668 (mood check-in auto-pause) and #1670
-(frequency-target right-sizing) as they land.
+#1718 (channel honesty), #1670 (frequency-target right-sizing across practices,
+training frequency goals and food groups) and #1668 (mood check-in auto-pause) as
+they land.
 
 The two-tier reach policy above answers "how far does a SIGNAL travel". That
 turned out to be one question inside a larger one the codebase kept answering
@@ -850,7 +851,72 @@ over the same ledger must use windows that NEST strictly, so the two can never
 fire off the same evidence and contradict each other. #1505 pins
 `INTAKE_DELTA_DAYS` (14, "what changed this fortnight") strictly inside
 `DEMOTION_WINDOW_DAYS` (30, "has this been abandoned this month") with a unit
-test. #1670 follows the same convention against its own pair.
+test. #1670 pins the same shape on its own pair: the weekly pace window every
+frequency-target surface reads (`FREQUENCY_PACE_WINDOW_DAYS`, 7 — "you're behind
+this week") sits strictly inside `RIGHTSIZE_WINDOW_DAYS` (28 — "you have been
+under this floor for a month"), asserted in
+`lib/__tests__/target-rightsize.test.ts`. The two right-sizing windows are also
+kept within a week of each other, so "abandoned" means roughly the same span of
+life whichever domain says it.
+
+### 4a. The members, and the may-state each one lands in
+
+Every member's accept must land in a state the domain ALREADY has. Inventing a
+new "reduced" state per domain is how this family would fragment; the point of
+the table is that each row's right-hand column existed before the suggestion did.
+
+| Member                          | Detected from                             | Suggests                         | Lands in                                                   |
+| ------------------------------- | ----------------------------------------- | -------------------------------- | ---------------------------------------------------------- |
+| Intake obligation (#1505)       | the item's adherence strip over 30 days   | move to `may`                    | `obligation = 'may'` — tracked, offered, never due         |
+| Wellness practice (#1670)       | `practice_logs` days per completed week   | lower the floor · stop tracking  | logs-only practice (#1621) — sessions kept, no weekly goal |
+| Training frequency goal (#1670) | distinct training days per completed week | lower the target · stop tracking | untracked routine — every logged session stays             |
+| Food group (#1670)              | logged servings per completed week        | lower the target · stop tracking | untracked habit — the food log is untouched                |
+
+Two boundaries the table is deliberately silent about, because they are
+non-members rather than gaps:
+
+- **Substance-use ceilings are not in this family and never will be.** A
+  `substance` frequency target's `per_week` is a weekly CAP, so "chronically
+  under it" is that scope's SUCCESS state and a right-sizing suggestion there
+  would nudge toward more consumption. It is excluded at
+  `rightSizeDomainFor` — the same boundary `getFrequencyTargetProgress` already
+  draws — not at a call site someone could forget.
+- **Dietary EXCLUSION is not a right-sizing accept.** Declaring "I don't eat
+  dairy" is a statement about a diet, not about a missed target, so it stays a
+  Settings → Nutrition declaration. Right-sizing a food habit stops the weekly
+  ask and leaves the group loggable, which is the domain's actual
+  no-expectation state.
+
+**The three #1670 domains share ONE detector, not three.** All of them declare
+their floor as a `frequency_targets` row, so `lib/target-rightsize.ts` is one
+pure engine with per-domain FORMATTING (the unit word, the stop label, the
+surface), one registered dedupeKey prefix (`right-size:`, coaching tier), and one
+set of accepts in `app/(app)/rightsize-actions.ts`. The tier, the suppression bus
+and the guardability property are properties of the SIGNAL, which is identical
+across them.
+
+Two implementation conventions worth reusing in a fourth domain:
+
+- **The suggested floor is the BEST week in the window, never a median.** Every
+  week in the window is at or below it, so accepting SELF-CLEARS the chronic
+  condition. A median would leave half the window still under the new floor and
+  re-fire immediately at a lower number — a ratchet, which is the nag the family
+  exists to end.
+- **The accept re-derives the candidate; the surface never posts the number.**
+  Both the in-app buttons and the Telegram ride-along carry the dedupeKey (or the
+  target id) alone, so the only floor that can ever be written is the one the
+  detector is currently suggesting, and a card left open while the cadence
+  recovered refuses with a typed outcome.
+
+**Reach, stated once for the whole family:** coaching tier, calm and hideable,
+with no send of its own — ever. #1670's only push presence is one extra button on
+the pace nudge that was already firing for the target's own reasons
+(`lib/notifications/practices.ts`), which is ride-the-nag in its strictest form.
+That button is governed by DETECTION STATE ALONE and is deliberately not
+bus-gated: an in-app dismiss means "keep asking me about this practice", which is
+a statement about the card, not about whether a message already being sent may
+offer relief. A target that has stopped generating its nudge therefore has no
+delivery path, and that is correct rather than a gap.
 
 ## 5. Care/coaching ↔ obligation: a correspondence, not a rename
 
@@ -983,6 +1049,45 @@ The tone constraint is part of the pattern: an announcement of reduced contact
 must carry no guilt and no streak language, or it becomes the pressure it exists
 to remove.
 
+## 8. A preference filter never overrides a safety floor
+
+Added by #1714. §2 permits the system to REDUCE contact unilaterally and §7 gives
+reduction its consent shape. This rule bounds what the USER's own reduction can
+reach.
+
+A per-category preference — the morning digest's ⚙️ Tune demotion is the first —
+is a statement about ROUTINE lines: "stop telling me about this by default". It is
+never a statement about the safety-adjacent class, and the code must make that
+structural rather than a matter of ordering. Two properties carry it:
+
+1. **The floor predicate implies the notable predicate.** In
+   `applyRecentChangeDemotion`, `flagged` implies notable, so a flagged lab or an
+   out-of-range vital survives every preference no matter which category it belongs
+   to. There is no filter ordering that can hide one, because there is no filter
+   that accepts one.
+2. **A category whose every line is floor class is still tunable, and the floor is
+   what answers.** #1714 originally withheld `labs` on the argument that a toggle
+   which provably changes nothing is a lie about what the user is deciding; the
+   owner retired that intersection in #1797. The set is now derived from the
+   collector's registry plus the digest's own sections, with nothing subtracted, so
+   a new category cannot silently become untunable — and `labs` states the boundary
+   in its own copy ("A flagged result always appears — turning this down never hides
+   one") instead of hiding it behind a missing control. Property 1 is what makes
+   that safe: the toggle stores, the digest reads it, and the flagged result arrives
+   regardless.
+
+The corollary on the message side: the guaranteed-access core (#1505's
+minimal-digest rule, the offer tail, the Today obligations) is the MESSAGE's job,
+not a category, and therefore not demotable. Demoting everything makes the message
+short; it can never make it vanish.
+
+The predicate a demotion checks is always the classification the surface ALREADY
+computes (`sleepVerdict` for a night, the mood shift against the subject's own
+average, a severe symptom-day). A preference filter that minted its OWN threshold
+would be a second definition of "notable" — the #221 drift these rules exist to
+prevent, and a place where a user's display choice could quietly change what counts
+as clinically interesting.
+
 ## Where each rule is enforced
 
 | Rule                                                    | Enforced by                                                                                                                                                                                             |
@@ -991,6 +1096,8 @@ to remove.
 | Safety engines are obligation-blind                     | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                                                                                                                  |
 | Conservative direction per aggregate (5a)               | `lib/__tests__/dri.test.ts` + `lib/__tests__/supplement-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions |
 | Suggest-never-write                                     | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                |
+| Reconciliation only ever REDUCES a message's claims     | `lib/notifications/reconcile-core.ts` emits close/strip only; predicates read the ledger and never the suppression bus (`lib/__db_tests__/message-reconcile.test.ts`)                                   |
+| Preference filters never override safety floors (8)     | `flagged` ⇒ notable in `applyRecentChangeDemotion`, so a tuned-down `labs` still delivers its flagged result; `lib/__tests__/digest-tune.test.ts` + `lib/__db_tests__/digest-tune.test.ts`              |
 | Recovery clears a suggestion                            | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                    |
 | Window nesting                                          | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                 |
 | Reach tier per finding namespace                        | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                         |

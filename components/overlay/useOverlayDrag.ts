@@ -47,8 +47,9 @@ export interface OverlayDragOptions {
   // (`touch-none`), and nothing inside it can be hit by accident.
   grabRef?: React.RefObject<HTMLElement | null>;
   // Which way the panel leaves: "down" for a bottom-anchored sheet or dock,
-  // "left" for the edge-anchored drawer.
-  direction: Extract<GestureDirection, "down" | "left">;
+  // "left" for the edge-anchored drawer, "up" for the top-anchored profile
+  // switcher (#1801), which retreats back through the bar it dropped from.
+  direction: Extract<GestureDirection, "down" | "left" | "up">;
   // THE OUTCOME — dismiss, minimize, whatever this surface's contract says.
   onOutcome: () => void;
   // What happens to the PANEL when the outcome fires, which follows from the
@@ -79,23 +80,30 @@ export function useOverlayDrag({
   const [suppressMotion, setSuppressMotion] = useState(false);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Where "gone" is, in px along the drag axis: the panel's own extent, so a
-  // dismissed sheet clears the bottom edge and a dismissed drawer clears the
-  // left one no matter how tall/wide its content made it.
+  // Everything below speaks the recognizer's language: DIRECTED travel, always
+  // >= 0 (lib/gesture.ts clamps movement the other way at 0). The axis and the
+  // sign that turn that scalar into a transform live in exactly one place —
+  // here — so adding the top-anchored panel (#1801) was a row in this table
+  // rather than a second signing convention in the consumer.
+  const axis = direction === "left" ? "X" : "Y";
+  const sign = direction === "down" ? 1 : -1;
+
+  // How far "gone" is along that axis: the panel's own extent, so a dismissed
+  // sheet clears the bottom edge, a dismissed drawer the left one, and a
+  // dismissed top panel the top one, no matter how tall/wide its content is.
   const goneOffset = useCallback((): number => {
     const el = panelRef.current;
     if (!el) return 0;
-    return direction === "down" ? el.offsetHeight : -el.offsetWidth;
-  }, [direction, panelRef]);
+    return axis === "X" ? el.offsetWidth : el.offsetHeight;
+  }, [axis, panelRef]);
 
   const write = useCallback(
-    (px: number) => {
+    (travelPx: number) => {
       const el = panelRef.current;
       if (!el) return;
-      el.style.transform =
-        direction === "down" ? `translateY(${px}px)` : `translateX(${px}px)`;
+      el.style.transform = `translate${axis}(${sign * travelPx}px)`;
     },
-    [direction, panelRef]
+    [axis, sign, panelRef]
   );
 
   const settle = useCallback(

@@ -364,6 +364,40 @@ chokepoint. Split for testability: pure formatter + token
 (`household-round-access.ts`). Settings → Notifications carries the toggle, the
 access-filtered member checklist and a send-test.
 
+**The food nudge's keyboard (#682/#1016/#1073/#1075/#1807).** The nudge rides the
+morning/midday/evening supplement slots and is opt-in per profile. Its keyboard is
+the whole surface: `FOOD_NUDGE_BUTTON_COUNT` (6) top-ranked quick-log buttons two
+per row — the SAME `getFoodGroupLogOrder` ranking the `/nutrition` log bar uses
+(#221) — each carrying a slot-scoped "(n)" suffix, plus the reserved `__protein__`
+pseudo-group's "＋Xg protein" button at its ranked position, over a day-total
+"✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
+tap logs one serving and the message re-renders from `buildFoodNudge`, the one
+builder every send, tap-rebuild and reconcile goes through.
+
+That 6 is also the **page size** in both directions. "➕ Show more" (#1075) reveals
+the next page and drops once every ranked key is out; "➖ Show less" (#1807) steps
+one page back, clamped at the compact default so a stray tap bottoms out where a
+fresh send starts rather than at an empty keyboard. They share one row — mid
+expansion reads "➕ Show more · ➖ Show less", full expansion carries "➖ Show less"
+alone — and "Show less" is rendered against the buttons ACTUALLY shown, so a short
+ranked list can never produce a collapse button whose tap changes nothing.
+
+Both directions are **stateless**: the tokens (`foodmore:`/`foodless:`, one parser
+with a direction, the ⚙️ Tune shape) carry no count, because the expansion state
+IS the rendered keyboard — `countVisibleFoodButtons` reads it back off the tapped
+message. Both are declared **inert** in the reconcile registry: a view control
+makes no state claim. That same derivation is what the #1779 sweep's food rebuild
+uses (off the pointer's stored post-cap keyboard), so **expansion is the user's** —
+a tick can neither collapse a keyboard someone expanded nor re-expand one they
+collapsed.
+
+There is **no deep link** on this nudge. The "＋ More…" url button to `/nutrition`
+and its `deepLinkBase` plumbing were retired in #1807: the nudge's job is one-tap
+logging in place, the ranked buttons plus "Show more" cover the real vocabulary,
+and the long tail was not worth a keyboard row on every send. Other messages' deep
+links (refill's "Open form", the household round's "Open Household →") are
+untouched — this is a food-nudge ruling, not a policy against deep links.
+
 **Display units in notification copy (#1019).** Notifications render
 measurements in **canonical units (kg / km / °F)** — unit prefs are
 per-**login**, notifications per-**profile**, so there is no pref to consult
@@ -469,6 +503,27 @@ one session for TODAY through the shared write core (`logPracticeByTargetId` →
 days are supported) and CONSUMES the tapped button (siblings survive) so a stale
 message can’t double-log.
 
+**The right-sizing ride-along (#1670).** When a practice's shortfall has been
+CHRONIC — every one of the last four completed weeks under its floor — this same
+message carries one extra **"⤓ <name> → N×/wk"** button
+(`rslower:<profileId>:<targetId>`, ids only) offering to lower the weekly floor to
+the cadence actually kept. It is the entire push presence of the frequency-target
+right-sizing engine: **no message is ever sent because of a suggestion**, and a
+target that has stopped generating this nudge simply has no delivery path, which
+is correct rather than a gap (the ride-the-nag rule,
+`docs/internals/findings.md` § the attention doctrine).
+
+Three properties: the token deliberately does NOT carry the new floor — the
+handler (`handleRightSizeLowerTap`) re-derives the live candidate and writes
+through the same `lowerFrequencyTargetFloor` core the in-app card uses, so a stale
+button on a practice whose cadence recovered refuses with a typed outcome instead
+of shrinking a commitment nobody is suggesting shrinking; the write is DOWNWARD
+and user-initiated, the two properties that make it (like the ⤓ May tap) safe for
+the notification layer to perform at all; and the button is governed by DETECTION
+STATE ALONE rather than the suppression bus — an in-app dismiss means "keep asking
+me about this practice", a statement about the card, not about whether a message
+already being sent may offer relief.
+
 **Recap-led finish nudge (#924).** `runPostWorkoutFinish` now OPENS with a
 one-line **session recap** ("Push day done · 47 min · 14 sets · Bench press PR ·
 all targets hit"), then the due post-workout supplement section. The composition
@@ -535,6 +590,222 @@ declared ∪ derived). The separate "what's due" upcoming digest and its
 key); the `upcoming` NotificationKind is retained in the type union /
 `parseDisabledKinds` for back-compat but is no longer a toggleable matrix row —
 the single `digest` kind governs the merged message.
+
+**What CHANGED, not just what is due (#1713).** The **New** section is no longer
+just "flagged biomarkers + documents". It also renders the lines the shared
+**recent-changes collector** produces at a **24-hour** window:
+`collectRecentChanges(profileId, { sinceDays: 1 })`
+(`lib/queries/recent-changes.ts` over the pure `lib/recent-changes.ts`). That is
+the SAME collector the Household member card reads at 7 days (#1463) — one
+definition of "what changed", two windows, so the card and the message can never
+drift. The collector composes existing per-profile readers only (no new
+cross-profile SQL), ranks through `lib/rank-core.ts` under a **floor** that a
+flagged lab and an out-of-range vital both hold, caps the lines and says
+`+N more` rather than spilling. The digest passes `exclude: ["labs"]` because
+the two fields above already report newly-flagged **lab** results from the
+digest's own send cursor — the same `getCurrentFlaggedBiomarkers` computation at
+a different window.
+
+This is what finally lets four things reach the message: **out-of-range vitals**
+(a BP spike, a low SpO₂ — invisible before because the flagged read is
+`category = 'lab'` by #1076's deliberate decision; `getCurrentFlaggedVitals` is
+its vitals twin, read only by the collector, with `'instrument'` still excluded
+so a PHQ-9 can never leak), the **daily check-in** (value plus a shift against
+the subject's own recent average — never a judgment, never a streak, per the
+#992/#716 contract), **symptoms**, and **overnight data arrival**. Sync
+STALENESS is deliberately NOT re-derived in the collector: #1685 already owns it
+end to end and already renders it in this same message's Today section.
+
+## Live-message reconciliation (#1779)
+
+**The defect.** Every inline keyboard the app sent was a frozen snapshot that
+in-app writes never corrected. Take a dose, mark it in the app, come back to
+Telegram six hours later: the reminder still sat in the chat with live
+"✅ Taken" buttons, presenting the dose as outstanding. At that distance the
+chat artifact is trusted more than memory, so the message actively invited a
+re-take — the safety tier lying in the OUTBOUND direction (the #1716 family, one
+channel over). Sent-message edits had exactly three callers (the callback
+handlers, the quick-log flow, the send path's strip-previous guard), no Server
+Action touched them, and the only stored pointers were the one-per-profile food
+nudge (#947) and household round (#1719), kept to close the PREVIOUS message on
+the NEXT send rather than to sync state.
+
+**The honesty rule, which needs no second state model.** _A button whose tap
+would now be refused or answered "already done" by its own typed outcome must not
+remain rendered as actionable._ The typed-outcome layer already knows that answer
+for every family; reconciliation renders it PROACTIVELY. So a reconciler is one
+read-only predicate over the SAME computation that composed the send
+(`collectWindowDoses` for a dose session, `getWorkoutPresence` for a live draft,
+`buildFoodNudge` for the food counts) — never a second dueness model or a second
+renderer (#221).
+
+**The substrate.** Migration 135's `notify_messages` records one pointer per
+DELIVERED keyboard-bearing message — `(profile_id, chat_id, message_id, kind,
+date, keyboard, sent_at)` — written in the Telegram chokepoint, the only place
+holding both the sent message id and the message it was rendered from. It is per
+DELIVERY, not per send: one send fans out to N deduped chats (#1072), so a dose
+confirmed from a family group's copy corrects the copies in every other
+subscriber's chat. The delivered (post-cap) keyboard is stored because Telegram
+has no "read my message" API — that blob is the only record of what a chat is
+showing. Retention is a named cleanup class (#203): pointers past Telegram's
+~48h edit horizon are pruned on every sweep.
+
+**The sweep** (`reconcileProfileMessages`, one pass per profile per tick) applies
+one pure decision (`lib/notifications/reconcile-core.ts`):
+
+- nothing resolved → **no edit at all** (pinned by an edit-call count in the DB
+  tier — a reconcile that edits every tick is a rate-limit incident);
+- partially resolved → strip exactly the dead buttons, or re-render through the
+  family's own rebuilder (the dose family reuses the identical
+  `slotSessionForKeyboard` → `renderMergedIntakeMessage` path the TAP rebuild
+  runs);
+- fully resolved → `closeMessage` with an honest closing line;
+- **day rolled over** in the profile's timezone → strip or close regardless of
+  state, since yesterday's tokens carry yesterday's date. This also closes the
+  residual #947 gap: the last nudge of an evening used to keep a live keyboard
+  until the next send, which may never come;
+- a dead pointer (message deleted, chat gone, past the edit horizon) → the
+  best-effort edit fails, the pointer is dropped, nothing is retried forever.
+
+**Overlapping ticks (#1788).** The sweep does not assume an operator runs exactly
+one scheduler — a compose poll sidecar plus a host crontab, two replicas on one
+volume, or a manual `notify` run during the hourly one all put two passes on one
+profile at once, and both would read the same pre-edit keyboard and issue the same
+Bot API call. The end state converges (the edits are identical), so nothing is
+corrupted; what is spent twice is the rate-limit budget the zero-call steady state
+exists to protect. The pointer's keyboard is therefore treated as a lifecycle field
+with an atomic transition (AGENTS.md, the `demoteIntakeObligation` shape): each pass
+**claims** the transition — old blob → new blob, or a `DELETE` under the same witness
+for a close — _before_ it touches the network, and only the winner calls Telegram
+(`claimMessagePointerKeyboard` / `claimMessagePointerClose`). Claiming afterwards
+would leave both passes calling the API, which is the whole cost being avoided. The
+witness is the stored blob **verbatim**, never a re-serialization: a round-trip that
+reordered a key would yield a witness that never matches and a sweep that silently
+stopped editing anything.
+
+**Edits, never sends.** Everything routes through the chokepoint's
+`closeMessage` / `updateMessageKeyboard` / `rebuildMessage`. Telegram does not
+notify on an edit, so no interruption is spent; reconciliation only ever REDUCES
+what a chat claims, which is the direction the contact-consent rule allows
+unilaterally (docs/internals/findings.md §2).
+
+**The safety-rule check.** Closing a reminder because the dose was actually
+logged is state-driven, not dismissal-driven — the dueness is genuinely gone from
+the ledger, so "dose reminders are never silenced by suppression" survives
+intact. A reconciler may only read real ledger state and **never** the
+findings-suppression bus; the practice family reads raw frequency progress rather
+than `behindPractices` for exactly this reason, because the latter applies the
+bus. An Upcoming dismissal still never touches a safety message.
+
+**The completeness guard** (`lib/__tests__/reconcile-registry.test.ts`). A source
+scan harvests every callback-token prefix the notification modules can mint and
+fails the build unless each one is either owned by a family in
+`RECONCILE_PREFIXES` or declared **inert** with a written reason (a view control
+— "▲ Collapse", "⚙️ Tune", "➕ Show more"/"➖ Show less", the `/dose` access list — makes no
+state claim, so it cannot lie and must not keep a resolved message alive). It
+also fails on a stale entry. An UNKNOWN prefix is deliberately not treated as
+inert: an unreasoned button leaves its message untouched rather than being closed
+on a guess.
+
+**Deliberately out of scope.** No write-path coupling: the Server Action layer
+stays free of Telegram calls. A fire-and-forget edit from the action layer could
+be added on top later, but it cannot replace this (no retry, a second concurrent
+writer of message state, a call site to remember at every write, and a burst
+against rate limits when items are logged one by one). Web Push is transient and
+has no retroactive-edit story.
+
+**A quiet 24h produces no section at all** — the digest does not manufacture news.
+
+**Per-category demotion — the ⚙️ Tune control (#1714).** As the digest's coverage
+grew, the recourse for an unwanted category was nothing or a settings checkbox
+farm. The escape hatch instead rides the surface that annoys you (the
+Take/Skip/Demote precedent, #1505): the message carries a collapsed **⚙️ Tune**
+button that expands **in place** — a keyboard edit, never a send — into one toggle
+per category, then **▲ Done**.
+
+- **Demote ≠ hide.** A demoted category stops appearing ROUTINELY and still
+  surfaces when it crosses its own notable threshold — and that predicate is
+  always the classification the line ALREADY computes (#221), never a second
+  threshold: `sleepVerdict` for sleep (#1712), the mood shift against the
+  subject's own recent average, a severe symptom-day, a growth band crossing, a
+  personal record for a training day (`recentPRs` / `recentCardioPRs`, the same
+  pair the weekly recap reads).
+- **Every category is tunable** (owner ruling 2026-08-01, #1797). #1774 shipped a
+  deliberately conservative launch set — the collector's categories minus `labs`,
+  with `activities` deferred — and that intersection is retired. The set is
+  DERIVED per side, so there is no hand-maintained list to drift: the collector
+  owns its half through `RECENT_CHANGE_CATEGORIES` (a category added to the
+  collector is tunable the day it exists), and `digest-tune.ts` owns the digest's
+  own sections through `DIGEST_OWN_CATEGORIES` (`sleep`, `activities`) — the two
+  the collector never produces. Ten categories today, so the largest possible Tune
+  keyboard is 5 rows + ▲ Done = 11 buttons, well inside the 100-button cap
+  `capTelegramKeyboard` already enforces.
+- **Preference filtering can never reach a safety floor.** `flagged` implies
+  notable inside `applyRecentChangeDemotion`, so a flagged lab or an out-of-range
+  vital survives every preference, structurally. `labs` back in the set
+  demonstrates that rather than weakening it: every lab line the digest carries is
+  flagged, so a reader who tunes labs down still receives every flagged result, and
+  the row's copy says so ("A flagged result always appears — turning this down
+  never hides one"). The offer tail, the Today obligations and the minimal-digest
+  guarantee are not tunable at all — those are the MESSAGE's job, not a category.
+  Demoting everything makes the digest short, never silent.
+- **Vocabulary and predicates:** `lib/notifications/digest-tune.ts` (pure) —
+  `DIGEST_TUNABLE_CATEGORIES`, `DIGEST_OWN_CATEGORIES`, the labels, the stored
+  form, the toggle, the keyboard builders, `sleepSurvivesDemotion` and
+  `activitiesSurviveDemotion`. The collector half applies through
+  `collectRecentChanges({ demoted })`; the Sleep section applies through
+  `gatherDigestSleep(profileId, demoted)`; the Yesterday activity list applies in
+  `gatherDigestInput`, which resolves the PR count only when the category is
+  actually demoted (`personalRecordsOn`).
+- **Storage is per LOGIN** (`login_settings.digest_demoted_categories`), beside
+  the login's Telegram channel config: which lines a digest routinely carries is a
+  display preference of the person reading it, not a fact about the data subject.
+  `toggleLoginDigestDemotion` does its read-modify-write inside one immediate
+  transaction and returns the state it stored, so both surfaces answer from the
+  typed outcome rather than confirming unconditionally.
+- **One message, N readers.** The digest is built once per profile and fans out to
+  every managing login, so `digestDemotionsForProfile` collapses the per-login
+  preferences CONSERVATIVELY (`intersectDigestDemotions`): a category is demoted
+  only when EVERY managing login declared it, and a profile with no managing login
+  demotes nothing. Nobody is shown less than they asked for, and no login's tap can
+  thin another login's digest. A per-recipient message body would be the only way
+  to honour two disagreeing readers exactly, and that is a delivery-core change
+  (`dispatch` renders one message per profile) — a separate decision, not a
+  side effect of this control.
+- **Which login a tap belongs to:** the login whose Telegram channel IS the chat,
+  lowest id first when a family chat has several — the same "first login owns the
+  chat" rule `dedupeRecipientsByChat` uses outbound, so the two directions cannot
+  disagree. A tap on YESTERDAY's digest is refused rather than retuned from stale
+  context.
+- **Mirrored in Settings → Notifications** ("Morning digest") as the same toggles,
+  read-write, so preferences are discoverable, reversible off-Telegram, and visible
+  to someone auditing why their digest looks thin. One storage, two surfaces — a
+  mirror of an existing message control, not a settings-only feature.
+
+**Light and movement lines (#1723).** Two more Today/Yesterday lines, both
+riding this message — **no send is created by either**:
+
+- a **weather-aware light-exposure line** rendered from the already-synced
+  weather/UV cache, gated by the named predicate `favorableLightConditions`
+  (`lib/light-exposure.ts`: clear/partly-clear, effectively dry, a real daylight
+  window, and UV inside a usable band — a scorching day belongs to the #1172
+  overexposure engine, not to encouragement) plus a **relevance** gate
+  (`lightExposureRelevant`: the profile tracks a light/outdoor practice, or its
+  sun surface is live). It STATES A WINDOW ("UV moderate until 4pm — good window
+  for light exposure") and never issues an instruction with a deadline. It
+  composes the tracked practice's pace from the shared `frequencyPace` result
+  when that practice is behind.
+- the **daily step target** (`lib/steps-target.ts`), a value the user declares in
+  Settings → Training and which is stored in `profile_settings`
+  (`steps_daily_target`) — `frequency_targets` are weekly-SESSION shaped and
+  cannot carry a daily sum, so no schema was added. The digest states yesterday's
+  verdict against it (#1712's pattern) and restates the target this morning only
+  when the trailing 7-day average sits below it. Later in the day, when the count
+  is well behind by `STEPS_AFTERNOON_HOUR` in the profile's timezone,
+  `stepsPaceItems` adds ONE calm Upcoming row (`steps-pace:<date>`) — which is
+  how it reaches the surfaces that already fire, without a dedicated step nudge.
+  Stale step data goes **silent** rather than guessing: a late Health Connect
+  batch must never manufacture a "behind".
 
 **Delayed completion dispatch + no-finish fallback (#1154 §B).**
 `runPostWorkoutFinish` delegates to the shared per-activity core

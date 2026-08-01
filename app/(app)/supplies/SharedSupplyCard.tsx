@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import NotesText from "@/components/NotesText";
 import ProfileSwitcherChip from "@/components/ProfileSwitcherChip";
 import OverflowMenu, {
@@ -10,7 +9,9 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import type { AppRoute } from "@/lib/hrefs";
+import { productLabel } from "@/lib/supply-product";
 import type { AvatarProfile } from "@/components/Avatar";
+import { switchProfileAction } from "@/app/(app)/user-actions";
 import { updatePoolAction, deletePoolAction } from "./actions";
 
 export interface SharedSupplyCardData {
@@ -37,6 +38,14 @@ export interface SharedSupplyCardData {
     profile: AvatarProfile;
     acting: boolean;
   }[];
+  // "Add for another person" (#1705). `addHref` opens the add form for this bottle's
+  // kind, pre-seeded and pre-linked; `addTargets` is every accessible profile the caller
+  // may WRITE, acting first. A SELECT rather than a chip per person: an admin reaches
+  // every profile in the instance, and a card cannot render a hundred chips. The item is
+  // created under the TARGET profile's own write gate — submitting switches the active
+  // profile first, then the ordinary add form runs — never the acting profile's.
+  addHref: AppRoute;
+  addTargets: { id: number; name: string }[];
   canWrite: boolean;
 }
 
@@ -49,7 +58,6 @@ export default function SharedSupplyCard({
 }: {
   pool: SharedSupplyCardData;
 }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +71,6 @@ export default function SharedSupplyCard({
       if (!res.ok) setError(res.error ?? "Couldn't save.");
       else {
         setOpen(false);
-        router.refresh();
       }
     });
   };
@@ -76,11 +83,14 @@ export default function SharedSupplyCard({
       const res = await deletePoolAction(fd);
       if (!res.ok) setError(res.error ?? "Couldn't delete.");
       else {
-        router.refresh();
       }
     });
   };
 
+  // The bottle's product identity as ONE label — the same computation the picker's
+  // options and the linked items' chips read (#1705), so a bottle reads the same
+  // everywhere it appears.
+  const product = productLabel(pool);
   const daysText =
     pool.daysLeft == null
       ? "No estimate yet"
@@ -109,16 +119,14 @@ export default function SharedSupplyCard({
             data-testid="shared-supply-name"
           >
             {pool.name}
-            {pool.strength ? (
-              <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
-                {pool.strength}
-                {pool.form ? ` · ${pool.form}` : ""}
+            {product && (
+              <span
+                className="ml-2 font-normal text-slate-500 dark:text-slate-400"
+                data-testid="shared-supply-product"
+              >
+                {product}
               </span>
-            ) : pool.form ? (
-              <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
-                {pool.form}
-              </span>
-            ) : null}
+            )}
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             <span data-testid="shared-supply-days">{daysText}</span>
@@ -221,6 +229,44 @@ export default function SharedSupplyCard({
             Nothing links to this bottle any more. Its count is kept until you
             delete it — nothing is removed on your behalf.
           </p>
+        )}
+        {/* The bottle → item direction (#1705). A household bottle is only useful to a
+            second person if adding it for them is ONE step: this switches to the chosen
+            profile and opens its add form already seeded with the bottle's product facts
+            and already linked to it. */}
+        {pool.addTargets.length > 0 && (
+          <form
+            action={switchProfileAction}
+            className="mt-3 flex flex-wrap items-end gap-2"
+            data-testid="shared-supply-add-for"
+          >
+            <div>
+              <label className="label" htmlFor={`pool-add-for-${pool.id}`}>
+                Add for another person
+              </label>
+              <select
+                id={`pool-add-for-${pool.id}`}
+                name="profileId"
+                className="input max-w-xs"
+                data-testid="shared-supply-add-for-select"
+                defaultValue={String(pool.addTargets[0].id)}
+              >
+                {pool.addTargets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <input type="hidden" name="returnTo" value={pool.addHref} />
+            <button
+              type="submit"
+              className="btn btn-sm"
+              data-testid="shared-supply-add-for-submit"
+            >
+              Add this bottle
+            </button>
+          </form>
         )}
         {pool.hiddenMemberCount > 0 && (
           <p

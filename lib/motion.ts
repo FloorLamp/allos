@@ -43,6 +43,9 @@ export const MOTION_MS = {
   drawer: OVERLAY_MOTION_MS,
   sheet: OVERLAY_MOTION_MS,
   dock: OVERLAY_MOTION_MS,
+  // The mobile profile switcher's top drawer (#1801) — a fourth tenant of the
+  // same token, named for what it animates like the other three.
+  switcher: OVERLAY_MOTION_MS,
   // Height-animated open/close of an inline region (components/Collapse).
   collapse: 200,
   // The shell chrome's hide/reveal slide (MobileNav's sticky bar + view strip).
@@ -77,6 +80,9 @@ export function motionClass(
 //   * "bottom"  — a bottom-anchored panel: BottomSheet, and the activity dock's
 //                 expanded editor. Slides up from below the fold.
 //   * "left"    — an edge-anchored panel: the mobile nav drawer.
+//   * "top"     — a TOP-anchored panel: the mobile profile switcher (#1801),
+//                 which drops from the identity bar so the target appears where
+//                 the finger already is. Slides down from above the fold.
 //   * "dialog"  — BottomSheet's responsive presentation: the bottom slide below
 //                 `md`, a fade from `md` up (a slide-up on a CENTERED card reads
 //                 as the card falling off the screen). The media query lives in
@@ -88,7 +94,7 @@ export function motionClass(
 // calls this function instead of writing the class string itself, which is what
 // makes "one duration + easing token pair" enforceable rather than aspirational
 // — see lib/__tests__/overlay-motion-chokepoint.test.ts.
-export type OverlayAnchor = "bottom" | "left" | "dialog" | "scrim";
+export type OverlayAnchor = "bottom" | "left" | "top" | "dialog" | "scrim";
 
 export function overlayMotionClass(
   anchor: OverlayAnchor,

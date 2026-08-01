@@ -11,9 +11,14 @@ import type { SyncRowLink } from "@/lib/queries";
 // the profile-scoped loadSyncRows action and lists the records the sync inserted/
 // updated, each a typed deep link (#285) to the surface that owns it (a timeline day,
 // or Results for a lab). Mirrors RawPayloadViewer's lazy on-open fetch + hydration
-// catch-up. Rendered for any event that actually changed rows, including a chunked
-// import that failed after earlier chunks committed; a legacy sync (pre-#1333) has
-// no provenance and shows a graceful "not recorded" note.
+// catch-up. Rendered ONLY for an event that actually RECORDED provenance (#1771):
+// the caller resolves that with one indexed existence check (eventsWithProvenance)
+// and omits the expander entirely otherwise, so there is no apologetic empty state
+// left to reach. That covers both a legitimately provenance-less provider — Weather
+// writes cells of a GLOBAL location-keyed forecast cache, which name no user record
+// (#1212's scoping decision) — and genuine pre-#1333 legacy events. A chunked import
+// that failed after earlier chunks committed still drills in: those chunks recorded
+// their rows.
 export default function SyncRowsDrilldown({
   eventId,
   count,
@@ -65,11 +70,6 @@ export default function SyncRowsDrilldown({
       {state === "error" && (
         <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
           Couldn’t load the written records.
-        </p>
-      )}
-      {state === "loaded" && rows.length === 0 && (
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Record-level detail wasn’t captured for this sync.
         </p>
       )}
       {state === "loaded" && rows.length > 0 && (

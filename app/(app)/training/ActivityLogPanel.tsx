@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
+import ActivityCombobox from "@/components/ActivityCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { fmtDistance } from "@/lib/units";
@@ -21,15 +21,26 @@ export default function ActivityLogPanel({
   activities,
   distanceUnit,
   defaultDate,
+  sportOptions,
+  cardioOptions,
 }: {
   activities: Activity[];
   distanceUnit: DistanceUnit;
   defaultDate: string;
+  // The SAME frequency-ranked suggestions the full editor's picker consumes
+  // (getActivitySuggestions, #195). This panel used to be a bare text input, so a
+  // restricted profile got no suggestions at all — including for the sessions it had
+  // logged here last week (#1676).
+  sportOptions: string[];
+  cardioOptions: string[];
 }) {
-  const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // Controlled so the title picker can offer the suggestions for the type actually
+  // selected — a cardio session and a sport session draw on different lists.
+  const [type, setType] = useState<ActivityType>("sport");
+  const [title, setTitle] = useState("");
 
   async function handle(formData: FormData) {
     setError(null);
@@ -72,12 +83,12 @@ export default function ActivityLogPanel({
     }
     toast("Session logged");
     formRef.current?.reset();
-    router.refresh();
+    setType("sport");
+    setTitle("");
   }
 
   async function remove(formData: FormData) {
     await deleteActivity(formData);
-    router.refresh();
   }
 
   return (
@@ -106,7 +117,8 @@ export default function ActivityLogPanel({
             <select
               id="a-type"
               name="type"
-              defaultValue="sport"
+              value={type}
+              onChange={(e) => setType(e.target.value as ActivityType)}
               className="input"
             >
               <option value="sport">Sport / practice</option>
@@ -118,13 +130,14 @@ export default function ActivityLogPanel({
             <label className="label" htmlFor="a-title">
               What did you do?
             </label>
-            <input
+            <ActivityCombobox
               id="a-title"
-              type="text"
               name="title"
+              value={title}
+              onChange={setTitle}
+              options={type === "cardio" ? cardioOptions : sportOptions}
+              allowFreeText
               placeholder="Soccer practice"
-              className="input"
-              required
             />
           </div>
 

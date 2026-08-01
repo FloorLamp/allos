@@ -13,6 +13,7 @@ import {
   type DoseRate,
 } from "@/lib/refill";
 import { SUPPLIES_HREF } from "@/lib/hrefs";
+import { bottleLabel, productLabel } from "@/lib/supply-product";
 import { formatMonthDay } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
@@ -91,12 +92,17 @@ export function SharedSupplyChip({
   pool: {
     supplyId: number;
     name: string;
+    strength: string | null;
+    form: string | null;
     daysLeft: number | null;
     memberCount: number;
     low: boolean;
   } | null;
 }) {
   if (!pool) return null;
+  // DERIVED, never stored on the item (#1705): the bottle owns the product facts, so
+  // editing its strength updates every member's chip with no write to any item row.
+  const product = productLabel(pool);
   const across = pool.memberCount > 1 ? " across everyone" : "";
   const days =
     pool.daysLeft == null
@@ -113,12 +119,13 @@ export function SharedSupplyChip({
           ? "text-amber-700 dark:text-amber-300"
           : "text-brand-700 dark:text-brand-400"
       }`}
-      title={`Shared supply — ${pool.name}, drawn from by ${pool.memberCount} tracked item${
-        pool.memberCount === 1 ? "" : "s"
-      }`}
+      title={`Shared supply — ${bottleLabel(pool)}, drawn from by ${
+        pool.memberCount
+      } tracked item${pool.memberCount === 1 ? "" : "s"}`}
     >
       <span>
         {pool.low ? "Low · " : ""}Shared bottle
+        {product ? ` · ${product}` : ""}
         {days ? ` · ${days}` : ""}
       </span>
       <IconChevronRight

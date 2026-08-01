@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import SubmitButton from "@/components/SubmitButton";
 import ModalShell from "@/components/ModalShell";
 import DateField from "@/components/DateField";
@@ -37,7 +36,6 @@ export default function EpisodeEditor({
   open: boolean;
   onClose: () => void;
 }) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(fd: FormData) {
@@ -45,7 +43,6 @@ export default function EpisodeEditor({
     const res = await editEpisodeAction(fd);
     if (res.ok) {
       onClose();
-      router.refresh();
     } else {
       setError(res.error);
     }

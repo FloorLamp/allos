@@ -60,6 +60,17 @@ export function symptomSlugs(): string[] {
   return SYMPTOMS.map((s) => s.slug);
 }
 
+// The curated LABELS, catalog order — the option source for every free-text symptom
+// entry point (issue #1676): the log bar's "add another symptom" field and the
+// medication side-effect fields, which describe the same human vocabulary. Typing a
+// near-miss ("Head ache") used to mint a custom key sitting beside the curated
+// `headache`; offering the labels turns those near-misses into exact matches that
+// resolveSymptomKey() collapses onto the curated slug. Free text stays allowed —
+// the catalog suggests, it never gates.
+export function symptomLabelOptions(): string[] {
+  return SYMPTOMS.map((s) => s.label);
+}
+
 // The curated slugs in a given context, catalog order preserved — the per-mount "lead
 // with these" list (issue #714). Used to build a domain-led picker order.
 export function symptomSlugsInDomain(domain: SymptomDomain): string[] {

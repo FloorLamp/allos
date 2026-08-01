@@ -80,3 +80,34 @@ test("Settings → Profile persists the max-HR override and Zone 2 target (#159)
   await target2.blur();
   await expect(main.getByLabel("Saved")).toBeVisible();
 });
+
+test("Settings → Training persists the daily step target (#1723)", async ({
+  page,
+}) => {
+  await page.goto("/settings/training");
+  const main = page.getByRole("main");
+  const form = main.getByTestId("training-zones-form");
+  await expect(form).toBeVisible();
+
+  // The declared daily step target starts EMPTY — nothing counts steps against a
+  // number nobody chose, so blank is the honest resting state, not a defaulted 10k.
+  const steps = form.getByTestId("steps-daily-target-input");
+  await expect(steps).toHaveValue("");
+
+  await settledFill(page, steps, "8000");
+  await steps.blur();
+  await expect(form.getByLabel("Saved")).toBeVisible();
+
+  await page.reload();
+  await expect(main.getByTestId("steps-daily-target-input")).toHaveValue(
+    "8000"
+  );
+
+  // Clearing it is a first-class state, not an error: self-clean back to no target.
+  const steps2 = main.getByTestId("steps-daily-target-input");
+  await settledFill(page, steps2, "");
+  await steps2.blur();
+  await expect(main.getByLabel("Saved")).toBeVisible();
+  await page.reload();
+  await expect(main.getByTestId("steps-daily-target-input")).toHaveValue("");
+});

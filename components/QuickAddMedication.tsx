@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
+import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import PediatricDoseBandPicker from "@/components/medications/PediatricDoseBandPicker";
 import PediatricWeightUpdate from "@/components/medications/PediatricWeightUpdate";
 import {
-  medicationCatalogOptions,
   resolveMedicationPick,
   getMedicationInfo,
 } from "@/lib/medication-info";
@@ -34,7 +33,6 @@ import type { FormResult } from "@/lib/types";
 // identical (proven in the action tier) — no new model, no migration. The full form
 // stays the long-tail path (Rx meds, schedules, prescriber). Renders on both the
 // Medications page and inline in the shared illness medication workspace.
-const MED_CATALOG_OPTIONS = medicationCatalogOptions();
 
 export default function QuickAddMedication({
   action,
@@ -48,8 +46,11 @@ export default function QuickAddMedication({
   // Called after a successful add (e.g. to collapse the inline symptom-card panel).
   onDone?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
+  // The SAME ranked medication options the full form uses (#1677) — one source, both
+  // call sites, so the quick-add's first eight rows can never disagree with the full
+  // form's (#221).
+  const catalogOptions = useIntakeOptions();
   const [pediatricContext, setPediatricContext] = useState(pediatric);
 
   useEffect(() => {
@@ -171,7 +172,6 @@ export default function QuickAddMedication({
     setFormulationSlug("");
     setSelectedPediatricBandMinLbs(null);
     if (onDone) onDone();
-    else router.refresh();
   }
 
   return (
@@ -197,7 +197,7 @@ export default function QuickAddMedication({
               setSelectedPediatricBandMinLbs(null);
             }}
             onPick={onPickName}
-            options={MED_CATALOG_OPTIONS}
+            options={catalogOptions.medications}
             placeholder="e.g. Ibuprofen (Advil, Motrin)"
           />
           {isChildProfile && name.trim() && !prnDefaults?.pediatric ? (

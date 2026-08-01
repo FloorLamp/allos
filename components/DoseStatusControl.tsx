@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
@@ -63,7 +62,6 @@ export default function DoseStatusControl({
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   const isTaken = state === "taken";
   const isSkipped = state === "skipped";
-  const router = useRouter();
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
 
@@ -100,7 +98,6 @@ export default function DoseStatusControl({
     try {
       await setDoseStatus(fd);
       setOptimistic(null);
-      router.refresh();
       return true;
     } catch {
       return false;
@@ -147,7 +144,6 @@ export default function DoseStatusControl({
     try {
       await setDoseStatus(fd);
       setOptimistic(null);
-      router.refresh();
     } catch (err) {
       const stillOnline = navigator.onLine !== false;
       // A dropped connection mid-submit: queue a fresh take/skip; otherwise

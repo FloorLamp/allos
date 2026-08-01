@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { undoDelete, undoDeletes } from "@/app/(app)/undo-actions";
 
@@ -19,7 +18,6 @@ const UNDO_TOAST_MS = 15000;
 //   await undoable(deleteActivity, fd, { deletedMessage: "Activity deleted." });
 export function useUndoableDelete() {
   const toast = useToast();
-  const router = useRouter();
 
   return async function run(
     action: (
@@ -47,7 +45,6 @@ export function useUndoableDelete() {
           : [result.undoId];
     // Reflect the delete immediately (revalidatePath in the action marks the RSC
     // cache stale; refresh re-renders it).
-    router.refresh();
 
     if (tokens.length === 0) {
       // Nothing was deleted (already gone) — a plain confirmation, no Undo.
@@ -69,7 +66,6 @@ export function useUndoableDelete() {
                 : (await undoDeletes(tokens)).restored > 0;
             if (ok) {
               toast("Restored.");
-              router.refresh();
             } else {
               toast("Couldn’t undo — it may have expired.", { tone: "error" });
             }

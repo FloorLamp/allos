@@ -3,14 +3,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  deployDetectorFor,
+  reloadPlanFor,
+  resolveUpdateState,
   SW_SKIP_WAITING,
   shouldOfferUpdate,
   shouldReloadOnControllerChange,
 } from "@/lib/sw-update";
 
-// The deferred service-worker update (issue #1700). The decisions are pure; the
-// end-to-end drive (a second worker version registered against an open page) is
-// e2e/sw-update.spec.ts.
+// The deferred service-worker update (issue #1700) and the ONE update-pending state
+// it grew into (issue #1795). The decisions are pure; the end-to-end drives are
+// e2e/sw-update.spec.ts (a second worker version registered against an open page)
+// and e2e/update-notice.spec.ts (the no-worker fallback detector).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SW = fs.readFileSync(path.join(REPO, "public/sw.js"), "utf8");
@@ -57,6 +61,110 @@ describe("shouldReloadOnControllerChange", () => {
         alreadyReloaded: true,
       })
     ).toBe(false);
+  });
+});
+
+describe("one detector per context (#1795)", () => {
+  it("lets the worker answer wherever there is one", () => {
+    expect(deployDetectorFor("active")).toBe("service-worker");
+  });
+
+  it("falls back to the sha poll where no worker exists", () => {
+    // Private mode, an unsupported browser, a failed registration, development.
+    expect(deployDetectorFor("unavailable")).toBe("version-poll");
+  });
+
+  it("asks nothing while registration hasn't answered", () => {
+    // A poll started in that window would race the worker for the same deploy —
+    // which is how one deploy came to raise two notices in the first place.
+    expect(deployDetectorFor("probing")).toBe("none");
+  });
+});
+
+describe("resolveUpdateState (#1795)", () => {
+  const OLD = "aaaaaaa";
+  const NEW = "bbbbbbb";
+
+  it("is pending on a waiting worker", () => {
+    expect(
+      resolveUpdateState({
+        swWaiting: true,
+        baselineSha: OLD,
+        deployedSha: null,
+        deployedMessage: null,
+      })
+    ).toEqual({ pending: true, commitMessage: null });
+  });
+
+  it("is pending on a sha mismatch with no worker, and names the build", () => {
+    expect(
+      resolveUpdateState({
+        swWaiting: false,
+        baselineSha: OLD,
+        deployedSha: NEW,
+        deployedMessage: "Ship the thing",
+      })
+    ).toEqual({ pending: true, commitMessage: "Ship the thing" });
+  });
+
+  it("is ONE pending state when both detectors fire — one deploy, one notice", () => {
+    // The defect: a deploy mints a new COMMIT_SHA *and* a new sw.js?v=<sha>, so both
+    // detectors trip. Two surfaces used to answer that; there is one answer now.
+    const both = resolveUpdateState({
+      swWaiting: true,
+      baselineSha: OLD,
+      deployedSha: NEW,
+      deployedMessage: "Ship the thing",
+    });
+    expect(both).toEqual({ pending: true, commitMessage: "Ship the thing" });
+  });
+
+  it("is not pending when neither detector has anything", () => {
+    expect(
+      resolveUpdateState({
+        swWaiting: false,
+        baselineSha: OLD,
+        deployedSha: OLD,
+        deployedMessage: "The build you are on",
+      })
+    ).toEqual({ pending: false, commitMessage: null });
+  });
+
+  it("never names the build the user is already running", () => {
+    // A waiting worker carries no commit metadata, so the message can only come from
+    // the server — and if the server reports the sha this page was served with, that
+    // message describes THIS build, not the update.
+    expect(
+      resolveUpdateState({
+        swWaiting: true,
+        baselineSha: OLD,
+        deployedSha: OLD,
+        deployedMessage: "The build you are on",
+      })
+    ).toEqual({ pending: true, commitMessage: null });
+  });
+
+  it("cannot detect a deploy with no baseline to compare against", () => {
+    expect(
+      resolveUpdateState({
+        swWaiting: false,
+        baselineSha: null,
+        deployedSha: NEW,
+        deployedMessage: "Ship the thing",
+      })
+    ).toEqual({ pending: false, commitMessage: null });
+  });
+});
+
+describe("reloadPlanFor (#1795)", () => {
+  it("resolves the handshake whenever a worker is waiting", () => {
+    // The bug this closes: the retired banner's plain reload left the worker waiting,
+    // so the bar re-offered the update the user had just taken.
+    expect(reloadPlanFor({ waitingWorker: true })).toBe("handshake");
+  });
+
+  it("plainly reloads when there is nothing to hand over to", () => {
+    expect(reloadPlanFor({ waitingWorker: false })).toBe("plain");
   });
 });
 

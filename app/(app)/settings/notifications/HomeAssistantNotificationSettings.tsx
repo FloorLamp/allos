@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import type { ProfileHomeAssistant } from "@/lib/settings";
 import type { NotificationKind } from "@/lib/notifications/types";
 import { TOGGLEABLE_HA_KINDS } from "@/lib/notifications/home-assistant-core";
@@ -22,7 +21,6 @@ export default function HomeAssistantNotificationSettings({
 }: {
   config: ProfileHomeAssistant;
 }) {
-  const router = useRouter();
   const [enabled, setEnabled] = useState(config.enabled);
   const [webhookUrl, setWebhookUrl] = useState(config.webhookUrl);
   const [secret, setSecret] = useState(config.secret);
@@ -64,7 +62,6 @@ export default function HomeAssistantNotificationSettings({
         throw new Error(res.error);
       }
       setResult(null);
-      router.refresh();
     });
   }
 
@@ -81,7 +78,6 @@ export default function HomeAssistantNotificationSettings({
           return;
         }
         setResult(await sendTestHomeAssistant());
-        router.refresh();
       } catch {
         setResult({
           ok: false,

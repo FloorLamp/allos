@@ -654,8 +654,31 @@ touching shared source does.
 ## Cadence & lifecycle
 
 - Agent completion notifications are the primary wake signal; self-scheduled
-  check-ins (send_later, ~20–30 min) cover CI waits and are re-armed every turn.
-  Never poll with sleep.
+  check-ins (~20–30 min) cover CI waits and are re-armed every turn. Never poll
+  with foreground sleep.
+- **Never use the harness ScheduleWakeup tool — it is unreliable (owner ruling,
+  2026-08-01).** A scheduled wakeup silently failed to fire and produced a
+  52-minute dead gap the owner had to notice. Arm every check-in as a
+  `send_later` one-shot PLUS a backup background `sleep`-timer task whose
+  completion re-invokes the session; on every wake, check the boot-id stamp
+  first (restart drill on mismatch), then re-arm the next pair before ending
+  the turn.
+- **Every check-in posts a status pulse (owner ruling, 2026-08-01).** Each wake
+  ends with a visible update: what's in flight (agent, branch, state), what
+  merged since the last pulse, what's queued next, and what's parked awaiting
+  owner decisions. Silence reads as a stall — the owner should never have to
+  ask "what are you doing".
+- **Sweep open issues every ~4 hours (owner ruling, 2026-08-01).** A full
+  triage pass over the open-issue list — new filings, priority/label changes,
+  and comment-thread rulings on existing issues — not just the queue built at
+  session start. New P0/P1 findings preempt per the operating contract; the
+  rest rank into the queue.
+- **Dispatch continuously until no viable issue remains (owner ruling,
+  2026-08-01).** The standing directive is standing: when a slot is free and a
+  viable issue is queued, dispatch it without waiting for a fresh go-ahead. An
+  idle slot alongside a viable queue is an orchestration bug. "No viable
+  issues" means everything left is blocked, owner-gated, or awaiting an
+  in-flight dependency — say so in the status pulse rather than going quiet.
 - Keep a task per cluster (`agent → review → merge`) and update it at each
   stage.
 - Institutionalize every incident into the next dispatch prompt the same day —

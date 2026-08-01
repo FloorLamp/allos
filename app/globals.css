@@ -561,6 +561,22 @@ body::before {
     transform: translateY(100%);
   }
 }
+@keyframes overlay-slide-down-in {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes overlay-slide-down-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-100%);
+  }
+}
 @keyframes overlay-slide-left-in {
   from {
     transform: translateX(-100%);
@@ -605,6 +621,17 @@ body::before {
 }
 .overlay-exit-left {
   animation: overlay-slide-left-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
+}
+
+/* Top-anchored panel: the mobile profile switcher (issue #1801). It drops from
+   the identity bar rather than rising from the bottom edge, because the bar IS
+   the trigger — the panel must appear where the finger already is. */
+.overlay-enter-top {
+  animation: overlay-slide-down-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+.overlay-exit-top {
+  animation: overlay-slide-down-out var(--overlay-ms) var(--overlay-ease-exit)
     forwards;
 }
 
@@ -702,6 +729,8 @@ body::before {
   .overlay-exit-bottom,
   .overlay-enter-left,
   .overlay-exit-left,
+  .overlay-enter-top,
+  .overlay-exit-top,
   .overlay-enter-dialog,
   .overlay-exit-dialog {
     animation: none;

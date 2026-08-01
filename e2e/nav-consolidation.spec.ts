@@ -31,7 +31,7 @@ import {
 // a child of the Medical GROUP, not a top-level entry, so it never appeared in this
 // list. The list that DID change is the Medical group's children, asserted below —
 // "Medicine cabinet" moved from present to gone there.
-const TOP_LEVEL_ORDER = [
+const TOP_LEVEL_ORDER: (string | RegExp)[] = [
   "Dashboard",
   "Training",
   "Nutrition",
@@ -43,7 +43,11 @@ const TOP_LEVEL_ORDER = [
   "Wellness",
   "Longevity",
   "Medical",
-  "Data",
+  // The Data entry carries the import-review badge since #1801 (it is Data →
+  // Review's count), so its text is "Data" plus a digit whenever the seeded
+  // always-failing Strava integration is in a failed state. A prefix match keeps
+  // the ORDER assertion about order rather than about that count.
+  /^Data/,
   "Settings",
 ];
 
