@@ -120,6 +120,14 @@
       "label": "Low back pain",
       "icon": "🦴",
       "domain": "cycle"
+    },
+    {
+      "slug": "cervical_mucus",
+      "label": "Cervical mucus",
+      "icon": "💧",
+      "domain": "cycle",
+      "scale": ["Dry", "Sticky", "Creamy", "Egg-white"],
+      "pickerHidden": true
     }
   ]
 }

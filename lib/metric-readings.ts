@@ -3,7 +3,17 @@ import { isEditLocked } from "@/lib/integrations/sync-log";
 import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { getMoodReadings, reconcileFlags } from "@/lib/queries";
-import { deleteMoodLog, updateMoodValence } from "@/lib/offline/writes";
+import {
+  clearMoodRating,
+  deleteMoodLog,
+  updateMoodRating,
+} from "@/lib/offline/writes";
+import {
+  MOOD_MAX,
+  MOOD_MIN,
+  moodRatingColumn,
+  type MoodChartSeries,
+} from "@/lib/mood";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import type { BodyMetricSlug } from "@/lib/trends-body-metrics";
 
@@ -47,7 +57,13 @@ export type MetricReadingStore =
   // store-private (#992) — only its own migration / read layer / write core may name
   // the table, and this module reaches it through those (pinned by
   // lib/__tests__/mood-guardrails.test.ts, a substring guard).
-  | { table: "mood" };
+  //
+  // `series` says WHICH of the check-in's three 1–5 ratings the metric is (#1408) —
+  // one row, three readings, the same one-row-many-measures shape `body_metrics`
+  // already has (see the delete case for how each is removed without taking the
+  // others). The value crossing this boundary is in STORED semantics; `calm`'s
+  // display relabel belongs to the page, beside weight's unit conversion.
+  | { table: "mood"; series: MoodChartSeries };
 
 export type MetricReadingTable = MetricReadingStore["table"];
 
@@ -94,7 +110,9 @@ export const METRIC_READING_STORE: Record<
   bmr: { table: "metric_samples", metric: "bmr_kcal" },
   hydration: { table: "metric_samples", metric: "hydration_l" },
   calories: { table: "metric_samples", metric: "nutrition_kcal" },
-  mood: { table: "mood" },
+  mood: { table: "mood", series: "valence" },
+  energy: { table: "mood", series: "energy" },
+  calm: { table: "mood", series: "calm" },
   // Derived — no per-row store (see the header).
   hr: null,
   bmi: null,
@@ -285,10 +303,14 @@ export function getMetricReadings(
     case "mood": {
       // Mood is STORE-PRIVATE (#992): this module never names its table — the read
       // and both writes go through the mood store's own read layer / write core.
-      return getMoodReadings(profileId, limit).map((r) => ({
+      return getMoodReadings(
+        profileId,
+        limit,
+        moodRatingColumn(store.series)
+      ).map((r) => ({
         id: r.id,
         date: r.date,
-        value: r.valence,
+        value: r.value,
         // A mood check-in is manual by construction — there is no mood importer.
         source: "manual",
         edited: false,
@@ -359,12 +381,17 @@ export function updateMetricReading(
         return { ok: true } as const;
       }
       case "mood": {
-        // Valence is a whole 1–5 self-rating; the store's write core re-checks the
-        // scale, so an off-scale correction is refused there too.
-        const valence = Math.round(value);
-        if (valence < 1 || valence > 5)
+        // Every check-in rating is a whole 1–5 self-rating; the store's write core
+        // re-checks the scale, so an off-scale correction is refused there too.
+        const rating = Math.round(value);
+        if (rating < MOOD_MIN || rating > MOOD_MAX)
           return { ok: false, error: "invalid" } as const;
-        return updateMoodValence(profileId, id, valence)
+        return updateMoodRating(
+          profileId,
+          id,
+          moodRatingColumn(store.series),
+          rating
+        )
           ? ({ ok: true } as const)
           : ({ ok: false, error: "not-found" } as const);
       }
@@ -451,7 +478,23 @@ export function deleteMetricReading(
     }
     case "mood": {
       // No tombstone: there is no mood importer to resurrect a deleted check-in.
-      return { ok: deleteMoodLog(profileId, id), undoId: null };
+      //
+      // The body_metrics rule one store down (#1408): a check-in ROW carries up to
+      // three ratings plus a note and factors, so removing a mis-tapped energy must
+      // NOT take that day's mood with it — the optional rating is nulled and the row
+      // stays. Valence is the check-in itself (NOT NULL), so removing it removes the
+      // day, exactly as it always has.
+      if (store.series === "valence") {
+        return { ok: deleteMoodLog(profileId, id), undoId: null };
+      }
+      return {
+        ok: clearMoodRating(
+          profileId,
+          id,
+          store.series === "energy" ? "energy" : "anxiety"
+        ),
+        undoId: null,
+      };
     }
   }
 }

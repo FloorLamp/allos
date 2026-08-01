@@ -147,8 +147,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "push_subscriptions created_at/last_used_at — audit stamps.",
   },
   "lib/offline/writes.ts": {
-    count: 3,
-    why: "the mood store's two updated_at audit stamps (the check-in upsert + the #1488 past-day valence correction) + the replayed_keys retention DELETE. An audit stamp records when the write happened; nothing compares its calendar DAY to a today()-derived value.",
+    count: 7,
+    why: "the mood store's updated_at audit stamps + the replayed_keys retention DELETE. The check-in upsert, the three per-column past-day corrections and the two optional-rating clears (#1488, extended per rating column by #1408) each stamp updated_at; the column can't be interpolated without making the SQL unreadable to the profile-scoping scanner, so one literal statement per column means one stamp per statement. An audit stamp records when the write happened; nothing compares its calendar DAY to a today()-derived value.",
   },
   "lib/queries/attention.ts": {
     count: 1,

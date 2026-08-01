@@ -49,7 +49,7 @@ import {
   nonIllnessSituationOptions,
   situationActivationLine,
 } from "@/lib/situations";
-import { listCyclePeriods } from "@/lib/cycle-store";
+import { getCycleForecast, listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, cycleDayOnDate } from "@/lib/cycle";
 import { summarizeStepsToday } from "@/lib/steps-today";
 import { latestTrend } from "@/lib/latest-trend";
@@ -159,7 +159,7 @@ import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
 import SymptomLogBar from "../../components/illness/SymptomLogBar";
-import { SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
@@ -677,13 +677,17 @@ export default async function Dashboard() {
   }
 
   // cycle-phase (#1221): "Cycle day N · <phase>" over cycleDayOnDate + cyclePhaseOnDate
-  // (lib/cycle.ts, #221) — informational only, no prediction. Relevance-gated in the
-  // registry; self-hides when no phase is derivable (before any recorded period).
+  // (lib/cycle.ts, #221). Relevance-gated in the registry; self-hides when no phase is
+  // derivable (before any recorded period). Since #1679 the tile also carries the
+  // PROJECTED next-period window — the SAME getCycleForecast the Cycle surface reads, so
+  // the tile and the page can never show different windows.
   const cyclePeriods = has("cycle-phase") ? listCyclePeriods(profile.id) : [];
   const cyclePhase =
     cyclePeriods.length > 0 ? cyclePhaseOnDate(cyclePeriods, on) : null;
   const cycleDay =
     cyclePeriods.length > 0 ? cycleDayOnDate(cyclePeriods, on) : null;
+  const cycleForecast =
+    cyclePeriods.length > 0 ? getCycleForecast(profile.id, on) : null;
   const cycleModel =
     cyclePhase != null && cycleDay != null
       ? { day: cycleDay, phase: cyclePhase }
@@ -925,7 +929,11 @@ export default async function Dashboard() {
         return vitalsModel ? <VitalsLatestWidget model={vitalsModel} /> : null;
       case "cycle-phase":
         return cycleModel ? (
-          <CyclePhaseWidget day={cycleModel.day} phase={cycleModel.phase} />
+          <CyclePhaseWidget
+            day={cycleModel.day}
+            phase={cycleModel.phase}
+            forecast={cycleForecast}
+          />
         ) : null;
       case "active-protocols":
         return activeProtocols.length ? (
@@ -979,7 +987,7 @@ export default async function Dashboard() {
                   date={on}
                   initial={getSymptomSeveritiesOnDate(profile.id, on)}
                   initialNotes={getSymptomNotesOnDate(profile.id, on)}
-                  symptoms={SYMPTOMS}
+                  symptoms={PICKER_SYMPTOMS}
                   customNames={getCustomSymptomNames(profile.id)}
                   rankedKeys={getSymptomLogOrder(profile.id)}
                   suggestActivateIllness={

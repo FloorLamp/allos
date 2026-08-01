@@ -238,9 +238,18 @@ Context combines ongoing situations with today-only factors such as Work or
 Social while clearly labeling which kind persists. There is one check-in per
 day; another entry updates it.
 
-Mood, energy, and calm chart under **Trends → Body**, but they are never
-reference-range checked. A low day is not an abnormal result, does not create a
-retest, and never contributes to a streak, score, badge, or milestone.
+Mood, Energy, and Calm each chart under **Trends → Body** as their own metric —
+a card in the census, a sparkline tile, and a detail page at
+`/trends/metric/mood`, `/trends/metric/energy`, and `/trends/metric/calm` with
+the shared range control and an editable readings table. Each plots only the
+days that carry that rating, since energy and Calm are answered behind the
+card's expansion. Calm charts on the same relabelled axis the card offers (high
+is calm) and carries the card's relevance gate everywhere: a profile the scale
+was never offered has no Calm chart, tile, or page.
+
+None of the three is ever reference-range checked. A low day is not an abnormal
+result, does not create a retest, and never contributes to a streak, score,
+badge, or milestone.
 
 The coaching layer may show a calm, dismissible observation for a sustained
 low-mood window or a sleep drop that co-occurs with one. It describes
@@ -1367,12 +1376,10 @@ the form, the quick actions, and any future import path share them:
   phase/period **chip on the Timeline day view** — and a **cycle-length +
   variability** read (average/shortest/longest/spread, a regular-vs-irregular
   verdict within a 7-day threshold, and a length trend chart) answers "is it
-  regular / changing." Deliberately **tracking, not forecasting**: the luteal
-  phase is only assigned retrospectively once the following period is logged, and
-  there is **no** next-period or ovulation prediction and **no**
-  fertility-awareness / basal-body-temperature features (that regulated tier is
-  out of scope). It also feeds cycle-phase-aware biomarker reference ranges (the
-  phase on a lab's collection date). Informational only, not medical advice or
+  regular / changing." The **phase stays retrospective**: the luteal phase is
+  only assigned once the following period is logged, because a phase says what
+  the body did, not what it will do. It also feeds cycle-phase-aware biomarker
+  reference ranges (the phase on a lab's collection date). Informational only, not medical advice or
   diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
   always keeps it visible — data wins, including for trans or unset-sex profiles —
   else it shows for a female profile that is premenopausal (explicit reproductive
@@ -1380,6 +1387,88 @@ the form, the quick actions, and any future import path share them:
   shows it for adolescents and adults). An explicit postmenopausal status (absent
   data) hides it, as does an unknown sex or age. The gate is cosmetic —
   `/medical/cycles` never hard-blocks.
+
+### Next-period forecast
+
+**The #714 tracking-only exclusion was reversed by owner ruling (#1679).** The
+app forecasts the next period — always as a **confidence-framed range, never a
+date**. The window's width comes from the profile's own measured variability, so
+honesty scales with evidence: a regular history gets a **narrow** window (±2 days
+at the tightest), an irregular one gets an explicitly **wide** one, and a history
+with fewer than three completed cycles gets **no forecast at all**, with a "log a
+couple more cycles" note — silence, with a reason, beats a fabricated date. Width
+is monotonic in variation by construction: more spread can only ever widen it.
+
+If the current cycle outruns its own projected window the forecast **degrades
+rather than re-predicts**: the projected start and the window's start stay put,
+the end stretches to cover the overrun, and the confidence drops to "less
+certain". Widen, never shift.
+
+An **ovulation estimate** rides along at projected start − 14 days, carrying the
+same window and the same confidence tier — labelled as an estimate from history,
+never an observation. It is the weakest of the four standard methods and says so;
+the TTC evidence below is what makes a window actionable.
+
+One pure computation (`forecastNextPeriod`, `lib/cycle.ts`) produces the window,
+the confidence tier, and the evidence (cycles used, mean, spread, anchoring
+period), and every surface formats THAT — the Cycle page's "Next period" card and
+the dashboard Cycle-phase tile cannot disagree. The forecast is **informational
+reach only**: it never becomes an Upcoming item and never notifies. It **suspends
+entirely** while a pregnancy is recorded, and for a profile whose recorded
+reproductive status is postmenopausal.
+
+### Trying to conceive
+
+TTC (#1680) is **off until you declare it** — a start date on the Cycle page, and
+nothing else turns it on. Recording an ovulation test is an observation, not a
+statement of intent: the app never infers that someone is trying to conceive.
+Stopping is as easy as starting and removes only the declaration; the
+observations already recorded stay. The section is **adult-gated** (the same
+`!isMinor` line the other adult topics use).
+
+Three observations, each **reusing a shipped store** rather than earning a table:
+
+- **Ovulation (LH) test** → `medical_records`, a dated positive/negative result.
+  Deliberately NOT filed as the serum LH analyte — a urine strip carries no
+  canonical name, so it is never flagged against serum reference ranges.
+- **Waking temperature (BBT)** → `metric_samples` (`bbt_f`), stored in the app's
+  one canonical temperature scale and displayed in the login's preferred unit.
+- **Cervical mucus** → `symptom_logs`, a categorical daily observation
+  (dry / sticky / creamy / egg-white) stored as its 1–4 ordinal. The symptom
+  vocabulary gained an optional **ordinal scale** for exactly this, so the stored
+  value renders as "Egg-white" and never as "moderate", and the entry stays out
+  of the generic symptom picker (it has its own bar).
+
+Each write goes through the shared observation substrate: the edit lock (a
+hand-corrected row is never overwritten, and the tap says so rather than claiming
+success), `classifyUpsert` / `tallyUpsert` accounting (a re-tap of the same value
+is `unchanged`, not a write), and `latestByGroup` on the domain's own identity
+function for "what is current per observation kind".
+
+The **fertile window** is built from the best available evidence and always names
+which: a **positive LH test** (ovulation within ~24–36 h) beats a **fertile mucus
+pattern**, which beats the **calendar estimate** from the forecast above. Every
+rendering carries the non-negotiable line that this is **not a contraceptive
+method**. There is no fertility score and no "chance today" percentage — the app
+states evidence and windows, and manufactures no probability it cannot support.
+
+**Ovulation confirmation** is retrospective by nature: a sustained temperature
+rise (the classic three-readings-over-six rule, 0.4 °F above the pre-rise
+baseline, gap-tolerant because it counts readings rather than calendar days)
+dates ovulation to the day before the first high reading. From there the app
+reports the **luteal-phase length** to the next period start — the number a short
+luteal phase shows up in — and can describe a progesterone draw's timing relative
+to estimated ovulation ("drawn 7 days after estimated ovulation"), leaving the
+interpretation to the existing cycle-phase reference ranges.
+
+A **months-trying counter** reports elapsed months and cycles attempted since the
+declared start, and a calm, dismissible **coaching-tier** prompt appears at 12
+months of trying (6 from age 35) suggesting that a clinician conversation is the
+usual next step. It never pushes and never escalates. Everything here is
+deliberately un-gamified: no streaks, no milestones, no encouraging tone — a
+cycle that ends without a pregnancy is a neutral fact. TTC **stops entirely**
+while a pregnancy is recorded; the counter freezes at the declared start and is
+kept for history.
 
 ## Mental health
 

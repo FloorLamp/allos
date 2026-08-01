@@ -48,6 +48,7 @@ import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
 import { MED_DUP_PREFIX } from "./medication-family";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
 import { CYCLE_BLEEDING_PREFIX } from "./cycle-observation";
+import { TTC_WORKUP_PREFIX } from "./ttc";
 import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
 import { SYNC_REQUEST_PREFIX } from "./sync-requests";
 import type { ReasonCode } from "./reasons";
@@ -278,6 +279,19 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: CYCLE_BLEEDING_PREFIX,
     tier: "coaching",
     builder: "buildCycleBleedingFindings",
+    reasons: [],
+  },
+  {
+    // Trying-to-conceive workup prompt (#1680): the standard 12-months (6 from age 35)
+    // suggestion that a clinician conversation is the usual next step. COACHING tier by
+    // hard product contract (#449) — never a notification, never the hero. TTC carries no
+    // obligation (the attention doctrine), and a fertility timeline arriving as a push
+    // would be the worst possible delivery for it. Joins collectCoachingFindings and rides
+    // the shared suppression bus keyed on the DECLARED start, so a dismissal covers that
+    // attempt and a later, separately declared one surfaces its own.
+    prefix: TTC_WORKUP_PREFIX,
+    tier: "coaching",
+    builder: "buildTtcWorkupFindings",
     reasons: [],
   },
   {

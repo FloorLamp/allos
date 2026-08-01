@@ -74,8 +74,12 @@ test.describe("dashboard daily loop (#1221)", () => {
     await expect(card.getByTestId("cycle-phase-value")).toContainText(
       /Cycle day \d+ · (Menstrual|Follicular|Luteal)/
     );
-    // Informational only — never a prediction (the #714 contract).
-    await expect(card).toContainText(/never a prediction/i);
+    // The #714 "never a prediction" line was SUPERSEDED by #1679 (owner-ruled
+    // forecasting reversal, PR #1820): the tile now shows either the projected
+    // next-period window or the plain derivation line. The shared seed logs too few
+    // completed cycles for a forecast, so this profile gets the resting copy — and
+    // the forecast presentation itself is pinned by the cycle/TTC specs.
+    await expect(card).toContainText(/derived from your logged periods/i);
     await expect(
       card.getByRole("link", { name: /View all cycle phase/i })
     ).toHaveAttribute("href", "/medical/cycles");

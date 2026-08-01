@@ -10,7 +10,17 @@
 // through writeTx (BEGIN IMMEDIATE, #468).
 
 import { db, writeTx } from "./db";
-import type { CyclePeriod, FlowLevel } from "./cycle";
+import { forecastNextPeriod } from "./cycle";
+import type {
+  CycleForecast,
+  CyclePeriod,
+  FlowLevel,
+  ForecastSuspension,
+} from "./cycle";
+import {
+  getRiskAttributes,
+  getUserReproductiveStatus,
+} from "./settings/profile-attrs";
 
 export interface CycleRow extends CyclePeriod {
   profile_id: number;
@@ -120,5 +130,38 @@ export function deleteCycleRow(profileId: number, id: number): boolean {
       db
         .prepare(`DELETE FROM cycles WHERE id = ? AND profile_id = ?`)
         .run(id, profileId).changes > 0
+  );
+}
+
+// ---- The forecast gather (issue #1679) --------------------------------------
+
+// Whether this profile's forecast is SUSPENDED, and why. Gathered here so every surface
+// asks the question once (#221) and none of them re-reads the attributes.
+//
+// Pregnancy reads the shipped `risk_pregnant` profile attribute — the app's current
+// representation of an ongoing pregnancy. #1402 replaces that flag with a
+// `pregnancy_episodes` row and makes the gate "has an ongoing episode"; because the
+// suspension is resolved HERE and handed to the pure forecast as data, that swap is a
+// one-line change in this function and touches nothing else.
+export function getForecastSuspension(
+  profileId: number
+): ForecastSuspension | null {
+  if (getRiskAttributes(profileId).pregnant) return "pregnancy";
+  if (getUserReproductiveStatus(profileId) === "postmenopausal")
+    return "postmenopausal";
+  return null;
+}
+
+// THE next-period forecast for a profile: the profile-scoped period history plus the
+// resolved suspension, handed to the ONE pure projection. Every consumer (the Cycle
+// surface, the dashboard tile) calls this and formats the result.
+export function getCycleForecast(
+  profileId: number,
+  todayStr: string
+): CycleForecast {
+  return forecastNextPeriod(
+    listCyclePeriods(profileId),
+    todayStr,
+    getForecastSuspension(profileId)
   );
 }

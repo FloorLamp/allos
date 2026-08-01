@@ -380,6 +380,37 @@ awaiting a glaucoma workup), **#705** (dental "re-eval in 3 months"), **#715**
 
 ---
 
+## Reproductive-health findings stay coaching, always (#1682, #1680)
+
+Two namespaces come out of the cycle/TTC domain, and both are **coaching tier by
+hard product contract** — never a notification, never the non-hideable hero:
+
+| Prefix            | Builder                      | Keyed on                              |
+| ----------------- | ---------------------------- | ------------------------------------- |
+| `cycle-bleeding:` | `buildCycleBleedingFindings` | the period's start day                |
+| `ttc-workup:`     | `buildTtcWorkupFindings`     | the DECLARED trying-to-conceive start |
+
+The tier is not a judgement call to revisit per finding. Cycle and TTC are
+**observation domains** (§3): nothing in them is a commitment, so nothing in them
+can be missed, so nothing in them can be due. A fertility timeline or a body-state
+observation arriving as a push would be the single worst delivery this app could
+choose for it.
+
+Two further constraints specific to `ttc-workup:`:
+
+- It is gated on the **declared** start (`profile_settings.ttc_start_date`) and on
+  `!isMinor(age)`. Recording an LH test or a waking temperature is an observation,
+  not a declaration of intent — the system never infers that someone is trying to
+  conceive, and the declared-only doctrine means nothing but a user action writes
+  that key.
+- Keying on the declared start makes a dismissal cover **that attempt**: a later,
+  separately declared attempt surfaces its own prompt once (#436), and a dismissal
+  is never a topic-wide mute.
+
+The copy is held flat by test, not just by review
+(`lib/__tests__/ttc.test.ts`): no encouragement, no odds, no milestone, no failure
+language. The #716/#992 sensitivity precedent applies directly.
+
 ## Conditions compose with the stack, they don't add a nag (#1727)
 
 Status: **shipped** (photosensitizers × UV, heat-risk meds × heatwave)
