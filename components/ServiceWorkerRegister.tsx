@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import UpdateReadyBar from "./UpdateReadyBar";
-import { useDeployedVersion, type VersionWatchMode } from "./useDeployedVersion";
+import {
+  useDeployedVersion,
+  type VersionWatchMode,
+} from "./useDeployedVersion";
 import {
   deployDetectorFor,
   reloadPlanFor,

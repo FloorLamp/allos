@@ -99,8 +99,8 @@ test("a deploy with no service worker raises exactly one notice, and it names th
   await expect(bar).toHaveCount(0);
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "Equipment" }),
-    /\/equipment/
+    page.locator("aside nav").getByRole("link", { name: "Upcoming" }),
+    /\/upcoming/
   );
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
 });
