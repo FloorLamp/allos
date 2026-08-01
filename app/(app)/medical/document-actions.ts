@@ -29,6 +29,10 @@ import {
   documentImmunizationVaccines,
 } from "@/lib/import-persist";
 import { canReassignDocument } from "@/lib/import-reassign";
+import {
+  clearDocumentTombstone,
+  writeDocumentTombstone,
+} from "@/lib/document-tombstones";
 import { evictPreviewsForDocument } from "@/lib/reprocess-preview-cache";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
@@ -291,6 +295,17 @@ export async function reassignDocument(
     // (#327). Only the source can orphan: the destination only GAINS records here,
     // so no dest pin/snooze can lose its backing. (mirrors deleteMedicalDocument.)
     cleanupOrphanBiomarkerKeyedState(src);
+    // The DESTINATION now genuinely holds these bytes, so a stale content-hash
+    // tombstone there is a lie (#1777): it would let #1776's inventory answer `held`
+    // and `deleted` for the same hash, and would block an acquirer from re-offering a
+    // document the destination demonstrably has. Clearing it keeps the two lists
+    // disjoint by construction.
+    //
+    // The SOURCE deliberately gets NO tombstone. A reassignment is a correction of
+    // FILING, not a deletion of content — the bytes are still in the household, the
+    // user was told "Document moved.", and writing a blocking tombstone off the back of
+    // that would be a silent policy write on a path that never mentioned one.
+    if (doc.content_hash) clearDocumentTombstone(dest, doc.content_hash);
   });
   if (!claimed) {
     return {
@@ -394,11 +409,16 @@ export async function deleteMedicalDocument(formData: FormData) {
   const { login, profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
+  // content_hash + filename come back too: they are the TOMBSTONE (#1777), and this read
+  // is the last moment allos still knows either — the row is dropped below.
   const doc = db
     .prepare(
-      "SELECT stored_path FROM medical_documents WHERE id = ? AND profile_id = ?"
+      `SELECT stored_path, content_hash, filename
+         FROM medical_documents WHERE id = ? AND profile_id = ?`
     )
-    .get(id, profile.id) as { stored_path: string } | undefined;
+    .get(id, profile.id) as
+    | { stored_path: string; content_hash: string | null; filename: string }
+    | undefined;
   if (doc)
     recordAudit({
       loginId: login.id,
@@ -432,6 +452,24 @@ export async function deleteMedicalDocument(formData: FormData) {
     db.prepare(
       "DELETE FROM medical_documents WHERE id = ? AND profile_id = ?"
     ).run(id, profile.id);
+    // REMEMBER THE DELETION (#1777). Without this the content hash leaves no trace, so
+    // an acquirer re-offering the same bytes tomorrow is indistinguishable from a first
+    // offer and the document silently comes back — the resurrection #1776's inventory
+    // endpoint would otherwise invite. Written INSIDE this transaction so the row's
+    // disappearance and the memory of it are one atomic fact.
+    //
+    // Written for EVERY delete, not only a portal-acquired one: the hash is the
+    // identity, and a person who deletes a document has said so about the bytes,
+    // whichever path first brought them in. Provenance changes only what the confirm
+    // dialog SAYS (a manually uploaded document has no acquirer to block today), never
+    // whether the deletion is remembered.
+    //
+    // A row with no content_hash predates hashing or is a 'failed' marker that never
+    // got bytes; there is nothing for an acquirer to match, so there is nothing to
+    // block.
+    if (doc?.content_hash) {
+      writeDocumentTombstone(profile.id, doc.content_hash, doc.filename);
+    }
     // Drop stars AND retest/flag dismissals whose biomarker no longer has any
     // remaining records, so a later document reintroducing that name re-pins/
     // re-nudges instead of inheriting the stale, name-keyed side-state (#327).
