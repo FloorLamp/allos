@@ -5,6 +5,7 @@ import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { importHref } from "@/lib/hrefs";
 import { dataSectionHref } from "@/lib/hrefs";
 import Link from "next/link";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 
 // Results › Reports (#708): the narrative diagnostic reports — the free-text body of a
 // microbiology culture, gram stain, or cytopathology report, recovered from an imported
@@ -47,7 +48,9 @@ export default function ReportsSection({
         >
           <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <h3 className="min-w-0 font-medium text-slate-900 dark:text-slate-100">
-              {r.name}
+              <SourceDocumentLink documentId={r.document_id} source={r.source}>
+                {r.name}
+              </SourceDocumentLink>
             </h3>
             <span className="shrink-0 text-sm text-slate-500 dark:text-slate-400">
               {formatLongDate(r.date, fmt)}

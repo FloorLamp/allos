@@ -15,6 +15,7 @@ import { EncounterOptionsProvider } from "@/components/EncounterOptionsContext";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
 import AllergyList from "@/app/(app)/records/problems/allergies/AllergyList";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import { addAllergy } from "@/app/(app)/records/problems/allergies/actions";
 
 // Allergies (former /allergies index, #1042 phase 6): documented allergies (CCD
@@ -116,7 +117,12 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
                       {a.substance}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {a.evidence?.marker}
+                      <SourceDocumentLink
+                        documentId={a.evidence?.documentId}
+                        className="text-brand-700 hover:underline dark:text-brand-300"
+                      >
+                        {a.evidence?.marker}
+                      </SourceDocumentLink>
                       {a.evidence?.value ? ` · ${a.evidence.value}` : ""}
                       {a.evidence?.rastClass != null
                         ? ` · class ${a.evidence.rastClass}`

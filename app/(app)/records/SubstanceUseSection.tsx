@@ -192,6 +192,7 @@ export default function SubstanceUseSection({
               bandLabel: r.band.label,
               maxTotal: substanceInstrumentDef(r.instrument).maxTotal,
               href: biomarkerViewHref(r.instrument),
+              documentId: r.documentId,
             }))}
           />
         </div>

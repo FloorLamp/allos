@@ -6,6 +6,7 @@ import TrackFollowUpControl from "./TrackFollowUpControl";
 import { updateImagingStudy, deleteImagingStudy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -56,7 +57,9 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (s) => (
       <>
-        {studyDisplayLabel(s)}
+        <SourceDocumentLink documentId={s.document_id} source={s.source}>
+          {studyDisplayLabel(s)}
+        </SourceDocumentLink>
         {s.contrast ? (
           <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-700 dark:bg-amber-950 dark:text-amber-300">
             contrast

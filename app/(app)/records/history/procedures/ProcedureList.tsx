@@ -4,6 +4,7 @@ import ProcedureForm from "./ProcedureForm";
 import { updateProcedure, deleteProcedure } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import ProviderName from "@/components/ProviderName";
 import NotesText from "@/components/NotesText";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
@@ -24,7 +25,9 @@ const buildColumns = (
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (p) => (
       <>
-        {p.name}
+        <SourceDocumentLink documentId={p.document_id} source={p.source}>
+          {p.name}
+        </SourceDocumentLink>
         <NotesText
           notes={p.notes}
           className="ml-2 text-xs font-normal text-slate-400"

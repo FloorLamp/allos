@@ -32,6 +32,7 @@ import ImmunizationHistory from "@/app/(app)/immunizations/ImmunizationHistory";
 import ImmunizationStatusFilter from "@/app/(app)/immunizations/ImmunizationStatusFilter";
 import MyChartImport from "@/app/(app)/immunizations/MyChartImport";
 import { addImmunization } from "@/app/(app)/immunizations/actions";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 
 const TITER_BADGE = {
   immune:
@@ -378,8 +379,13 @@ export default function ImmunizationsSection({
                           {t.marker}
                         </Link>
                         <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {t.value ?? "—"} {t.unit ?? ""}
-                          {t.date ? ` · ${t.date}` : ""}
+                          <SourceDocumentLink
+                            documentId={t.document_id}
+                            className="hover:text-brand-700 hover:underline dark:hover:text-brand-300"
+                          >
+                            {t.value ?? "—"} {t.unit ?? ""}
+                            {t.date ? ` · ${t.date}` : ""}
+                          </SourceDocumentLink>
                         </div>
                       </div>
                       <span

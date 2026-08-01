@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { sourceLabel } from "@/lib/record-format";
+import { sourceDocumentId, sourceLabel } from "@/lib/record-format";
 import { importHref } from "@/lib/hrefs";
 
 // The shared provenance label for a clinical/medical row's Source column:
@@ -21,10 +21,11 @@ export default function RecordProvenance({
   documentId?: number | null;
 }) {
   const label = sourceLabel(source);
-  if (documentId != null) {
+  const resolvedDocumentId = sourceDocumentId(documentId, source);
+  if (resolvedDocumentId != null) {
     return (
       <Link
-        href={importHref(documentId)}
+        href={importHref(resolvedDocumentId)}
         className="text-brand-700 transition hover:underline dark:text-brand-300"
         data-testid="record-provenance-link"
       >

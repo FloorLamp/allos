@@ -8,6 +8,7 @@ import {
 } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -47,7 +48,9 @@ function buildColumns(
       cellClassName: "font-medium text-slate-800 dark:text-slate-100",
       cell: (rx) => (
         <>
-          {kindLabel(rx.kind)}
+          <SourceDocumentLink documentId={rx.document_id} source={rx.source}>
+            {kindLabel(rx.kind)}
+          </SourceDocumentLink>
           <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
             OD {formatDiopter(rx.od_sphere)} · OS {formatDiopter(rx.os_sphere)}
           </span>

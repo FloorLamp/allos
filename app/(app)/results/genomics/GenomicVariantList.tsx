@@ -5,6 +5,7 @@ import GenomicVariantForm from "./GenomicVariantForm";
 import { updateGenomicVariant, deleteGenomicVariant } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { medicationHref } from "@/lib/hrefs";
@@ -29,7 +30,9 @@ const buildColumns = (
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (v) => (
       <>
-        {variantDisplayLabel(v)}
+        <SourceDocumentLink documentId={v.document_id} source={v.source}>
+          {variantDisplayLabel(v)}
+        </SourceDocumentLink>
         {v.interpretation ? (
           <span className="ml-2 text-xs font-normal text-slate-400">
             {v.interpretation}

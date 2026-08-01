@@ -7,6 +7,7 @@ import LesionPhotoStrip from "./LesionPhotoStrip";
 import NotesText from "@/components/NotesText";
 import FilterPills from "@/components/FilterPills";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import ProviderName from "@/components/ProviderName";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
@@ -95,9 +96,13 @@ function LesionRecordRow({
       data-testid={`lesion-record-${record.id}`}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2 pr-1">
-        <span className="whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
+        <SourceDocumentLink
+          documentId={record.document_id}
+          source={record.source}
+          className="whitespace-nowrap font-medium text-brand-700 transition hover:underline dark:text-brand-300"
+        >
           {formatRecordDate(record.observed_date, "—", fmt)}
-        </span>
+        </SourceDocumentLink>
         <StatusBadge status={record.status} />
         {letters && (
           <span

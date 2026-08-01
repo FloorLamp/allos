@@ -4,6 +4,7 @@ import CarePlanForm from "./CarePlanForm";
 import { updateCarePlanItem, deleteCarePlanItem } from "./care-plan-actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import StatusBadge from "@/components/StatusBadge";
 import ProviderName from "@/components/ProviderName";
 import NotesText from "@/components/NotesText";
@@ -22,7 +23,9 @@ const buildColumns = (
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (c) => (
       <>
-        {c.description}
+        <SourceDocumentLink documentId={c.document_id} source={c.source}>
+          {c.description}
+        </SourceDocumentLink>
         {c.provider_name ? (
           <ProviderName
             name={c.provider_name}

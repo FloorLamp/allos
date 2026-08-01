@@ -83,6 +83,11 @@ test.describe("encounter detail enrichment (#1350/#1353)", () => {
 
   test("a document-sourced record's provenance deep-links to the source import (#1353)", async () => {
     await page.goto("/records/problems/conditions");
+    // The visible item identity links too, so the source remains reachable when
+    // the table's Source column is hidden at phone widths.
+    const itemLink = page.getByTestId("source-document-link");
+    await expect(itemLink).toHaveCount(1);
+    await expect(itemLink).toHaveAttribute("href", /\/import\/\d+/);
     await expect(page.getByTestId("record-provenance-link")).toBeVisible();
     // The manual condition keeps a plain (non-link) 'Manual' label — so exactly one
     // provenance deep-link exists on this dedicated profile's list.

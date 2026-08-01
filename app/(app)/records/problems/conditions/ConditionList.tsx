@@ -4,6 +4,7 @@ import ConditionForm from "./ConditionForm";
 import { updateCondition, deleteCondition } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
@@ -26,7 +27,9 @@ function buildColumns(
       cellClassName: "font-medium text-slate-800 dark:text-slate-100",
       cell: (c) => (
         <>
-          {c.name}
+          <SourceDocumentLink documentId={c.document_id} source={c.source}>
+            {c.name}
+          </SourceDocumentLink>
           <NotesText
             notes={c.notes}
             className="ml-2 text-xs font-normal text-slate-400"

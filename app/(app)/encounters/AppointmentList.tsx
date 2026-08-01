@@ -28,6 +28,7 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import OpenInMaps from "@/components/OpenInMaps";
 import NotesText from "@/components/NotesText";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
 import {
   matchCarePlanItemsForAppointment,
@@ -293,9 +294,13 @@ export default function AppointmentList({
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-slate-800 dark:text-slate-100">
+                  <SourceDocumentLink
+                    documentId={a.document_id}
+                    source={a.source}
+                    className="font-medium text-brand-700 transition hover:underline dark:text-brand-300"
+                  >
                     {a.title?.trim() || a.provider_name || "Appointment"}
-                  </span>
+                  </SourceDocumentLink>
                   <span className={`badge ${STATUS_BADGE[a.status]}`}>
                     {STATUS_TEXT[a.status]}
                   </span>

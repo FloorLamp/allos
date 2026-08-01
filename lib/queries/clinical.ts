@@ -663,6 +663,7 @@ export function getAllergenSensitizations(
       rastClass: rastClassFromValue(r.value, r.value_num),
       flag: r.flag,
       date: r.date,
+      documentId: r.document_id,
     });
   }
   return out;

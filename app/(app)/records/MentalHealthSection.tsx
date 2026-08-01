@@ -102,6 +102,7 @@ export default function MentalHealthSection({
             bandLabel: r.band.label,
             maxTotal: instrumentDef(r.instrument).maxTotal,
             href: biomarkerViewHref(r.instrument),
+            documentId: r.documentId,
           }))}
         />
       </section>

@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
+import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // Issue #1497 is a phone-height composition change. These checks run in the
 // 390×844 mobile project by filename: record lists lead, rare entry stays behind
@@ -136,4 +138,64 @@ test("record tables keep md-only columns hidden at the sm breakpoint", async ({
 
   await page.setViewportSize({ width: 800, height: VIEWPORT_HEIGHT });
   await expect(onsetCell).toBeVisible();
+});
+
+test("document-backed record identities keep their source link on mobile", async ({
+  page,
+}) => {
+  await page.goto("/records/problems/conditions");
+  const condition = page.locator("tr").filter({ hasText: "E2E Hay fever" });
+  await expect(condition.getByTestId("source-document-link")).toHaveAttribute(
+    "href",
+    "/import/908"
+  );
+
+  await page.goto("/records/history/visits");
+  const visit = page.locator("tr").filter({ hasText: "E2E Browser Visit" });
+  await expect(visit.getByTestId("source-document-link")).toHaveAttribute(
+    "href",
+    "/import/908"
+  );
+
+  await page.goto("/records/history/immunizations");
+  await hydratedClick(page, page.getByText("All recorded doses"));
+  const dose = page.locator("tr").filter({ hasText: "E2E Tdap" });
+  // Immunizations use source='document:<id>' rather than a document_id column;
+  // the shared resolver gives them the same link contract as every other row.
+  await expect(dose.getByTestId("source-document-link")).toHaveAttribute(
+    "href",
+    "/import/908"
+  );
+});
+
+test("an imported appointment links directly to its source document", async ({
+  page,
+}) => {
+  const title = "E2E Document Appointment";
+  const db = new Database(workerDbPath());
+  const appointmentId = Number(
+    db
+      .prepare(
+        `INSERT INTO appointments
+           (profile_id, scheduled_at, title, status, document_id, source)
+         VALUES (1, '2026-08-10 09:00', ?, 'scheduled', 908, 'document:908')`
+      )
+      .run(title).lastInsertRowid
+  );
+  db.close();
+
+  try {
+    await page.goto("/records/history/visits");
+    const row = page.getByTestId("appointment-row").filter({ hasText: title });
+    await expect(row.getByTestId("source-document-link")).toHaveAttribute(
+      "href",
+      "/import/908"
+    );
+  } finally {
+    const cleanup = new Database(workerDbPath());
+    cleanup
+      .prepare("DELETE FROM appointments WHERE id = ? AND profile_id = 1")
+      .run(appointmentId);
+    cleanup.close();
+  }
 });

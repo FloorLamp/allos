@@ -10,11 +10,9 @@ import { round, toKg } from "./units";
 // removed with the document — manual rows (source NULL) and integration rows
 // (e.g. 'health-connect') are never touched.
 
-export const DOCUMENT_SOURCE_PREFIX = "document:";
-
-export function documentSource(docId: number): string {
-  return `${DOCUMENT_SOURCE_PREFIX}${docId}`;
-}
+// Compatibility re-export: document provenance is shared beyond body metrics,
+// but existing ingest/query callers keep this historical import surface.
+export { DOCUMENT_SOURCE_PREFIX, documentSource } from "./document-source";
 
 // One body-metrics row derived from a document (per date). weight_kg is nullable
 //: a date reporting only body fat or resting HR still produces a row, so a

@@ -7,6 +7,7 @@ import EncounterForm from "./EncounterForm";
 import { updateEncounter, deleteEncounter } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import ProviderName from "@/components/ProviderName";
 import OpenInMaps from "@/components/OpenInMaps";
 import { formatRecordDate } from "@/lib/record-format";
@@ -57,7 +58,11 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-    cell: (e) => dateLabel(e, fmt),
+    cell: (e) => (
+      <SourceDocumentLink documentId={e.document_id} source={e.source}>
+        {dateLabel(e, fmt)}
+      </SourceDocumentLink>
+    ),
   },
   {
     header: "Visit",

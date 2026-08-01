@@ -4,6 +4,7 @@ import ImmunizationForm from "./ImmunizationForm";
 import { updateImmunization, deleteImmunization } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import NotesText from "@/components/NotesText";
 import { vaccineDisplayName } from "@/lib/immunization-catalog";
 import {
@@ -72,7 +73,9 @@ export default function ImmunizationHistory({
       sort: { value: (im) => vaccineDisplayName(im.vaccine).toLowerCase() },
       cell: (im) => (
         <>
-          {vaccineDisplayName(im.vaccine)}
+          <SourceDocumentLink source={im.source}>
+            {vaccineDisplayName(im.vaccine)}
+          </SourceDocumentLink>
           <NotesText
             notes={im.notes}
             className="ml-2 text-xs font-normal text-slate-400"
