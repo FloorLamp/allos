@@ -18,8 +18,16 @@ import {
   FOOD_NUDGE_BUTTON_COUNT,
   FOOD_NUDGE_WINDOWS,
 } from "@/lib/notifications/food-format";
-import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
-import { FOOD_GROUPS, foodGroupEmoji, foodGroupSlugs } from "@/lib/food-groups";
+import {
+  PROTEIN_NUDGE_EMOJI,
+  PROTEIN_NUDGE_KEY,
+} from "@/lib/protein-nudge";
+import {
+  FOOD_GROUPS,
+  FOOD_GROUP_EMOJI,
+  foodGroupEmoji,
+  foodGroupSlugs,
+} from "@/lib/food-groups";
 import { plainBody } from "@/lib/notifications/rich-text";
 import {
   proteinTodayNudgeLine,
@@ -124,7 +132,9 @@ describe("renderFoodNudge", () => {
     // The nudge renders the SAME line lib/protein composes for any other surface —
     // one classification, one set of words (#221).
     expect(plainBody(msg.body)).toContain(proteinTodayNudgeLine(t));
-    expect(plainBody(msg.body)).toContain("at least 55 g");
+    // #1822 item 4: the same facts, unstacked — the floor marker is the trailing "+".
+    expect(plainBody(msg.body)).toContain("Protein: 55 g+ so far · goal 95–130 g");
+    expect(plainBody(msg.body)).not.toContain("at least");
     expect(String(Math.round(t.todayGrams))).toBe("55");
   });
 
@@ -197,7 +207,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("＋30g protein");
+    expect(proteinBtn?.label).toBe("💪 ＋30g protein");
     expect(proteinBtn?.data).toBe(
       foodProteinCallbackData(1, "Evening", DATE, 30)
     );
@@ -219,7 +229,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("＋25g protein (2)"); // slot count, not the day's 3
+    expect(proteinBtn?.label).toBe("💪 ＋25g protein (2)"); // slot count, not the day's 3
     // The tally line is empty (no real food group logged) — the reserved key is filtered.
     expect(msg.body).not.toContain("✓ Today:");
     expect(msg.body).not.toContain("__protein__");
@@ -238,7 +248,38 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("＋25g protein"); // 0 → bare, matches the sibling matrix
+    expect(proteinBtn?.label).toBe("💪 ＋25g protein"); // 0 → bare, matches the sibling matrix
+  });
+
+  // #1822 item 6: one keyboard, one label grammar. Every food-group button leads with
+  // its catalog glyph (#1710); the protein button was the sole exception.
+  it("leads with a glyph like every sibling button, and never a group's glyph", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Evening",
+      DATE,
+      withProtein,
+      new Map(),
+      new Map(),
+      { proteinPresetGrams: 25 }
+    );
+    const quickLog = (msg.actions ?? []).filter(
+      (a) => a.data?.startsWith("food:") || a.data?.startsWith("foodprotein:")
+    );
+    expect(quickLog.length).toBeGreaterThan(1);
+    for (const btn of quickLog) {
+      // Every quick-log label opens with a non-ASCII glyph, protein included.
+      expect(btn.label).not.toMatch(/^[\x00-\x7F]/);
+    }
+    // The protein button is the shake path, not a serving of any catalog group, so it
+    // must not borrow a group's glyph.
+    const proteinBtn = quickLog.find((a) =>
+      a.data?.startsWith("foodprotein:")
+    )!;
+    expect(Object.values(FOOD_GROUP_EMOJI)).not.toContain(
+      PROTEIN_NUDGE_EMOJI
+    );
+    expect(proteinBtn.label.startsWith(PROTEIN_NUDGE_EMOJI)).toBe(true);
   });
 
   it("falls back to the default preset grams when none is supplied", () => {
@@ -253,7 +294,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("＋30g protein"); // DEFAULT_PROTEIN_PRESET_GRAMS
+    expect(proteinBtn?.label).toBe("💪 ＋30g protein"); // DEFAULT_PROTEIN_PRESET_GRAMS
   });
 });
 

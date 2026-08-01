@@ -6,6 +6,7 @@ import {
 import {
   behindThisWeekLine,
   digestWorkoutLine,
+  formatWorkoutReminder,
   type WorkoutRecommendation,
 } from "@/lib/notifications/workout-format";
 import { plainBody } from "@/lib/notifications/rich-text";
@@ -202,6 +203,122 @@ describe("behind-target ordering and marking (#1709)", () => {
 
   it("says nothing when nothing is behind", () => {
     expect(behindThisWeekLine([])).toBeNull();
+  });
+
+  // ---- #1822 item 3: the headline's own target is not restated ----
+  //
+  // "Trained today — Chest is 1/2 with only today left" followed two lines later by
+  // "Behind this week: Chest 1/2 ← today" states one fact twice in a four-line message.
+  // The AMENDMENT to the "suffix always" ruling (#1709) is exactly this narrow: the
+  // target the headline already spelled out is dropped from the list. Nothing else moves.
+
+  it("drops the target the headline already stated, keeping the rest marked", () => {
+    const line = behindThisWeekLine(orderBehindTargets(REPORTED, 2), {
+      scopeKind: "type",
+      scopeValue: "back",
+    })!;
+    // "Back 0/2 ← today" is gone — it opened the message — and the others are intact.
+    expect(plainBody(line)).toBe(
+      "Behind this week: Chest 1/2, Cardio 1/2, Lower body 1/2"
+    );
+    expect(plainBody(line)).not.toContain("Back");
+    expect(plainBody(line)).not.toContain("← today");
+  });
+
+  it("keeps the ← today suffix when the headline names a DIFFERENT target", () => {
+    // The scoped amendment: the suffix survives on every message whose headline is not
+    // the driver. Here the pace-tight target (chest) opened the message; the driver
+    // (back) still leads the list with its marker.
+    const line = behindThisWeekLine(orderBehindTargets(REPORTED, 2), {
+      scopeKind: "type",
+      scopeValue: "chest",
+    })!;
+    expect(plainBody(line)).toBe(
+      "Behind this week: Back 0/2 ← today, Cardio 1/2, Lower body 1/2"
+    );
+    expect(renderBodyHtml(line)).toContain("<b>Back 0/2 ← today</b>");
+  });
+
+  it("falls away entirely when the headline's target was the only one behind", () => {
+    expect(
+      behindThisWeekLine(orderBehindTargets([t(2, "back", 0, 2)], 2), {
+        scopeKind: "type",
+        scopeValue: "back",
+      })
+    ).toBeNull();
+  });
+
+  it("is byte-for-byte the prior rendering with no headline subject", () => {
+    const before = behindThisWeekLine(orderBehindTargets(REPORTED, 2))!;
+    for (const stated of [undefined, null]) {
+      expect(
+        plainBody(behindThisWeekLine(orderBehindTargets(REPORTED, 2), stated)!)
+      ).toBe(plainBody(before));
+    }
+    // A subject that is behind on nothing changes nothing either.
+    expect(
+      plainBody(
+        behindThisWeekLine(orderBehindTargets(REPORTED, 2), {
+          scopeKind: "type",
+          scopeValue: "shoulders",
+        })!
+      )
+    ).toBe(plainBody(before));
+  });
+});
+
+// ---- The whole message, end to end (#1822 items 1–3) ----
+
+describe("formatWorkoutReminder — the acknowledgment headline and its list", () => {
+  const behind = orderBehindTargets(
+    [
+      { id: 1, scopeKind: "type", scopeValue: "chest", count: 1, perWeek: 2 },
+      { id: 2, scopeKind: "type", scopeValue: "cardio", count: 1, perWeek: 2 },
+    ],
+    1
+  );
+
+  const rec = (
+    over: Partial<WorkoutRecommendation> = {}
+  ): WorkoutRecommendation => ({
+    focus: ["Chest"],
+    exercises: ["Barbell Bench Press"],
+    behind,
+    rest: null,
+    onTrack: null,
+    ...over,
+  });
+
+  it("states the driver ONCE and never as '0 days left'", () => {
+    const msg = formatWorkoutReminder(
+      rec({
+        acknowledge: {
+          session: "Workout",
+          forcedBy: {
+            scopeKind: "type",
+            scopeValue: "chest",
+            label: "Chest",
+            count: 1,
+            perWeek: 2,
+            daysLeftInWindow: 0,
+          },
+        },
+      })
+    )!;
+    const body = plainBody(msg.body);
+    expect(body).toContain("Trained today — Chest is 1/2 with only today left.");
+    expect(body).not.toContain("0 days left");
+    expect(body).not.toContain("Nice workout today");
+    // The driver is stated once: the list carries only what the headline did not.
+    expect(body).toContain("Behind this week: Cardio 1/2");
+    // Named exactly once in the whole body — the redundancy is gone, not relabeled.
+    expect(body.match(/Chest/g)).toHaveLength(1);
+    expect(body).not.toContain("← today");
+  });
+
+  it("leaves a message with no acknowledgment headline untouched", () => {
+    const body = plainBody(formatWorkoutReminder(rec())!.body);
+    expect(body).toContain("Behind this week: Chest 1/2 ← today, Cardio 1/2");
   });
 });
 

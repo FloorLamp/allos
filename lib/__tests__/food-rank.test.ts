@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { blendFoodOrder } from "@/lib/food-rank";
+import {
+  blendFoodOrder,
+  demoteCappedGroups,
+  isCappedFoodGroup,
+} from "@/lib/food-rank";
+import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 
 // Pure slot-aware blend (issue #950): slot frecency LEADS, overall frecency BACKFILLS,
 // catalog order breaks the final tie. The degrade-to-overall property is the load-
@@ -75,5 +80,86 @@ describe("blendFoodOrder", () => {
     expect(ordered.indexOf("berries")).toBeLessThan(
       ordered.indexOf("leafy_greens")
     );
+  });
+});
+
+// ---- Capped groups sort below floor groups (issue #1822 item 5) ----
+//
+// The reported defect: "🍷 Alcohol" took an above-the-fold quick-log button in the 08:00
+// nudge, because ranking was usage-only with no awareness that alcohol is a CAPPED group
+// ("less of this"). A positive-habits nudge was showing an encouragement-shaped affordance
+// for the very thing being capped, ahead of the floor groups it exists to prompt. The
+// button must not vanish — logging alcohol is exactly the tracking a cap needs — so this
+// is a demotion, not a filter.
+
+describe("demoteCappedGroups (#1822 item 5)", () => {
+  it("knows which catalog groups are capped", () => {
+    expect(isCappedFoodGroup("alcohol")).toBe(true);
+    expect(isCappedFoodGroup("added_sugar")).toBe(true);
+    expect(isCappedFoodGroup("fried_food")).toBe(true);
+    // Floor groups — the ones the nudge exists to prompt.
+    expect(isCappedFoodGroup("leafy_greens")).toBe(false);
+    expect(isCappedFoodGroup("eggs")).toBe(false);
+    // A non-catalog key (the reserved protein pseudo-group) and an unknown slug are
+    // never capped — the refusal degrades to "keeps its earned rank".
+    expect(isCappedFoodGroup(PROTEIN_NUDGE_KEY)).toBe(false);
+    expect(isCappedFoodGroup("retired_group")).toBe(false);
+  });
+
+  it("puts a TOP-USAGE capped group below every floor group", () => {
+    // Alcohol wins the blend outright and still lands last.
+    const ranked = blendFoodOrder(
+      ["leafy_greens", "alcohol", "berries"],
+      [{ name: "alcohol", date: TODAY, weight: 20 }],
+      [{ name: "alcohol", date: TODAY }],
+      TODAY
+    );
+    expect(ranked[0]).toBe("alcohol");
+    expect(demoteCappedGroups(ranked)).toEqual([
+      "leafy_greens",
+      "berries",
+      "alcohol",
+    ]);
+  });
+
+  it("DEMOTES, never filters — every key is still reachable", () => {
+    const ranked = ["alcohol", "leafy_greens", "added_sugar", "berries"];
+    const out = demoteCappedGroups(ranked);
+    expect([...out].sort()).toEqual([...ranked].sort());
+    expect(out).toEqual([
+      "leafy_greens",
+      "berries",
+      "alcohol",
+      "added_sugar",
+    ]);
+  });
+
+  it("is a STABLE partition — both sides keep their blended order", () => {
+    const ranked = [
+      "added_sugar",
+      "berries",
+      "alcohol",
+      "leafy_greens",
+      "fried_food",
+    ];
+    expect(demoteCappedGroups(ranked)).toEqual([
+      "berries",
+      "leafy_greens", // floor side, blend order preserved
+      "added_sugar",
+      "alcohol",
+      "fried_food", // capped side, blend order preserved
+    ]);
+  });
+
+  it("leaves the reserved protein pseudo-group where the blend put it", () => {
+    expect(
+      demoteCappedGroups(["alcohol", PROTEIN_NUDGE_KEY, "berries"])
+    ).toEqual([PROTEIN_NUDGE_KEY, "berries", "alcohol"]);
+  });
+
+  it("changes nothing when no capped group is ranked", () => {
+    const ranked = ["berries", "leafy_greens", "eggs"];
+    expect(demoteCappedGroups(ranked)).toEqual(ranked);
+    expect(demoteCappedGroups([])).toEqual([]);
   });
 });

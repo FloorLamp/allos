@@ -29,7 +29,7 @@ function makeToday(over: Partial<ProteinToday>): ProteinToday {
 }
 
 describe("proteinTodayNudgeLine", () => {
-  it("a floor basis (estimated + logged) reads 'at least N g'", () => {
+  it("a floor basis (estimated + logged) marks the floor with a trailing '+'", () => {
     const todayIntake = proteinIntake({
       dailyTracked: null,
       dailyLogged: 30,
@@ -38,11 +38,13 @@ describe("proteinTodayNudgeLine", () => {
     const line = proteinTodayNudgeLine(
       makeToday({ todayIntake, todayGrams: todayIntake.grams })
     );
-    expect(line).toContain("at least 55 g");
-    expect(line).toContain("of ~95–130 g"); // rounded band (96→95, 128→130)
+    // #1822 item 4: the floor marker survives (#767) but stops stacking hedges —
+    // "at least 55 g of ~95–130 g" became "55 g+ so far · goal 95–130 g".
+    expect(line).toBe("🍗 Protein: 55 g+ so far · goal 95–130 g"); // rounded band (96→95, 128→130)
+    expect(line).not.toContain("at least");
   });
 
-  it("a tracked reading states the figure directly (no 'at least')", () => {
+  it("a tracked reading states the figure directly (no floor marker)", () => {
     const todayIntake = proteinIntake({
       dailyTracked: 120,
       dailyEstimated: 0,
@@ -50,7 +52,8 @@ describe("proteinTodayNudgeLine", () => {
     const line = proteinTodayNudgeLine(
       makeToday({ todayIntake, todayGrams: todayIntake.grams })
     );
-    expect(line).toContain("Protein · 120 g");
+    expect(line).toContain("Protein: 120 g so far");
+    expect(line).not.toContain("120 g+");
     expect(line).not.toContain("at least");
   });
 
@@ -87,15 +90,27 @@ describe("proteinTodayNudgeLine", () => {
     const t = makeToday({ todayGrams: 140 });
     const parts = proteinTodayNudgeParts(t);
     expect(proteinTodayNudgeLine(t)).toBe(
-      `${parts.emoji} Protein · ${parts.amount} of ${parts.band} — ${parts.statusWords}`
+      `${parts.emoji} Protein: ${parts.amount} so far · goal ${parts.band} — ${parts.statusWords}`
     );
   });
 
-  it("no today data yet reads 'at least 0 g' (a floor, in progress)", () => {
+  it("no today data yet reads '0 g+ so far' (a floor, in progress)", () => {
     const line = proteinTodayNudgeLine(
       makeToday({ todayIntake: null, todayGrams: 0, weeklyAverageGrams: 95 })
     );
-    expect(line).toContain("at least 0 g");
+    expect(line).toContain("0 g+ so far");
+  });
+
+  // #1822 item 4 is ARRANGEMENT, not semantics: every fact the pre-#1822 line carried
+  // is still carried, and the below-band tone contract (#1710/#992) is untouched.
+  it("carries the identical facts in one pass — floor marker, band, no nag", () => {
+    const below = proteinTodayNudgeLine(makeToday({ todayGrams: 36 }));
+    expect(below).toBe("🍗 Protein: 36 g+ so far · goal 95–130 g");
+    // The three stacked hedges are gone: no "at least", no "of", no "~".
+    expect(below).not.toMatch(/at least|~| of /);
+    // Still neutral below the band — a marker, not a nag.
+    expect(below).not.toContain("goal reached");
+    expect(below.toLowerCase()).not.toMatch(/short|need|should|behind|only/);
   });
 });
 

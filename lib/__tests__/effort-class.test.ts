@@ -7,7 +7,9 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  daysLeftPhrase,
   effortClass,
+  isGenericSessionTitle,
   reachableWithoutToday,
   targetScopeEffortClass,
   workoutAcknowledgmentLine,
@@ -103,7 +105,7 @@ describe("workoutDeferralDecision (#1672)", () => {
     });
     expect(
       workoutAcknowledgmentLine(d.kind === "fire" ? d.acknowledge : null)
-    ).toBe("Nice push day today — Cardio is 1/3 with 1 day left.");
+    ).toBe("Nice push day today — Cardio is 1/3 with today and 1 day left.");
   });
 
   it("a DOG-WALK day leaves a behind lift target's nudge alone (#921, upheld)", () => {
@@ -166,5 +168,97 @@ describe("workoutDeferralDecision (#1672)", () => {
 
   it("says nothing when there is no acknowledgment to make", () => {
     expect(workoutAcknowledgmentLine(null)).toBeNull();
+  });
+});
+
+// ---- #1822 item 1: the days-left phrase, and the edge it used to get wrong ----
+
+describe("daysLeftPhrase (#1822 item 1)", () => {
+  // The count is on-days AFTER today, so 0 means "today is the last chance" — the
+  // opposite of what "with 0 days left" told the reader.
+  it("is TODAY-INCLUSIVE at the 0 edge", () => {
+    expect(daysLeftPhrase(0)).toBe("only today left");
+    // A negative denominator (a stale window) can only mean the same thing.
+    expect(daysLeftPhrase(-3)).toBe("only today left");
+    expect(daysLeftPhrase(0)).not.toContain("0 days");
+  });
+
+  it("counts today plus the remaining days, singular at 1", () => {
+    expect(daysLeftPhrase(1)).toBe("today and 1 day left");
+    expect(daysLeftPhrase(2)).toBe("today and 2 days left");
+    expect(daysLeftPhrase(5)).toBe("today and 5 days left");
+  });
+
+  it("is the ONE phrase both pace formatters state", () => {
+    // The acknowledgment (#1672) and recoveryOverrideLine (#1673) used to answer the
+    // same pace fact differently on the 0 edge. Both now render this string, so the
+    // drift cannot come back through a second joiner.
+    const ack = workoutAcknowledgmentLine({
+      session: "Bench day",
+      forcedBy: target({
+        scopeValue: "chest",
+        label: "Chest",
+        count: 1,
+        perWeek: 2,
+        daysLeftInWindow: 0,
+      }),
+    });
+    expect(ack).toBe("Nice bench day today — Chest is 1/2 with only today left.");
+    expect(ack).not.toContain("0 days");
+  });
+});
+
+// ---- #1822 item 2: a generic title earns acknowledgment, not praise ----
+
+describe("generic session titles (#1822 item 2)", () => {
+  it("recognizes titles that say nothing about WHAT was trained", () => {
+    expect(isGenericSessionTitle("Workout")).toBe(true);
+    expect(isGenericSessionTitle("  training session ")).toBe(true);
+    expect(isGenericSessionTitle("Gym")).toBe(true);
+    expect(isGenericSessionTitle("")).toBe(true);
+    expect(isGenericSessionTitle("   ")).toBe(true);
+  });
+
+  it("leaves a title that names something specific alone", () => {
+    // Whole-string, never substring — otherwise "chest workout" loses its praise too.
+    expect(isGenericSessionTitle("Chest workout")).toBe(false);
+    expect(isGenericSessionTitle("Push day")).toBe(false);
+    expect(isGenericSessionTitle("Long ride")).toBe(false);
+  });
+
+  it("degrades to a plain acknowledgment rather than 'Nice workout today'", () => {
+    expect(
+      workoutAcknowledgmentLine({ session: "Workout", forcedBy: null })
+    ).toBe("Trained today.");
+    expect(
+      workoutAcknowledgmentLine({
+        session: "Workout",
+        forcedBy: target({
+          scopeValue: "chest",
+          label: "Chest",
+          count: 1,
+          perWeek: 2,
+          daysLeftInWindow: 0,
+        }),
+      })
+    ).toBe("Trained today — Chest is 1/2 with only today left.");
+  });
+
+  it("still LEADS WITH WHAT THEY DID — the #1672 tone goal, either opening", () => {
+    for (const session of ["Workout", "Chest workout"]) {
+      const line = workoutAcknowledgmentLine({
+        session,
+        forcedBy: target({ label: "Strength", count: 1, perWeek: 3 }),
+      })!;
+      // The session comes first; the shortfall never opens the message.
+      expect(line.startsWith("Trained") || line.startsWith("Nice")).toBe(true);
+      expect(line.indexOf("Strength")).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the praise when the title names the session", () => {
+    expect(
+      workoutAcknowledgmentLine({ session: "Chest workout", forcedBy: null })
+    ).toBe("Nice chest workout today.");
   });
 });
