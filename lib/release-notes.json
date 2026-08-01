@@ -4,6 +4,20 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1784,
+          "kind": "feature",
+          "issues": [1779],
+          "title": "Telegram messages now correct themselves when things change in the app",
+          "body": "Take a dose in the app, and the Telegram reminder that offered a ✅ Taken button stops presenting it as outstanding: on the next hourly tick, every live message re-checks its buttons against what actually happened — resolved actions are stripped, fully handled messages close with an honest line, and yesterday's buttons never stay tappable into today. A confirmation from one family member's chat also corrects everyone else's copy. Silent and cheap by design: an unchanged message is never edited."
+        },
+        {
+          "pr": 1782,
+          "kind": "feature",
+          "issues": [1771, 1772],
+          "title": "One language for integration status, and a sync history that reads like a log",
+          "body": "A provider's status now looks the same everywhere — the Integrations grid, its setup page, and Data → Review speak one vocabulary (Connected, Partial sync, Sync failing, Needs reconnect) with one timestamp style and one accounting. The setup page becomes the provider's home with a proper history table: a reason on every failure row, no-op runs collapsed, and weather reported in forecast language (“Forecast refreshed · 16 readings revised”) instead of record counts. Review is now an inbox: only providers needing attention expand; healthy ones collapse to a line. The “What this wrote” drill-down also stops appearing on syncs that never record per-record detail."
+        },
+        {
           "pr": 1768,
           "kind": "feature",
           "title": "The morning digest now tells you what changed",
