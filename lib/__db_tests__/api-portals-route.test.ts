@@ -323,9 +323,8 @@ describe("GET /api/documents/portals — the reachability boundary (#1796)", () 
     db.prepare(
       "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
     ).run(foreignLogin, foreignProfile);
-    foreignToken = (
-      await createApiToken(foreignLogin, "f", "upload:documents")
-    ).token;
+    foreignToken = (await createApiToken(foreignLogin, "f", "upload:documents"))
+      .token;
 
     const foreign = createPortal(FOREIGN_PORTAL, "cerner");
     expect(foreign.ok).toBe(true);
@@ -379,7 +378,10 @@ describe("GET /api/documents/portals — the reachability boundary (#1796)", () 
     const own = (
       body.portals as { slug: string; accounts: { slug: string }[] }[]
     ).find((p) => p.slug === "test-foreign-clinic")!;
-    expect(own.accounts.map((a) => a.slug).sort()).toEqual(["auntie", "default"]);
+    expect(own.accounts.map((a) => a.slug).sort()).toEqual([
+      "auntie",
+      "default",
+    ]);
   });
 
   it("hands an admin the full registry", async () => {
@@ -412,7 +414,9 @@ describe("GET /api/documents/portals — the reachability boundary (#1796)", () 
     // The scoped read joins portal_identities to decide visibility; the labels it joins
     // on must not ride back out with the answer.
     for (const token of [writerToken, foreignToken, adminToken]) {
-      const strings = allStrings(await (await GET(req(token))).json()).join(" ");
+      const strings = allStrings(await (await GET(req(token))).json()).join(
+        " "
+      );
       expect(strings).not.toContain("TESTPATIENT");
     }
   });

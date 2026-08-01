@@ -322,10 +322,12 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
 
   it("keeps an unclaimed account visible only to the population that can set it up", () => {
     const canManage = listVisiblePortalRegistry([profileA], true);
-    expect(canManage.accounts.some((acc) => acc.id === unclaimedAccount.id)).toBe(
+    expect(
+      canManage.accounts.some((acc) => acc.id === unclaimedAccount.id)
+    ).toBe(true);
+    expect(canManage.portals.some((p) => p.id === unclaimedPortalId)).toBe(
       true
     );
-    expect(canManage.portals.some((p) => p.id === unclaimedPortalId)).toBe(true);
 
     const cannotManage = listVisiblePortalRegistry([profileA], false);
     expect(
@@ -335,7 +337,9 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
       false
     );
     // Turning the flag on never widens visibility of a CLAIMED foreign account.
-    expect(canManage.accounts.some((acc) => acc.id === accountB.id)).toBe(false);
+    expect(canManage.accounts.some((acc) => acc.id === accountB.id)).toBe(
+      false
+    );
   });
 
   it("returns nothing of this fixture to a login with no accessible profile", () => {
