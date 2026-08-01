@@ -72,6 +72,12 @@ export interface UploadMedicalResult {
   // Files beyond the soft cap that were NOT ingested this submit; the form asks the
   // user to add them in another batch. 0 for an ordinary within-cap upload.
   overflow: number;
+  // How many of these files cleared a content-hash TOMBSTONE (#1777) — bytes the user
+  // had previously deleted and has now put back by hand. A human upload IS the un-delete
+  // intent, so the tombstone is cleared and the document becomes re-acquirable again;
+  // the form says so, because silently un-blocking would make the Data → Review blocked
+  // list appear to lose entries for no reason. 0 on an ordinary upload.
+  restored: number;
 }
 
 // Upload one or more medical documents and store each on disk, then kick off AI
@@ -94,7 +100,7 @@ export async function uploadMedicalDocument(
   const files = formData
     .getAll("file")
     .filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length === 0) return { ingested: 0, overflow: 0 };
+  if (files.length === 0) return { ingested: 0, overflow: 0, restored: 0 };
 
   // Soft cap: ingest the first N, leave the remainder for another batch.
   const toIngest = files.slice(0, MEDICAL_UPLOAD_BATCH_CAP);
@@ -104,13 +110,15 @@ export async function uploadMedicalDocument(
   // time. A per-file reject (too large / unsupported / mislabeled) inserts its own
   // failed-doc row inside ingestMedicalUpload and the loop keeps going, so a mixed
   // batch lands per-file outcomes with no special handling here.
+  let restored = 0;
   for (const file of toIngest) {
-    await ingestMedicalUpload(login.id, profile.id, file);
+    const out = await ingestMedicalUpload(login.id, profile.id, file);
+    if (out.restored) restored++;
   }
   // ingestMedicalUpload already revalidates /data per file; one revalidate after the
   // whole batch keeps the Review feed fresh once everything has landed.
   revalidatePath("/data");
-  return { ingested: toIngest.length, overflow };
+  return { ingested: toIngest.length, overflow, restored };
 }
 
 // Preview the cost of "Re-extract all documents" BEFORE running it (issue #208).

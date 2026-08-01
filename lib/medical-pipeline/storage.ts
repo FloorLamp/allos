@@ -17,6 +17,25 @@ export interface DedupTarget {
   stored_path: string | null;
 }
 
+// WHAT "ALLOS HOLDS THESE BYTES" MEANS, in one place.
+//
+// A document row is not automatically a held document: the engine also lands MARKER rows
+// that carry a content hash but no file — the 'skipped' duplicate marker and the
+// 'failed' rejection. Those must never count as held, or a client diffing against the
+// inventory (#1776) would conclude allos has a document it does not, and stop sending
+// it forever.
+//
+// The in-flight case is the subtle one and is deliberately included: a row still
+// 'processing'/'pending' has no stored_path yet but its bytes ARE on their way, so
+// treating it as not-held would let a second upload of the same file race in beside it.
+//
+// Shared verbatim by the dedup probe and the inventory list, so "what does allos hold"
+// can never mean two different things on the two paths that ask it.
+const HELD_PREDICATE = `(
+            (stored_path IS NOT NULL AND stored_path <> '')
+            OR extraction_status IN ('processing', 'pending')
+          )`;
+
 export function findDedupTarget(
   profileId: number,
   contentHash: string
@@ -26,14 +45,36 @@ export function findDedupTarget(
       `SELECT id, filename, extraction_status AS status, stored_path
          FROM medical_documents
         WHERE content_hash = ? AND profile_id = ?
-          AND (
-            (stored_path IS NOT NULL AND stored_path <> '')
-            OR extraction_status IN ('processing', 'pending')
-          )
+          AND ${HELD_PREDICATE}
         ORDER BY (stored_path IS NULL OR stored_path = ''), id
         LIMIT 1`
     )
     .get(contentHash, profileId) as DedupTarget | undefined;
+}
+
+// Every content hash this profile currently HOLDS — the `held` half of #1776's inventory
+// answer, and nothing else reads it.
+//
+// DISTINCT because a hash can legitimately appear on several rows (the original plus a
+// later duplicate marker), and the inventory is a SET question: the client asks "do you
+// have these bytes", not "how many rows mention them". Sorted so the response is stable
+// across calls, which makes a client's own diff/caching honest.
+//
+// Profile-scoped like every other document read; the endpoint additionally authorizes
+// the profile before calling.
+export function heldDocumentHashes(profileId: number): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT content_hash AS hash
+           FROM medical_documents
+          WHERE profile_id = ?
+            AND content_hash IS NOT NULL AND content_hash <> ''
+            AND ${HELD_PREDICATE}
+          ORDER BY content_hash`
+      )
+      .all(profileId) as { hash: string }[]
+  ).map((r) => r.hash);
 }
 
 function safeName(name: string): string {

@@ -351,6 +351,13 @@ export interface SyncReportCounts {
   updated: number;
   unchanged: number;
   failed: number;
+  // Documents the run OFFERED and allos REFUSED because the user had deleted those bytes
+  // (#1777). It rides the accounting category that already exists for exactly this fact —
+  // `integration_sync_events.suppressed`, added by migration 023 for the #507/#508
+  // re-import tombstones — rather than inventing a second word for "the tombstone blocked
+  // a re-insert". `formatSplitLabel` already renders it, so a portal run reading
+  // "2 new · 1 suppressed" needs no new UI.
+  suppressed: number;
 }
 
 // Clamp a reported count to a sane non-negative integer. These numbers come from an
@@ -366,12 +373,16 @@ export function parseSyncReportCounts(input: {
   updated?: unknown;
   unchanged?: unknown;
   failed?: unknown;
+  suppressed?: unknown;
 }): SyncReportCounts {
   return {
     inserted: count(input.inserted),
     updated: count(input.updated),
     unchanged: count(input.unchanged),
     failed: count(input.failed),
+    // Absent from an older tool's report → 0, exactly like every other count. A client
+    // that never meets a blocked document never has to know the field exists.
+    suppressed: count(input.suppressed),
   };
 }
 
@@ -390,6 +401,7 @@ export interface SyncReportEvent {
   updated: number;
   unchanged: number;
   skipped: number;
+  suppressed: number;
   received: number;
   error: string | null;
 }
@@ -399,13 +411,24 @@ export function syncReportEvent(
   counts: SyncReportCounts,
   message: string | null
 ): SyncReportEvent {
+  // A suppressed document WAS received — the run fetched it and offered it, and allos
+  // refused. Leaving it out of the total would make the received/written split silently
+  // stop adding up, which is the same silent cap `suppressed` exists to prevent.
   const received =
-    counts.inserted + counts.updated + counts.unchanged + counts.failed;
+    counts.inserted +
+    counts.updated +
+    counts.unchanged +
+    counts.failed +
+    counts.suppressed;
   return {
     ok: status !== "failed",
     inserted: counts.inserted,
     updated: counts.updated,
     unchanged: counts.unchanged,
+    // Blocked by a content-hash tombstone (#1777): the user deleted these bytes, so the
+    // re-offer was refused rather than stored. NOT a failure — the run did exactly the
+    // right thing — so it never touches `ok`.
+    suppressed: counts.suppressed,
     // A document the tool could not push is `skipped` in the shared vocabulary: it was
     // handed to the run but deliberately not persisted.
     skipped: counts.failed,
