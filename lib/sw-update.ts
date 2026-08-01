@@ -19,8 +19,19 @@
 // it does to you unilaterally (waiting is strictly less intrusive), and it may OFFER;
 // it may not take an action that costs you something without being asked.
 //
+// ONE UPDATE-PENDING STATE (issue #1795). A deploy used to raise TWO notices from two
+// detectors: this one, and a separate `/api/version` COMMIT_SHA poll that rendered its
+// own inline banner with its own Refresh button — a plain `location.reload()` that
+// never messaged the waiting worker, so the bar re-offered the update the user had
+// just taken. Both detectors survive; the second surface does not. The waiting worker
+// is the PRIMARY signal wherever a worker exists, because it is the thing that decides
+// which build a reload lands on. The sha poll is the FALLBACK detector for contexts
+// with no worker at all (blocked in private mode, unsupported, failed registration,
+// development) — and it feeds the same state, which one component renders as one bar.
+//
 // The decisions below are pure so they can be tested without a browser; the wiring
-// is components/ServiceWorkerRegister.tsx and public/sw.js.
+// is components/ServiceWorkerRegister.tsx, components/useDeployedVersion.ts and
+// public/sw.js.
 
 /** The one message the page sends the waiting worker. Mirrored in public/sw.js. */
 export const SW_SKIP_WAITING = "allos-skip-waiting";
@@ -78,4 +89,100 @@ export function shouldReloadOnControllerChange({
   alreadyReloaded: boolean;
 }): boolean {
   return requestedByThisTab && !alreadyReloaded;
+}
+
+/**
+ * How often a tab asks whether a new build exists.
+ *
+ * ONE cadence for both detectors (#1795): where a worker exists the tick is
+ * `registration.update()`, and where none does it is a `/api/version` read. The
+ * interval is inherited from the sha poll this unification absorbed — a deploy is
+ * never urgent, and a minute is fast enough that someone who alt-tabs back finds
+ * the offer already up.
+ */
+export const UPDATE_CHECK_MS = 60_000;
+
+/** What the page knows about its service worker, once registration has answered. */
+export type ServiceWorkerStatus = "probing" | "active" | "unavailable";
+
+/** Which detector answers "has a new build shipped?" in this context. */
+export type DeployDetector = "service-worker" | "version-poll" | "none";
+
+/**
+ * Pick the ONE detector for this context (#1795).
+ *
+ * The worker wins wherever it exists: its waiting state is not merely a signal that
+ * a deploy happened, it is the mechanism that governs which build a reload lands on,
+ * so a notice driven by it can always be resolved by the handshake. The sha poll is
+ * for contexts where that mechanism is absent — private mode, an unsupported browser,
+ * a registration that failed, or development (where the registrar deliberately
+ * unregisters). Running both at once is what produced two notices for one deploy.
+ *
+ * `probing` runs neither: registration has not answered yet, and a poll started in
+ * that window would race the worker for the same event.
+ */
+export function deployDetectorFor(status: ServiceWorkerStatus): DeployDetector {
+  if (status === "active") return "service-worker";
+  if (status === "unavailable") return "version-poll";
+  return "none";
+}
+
+/** The single answer to "is an update pending, and what is it?" (#1795). */
+export type UpdateState = {
+  pending: boolean;
+  /** The deployed commit's message, when the server has named a build we are not on. */
+  commitMessage: string | null;
+};
+
+/**
+ * Merge both detectors into ONE pending state.
+ *
+ * Either signal alone means an update is pending, and both together still mean one
+ * pending update — the whole point of the merge is that a deploy which trips both
+ * (a new COMMIT_SHA *and* a new `sw.js?v=<sha>`) produces one notice, not two.
+ *
+ * The commit message is only claimed when the server has actually named a DIFFERENT
+ * build. A waiting worker on its own says an update exists but not what it is (the
+ * worker carries no commit metadata), and the running server's own message would
+ * describe the build the user is already on — so the bar stays silent about the
+ * contents rather than misreporting them.
+ */
+export function resolveUpdateState({
+  swWaiting,
+  baselineSha,
+  deployedSha,
+  deployedMessage,
+}: {
+  swWaiting: boolean;
+  baselineSha: string | null;
+  deployedSha: string | null;
+  deployedMessage: string | null;
+}): UpdateState {
+  const deployAhead = Boolean(
+    baselineSha && deployedSha && deployedSha !== baselineSha
+  );
+  return {
+    pending: swWaiting || deployAhead,
+    commitMessage: deployAhead ? deployedMessage : null,
+  };
+}
+
+/**
+ * The ONE reload mechanic, in its two shapes (#1795).
+ *
+ * `handshake` — a worker is waiting, so the reload must resolve it: post SKIP_WAITING,
+ * reload on the controller change, and fall back to reloading anyway on the timer
+ * above. A plain reload here is the defect this issue is about: the page comes back on
+ * the old build with the worker still waiting, and the offer returns immediately.
+ *
+ * `plain` — no worker is waiting (the fallback detector's context, or a worker that
+ * has already been resolved), so there is nothing to hand over to and a reload is
+ * simply a reload.
+ */
+export function reloadPlanFor({
+  waitingWorker,
+}: {
+  waitingWorker: boolean;
+}): "handshake" | "plain" {
+  return waitingWorker ? "handshake" : "plain";
 }

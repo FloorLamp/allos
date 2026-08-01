@@ -7,7 +7,6 @@ import PullToRefresh from "@/components/PullToRefresh";
 import QuickShortcutHandler from "@/components/QuickShortcutHandler";
 import ExtractionToaster from "@/components/ExtractionToaster";
 import ImportJobsToaster from "@/components/ImportJobsToaster";
-import VersionWatcher from "@/components/VersionWatcher";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
@@ -332,13 +331,12 @@ export default async function AppLayout({
                             showViewStrip ? "pt-2 md:pt-0" : "pt-4 md:pt-8"
                           }`}
                         >
-                          {/* The deploy notice (#1520) is an INLINE banner in this
-                            slot, not a floating toast — it renders nothing until
-                            the watcher sees a new COMMIT_SHA. Mounted inside the
-                            content container (and inside the persistent layout, so
-                            it survives client navigation) beside the onboarding
-                            banner it copies. */}
-                          <VersionWatcher current={version.sha} />
+                          {/* This slot is OnboardingReturnBanner's alone again
+                            (#1795). The deploy notice used to render here too, as a
+                            second surface for the event the service worker's update
+                            bar already owns — one deploy, two notices, two reload
+                            buttons. There is one now, and it is the bar mounted by
+                            ServiceWorkerRegister in the root layout. */}
                           <OnboardingReturnBanner show={showOnboardingReturn} />
                           {children}
                         </div>
