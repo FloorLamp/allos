@@ -11,7 +11,7 @@ import {
 // no network. localStorage is same-origin and survives being offline, and — unlike
 // stashing PHI in the service-worker HTTP cache — it's trivially clearable, which
 // is how logout / profile-switch wipe it (see clearEmergencyPayload, wired into
-// components/UserMenu.tsx).
+// components/SidebarContent.tsx).
 //
 // The payload is versioned + profile-stamped (see lib/emergency-card), so a stale
 // blob from another profile or an older schema is ignored on read rather than

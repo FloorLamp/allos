@@ -69,7 +69,7 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
     // (the lower-id granted profile). The first poll seeds silently, so no
     // extraction/import toasts on load.
     await page.goto("/");
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       TOAST_SWITCH_A_PROFILE
     );
     // Give the toaster's first poll room to run (idle cadence is 6s), then confirm
@@ -79,18 +79,18 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
 
     // Switch to profile B, which has its OWN terminal document/job history. Pre-fix
     // this replayed as a toast per row; the fix reseeds silently.
-    await page.getByTestId("user-menu-trigger").click();
+    await page.getByTestId("profile-identity-bar").click();
     await settledClick(
       page,
       page
-        .getByTestId("user-menu-popover")
+        .getByTestId("profile-switcher-panel")
         // Act-as switch button by its `switch-to-<id>` testid (#1096), scoped to
         // this profile's row — the sibling "eye" view toggle also carries the name
         // in its aria-label, so a getByRole name match would resolve both.
         .locator('[data-testid^="switch-to-"]')
         .filter({ hasText: TOAST_SWITCH_B_PROFILE })
     );
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       TOAST_SWITCH_B_PROFILE
     );
 
@@ -100,18 +100,18 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
 
     // Switch back to profile A — its docs must not re-toast either (the "switching
     // back replays the spam for A" half of the bug).
-    await page.getByTestId("user-menu-trigger").click();
+    await page.getByTestId("profile-identity-bar").click();
     await settledClick(
       page,
       page
-        .getByTestId("user-menu-popover")
+        .getByTestId("profile-switcher-panel")
         // Act-as switch button by its `switch-to-<id>` testid (#1096), scoped to
         // this profile's row — the sibling "eye" view toggle also carries the name
         // in its aria-label, so a getByRole name match would resolve both.
         .locator('[data-testid^="switch-to-"]')
         .filter({ hasText: TOAST_SWITCH_A_PROFILE })
     );
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       TOAST_SWITCH_A_PROFILE
     );
 

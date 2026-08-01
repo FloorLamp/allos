@@ -168,7 +168,7 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   // 5. Log out. The offline copy is wiped from this device, and the card is locked
   //    behind auth again.
   await page.goto("/");
-  await page.getByTestId("user-menu-trigger").click();
+  // Log out sits at the sidebar's bottom since #1801 — no menu to open first.
   await page.getByRole("button", { name: "Log out" }).click();
   await page.waitForURL(/\/login/, { timeout: 20_000 });
 
@@ -215,10 +215,10 @@ test("switching profiles via the household strip wipes the previous profile's em
 
   // Switch to profile 2 ("Riley (child)") via the dashboard household strip chip —
   // a switch affordance that never ran the old per-button cleanup. Wait on the
-  // user-menu naming the new profile: the definitive switch signal.
+  // identity bar naming the new profile: the definitive switch signal.
   await page.goto("/");
   await page.getByRole("main").getByTestId("household-chip-2").click();
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(
+  await expect(page.getByTestId("profile-identity-bar")).toContainText(
     "Riley (child)"
   );
 

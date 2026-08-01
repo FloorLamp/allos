@@ -32,9 +32,7 @@ test("the mobile top bar renders and the desktop sidebar is hidden", async ({
 
   // The desktop sidebar's nav links exist only inside the (unmounted) drawer at
   // this width, so nothing sidebar-ish is on screen before it is opened.
-  await expect(
-    page.getByRole("link", { name: "Data", exact: true })
-  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^Data/ })).toHaveCount(0);
 });
 
 test("the hamburger opens the drawer with the shared sidebar navigation", async ({
@@ -44,13 +42,17 @@ test("the hamburger opens the drawer with the shared sidebar navigation", async 
   const drawer = await openMobileDrawer(page);
 
   // The drawer renders the SHARED <SidebarContent>, so the desktop nav entries
-  // and the profile switcher are all reachable on a phone (the responsive-surface
+  // and the login controls are all reachable on a phone (the responsive-surface
   // rule in AGENTS.md — hand-mirrored branches are how the drawer once lost the
   // profile menu).
-  await expect(
-    drawer.getByRole("link", { name: "Data", exact: true })
-  ).toBeVisible();
-  await expect(drawer.getByTestId("user-menu-trigger")).toBeVisible();
+  // ^-anchored, not exact: the Data entry carries the import-review badge since
+  // #1801, so its accessible name is "Data <n>" whenever one needs attention.
+  await expect(drawer.getByRole("link", { name: /^Data/ })).toBeVisible();
+  // "Signed in as <username>" + Log out live at the drawer's bottom since #1801;
+  // the PROFILE switcher left the drawer for the top bar (asserted in
+  // shell.mobile.spec.ts), so the drawer must NOT carry a second copy of it.
+  await expect(drawer.getByTestId("signed-in-as")).toBeVisible();
+  await expect(drawer.getByTestId("profile-identity-bar")).toHaveCount(0);
 
   // Escape closes it (MobileNav's keydown handler).
   await page.keyboard.press("Escape");

@@ -307,11 +307,11 @@ test("the next-appointment card renders the visit's clock time and links to the 
     });
 
     // Switch to profile 2 (Riley) — it now owns exactly one scheduled visit, so it
-    // is the pick. Wait on the user-menu naming the new profile (the definitive
+    // is the pick. Wait on the identity bar naming the new profile (the definitive
     // switch signal — we're already on "/").
     await page.goto("/");
     await page.getByRole("main").getByTestId("household-chip-2").click();
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       "Riley (child)"
     );
 
@@ -373,12 +373,12 @@ test("temporary appointment absence never becomes a saved hidden preference", as
     // appointments; the seed-events "Sam Rivers" insert is a no-op because
     // scripts/seed.ts's Riley already owns id 2) — via its household chip. The
     // Next appointment widget then stays out of the grid instead of rendering a
-    // blank card. Wait on the user-menu trigger
+    // blank card. Wait on the identity bar
     // naming the new profile — the definitive switch signal (we're already on
     // "/", so a URL wait could resolve before the action round-trips).
     await page.goto("/");
     await page.getByRole("main").getByTestId("household-chip-2").click();
-    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    await expect(page.getByTestId("profile-identity-bar")).toContainText(
       "Riley (child)"
     );
 

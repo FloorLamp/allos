@@ -95,7 +95,7 @@ test.describe("Illness-episode view (#801)", () => {
       await anon.getByTestId("episode-severity-dots").count()
     ).toBeGreaterThan(5);
     // No app chrome / profile menu on the anonymous surface.
-    await expect(anon.getByTestId("user-menu-trigger")).toHaveCount(0);
+    await expect(anon.getByTestId("profile-identity-bar")).toHaveCount(0);
     await anonCtx.close();
   });
 

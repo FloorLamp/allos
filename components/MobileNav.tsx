@@ -47,13 +47,18 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 // hidden below `md`; this surfaces the same navigation on phones by rendering the
 // shared <SidebarContent> (the single source of truth for the sidebar's contents)
 // inside the drawer, so the two viewports can't drift apart. Only the
-// collapsed top bar — hamburger, wordmark, search and the quick-log actions — is
+// collapsed top bar — hamburger, identity, search and the quick-log actions — is
 // mobile-specific chrome and lives here.
 //
-// The bar is no longer sticky ITSELF: <ShellChrome> wraps it (together with the
-// multi-profile view banner) in the one sticky, auto-hiding element (issue
-// #1416). Everything about scroll behavior lives there; this file owns the bar's
-// contents and the drawer.
+// The bar is no longer sticky ITSELF: <ShellChrome> wraps it in the one sticky,
+// auto-hiding element (issue #1416). Everything about scroll behavior lives
+// there; this file owns the bar's contents and the drawer.
+//
+// The left cluster (issue #1801): the identity bar takes the WORDMARK'S slot on
+// a multi-profile instance, so "whose data is this, and who am I acting as?" is
+// answerable without opening anything. A single-profile instance keeps the
+// wordmark — identity chrome when identity is ambiguous, brand chrome when it
+// isn't.
 //
 // The bar's actions (issue #1416, section B):
 //   * Search — one tap to the CommandPalette, which already deep-links
@@ -116,7 +121,7 @@ export default function MobileNav({
   // can't read the commit hash itself.
   version: AppVersion;
   // The active profile + accessible profiles feed the shared sidebar's profile
-  // switcher/logout (UserMenu); resolved from the session on the server.
+  // bar + switcher panel (#1801); resolved from the session on the server.
   active: SessionProfile;
   // The signed-in login's username — threaded into the shared SidebarContent so the
   // drawer's profile menu shows "Signed in as <username>" like the desktop (#1013).

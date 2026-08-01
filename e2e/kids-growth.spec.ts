@@ -14,7 +14,7 @@ import { hydratedClick } from "./helpers";
 
 async function switchProfile(page: Page, name: string) {
   await page.goto("/");
-  const trigger = page.getByTestId("user-menu-trigger");
+  const trigger = page.getByTestId("profile-identity-bar");
   // toPass: the profile switch is a Server-Action form inside a client popover. A
   // click dispatched in the pre-hydration window is SWALLOWED with no POST fired
   // (#500/#830), so neither settledClick (no POST to await) nor a single click +
@@ -24,9 +24,9 @@ async function switchProfile(page: Page, name: string) {
   // this raw-click path flaked in full-batch runs.
   await expect(async () => {
     if (!((await trigger.textContent()) ?? "").includes(name)) {
-      const popover = page.getByTestId("user-menu-popover");
+      const popover = page.getByTestId("profile-switcher-panel");
       if (!(await popover.isVisible())) await trigger.click();
-      // Scope the click INSIDE the user-menu popover: the dashboard's household
+      // Scope the click INSIDE the switcher panel: the dashboard's household
       // strip (#171) also renders profile-named form buttons behind the menu, so an
       // unscoped page-wide form locator is ambiguous (strict-mode violation).
       await popover

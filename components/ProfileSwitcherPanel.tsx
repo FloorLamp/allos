@@ -60,7 +60,8 @@ export default function ProfileSwitcherPanel({
   return (
     <div className="flex flex-col gap-1">
       <p className="px-2 pb-1 text-xs text-slate-500 dark:text-slate-400">
-        Tap a name to act as them. Toggle the eye to show a profile in your view.
+        Tap a name to act as them. Toggle the eye to show a profile in your
+        view.
       </p>
       {profiles.map((p) => {
         const isActing = p.id === actingProfileId;

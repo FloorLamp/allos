@@ -373,9 +373,9 @@ function seedBaby(): void {
 
 async function switchProfile(page: Page, name: string) {
   await page.goto("/");
-  await page.getByTestId("user-menu-trigger").click();
+  await page.getByTestId("profile-identity-bar").click();
   await page
-    .getByTestId("user-menu-popover")
+    .getByTestId("profile-switcher-panel")
     .locator("form")
     .filter({ hasText: name })
     .getByRole("button")
@@ -389,7 +389,7 @@ async function switchProfile(page: Page, name: string) {
   // suite load that re-render is what runs long — the trigger simply still showed
   // the previous profile when the clock ran out (most often on the switch BACK,
   // which left the shared session on the fixture profile for whatever ran next).
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name, {
+  await expect(page.getByTestId("profile-identity-bar")).toContainText(name, {
     timeout: 20_000,
   });
 }
