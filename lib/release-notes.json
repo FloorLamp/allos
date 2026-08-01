@@ -4,6 +4,27 @@
       "date": "2026-08-01",
       "entries": [
         {
+          "pr": 1816,
+          "kind": "feature",
+          "issues": [1677],
+          "title": "Pickers now lead with what you actually use",
+          "body": "The medication, supplement, brand, provider, and specialty pickers no longer open on the alphabet. Your own current medications and supplements come first, then a sensible common-choices list, then everything else A–Z — and the vaccine picker is now age-aware, leading with the doses that are plausibly next for this person instead of an infant schedule. Everything stays searchable; only the order changed."
+        },
+        {
+          "pr": 1815,
+          "kind": "feature",
+          "issues": [1632],
+          "title": "Trends now shows how consistent your wellness practices have been",
+          "body": "The Trends overview gained a Practices section: one cell per completed week showing whether each practice hit its weekly range, your sessions-per-week charted against the band you declared, and average session length for practices that record minutes. It's calm by design — an under-target week is a neutral cell, never a warning — and every card links back to Wellness."
+        },
+        {
+          "pr": 1814,
+          "kind": "feature",
+          "issues": [1807],
+          "title": "The food nudge keyboard can now be collapsed",
+          "body": "The Telegram food nudge's \"Show more\" now has a matching \"Show less\" that folds the keyboard back a page (never below the compact default), and the \"More…\" link that left the chat for the app is gone — the buttons are the whole flow. A keyboard you've expanded also stays the size you chose when the message later updates itself."
+        },
+        {
           "pr": 1811,
           "kind": "feature",
           "issues": [1801],
