@@ -44,3 +44,13 @@ export const DERIVED_SITU_POLLEN_ITEM = "Quercetin Complex (e2e)";
 // negative case). Dedicated + read-only so the pooled deltas stay stable under --repeat-each.
 export const E2E_LOGIN_SITIMPACT = "e2e_sitimpact";
 export const SITUATION_IMPACT_PROFILE = "Situation Impact (e2e)";
+
+// Trying to conceive (issues #1679/#1680). A member granted its OWN dedicated ADULT
+// FEMALE profile carrying SIX regular ~28-day cycles — enough history for a NARROW
+// next-period window, which the forecast spec asserts — plus a DECLARED trying-to-conceive
+// start and a follicular BBT baseline. Dedicated and isolated on purpose: it must have a
+// forecastable history (CYCLE_PROFILE deliberately has only three periods, so it renders
+// the "log a couple more cycles" note the same spec asserts as the negative case), and the
+// TTC spec taps observation buttons whose rows it owns. Synthetic, no PHI.
+export const E2E_LOGIN_TTC = "e2e_ttc";
+export const TTC_PROFILE = "Trying To Conceive (e2e)";
