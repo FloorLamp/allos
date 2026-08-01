@@ -54,9 +54,16 @@ export default async function SuppliesPage() {
   // for profiles this caller may WRITE — a read-only grant gets no add affordance —
   // and the write itself still happens under that profile's own gate: the chip switches
   // the active profile first, then the ordinary add form runs requireWriteAccess().
-  const addTargetProfiles = scope.profiles.filter(
-    (p) => scope.access.get(p.id) === "write"
-  );
+  const addTargetProfiles = scope.profiles
+    .filter((p) => scope.access.get(p.id) === "write")
+    .map((p) => ({ id: p.id, name: p.name }))
+    .sort((a, b) =>
+      a.id === scope.actingProfileId
+        ? -1
+        : b.id === scope.actingProfileId
+          ? 1
+          : 0
+    );
 
   const cards: SharedSupplyCardData[] = visiblePools.map(
     ({ pool, visible, stamped }) => ({
@@ -92,16 +99,8 @@ export default async function SuppliesPage() {
             ? medicationHref(m.itemId)
             : intakeHref(m.kind),
       })),
-      addTargets: addTargetProfiles.map((p) => ({
-        profile: {
-          id: p.id,
-          name: p.name,
-          photo_path: p.photo_path,
-          photo_version: p.photo_version,
-        },
-        acting: p.id === scope.actingProfileId,
-        href: addItemFromPoolHref(poolSurfaceKind(pool.members), pool.id),
-      })),
+      addHref: addItemFromPoolHref(poolSurfaceKind(pool.members), pool.id),
+      addTargets: addTargetProfiles,
       canWrite:
         pool.members.length === 0
           ? scope.access.get(scope.actingProfileId) === "write"

@@ -11,6 +11,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import type { AppRoute } from "@/lib/hrefs";
 import { productLabel } from "@/lib/supply-product";
 import type { AvatarProfile } from "@/components/Avatar";
+import { switchProfileAction } from "@/app/(app)/user-actions";
 import { updatePoolAction, deletePoolAction } from "./actions";
 
 export interface SharedSupplyCardData {
@@ -37,16 +38,14 @@ export interface SharedSupplyCardData {
     profile: AvatarProfile;
     acting: boolean;
   }[];
-  // "Add for another person" (#1705): every accessible profile the caller may WRITE,
-  // each with the deep link that opens that surface's add form pre-seeded from this
-  // bottle. Resolved at the page's auth boundary; the item is created under the target
-  // profile's OWN write gate (the chip switches the active profile first), never the
-  // acting profile's.
-  addTargets: {
-    profile: AvatarProfile;
-    acting: boolean;
-    href: AppRoute;
-  }[];
+  // "Add for another person" (#1705). `addHref` opens the add form for this bottle's
+  // kind, pre-seeded and pre-linked; `addTargets` is every accessible profile the caller
+  // may WRITE, acting first. A SELECT rather than a chip per person: an admin reaches
+  // every profile in the instance, and a card cannot render a hundred chips. The item is
+  // created under the TARGET profile's own write gate — submitting switches the active
+  // profile first, then the ordinary add form runs — never the acting profile's.
+  addHref: AppRoute;
+  addTargets: { id: number; name: string }[];
   canWrite: boolean;
 }
 
@@ -232,28 +231,42 @@ export default function SharedSupplyCard({
           </p>
         )}
         {/* The bottle → item direction (#1705). A household bottle is only useful to a
-            second person if adding it for them is one step: each chip switches to that
-            profile and opens its add form pre-seeded with this bottle's product facts
-            and pre-linked to it. */}
+            second person if adding it for them is ONE step: this switches to the chosen
+            profile and opens its add form already seeded with the bottle's product facts
+            and already linked to it. */}
         {pool.addTargets.length > 0 && (
-          <div className="mt-3" data-testid="shared-supply-add-for">
-            <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-              Add for another person
-            </p>
-            <ul className="flex flex-wrap gap-2">
-              {pool.addTargets.map((t) => (
-                <li key={t.profile.id}>
-                  <ProfileSwitcherChip
-                    profile={t.profile}
-                    acting={t.acting}
-                    destination={t.href}
-                    label={`Add ${pool.name}`}
-                    testId="shared-supply-add-for-link"
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
+          <form
+            action={switchProfileAction}
+            className="mt-3 flex flex-wrap items-end gap-2"
+            data-testid="shared-supply-add-for"
+          >
+            <div>
+              <label className="label" htmlFor={`pool-add-for-${pool.id}`}>
+                Add for another person
+              </label>
+              <select
+                id={`pool-add-for-${pool.id}`}
+                name="profileId"
+                className="input max-w-xs"
+                data-testid="shared-supply-add-for-select"
+                defaultValue={String(pool.addTargets[0].id)}
+              >
+                {pool.addTargets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <input type="hidden" name="returnTo" value={pool.addHref} />
+            <button
+              type="submit"
+              className="btn btn-sm"
+              data-testid="shared-supply-add-for-submit"
+            >
+              Add this bottle
+            </button>
+          </form>
         )}
         {pool.hiddenMemberCount > 0 && (
           <p

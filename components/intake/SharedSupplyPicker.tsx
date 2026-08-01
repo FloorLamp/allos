@@ -67,11 +67,16 @@ export default function SharedSupplyPicker({
   const [pending, start] = useTransition();
 
   useEffect(() => {
+    // EDIT mode only: this resyncs the control to the SAVED link when the form is
+    // re-pointed at another item. In create mode there is no saved link to resync to,
+    // and running it would silently discard the seeded bottle (#1705) — the chosen id
+    // is the whole payload there.
+    if (!itemId) return;
     const nextChoice = supplyId != null ? String(supplyId) : "";
     setChoice(nextChoice);
     setSavedChoice(nextChoice);
     setActiveSupplyName(supplyName);
-  }, [supplyId, supplyName]);
+  }, [itemId, supplyId, supplyName]);
 
   useEffect(() => {
     if (loaded) return;
