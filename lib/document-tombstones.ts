@@ -128,6 +128,19 @@ export function listDocumentTombstones(profileId: number): DocumentTombstone[] {
     .all(profileId, DOCUMENT_TOMBSTONE_TABLE) as DocumentTombstone[];
 }
 
+// What "Allow re-acquisition" did. A TYPED outcome rather than a bare void, because the
+// tombstone may already be gone — a second tab, or a human re-upload that cleared it —
+// and confirming "Allowed again" for a write that did not happen is exactly the
+// unconditional success the typed-outcome rule exists to prevent.
+//
+// Lives here rather than in the "use server" action file: Next's server-action transform
+// registers every export as a server reference before type erasure, so an exported type
+// there becomes a dangling runtime reference in a production build.
+export type AllowReacquisitionResult =
+  | { status: "done"; message: string }
+  | { status: "already-allowed"; message: string }
+  | { status: "error"; message: string };
+
 // Just the hashes — the `deleted` half of #1776's inventory answer. Kept separate from
 // the list above because the wire shape must carry hashes ONLY: a filename is household
 // information, and the inventory endpoint has no business handing an automated client

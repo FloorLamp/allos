@@ -27,11 +27,19 @@ export default function ImportDetailActions({
   id,
   filename,
   hasRaw = false,
+  acquiredVia = null,
   explainers,
 }: {
   id: number;
   filename: string;
   hasRaw?: boolean;
+  // The PORTAL this document was acquired from (#1748), or null when a person put it
+  // here. It changes only the delete confirmation's copy (#1777): a portal-acquired
+  // document's deletion writes a content-hash tombstone that stops the acquirer from
+  // pushing it again, and a dialog that did not say so would be hiding a consequence
+  // the user is about to cause. A manually uploaded document has no acquirer to block
+  // today, so it keeps the copy it always had.
+  acquiredVia?: string | null;
   // Per-control explainer copy, selected upstream by the deterministic-vs-AI ×
   // hasRaw matrix (lib/import-actions-copy.ts, #1340). Each rendered button carries
   // its own subtext; the orphan paragraph that narrated all three verbs — including
@@ -90,7 +98,22 @@ export default function ImportDetailActions({
   async function onDelete() {
     const ok = await confirm({
       title: "Delete document & its records",
-      message: `Delete “${filename}” and every record it imported? This can’t be undone.`,
+      // Through the house dialog, never a native confirm() (#1587).
+      message: acquiredVia ? (
+        <div className="space-y-2">
+          <p>
+            Delete “{filename}” and every record it imported? This can&apos;t be
+            undone.
+          </p>
+          <p data-testid="delete-tombstone-note">
+            {acquiredVia} sync <strong>will not bring this back</strong> — allos
+            remembers the deletion. You can allow re-acquisition later from Data
+            → Review.
+          </p>
+        </div>
+      ) : (
+        `Delete “${filename}” and every record it imported? This can’t be undone.`
+      ),
       confirmLabel: "Delete document & its records",
       danger: true,
     });

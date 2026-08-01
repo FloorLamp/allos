@@ -923,6 +923,11 @@ export default async function ImportDetailPage(props: {
                 id={doc.id}
                 filename={doc.filename}
                 hasRaw={!!doc.raw_extraction}
+                // What the delete CONFIRM has to say (#1777). A portal-acquired document
+                // leaves a content-hash tombstone that stops the acquirer bringing it
+                // back, and that consequence — plus the fact that it is reversible —
+                // belongs in the dialog rather than in a doc nobody reads.
+                acquiredVia={acquiredVia}
                 explainers={importActionExplainers({
                   deterministic: isDeterministicReprocess({
                     source: doc.source,
