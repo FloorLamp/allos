@@ -132,7 +132,7 @@ test("record tables keep md-only columns hidden at the sm breakpoint", async ({
   const row = page
     .getByTestId("records-conditions")
     .locator("tbody tr")
-    .first();
+    .filter({ hasText: "E2E Hay fever" });
   const onsetCell = row.locator("td").nth(3);
   await expect(onsetCell).toBeHidden();
 
@@ -140,35 +140,41 @@ test("record tables keep md-only columns hidden at the sm breakpoint", async ({
   await expect(onsetCell).toBeVisible();
 });
 
-test("document-backed record identities keep their source link on mobile", async ({
+test("document-backed records expose one explicit source link on mobile", async ({
   page,
 }) => {
   await page.goto("/records/problems/conditions");
   const condition = page.locator("tr").filter({ hasText: "E2E Hay fever" });
-  await expect(condition.getByTestId("source-document-link")).toHaveAttribute(
+  await expect(condition.getByTestId("source-document-link")).toHaveCount(0);
+  await expect(condition.getByTestId("record-provenance-link")).toHaveAttribute(
     "href",
     "/import/908"
   );
+  await expect(condition.locator('a[href="/import/908"]')).toHaveCount(1);
 
   await page.goto("/records/history/visits");
   const visit = page.locator("tr").filter({ hasText: "E2E Browser Visit" });
-  await expect(visit.getByTestId("source-document-link")).toHaveAttribute(
+  await expect(visit.getByTestId("source-document-link")).toHaveCount(0);
+  await expect(visit.getByTestId("record-provenance-link")).toHaveAttribute(
     "href",
     "/import/908"
   );
+  await expect(visit.locator('a[href="/import/908"]')).toHaveCount(1);
 
   await page.goto("/records/history/immunizations");
   await hydratedClick(page, page.getByText("All recorded doses"));
   const dose = page.locator("tr").filter({ hasText: "E2E Tdap" });
   // Immunizations use source='document:<id>' rather than a document_id column;
   // the shared resolver gives them the same link contract as every other row.
-  await expect(dose.getByTestId("source-document-link")).toHaveAttribute(
+  await expect(dose.getByTestId("source-document-link")).toHaveCount(0);
+  await expect(dose.getByTestId("record-provenance-link")).toHaveAttribute(
     "href",
     "/import/908"
   );
+  await expect(dose.locator('a[href="/import/908"]')).toHaveCount(1);
 });
 
-test("an imported appointment links directly to its source document", async ({
+test("an imported appointment uses an explicit source-document link", async ({
   page,
 }) => {
   const title = "E2E Document Appointment";
@@ -187,10 +193,15 @@ test("an imported appointment links directly to its source document", async ({
   try {
     await page.goto("/records/history/visits");
     const row = page.getByTestId("appointment-row").filter({ hasText: title });
+    await expect(row.getByText(title, { exact: true })).not.toHaveRole("link");
     await expect(row.getByTestId("source-document-link")).toHaveAttribute(
       "href",
       "/import/908"
     );
+    await expect(row.getByTestId("source-document-link")).toHaveText(
+      "Source document"
+    );
+    await expect(row.locator('a[href="/import/908"]')).toHaveCount(1);
   } finally {
     const cleanup = new Database(workerDbPath());
     cleanup

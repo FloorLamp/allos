@@ -7,7 +7,6 @@ import {
 } from "./family-history-actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
-import SourceDocumentLink from "@/components/SourceDocumentLink";
 import NotesText from "@/components/NotesText";
 import type { FamilyHistory } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
@@ -25,9 +24,7 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
     cellClassName: "text-slate-700 dark:text-slate-200",
     cell: (f) => (
       <>
-        <SourceDocumentLink documentId={f.document_id} source={f.source}>
-          {f.condition}
-        </SourceDocumentLink>
+        {f.condition}
         {f.code ? (
           <span className="ml-1.5 text-xs text-slate-400">{f.code}</span>
         ) : null}
@@ -52,8 +49,7 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
   },
   {
     header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (f) => (
       <RecordProvenance source={f.source} documentId={f.document_id} />
     ),

@@ -109,12 +109,17 @@ export default function InstrumentHistoryList({
               >
                 {r.instrument}
               </Link>{" "}
-              <SourceDocumentLink
-                documentId={r.documentId}
-                className="text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-300"
-              >
+              <span className="text-slate-500 dark:text-slate-400">
                 {r.date}
-              </SourceDocumentLink>
+              </span>
+              {r.documentId != null ? (
+                <>
+                  {" · "}
+                  <SourceDocumentLink documentId={r.documentId}>
+                    Source document
+                  </SourceDocumentLink>
+                </>
+              ) : null}
             </span>
             <span className="flex items-center gap-3">
               <span>

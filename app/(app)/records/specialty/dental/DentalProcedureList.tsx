@@ -6,7 +6,6 @@ import TrackDentalFollowUpControl from "./TrackDentalFollowUpControl";
 import { updateDentalProcedure, deleteDentalProcedure } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
-import SourceDocumentLink from "@/components/SourceDocumentLink";
 import FilterPills from "@/components/FilterPills";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
@@ -50,9 +49,7 @@ const baseColumns = (
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (d) => (
       <>
-        <SourceDocumentLink documentId={d.document_id} source={d.source}>
-          {dentalDisplayLabel(d)}
-        </SourceDocumentLink>
+        {dentalDisplayLabel(d)}
         {d.status !== "completed" ? (
           <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-700 dark:bg-amber-950 dark:text-amber-300">
             {dentalStatusLabel(d.status).toLowerCase()}
@@ -95,8 +92,7 @@ const baseColumns = (
   },
   {
     header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (d) => (
       <RecordProvenance source={d.source} documentId={d.document_id} />
     ),

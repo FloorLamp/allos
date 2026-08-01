@@ -379,13 +379,19 @@ export default function ImmunizationsSection({
                           {t.marker}
                         </Link>
                         <div className="text-xs text-slate-500 dark:text-slate-400">
-                          <SourceDocumentLink
-                            documentId={t.document_id}
-                            className="hover:text-brand-700 hover:underline dark:hover:text-brand-300"
-                          >
-                            {t.value ?? "—"} {t.unit ?? ""}
-                            {t.date ? ` · ${t.date}` : ""}
-                          </SourceDocumentLink>
+                          {t.value ?? "—"} {t.unit ?? ""}
+                          {t.date ? ` · ${t.date}` : ""}
+                          {t.document_id != null ? (
+                            <>
+                              {" · "}
+                              <SourceDocumentLink
+                                documentId={t.document_id}
+                                className="text-brand-700 hover:underline dark:text-brand-300"
+                              >
+                                Source document
+                              </SourceDocumentLink>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                       <span

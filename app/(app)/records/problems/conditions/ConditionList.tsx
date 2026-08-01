@@ -4,7 +4,6 @@ import ConditionForm from "./ConditionForm";
 import { updateCondition, deleteCondition } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
-import SourceDocumentLink from "@/components/SourceDocumentLink";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
@@ -27,9 +26,7 @@ function buildColumns(
       cellClassName: "font-medium text-slate-800 dark:text-slate-100",
       cell: (c) => (
         <>
-          <SourceDocumentLink documentId={c.document_id} source={c.source}>
-            {c.name}
-          </SourceDocumentLink>
+          {c.name}
           <NotesText
             notes={c.notes}
             className="ml-2 text-xs font-normal text-slate-400"
@@ -87,8 +84,7 @@ function buildColumns(
     },
     {
       header: "Source",
-      headerClassName: "hidden sm:table-cell",
-      cellClassName: "hidden whitespace-nowrap sm:table-cell",
+      cellClassName: "whitespace-nowrap",
       cell: (c) => (
         <RecordProvenance source={c.source} documentId={c.document_id} />
       ),

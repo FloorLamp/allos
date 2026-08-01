@@ -35,7 +35,11 @@ import {
   type CarePlanMatchItem,
 } from "@/lib/care-plan-appointment";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
-import { formatRecordDate, formatRecordDateTime } from "@/lib/record-format";
+import {
+  formatRecordDate,
+  formatRecordDateTime,
+  sourceDocumentId,
+} from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Appointment, AppointmentStatus, FormResult } from "@/lib/types";
@@ -294,13 +298,9 @@ export default function AppointmentList({
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <SourceDocumentLink
-                    documentId={a.document_id}
-                    source={a.source}
-                    className="font-medium text-brand-700 transition hover:underline dark:text-brand-300"
-                  >
+                  <span className="font-medium text-slate-800 dark:text-slate-100">
                     {a.title?.trim() || a.provider_name || "Appointment"}
-                  </SourceDocumentLink>
+                  </span>
                   <span className={`badge ${STATUS_BADGE[a.status]}`}>
                     {STATUS_TEXT[a.status]}
                   </span>
@@ -318,6 +318,17 @@ export default function AppointmentList({
                         showIcon={false}
                         className="text-brand-700 hover:underline dark:text-brand-300"
                       />
+                    </>
+                  ) : null}
+                  {sourceDocumentId(a.document_id, a.source) != null ? (
+                    <>
+                      {" · "}
+                      <SourceDocumentLink
+                        documentId={a.document_id}
+                        source={a.source}
+                      >
+                        Source document
+                      </SourceDocumentLink>
                     </>
                   ) : null}
                 </div>

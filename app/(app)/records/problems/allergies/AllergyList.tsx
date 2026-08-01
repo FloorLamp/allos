@@ -5,7 +5,6 @@ import AllergyForm from "./AllergyForm";
 import { updateAllergy, deleteAllergy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
-import SourceDocumentLink from "@/components/SourceDocumentLink";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
@@ -34,9 +33,7 @@ function buildColumns(
       cellClassName: "font-medium text-slate-800 dark:text-slate-100",
       cell: (a) => (
         <>
-          <SourceDocumentLink documentId={a.document_id} source={a.source}>
-            {a.substance}
-          </SourceDocumentLink>
+          {a.substance}
           <NotesText
             notes={a.notes}
             className="ml-2 text-xs font-normal text-slate-400"
@@ -130,8 +127,7 @@ function buildColumns(
     },
     {
       header: "Source",
-      headerClassName: "hidden sm:table-cell",
-      cellClassName: "hidden whitespace-nowrap sm:table-cell",
+      cellClassName: "whitespace-nowrap",
       cell: (a) => (
         <RecordProvenance source={a.source} documentId={a.document_id} />
       ),

@@ -2,9 +2,9 @@ import Link from "next/link";
 import { importHref } from "@/lib/hrefs";
 import { sourceDocumentId } from "@/lib/record-format";
 
-// Turns an item's visible identity into a source-document link when provenance
-// exists. Manual and integration-owned items render byte-for-byte as their plain
-// children; callers do not need parallel conditional markup.
+// Shared explicit source-document link. Callers should label this as provenance
+// (for example, "Source document") rather than wrapping an item's name, date, or
+// value: an import is the item's source, not the item's detail destination.
 export default function SourceDocumentLink({
   documentId,
   source,

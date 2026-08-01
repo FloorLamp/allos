@@ -27,6 +27,7 @@ export default function RecordProvenance({
       <Link
         href={importHref(resolvedDocumentId)}
         className="text-brand-700 transition hover:underline dark:text-brand-300"
+        title="View source document"
         data-testid="record-provenance-link"
       >
         {label}

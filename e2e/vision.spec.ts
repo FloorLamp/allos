@@ -33,6 +33,48 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
   test.beforeAll(cleanup);
   test.afterAll(cleanup);
 
+  test("an imported prescription keeps its identity separate from provenance", async ({
+    page,
+  }) => {
+    const handle = new Database(DB_PATH);
+    const id = Number(
+      handle
+        .prepare(
+          `INSERT INTO optical_prescriptions
+             (profile_id, kind, od_sphere, os_sphere, issued_date, source, document_id)
+           VALUES (1, 'glasses', -9.75, -9.50, '2039-01-02', 'document:908', 908)`
+        )
+        .run().lastInsertRowid
+    );
+    handle.close();
+
+    try {
+      await page.goto("/records/specialty/vision");
+      const row = page
+        .getByTestId("optical-prescription-list")
+        .getByRole("row")
+        .filter({ hasText: "OD -9.75" });
+      await expect(row).toBeVisible();
+      await expect(
+        row.getByRole("link", { name: "Glasses", exact: true })
+      ).toHaveCount(0);
+      await expect(row.getByTestId("source-document-link")).toHaveCount(0);
+      await expect(row.getByTestId("record-provenance-link")).toHaveAttribute(
+        "href",
+        "/import/908"
+      );
+      await expect(row.locator('a[href="/import/908"]')).toHaveCount(1);
+    } finally {
+      const cleanupHandle = new Database(DB_PATH);
+      cleanupHandle
+        .prepare(
+          "DELETE FROM optical_prescriptions WHERE id = ? AND profile_id = 1"
+        )
+        .run(id);
+      cleanupHandle.close();
+    }
+  });
+
   test("stores a structured prescription and shows it factually", async ({
     page,
   }) => {

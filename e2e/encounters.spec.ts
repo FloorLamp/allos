@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { followLink, settledClick, settledFill } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // THIS worker's database (#1538): workerDbPath() resolves the same file this
@@ -78,10 +83,7 @@ test.describe("Visit detail page", () => {
     expect(Math.abs(reasonBox!.x - labelBox!.x)).toBeLessThan(2);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    const horizontalOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth
-    );
-    expect(horizontalOverflow).toBeLessThanOrEqual(0);
+    await expectNoClippedContent(page);
     // Back-link returns to the Visits list.
     await expect(
       detail.getByRole("link", { name: "Back to visits" })

@@ -83,10 +83,10 @@ test("mobile Results starts with four shell-owned route tabs", async ({
   const knee = imaging.getByRole("row").filter({ hasText: "Left Knee" });
   await expect(knee).toContainText("MRI Left Knee");
   await expect(knee).not.toContainText("MRI Left Left Knee");
-  await expect(imaging.getByLabel("Follow-up interval").first()).toBeVisible(); // first-ok: same presence-only responsive affordance check
+  await expect(knee.getByLabel("Follow-up interval")).toBeVisible();
   await expect(
-    imaging.getByRole("button", { name: "Track follow-up" }).first()
-  ).toBeVisible(); // first-ok: mobile affordance repeated per seeded row; any visible row proves the action is available
+    knee.getByRole("button", { name: "Track follow-up" })
+  ).toBeVisible();
 
   await followLink(
     page,

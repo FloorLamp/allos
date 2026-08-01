@@ -4,7 +4,6 @@ import CarePlanForm from "./CarePlanForm";
 import { updateCarePlanItem, deleteCarePlanItem } from "./care-plan-actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
-import SourceDocumentLink from "@/components/SourceDocumentLink";
 import StatusBadge from "@/components/StatusBadge";
 import ProviderName from "@/components/ProviderName";
 import NotesText from "@/components/NotesText";
@@ -23,9 +22,7 @@ const buildColumns = (
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (c) => (
       <>
-        <SourceDocumentLink documentId={c.document_id} source={c.source}>
-          {c.description}
-        </SourceDocumentLink>
+        {c.description}
         {c.provider_name ? (
           <ProviderName
             name={c.provider_name}
@@ -61,8 +58,7 @@ const buildColumns = (
   },
   {
     header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (c) => (
       <RecordProvenance source={c.source} documentId={c.document_id} />
     ),

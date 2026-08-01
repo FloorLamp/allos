@@ -4,7 +4,6 @@ import CareGoalForm from "./CareGoalForm";
 import { updateCareGoal, deleteCareGoal } from "./care-goal-actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
-import SourceDocumentLink from "@/components/SourceDocumentLink";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import { formatRecordDate } from "@/lib/record-format";
@@ -20,9 +19,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (g) => (
       <>
-        <SourceDocumentLink documentId={g.document_id} source={g.source}>
-          {g.description}
-        </SourceDocumentLink>
+        {g.description}
         <NotesText
           notes={g.notes}
           className="ml-2 text-xs font-normal text-slate-400"
@@ -37,8 +34,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
   },
   {
     header: "Status",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (g) => <StatusBadge status={g.status} />,
   },
   {
