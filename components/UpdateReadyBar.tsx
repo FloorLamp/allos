@@ -21,15 +21,25 @@ import {
 // BOTTOM EDGE (#1520): notice layer, bottom-left, using the shared tokens. It sits
 // one row higher than the offline pill's slot so the two never land on top of each
 // other on the rare occasion both are up.
+//
+// THE ONLY UPDATE NOTICE (#1795). A deploy used to raise this bar AND an inline
+// banner at the top of the content flow, in different vocabulary, each with its own
+// reload button. This posture is the later ruling and the one that survived; the one
+// thing worth keeping from the banner came with it — `commitMessage`, so the offer
+// can say WHAT was deployed instead of only that something was. It is optional
+// because a waiting service worker carries no commit metadata: where the server
+// hasn't named a different build, the bar says less rather than guessing.
 
 export default function UpdateReadyBar({
   onReload,
   onDismiss,
   unsavedWork,
+  commitMessage,
 }: {
   onReload: () => void;
   onDismiss: () => void;
   unsavedWork: boolean;
+  commitMessage: string | null;
 }) {
   return (
     <div
@@ -46,6 +56,15 @@ export default function UpdateReadyBar({
         <p className="font-medium text-slate-700 dark:text-slate-200">
           Update ready
         </p>
+        {commitMessage && (
+          <p
+            className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300"
+            data-testid="update-ready-commit"
+            title={commitMessage}
+          >
+            {commitMessage}
+          </p>
+        )}
         <p className="text-xs text-slate-500 dark:text-slate-400">
           {unsavedWork
             ? "Reload when you're ready — your entry is kept on this device."

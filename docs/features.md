@@ -28,7 +28,8 @@ feature. Architecture and implementation invariants live in
 - **Finding things:** [Global search and record Q&A](#global-search-and-record-qa)
 - **Data and reliability:** [Data hub](#data-hub),
   [Offline quick-log queue](#offline-quick-log-queue),
-  [Mobile shell](#mobile-shell), [Undo delete](#undo-delete),
+  [App updates](#app-updates), [Mobile shell](#mobile-shell),
+  [Undo delete](#undo-delete),
   [AI activity log](#ai-activity-log), [Server error log](#server-error-log),
   and [Audit log](#audit-log).
 
@@ -1906,6 +1907,22 @@ Everything else still needs connectivity: this is a queue for a few one-tap
 logs, not a general offline mode. Forms with server-derived state (anything that
 reads or computes against your existing data) stay online-only, and page
 navigation while offline still shows the reconnect screen.
+
+## App updates
+
+When the instance is updated while you have the app open, a new build never
+takes over the page you're on — your open tab keeps running the version it
+loaded, with everything you've typed. Instead a small **Update ready** notice
+appears at the bottom of the screen. It names the deployed change when the
+server can tell the app what shipped, and it is the **only** notice for that
+event: one deploy, one notice, one **Reload** button.
+
+Nothing happens until you tap it. Dismissing the notice leaves the page alone,
+and users who never tap get the new version on their next natural cold start.
+When a form is holding unsaved input the notice says so rather than hiding —
+the entry is kept on the device, so the reload is safe either way. Taking the
+reload lands you on the new build, and nothing re-offers the update you just
+took.
 
 ## Mobile shell
 
