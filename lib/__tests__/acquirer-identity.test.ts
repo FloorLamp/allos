@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildToolConfig,
   isAccountSlug,
+  isEmailShape,
   isPatientLabel,
   isPortalSlug,
   isSyncReportStatus,
@@ -81,6 +82,72 @@ describe("rejectsAddress — the never-store-a-URL invariant", () => {
       "Portal 2",
     ]) {
       expect(rejectsAddress(v), v).toBe(false);
+    }
+  });
+});
+
+// ISSUE #1829 — an ACCOUNT (portal login) name may be an email address, because a portal
+// login usually IS one. The invariant it must not dent: allos still never stores anything
+// a tool could DEREFERENCE.
+describe("the email allowance — account names only", () => {
+  // The two-layer subtlety the fix exists for: dropping the `@` check alone would not
+  // have worked, because the host.tld heuristic fires on the domain half.
+  it("allows an ordinary email address when the caller asks for it", () => {
+    for (const v of [
+      "mom@gmail.com",
+      "j.smith+portal@example.co.uk",
+      "MOM@GMAIL.COM",
+      "  mom@gmail.com  ",
+      "mychart-signin@my-hospital.org",
+    ]) {
+      expect(rejectsAddress(v, { allowEmail: true }), v).toBe(false);
+      expect(isEmailShape(v), v).toBe(true);
+    }
+  });
+
+  it("still refuses every dereferenceable shape, allowance or not", () => {
+    for (const v of [
+      // A scheme is refused BEFORE the allowance is consulted — this is the ordering
+      // the whole fix turns on.
+      "mailto:a@b.com",
+      "MailTo:A@B.com",
+      "https://user@host",
+      "https://user@host/login",
+      "//x",
+      "//user@host",
+      // An `@` that is not an email shape falls through to the `@` check.
+      "user@host/path",
+      "user@host",
+      "user@host:8080",
+      "a@b@c.com",
+      "mom @gmail.com",
+      "mom@gmail .com",
+      "mom@gmail.com/login",
+      "mom@gmail.com?next=/",
+      // An IP-hosted address has no alphabetic TLD, so it is not an email shape.
+      "user@192.168.1.1",
+      // Unchanged shapes, which never had an `@` to begin with.
+      "gmail.com",
+      "192.168.1.1",
+      "some/path",
+    ]) {
+      expect(rejectsAddress(v, { allowEmail: true }), v).toBe(true);
+      // The allowance is a NARROWING of one predicate, so anything it refuses was
+      // already refused without it.
+      expect(rejectsAddress(v), v).toBe(true);
+    }
+  });
+
+  it("defaults to OFF, so a portal name keeps full strictness", () => {
+    // A portal is an institution: an email there is nonsense, and it is the field that
+    // historically tempts URL-pasting.
+    expect(rejectsAddress("mom@gmail.com")).toBe(true);
+    expect(rejectsAddress("mom@gmail.com", {})).toBe(true);
+  });
+
+  it("recognizes the email SHAPE and nothing looser", () => {
+    for (const v of ["Mom", "", "mom@host", "mom@gmail.com/x", "a b@c.com"]) {
+      expect(isEmailShape(v), v).toBe(false);
     }
   });
 });
