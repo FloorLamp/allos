@@ -368,6 +368,33 @@ and, when the last reading was out of range or non-optimal, noting that status
 so a flagged value isn't mistaken for a bare retest), goal deadlines, and
 training targets.
 
+### A never-recorded screening is unknown, not overdue
+
+A preventive rule the app has **no history for** is not late — it is unrecorded.
+Age plus a nominal interval says the rule _applies to you_; it says nothing about
+whether you had the screening before you started using Allos. So a rule with
+nothing on record reads as a calm **setup** state ("No record yet — add a past
+date or schedule") rather than a red **Overdue**:
+
+- On the dashboard the never-recorded rules collapse into **one** closed line —
+  **"Set up your screening history (N)"** — below the Needs-attention card. They
+  are outside the card's bands, its count, and the installed-app badge, so a
+  brand-new profile's hero is not a wall of red about a person it met a minute
+  ago.
+- On **Upcoming** they get their own trailing **Set up your screening history**
+  group, below everything that is genuinely due, in the quietest tone on the page.
+- They are **never pushed**: no Telegram nudge, no morning-digest line. The push
+  side is composed only from rules with a recorded date behind them.
+- Every affordance is unchanged — the same deep link to the form that records the
+  screening, the same **Mark done**, **Book**, **not applicable** / **declined**,
+  and the same snooze/dismiss identity, so a dismissal made before this split
+  still applies.
+
+Recording **any** past date moves a rule onto the real clock: recent → up to
+date, long ago → genuinely **Overdue**, with the red treatment it has always had.
+Well-child milestones keep their own dated window — those lapse out of a narrow
+age window rather than accumulating, so "overdue" there is a real statement.
+
 ### Routine folds, safety never does
 
 A planning page that lists every scheduled dose and every pairwise

@@ -37,7 +37,38 @@ export type PreventiveStatus =
   | "up_to_date" // done recently / on schedule / not yet in the lead window
   | "due" // recommended now (or within ~1 month of the window opening)
   | "overdue" // past the recommended point by more than the grace period
+  | "setup" // in-window but NEVER RECORDED — unknown, not late (issue #1433)
   | "not_recommended"; // outside the age/sex window, risk-gated, or overridden
+
+// The EVIDENCE a status rests on (issue #1433). An attention state has to be earned
+// by evidence: `recorded` means a dated satisfaction exists and the interval from it
+// genuinely elapsed; `never-recorded` means the only inputs were the profile's age
+// and the catalog's nominal interval — i.e. the user told us how old they are, not
+// that they missed anything.
+//
+// The split matters because the two read identically in the data and mean opposite
+// things to a person. A 38-year-old who finished the setup wizard 30 seconds ago has
+// no dental/eye/physical history on file, and calling that "Overdue" manufactures an
+// obligation the system has no evidence for — which is exactly what teaches people to
+// ignore the red rows that ARE earned.
+export type PreventiveEvidence = "recorded" | "never-recorded";
+
+// Which evidence an assessment's status rests on. `setup` is the ONE status derived
+// with nothing on record behind it; every other status either has a `lastDate` or is
+// terminal. Exported so a surface can ask the question instead of re-deriving it from
+// `lastDate == null` (which is also true of the not_recommended cases).
+export function preventiveEvidence(
+  a: Pick<PreventiveAssessment, "status">
+): PreventiveEvidence {
+  return a.status === "setup" ? "never-recorded" : "recorded";
+}
+
+// The copy for the never-recorded state. One string per surface, defined here (with
+// the decision) so the Upcoming row, the dashboard hero line, and any later formatter
+// say the identical thing (#221) rather than each inventing a calmer phrasing.
+export const PREVENTIVE_SETUP_DETAIL =
+  "No record yet — add a past date or schedule";
+export const PREVENTIVE_SETUP_SHORT = "No record yet";
 
 // A per-profile manual override (issue #82's `preventive_overrides`). `declined`
 // is an informed opt-out; `not_applicable` doubles as the anatomy escape hatch
@@ -97,10 +128,18 @@ export interface PreventiveAssessment {
 
 export interface PreventiveSummary {
   assessments: PreventiveAssessment[];
-  // Due/overdue items only, overdue first — the actionable slice Upcoming shows.
+  // Due/overdue items only, overdue first — the EVIDENCE-BASED actionable slice.
+  // This is what pushes: the proactive Telegram nudge and the reconciler are both
+  // composed from it, so nothing in `setup` can ever page anyone (issue #1433).
   actionable: PreventiveAssessment[];
+  // In-window rules with NOTHING on record (issue #1433). Not actionable — there is
+  // no evidence anything was missed — but not silent either: they are the profile's
+  // "tell us what you've already had" list, surfaced as a calm, collapsed setup
+  // affordance. Catalog order.
+  setup: PreventiveAssessment[];
   dueCount: number;
   overdueCount: number;
+  setupCount: number;
 }
 
 // Surface a due item about a month before its window opens (issue: "due items
@@ -229,19 +268,29 @@ function assessRecurring(
   }
 
   if (last == null) {
-    // Never satisfied but in (or ~1mo before) the window: due until the entry
-    // age + grace has passed, then overdue.
-    const overdue = ctx.ageMonths >= startMonths + grace;
-    return make(
-      rule,
-      overdue ? "overdue" : "due",
-      overdue ? "Recommended, none on record" : "Recommended",
-      {
-        nextDueAgeMonths: startMonths,
-        nextLabel: overdue ? "Overdue — none on record" : "Due now",
-        ...riskExtra,
-      }
-    );
+    // NEVER RECORDED, in (or ~1mo before) the window (issue #1433). The inputs are
+    // the profile's age and the catalog's nominal interval — and NOTHING else. That
+    // is not evidence of a missed screening, it is the absence of history, so the
+    // status is `setup`, not due/overdue.
+    //
+    // This branch used to split on `ageMonths >= startMonths + grace` into due →
+    // "Recommended" and overdue → "Overdue — none on record". Both readings were
+    // manufactured: the grace period is measured from an age the user just typed in,
+    // so a brand-new 38-year-old profile opened on ~12 red "Overdue — none on record"
+    // rows before any data existed. The split is gone rather than softened, because a
+    // never-recorded item that RIPENS from "due" into a calmer state as time passes
+    // would be a strictly worse description of the same zero evidence.
+    //
+    // `grace` and the entry age still ride out on `nextDueAgeMonths`, so a surface
+    // that wants to say WHEN the window opened still can — it just cannot call it
+    // late. (Well-child milestones keep their own due/overdue window in
+    // assessMilestone: those lapse out of a narrow, dated window rather than
+    // accumulating forever, so the same reasoning does not apply.)
+    return make(rule, "setup", PREVENTIVE_SETUP_SHORT, {
+      nextDueAgeMonths: startMonths,
+      nextLabel: PREVENTIVE_SETUP_DETAIL,
+      ...riskExtra,
+    });
   }
 
   // A once-in-window screening (no interval): a prior result satisfies it for good.
@@ -441,8 +490,10 @@ export function assessPreventiveCare(
   const empty: PreventiveSummary = {
     assessments: [],
     actionable: [],
+    setup: [],
     dueCount: 0,
     overdueCount: 0,
+    setupCount: 0,
   };
   if (input.ageMonths == null) return empty;
 
@@ -484,11 +535,17 @@ export function assessPreventiveCare(
       if (a.status !== b.status) return a.status === "overdue" ? -1 : 1;
       return 0;
     });
+  // The never-recorded slice (#1433), kept OUT of `actionable` on purpose: every
+  // consumer of `actionable` (the nudge, the reconciler, the Upcoming date bands) is
+  // a place where an item asserts lateness, and these assert nothing of the kind.
+  const setup = assessments.filter((a) => a.status === "setup");
   return {
     assessments,
     actionable,
+    setup,
     dueCount: assessments.filter((a) => a.status === "due").length,
     overdueCount: assessments.filter((a) => a.status === "overdue").length,
+    setupCount: setup.length,
   };
 }
 

@@ -33,6 +33,27 @@ get a push channel unless it's genuinely _care_. Every surface renders the SAME
 `Finding` (one computation) with the SAME dedupeKey, so a dismiss on any surface
 silences it on all of them through the shared bus.
 
+**A tier is a ceiling, not a floor — an attention state still has to be EARNED
+(#1433).** Membership in the care tier says how far a finding _may_ reach; it
+never says a finding must reach that far. The preventive engine is care-tier and
+still splits on **evidence**: `lib/preventive-status.ts` distinguishes
+_recorded-lapsed_ (a dated satisfaction whose interval genuinely elapsed → the
+existing `due`/`overdue`, full care reach) from _never-recorded_ (the new `setup`
+status, derived from nothing but an age and a nominal interval). `setup` is kept
+out of `PreventiveSummary.actionable`, which is what the Telegram nudge and the
+token reconciler are composed from, so it cannot page anyone; the morning digest
+drops it explicitly. Its `UpcomingItem` carries `signalGroup: "setup"`, which
+gives it its own trailing group on Upcoming and excludes it from
+`cardBandForItem`, the hero count, the app badge, and the "+N scheduled later"
+link — the hero renders it as ONE collapsed `attentionSetupItems` line instead.
+The dedupeKey, rule key, deep link and inline actions are all unchanged, so this
+is a re-framing and not a second finding (an existing dismissal survives it).
+
+The general rule this instantiates: **the system may reduce contact
+unilaterally**, so narrowing a care finding's reach when the evidence does not
+support it needs no user decision — but the reverse (promoting a calm state into
+an attention slot) always does. A cold-start state must never newly page anyone.
+
 **One dashboard home per finding family (#1533).** The rollup's charter is reach
 for findings that would otherwise render only on their own tab, so a family that
 has earned its OWN dashboard widget is excluded from it: `FINDING_DASHBOARD_HOME`

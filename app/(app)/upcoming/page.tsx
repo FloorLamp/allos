@@ -142,6 +142,11 @@ const GROUP_TONE: Record<PageGroupKind, string> = {
   later: "text-slate-500 dark:text-slate-400",
   flagged: "text-amber-600 dark:text-amber-400",
   review: "text-amber-600 dark:text-amber-400",
+  // Never-recorded preventive rules (#1433) get the QUIETEST tone on the page — the
+  // same neutral slate as "Later". Nothing here is late; the group is a list of
+  // things the app has no history for, and colouring it would re-manufacture the
+  // alarm the split removed.
+  setup: "text-slate-500 dark:text-slate-400",
 };
 
 export default async function UpcomingPage(props: {

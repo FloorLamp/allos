@@ -104,12 +104,24 @@ test.describe("Upcoming row actions (#1446)", () => {
     const main = await openUpcoming(page);
 
     // Measure within ONE group section — alignment is a within-group property
-    // (each band is its own card).
+    // (each band is its own card) — and only over the card's OWN rows.
+    //
+    // The `:scope > div >` prefix is load-bearing: a band may also contain an
+    // #1504 aggregate disclosure, whose folded rows sit one level deeper and are
+    // therefore indented by the disclosure's own padding. They are aligned with
+    // each OTHER, which is the contract that applies to them; comparing them
+    // against the card's top-level rows would measure the indentation, not the
+    // column. Which band this loop lands on is incidental (it takes the first
+    // with enough rows), so the filter has to hold for any of them.
     const sections = main.locator("section");
     const sectionCount = await sections.count();
     let measured: number[] = [];
     for (let i = 0; i < sectionCount; i++) {
-      const statuses = sections.nth(i).getByTestId("upcoming-status");
+      const statuses = sections
+        .nth(i)
+        .locator(
+          ':scope > div > [data-testid^="upcoming-item-"] [data-testid="upcoming-status"]'
+        );
       const n = await statuses.count();
       if (n < 3) continue;
       const xs: number[] = [];
