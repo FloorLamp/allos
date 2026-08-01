@@ -389,7 +389,9 @@ describe("frequency-target right-sizing (#1670)", () => {
       const msg = buildPracticeReminder(pid, "nonce");
       expect(msg).not.toBeNull();
       expect(
-        msg!.actions.filter((a) => String(a.data ?? "").startsWith("rslower:"))
+        (msg?.actions ?? []).filter((a) =>
+          String(a.data ?? "").startsWith("rslower:")
+        )
       ).toEqual([]);
     });
 
@@ -401,8 +403,8 @@ describe("frequency-target right-sizing (#1670)", () => {
       // One session this week keeps the practice behind, so the pace nudge fires.
       logPracticeSession(pid, "Sauna", today(pid));
 
-      const msg = buildPracticeReminder(pid, "nonce")!;
-      const ride = msg.actions.find(
+      const msg = buildPracticeReminder(pid, "nonce");
+      const ride = (msg?.actions ?? []).find(
         (a) => a.data === rightSizeLowerCallback(pid, tid)
       );
       expect(ride).toBeDefined();
@@ -426,7 +428,7 @@ describe("frequency-target right-sizing (#1670)", () => {
 
       dismissFinding(pid, rightSizeSignalKey(tid, "2026"));
       expect(
-        buildPracticeReminder(pid, "nonce")!.actions.map((a) => a.data)
+        (buildPracticeReminder(pid, "nonce")?.actions ?? []).map((a) => a.data)
       ).toContain(rightSizeLowerCallback(pid, tid));
     });
   });
