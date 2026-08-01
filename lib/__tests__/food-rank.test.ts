@@ -126,12 +126,7 @@ describe("demoteCappedGroups (#1822 item 5)", () => {
     const ranked = ["alcohol", "leafy_greens", "added_sugar", "berries"];
     const out = demoteCappedGroups(ranked);
     expect([...out].sort()).toEqual([...ranked].sort());
-    expect(out).toEqual([
-      "leafy_greens",
-      "berries",
-      "alcohol",
-      "added_sugar",
-    ]);
+    expect(out).toEqual(["leafy_greens", "berries", "alcohol", "added_sugar"]);
   });
 
   it("is a STABLE partition — both sides keep their blended order", () => {

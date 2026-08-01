@@ -306,7 +306,9 @@ describe("formatWorkoutReminder — the acknowledgment headline and its list", (
       })
     )!;
     const body = plainBody(msg.body);
-    expect(body).toContain("Trained today — Chest is 1/2 with only today left.");
+    expect(body).toContain(
+      "Trained today — Chest is 1/2 with only today left."
+    );
     expect(body).not.toContain("0 days left");
     expect(body).not.toContain("Nice workout today");
     // The driver is stated once: the list carries only what the headline did not.

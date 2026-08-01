@@ -203,7 +203,9 @@ describe("daysLeftPhrase (#1822 item 1)", () => {
         daysLeftInWindow: 0,
       }),
     });
-    expect(ack).toBe("Nice bench day today — Chest is 1/2 with only today left.");
+    expect(ack).toBe(
+      "Nice bench day today — Chest is 1/2 with only today left."
+    );
     expect(ack).not.toContain("0 days");
   });
 });

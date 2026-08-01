@@ -768,7 +768,12 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
       kind: "food",
       date: yd,
       keyboard: [
-        [{ text: "🥬 Leafy greens", callback_data: `food:${pid}:Morning:${yd}:leafy_greens` }],
+        [
+          {
+            text: "🥬 Leafy greens",
+            callback_data: `food:${pid}:Morning:${yd}:leafy_greens`,
+          },
+        ],
       ],
       title: "[Rhea] 🍽️ Morning food log",
     });

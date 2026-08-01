@@ -254,7 +254,9 @@ describe("reconcileClosingText (#1822 item 7)", () => {
     expect(resolved).not.toBe(rollover);
     // Neither celebrates or judges (#992/#716) — this corrects the app's own display.
     for (const text of [resolved, rollover]) {
-      expect(text.toLowerCase()).not.toMatch(/great|well done|nice|missed|you /);
+      expect(text.toLowerCase()).not.toMatch(
+        /great|well done|nice|missed|you /
+      );
     }
   });
 

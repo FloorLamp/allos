@@ -101,7 +101,12 @@ describe("capped groups rank below floor groups (#1822 item 5)", () => {
     expect(labels[0]).toBe("🫐 Berries (1)"); // the floor group leads despite less usage
     expect(labels.some((l) => l.includes("Alcohol"))).toBe(false);
     // Every visible button is a floor group — no capped affordance above the fold.
-    for (const slug of ["alcohol", "added_sugar", "fried_food", "sugary_drinks"])
+    for (const slug of [
+      "alcohol",
+      "added_sugar",
+      "fried_food",
+      "sugary_drinks",
+    ])
       expect(labels.some((l) => l.includes(foodGroupName(slug)))).toBe(false);
   });
 

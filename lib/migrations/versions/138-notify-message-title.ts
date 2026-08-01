@@ -44,9 +44,9 @@ import type { Migration } from "../runner";
 
 export function up(db: Database.Database): void {
   const run = db.transaction(() => {
-    const cols = db
-      .prepare(`PRAGMA table_info(notify_messages)`)
-      .all() as { name: string }[];
+    const cols = db.prepare(`PRAGMA table_info(notify_messages)`).all() as {
+      name: string;
+    }[];
     if (cols.length === 0) return; // table absent (never happens after 135; belt)
     if (cols.some((c) => c.name === "title")) return;
     db.exec(

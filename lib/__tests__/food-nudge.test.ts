@@ -18,10 +18,7 @@ import {
   FOOD_NUDGE_BUTTON_COUNT,
   FOOD_NUDGE_WINDOWS,
 } from "@/lib/notifications/food-format";
-import {
-  PROTEIN_NUDGE_EMOJI,
-  PROTEIN_NUDGE_KEY,
-} from "@/lib/protein-nudge";
+import { PROTEIN_NUDGE_EMOJI, PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import {
   FOOD_GROUPS,
   FOOD_GROUP_EMOJI,
@@ -133,7 +130,9 @@ describe("renderFoodNudge", () => {
     // one classification, one set of words (#221).
     expect(plainBody(msg.body)).toContain(proteinTodayNudgeLine(t));
     // #1822 item 4: the same facts, unstacked — the floor marker is the trailing "+".
-    expect(plainBody(msg.body)).toContain("Protein: 55 g+ so far · goal 95–130 g");
+    expect(plainBody(msg.body)).toContain(
+      "Protein: 55 g+ so far · goal 95–130 g"
+    );
     expect(plainBody(msg.body)).not.toContain("at least");
     expect(String(Math.round(t.todayGrams))).toBe("55");
   });
@@ -276,9 +275,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     const proteinBtn = quickLog.find((a) =>
       a.data?.startsWith("foodprotein:")
     )!;
-    expect(Object.values(FOOD_GROUP_EMOJI)).not.toContain(
-      PROTEIN_NUDGE_EMOJI
-    );
+    expect(Object.values(FOOD_GROUP_EMOJI)).not.toContain(PROTEIN_NUDGE_EMOJI);
     expect(proteinBtn.label.startsWith(PROTEIN_NUDGE_EMOJI)).toBe(true);
   });
 
