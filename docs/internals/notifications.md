@@ -369,10 +369,32 @@ morning/midday/evening supplement slots and is opt-in per profile. Its keyboard 
 the whole surface: `FOOD_NUDGE_BUTTON_COUNT` (6) top-ranked quick-log buttons two
 per row — the SAME `getFoodGroupLogOrder` ranking the `/nutrition` log bar uses
 (#221) — each carrying a slot-scoped "(n)" suffix, plus the reserved `__protein__`
-pseudo-group's "＋Xg protein" button at its ranked position, over a day-total
+pseudo-group's "💪 ＋Xg protein" button at its ranked position, over a day-total
 "✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
 tap logs one serving and the message re-renders from `buildFoodNudge`, the one
 builder every send, tap-rebuild and reconcile goes through.
+
+**Capped groups rank below floor groups (#1822 item 5).** The ranking above is
+usage-only, which put "🍷 Alcohol" on the 08:00 keyboard for a profile who logs
+it: a positive-habits nudge showing an encouragement-shaped affordance for the
+thing being capped, ahead of the floor groups it exists to prompt. So the nudge's
+`getFoodNudgeRankedKeys` composes TWO stable partitions over the blend —
+`demoteCappedGroups` (the catalog's `limit` tier) innermost, then
+`demoteExcludedGroups` (#975) — so a capped group sorts below every floor group
+regardless of usage, and a group that is both lands at the very tail. Both
+**demote, never filter** (#559): logging alcohol is exactly the tracking a cap
+needs, so the button stays one "➕ Show more" away, in every slot. The web bar is
+untouched — it already renders groups under tier headings.
+
+**One label grammar, one protein line.** Every quick-log button leads with a glyph
+(#1710); `PROTEIN_NUDGE_EMOJI` gave the protein button the one it was missing
+(#1822 item 6), deliberately not a catalog group's glyph since it is the shake
+path, not a serving. The status line reads
+"🍗 Protein: 36 g+ so far · goal 80–105 g" (#1822 item 4): the same facts the
+pre-#1822 "Protein · at least 36 g of ~80–105 g" carried — the #767 floor marker,
+the band, the neutral #1710/#992 below-band tone — with the hedges unstacked so it
+parses in one pass. `ProteinNudgeLineParts` still separates amount/band/status, so
+the plain and emphasized renderings can differ only in emphasis.
 
 That 6 is also the **page size** in both directions. "➕ Show more" (#1075) reveals
 the next page and drops once every ranked key is out; "➖ Show less" (#1807) steps
@@ -397,6 +419,27 @@ logging in place, the ranked buttons plus "Show more" cover the real vocabulary,
 and the long tail was not worth a keyboard row on every send. Other messages' deep
 links (refill's "Open form", the household round's "Open Household →") are
 untouched — this is a food-nudge ruling, not a policy against deep links.
+
+**The workout nudge's copy rules (#1672/#1673/#1709, amended by #1822).** Three
+rules govern the message that fires on a day someone already trained:
+
+- **One pace fact, one phrase.** `daysLeftPhrase` (`lib/effort-class.ts`) is the
+  single days-left formatter, called by BOTH `workoutAcknowledgmentLine` and
+  `recoveryOverrideLine`. `daysLeftInWindow` counts on-days AFTER today, so 0 is
+  "only today left", never "with 0 days left" — which read as a closed door on the
+  one day the nudge exists to save. Sharing the phrase is what stops the two
+  formatters answering the same edge differently again (#221).
+- **Lead with what they did, without praising a placeholder.** A named session
+  keeps its praise ("Nice chest workout today"); a generic title
+  (`isGenericSessionTitle` — "Workout", "Gym", "Training session") degrades to
+  "Trained today". Either opening still leads with the session and never with the
+  shortfall, which was #1672's whole point.
+- **State the driver once.** The `← today` marker on the behind list is the #1709
+  owner ruling, and #1822 amends it narrowly: when the acknowledgment headline has
+  already named a target and its pace, `behindThisWeekLine` drops that target from
+  the list (the whole line falls away if nothing else is behind). Every message
+  whose headline does not name the driver renders exactly as before, suffix
+  included.
 
 **Display units in notification copy (#1019).** Notifications render
 measurements in **canonical units (kg / km / °F)** — unit prefs are
@@ -708,8 +751,8 @@ renderer (#221).
 
 **The substrate.** Migration 135's `notify_messages` records one pointer per
 DELIVERED keyboard-bearing message — `(profile_id, chat_id, message_id, kind,
-date, keyboard, sent_at)` — written in the Telegram chokepoint, the only place
-holding both the sent message id and the message it was rendered from. It is per
+date, keyboard, title, sent_at)` — written in the Telegram chokepoint, the only
+place holding both the sent message id and the message it was rendered from. It is per
 DELIVERY, not per send: one send fans out to N deduped chats (#1072), so a dose
 confirmed from a family group's copy corrects the copies in every other
 subscriber's chat. The delivered (post-cap) keyboard is stored because Telegram
@@ -726,7 +769,8 @@ one pure decision (`lib/notifications/reconcile-core.ts`):
   family's own rebuilder (the dose family reuses the identical
   `slotSessionForKeyboard` → `renderMergedIntakeMessage` path the TAP rebuild
   runs);
-- fully resolved → `closeMessage` with an honest closing line;
+- fully resolved → `closeMessage` with an honest closing line that **names its
+  subject**;
 - **day rolled over** in the profile's timezone → strip or close regardless of
   state, since yesterday's tokens carry yesterday's date. This also closes the
   residual #947 gap: the last nudge of an evening used to keep a live keyboard
@@ -749,6 +793,21 @@ would leave both passes calling the API, which is the whole cost being avoided. 
 witness is the stored blob **verbatim**, never a re-serialization: a round-trip that
 reordered a key would yield a witness that never matches and a sweep that silently
 stopped editing anything.
+
+**The closing line names what it closed (#1822 item 7).** A close replaces the
+ENTIRE message text, so `RECONCILE_CLOSING` alone arrived as an orphan bubble:
+"Handled in the app — nothing left here." at 08:00, with no indication of WHAT was
+handled and — in a shared family chat — the "[Name] " attribution gone with the
+rest of the text, leaving two members' identical reminders indistinguishable once
+resolved. The tap path solved this for #377 with `replacementWithTitle`; the sweep
+now follows the same convention through `reconcileClosingText`, which composes
+"[Norton] 🍽️ Morning food log — handled in the app." (and, for a rollover,
+"… — this was yesterday's message."). The subject comes from the pointer's stored
+`title`, recorded AS DELIVERED in the same chokepoint write as the keyboard —
+migration 138 — because the tick edits by pointer and never holds the text it is
+replacing; re-deriving it would run a whole builder and would produce TODAY's
+title for YESTERDAY's message on a rollover close. A pointer without one (written
+before 138) degrades to the bare line: a close never invents a subject.
 
 **Edits, never sends.** Everything routes through the chokepoint's
 `closeMessage` / `updateMessageKeyboard` / `rebuildMessage`. Telegram does not

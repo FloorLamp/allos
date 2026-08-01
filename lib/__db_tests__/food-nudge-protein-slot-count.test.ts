@@ -142,7 +142,7 @@ describe("protein '+Xg' button slot-scoped (n) suffix (#1379)", () => {
     );
     // The protein button is now on the rebuilt keyboard (the tap made the profile a protein
     // tracker) and carries the slot count (1) — the exact sibling suffix, not a bare button.
-    expect(rebuiltProteinButtonLabel()).toBe("＋30g protein (1)");
+    expect(rebuiltProteinButtonLabel()).toBe("💪 ＋30g protein (1)");
 
     // Second tap in the same slot → the count ticks to (2) immediately (the rebuild re-reads
     // the slot count, so a tap always acknowledges its own log).
@@ -156,6 +156,6 @@ describe("protein '+Xg' button slot-scoped (n) suffix (#1379)", () => {
         12
       )
     );
-    expect(rebuiltProteinButtonLabel()).toBe("＋30g protein (2)");
+    expect(rebuiltProteinButtonLabel()).toBe("💪 ＋30g protein (2)");
   });
 });

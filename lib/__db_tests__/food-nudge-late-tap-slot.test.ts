@@ -242,6 +242,6 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
     expect(storedSlots(p.profileId, t, PROTEIN_NUDGE_KEY)).toEqual([
       NUDGE_WINDOW,
     ]);
-    expect(rebuiltProteinButtonLabel()).toBe("＋30g protein (1)");
+    expect(rebuiltProteinButtonLabel()).toBe("💪 ＋30g protein (1)");
   });
 });

@@ -33,7 +33,8 @@ import {
   setUserBirthdate,
 } from "@/lib/settings";
 import { markDoseTaken, markDoseSkipped } from "@/lib/queries";
-import { dispatch } from "@/lib/notifications";
+import { dispatch, prefixForProfile } from "@/lib/notifications";
+import { prefixMessage } from "@/lib/notifications/types";
 import { buildIntakeReminderForSlots } from "@/lib/notifications/supplements";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import {
@@ -44,7 +45,10 @@ import {
   parseStoredKeyboard,
   MESSAGE_POINTER_RETENTION_DAYS,
 } from "@/lib/notifications/message-pointers";
-import { keyboardTokens } from "@/lib/notifications/reconcile-core";
+import {
+  keyboardTokens,
+  RECONCILE_CLOSING,
+} from "@/lib/notifications/reconcile-core";
 import {
   editMessageReplyMarkupRaw,
   editMessageTextRaw,
@@ -689,5 +693,109 @@ describe("the pointer claim is a compare-and-swap (#1788)", () => {
     const p = onePointer(theirs);
     expect(claimMessagePointerClose(mine, p.id, p.version)).toBe(false);
     expect(liveMessagePointers(theirs)).toHaveLength(1);
+  });
+});
+
+// ---- The close NAMES ITS SUBJECT (issue #1822 item 7) ----
+//
+// A close replaces the ENTIRE message text, so the reader used to get an orphan bubble at
+// 08:00 — "Handled in the app — nothing left here." with no indication of WHAT was handled
+// — and in a shared family chat the "[Name] " attribution went with the rest of the text,
+// so two members' identical reminders became indistinguishable once resolved. The pointer
+// now records the delivered title, and the sweep composes the close from it.
+describe("a closed message says what it closed (#1822 item 7)", () => {
+  // The attribution the TICK applies at the send site (scripts/notify.ts), reproduced here
+  // so the pointer stores exactly the title a real multi-profile send delivers.
+  async function sendAttributedReminder(profileId: number): Promise<string> {
+    const built = buildIntakeReminderForSlots(profileId, ["Morning"]);
+    expect(built).not.toBeNull();
+    const msg = prefixMessage(built!.message, prefixForProfile(profileId));
+    await dispatch(profileId, msg);
+    return msg.title;
+  }
+
+  it("closes with the attributed title, not a subjectless sentence", async () => {
+    const pid = newProfile("Norton");
+    const { itemId, doseId } = seedDose(pid, "Norton D3");
+    seedLoginTelegram(pid, "5551990");
+    const title = await sendAttributedReminder(pid);
+    // The instance has several profiles by now, so the send really is attributed.
+    expect(title).toContain("[Norton]");
+    // The pointer remembered it, which is what makes the close possible at all.
+    expect(liveMessagePointers(pid)[0]?.title).toBe(title);
+
+    expect(markDoseTaken(pid, doseId, itemId, today(pid))).toBe("logged");
+    const out = await reconcileProfileMessages(pid);
+
+    expect(out.closed).toBe(1);
+    const closingText = editText.mock.calls.at(-1)![2];
+    expect(closingText).toBe(`${title} — handled in the app.`);
+    expect(closingText).toContain("[Norton]");
+  });
+
+  it("keeps two members' closes distinguishable in one shared chat", async () => {
+    const shared = "5551991";
+    const a = newProfile("Ada");
+    const b = newProfile("Ben");
+    const ad = seedDose(a, "Ada D3");
+    const bd = seedDose(b, "Ben D3");
+    seedLoginTelegram(a, shared);
+    seedLoginTelegram(b, shared);
+    await sendAttributedReminder(a);
+    await sendAttributedReminder(b);
+
+    markDoseTaken(a, ad.doseId, ad.itemId, today(a));
+    markDoseTaken(b, bd.doseId, bd.itemId, today(b));
+    editText.mockClear();
+    await reconcileProfileMessages(a);
+    await reconcileProfileMessages(b);
+
+    const texts = editText.mock.calls.map((c) => String(c[2]));
+    expect(texts).toHaveLength(2);
+    expect(texts[0]).not.toBe(texts[1]);
+    expect(texts.some((t) => t.includes("[Ada]"))).toBe(true);
+    expect(texts.some((t) => t.includes("[Ben]"))).toBe(true);
+  });
+
+  it("names the subject on a ROLLOVER close too", async () => {
+    const pid = newProfile("Rollover Rhea");
+    seedLoginTelegram(pid, "5551992");
+    const yd = shiftDateStr(today(pid), -1);
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5551992",
+      messageId: 4343,
+      kind: "food",
+      date: yd,
+      keyboard: [
+        [{ text: "🥬 Leafy greens", callback_data: `food:${pid}:Morning:${yd}:leafy_greens` }],
+      ],
+      title: "[Rhea] 🍽️ Morning food log",
+    });
+
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(editText.mock.calls.at(-1)![2]).toBe(
+      "[Rhea] 🍽️ Morning food log — this was yesterday's message."
+    );
+  });
+
+  it("degrades to the bare line for a pointer with no recorded title", async () => {
+    // A pointer written before migration 138 — nothing to name, so nothing is invented.
+    const pid = newProfile("Legacy Lou");
+    seedLoginTelegram(pid, "5551993");
+    const yd = shiftDateStr(today(pid), -1);
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5551993",
+      messageId: 4444,
+      kind: "dose",
+      date: yd,
+      keyboard: [
+        [{ text: "✅ Taken", callback_data: `take:${pid}:9002:9002:${yd}` }],
+      ],
+    });
+
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(editText.mock.calls.at(-1)![2]).toBe(RECONCILE_CLOSING.rollover);
   });
 });

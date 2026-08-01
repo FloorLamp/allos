@@ -11,6 +11,7 @@ import { db, today } from "@/lib/db";
 import { setUserBirthdate } from "@/lib/settings";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { buildFoodNudge } from "@/lib/notifications/food";
+import { foodGroupName } from "@/lib/food-groups";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
@@ -67,5 +68,61 @@ describe("buildFoodNudge", () => {
       `${bd.getUTCFullYear()}-${String(bd.getUTCMonth() + 1).padStart(2, "0")}-01`
     );
     expect(buildFoodNudge(infant.profileId, "Morning", t)).toBeNull();
+  });
+});
+
+// ---- Capped groups never take an above-the-fold button (issue #1822 item 5) ----
+//
+// The reported screenshot: "🍷 Alcohol" as a quick-log button in the 08:00 nudge, because
+// ranking was usage-only. A positive-habits nudge was leading with an encouragement-shaped
+// affordance for the thing being capped, ahead of the floor groups it exists to prompt.
+// Driven through the REAL gather so the ordering is proved where the buttons are actually
+// built, not only in the pure partition.
+describe("capped groups rank below floor groups (#1822 item 5)", () => {
+  let c: SeededProfile;
+  let ct: string;
+
+  beforeAll(() => {
+    c = seedProfile("food-nudge-capped");
+    ct = today(c.profileId);
+    // Alcohol is the profile's single heaviest morning habit — it wins the frecency blend
+    // outright, exactly the situation that produced the screenshot.
+    for (let i = 0; i < 6; i++)
+      logFoodServingCore(c.profileId, "alcohol", ct, `${ct}T08:0${i}:00Z`);
+    logFoodServingCore(c.profileId, "berries", ct, `${ct}T08:30:00Z`);
+  });
+
+  it("keeps the top-usage capped group off the visible keyboard", () => {
+    const msg = buildFoodNudge(c.profileId, "Morning", ct)!;
+    const labels = (msg.actions ?? [])
+      .filter((a) => a.data?.startsWith("food:"))
+      .map((a) => a.label);
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels[0]).toBe("🫐 Berries (1)"); // the floor group leads despite less usage
+    expect(labels.some((l) => l.includes("Alcohol"))).toBe(false);
+    // Every visible button is a floor group — no capped affordance above the fold.
+    for (const slug of ["alcohol", "added_sugar", "fried_food", "sugary_drinks"])
+      expect(labels.some((l) => l.includes(foodGroupName(slug)))).toBe(false);
+  });
+
+  it("still REACHES it through 'Show more' — the cap needs the logging", () => {
+    // Demoted, never filtered (#559): a wide-enough keyboard renders it, and its slot
+    // count is intact, so logging what the cap exists to track is one tap away.
+    const msg = buildFoodNudge(c.profileId, "Morning", ct, 30)!;
+    const alcohol = (msg.actions ?? []).find((a) =>
+      a.data?.endsWith(":alcohol")
+    );
+    expect(alcohol).toBeDefined();
+    expect(alcohol!.label).toBe("🍷 Alcohol (6)");
+  });
+
+  it("fixes EVERY slot, not just the morning one", () => {
+    for (const window of ["Morning", "Midday", "Evening"] as const) {
+      const msg = buildFoodNudge(c.profileId, window, ct)!;
+      const labels = (msg.actions ?? [])
+        .filter((a) => a.data?.startsWith("food:"))
+        .map((a) => a.label);
+      expect(labels.some((l) => l.includes("Alcohol"))).toBe(false);
+    }
   });
 });
