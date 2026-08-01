@@ -78,3 +78,51 @@ export function classifyPull(input: PullInput): PullState {
 export function shouldRefresh(state: PullState): boolean {
   return state.kind === "armed";
 }
+
+// Where the indicator sits, how visible it is, and how far the icon has spun.
+// `translateY` and `rotation` are the container/badge transforms; `opacity` is
+// the container's.
+export interface IndicatorPresentation {
+  translateY: number;
+  opacity: number;
+  rotation: number;
+}
+
+// The indicator's whole visual state, so it is decidable without a browser —
+// the component (which only renders in `display-mode: standalone`, and so is
+// invisible to every e2e run) is a straight renderer of these three numbers.
+//
+// Idle with nothing pending means the gesture is over and there is no refresh in
+// flight: the indicator is GONE. Its resting position is on-screen — `fixed
+// top-0` plus a positive safe-area margin — so anything short of opacity 0 there
+// leaves the icon parked at the top of the page forever (issue #1794).
+//
+// Under `prefers-reduced-motion` the indicator does not travel with the finger:
+// it sits at its resting offset and simply appears once the pull is armed. The
+// preference asks for no motion, not for no feedback.
+export function indicatorPresentation(
+  state: PullState,
+  pending: boolean,
+  reduceMotion: boolean
+): IndicatorPresentation {
+  const active = state.kind !== "idle";
+  const committed = state.kind === "armed" || pending;
+
+  if (reduceMotion) {
+    return {
+      translateY: active || pending ? PTR_MAX_PX / 2 : 0,
+      opacity: committed ? 1 : 0,
+      rotation: 0,
+    };
+  }
+
+  // Mid-refresh the gesture is already released, so there is no finger to track:
+  // the indicator holds at half travel until the transition settles.
+  const distance = active ? state.distance : pending ? PTR_MAX_PX / 2 : 0;
+  const progress = active ? state.progress : pending ? 1 : 0;
+  return {
+    translateY: distance,
+    opacity: progress,
+    rotation: Math.round(progress * 270),
+  };
+}

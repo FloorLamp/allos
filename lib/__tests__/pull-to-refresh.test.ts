@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyPull,
+  indicatorPresentation,
   shouldRefresh,
   PTR_MAX_PX,
   PTR_RESISTANCE,
@@ -102,5 +103,62 @@ describe("shouldRefresh", () => {
     expect(
       shouldRefresh({ kind: "armed", distance: PTR_TRIGGER_PX, progress: 1 })
     ).toBe(true);
+  });
+});
+
+describe("indicatorPresentation", () => {
+  const IDLE = { kind: "idle" } as const;
+  const ARMED = {
+    kind: "armed",
+    distance: PTR_TRIGGER_PX,
+    progress: 1,
+  } as const;
+  // Halfway to arming.
+  const HALF_PULL = {
+    kind: "pulling",
+    distance: PTR_TRIGGER_PX / 2,
+    progress: 0.5,
+  } as const;
+
+  it("hides the indicator completely at rest, in BOTH motion modes", () => {
+    // The #1794 pin. The resting position is ON-SCREEN (fixed top-0 plus a
+    // positive safe-area margin), so any opacity above 0 here parks the refresh
+    // icon at the top of the installed PWA permanently.
+    for (const reduceMotion of [false, true]) {
+      expect(indicatorPresentation(IDLE, false, reduceMotion).opacity).toBe(0);
+      expect(indicatorPresentation(IDLE, false, reduceMotion).translateY).toBe(
+        0
+      );
+    }
+  });
+
+  it("tracks the finger while pulling", () => {
+    const style = indicatorPresentation(HALF_PULL, false, false);
+    expect(style.translateY).toBe(HALF_PULL.distance);
+    expect(style.opacity).toBeCloseTo(0.5, 5);
+    expect(style.rotation).toBe(135);
+  });
+
+  it("is fully opaque once armed, and stays so while the refresh runs", () => {
+    expect(indicatorPresentation(ARMED, false, false).opacity).toBe(1);
+    expect(indicatorPresentation(ARMED, false, true).opacity).toBe(1);
+    // Released and refreshing: no finger to track, so it holds at half travel.
+    const refreshing = indicatorPresentation(IDLE, true, false);
+    expect(refreshing.opacity).toBe(1);
+    expect(refreshing.translateY).toBe(PTR_MAX_PX / 2);
+    expect(indicatorPresentation(IDLE, true, true).opacity).toBe(1);
+  });
+
+  it("under reduced motion does not travel with the finger, and only appears once committed", () => {
+    const style = indicatorPresentation(HALF_PULL, false, true);
+    // Its resting offset, not the finger's position — and no spin at all.
+    expect(style.translateY).toBe(PTR_MAX_PX / 2);
+    expect(style.rotation).toBe(0);
+    // Binary visibility: nothing until armed (or refreshing).
+    expect(style.opacity).toBe(0);
+    expect(indicatorPresentation(ARMED, false, true).opacity).toBe(1);
+    expect(indicatorPresentation(ARMED, false, true).translateY).toBe(
+      PTR_MAX_PX / 2
+    );
   });
 });
