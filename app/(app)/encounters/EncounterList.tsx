@@ -237,6 +237,7 @@ export default function EncounterList({
             profileId={multiView ? e.subject.profileId : undefined}
             onDone={done}
             defaultDate={defaultDate}
+            embedded
           />
         )}
         confirmDelete={(e) => ({

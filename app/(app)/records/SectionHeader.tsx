@@ -16,12 +16,10 @@ export function SectionHeader({
   id,
   title,
   subtitle,
-  more,
 }: {
   id?: string;
   title: string;
   subtitle: string;
-  more?: React.ReactNode;
 }) {
   return (
     <div id={id} className="mb-4 scroll-mt-24">
@@ -31,7 +29,6 @@ export function SectionHeader({
       <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         {subtitle}
       </div>
-      {more ? <IntroMore>{more}</IntroMore> : null}
     </div>
   );
 }
@@ -40,11 +37,9 @@ export function SectionHeader({
 export function SectionSubtitle({
   title,
   children,
-  more,
 }: {
   title: string;
   children: React.ReactNode;
-  more?: React.ReactNode;
 }) {
   return (
     <div className="mb-5" data-testid="records-pane-intro">
@@ -52,20 +47,6 @@ export function SectionSubtitle({
         {title}
       </h2>
       <p className="text-sm text-slate-500 dark:text-slate-400">{children}</p>
-      {more ? <IntroMore>{more}</IntroMore> : null}
     </div>
-  );
-}
-
-function IntroMore({ children }: { children: React.ReactNode }) {
-  return (
-    <details className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-      <summary className="cursor-pointer font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
-        More
-      </summary>
-      <div className="mt-1" data-testid="records-pane-intro-more">
-        {children}
-      </div>
-    </details>
   );
 }

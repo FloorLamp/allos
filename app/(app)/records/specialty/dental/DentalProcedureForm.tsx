@@ -65,7 +65,7 @@ export default function DentalProcedureForm({
     <form
       ref={formRef}
       action={handle}
-      className={editing ? "card space-y-3" : "space-y-3"}
+      className="space-y-3"
       data-testid="dental-procedure-form"
     >
       {editing && <input type="hidden" name="id" value={record!.id} />}

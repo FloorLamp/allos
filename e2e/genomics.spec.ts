@@ -32,9 +32,14 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     test.slow();
 
     await page.goto("/results/genomics");
-    // Entry lives behind "+ Add genomic variant" since #1499 section C.
-    await hydratedClick(page, page.getByTestId("add-genomic-panel-toggle"));
-    const form = page.getByTestId("genomic-variant-form");
+    const add = page.getByTestId("add-genomic-panel-toggle");
+    await expect(add).toHaveClass(/\bbtn\b/);
+    await hydratedClick(page, add);
+    const dialog = page.getByRole("dialog", {
+      name: "Add genomic variant",
+    });
+    await expect(dialog).toBeVisible();
+    const form = dialog.getByTestId("genomic-variant-form");
     await expect(form).toBeVisible();
 
     // Add a hereditary-risk variant with an ACMG significance.
@@ -67,6 +72,7 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await row.getByLabel("Record actions").click();
     await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = list.getByTestId("genomic-variant-form");
+    await expect(editForm).not.toHaveClass(/\bcard\b/);
     await editForm
       .getByLabel("Clinical significance")
       .selectOption("pathogenic");

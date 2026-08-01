@@ -117,7 +117,7 @@ export default function OpticalPrescriptionForm({
     <form
       ref={formRef}
       action={handle}
-      className={editing ? "card space-y-3" : "space-y-3"}
+      className="space-y-3"
       data-testid="optical-prescription-form"
     >
       {editing && <input type="hidden" name="id" value={rx!.id} />}

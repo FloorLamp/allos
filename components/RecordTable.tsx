@@ -10,6 +10,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
+import type { AppRoute } from "@/lib/hrefs";
 import type { SubjectInfo } from "@/lib/scope";
 
 // A column of the shared records table. `cell` renders the row's value; the base
@@ -63,6 +64,7 @@ export default function RecordTable<T extends { id: number }>({
   defaultSort,
   tieBreak,
   multiView,
+  emptyActions,
 }: {
   items: T[];
   columns: RecordColumn<T>[];
@@ -70,6 +72,7 @@ export default function RecordTable<T extends { id: number }>({
   onDelete: (item: T) => void | Promise<void>;
   confirmDelete: (item: T) => DeleteConfirm;
   emptyMessage: string;
+  emptyActions?: ReadonlyArray<{ href: AppRoute; label: string }>;
   // Column index (into `columns`, must be sortable) + direction to sort by on
   // mount. Omit for an unsorted table that renders `items` in the given order.
   defaultSort?: { index: number; dir: "asc" | "desc" };
@@ -114,7 +117,7 @@ export default function RecordTable<T extends { id: number }>({
   }
 
   if (items.length === 0) {
-    return <EmptyState message={emptyMessage} />;
+    return <EmptyState message={emptyMessage} actions={emptyActions} />;
   }
 
   const sortCol = sortIndex != null ? columns[sortIndex] : null;

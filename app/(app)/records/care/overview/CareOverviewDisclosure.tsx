@@ -40,10 +40,10 @@ export default function CareOverviewDisclosure({
     <details
       ref={detailsRef}
       id={id}
-      className="card group scroll-mt-36 p-0"
+      className="group scroll-mt-36 border-b border-black/5 dark:border-white/5"
       data-testid={testId}
     >
-      <summary className="flex cursor-pointer list-none items-center gap-4 px-4 py-4 outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-4 px-1 py-4 outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden">
         <span className="min-w-0 flex-1">
           <h3 className="font-semibold text-slate-900 dark:text-slate-100">
             {title}
@@ -54,9 +54,7 @@ export default function CareOverviewDisclosure({
         </span>
         <IconChevronDown className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="border-t border-black/5 p-4 dark:border-white/5">
-        {children}
-      </div>
+      <div className="pb-6 pt-2">{children}</div>
     </details>
   );
 }

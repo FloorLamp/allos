@@ -56,11 +56,38 @@ test.describe("Provider registry closeout", () => {
     page,
   }) => {
     await page.goto(`/providers/${providerId("Dr. Cora Bell (e2e)")}`);
+    const detail = page.getByTestId("provider-detail");
+    const margins = await detail.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const parentRect = element.parentElement!.getBoundingClientRect();
+      return {
+        left: rect.left - parentRect.left,
+        right: parentRect.right - rect.right,
+      };
+    });
+    expect(Math.abs(margins.left - margins.right)).toBeLessThan(2);
+    await expect(page.getByTestId("provider-identity")).not.toHaveClass(
+      /\bcard\b/
+    );
+    await expect(page.getByTestId("provider-identity-details")).toHaveCSS(
+      "flex-direction",
+      "column"
+    );
     const affiliations = page.getByTestId("provider-affiliations");
     await expect(affiliations).toContainText("Practices at");
     await expect(
       affiliations.getByRole("link", { name: /Bell Cardiology \(e2e\)/ })
     ).toBeVisible();
+    const addAffiliation = affiliations.getByTestId("affiliation-add-toggle");
+    await expect(addAffiliation).toHaveClass(/\bbtn\b/);
+    await addAffiliation.click();
+    await expect(
+      page.getByRole("dialog", { name: "Link affiliation" })
+    ).toBeVisible();
+    await page
+      .getByRole("dialog", { name: "Link affiliation" })
+      .getByRole("button", { name: "Close" })
+      .click();
   });
 
   test("a declined affiliation suggestion stays gone (#1055)", async ({
@@ -72,6 +99,9 @@ test.describe("Provider registry closeout", () => {
     // suggestion; decline it. On a later run it is already declined (gone). Either
     // way, the end state asserted is the same: no Ng Family Practice suggestion.
     if (await suggestions.count()) {
+      await expect(suggestions.getByTestId("affiliation-accept")).toHaveClass(
+        /\bbtn\b/
+      );
       const decline = suggestions.getByTestId("affiliation-decline");
       if (await decline.count()) await settledClick(page, decline.first()); // first-ok: spec-owned Sam Ng fixture, sole suggestion
     }

@@ -45,8 +45,6 @@ export const RESULTS_TAB_FIRST_PAGE = {
   kind: "route",
   pathnamePrefix: "/results",
   title: "Results",
-  subtitle:
-    "Your result records in one place — labs and biomarkers, imaging studies, and genomic variants.",
   mobileColumns: 4,
   testId: "results-tabs",
   desktopStripClassName: "mb-6",

@@ -78,7 +78,13 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   await expect(page.getByTestId("records-health-goals")).toBeVisible();
   await expect(page.getByTestId("smoking-history")).toBeHidden();
   await page.getByTestId("records-background").locator("summary").click();
-  await expect(page.getByTestId("smoking-history")).toBeVisible();
+  const smokingHistory = page.getByTestId("smoking-history");
+  await expect(smokingHistory).toBeVisible();
+  expect(
+    await smokingHistory.evaluate((element) =>
+      Boolean(element.parentElement?.closest(".card"))
+    )
+  ).toBe(false);
 
   // Care › Providers — the heavy directory, a solo pane.
   await followLink(

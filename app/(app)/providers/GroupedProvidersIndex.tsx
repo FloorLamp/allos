@@ -100,16 +100,16 @@ export default function GroupedProvidersIndex({
 
           {otherCount > 0 ? (
             <details
-              className="group rounded-xl border border-black/5 dark:border-white/10"
+              className="group border-t border-black/5 pt-3 dark:border-white/10"
               data-testid="provider-other-disclosure"
             >
-              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 [&::-webkit-details-marker]:hidden dark:text-slate-300">
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-sm font-medium text-slate-600 [&::-webkit-details-marker]:hidden dark:text-slate-300">
                 <span className="flex-1">
                   Other directory entries ({otherCount})
                 </span>
                 <IconChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
               </summary>
-              <div className="space-y-4 border-t border-black/5 p-3 dark:border-white/10">
+              <div className="mt-3 space-y-4">
                 {otherOrgs.map((group) => (
                   <OrganizationGroup key={group.org.id} group={group} />
                 ))}

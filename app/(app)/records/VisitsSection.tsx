@@ -152,8 +152,8 @@ export default function VisitsSection({
             </section>
 
             {overdueScheduled.length > 0 && (
-              <details className="card border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20">
-                <summary className="cursor-pointer font-semibold text-amber-800 dark:text-amber-200">
+              <details className="border-l-2 border-amber-300 pl-3 dark:border-amber-800">
+                <summary className="cursor-pointer py-1 font-semibold text-amber-800 dark:text-amber-200">
                   Past date—update status{" "}
                   <span className="text-sm font-normal">
                     ({overdueScheduled.length})
@@ -170,7 +170,7 @@ export default function VisitsSection({
             )}
 
             {settled.length > 0 && (
-              <details className="card">
+              <details className="border-t border-black/5 pt-3 dark:border-white/5">
                 <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
                   Completed &amp; cancelled{" "}
                   <span className="text-sm font-normal text-slate-400">

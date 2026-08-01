@@ -393,7 +393,7 @@ export default function ImmunizationsSection({
               )}
             </div>
 
-            <details className="card">
+            <details className="border-t border-black/5 pt-4 dark:border-white/5">
               <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
                 All recorded doses{" "}
                 <span className="text-sm font-normal text-slate-400">
@@ -423,7 +423,7 @@ export default function ImmunizationsSection({
               </div>
             </details>
 
-            <details className="card">
+            <details className="border-t border-black/5 pt-4 dark:border-white/5">
               <summary className="cursor-pointer text-slate-800 dark:text-slate-100">
                 <h3 className="inline font-semibold">
                   CDC recommended schedule

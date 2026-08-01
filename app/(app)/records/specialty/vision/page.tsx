@@ -17,10 +17,7 @@ export default async function RecordsVisionPage() {
   if (!getNavRelevance(profile.id).vision) redirect("/records/specialty/skin");
   return (
     <PageContainer width="flow" data-testid="records-vision">
-      <SectionSubtitle
-        title="Vision"
-        more="Prescriptions can be added manually or imported from an uploaded prescription slip."
-      >
+      <SectionSubtitle title="Vision">
         Review eyeglass and contact-lens prescriptions over time.
       </SectionSubtitle>
       <VisionSection profileId={profile.id} loginId={login.id} />

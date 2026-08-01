@@ -11,10 +11,7 @@ export default async function RecordsSkinPage() {
   const { profile } = await requireSession();
   return (
     <PageContainer width="flow" data-testid="records-skin">
-      <SectionSubtitle
-        title="Skin"
-        more="Each record can include a body-map location, size, ABCDE observations, dated photos, and a tracked recheck."
-      >
+      <SectionSubtitle title="Skin">
         Track moles and spots over time.
       </SectionSubtitle>
       <SkinSection profileId={profile.id} />

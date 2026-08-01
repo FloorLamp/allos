@@ -56,9 +56,12 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     test.slow();
 
     await page.goto("/results/imaging");
-    // Entry lives behind "+ Add imaging study" since #1499 section C.
-    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
-    const form = page.getByTestId("imaging-study-form");
+    const add = page.getByTestId("add-imaging-panel-toggle");
+    await expect(add).toHaveClass(/\bbtn\b/);
+    await hydratedClick(page, add);
+    const dialog = page.getByRole("dialog", { name: "Add imaging study" });
+    await expect(dialog).toBeVisible();
+    const form = dialog.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
     // Add an MRI with contrast.
@@ -98,6 +101,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       .click();
     await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = list.getByTestId("imaging-study-form");
+    await expect(editForm).not.toHaveClass(/\bcard\b/);
     await editForm.getByLabel("Impression").fill("Interval improvement.");
     await submitWithToast(
       page,
@@ -131,7 +135,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     test.slow();
 
     await page.goto("/results/imaging");
-    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    // The rare-entry CTA opens the imaging form in a modal.
     await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
@@ -193,7 +197,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     }
 
     await page.goto("/results/imaging");
-    // Entry lives behind "+ Add imaging study" since #1499 section C.
+    // The rare-entry CTA opens the imaging form in a modal.
     await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();

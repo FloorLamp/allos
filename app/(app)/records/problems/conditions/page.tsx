@@ -21,10 +21,7 @@ export default async function RecordsConditionsPage(props: {
   const scope = await requireScope();
   return (
     <PageContainer width="flow" data-testid="records-conditions">
-      <SectionSubtitle
-        title="Conditions"
-        more="Imported conditions may include ICD-10 or SNOMED codes from your health record."
-      >
+      <SectionSubtitle title="Conditions">
         Review active and resolved conditions and diagnoses.
       </SectionSubtitle>
       <ConditionsSection scope={scope} cond={one(searchParams.cond)} />

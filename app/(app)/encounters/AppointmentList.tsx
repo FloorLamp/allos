@@ -269,6 +269,7 @@ export default function AppointmentList({
               location: followUpFrom.location,
               kind: followUpFrom.kind,
             }}
+            embedded
           />
         </div>
       )}
@@ -281,6 +282,7 @@ export default function AppointmentList({
                 appointment={a}
                 onDone={() => setEditingId(null)}
                 defaultDate={defaultDate}
+                embedded
               />
             </div>
           ) : (

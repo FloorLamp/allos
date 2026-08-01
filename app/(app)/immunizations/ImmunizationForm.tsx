@@ -82,11 +82,7 @@ export default function ImmunizationForm({
   }
 
   return (
-    <form
-      ref={formRef}
-      action={handle}
-      className={editing ? "card space-y-3" : "space-y-3"}
-    >
+    <form ref={formRef} action={handle} className="space-y-3">
       {editing && <input type="hidden" name="id" value={immunization!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />

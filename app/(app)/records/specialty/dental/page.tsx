@@ -15,10 +15,7 @@ export default async function RecordsDentalPage() {
   if (!getNavRelevance(profile.id).dental) redirect("/records/specialty/skin");
   return (
     <PageContainer width="flow" data-testid="records-dental">
-      <SectionSubtitle
-        title="Dental"
-        more="Add records manually or import them; periodontal measurements and dental X-rays live on Results."
-      >
+      <SectionSubtitle title="Dental">
         Review dental procedures and tooth-specific exam findings.
       </SectionSubtitle>
       <DentalSection profileId={profile.id} />

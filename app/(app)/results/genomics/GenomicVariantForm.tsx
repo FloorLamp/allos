@@ -1,10 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import Combobox from "@/components/Combobox";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import {
   GENOMIC_RESULT_TYPES,
   GENOMIC_SIGNIFICANCES,
@@ -32,7 +34,9 @@ export default function GenomicVariantForm({
   profileId?: number;
   onDone?: () => void;
 }) {
+  const router = useRouter();
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!variant;
   const [error, setError] = useState<string | null>(null);
@@ -63,24 +67,25 @@ export default function GenomicVariantForm({
       setGene("");
     }
     onDone?.();
+    if (!editing) closeEntryModal?.();
+    router.refresh();
   }
 
   const uid = variant?.id ?? "new";
-  // Add mode renders INSIDE the "+ Add genomic variant" panel (#1499 section C),
-  // which is the card and owns the heading; edit mode swaps into a list row and
-  // brings its own frame.
+  // Add mode renders in the shared entry modal; edit mode swaps into a table row.
+  // The form stays frameless in both places so neither host gets a nested card.
   return (
     <form
       ref={formRef}
       action={handle}
-      className={editing ? "card space-y-3" : "space-y-3"}
+      className="space-y-3"
       data-testid="genomic-variant-form"
     >
       {editing && <input type="hidden" name="id" value={variant!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`gv-gene-${uid}`}>
             Gene
@@ -114,7 +119,7 @@ export default function GenomicVariantForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`gv-genotype-${uid}`}>
             Genotype
@@ -140,7 +145,7 @@ export default function GenomicVariantForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`gv-zygosity-${uid}`}>
             Zygosity
@@ -177,7 +182,7 @@ export default function GenomicVariantForm({
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`gv-significance-${uid}`}>
             Clinical significance

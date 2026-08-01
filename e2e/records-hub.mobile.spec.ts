@@ -66,7 +66,7 @@ test("Visits leads with Upcoming then Past, and keeps entry behind + Add (#1497)
   await expect(page.getByTestId("visits-add")).toBeVisible();
 });
 
-test("a Visits focus deep link opens entry, and pane copy expands behind More (#1497)", async ({
+test("a Visits focus deep link opens entry without secondary description chrome (#1497)", async ({
   page,
 }) => {
   await page.goto("/records/history/visits?focus=add");
@@ -83,9 +83,7 @@ test("a Visits focus deep link opens entry, and pane copy expands behind More (#
   await expect(
     intro.getByText("Manage upcoming appointments and your visit history.")
   ).toBeVisible();
-  await expect(intro.getByTestId("records-pane-intro-more")).toBeHidden();
-  await hydratedClick(page, intro.getByText("More", { exact: true }));
-  await expect(intro.getByTestId("records-pane-intro-more")).toBeVisible();
+  await expect(intro.getByText("More", { exact: true })).toHaveCount(0);
 });
 
 test("the first data row fits in the first viewport on key record panes (#1497)", async ({

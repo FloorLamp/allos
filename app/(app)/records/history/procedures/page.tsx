@@ -19,10 +19,7 @@ export default async function RecordsProceduresPage(props: {
     newParam === "1" && nameParam?.trim() ? nameParam.trim() : undefined;
   return (
     <PageContainer width="flow" data-testid="records-procedures">
-      <SectionSubtitle
-        title="Procedures"
-        more="Imported records may include CPT or SNOMED codes from the CCD Procedures section."
-      >
+      <SectionSubtitle title="Procedures">
         Review procedures and surgical history.
       </SectionSubtitle>
       <ProceduresSection scope={scope} prefillName={prefillName} />

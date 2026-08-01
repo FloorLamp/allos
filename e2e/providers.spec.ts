@@ -68,6 +68,10 @@ test.describe("Providers registry", () => {
     // `provider-list` — before following the detail link.
     const patel = page.getByText("Dr. Anita Patel", { exact: true }).first(); // first-ok: shared #275 seed, mode-agnostic presence check only
     await expect(patel).toBeVisible();
+    const otherDirectory = page.getByTestId("provider-other-disclosure");
+    if (await otherDirectory.count()) {
+      await otherDirectory.locator("summary").click();
+    }
     const quest = page.getByText("Quest Diagnostics").first(); // first-ok: shared #275 seed, presence check only
     await expect(quest).toBeVisible();
 
@@ -132,6 +136,7 @@ test.describe("Providers registry", () => {
     await page.goto(`/providers/${survivor}`);
     const merge = page.getByTestId("provider-merge");
     await expect(merge).toBeVisible();
+    await merge.locator("summary").click();
 
     // Pick the duplicate and merge; confirm the count-only dialog.
     await page

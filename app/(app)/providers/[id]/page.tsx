@@ -56,9 +56,9 @@ function ActivitySection({
 }) {
   if (items.length === 0) return null;
   return (
-    <details className="rounded-lg border border-black/5 bg-white/60 dark:border-white/10 dark:bg-black/10">
+    <details>
       <summary
-        className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-200"
+        className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-850"
         data-testid={`activity-summary-${label.toLowerCase().replace(/\s+/g, "-")}`}
       >
         <span>{label}</span>
@@ -98,13 +98,15 @@ function RelationshipStat({
   label,
   value,
   fmt,
+  className = "",
 }: {
   label: string;
   value: string | null;
   fmt: DisplayFormatPrefs;
+  className?: string;
 }) {
   return (
-    <div className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10">
+    <div className={`py-3 sm:px-4 ${className}`}>
       <div className="section-label">{label}</div>
       <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
         {value ? formatRecordDate(value, "—", fmt) : "—"}
@@ -188,7 +190,11 @@ export default async function ProviderDetailPage(props: {
     provider.type === "individual" ? IconStethoscope : IconBuildingHospital;
 
   return (
-    <PageContainer width="reading" data-testid="provider-detail">
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="provider-detail"
+    >
       <Link
         href="/records/care/providers"
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
@@ -221,11 +227,12 @@ export default async function ProviderDetailPage(props: {
       />
 
       {/* Relationship strip (per-profile). */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid divide-y divide-black/5 border-y border-black/5 sm:grid-cols-3 sm:divide-x sm:divide-y-0 dark:divide-white/5 dark:border-white/5">
         <RelationshipStat
           label="First seen"
           value={relationship.firstSeen}
           fmt={fmt}
+          className="sm:pl-0"
         />
         <RelationshipStat
           label="Most recent visit"
@@ -236,6 +243,7 @@ export default async function ProviderDetailPage(props: {
           label="Next appointment"
           value={relationship.nextAppointment}
           fmt={fmt}
+          className="sm:pr-0"
         />
       </div>
 
@@ -255,7 +263,7 @@ export default async function ProviderDetailPage(props: {
             {profile.name} has no records linked to this provider yet.
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">
             {sections.map((s) => (
               <ActivitySection
                 key={s.label}

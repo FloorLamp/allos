@@ -13,10 +13,7 @@ export default async function RecordsAllergiesPage() {
   const scope = await requireScope();
   return (
     <PageContainer width="flow" data-testid="records-allergies">
-      <SectionSubtitle
-        title="Allergies"
-        more="Allergen-specific IgE sensitizations detected in lab results appear alongside documented allergies and can inform the emergency card."
-      >
+      <SectionSubtitle title="Allergies">
         Review documented allergies and sensitizations.
       </SectionSubtitle>
       <AllergiesSection scope={scope} />
