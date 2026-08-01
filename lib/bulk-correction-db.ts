@@ -36,7 +36,6 @@ import {
   planCorrection,
   serializeBulkCorrectionPayload,
   type BulkCorrectionPayloadChange,
-  type CorrectionChange,
   type CorrectionFieldId,
   type CorrectionOp,
   type CorrectionSummary,
@@ -322,7 +321,12 @@ export function applyBulkCorrection(
       // undo knows exactly which locks were OURS to clear.
       const lockSet = row.source !== null && !row.edited;
       if (lockSet) locked++;
-      payloadChanges.push({ ...change, lockSet });
+      payloadChanges.push({
+        id: change.id,
+        before: change.before,
+        after: change.after,
+        lockSet,
+      });
     }
 
     const undoId = Number(
