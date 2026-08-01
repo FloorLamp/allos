@@ -118,8 +118,8 @@ function lastKeyboardLabels(): string[] {
 describe("digest demotion storage — login-scoped (#1714)", () => {
   it("two logins watching ONE profile hold independent preferences", () => {
     const pid = newProfile("Shared Subject");
-    const a = seedLoginTelegram(pid, "5551714001");
-    const b = seedLoginTelegram(pid, "5551714002");
+    const a = seedLoginTelegram(pid, "5551001");
+    const b = seedLoginTelegram(pid, "5551002");
 
     setLoginDigestDemotions(a, ["mood"]);
     setLoginDigestDemotions(b, ["sleep"]);
@@ -130,7 +130,7 @@ describe("digest demotion storage — login-scoped (#1714)", () => {
 
   it("the toggle reports the state it actually stored, both directions", () => {
     const pid = newProfile("Toggle Tess");
-    const login = seedLoginTelegram(pid, "5551714003");
+    const login = seedLoginTelegram(pid, "5551003");
 
     const on = toggleLoginDigestDemotion(login, "vitals");
     expect(on.demoted).toBe(true);
@@ -143,7 +143,7 @@ describe("digest demotion storage — login-scoped (#1714)", () => {
 
   it("a toggle leaves the OTHER categories alone", () => {
     const pid = newProfile("Partial Pat");
-    const login = seedLoginTelegram(pid, "5551714004");
+    const login = seedLoginTelegram(pid, "5551004");
     setLoginDigestDemotions(login, ["mood", "sleep"]);
     toggleLoginDigestDemotion(login, "mood");
     expect(getLoginDigestDemotions(login)).toEqual(["sleep"]);
@@ -151,8 +151,8 @@ describe("digest demotion storage — login-scoped (#1714)", () => {
 
   it("one message, N readers: only what EVERY managing login demoted applies", () => {
     const pid = newProfile("Household Hal");
-    const a = seedLoginTelegram(pid, "5551714005");
-    const b = seedLoginTelegram(pid, "5551714006");
+    const a = seedLoginTelegram(pid, "5551005");
+    const b = seedLoginTelegram(pid, "5551006");
     setLoginDigestDemotions(a, ["mood", "vitals"]);
     setLoginDigestDemotions(b, ["mood"]);
     expect(digestDemotionsForProfile(pid)).toEqual(["mood"]);
@@ -169,7 +169,7 @@ describe("digest demotion storage — login-scoped (#1714)", () => {
 describe("the demoted digest (#1714)", () => {
   it("a demoted category's ROUTINE line is gone while its NOTABLE line remains", () => {
     const pid = newProfile("Digest Dara");
-    const login = seedLoginTelegram(pid, "5551714010");
+    const login = seedLoginTelegram(pid, "5551010");
     const td = today(pid);
     const yd = shiftDateStr(td, -1);
     seedMood(pid, yd, 3);
@@ -191,7 +191,7 @@ describe("the demoted digest (#1714)", () => {
 
   it("a NOTABLE mood shift survives its own category's demotion", () => {
     const pid = newProfile("Shift Shay");
-    const login = seedLoginTelegram(pid, "5551714011");
+    const login = seedLoginTelegram(pid, "5551011");
     const td = today(pid);
     // A deep-ish baseline of 4s, then a 1 yesterday: a shift below their own average.
     for (let d = 10; d >= 3; d--) seedMood(pid, shiftDateStr(td, -d), 4);
@@ -206,7 +206,7 @@ describe("the demoted digest (#1714)", () => {
 
   it("demoting EVERY category leaves the digest's non-demotable core", () => {
     const pid = newProfile("Silent Sam");
-    const login = seedLoginTelegram(pid, "5551714012");
+    const login = seedLoginTelegram(pid, "5551012");
     const td = today(pid);
     seedMood(pid, shiftDateStr(td, -1), 3);
     // A dose today is Today-section content: an obligation, not a tunable category.
@@ -242,11 +242,11 @@ describe("the demoted digest (#1714)", () => {
 
   it("the ⚙️ Tune button rides a digest that HAS tunable content, and only then", () => {
     const quiet = newProfile("Quiet Quill");
-    seedLoginTelegram(quiet, "5551714013");
+    seedLoginTelegram(quiet, "5551013");
     expect(digestTunableCategories(quiet, today(quiet))).toEqual([]);
 
     const noisy = newProfile("Noisy Nell");
-    seedLoginTelegram(noisy, "5551714014");
+    seedLoginTelegram(noisy, "5551014");
     seedMood(noisy, shiftDateStr(today(noisy), -1), 3);
     expect(digestTunableCategories(noisy, today(noisy))).toEqual(["mood"]);
 
@@ -258,7 +258,7 @@ describe("the demoted digest (#1714)", () => {
 describe("the ⚙️ Tune keyboard on Telegram (#1714)", () => {
   it("expands via EDIT — no message is sent — and a toggle re-renders the state", async () => {
     const pid = newProfile("Tap Tam");
-    const chat = "5551714020";
+    const chat = "5551020";
     const login = seedLoginTelegram(pid, chat);
     const td = today(pid);
     seedMood(pid, shiftDateStr(td, -1), 3);
@@ -296,7 +296,7 @@ describe("the ⚙️ Tune keyboard on Telegram (#1714)", () => {
 
   it("a demoted category stays in its own toggle, so the demotion is reversible on Telegram", async () => {
     const pid = newProfile("Reverse Rye");
-    const chat = "5551714021";
+    const chat = "5551021";
     const login = seedLoginTelegram(pid, chat);
     const td = today(pid);
     seedMood(pid, shiftDateStr(td, -1), 3);
@@ -310,7 +310,7 @@ describe("the ⚙️ Tune keyboard on Telegram (#1714)", () => {
 
   it("a tap on YESTERDAY's digest is refused, and writes nothing", async () => {
     const pid = newProfile("Stale Stu");
-    const chat = "5551714022";
+    const chat = "5551022";
     const login = seedLoginTelegram(pid, chat);
     const yd = shiftDateStr(today(pid), -1);
 
@@ -326,9 +326,9 @@ describe("the ⚙️ Tune keyboard on Telegram (#1714)", () => {
   it("a tap from a chat that cannot act as the named profile is refused", async () => {
     const mine = newProfile("Mine Mia");
     const theirs = newProfile("Theirs Theo");
-    const chat = "5551714023";
+    const chat = "5551023";
     const login = seedLoginTelegram(mine, chat);
-    seedLoginTelegram(theirs, "5551714024");
+    seedLoginTelegram(theirs, "5551024");
 
     editKeyboardMock.mockClear();
     await handleCallbackQuery(
