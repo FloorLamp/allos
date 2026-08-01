@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
+import Combobox from "@/components/Combobox";
 import { useToast } from "@/components/Toast";
+import { ENCOUNTER_TYPE_OPTIONS } from "@/lib/encounter-kind";
 import type { Encounter, FormResult } from "@/lib/types";
 
 // Shared add/edit visit form. Add mode: no `encounter` (blank fields, date seeded
@@ -43,6 +45,10 @@ export default function EncounterForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!encounter;
   const [error, setError] = useState<string | null>(null);
+  // A manually added visit carries no class_code, so this free-text type is the ONLY
+  // signal encounterKind() has — an unrecognized wording fell to "other" and dropped
+  // out of every kind filter (#1676). Controlled, so the add path clears it.
+  const [type, setType] = useState(encounter?.type ?? "");
 
   async function handle(formData: FormData) {
     setError(null);
@@ -62,7 +68,10 @@ export default function EncounterForm({
       return;
     }
     toast(editing ? "Visit updated" : "Visit saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      setType("");
+    }
     onDone?.();
     router.refresh();
   }
@@ -90,11 +99,14 @@ export default function EncounterForm({
         <label className="label" htmlFor={`enc-type-${uid}`}>
           Visit type
         </label>
-        <input
+        <Combobox
           id={`enc-type-${uid}`}
           name="type"
-          className="input"
-          defaultValue={encounter?.type ?? ""}
+          ariaLabel="Visit type"
+          value={type}
+          onChange={setType}
+          options={[...ENCOUNTER_TYPE_OPTIONS]}
+          allowFreeText
           placeholder="e.g. Office Visit, Emergency, Hospitalization"
         />
       </div>

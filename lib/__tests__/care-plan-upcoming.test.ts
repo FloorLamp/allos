@@ -1,10 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
   isCarePlanItemOpen,
+  isRecognizedCarePlanStatus,
   carePlanItemToUpcomingItem,
   carePlanUpcomingItems,
+  CARE_PLAN_CATEGORIES,
+  CARE_PLAN_CATEGORY_LABELS,
+  CARE_PLAN_CLOSED_STATUS_LIST,
+  CARE_PLAN_OPEN_STATUSES,
   type CarePlanItemLike,
 } from "../care-plan-upcoming";
+import { CARE_PLAN_ELEMENTS } from "../cda/constants";
 
 function mk(over: Partial<CarePlanItemLike> = {}): CarePlanItemLike {
   return {
@@ -98,5 +104,55 @@ describe("carePlanUpcomingItems", () => {
 
   it("returns [] for an empty list", () => {
     expect(carePlanUpcomingItems([])).toEqual([]);
+  });
+});
+
+// The entry vocabularies the status/category pickers offer (#1676). The pickers exist
+// because a hand-typed status the module doesn't recognize left the item nudging
+// forever; these pin what the pickers may offer and what the unrecognized case does.
+describe("the care-plan entry vocabularies (#1676)", () => {
+  it("every offered status is one isCarePlanItemOpen actually decides by name", () => {
+    for (const s of CARE_PLAN_OPEN_STATUSES) {
+      expect(isRecognizedCarePlanStatus(s)).toBe(true);
+      expect(isCarePlanItemOpen(s)).toBe(true);
+    }
+    for (const s of CARE_PLAN_CLOSED_STATUS_LIST) {
+      expect(isRecognizedCarePlanStatus(s)).toBe(true);
+      expect(isCarePlanItemOpen(s)).toBe(false);
+    }
+  });
+
+  it("offers no status in both groups", () => {
+    const open = new Set(CARE_PLAN_OPEN_STATUSES);
+    for (const s of CARE_PLAN_CLOSED_STATUS_LIST)
+      expect(open.has(s)).toBe(false);
+  });
+
+  // DECISION PINNED: an unrecognized status stays OPEN and keeps nudging. That is
+  // unchanged by #1676 — importers depend on it — so the form says so out loud
+  // instead of the user discovering it weeks later.
+  it("an unrecognized status is unrecognized AND still open", () => {
+    for (const s of ["finished", "wrapped up", "Done — 3 of 4"]) {
+      expect(isRecognizedCarePlanStatus(s)).toBe(false);
+      expect(isCarePlanItemOpen(s)).toBe(true);
+    }
+  });
+
+  it("blank is neither recognized nor closed", () => {
+    expect(isRecognizedCarePlanStatus("")).toBe(false);
+    expect(isRecognizedCarePlanStatus(null)).toBe(false);
+    expect(isCarePlanItemOpen("")).toBe(true);
+  });
+
+  it("the category vocabulary covers every bucket the CDA importer writes", () => {
+    const offered = new Set<string>(CARE_PLAN_CATEGORIES);
+    for (const element of CARE_PLAN_ELEMENTS)
+      expect(offered.has(element.category)).toBe(true);
+  });
+
+  it("every category has a label that says what the bucket means", () => {
+    for (const c of CARE_PLAN_CATEGORIES) {
+      expect(CARE_PLAN_CATEGORY_LABELS[c]).toContain(" — ");
+    }
   });
 });

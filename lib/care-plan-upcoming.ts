@@ -54,6 +54,84 @@ export function isCarePlanItemOpen(status: string | null | undefined): boolean {
   return !CARE_PLAN_CLOSED_STATUSES.has(status.trim().toLowerCase());
 }
 
+// ---- The status / category ENTRY vocabularies (issue #1676) -----------------
+//
+// `care_plan_items.status` is deliberately free-form TEXT (no DB CHECK, see
+// lib/types/medical.ts): importers pass FHIR CarePlan.activity status codes through
+// verbatim. But the form offered a bare <input>, so a hand-typed "finished" or
+// "Done — 3/4" produced a status isCarePlanItemOpen() does not recognize as CLOSED,
+// and the item kept nudging Upcoming forever. The picker below offers the statuses
+// this module actually understands; free text stays reachable, and the form states
+// out loud what an unrecognized status does.
+//
+// DECISION PINNED (#1676): the unrecognized-status fate is UNCHANGED — a status this
+// module doesn't know still counts as OPEN and still nudges. That is the safe
+// direction (a real plan with an odd imported status must not go silent), it is what
+// every importer already relies on, and lib/__tests__/care-plan-upcoming.test.ts
+// pins it. What #1676 changes is only that the behaviour is now VISIBLE at entry
+// instead of a silent surprise.
+
+// The open (still-actionable) statuses this module recognizes by name — the FHIR
+// CarePlan / CarePlan.activity.detail active-side vocabulary. Nothing branches on
+// membership here: an unlisted status is open too. The list exists so the picker
+// can OFFER a spelling instead of inviting a novel one.
+export const CARE_PLAN_OPEN_STATUSES: readonly string[] = [
+  "planned",
+  "scheduled",
+  "active",
+  "in-progress",
+  "on-hold",
+  "unknown",
+];
+
+// The closed statuses, in the curated order, for the picker's second group.
+export const CARE_PLAN_CLOSED_STATUS_LIST: readonly string[] = [
+  ...CARE_PLAN_CLOSED_STATUSES,
+];
+
+// Whether a status string is one this module has a NAME for — i.e. whether the
+// open/closed decision above was made by recognition rather than by the
+// unrecognized-status default. Drives the form's "this status is outside the
+// open/closed machinery" notice.
+export function isRecognizedCarePlanStatus(
+  status: string | null | undefined
+): boolean {
+  const s = status?.trim().toLowerCase();
+  if (!s) return false;
+  return (
+    CARE_PLAN_CLOSED_STATUSES.has(s) ||
+    CARE_PLAN_OPEN_STATUSES.some((o) => o === s)
+  );
+}
+
+// The CATEGORY vocabulary: what KIND of planned activity an item is. The values are
+// exactly the ones the CDA Plan-of-Treatment importer writes (CARE_PLAN_ELEMENTS in
+// lib/cda/constants.ts derives its `category` type from this union), so a manually
+// entered item and an imported one land in the same buckets instead of the form
+// inventing a thirteenth spelling of "procedure".
+export const CARE_PLAN_CATEGORIES = [
+  "procedure",
+  "encounter",
+  "observation",
+  "medication",
+  "supply",
+  "activity",
+] as const;
+
+export type CarePlanCategory = (typeof CARE_PLAN_CATEGORIES)[number];
+
+// Friendly labels. Each names the attribute that tells the bucket apart from its
+// neighbours — "observation" and "procedure" are both things a clinician orders, so
+// the label says which side of that line it sits on.
+export const CARE_PLAN_CATEGORY_LABELS: Record<CarePlanCategory, string> = {
+  procedure: "Procedure — something done to you",
+  encounter: "Encounter — a visit to attend",
+  observation: "Observation — a test or measurement",
+  medication: "Medication — something to take",
+  supply: "Supply — a device or material",
+  activity: "Activity — something to do",
+};
+
 // Map one care-plan item to an Upcoming item. The stable key is `careplan:<id>` —
 // namespaced so it never collides with another domain's key and so a snooze/dismiss
 // follows the row across time. The item links to /care-plan and carries its id for

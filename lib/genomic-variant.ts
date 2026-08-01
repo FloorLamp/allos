@@ -16,6 +16,7 @@ import type {
   GenomicSignificance,
   Zygosity,
 } from "./types/medical";
+import { PGX_GUIDANCE, PGX_ALLELES } from "./datasets/pgx";
 
 export const GENOMIC_RESULT_TYPES: readonly GenomicResultType[] = [
   "pharmacogenomic",
@@ -38,6 +39,49 @@ export const ZYGOSITIES: readonly Zygosity[] = [
   "homozygous",
   "hemizygous",
 ];
+
+// ---- The pharmacogenomic GENE vocabulary (issue #1676) ----------------------
+//
+// The gene symbols the PGx cross-check (lib/pgx.ts, #710) can actually act on,
+// drawn from the curated CPIC dataset itself rather than re-typed here. The check
+// matches `genomic_variants.gene` against its guidance rows by an exact
+// case-insensitive symbol compare, so a drifted spelling ("Cyp 2C19", "cyp2c19 ")
+// silently produced a variant row no guidance could ever reach. The form's picker
+// offers these, and `canonicalGeneSymbol` folds a near-miss back onto the symbol on
+// write.
+//
+// This is the PGx subset, NOT the set of genes worth recording: BRCA1 and friends
+// belong in a hereditary-risk row and stay enterable as free text. The picker only
+// promises "these ten are the ones the cross-check reads".
+export const PGX_GENE_SYMBOLS: readonly string[] = [
+  ...new Set([
+    ...PGX_GUIDANCE.map((g) => g.gene),
+    ...PGX_ALLELES.map((a) => a.gene),
+  ]),
+].sort((a, b) => a.localeCompare(b));
+
+// Fold a symbol for comparison: case and every non-alphanumeric run drop out, so
+// "hla-b", "HLA B" and "HLA_B" are one symbol.
+function foldGeneSymbol(symbol: string): string {
+  return symbol.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+const GENE_BY_FOLD = new Map<string, string>(
+  PGX_GENE_SYMBOLS.map((g) => [foldGeneSymbol(g), g])
+);
+
+// The canonical PGx symbol for a typed gene, or null when it isn't one of them.
+// null is not a rejection — a hereditary-risk variant's gene is stored as typed.
+export function canonicalGeneSymbol(input: string): string | null {
+  return GENE_BY_FOLD.get(foldGeneSymbol(input)) ?? null;
+}
+
+// The write-path helper: the canonical symbol when the PGx vocabulary recognizes the
+// input, else the user's own trimmed text.
+export function normalizeGeneSymbol(input: string): string {
+  const raw = input.trim();
+  return canonicalGeneSymbol(raw) ?? raw;
+}
 
 // Normalize a stated result-type onto the enum. Unknown / absent → 'other' (the
 // safe default: an unclassified variant is stored but routes to neither the PGx

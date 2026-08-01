@@ -6,6 +6,7 @@ import {
   ENCOUNTER_CLASS_LABELS,
   ENCOUNTER_KIND_LABELS,
   ENCOUNTER_KIND_ORDER,
+  ENCOUNTER_TYPE_OPTIONS,
   type EncounterKind,
 } from "../encounter-kind";
 
@@ -181,5 +182,32 @@ describe("kind label/order registries stay in sync", () => {
     for (const k of Object.keys(ENCOUNTER_CLASS_LABELS)) {
       expect(k).toBe(k.toUpperCase());
     }
+  });
+});
+
+// A manually added visit carries no class_code, so its free-text `type` is the ONLY
+// signal encounterKind() has. Now that the form OFFERS the class labels (#1676),
+// picking one has to land on the same kind the matching class code would — otherwise
+// the picker would quietly hand people a type that filters as "other".
+describe("the visit-type entry vocabulary agrees with the class codes (#1676)", () => {
+  it("offers exactly the class labels, in their curated order", () => {
+    expect([...ENCOUNTER_TYPE_OPTIONS]).toEqual(
+      Object.values(ENCOUNTER_CLASS_LABELS)
+    );
+  });
+
+  it("a picked label derives the same kind its class code does", () => {
+    for (const [code, label] of Object.entries(ENCOUNTER_CLASS_LABELS)) {
+      const fromClass = encounterKind({ classCode: code });
+      const fromText = encounterKind({ type: label });
+      // FLD (Field) and PRENC (Pre-admission) are deliberately UNMAPPED in
+      // CLASS_KIND — ambiguous filter buckets we don't invent one for — so both
+      // paths agree on "other" for them too.
+      expect(`${label}: ${fromText}`).toBe(`${label}: ${fromClass}`);
+    }
+  });
+
+  it("still leaves an unrelated free-text visit type at 'other'", () => {
+    expect(encounterKind({ type: "Dental cleaning" })).toBe("other");
   });
 });
