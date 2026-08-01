@@ -243,6 +243,36 @@ destination's. There is deliberately **no retention sweep** — a swept tombston
 is a delayed resurrection — and `import_tombstones` is already in
 `lib/owned-tables.ts`, so profile deletion cleanup is covered.
 
+**A health record is recognized by its ENTRY IDS, not only its bytes (#1780).** One
+person can be reachable through two portal logins — the account holder on one and a
+proxy patient on another — with both labels bound to one profile, which is correct
+(#1739). Collecting through both yields two archives of the same visits, and the content
+hash is structurally incapable of collapsing them: the portal regenerates its container
+per request, so the packaging always differs while every clinical document inside is
+byte-identical. Both used to upload as `stored`, both extracted, and the profile ended up
+with every encounter attested twice. The identifier that already matched is the entry id
+— each deterministically imported row carries
+`external_id = 'document:<id>|ccda:encounter:…'`, and the per-document namespace was the
+only thing preventing the comparison. `lib/clinical-content-key.ts` digests a file's
+sorted, de-duplicated, kind-prefixed entry-id set; migration 136 stores it on
+`medical_documents.clinical_key`, backfilled for existing documents from the
+`external_id`s their rows already carry, and `persistDocumentImport` refreshes it at the
+one `'done'` transition from the same `PersistInput` the ingest probe reads. The ingest
+path probes it beside `findDedupTarget`, with the same `HELD_PREDICATE` and the same
+per-profile scope, inside the same reserve transaction — so an acquirer gets the no-row
+`already-imported` refusal (counted `suppressed`, and load-bearing here because a
+never-byte-stable container would otherwise land a marker row per collection) and a
+person gets the same file-less `'skipped'` marker a byte duplicate lands, naming the
+document that holds the records. The match is **exact set equality** with a minimum-id
+floor: a dedup decision discards an offer, so a partly overlapping export is stored and
+an AI-extracted document (which mints no entry ids) never participates. Data → Review
+reads a file-less `'skipped'` row as "duplicate — nothing imported" rather than a bare
+"skipped", since the two are not the same event. What is deliberately **not** settled
+here: collapsing partly overlapping documents onto shared rows would mean deciding what a
+row backed by two documents does on delete, on reprocess and on conflicting values, and
+nothing is deleted retroactively — documents that already double-imported keep both
+copies.
+
 **Weather / UV — keyless pull + a GLOBAL location cache (#1172).** The
 Open-Meteo weather/UV provider (`registry.ts` id `weather`, kind `public` — a
 keyless pull needing no account/credential, only the profile's home location)

@@ -250,6 +250,37 @@ describe("feedItemView — document", () => {
     );
     expect(v.patientName).toBe("Test Patient");
   });
+
+  // #1780: 'skipped' covered two unrelated things and the feed said the same bare word
+  // for both. A FILE-LESS 'skipped' row is a recognized duplicate — the engine stored
+  // nothing on purpose — and a person scanning Review after a second portal collection
+  // must be able to tell that from an extraction that declined.
+  it("reads a file-less skipped marker as a duplicate, not a bare skip", () => {
+    const v = feedItemView(
+      documentEntry(
+        doc({
+          extraction_status: "skipped",
+          has_file: 0,
+          extracted_count: 0,
+          live_count: 0,
+          extraction_error:
+            'Duplicate records — … already imported from "first.xml".',
+        })
+      ),
+      providerName
+    );
+    expect(v.detail).toBe("duplicate — nothing imported");
+    // Neither kind is an error: both stay muted and neutral.
+    expect(v.tone).toBe("neutral");
+  });
+
+  it("still reads a skipped row that HAS a file as a plain skip (reprocessable)", () => {
+    const v = feedItemView(
+      documentEntry(doc({ extraction_status: "skipped", has_file: 1 })),
+      providerName
+    );
+    expect(v.detail).toBe("skipped");
+  });
 });
 
 describe("feedItemView — job", () => {

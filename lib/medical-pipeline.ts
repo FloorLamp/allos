@@ -88,17 +88,24 @@ import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
 export {
   findDedupTarget,
+  findClinicalDuplicate,
   heldDocumentHashes,
   type DedupTarget,
   UPLOAD_DIR,
 } from "@/lib/medical-pipeline/storage";
 import {
   findDedupTarget,
+  findClinicalDuplicate,
+  insertClinicalDuplicateDoc,
   insertDuplicateDoc,
   insertFailedDoc,
   persistUploadedFile,
   type DedupTarget,
 } from "@/lib/medical-pipeline/storage";
+import {
+  clinicalDuplicateMessage,
+  clinicalKeyForInput,
+} from "@/lib/clinical-content-key";
 export { computeReprocessAllCost } from "@/lib/medical-pipeline/reprocess-cost";
 
 const log = createLogger("medical");
@@ -261,9 +268,14 @@ export interface IngestOutcome {
   // and only for the two deliberate no-row refusals below.
   docId: number | null;
   // Why no row was written, when none was. NULL whenever docId is set.
-  //   blocked      — the user deleted these bytes; the tombstone refused the re-offer.
-  //   already-held — this profile already has these exact bytes stored.
-  refusal: "blocked" | "already-held" | null;
+  //   blocked          — the user deleted these bytes; the tombstone refused the re-offer.
+  //   already-held     — this profile already has these exact bytes stored.
+  //   already-imported — different bytes, same records: every clinical entry in the
+  //                      offered health record is already imported from another document
+  //                      of this profile (#1780). The one an acquirer hits repeatedly,
+  //                      because a portal regenerates its container on every collection
+  //                      and the byte hash therefore never repeats.
+  refusal: "blocked" | "already-held" | "already-imported" | null;
   // This upload CLEARED a content-hash tombstone: the user had deleted these bytes and
   // a human has now put them back. Human paths only — an acquirer can never set it,
   // because nothing an automated client does may un-delete. Callers surface it, so a
@@ -273,6 +285,34 @@ export interface IngestOutcome {
   // The bytes' identity, once known. NULL when the file was refused before hashing
   // (too large, unsupported type, contents contradicting the declared type).
   contentHash: string | null;
+}
+
+// The CLINICAL identity of an OFFERED health-record file (issue #1780), computed before
+// anything is reserved or stored: parse it the way the import would and digest the
+// source-minted entry ids it carries.
+//
+// It runs the real parse rather than a cheaper sniff because the entry ids ARE the
+// answer — there is no shortcut to them — and it stops at the PersistInput, so the whole
+// cost is one XML/JSON walk with no DB write. The canonical-name snap
+// persistHealthRecordDoc applies is deliberately skipped: it rewrites `canonical`, never
+// an `external_id`, so it cannot move the key, and running it here would mean a DB read
+// on a path that is meant to be a cheap probe.
+//
+// A parse failure yields NULL rather than throwing. This is a DEDUP PROBE, not the
+// import: a file that cannot be parsed simply has no clinical identity to compare, and it
+// must still reach the storage path so the real import records the parse error on the
+// row — which is where a person can see it.
+function offeredClinicalKey(buffer: Buffer): string | null {
+  try {
+    const { parsed, source } = parseHealthRecord(buffer);
+    // The label only names the document type on `meta`; the key reads external_ids only,
+    // so it plays no part in the comparison.
+    return clinicalKeyForInput(
+      healthRecordToPersistInput(parsed, source, "Health record")
+    );
+  } catch {
+    return null;
+  }
 }
 
 // A row-landing outcome — the shape every human path returns.
@@ -455,19 +495,45 @@ export async function ingestMedicalUpload(
   // real clock: it is an extraction LEASE (the reaper compares it to
   // `datetime('now', '-N minutes')`), i.e. a duration, which the seam must never own.
   const insertRow = db.prepare(
-    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, uploaded_at, profile_id, acquired_portal_id)
-     VALUES (?,?,?,?,?, 'processing', datetime('now'), ?, ?, ?)`
+    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, clinical_key, extraction_status, processing_started_at, uploaded_at, profile_id, acquired_portal_id)
+     VALUES (?,?,?,?,?,?, 'processing', datetime('now'), ?, ?, ?)`
   );
+  // ── THE RECORDS ARE RECOGNIZED HERE (#1780) ────────────────────────────────
+  //
+  // Computed BEFORE the reserve transaction so the parse never runs inside a write
+  // transaction, and only for a deterministic health record: an AI-extracted document
+  // mints no entry ids, so it has no clinical identity to compare and this stays NULL.
+  //
+  // It is the SECOND identity a file can be recognized by, and it sits beside the first
+  // rather than replacing it. The content hash still answers "the same file, picked
+  // twice"; this answers "the same records, packaged again" — the case a portal produces
+  // every single collection, because it regenerates the container per request while the
+  // clinical documents inside stay byte-identical.
+  const clinicalKey = healthKind ? offeredClinicalKey(buffer) : null;
   const reserved = writeTx(
-    (): { existing: DedupTarget } | { docId: number } => {
+    ():
+      | { existing: DedupTarget }
+      | { clinicalHolder: DedupTarget; key: string }
+      | { docId: number } => {
       const found = findDedupTarget(profileId, contentHash);
       if (found) return { existing: found };
+      // Bytes are unknown; are the RECORDS? Inside the same transaction as the reserve,
+      // for the same reason the hash probe is: two simultaneous collections of one visit
+      // list must not both pass the check and both insert.
+      if (clinicalKey) {
+        const holder = findClinicalDuplicate(profileId, clinicalKey);
+        if (holder) return { clinicalHolder: holder, key: clinicalKey };
+      }
       const info = insertRow.run(
         file.name,
         "",
         storedMime,
         buffer.length,
         contentHash,
+        // Stamped on the placeholder, not only at the 'done' finalize: a second
+        // collection arriving while this one is still extracting must be recognized
+        // against it, and HELD_PREDICATE already treats an in-flight row as held.
+        clinicalKey,
         sqlNow(),
         profileId,
         acquiredPortalId
@@ -475,6 +541,36 @@ export async function ingestMedicalUpload(
       return { docId: Number(info.lastInsertRowid) };
     }
   );
+  if ("clinicalHolder" in reserved) {
+    const holder = reserved.clinicalHolder;
+    // NO MARKER ROW ON THE ACQUIRER PATH, exactly as for a byte duplicate (#1776): an
+    // offer of records allos already holds is an EVENT, and the sync report is its
+    // record. This matters MORE here than it does for the hash: a portal's container is
+    // never byte-stable, so an acquirer re-collecting daily would land a fresh marker row
+    // every single day and inflate the import feed without bound.
+    if (acquirer) {
+      return {
+        docId: null,
+        refusal: "already-imported",
+        restored: false,
+        contentHash,
+      };
+    }
+    // A person, though, chose this file and deserves to be told why nothing happened —
+    // the row IS the feedback surface, same as the byte-duplicate marker.
+    const duplicateId = insertClinicalDuplicateDoc(
+      profileId,
+      file.name,
+      mime,
+      buffer.length,
+      contentHash,
+      reserved.key,
+      clinicalDuplicateMessage(holder.filename),
+      acquiredPortalId
+    );
+    revalidatePath("/data");
+    return landed(duplicateId, contentHash, restored);
+  }
   if ("existing" in reserved) {
     const existing = reserved.existing;
     // If the original's extraction failed and its file is still on disk, the

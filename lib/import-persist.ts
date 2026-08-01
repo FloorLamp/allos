@@ -18,6 +18,7 @@ import {
   sanitizeSpecimen,
 } from "./lab-result-lifecycle";
 import { evictPreviewsForDocument } from "./reprocess-preview-cache";
+import { clinicalKeyForInput } from "./clinical-content-key";
 export {
   applyImportFollowups,
   type ImportFollowupOptions,
@@ -520,7 +521,7 @@ export function persistDocumentImport(
          SET extraction_status = 'done', extraction_completed_at = ?,
              extracted_count = ?, doc_type = ?,
              source = ?, document_date = ?, patient_name = ?, raw_extraction = ?,
-             model = ?, import_report = ?, extraction_error = NULL
+             model = ?, import_report = ?, clinical_key = ?, extraction_error = NULL
        WHERE id = ? AND profile_id = ?`
     ).run(
       sqlNow(),
@@ -534,6 +535,16 @@ export function persistDocumentImport(
       // The import DEBUGGER report — refreshed on every
       // reprocess so it always reflects the current parse (idempotent).
       input.meta.importReport,
+      // The CLINICAL identity of this document (#1780): a digest of the source-minted
+      // entry ids it just imported. Stamped HERE, at the one 'done' transition every
+      // extract/import/reprocess path funnels through, and computed from the SAME
+      // PersistInput the ingest probe computes an offered file's key from — so the two
+      // sides of the comparison can never be derived differently. NULL for an
+      // AI-extracted document (it mints no external_ids) and for a parse too small to
+      // have a trustworthy identity, which both mean "not eligible for clinical dedup".
+      // Refreshed on every reprocess, so a re-parse that yields different entries
+      // updates the identity instead of leaving a stale one behind.
+      clinicalKeyForInput(input),
       docId,
       profileId
     );

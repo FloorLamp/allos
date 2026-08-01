@@ -25,9 +25,14 @@
 // What happened to one uploaded file, from the caller's point of view.
 //
 //   stored    — the file is in the record and extraction is underway. This is success.
-//   duplicate — the instance already had these exact bytes for this profile; nothing
-//               new was stored. Not an error: re-running an upload is meant to be safe,
-//               and dedup is per profile by design.
+//   duplicate — the instance already had this content for this profile; nothing new was
+//               stored. Not an error: re-running an upload is meant to be safe, and dedup
+//               is per profile by design. TWO recognitions land here, deliberately under
+//               ONE word, because a client's correct response to both is identical (stop
+//               resending, nothing was lost): the same BYTES (#612), and — for a
+//               deterministic health record — the same clinical ENTRY IDS arriving in
+//               different packaging (#1780). The reason line distinguishes them for a
+//               human; the outcome does not, because no client behaviour depends on it.
 //   failed    — the engine refused the file (too large, unsupported type, contents that
 //               contradict the declared type, or it could not be written to disk). The
 //               reason line comes back with it.
@@ -44,6 +49,17 @@ export type UploadOutcome = "stored" | "duplicate" | "failed" | "blocked";
 // know the deletion was deliberate and where its user can undo it.
 export const BLOCKED_REASON =
   "deleted in allos; a user can allow re-acquisition from Data → Review";
+
+// The reason line the no-row RECORDS-duplicate outcome carries (#1780). Owned here beside
+// BLOCKED_REASON so the endpoint, the contract doc and the tests quote ONE sentence.
+//
+// It says "records", not "file", because that is the whole point: the bytes were new and
+// were still not worth storing. A client author reading only this line has to understand
+// that resending a freshly generated export of the same visits will keep landing here —
+// the container hash is not the identity allos dedups on for a health record — so the
+// thing to change is what it collects, not how it packages it.
+export const RECORDS_DUPLICATE_REASON =
+  "every clinical entry in this health record is already imported for this profile; nothing was stored";
 
 export interface LandedDocumentRow {
   // The id ingestMedicalUpload returned.

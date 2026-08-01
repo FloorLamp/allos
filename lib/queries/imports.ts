@@ -75,6 +75,10 @@ export interface ImportLogDocumentRow {
   // every document a person uploaded — which is most of them — and the feed simply says
   // nothing in that case rather than "acquired via: —".
   acquired_portal_name: string | null;
+  // 1 when the row has a file on disk, 0 for a file-less duplicate MARKER (#612 bytes,
+  // #1780 records). The feed reads it to distinguish "recognized, nothing stored" from a
+  // real document whose extraction was skipped — see documentDetail in lib/import-feed.
+  has_file: number;
   uploaded_at: string;
   sortTime: string;
 }
@@ -116,6 +120,8 @@ export function getImportLogDocuments(
                    THEN CAST(COALESCE(json_extract(d.import_report, '$.confidence.scrutiny'), 0) AS INTEGER)
                    ELSE 0 END AS confidence_scrutiny,
               p.name AS acquired_portal_name,
+              CASE WHEN d.stored_path IS NOT NULL AND d.stored_path <> ''
+                   THEN 1 ELSE 0 END AS has_file,
               d.uploaded_at AS uploaded_at
          FROM medical_documents d
          LEFT JOIN portals p ON p.id = d.acquired_portal_id

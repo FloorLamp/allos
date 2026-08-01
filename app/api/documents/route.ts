@@ -8,6 +8,7 @@ import { ingestMedicalUpload } from "@/lib/medical-pipeline";
 import { MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
 import {
   BLOCKED_REASON,
+  RECORDS_DUPLICATE_REASON,
   classifyUploadOutcome,
   type UploadOutcome,
 } from "@/lib/document-upload-api";
@@ -267,11 +268,12 @@ export async function POST(req: Request): Promise<Response> {
         // debugging with `profile=<id>` and curl is still a script from here.
         acquirer: true,
       });
-      // A DELIBERATE NO-ROW OUTCOME (#1776/#1777). The engine refused to write anything:
-      // either the user deleted these bytes (`blocked`) or this profile already holds
-      // them (`already-held`). There is no document to point at and no id to report —
-      // the per-file outcome IS the answer, and the run's sync report is where the
-      // counts belong.
+      // A DELIBERATE NO-ROW OUTCOME (#1776/#1777/#1780). The engine refused to write
+      // anything: the user deleted these bytes (`blocked`), this profile already holds
+      // them (`already-held`), or it already holds every clinical entry the health record
+      // carries, under different packaging (`already-imported`). There is no document to
+      // point at and no id to report — the per-file outcome IS the answer, and the run's
+      // sync report is where the counts belong.
       if (out.docId === null) {
         documents.push({
           id: null,
@@ -279,11 +281,15 @@ export async function POST(req: Request): Promise<Response> {
           outcome: out.refusal === "blocked" ? "blocked" : "duplicate",
           // Named so a client author implements the right behaviour instead of filing
           // a bug about a "lost" upload. A blocked file is not a failure and must not
-          // be retried; it is a decision a person made and can reverse in allos.
+          // be retried; it is a decision a person made and can reverse in allos. The two
+          // duplicate recognitions share the outcome word but not the reason: only one of
+          // them tells the author that repackaging will not help.
           reason:
             out.refusal === "blocked"
               ? BLOCKED_REASON
-              : "already held for this profile; nothing was stored",
+              : out.refusal === "already-imported"
+                ? RECORDS_DUPLICATE_REASON
+                : "already held for this profile; nothing was stored",
         });
         continue;
       }
