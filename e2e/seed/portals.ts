@@ -15,6 +15,7 @@ import {
 import {
   E2E_LOGIN_PORTAL_A,
   E2E_LOGIN_PORTAL_B,
+  E2E_LOGIN_PORTAL_NONE,
   PORTAL_B_ACCOUNT,
   PORTAL_B_NAME,
   PORTAL_HOUSEHOLD_A_PROFILE,
@@ -39,6 +40,12 @@ export function seedPortalHouseholds(): void {
   const profileB = fixtureProfileId(PORTAL_HOUSEHOLD_B_PROFILE);
   seedMemberLogin(E2E_LOGIN_PORTAL_A, profileA, "write");
   seedMemberLogin(E2E_LOGIN_PORTAL_B, profileB, "write");
+  // A third login on household A's profile with READ access only. It reaches no portal
+  // account — A's profile carries no binding, and a read-only member is outside the
+  // canManagePending population that may see unclaimed accounts — so its visible registry
+  // (#1796) is empty by construction, whatever other specs create and remove meanwhile.
+  // That is what makes the guided page's empty-registry stage (#1826) assertable.
+  seedMemberLogin(E2E_LOGIN_PORTAL_NONE, profileA, "read");
 
   // Idempotent across a reused dev server: createPortal mints a slug from the name and
   // would mint a SECOND portal on a re-run, so reuse the existing one when it is there.

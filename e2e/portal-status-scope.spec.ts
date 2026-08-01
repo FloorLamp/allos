@@ -99,14 +99,11 @@ test.describe("Patient portals status scoping (#1787)", () => {
     });
     try {
       await member.goto("/integrations/patient-portals");
-      const status = member.getByTestId("portals-status-line");
-      await expect(status).toBeVisible();
 
-      // The status sentence carries none of the three things it used to: not the
-      // free-text failure, not the account nickname, not the portal it belongs to.
-      await expect(status).not.toContainText(PORTAL_B_FAILURE);
-      await expect(status).not.toContainText(PORTAL_B_ACCOUNT);
-      await expect(status).not.toContainText(PORTAL_B_NAME);
+      // The page is not blanked — it still answers for THIS household with its own next
+      // step, which is what makes the fix a scoping change rather than a removal. What it
+      // must not carry is a single trace of the other household's run.
+      await expect(member.getByTestId("portal-stage")).toBeVisible();
 
       // The FREE TEXT is asserted page-wide, because that is the disclosure: up to 500
       // characters an external companion tool supplies through the token-authenticated
@@ -114,21 +111,18 @@ test.describe("Patient portals status scoping (#1787)", () => {
       // this login through ANY element, not just through the one that leaked it.
       await expect(member.locator("body")).not.toContainText(PORTAL_B_FAILURE);
 
-      // Deliberately NOT asserted page-wide: the portal name and account nickname. The
-      // portal REGISTRY (listPortals/listPortalAccounts, rendered by <PortalSetup>) is
-      // instance-wide by design — it is the shared vocabulary the whole card is built
-      // on, and #1759 pins that boundary explicitly for the API twin: slug/name/
-      // software plus the accounts' slug/name/implicit, and no patient labels. So this
-      // login still sees "there is a portal called X with a login called Y" in the
-      // registry and the bind picker. What it must not learn is that Y FAILED and why,
-      // which is what the assertions above cover. Widening the registry's scoping is a
-      // separate product decision, not something this fix quietly takes.
+      // THE FAILING ACCOUNT IS NEVER NAMED to this login either — the nickname is half of
+      // what leaked, and it names a household's composition (#1796).
+      await expect(member.locator("body")).not.toContainText(PORTAL_B_ACCOUNT);
 
-      // The card is not blanked — it still answers for THIS household, which is what
-      // makes the fix a scoping change rather than a removal. Household A has no runs
-      // of its own, so it gets the honest no-run sentence and a calm tone.
-      await expect(status).toHaveAttribute("data-tone", "idle");
-      await expect(status).toContainText(/no run reported yet/i);
+      // Deliberately NOT asserted page-wide: the PORTAL name. #1826 narrowed the page onto
+      // the scoped registry read (`listVisiblePortalRegistry`), and that read admits an
+      // UNCLAIMED account — an account with no binding onto any profile — to the
+      // canManagePending population, which household A is in. A portal created in the UI
+      // is claimed by nobody until a run has discovered a patient on it, so clause (b) is
+      // load-bearing rather than incidental, and B's portal still reaches A through its
+      // never-bound implicit login. What A must not learn is that B's NAMED login failed
+      // and why, which is what the assertions above cover.
     } finally {
       await member.context().close();
     }
@@ -138,7 +132,9 @@ test.describe("Patient portals status scoping (#1787)", () => {
     test.slow();
 
     // The other half of the negative: the message is genuinely reachable, so the first
-    // test is proving scoping rather than a fixture that never rendered.
+    // test is proving scoping rather than a fixture that never rendered. B's account has
+    // a reported run, so B's page is in steady state and leads with the one status
+    // sentence (#1826).
     const member = await loginAs(browser, {
       username: E2E_LOGIN_PORTAL_B,
       password: E2E_MEMBER_PASSWORD,

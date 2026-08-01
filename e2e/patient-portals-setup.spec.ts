@@ -1,20 +1,158 @@
 import { test, expect } from "./fixtures";
+import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledFill, settledSelect } from "./helpers";
+import { loginAs } from "./nav";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { E2E_LOGIN_PORTAL_NONE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// The Patient portals card's setup flow (#1739): register a portal, map a patient to a
-// profile, and see the mapping listed.
+// The Patient portals page (#1739, reshaped by #1826): register a portal, map a patient to
+// a profile, and see the mapping listed — through a GUIDED flow that renders one stage's
+// card at a time instead of eight flat siblings.
 //
-// The assertion that matters most is the REFUSAL of a URL. A portal is recorded by name
-// only — allos owns the portal's identity, the companion tool owns its address — and that
-// is what stops a compromised record from aiming an attended browser tool at a login form
-// an attacker controls. The schema has no address column; this proves the one free-text
-// field where one could be typed refuses it too.
+// The assertion that matters most is still the REFUSAL of a URL. A portal is recorded by
+// name only — allos owns the portal's identity, the companion tool owns its address — and
+// that is what stops a compromised record from aiming an attended browser tool at a login
+// form an attacker controls. The schema has no address column; this proves the one
+// free-text field where one could be typed refuses it too.
 //
-// FIXTURE OWNERSHIP: every portal this spec creates carries a unique NAME (allos mints
-// the slug from it), and the spec removes what it adds, so it never counts or disturbs
-// rows another spec owns.
+// WHAT #1826 CHANGED FOR THIS FILE. The registry, the add forms, the row maintenance verbs
+// and the manual bind moved into the collapsed "Manage portals & logins" disclosure, and
+// remove/unbind became ⋯ menu entries behind a real confirm. Every assertion below is the
+// same assertion it was; it is the route to the control that moved. Reaching setup through
+// Manage is also what makes these specs stage-INDEPENDENT: Manage opens from any stage, so
+// a test never has to know which card the shared worker database happens to be showing.
+//
+// FIXTURE OWNERSHIP: every portal this spec creates carries a unique NAME (allos mints the
+// slug from it), and the spec removes what it adds, so it never counts or disturbs rows
+// another spec owns.
+
+// Manage is a native <details>, so a reload closes it and a Server-Action re-render leaves
+// it as it was. This reads the element's own open state instead of assuming either, which
+// makes it safe to call at any point in a test.
+async function openManage(page: Page): Promise<void> {
+  const manage = page.getByTestId("portals-manage");
+  await expect(manage).toBeVisible();
+  const alreadyOpen = await manage.evaluate(
+    (el) => (el as HTMLDetailsElement).open
+  );
+  if (!alreadyOpen) await manage.getByTestId("portals-manage-toggle").click();
+  await expect(page.getByTestId("portal-identities")).toBeVisible();
+}
+
+// Open one row's ⋯ menu. Addressed by the trigger's accessible name, which names the row's
+// subject — a portal row also contains its logins' triggers, so "the button in this row"
+// is not a unique thing to ask for.
+async function openRowMenu(
+  page: Page,
+  row: Locator,
+  subject: string
+): Promise<void> {
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: `Actions for ${subject}` })
+  );
+}
+
+// The menu panel is portaled to <body> and only one menu is ever open, so a menu entry is
+// addressed at page level rather than inside the row it belongs to.
+async function menuItem(page: Page, testId: string): Promise<Locator> {
+  const item = page.getByTestId(testId);
+  await expect(item).toBeVisible();
+  return item;
+}
+
+// Destructive row verbs confirm through the shared dialog (#1587), never a native one.
+async function confirmWith(page: Page, label: string): Promise<void> {
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: label }).click();
+}
+
+async function addPortal(page: Page, name: string): Promise<void> {
+  await page.goto("/integrations/patient-portals");
+  await openManage(page);
+  await settledFill(page, page.getByTestId("portal-name"), name);
+  await hydratedClick(page, page.getByTestId("portal-add"));
+  await expect(page.getByTestId("portals-status")).toHaveText("Portal added.");
+}
+
+async function removePortal(page: Page, name: string): Promise<void> {
+  await openManage(page);
+  const row = page.getByTestId("portal-row").filter({ hasText: name }).first(); // first-ok: the name is unique to the calling test, so this is spec-owned data
+  await openRowMenu(page, row, name);
+  await (await menuItem(page, "portal-remove")).click();
+  await confirmWith(page, "Remove portal");
+  await expect(page.getByTestId("portals-status")).toHaveText(
+    "Portal removed."
+  );
+}
+
+// Mint a real `upload:documents` token through the UI — the same path an operator uses,
+// and the only place the secret is ever shown.
+async function mintToken(page: Page, name: string): Promise<string> {
+  await page.goto("/settings/tokens");
+  await settledFill(page, page.getByTestId("api-token-name"), name);
+  await hydratedClick(page, page.getByTestId("api-token-create"));
+  const panel = page.getByTestId("api-token-secret");
+  await expect(panel).toBeVisible();
+  return (await panel.locator("code").innerText()).trim();
+}
+
+// Plant a pending row directly: the route that writes one needs a bearer token and a JSON
+// run report, which is the API's own DB-tier territory. What this spec owns is what the
+// PAGE does with a pending row once one exists.
+function plantPending(portalName: string, label: string, outcome: string) {
+  const handle = new Database(workerDbPath());
+  try {
+    const portal = handle
+      .prepare("SELECT id FROM portals WHERE name = ?")
+      .get(portalName) as { id: number };
+    const account = handle
+      .prepare("SELECT id FROM portal_accounts WHERE portal_id = ?")
+      .get(portal.id) as { id: number };
+    handle
+      .prepare(
+        `INSERT INTO pending_portal_identities
+           (portal_id, account_id, patient_label, first_seen_at, last_seen_at, seen_count, last_outcome)
+         VALUES (?, ?, ?, '2026-01-02 03:04:05', '2026-01-03 03:04:05', 2, ?)`
+      )
+      .run(portal.id, account.id, label, outcome);
+  } finally {
+    handle.close();
+  }
+}
+
+// A run report for the caller's own portal. It goes away with the portal, so a test that
+// removes what it added leaves no report behind for a neighbour to trip over.
+//
+// `at` defaults to the run's frozen instant — the newest a report can be. A caller that
+// needs a request raised AFTERWARDS to read as open must pass an older stamp, because a
+// report at or after a request's creation is what ANSWERS it (lib/sync-requests.ts).
+function plantRunReport(portalName: string, at?: string) {
+  const handle = new Database(workerDbPath());
+  try {
+    const portal = handle
+      .prepare("SELECT id FROM portals WHERE name = ?")
+      .get(portalName) as { id: number };
+    const account = handle
+      .prepare("SELECT id FROM portal_accounts WHERE portal_id = ?")
+      .get(portal.id) as { id: number };
+    const stamp =
+      at ?? frozenNow().toISOString().replace("T", " ").slice(0, 19);
+    handle
+      .prepare(
+        `INSERT INTO portal_run_reports
+           (account_id, portal_id, at, ok, status, message, discovered)
+         VALUES (?, ?, ?, 1, 'nothing-new', NULL, 0)
+         ON CONFLICT(account_id) DO UPDATE SET at = excluded.at, ok = 1`
+      )
+      .run(account.id, portal.id, stamp);
+  } finally {
+    handle.close();
+  }
+}
+
 test.describe("Patient portals setup (#1739)", () => {
   test("register a portal, map a patient, and see the binding", async ({
     page,
@@ -24,15 +162,8 @@ test.describe("Patient portals setup (#1739)", () => {
     const portal = `Spec Portal ${stamp}`;
     const label = `Spec Patient ${stamp}`;
 
-    await page.goto("/integrations/patient-portals");
-    await expect(page.getByTestId("portals-registry")).toBeVisible();
-
     // 1. Register the portal. There is NO slug field — allos mints the key from the name.
-    await settledFill(page, page.getByTestId("portal-name"), portal);
-    await hydratedClick(page, page.getByTestId("portal-add"));
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal added."
-    );
+    await addPortal(page, portal);
     const portalRow = page
       .getByTestId("portal-row")
       .filter({ hasText: portal })
@@ -41,8 +172,13 @@ test.describe("Patient portals setup (#1739)", () => {
     // The minted slug is shown, because it is what the companion tool's config quotes.
     await expect(portalRow).toContainText(`spec-portal-${stamp}`);
 
-    // 2. Map a patient on it. With one login the select names the portal alone — the
-    //    account component is invisible until a second login exists.
+    // 2. Map a patient on it, through the manual bind — which is now an ESCAPE HATCH
+    //    inside Manage rather than the page's primary affordance (#1826), and says so.
+    await expect(page.getByTestId("portal-identities")).toContainText(
+      "pre-bind a label you know exactly"
+    );
+    // With one login the select names the portal alone — the account component is
+    // invisible until a second login exists.
     await page.getByTestId("bind-account").selectOption({ label: portal });
     await settledFill(page, page.getByTestId("bind-label"), label);
     await hydratedClick(page, page.getByTestId("bind-add"));
@@ -60,22 +196,13 @@ test.describe("Patient portals setup (#1739)", () => {
 
     // …and it survives a reload (it is persisted, not optimistic).
     await page.reload();
+    await openManage(page);
     await expect(
       page.getByTestId("portal-identity-row").filter({ hasText: label })
     ).toHaveCount(1);
 
     // 4. Clean up: removing the portal takes its binding with it.
-    await hydratedClick(
-      page,
-      page
-        .getByTestId("portal-row")
-        .filter({ hasText: portal })
-        .first() // first-ok: spec-owned row
-        .getByTestId("portal-remove")
-    );
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal removed."
-    );
+    await removePortal(page, portal);
     await expect(
       page.getByTestId("portal-identity-row").filter({ hasText: label })
     ).toHaveCount(0);
@@ -84,6 +211,7 @@ test.describe("Patient portals setup (#1739)", () => {
   test("a portal refuses a web address in its name", async ({ page }) => {
     test.slow();
     await page.goto("/integrations/patient-portals");
+    await openManage(page);
     await settledFill(
       page,
       page.getByTestId("portal-name"),
@@ -109,12 +237,7 @@ test.describe("Patient portals setup (#1739)", () => {
     const portal = `Two Logins ${stamp}`;
     const label = `SHARED, LABEL ${stamp}`;
 
-    await page.goto("/integrations/patient-portals");
-    await settledFill(page, page.getByTestId("portal-name"), portal);
-    await hydratedClick(page, page.getByTestId("portal-add"));
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal added."
-    );
+    await addPortal(page, portal);
 
     // Add a named login. Now the portal has two (the implicit one and this), so the
     // account becomes visible everywhere it matters.
@@ -146,30 +269,27 @@ test.describe("Patient portals setup (#1739)", () => {
         .filter({ hasText: "Mom" })
     ).toHaveCount(1);
 
-    await hydratedClick(
-      page,
-      page
-        .getByTestId("portal-row")
-        .filter({ hasText: portal })
-        .first() // first-ok: spec-owned row
-        .getByTestId("portal-remove")
-    );
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal removed."
-    );
+    await removePortal(page, portal);
   });
 
-  test("the card links to token setup and explains what a quiet run means", async ({
+  // THE NUMBERED OVERVIEW IS A COLLAPSIBLE NOW (#1826). It used to be a permanent card
+  // whose five steps did not match the order of the cards below it. Each stage states its
+  // own next step; the whole shape is one click away for whoever wants it.
+  test("the page names one next step, with the five-step overview one click away", async ({
     page,
   }) => {
     test.slow();
     await page.goto("/integrations/patient-portals");
-    // The tool needs an upload token, so the page points at where one is minted.
-    await expect(
-      page.getByRole("link", { name: "Settings → API tokens" })
-    ).toBeVisible();
-    // A run that found nothing is still a check — the card must not read as broken.
-    await expect(page.getByTestId("portals-status-line")).toBeVisible();
+
+    // Exactly one stage card, always — the page never renders two next steps.
+    await expect(page.getByTestId("portal-stage")).toHaveCount(1);
+
+    // Closed by default: the overview is in the page but not in the way.
+    const overviewTokenLink = page.getByTestId("how-it-works-token-link");
+    await expect(overviewTokenLink).toBeHidden();
+    await page.getByTestId("portals-how-it-works-toggle").click();
+    // The tool needs an upload token, so the overview points at where one is minted.
+    await expect(overviewTokenLink).toBeVisible();
   });
 
   // THE IMPLICIT LOGIN'S PARENTHETICAL IS CONDITIONAL (#1756). "Used when the tool names
@@ -184,12 +304,7 @@ test.describe("Patient portals setup (#1739)", () => {
     const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
     const portal = `Implicit Copy ${stamp}`;
 
-    await page.goto("/integrations/patient-portals");
-    await settledFill(page, page.getByTestId("portal-name"), portal);
-    await hydratedClick(page, page.getByTestId("portal-add"));
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal added."
-    );
+    await addPortal(page, portal);
 
     const portalRow = page
       .getByTestId("portal-row")
@@ -205,73 +320,160 @@ test.describe("Patient portals setup (#1739)", () => {
     await expect(page.getByTestId("portals-status")).toHaveText("Login added.");
     await expect(note).toHaveText("(the tool must name a login)");
 
-    await hydratedClick(page, portalRow.getByTestId("portal-remove"));
+    await removePortal(page, portal);
+  });
+
+  // RENAME WAS A SHIPPED ACTION WITH NO UI (#1826). `renamePortalAction` existed from
+  // #1739 and nothing rendered it — the slug/name split exists precisely so a rename is
+  // safe, and a typo was permanent anyway.
+  test("renaming a portal from its ⋯ menu changes the name and not the slug", async ({
+    page,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Typo Portal ${stamp}`;
+    const fixed = `Fixed Portal ${stamp}`;
+
+    await addPortal(page, portal);
+    const row = page
+      .getByTestId("portal-row")
+      .filter({ hasText: portal })
+      .first(); // first-ok: spec-owned row, matched by its unique name
+    await openRowMenu(page, row, portal);
+    await (await menuItem(page, "portal-rename")).click();
+    await settledFill(page, page.getByTestId("portal-rename-input"), fixed);
+    await hydratedClick(page, page.getByTestId("portal-rename-save"));
     await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal removed."
+      "Portal renamed."
     );
+
+    const renamed = page
+      .getByTestId("portal-row")
+      .filter({ hasText: fixed })
+      .first(); // first-ok: spec-owned row
+    await expect(renamed).toBeVisible();
+    // The key every tool config quotes is untouched — that is the whole point.
+    await expect(renamed).toContainText(`typo-portal-${stamp}`);
+    await expect(
+      page.getByTestId("portal-row").filter({ hasText: portal })
+    ).toHaveCount(0);
+
+    await removePortal(page, fixed);
+  });
+});
+
+// THE STAGES (#1826). The page derives where a household is from data it already holds and
+// renders only that step. This walks the transitions a shared worker database can express
+// end to end, inside ONE test so every fact it depends on is one it planted itself.
+//
+// The "create a token" stage is deliberately absent here and pinned in the pure tier
+// instead: whether a live `upload:documents` token exists is instance-global state that
+// other specs mint into and never revoke, so a browser assertion on its ABSENCE would pass
+// or fail on test scheduling rather than on behaviour.
+test.describe("Patient portals — the guided stages (#1826)", () => {
+  test("the page walks a household from first run to steady state and back", async ({
+    page,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Stage Walk ${stamp}`;
+    const label = `Stage Patient ${stamp}`;
+    const stage = page.getByTestId("portal-stage");
+
+    await addPortal(page, portal);
+    // A token exists from here on, so the token stage cannot be the answer.
+    await mintToken(page, `stage walk ${stamp}`);
+
+    // STAGE: nothing has ever run. The page asks for a run and says how long the first
+    // one takes — the only stage that needs that note.
+    await page.goto("/integrations/patient-portals");
+    await expect(stage).toHaveAttribute("data-stage", "first-run");
+    await expect(stage).toContainText("Run the tool on that computer");
+    await expect(stage).toContainText("can take several minutes");
+    // No status sentence yet: nothing has happened for one to describe.
+    await expect(page.getByTestId("portals-status-line")).toHaveCount(0);
+
+    // STAGE: a run has reported. Status leads, and the sync history is one link away.
+    plantRunReport(portal);
+    await page.reload();
+    await expect(stage).toHaveAttribute("data-stage", "steady");
+    await expect(page.getByTestId("portals-status-line")).toBeVisible();
+    await expect(page.getByTestId("sync-history-link")).toBeVisible();
+
+    // STAGE: the tool reported a patient allos cannot place. Mapping becomes the page.
+    plantPending(portal, label, "discovered");
+    await page.reload();
+    await expect(stage).toHaveAttribute("data-stage", "map-patients");
+    const pendingRow = page
+      .getByTestId("pending-row")
+      .filter({ hasText: label })
+      .first(); // first-ok: the label is unique to this test, so this is spec-owned data
+    await expect(pendingRow).toBeVisible();
+    // The manual bind is no longer a standing primary affordance — it is one click away
+    // inside Manage, which is progressive disclosure rather than lockout.
+    await expect(page.getByTestId("bind-add")).toBeHidden();
+    await openManage(page);
+    await expect(page.getByTestId("bind-add")).toBeVisible();
+
+    // Map it, and the page settles back into steady state with the patient summarised.
+    const picker = pendingRow.getByTestId("pending-profile");
+    const profileValue = await picker
+      .locator("option")
+      .nth(1)
+      .getAttribute("value");
+    expect(profileValue).toBeTruthy();
+    await settledSelect(page, picker, profileValue!);
+    await hydratedClick(page, pendingRow.getByTestId("pending-map"));
+    await expect(page.getByTestId("portals-status")).toHaveText(
+      "Patient mapped."
+    );
+    await expect(stage).toHaveAttribute("data-stage", "steady");
+    await expect(
+      page.getByTestId("portal-patient-row").filter({ hasText: label })
+    ).toHaveCount(1);
+
+    await removePortal(page, portal);
+  });
+
+  // A login that can reach no portal sees the introduction, and nothing else — no status
+  // sentence, no forms, and no Manage drawer, because there is nothing in it for them.
+  // The fixture login is READ-ONLY on a profile with no portal binding, which puts it
+  // outside the population that may see unclaimed accounts too: its visible registry
+  // (#1796) is empty by construction rather than by scheduling luck.
+  test("a household with no portal of its own sees only the introduction", async ({
+    browser,
+  }) => {
+    test.slow();
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_PORTAL_NONE,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/integrations/patient-portals");
+      const stage = member.getByTestId("portal-stage");
+      await expect(stage).toHaveAttribute("data-stage", "no-portals");
+      // A member cannot register a portal, so the card says who can instead of showing a
+      // form that would be refused at the gate.
+      await expect(stage).toContainText(
+        "An admin on this instance can add one"
+      );
+      await expect(member.getByTestId("portal-name")).toHaveCount(0);
+      await expect(member.getByTestId("portals-status-line")).toHaveCount(0);
+      await expect(member.getByTestId("portals-manage")).toHaveCount(0);
+    } finally {
+      await member.context().close();
+    }
   });
 });
 
 // DISCOVERED / REFUSED IDENTITIES (#1739). The tool reports the proxy patients it saw, so
 // this list is normally populated by DISCOVERY rather than by failure — the user binds a
-// label allos was told, verbatim, instead of predicting how a portal renders a name.
+// label allos was told, verbatim, instead of predicting how a portal renders a name. A
+// refused upload lands here too, as the safety net for a patient who appears between runs.
 //
 // FIXTURE OWNERSHIP: this spec creates its own portal (unique name) and its own pending
 // row on it, and removes the portal at the end — which takes both with it.
 test.describe("Patient portals — waiting to be mapped (#1739)", () => {
-  // Plant a pending row directly: the route that writes one needs a bearer token and a
-  // JSON run report, which is the API's own DB-tier territory. What this spec owns is
-  // what the CARD does with a pending row once one exists.
-  function plantPending(portalName: string, label: string, outcome: string) {
-    const handle = new Database(workerDbPath());
-    try {
-      const portal = handle
-        .prepare("SELECT id FROM portals WHERE name = ?")
-        .get(portalName) as { id: number };
-      const account = handle
-        .prepare("SELECT id FROM portal_accounts WHERE portal_id = ?")
-        .get(portal.id) as { id: number };
-      handle
-        .prepare(
-          `INSERT INTO pending_portal_identities
-             (portal_id, account_id, patient_label, first_seen_at, last_seen_at, seen_count, last_outcome)
-           VALUES (?, ?, ?, '2026-01-02 03:04:05', '2026-01-03 03:04:05', 2, ?)`
-        )
-        .run(portal.id, account.id, label, outcome);
-    } finally {
-      handle.close();
-    }
-  }
-
-  async function addPortal(
-    page: import("@playwright/test").Page,
-    name: string
-  ) {
-    await page.goto("/integrations/patient-portals");
-    await settledFill(page, page.getByTestId("portal-name"), name);
-    await hydratedClick(page, page.getByTestId("portal-add"));
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal added."
-    );
-  }
-
-  async function removePortal(
-    page: import("@playwright/test").Page,
-    name: string
-  ) {
-    await hydratedClick(
-      page,
-      page
-        .getByTestId("portal-row")
-        .filter({ hasText: name })
-        .first() // first-ok: spec-owned row
-        .getByTestId("portal-remove")
-    );
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal removed."
-    );
-  }
-
   test("a reported patient shows up waiting, and one tap maps it", async ({
     page,
   }) => {
@@ -323,12 +525,14 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     await expect(
       page.getByTestId("pending-row").filter({ hasText: label })
     ).toHaveCount(0);
+    await openManage(page);
     await expect(
       page.getByTestId("portal-identity-row").filter({ hasText: label })
     ).toHaveCount(1);
 
     // …and it survives a reload: the mapping is persisted, the pending row really went.
     await page.reload();
+    await openManage(page);
     await expect(
       page.getByTestId("portal-identity-row").filter({ hasText: label })
     ).toHaveCount(1);
@@ -363,10 +567,11 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     );
 
     // Gone from the prompt list, and present as a binding that syncs nothing — the
-    // difference between "not now" and "not ever" is visible on the card.
+    // difference between "not now" and "not ever" is visible on the page.
     await expect(
       page.getByTestId("pending-row").filter({ hasText: label })
     ).toHaveCount(0);
+    await openManage(page);
     const ignoredRow = page
       .getByTestId("portal-identity-row")
       .filter({ hasText: label })
@@ -375,6 +580,17 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     await expect(ignoredRow.getByTestId("portal-identity-ignored")).toHaveText(
       "not synced (ignored)"
     );
+
+    // AND IT IS REVERSIBLE (#1826). "Never sync this person" was previously a one-way
+    // door in the UI even though the lib half to undo it has always existed.
+    await openRowMenu(page, ignoredRow, label);
+    await (await menuItem(page, "portal-identity-unignore")).click();
+    await expect(page.getByTestId("portals-status")).toContainText(
+      "No longer ignored"
+    );
+    await expect(
+      page.getByTestId("portal-identity-row").filter({ hasText: label })
+    ).toHaveCount(0);
 
     await removePortal(page, portal);
   });
@@ -405,6 +621,7 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
       page.getByTestId("pending-row").filter({ hasText: label })
     ).toHaveCount(0);
     // Dismissing is NOT binding and NOT ignoring: nothing was recorded about the patient.
+    await openManage(page);
     await expect(
       page.getByTestId("portal-identity-row").filter({ hasText: label })
     ).toHaveCount(0);
@@ -412,10 +629,12 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     await removePortal(page, portal);
   });
 
-  // FIRST CONTACT (#1756). The card promises "the tool reports every run, so a quiet week
+  // FIRST CONTACT (#1756). The page promised "the tool reports every run, so a quiet week
   // reads as healthy rather than broken" — and then said "No run reported yet." directly
   // above a list of patients a run had just reported, because that run's own patient was
-  // unmapped and its report was refused. Status must not contradict the card it sits on.
+  // unmapped and its report was refused. The ONE status computation now leads the mapping
+  // stage as well as the steady one (#1826), which is where its first-contact sentence
+  // always pointed ("map them below to finish setup").
   test("Status names what the run reported instead of claiming nothing happened", async ({
     page,
   }) => {
@@ -425,13 +644,13 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     const label = `First Patient ${stamp}`;
 
     await addPortal(page, portal);
-    const line = page.getByTestId("portals-status-line");
-    // Nothing has happened yet, and the card says exactly that.
-    await expect(line).toHaveText("No run reported yet.");
+    // Nothing has happened yet, so the page states a next step rather than a status.
+    await expect(page.getByTestId("portals-status-line")).toHaveCount(0);
 
     plantPending(portal, label, "discovered");
     await page.reload();
     // Now it names the portal the tool reported on, and the action that finishes setup.
+    const line = page.getByTestId("portals-status-line");
     await expect(line).toHaveAttribute("data-tone", "attention");
     await expect(line).toContainText(portal);
     await expect(line).toContainText("finish setup");
@@ -439,11 +658,14 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     await removePortal(page, portal);
   });
 
-  // SYNC REQUESTS (#1757). Allos cannot run a portal sync, so the card cannot offer
+  // SYNC REQUESTS (#1757). Allos cannot run a portal sync, so the page cannot offer
   // "Sync now" — what it offers is asking the person whose machine holds the login. The
   // open ask is shown with its expiry, and it CLEARS when a run is reported, because the
   // request answers itself rather than needing an acknowledgment protocol.
-  test("an open sync request shows on the card and clears when a run is reported", async ({
+  //
+  // It lives in the steady-state card (#1826) — asking someone to run a sync is a thing a
+  // running household does — so this test plants the run report that puts the page there.
+  test("an open sync request shows on the page and clears when a run is reported", async ({
     page,
   }) => {
     test.slow();
@@ -452,6 +674,11 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     const label = `Request Patient ${stamp}`;
 
     await addPortal(page, portal);
+    // An OLD run puts the page in steady state without answering the request raised
+    // below — a report at or after a request's creation is what clears it.
+    plantRunReport(portal, "2026-01-05 09:00:00");
+    await page.reload();
+
     // A login with no mapped patient can be asked, and the refusal says why — a nudge
     // there would have nobody to reach.
     const row = page
@@ -465,6 +692,7 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     );
 
     // Map a patient, then ask again.
+    await openManage(page);
     await page.getByTestId("bind-account").selectOption({ label: portal });
     await settledFill(page, page.getByTestId("bind-label"), label);
     await hydratedClick(page, page.getByTestId("bind-add"));
@@ -476,7 +704,7 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
     await expect(page.getByTestId("portals-status")).toHaveText(
       "Sync requested."
     );
-    // The card shows the ask AND its deadline — a request expires rather than hangs, so
+    // The page shows the ask AND its deadline — a request expires rather than hangs, so
     // the surface that raised it says when it stops mattering.
     await expect(row.getByTestId("sync-request-open")).toContainText(
       "Sync requested"
@@ -497,31 +725,6 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
 
     await removePortal(page, portal);
   });
-
-  // A run report for this spec's own portal, stamped now (the frozen clock), so it is
-  // newer than the request the test just raised.
-  function plantRunReport(portalName: string) {
-    const handle = new Database(workerDbPath());
-    try {
-      const portal = handle
-        .prepare("SELECT id FROM portals WHERE name = ?")
-        .get(portalName) as { id: number };
-      const account = handle
-        .prepare("SELECT id FROM portal_accounts WHERE portal_id = ?")
-        .get(portal.id) as { id: number };
-      const at = frozenNow().toISOString().replace("T", " ").slice(0, 19);
-      handle
-        .prepare(
-          `INSERT INTO portal_run_reports
-             (account_id, portal_id, at, ok, status, message, discovered)
-           VALUES (?, ?, ?, 1, 'nothing-new', NULL, 0)
-           ON CONFLICT(account_id) DO UPDATE SET at = excluded.at, ok = 1`
-        )
-        .run(account.id, portal.id, at);
-    } finally {
-      handle.close();
-    }
-  }
 });
 
 // ── Content-hash document tombstones (#1777) + the inventory endpoint (#1776) ──
@@ -535,20 +738,6 @@ test.describe("Patient portals — waiting to be mapped (#1739)", () => {
 // inside the file), so its content hash is this test's alone and no assertion here can
 // see or disturb another spec's rows.
 test.describe("Document tombstones and the held inventory (#1776/#1777)", () => {
-  // Mint a real `upload:documents` token through the UI — the same path an operator
-  // uses, and the only place the secret is ever shown.
-  async function mintToken(
-    page: import("@playwright/test").Page,
-    name: string
-  ): Promise<string> {
-    await page.goto("/settings/tokens");
-    await settledFill(page, page.getByTestId("api-token-name"), name);
-    await hydratedClick(page, page.getByTestId("api-token-create"));
-    const panel = page.getByTestId("api-token-secret");
-    await expect(panel).toBeVisible();
-    return (await panel.locator("code").innerText()).trim();
-  }
-
   // The profile this browser session is acting as — the one whose Data → Review the
   // blocked list renders, so the API pushes must target exactly it.
   function activeProfileId(): number {
@@ -571,23 +760,6 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     } finally {
       handle.close();
     }
-  }
-
-  async function dropPortal(
-    page: import("@playwright/test").Page,
-    name: string
-  ) {
-    await hydratedClick(
-      page,
-      page
-        .getByTestId("portal-row")
-        .filter({ hasText: name })
-        .first() // first-ok: spec-owned row
-        .getByTestId("portal-remove")
-    );
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal removed."
-    );
   }
 
   // A minimal, valid PDF whose bytes are unique to the caller — so its content hash is
@@ -734,12 +906,7 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
 
     // Register a portal and bind a patient on it to the acting profile, so a push
     // through the IDENTITY form lands a document carrying acquired-by provenance.
-    await page.goto("/integrations/patient-portals");
-    await settledFill(page, page.getByTestId("portal-name"), portal);
-    await hydratedClick(page, page.getByTestId("portal-add"));
-    await expect(page.getByTestId("portals-status")).toHaveText(
-      "Portal added."
-    );
+    await addPortal(page, portal);
     await page.getByTestId("bind-account").selectOption({ label: portal });
     await settledFill(page, page.getByTestId("bind-label"), label);
     await hydratedClick(page, page.getByTestId("bind-add"));
@@ -828,6 +995,6 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
       await expect(row).toHaveCount(0);
     }
     await page.goto("/integrations/patient-portals");
-    await dropPortal(page, portal);
+    await removePortal(page, portal);
   });
 });

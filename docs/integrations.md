@@ -255,7 +255,13 @@ export is a regulatory requirement, so Epic MyChart, Cerner/Oracle Health,
 athenahealth and the rest all produce the same thing. MyChart is simply the
 first companion tool written against the contract.
 
-Setup, under **Data → Import → Patient portals**:
+Setup, under **Data → Import → Patient portals**. The page is a **guided flow**:
+it works out where you are from what it already knows and shows you that one
+step, with a single button for it. You never scroll past a form meant for
+somebody else's stage, and a household that finished setup a year ago sees
+status rather than setup. The five steps below are the whole shape — the page
+keeps them as a collapsible under its title, in case you want to see what comes
+next:
 
 1. **Register each portal** by its display name — "Ochsner MyChart". Allos mints
    the short id the companion tool quotes, so renaming the portal later never
@@ -275,8 +281,9 @@ Setup, under **Data → Import → Patient portals**:
 3. **Mint an API token** (Settings → Account & security → API tokens) with the
    _Upload documents_ capability. Give **each computer its own token**, so
    retiring one machine doesn't disturb the others.
-4. **Run the tool.** It reports which patients that login covers, and they appear
-   on the card under **Waiting to be mapped**.
+4. **Run the tool.** It reports which patients that login covers, and while any
+   of them are waiting they take over the page — mapping them is the only thing
+   it asks you to do.
 5. **Map each patient to a profile** — one tap, using the label exactly as the
    portal spelled it. Or **ignore** a patient whose records belong somewhere
    else, and they stop being offered. Labels are matched exactly as written: two
@@ -287,6 +294,16 @@ deduplication and the same size and type checks. A document pushed in by the too
 records **which portal it came from** — shown as "Acquired via …" in Review and on
 the import's detail page — so two portals serving the same patient stay tellable
 apart. A document you uploaded yourself simply says nothing there.
+
+**Everything else is under Manage.** The portal and login registry, the add
+forms, renaming a portal, unmapping a patient, un-ignoring one, and the manual
+"type the label yourself" bind all live in one collapsed **Manage portals &
+logins** section, open from any step. Nothing was removed; it stopped being the
+first thing a first-time user meets. The manual bind in particular is labelled
+as the escape hatch it is: patients normally appear by themselves after a run,
+spelled the way the portal spells them, and a guess is refused rather than
+corrected. Each row's edit and remove verbs live in its **⋯** menu, and the
+destructive ones ask first.
 
 **Why the mapping lives here and not in the tool.** If the tool decided which
 profile a patient belongs to, that decision would sit in local config on every
@@ -316,14 +333,14 @@ of run belong to a portal login rather than to a person: the very first one,
 whose own patient is not mapped yet, and a failure that happens before any
 patient is reached ("the portal's login page changed"). Neither can be filed
 under a profile, and neither is guessed onto one — but both now leave a trace,
-and the card's **Status** line says what happened: _"The tool reported 3 patients
+and the page's **Status** sentence says what happened: _"The tool reported 3 patients
 on Ochsner MyChart — map them below to finish setup"_, or the tool's own failure
 message. A failure that names a mapped patient still raises that profile's
 **Review** failure badge as before; a portal-level one cannot, because it has no
 profile to raise it for, and shows on this card instead.
 
 **Why there is no Start button.** Allos cannot make an attended sync happen, so
-the card doesn't pretend to: it is setup and status. For the same reason this
+the page doesn't pretend to: it is setup and status. For the same reason this
 integration is exempt from the ordinary **staleness warning** — "you haven't
 signed in to your hospital portal in three days" is not a fault, and the
 broken-sync signal every other integration raises would be describing a failure
@@ -338,8 +355,9 @@ remembering, not the double-click. Three things raise a **sync request**:
 - **After a visit** — a mapped profile's appointment has just passed, which is
   the moment new records actually appear on a portal, and the most useful nudge
   this feature can send.
-- **Asking** — the card's **Request sync** button, for when the person who
-  manages allos is not the person whose laptop holds the login.
+- **Asking** — the **Request sync** button beside each login in the page's
+  steady-state status, for when the person who manages allos is not the person
+  whose laptop holds the login.
 
 A request is **never a schedule**: nothing is promised to run at a time, and the
 row carries only the portal and login short ids — never an address. It
@@ -357,7 +375,7 @@ one line in the morning digest that already sends. It is dismissible, and
 dismissing it silences both. There is **no dedicated notification, ever**, and it
 never appears on the dashboard's "Needs attention" panel: portal hygiene is not a
 safety signal. A login with no mapped patients raises nothing at all — there
-would be nobody to reach, and finishing setup is what the card itself is asking
+would be nobody to reach, and finishing setup is what the page itself is asking
 for.
 
 ## Weather & UV (Open-Meteo)

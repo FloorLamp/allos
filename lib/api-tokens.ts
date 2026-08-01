@@ -122,6 +122,23 @@ export function listAllApiTokens(): ApiTokenSummary[] {
   return (LIST_ALL_STMT.all() as TokenRow[]).map(toSummary);
 }
 
+const ANY_LIVE_WITH_SCOPE_STMT = db.prepare(
+  "SELECT 1 AS one FROM api_tokens WHERE scope = ? AND revoked_at IS NULL LIMIT 1"
+);
+
+// Does the instance hold ANY live token with this capability? A bare boolean — no id,
+// no name, no owning login, not even a count — which is what keeps it safe to answer
+// for a viewer who may not list the tokens themselves.
+//
+// It exists for the guided Patient portals page (#1826): the setup stage "the tool has
+// no way to push anything in yet" turns on this and nothing else. The question is
+// deliberately INSTANCE-wide rather than per-login, because the token belongs to the
+// COMPUTER that runs the companion tool — often a different person's machine — so "do
+// you personally hold one?" would strand a caregiver on the token card forever.
+export function anyApiTokenWithScope(scope: ApiTokenScope): boolean {
+  return ANY_LIVE_WITH_SCOPE_STMT.get(scope) !== undefined;
+}
+
 export interface MintedApiToken {
   id: number;
   // The full `<id>.<secret>` wire value. Returned exactly once, by this call, and

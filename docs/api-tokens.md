@@ -175,9 +175,9 @@ upload fails visibly and becomes a one-tap mapping — it never lands on whichev
 seemed closest. A patient the household has explicitly **ignored** answers identically:
 the endpoint never reveals which of the two it was.
 
-Allos also **remembers what it refused**. The identity appears under **Integrations →
-Patient portals → Waiting to be mapped**, with when it was first and last seen, and maps
-to a profile in one tap — spelled exactly as the portal spelled it, so nobody has to
+Allos also **remembers what it refused**. The identity appears on **Integrations →
+Patient portals**, which hands the whole page over to mapping while anyone is waiting,
+with when it was first and last seen, and maps to a profile in one tap — spelled exactly as the portal spelled it, so nobody has to
 retype a label they never saw. Repeated sightings update that one entry rather than
 piling up, only an authenticated request is ever recorded, and the list is bounded per
 login.
@@ -251,7 +251,7 @@ records and still require a target, with the same `400` they always gave.
 
 Such a report has no profile — that is what makes it portal-level — so it lands as a
 **run report against the portal login** rather than as a profile's sync event, and shows
-on **Integrations → Patient portals → Status**. The same is true of a first run whose own
+in the status sentence on **Integrations → Patient portals**. The same is true of a first run whose own
 patient is not mapped yet: refused, nothing filed, but the run is no longer invisible.
 
 ### Asking what allos already holds
