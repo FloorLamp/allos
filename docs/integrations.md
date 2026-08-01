@@ -273,9 +273,11 @@ next:
 2. **Name the logins, if there are several.** One portal often has more than one
    account in a household — each parent's own — and a portal's patient list is
    shown **per login**, so the same name can mean two different people on two
-   accounts. Give each one a nickname ("Mom", "Dad"). A nickname is all allos
-   stores: never a username, never a password. If your household has one login,
-   skip this entirely — you will never see the concept.
+   accounts. Give each one a name ("Mom", "Dad") — or the **email address** the
+   login uses, which is often the way a household actually tells two logins
+   apart. A name is all allos stores: never a password, and never a web address.
+   If your household has one login, skip this entirely — you will never see the
+   concept.
 3. **Mint an API token** (Settings → Account & security → API tokens) with the
    _Upload documents_ capability. Give **each computer its own token**, so
    retiring one machine doesn't disturb the others.

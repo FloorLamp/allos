@@ -50,8 +50,12 @@ import { identityBarLabel, identityBarView } from "@/lib/profile-identity";
 //     Built from the shared overlay primitives — scrim, motion tokens,
 //     drag-to-dismiss (upward, back through the bar it came from),
 //     reduced-motion — never a bespoke animation (#1469 chokepoint).
-//   * "sidebar" — the bar sits at the TOP of the desktop sidebar and expands a
-//     container in place below itself.
+//   * "sidebar" — the bar sits at the TOP of the desktop sidebar and drops an
+//     absolutely positioned container anchored below itself, OVERLAYING the
+//     sidebar's contents (#1823). It used to be a normal flow child, which meant
+//     opening the switcher pushed every nav entry below it down by up to 50vh and
+//     snapped them back on close — desktop was the one viewport where identity
+//     chrome moved unrelated content.
 //
 // Both render the SAME <ProfileSwitcherPanel>; the responsive-variants rule
 // forbids a hidden `md:*` twin of the rows.
@@ -267,18 +271,37 @@ export default function ProfileIdentityBar({
   );
 
   if (!isMobile) {
+    // `relative` on the wrapper is the panel's containing block — the anchor the
+    // overlay hangs from, and the whole reason the sidebar below stops moving.
     return (
-      <div ref={rootRef} className="flex flex-col gap-1">
+      <div ref={rootRef} className="relative">
         {trigger}
         {/* Kept mounted (toggled via a class) rather than unmounted: closing on
         select must not tear down the <form> before React dispatches its Server
-        Action, or the switch is silently dropped. Capped + scrollable because an
-        admin can reach every profile. */}
+        Action, or the switch is silently dropped. `absolute` changes none of
+        that — `hidden` is still display:none on a mounted subtree. Capped +
+        scrollable because an admin can reach every profile.
+
+        OVERLAY, not reflow (#1823). `absolute top-full inset-x-0` takes the
+        panel out of flow so the nav, calendar and login footer below keep their
+        positions; `z-20` puts it over them (nothing else in the sidebar is
+        positioned, so this only has to beat the static painting order). `mt-1`
+        keeps the gap the wrapper's old `gap-1` provided.
+
+        On the containing scroller: the desktop <aside> is `overflow-y-auto`, and
+        a scroll container clips its absolutely positioned descendants. It does
+        not clip this one, because an abs-positioned box inside the scroller
+        still CONTRIBUTES to its scrollable overflow — the bar sits at the
+        sidebar's top and the panel is capped at 50vh, so it lands on screen, and
+        the pathological short-window case scrolls into reach rather than
+        vanishing. The heavier fallback (portal + anchor to the trigger's rect,
+        the way the mobile branch does it) stays unspent: it would buy nothing
+        here and would cost the simple focus/dismiss wiring below. */}
         <div
           data-testid="profile-switcher-panel"
           className={`${
             open ? "flex" : "hidden"
-          } max-h-[50vh] flex-col overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-white p-2 shadow-lg dark:border-white/10 dark:bg-ink-850`}
+          } absolute inset-x-0 top-full z-20 mt-1 max-h-[50vh] flex-col overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-white p-2 shadow-lg dark:border-white/10 dark:bg-ink-850`}
         >
           {panel}
         </div>

@@ -78,16 +78,57 @@ function seedSymptom(
   ).run(profileId, date, symptom, severity);
 }
 
+// A successful sync that WROTE rows, carrying the PER-ROW PROVENANCE a real ingest
+// persists (#1333) — which is where the arrival line's kinds come from since #1819
+// item 2. `kinds` names the target table each written row landed in; a
+// `metric_samples` row gets a real sample so the kind resolves to its metric.
+// `bareInserted` seeds an event whose counts claim inserts with NO provenance behind
+// them, the pre-#1333 legacy shape.
 function seedSyncArrival(
   profileId: number,
   provider: string,
-  inserted: number
+  kinds: { table: string; metric?: string }[],
+  bareInserted = 0
 ) {
-  db.prepare(
-    `INSERT INTO integration_sync_events
-       (profile_id, provider, at, ok, inserted, updated, unchanged)
-     VALUES (?, ?, datetime('now'), 1, ?, 0, 0)`
-  ).run(profileId, provider, inserted);
+  const eventId = Number(
+    db
+      .prepare(
+        `INSERT INTO integration_sync_events
+           (profile_id, provider, at, ok, inserted, updated, unchanged)
+         VALUES (?, ?, datetime('now'), 1, ?, 0, 0)`
+      )
+      .run(profileId, provider, kinds.length + bareInserted).lastInsertRowid
+  );
+  const link = db.prepare(
+    `INSERT INTO integration_sync_rows
+       (event_id, target_table, target_id, disposition)
+     VALUES (?, ?, ?, 'inserted')`
+  );
+  const day = today(profileId);
+  let nth = 0;
+  for (const k of kinds) {
+    let targetId = 1;
+    if (k.table === "metric_samples") {
+      targetId = Number(
+        db
+          .prepare(
+            `INSERT INTO metric_samples
+               (profile_id, source, metric, date, start_time, end_time, value)
+             VALUES (?, ?, ?, ?, ?, ?, 1)`
+          )
+          .run(
+            profileId,
+            provider,
+            k.metric,
+            day,
+            `${day}T${String(nth++).padStart(2, "0")}:00:00Z`,
+            `${day}T23:00:00Z`
+          ).lastInsertRowid
+      );
+    }
+    link.run(eventId, k.table, targetId);
+  }
+  return eventId;
 }
 
 function seedSteps(
@@ -112,7 +153,10 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
     seedMood(pid, yd, 2);
     seedSymptom(pid, yd, "Headache");
     seedFlaggedVital(pid, yd, "Blood Pressure Systolic", "165");
-    seedSyncArrival(pid, "oura", 12);
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+      { table: "activities" },
+    ]);
 
     const out = collectRecentChanges(pid, {
       sinceDays: 1,
@@ -165,8 +209,10 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
     }
     seedMood(pid, yd, 3);
     seedFlaggedVital(pid, yd, "Oxygen Saturation", "88", "low");
-    seedSyncArrival(pid, "oura", 4);
-    seedSyncArrival(pid, "strava", 2);
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+    ]);
+    seedSyncArrival(pid, "strava", [{ table: "activities" }]);
 
     const out = collectRecentChanges(pid, {
       sinceDays: 1,
@@ -257,6 +303,122 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
     expect(overlap.map((c) => c.text)).toEqual(
       short.changes.map((c) => c.text)
     );
+  });
+});
+
+// ---- Data arrival: substrate out, news in (#1819 items 1 and 2) -----------
+//
+// Through the REAL collector and the REAL digest gather, because both defects were
+// about what the SQL reports, not about how a string is formatted.
+describe("data arrival — the digest's overnight line (#1819)", () => {
+  const LAT = 40.7;
+  const LNG = -74;
+
+  // Fresh forecast cells, the way the sliding fetch window produces them every day.
+  function seedForecastCells(date: string) {
+    upsertWeatherDays(
+      LAT,
+      LNG,
+      [
+        {
+          date,
+          tempMaxC: 21,
+          tempMinC: 13,
+          pressureMslHpa: 1013,
+          precipitationMm: 0,
+          weatherCode: 1,
+          uvIndexMax: 5,
+          aqi: null,
+          pollenTree: null,
+          pollenGrass: null,
+          pollenWeed: null,
+        },
+      ],
+      "fixture"
+    );
+    upsertUvHours(
+      LAT,
+      LNG,
+      [9, 11, 13, 15].map((h) => ({
+        hourTs: `${date}T${String(h).padStart(2, "0")}:00`,
+        uvIndex: 4,
+        uvIndexClearSky: 5,
+        shortwaveRadiation: null,
+        directRadiation: null,
+        diffuseRadiation: null,
+      })),
+      "fixture"
+    );
+  }
+
+  it("reports WHICH kinds arrived, never a summed record count", () => {
+    const pid = newProfile("Arrival Ada");
+    seedSyncArrival(pid, "health-connect", [
+      { table: "metric_samples", metric: "sleep_min" },
+      { table: "metric_samples", metric: "steps" },
+      { table: "metric_samples", metric: "steps" },
+      { table: "activities" },
+    ]);
+
+    const out = collectRecentChanges(pid, { sinceDays: 1, today: today(pid) });
+    const arrival = out.changes.find((c) => c.category === "data");
+    // Deterministic order: the kind that wrote most rows leads.
+    expect(arrival?.text).toBe(
+      "📥 Google Health Connect: steps, workouts, sleep"
+    );
+    // The old line's shape — a bare count of rows — must not come back.
+    expect(arrival?.text).not.toMatch(/\d+ new record/);
+  });
+
+  it("EXCLUDES a cache-kind provider, and keeps excluding it day after day", () => {
+    const pid = newProfile("Forecast Fran");
+    setHomeLocation(pid, { lat: LAT, lng: LNG });
+    const td = today(pid);
+
+    // The permanent-line case, reproduced: a weather sync whose counts claim
+    // hundreds of inserts, plus the forecast cells behind them — every morning.
+    for (const offset of [0, 1]) {
+      seedForecastCells(shiftDateStr(td, offset));
+      seedSyncArrival(pid, "weather", [], 406);
+      const out = collectRecentChanges(pid, { sinceDays: 1, today: td });
+      expect(out.changes.filter((c) => c.category === "data")).toEqual([]);
+      expect(out.lines.join("\n")).not.toContain("Weather");
+    }
+  });
+
+  it("excludes it on its KIND, not on its id — even with provenance behind it", () => {
+    const pid = newProfile("Kinded Kim");
+    // Even if a cache-kind provider ever did record per-row provenance, it is still
+    // not reporting records ABOUT the profile. `syncVocabularyForKind` decides.
+    seedSyncArrival(pid, "weather", [
+      { table: "metric_samples", metric: "steps" },
+    ]);
+    expect(
+      collectRecentChanges(pid, { sinceDays: 1, today: today(pid) }).changes
+    ).toEqual([]);
+  });
+
+  it("says nothing for a sync whose counts claim inserts it cannot name", () => {
+    const pid = newProfile("Legacy Lee");
+    seedSyncArrival(pid, "oura", [], 40);
+    expect(
+      collectRecentChanges(pid, { sinceDays: 1, today: today(pid) }).changes
+    ).toEqual([]);
+  });
+
+  it("reaches the digest's New section through the real gather", () => {
+    const pid = newProfile("Digest Dana");
+    setHomeLocation(pid, { lat: LAT, lng: LNG });
+    seedForecastCells(today(pid));
+    seedSyncArrival(pid, "weather", [], 406);
+    seedSyncArrival(pid, "oura", [
+      { table: "metric_samples", metric: "sleep_min" },
+    ]);
+
+    const model = buildDigest(gatherDigestInput(pid, "Digest Dana"));
+    const New = model?.sections.find((s) => s.heading === "New");
+    expect(New?.lines).toContain("📥 Oura Ring: sleep");
+    expect(New?.lines.join("\n")).not.toContain("Weather");
   });
 });
 

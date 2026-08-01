@@ -159,7 +159,9 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     // list: the dose glance headline, the banded refill line, and the yesterday recap.
     expect(body).toContain("Today");
     expect(body).toContain("scheduled"); // dose glance line
-    expect(body).toContain("refill"); // merged what's-due content
+    // Merged what's-due content. A small band NAMES its items since #1819 item 5, so
+    // the refill signal reaches the message as the low item itself.
+    expect(body).toContain("Magnesium");
     expect(body).toContain("Yesterday");
 
     // ONE per-day marker; the retired notify_last_upcoming is never written.
@@ -241,6 +243,64 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     const msg = renderDigestMessage(model!);
     expect(msg.kind).toBe("digest");
     expect(plainBody(msg.body).length).toBeGreaterThan(0);
+  });
+});
+
+// ---- The Today section's band grammar (#1819 items 3, 4, 5) --------------
+//
+// Through the REAL gather, because all three defects were about what the digest
+// reports rather than how a fixture is shaped.
+describe("the Today section's band lines (#1819)", () => {
+  function seedWeeklyTarget(
+    profileId: number,
+    scopeKind: string,
+    scopeValue: string,
+    perWeek: number
+  ): void {
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, per_week)
+       VALUES (?, ?, ?, ?)`
+    ).run(profileId, scopeKind, scopeValue, perWeek);
+  }
+
+  function todayLines(profileId: number, name: string): string[] {
+    const model = buildDigest(gatherDigestInput(profileId, name));
+    return model?.sections.find((s) => s.heading === "Today")?.lines ?? [];
+  }
+
+  it("states weekly PROGRESS for training targets, never a bare count", () => {
+    const p = newProfile("Pace Parker");
+    // Four declared weekly targets, none logged against — a rolling/calendar window
+    // with no sessions makes every one of them unmet.
+    for (const type of ["cardio", "strength", "mobility", "sport"]) {
+      seedWeeklyTarget(p, "type", type, 2);
+    }
+    const lines = todayLines(p, "Pace Parker");
+    const band = lines.find((l) => l.includes("training target"));
+    expect(band).toBeTruthy();
+    expect(band).toContain("of 4 training targets on pace");
+    // The count the line replaced must not come back.
+    expect(band).not.toMatch(/: 4 training targets/);
+  });
+
+  it("gives every band line the section's bullet emoji", () => {
+    const p = newProfile("Bullet Beatriz");
+    seedDailyDose(p, "Vitamin D (test)");
+    seedWeeklyTarget(p, "type", "cardio", 2);
+    for (const line of todayLines(p, "Bullet Beatriz")) {
+      expect(line).not.toMatch(/^[A-Z]/);
+    }
+  });
+
+  // The workout preview's framing is the formatter's job and is pinned in the pure
+  // tier (workout-nudge.test.ts). What the DB tier owns is the WIRING: whatever
+  // preview the gather produces must be the bare variant.
+  it("gathers the workout preview in its bare variant", () => {
+    const p = newProfile("Preview Priya");
+    seedWeeklyTarget(p, "type", "cardio", 2);
+    const preview = gatherDigestInput(p, "Preview Priya").workoutPreview;
+    expect(preview ?? "").not.toContain("Today:");
   });
 });
 

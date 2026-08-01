@@ -15,11 +15,13 @@ export function goalItems(profileId: number): UpcomingItem[] {
     }));
 }
 
-// Unmet weekly frequency targets (reuses getFrequencyTargetProgress). Hidden for
-// age-restricted profiles, mirroring the Training surface. A weekly concern, so
-// each unmet target sits in This week with a progress due-text.
-export function trainingItems(profileId: number): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
+// The weekly targets the Upcoming `training` domain is ABOUT, before the unmet
+// filter: everything getFrequencyTargetProgress reports, minus the wellness-practice
+// scope (which has its own pace-aware item) and minus the deload-softened
+// region/group scopes. Factored out so the count line's denominator and the items
+// themselves are the SAME set — a "2 of 4 on pace" whose 4 didn't match what the page
+// lists would be a second definition of "your training targets" (#221).
+function weeklyTrainingTargets(profileId: number): FrequencyTargetProgress[] {
   // Deload-week softening (#741): the mesocycle's deload week is SUPPOSED to be
   // lighter, so a region/group frequency target being "behind" isn't a real gap —
   // suppress those findings that week (decided in the ONE gather; type targets like
@@ -28,7 +30,6 @@ export function trainingItems(profileId: number): UpcomingItem[] {
     getRoutineCycleStatus(profileId, today(profileId))?.isDeloadWeek ?? false;
   return (
     getFrequencyTargetProgress(profileId)
-      .filter((p) => !p.met)
       // Wellness-practice targets (#1259) get their OWN pace-aware item (practiceItems)
       // with the distinct `practice:` key namespace — never mislabeled "Weekly training
       // target" here.
@@ -41,17 +42,41 @@ export function trainingItems(profileId: number): UpcomingItem[] {
               p.target.scope_kind === "group")
           )
       )
-      .map((p) => ({
-        key: trainingSignalKey(p.target.id),
-        domain: "training" as const,
-        title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
-        detail: "Weekly training target",
-        href: "/training",
-        dueDate: null,
-        band: "week" as const,
-        dueText: `${p.count}/${p.per_week} this week`,
-      }))
   );
+}
+
+// The morning digest's weekly-progress line (#1819 item 4): "2 of 4 training targets
+// on pace — behind on Back, Chest", or null for a profile with no weekly targets (and
+// for an age-restricted one, mirroring the items). Formats the SAME paced set the
+// Upcoming items are drawn from through the SAME shared `weeklyTargetPaceLine`, so the
+// digest's phrase and the page's chips can never disagree.
+export function trainingPaceLine(profileId: number): string | null {
+  if (isTrainingRestricted(profileId)) return null;
+  return weeklyTargetPaceLine(
+    weeklyTrainingTargets(profileId).map((p) => ({
+      label: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
+      pace: p.pace,
+    }))
+  );
+}
+
+// Unmet weekly frequency targets (reuses getFrequencyTargetProgress). Hidden for
+// age-restricted profiles, mirroring the Training surface. A weekly concern, so
+// each unmet target sits in This week with a progress due-text.
+export function trainingItems(profileId: number): UpcomingItem[] {
+  if (isTrainingRestricted(profileId)) return [];
+  return weeklyTrainingTargets(profileId)
+    .filter((p) => !p.met)
+    .map((p) => ({
+      key: trainingSignalKey(p.target.id),
+      domain: "training" as const,
+      title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
+      detail: "Weekly training target",
+      href: "/training",
+      dueDate: null,
+      band: "week" as const,
+      dueText: `${p.count}/${p.per_week} this week`,
+    }));
 }
 
 // The outdoor-session PLANNING item (#1724 part 5) — Upcoming is the planning surface,
@@ -210,7 +235,11 @@ import { isTrainingRestricted } from "../../age-gate";
 import { carePlanUpcomingItems } from "../../care-plan-upcoming";
 import { db, today } from "../../db";
 import { getActiveEndurancePlans } from "../../endurance-plans";
-import { frequencyScopeLabel, isGoalLive } from "../../goals";
+import {
+  frequencyScopeLabel,
+  isGoalLive,
+  weeklyTargetPaceLine,
+} from "../../goals";
 import { practiceSignalKey } from "../../practice";
 import { getRoutineCycleStatus } from "../../routines";
 import type { DistanceUnit } from "../../settings";
@@ -219,7 +248,10 @@ import { fmtDistance } from "../../units";
 import { trainingSignalKey } from "../../workout-nudge";
 import { getOutdoorPlans } from "../weather-training";
 import { getCarePlanItems } from "../clinical";
-import { getFrequencyTargetProgress } from "../frequency-targets";
+import {
+  getFrequencyTargetProgress,
+  type FrequencyTargetProgress,
+} from "../frequency-targets";
 import { getGoals } from "../training";
 import { getStepsPaceObservation } from "../steps-target";
 import { stepsPaceKey } from "../../steps-target";

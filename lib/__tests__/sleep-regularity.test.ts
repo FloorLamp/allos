@@ -39,18 +39,33 @@ function consecutiveWakeDays(start: string, n: number): string[] {
 
 describe("sriPresentation", () => {
   it.each([
-    [83.6, "SRI 84", "good"],
-    [79.6, "SRI 80", "good"],
-    [72, "SRI 72", "warn"],
-    [59.6, "SRI 60", "warn"],
-    [-30.4, "SRI −30", "bad"],
-    [15, "SRI 15", "bad"],
+    [83.6, "SRI 84", "good", "84", "very consistent"],
+    [79.6, "SRI 80", "good", "80", "very consistent"],
+    [72, "SRI 72", "warn", "72", "fairly consistent"],
+    [59.6, "SRI 60", "warn", "60", "fairly consistent"],
+    [-30.4, "SRI −30", "bad", "−30", "variable"],
+    [15, "SRI 15", "bad", "15", "variable"],
   ] as const)(
     "presents the full SRI domain consistently (%s)",
-    (sri, text, tone) => {
-      expect(sriPresentation(sri)).toEqual({ text, tone });
+    (sri, text, tone, value, qualifier) => {
+      expect(sriPresentation(sri)).toEqual({ text, tone, value, qualifier });
     }
   );
+
+  // #1819 item 7: the qualifier is banded on the SAME thresholds as the tone, so a
+  // surface that words the number can never disagree with one that colors it. #992's
+  // contract holds by construction — every qualifier describes the SCHEDULE.
+  it("bands the qualifier exactly where it bands the tone (#1819)", () => {
+    expect(sriPresentation(80).qualifier).toBe("very consistent");
+    expect(sriPresentation(79).qualifier).toBe("fairly consistent");
+    expect(sriPresentation(60).qualifier).toBe("fairly consistent");
+    expect(sriPresentation(59).qualifier).toBe("variable");
+    for (const sri of [95, 70, 20, -50]) {
+      expect(sriPresentation(sri).qualifier).not.toMatch(
+        /\b(bad|poor|good|you)\b/i
+      );
+    }
+  });
 });
 
 describe("computeSleepRegularity — SRI formula", () => {

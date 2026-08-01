@@ -24,7 +24,7 @@ import type {
   ImportDrop,
   ImportReport,
 } from "../import-report";
-import { tallyUnmappedLoincs } from "../import-report";
+import { isRowDrop, keptRowCount, tallyUnmappedLoincs } from "../import-report";
 import {
   FhirError,
   ICD10,
@@ -685,22 +685,24 @@ export function entriesToImportResult(
     (a.issued_date ?? "").localeCompare(b.issued_date ?? "")
   );
 
-  const imported =
-    records.length +
-    immunizations.length +
-    allergies.length +
-    conditions.length +
-    encounters.length +
-    procedures.length +
-    familyHistory.length +
-    carePlanItems.length +
-    careGoals.length +
-    appointments.length +
-    imagingStudies.length +
-    opticalPrescriptions.length;
-  const rowDrops = drops.filter(
-    (d) => d.reason !== "unrecognized_section"
-  ).length;
+  // Kept rows off the ONE shared registry (#1827) — the same one the CCD paths and
+  // the AI adapter count through, so a new mapped resource type lands in a single
+  // place. persistDocumentImport rebinds these to the post-persist footprint tally.
+  const imported = keptRowCount({
+    records,
+    immunizations,
+    allergies,
+    conditions,
+    encounters,
+    procedures,
+    familyHistory,
+    carePlanItems,
+    careGoals,
+    appointments,
+    imagingStudies,
+    opticalPrescriptions,
+  });
+  const rowDrops = drops.filter(isRowDrop).length;
   // Labs that imported but carry a LOINC with no canonical mapping (Fix 3): a
   // non-fatal "add these to LOINC_TO_CANONICAL" annotation surfaced in the debugger.
   const unmappedLoincs = tallyUnmappedLoincs(

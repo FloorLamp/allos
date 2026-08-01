@@ -412,6 +412,16 @@ export type SriTone = "good" | "warn" | "bad";
 export interface SriPresentation {
   text: string;
   tone: SriTone;
+  // The rounded index on its own, sign-normalized — for a surface that supplies its
+  // own noun ("Sleep regularity 94") and would otherwise render "Sleep regularity ·
+  // SRI 94", an acronym beside a naked number.
+  value: string;
+  // The BANDED qualifier (#1819 item 7), on the same thresholds as `tone`. It says
+  // what the number MEANS in words, which is the whole reason a number is on a
+  // notification at all. #992's non-judgmental contract holds by construction: it
+  // qualifies the SCHEDULE's consistency and never verdicts the sleeper — "variable"
+  // is a description of clock times, not a grade.
+  qualifier: string;
 }
 
 // One honest presentation for the published SRI domain (−100..100). Surfaces use
@@ -422,9 +432,17 @@ export interface SriPresentation {
 export function sriPresentation(sri: number): SriPresentation {
   const rounded = Math.round(sri);
   const value = rounded < 0 ? `−${Math.abs(rounded)}` : String(rounded);
+  const tone: SriTone = rounded >= 80 ? "good" : rounded >= 60 ? "warn" : "bad";
   return {
     text: `SRI ${value}`,
-    tone: rounded >= 80 ? "good" : rounded >= 60 ? "warn" : "bad",
+    tone,
+    value,
+    qualifier:
+      tone === "good"
+        ? "very consistent"
+        : tone === "warn"
+          ? "fairly consistent"
+          : "variable",
   };
 }
 

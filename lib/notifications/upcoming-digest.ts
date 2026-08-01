@@ -226,23 +226,58 @@ function pluralize(noun: string, count: number): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
+// How the band phrase may be reshaped per caller (#1819 items 4 and 5).
+export interface BandSummaryOptions {
+  // NAME the items instead of counting them when the band holds at most this many
+  // (#1819 item 5): "Overdue: colonoscopy · CBC, lipid panel". A count is the right
+  // shape only once naming would stop fitting on a line — below that it withholds
+  // the one thing the reader needs. 0/absent ⇒ always count, the old behavior.
+  nameAtMost?: number;
+  // A phrase that REPLACES a domain's count (#1819 item 4): the digest supplies the
+  // weekly-progress line for `training`, so "4 training targets" becomes "2 of 4
+  // training targets on pace". Called with the band's items of that domain so the
+  // caller can decline when they are not all what its phrase describes — several
+  // findings share the `training` domain, and a phrase about weekly targets must not
+  // silently stand in for an endurance event.
+  phraseFor?: (
+    domain: UpcomingDomain,
+    items: readonly UpcomingItem[]
+  ) => string | null;
+}
+
 // "2 doses, 1 appointment" for a band: count items by domain, then render in the
 // fixed domain sequence so the phrase is deterministic. `exclude` drops whole
 // domains from the count (issue #1108 — the morning digest excludes `dose`, which
 // its dose-count headline already summarizes); an empty result string means every
 // counted item was excluded, so the caller can drop the band's line entirely.
+//
+// With `nameAtMost` a SMALL band names its items instead ("colonoscopy · CBC, lipid
+// panel"): peers within one domain join with ", " and the domains themselves with
+// " · ", matching the digest's separator grammar. Naming is skipped for any domain
+// carrying a `phrase` override — that phrase already says more than a list of names.
 export function summarizeBand(
   group: BandGroup,
-  exclude?: ReadonlySet<UpcomingDomain>
+  exclude?: ReadonlySet<UpcomingDomain>,
+  opts: BandSummaryOptions = {}
 ): string {
-  const counts = new Map<UpcomingDomain, number>();
+  const byDomain = new Map<UpcomingDomain, UpcomingItem[]>();
   for (const item of group.items) {
     if (exclude?.has(item.domain)) continue;
-    counts.set(item.domain, (counts.get(item.domain) ?? 0) + 1);
+    const kept = byDomain.get(item.domain) ?? [];
+    kept.push(item);
+    byDomain.set(item.domain, kept);
   }
-  return DOMAIN_SEQ.filter((d) => counts.has(d))
-    .map((d) => pluralize(DOMAIN_NOUN[d], counts.get(d)!))
-    .join(", ");
+  const present = DOMAIN_SEQ.filter((d) => byDomain.has(d));
+  const shown = present.reduce((n, d) => n + byDomain.get(d)!.length, 0);
+  const nameable = shown > 0 && shown <= (opts.nameAtMost ?? 0);
+  const parts = present.map((d) => {
+    const items = byDomain.get(d)!;
+    const override = opts.phraseFor?.(d, items);
+    if (override) return override;
+    if (nameable) return items.map((i) => i.title).join(", ");
+    return pluralize(DOMAIN_NOUN[d], items.length);
+  });
+  return parts.join(nameable ? " · " : ", ");
 }
 
 // Build the Today-section model from the ALREADY-BANDED set (groupUpcoming output),
@@ -255,14 +290,22 @@ export function summarizeBand(
 export function buildUpcomingDigest(
   profileName: string,
   groups: BandGroup[],
-  opts: { excludeDomains?: readonly UpcomingDomain[] } = {}
+  opts: {
+    excludeDomains?: readonly UpcomingDomain[];
+  } & BandSummaryOptions = {}
 ): UpcomingDigestModel | null {
   const exclude = opts.excludeDomains?.length
     ? new Set<UpcomingDomain>(opts.excludeDomains)
     : undefined;
   const nonEmpty = groups.filter((g) => g.items.length > 0);
   const lines = nonEmpty
-    .map((g) => ({ label: g.label, summary: summarizeBand(g, exclude) }))
+    .map((g) => ({
+      label: g.label,
+      summary: summarizeBand(g, exclude, {
+        nameAtMost: opts.nameAtMost,
+        phraseFor: opts.phraseFor,
+      }),
+    }))
     .filter((b) => b.summary.length > 0)
     .map((b) => `${b.label}: ${b.summary}`);
   const syncIssues = digestSyncIssues(nonEmpty);

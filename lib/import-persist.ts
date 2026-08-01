@@ -73,6 +73,10 @@ export {
   type ImportSideEffect,
 };
 
+// The debugger report's counts are rebound to the footprint tally on the way into
+// the document row (#1827) — the pure derivation lives with the report shape.
+import { reconcileStoredReportCounts } from "./import-report";
+
 // The value bound to a footprint table's key column for `docId`: the raw id for a
 // document_id-keyed table, the document source string for a source-keyed one.
 function footprintKeyValue(
@@ -587,8 +591,17 @@ export function persistDocumentImport(
       input.meta.raw,
       input.meta.model,
       // The import DEBUGGER report — refreshed on every
-      // reprocess so it always reflects the current parse (idempotent).
-      input.meta.importReport,
+      // reprocess so it always reflects the current parse (idempotent), with its
+      // kept-vs-considered counts REBOUND to the footprint tally above (#1827).
+      // The coverage card's "imported" and the document's extracted_count are one
+      // question, so they are one computation, stamped in one UPDATE: the parse
+      // layer no longer owns a count it cannot verify (it can't know that a
+      // prescription renewed an existing med as a course rather than becoming a new
+      // item, or that a body metric deferred to a date another source covers), and
+      // its old hand-maintained sum silently omitted medications, imaging, optical,
+      // dental, genomics, and appointments. `considered` follows as
+      // footprint + row drops.
+      reconcileStoredReportCounts(input.meta.importReport, extractedCount),
       // The CLINICAL identity of this document (#1780): a digest of the source-minted
       // entry ids it just imported. Stamped HERE, at the one 'done' transition every
       // extract/import/reprocess path funnels through, and computed from the SAME
