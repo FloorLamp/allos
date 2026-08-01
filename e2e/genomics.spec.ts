@@ -55,7 +55,7 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     // It appears in the list with its factual identity + reported classification.
     const list = page.getByTestId("genomic-variant-list");
     const row = list.getByRole("row").filter({ hasText: GENE });
-    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    // Renders on the save action's revalidated tree — a cold shard can outrun the default 5s (imaging/#1306 precedent).
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText("Likely pathogenic");
     await expect(row).toContainText("Hereditary risk");

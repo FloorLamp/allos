@@ -57,7 +57,7 @@ import { fileURLToPath } from "node:url";
 // A FIFTH frozen group (the family-create freeze, issue #868 phase-2):
 //
 //   (v)  Inline Settings → Family create-login / create-profile / set-grants
-//        sequences. Those controls are onClick+router.refresh() handlers (NOT form
+//        sequences. Those controls are onClick Server-Action handlers (NOT form
 //        submits), so an inline goto→fill→click flakes on the hydration swallow /
 //        toaster false-settle (#830/#1111) — nine near-identical copies had grown
 //        across the dynamic specs. They now live in the ONE blessed home
@@ -118,7 +118,7 @@ const TOPASS_RE = /\.toPass\(/g;
 const TOPASS_OK_MARKER = "topass-ok";
 
 // The family-create freeze (issue #868, phase-2 create-member hardening). The
-// Settings → Family create/grant controls are onClick+router.refresh() handlers, NOT
+// Settings → Family create/grant controls are onClick Server-Action handlers, NOT
 // form submits, so an inline goto→fill→click sequence flakes on the hydration swallow /
 // toaster false-settle (#830/#1111). Nine near-identical copies of that dance had
 // accreted across the dynamic specs; they now live in the ONE blessed home

@@ -58,7 +58,7 @@ test("retire and restore equipment from the manager (#341)", async ({
   const retiredRow = page
     .getByTestId("equipment-row")
     .filter({ hasText: "E2E Trap Bar" });
-  // Badge/attr flips on the toggle form's router.refresh() — cold-shard budget (imaging precedent).
+  // Badge/attr flips on the toggle action's revalidated tree — cold-shard budget (imaging precedent).
   await expect(retiredRow).toHaveAttribute("data-retired", "1", {
     timeout: 15_000,
   });

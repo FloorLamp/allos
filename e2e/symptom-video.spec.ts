@@ -155,7 +155,7 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
     });
     await expect(page.getByText("Clip attached.")).toBeVisible({
       timeout: 20_000,
-    }); // named ceiling: the upload rides a Server Action + router.refresh()
+    }); // named ceiling: the upload rides a Server Action + its revalidated re-render
 
     const clip = latestClip();
     expect(clip.kind).toBe("video");
@@ -212,7 +212,7 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
     await settledClick(page, tile.getByRole("button", { name: "Save" }));
     await expect(page.getByText("Caption updated.")).toBeVisible({
       timeout: 20_000,
-    }); // named ceiling: the caption write rides a Server Action + router.refresh()
+    }); // named ceiling: the caption write rides a Server Action + its revalidated re-render
     await expect(tile).toContainText("Cough, worse lying down", {
       timeout: 20_000,
     }); // named ceiling: the revalidated RSC replaces the figcaption
@@ -222,7 +222,7 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
     await settledClick(page, tile.getByTestId(`video-clip-delete-${clip.id}`));
     await expect(
       strip.locator('[data-testid^="video-clip-item-"]')
-    ).toHaveCount(0, { timeout: 20_000 }); // named ceiling: the delete rides a Server Action + router.refresh()
+    ).toHaveCount(0, { timeout: 20_000 }); // named ceiling: the delete rides a Server Action + its revalidated re-render
     await expect(
       strip.getByText(/No clips yet\. Add one to capture a symptom in motion/)
     ).toBeVisible();
@@ -253,7 +253,7 @@ test("an audio clip lands on the same strip as a mic tile and plays through <aud
     });
     await expect(page.getByText("Clip attached.")).toBeVisible({
       timeout: 20_000,
-    }); // named ceiling: the upload rides a Server Action + router.refresh()
+    }); // named ceiling: the upload rides a Server Action + its revalidated re-render
 
     const clip = latestClip();
     expect(clip.kind).toBe("audio");
@@ -274,7 +274,7 @@ test("an audio clip lands on the same strip as a mic tile and plays through <aud
     await settledClick(page, tile.getByTestId(`video-clip-delete-${clip.id}`));
     await expect(
       strip.locator('[data-testid^="video-clip-item-"]')
-    ).toHaveCount(0, { timeout: 20_000 }); // named ceiling: the delete rides a Server Action + router.refresh()
+    ).toHaveCount(0, { timeout: 20_000 }); // named ceiling: the delete rides a Server Action + its revalidated re-render
   } finally {
     cleanup();
     await page.context().close();
@@ -327,7 +327,7 @@ test("a caregiver reading a household member's episode can play its clips (#1696
     });
     await expect(page.getByText("Clip attached.")).toBeVisible({
       timeout: 20_000,
-    }); // named ceiling: the cross-profile upload rides a Server Action + router.refresh()
+    }); // named ceiling: the cross-profile upload rides a Server Action + its revalidated re-render
 
     const clip = latestClip(childId);
     const tile = strip.getByTestId(`video-clip-item-${clip.id}`);
@@ -359,7 +359,7 @@ test("a caregiver reading a household member's episode can play its clips (#1696
     await settledClick(page, tile.getByTestId(`video-clip-delete-${clip.id}`));
     await expect(
       strip.locator('[data-testid^="video-clip-item-"]')
-    ).toHaveCount(0, { timeout: 20_000 }); // named ceiling: the delete rides a Server Action + router.refresh()
+    ).toHaveCount(0, { timeout: 20_000 }); // named ceiling: the delete rides a Server Action + its revalidated re-render
   } finally {
     clearClips(HH_HISTORY_CHILD_PROFILE);
     await page.context().close();

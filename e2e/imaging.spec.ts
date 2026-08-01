@@ -104,8 +104,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       "Study updated"
     );
     // The toast fires right after the save action returns; the ROW text only updates
-    // once handle()'s router.refresh() re-fetches the list RSC (ImagingStudyForm.handle
-    // — toast → onDone → router.refresh). That refresh can outrun the default 5s on a
+    // once the save action's revalidated tree lands (ImagingStudyForm.handle — toast
+    // → onDone). That re-render can outrun the default 5s on a
     // starved shard, so give this the heavy-refresh budget (the #1306 precedent).
     await expect(
       list.getByRole("row").filter({ hasText: REGION })
