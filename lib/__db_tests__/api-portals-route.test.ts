@@ -14,6 +14,13 @@
 //   Those are asserted over the SERIALIZED response, recursively, so a field added to
 //   `Portal` or `PortalAccount` later cannot leak by being spread into the shape.
 //
+//   THE REACHABILITY BOUNDARY (#1796), a third thing since the owner ruled the registry
+//   scoped: passing the gate no longer buys the whole instance's vocabulary. WHICH rows
+//   come back is decided by the one reachability computation #1791 wrote for run reports
+//   (`lib/portal-visibility.ts`), so those two boundaries stay separate and separately
+//   tested — `buildToolConfig` owns what a row may CARRY, the reader owns which rows
+//   there ARE.
+//
 // NOT TESTED, because it is unrepresentable: a "wrong scope" 403. `API_TOKEN_SCOPES` has
 // exactly one member today and `apiTokenById` coerces an unknown stored scope back to it,
 // so a token carrying a different capability cannot be constructed. When a second scope
@@ -160,8 +167,10 @@ describe("GET /api/documents/portals — the gate", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.ok).toBe(false);
-    // Refused, not "here are your zero portals": the registry is instance-wide, so an
-    // empty array would be a claim about the household rather than a scoped answer.
+    // Refused, not "here are your zero portals". The gate is about the CAPABILITY, and
+    // it stayed exactly where #1753 put it when #1796 scoped the ANSWER: a caregiver who
+    // may not write anywhere cannot ask the question at all, so there is no scoped empty
+    // list to hand back.
     expect(body.portals).toBeUndefined();
   });
 
@@ -283,6 +292,132 @@ describe("GET /api/documents/portals — the disclosure boundary", () => {
       for (const a of p.accounts as Record<string, unknown>[]) {
         expect(Object.keys(a).sort()).toEqual(["implicit", "name", "slug"]);
       }
+    }
+  });
+});
+
+// ── The reachability boundary (#1796) ────────────────────────────────────────
+//
+// The registry used to be instance-wide: any token that passed the gate read every
+// portal slug, every account nickname, every software tag on the instance. An account
+// nickname is household composition spelled out ("Mom", "Dad"), so the owner ruled the
+// endpoint scoped to what the caller can reach — the same posture #1791 gave run
+// reports, through the same computation.
+//
+// The fixture grows a SECOND household rather than a second file: a foreign portal whose
+// accounts are all claimed by a profile the writer cannot reach, plus a login that can
+// reach that profile and nothing else. Everything above still runs against the original
+// rows, because this suite's fixture is built in its own beforeAll.
+describe("GET /api/documents/portals — the reachability boundary (#1796)", () => {
+  const FOREIGN_PORTAL = "Test Foreign Clinic";
+  const FOREIGN_ACCOUNT = "Auntie";
+  let foreignToken: string;
+  let foreignPortalId: number;
+
+  beforeAll(async () => {
+    const foreignProfile = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('Portals Foreign')").run()
+        .lastInsertRowid
+    );
+    const foreignLogin = makeLogin("portals-foreign", "member");
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
+    ).run(foreignLogin, foreignProfile);
+    foreignToken = (await createApiToken(foreignLogin, "f", "upload:documents"))
+      .token;
+
+    const foreign = createPortal(FOREIGN_PORTAL, "cerner");
+    expect(foreign.ok).toBe(true);
+    foreignPortalId = foreign.ok ? foreign.id : 0;
+    expect(createPortalAccount(foreignPortalId, FOREIGN_ACCOUNT).ok).toBe(true);
+    // BOTH accounts claimed, the implicit default included: an account nobody has bound
+    // yet belongs to no household, and stays visible to everyone who could set it up —
+    // otherwise `tool init` could never learn the slug of a portal created a minute ago,
+    // which is the reason this endpoint exists. A portal disappears once its accounts
+    // are claimed, and only then.
+    for (const acc of accountsForPortal(foreignPortalId)) {
+      expect(
+        bindPortalIdentity(acc.id, `TESTPATIENT, ${acc.slug}`, foreignProfile)
+          .ok
+      ).toBe(true);
+    }
+  });
+
+  it("omits a portal whose accounts are all claimed by an unreachable household", async () => {
+    const res = await GET(req(writerToken));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const slugs = (body.portals as { slug: string }[]).map((p) => p.slug);
+    expect(slugs).not.toContain("test-foreign-clinic");
+    // The disclosure assertion proper: neither the portal name nor the nickname appears
+    // anywhere in the serialized payload, whatever shape it grows.
+    const strings = allStrings(body).join(" ");
+    expect(strings).not.toContain(FOREIGN_PORTAL);
+    expect(strings).not.toContain(FOREIGN_ACCOUNT);
+    // …and the writer still gets its own household's portals, so the endpoint was
+    // scoped, not blanked.
+    expect(slugs).toContain("test-ochsner-mychart");
+    expect(slugs).toContain("test-baptist-health");
+  });
+
+  it("filters accounts WITHIN a portal both households touch", async () => {
+    // The foreign login reaches its own profile only. Ochsner's "Mom" is bound to the
+    // WRITER's profile, so it is withheld — while the portal itself, and the accounts
+    // nobody has claimed, still come back. Visibility is decided per ACCOUNT.
+    const body = await (await GET(req(foreignToken))).json();
+    const ochsner = (
+      body.portals as { slug: string; accounts: { slug: string }[] }[]
+    ).find((p) => p.slug === "test-ochsner-mychart")!;
+    expect(ochsner).toBeDefined();
+    expect(ochsner.accounts.map((a) => a.slug).sort()).toEqual([
+      "dad",
+      "default",
+    ]);
+    expect(allStrings(body).join(" ")).not.toContain("Mom");
+    // Its own portal is there in full, both accounts.
+    const own = (
+      body.portals as { slug: string; accounts: { slug: string }[] }[]
+    ).find((p) => p.slug === "test-foreign-clinic")!;
+    expect(own.accounts.map((a) => a.slug).sort()).toEqual([
+      "auntie",
+      "default",
+    ]);
+  });
+
+  it("hands an admin the full registry", async () => {
+    // No admin branch in the reader: an admin reaches every profile, so every claimed
+    // account satisfies the same clause an ordinary member's does.
+    const body = await (await GET(req(adminToken))).json();
+    const portals = body.portals as {
+      slug: string;
+      accounts: { slug: string }[];
+    }[];
+    const registrySlugs = new Set(portals.map((p) => p.slug));
+    for (const slug of [
+      "test-foreign-clinic",
+      "test-ochsner-mychart",
+      "test-baptist-health",
+    ]) {
+      expect(registrySlugs.has(slug)).toBe(true);
+    }
+    const foreign = portals.find((p) => p.slug === "test-foreign-clinic")!;
+    expect(foreign.accounts.map((a) => a.slug).sort()).toEqual([
+      "auntie",
+      "default",
+    ]);
+    // The instance-wide truth is unchanged underneath — the endpoint filters, the
+    // registry itself did not shrink.
+    expect(portalById(foreignPortalId)!.slug).toBe("test-foreign-clinic");
+  });
+
+  it("still carries no patient labels once scoping is in play", async () => {
+    // The scoped read joins portal_identities to decide visibility; the labels it joins
+    // on must not ride back out with the answer.
+    for (const token of [writerToken, foreignToken, adminToken]) {
+      const strings = allStrings(await (await GET(req(token))).json()).join(
+        " "
+      );
+      expect(strings).not.toContain("TESTPATIENT");
     }
   });
 });

@@ -4,7 +4,7 @@ import { authenticateApiToken } from "@/lib/api-tokens";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { apiTokenRateLimitKey } from "@/lib/api-token-format";
 import { buildToolConfig } from "@/lib/acquirer-identity";
-import { listPortalAccounts, listPortals } from "@/lib/portals";
+import { listVisiblePortalRegistry } from "@/lib/portal-visibility";
 
 // The allos-side portal CONFIG, for the tool to ingest (issue #1759).
 //
@@ -30,10 +30,19 @@ import { listPortalAccounts, listPortals } from "@/lib/portals";
 // THE VISIBILITY GATE MIRRORS THE CARD'S. Integrations → Patient portals is
 // member-visible to any login with write access to at least one profile (#1753's owner
 // ruling: `login.role === "admin" || writableProfiles.length > 0`), so the token's login
-// is gated the same way and this discloses exactly what that login already sees there.
-// A read-only-everywhere caregiver is REFUSED (403) rather than handed an empty list:
-// there is no such thing as "your zero portals" — the registry is instance-wide, so an
-// empty array would be a lie about the household rather than a scoped answer.
+// is gated the same way. A read-only-everywhere caregiver is REFUSED (403) rather than
+// handed an empty list: the gate is about the CAPABILITY, and "here are your zero
+// portals" would answer a question this token may not ask at all.
+//
+// WHAT IT ANSWERS WITH IS SCOPED (#1796). Passing the gate no longer buys the whole
+// instance-wide vocabulary: the rows are filtered to the accounts this login can reach,
+// through the ONE reachability computation #1791 established for run reports
+// (`lib/portal-visibility.ts`), applied here to the registry row. An account nickname
+// is household information — "Mom" names a household's composition — so a caller who
+// cannot reach the profiles an account is claimed by does not learn it exists. An admin
+// reaches every profile, so an admin still gets the full registry, and an unclaimed
+// account (no binding at all) stays visible to this population because a portal created
+// a minute ago has no bindings yet and `tool init` must still be able to learn its slug.
 //
 // DELIBERATELY ABSENT. No address-shaped field anywhere (allos has no column for one),
 // and no patient labels — mapped, pending and ignored bindings alike. Enforced by the
@@ -70,9 +79,10 @@ export async function GET(req: Request): Promise<Response> {
   // reachability — the same order the POST routes use). Demo mode refuses every
   // non-admin write, so a demo-restricted token has no writable profile and is refused
   // here exactly as it would be at an upload.
+  const accessible = accessibleProfilesForLogin(login.id);
   const canRead =
     !isDemoRestricted(isDemoMode(), login.role) &&
-    accessibleProfilesForLogin(login.id).some(
+    accessible.some(
       (p) => accessForProfile(login.id, login.role, p.id) === "write"
     );
   if (!canRead) {
@@ -82,8 +92,18 @@ export async function GET(req: Request): Promise<Response> {
     );
   }
 
+  // The accessible set, resolved HERE at the auth boundary and handed to the reader as
+  // already-authorized ids — the cross-profile reader convention. The unclaimed flag is
+  // `canRead` itself, not a constant: this gate IS the `canManagePending` population the
+  // page passes, so both surfaces answer from one decision rather than two that happen
+  // to agree.
+  const registry = listVisiblePortalRegistry(
+    accessible.map((p) => p.id),
+    canRead
+  );
+
   return Response.json({
     ok: true,
-    portals: buildToolConfig(listPortals(), listPortalAccounts()),
+    portals: buildToolConfig(registry.portals, registry.accounts),
   });
 }
