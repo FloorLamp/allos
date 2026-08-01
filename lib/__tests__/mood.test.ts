@@ -179,9 +179,9 @@ describe("moodSeriesPoints (#1408)", () => {
     expect(
       moodSeriesPoints(CHECK_INS, "energy").map((p) => p.date)
     ).not.toContain("2026-03-03");
-    expect(moodSeriesPoints(CHECK_INS, "calm").map((p) => p.date)).not.toContain(
-      "2026-03-03"
-    );
+    expect(
+      moodSeriesPoints(CHECK_INS, "calm").map((p) => p.date)
+    ).not.toContain("2026-03-03");
     expect(moodSeriesPoints([], "valence")).toEqual([]);
   });
 
