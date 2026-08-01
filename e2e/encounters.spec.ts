@@ -40,6 +40,46 @@ test.describe("Visit detail page", () => {
     await expect(detail.getByTestId("encounter-diagnoses")).toContainText(
       "Essential hypertension"
     );
+    await expect(
+      detail.getByRole("heading", { name: "Clinical summary" })
+    ).toBeVisible();
+
+    // The detail is a centered reading flow, not a stack of elevated cards. Its
+    // label/value pairs also share one left edge instead of creating an awkward
+    // mostly-empty metadata column.
+    await expect(detail.locator(".card")).toHaveCount(0);
+    const layout = await detail.evaluate((element) => {
+      const content = element.closest<HTMLElement>(
+        '[data-testid="app-content-container"]'
+      );
+      if (!content) throw new Error("Missing app content container");
+      const detailBox = element.getBoundingClientRect();
+      const contentBox = content.getBoundingClientRect();
+      return {
+        detailWidth: detailBox.width,
+        leftGap: detailBox.left - contentBox.left,
+        rightGap: contentBox.right - detailBox.right,
+      };
+    });
+    expect(layout.detailWidth).toBeLessThanOrEqual(768);
+    expect(Math.abs(layout.leftGap - layout.rightGap)).toBeLessThan(2);
+
+    const reasonLabel = detail.getByText("Chief complaint", { exact: true });
+    const reason = detail.getByTestId("encounter-reason");
+    const [labelBox, reasonBox] = await Promise.all([
+      reasonLabel.boundingBox(),
+      reason.boundingBox(),
+    ]);
+    expect(labelBox).not.toBeNull();
+    expect(reasonBox).not.toBeNull();
+    expect(reasonBox!.y).toBeGreaterThanOrEqual(labelBox!.y + labelBox!.height);
+    expect(Math.abs(reasonBox!.x - labelBox!.x)).toBeLessThan(2);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const horizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(horizontalOverflow).toBeLessThanOrEqual(0);
     // Back-link returns to the Visits list.
     await expect(
       detail.getByRole("link", { name: "Back to visits" })

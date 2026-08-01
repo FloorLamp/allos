@@ -5,6 +5,7 @@ import {
   IconBuildingHospital,
   IconCalendarClock,
   IconFileText,
+  IconStethoscope,
   IconTimeline,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -117,11 +118,9 @@ function DetailRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-1 py-3 sm:grid-cols-[10rem_1fr]">
-      <dt className="text-sm font-medium text-slate-500 dark:text-slate-400">
-        {label}
-      </dt>
-      <dd className="min-w-0 text-sm text-slate-800 dark:text-slate-100">
+    <div className="py-4">
+      <dt className="section-label">{label}</dt>
+      <dd className="mt-1.5 min-w-0 text-sm text-slate-800 dark:text-slate-100">
         {children}
       </dd>
     </div>
@@ -188,9 +187,21 @@ export default async function EncounterDetailPage(props: {
   // (#1050). The linked rows/suggestions target the ACTIVE profile's encounter.
   const linkedRows = linkedRowsForEncounter(profile.id, encounter.id);
   const visitSuggestions = suggestionsForEncounter(profile.id, encounter.id);
+  const hasClinicalSummary =
+    Boolean(encounter.reason) ||
+    diagnoses.length > 0 ||
+    Boolean(encounter.notes);
+  const hasCareDetails =
+    Boolean(encounter.provider_name) ||
+    Boolean(encounter.location_name) ||
+    Boolean(scheduledDate);
 
   return (
-    <PageContainer width="reading" data-testid="encounter-detail">
+    <PageContainer
+      width="reading"
+      className="mx-auto"
+      data-testid="encounter-detail"
+    >
       <Link
         href="/records/history/visits"
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
@@ -204,11 +215,11 @@ export default async function EncounterDetailPage(props: {
         subtitle={dateLabel(encounter, fmt)}
       />
 
-      {/* Hero chips (#1340 layout): class + provider inline, then the visit-context
-          continuity line. Each collapses when absent (the absent-pillar rule). */}
-      {encounter.class_code || encounter.provider_name ? (
+      {/* Keep useful visit context close to the title without repeating provider
+          details that already appear in the record below. */}
+      {encounter.class_code || context.length > 0 ? (
         <div
-          className="mb-2 flex flex-wrap items-center gap-2 text-sm"
+          className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm"
           data-testid="encounter-hero-chips"
         >
           {encounter.class_code ? (
@@ -216,25 +227,15 @@ export default async function EncounterDetailPage(props: {
               {classLabel(encounter.class_code)}
             </span>
           ) : null}
-          {encounter.provider_name ? (
-            <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-              <IconBuildingHospital
-                className="h-4 w-4 shrink-0"
-                stroke={1.75}
-              />
-              {encounter.provider_name}
+          {context.length > 0 ? (
+            <span
+              className="text-xs text-slate-500 dark:text-slate-400"
+              data-testid="encounter-visit-context"
+            >
+              {context.join(" · ")}
             </span>
           ) : null}
         </div>
-      ) : null}
-
-      {context.length > 0 ? (
-        <p
-          className="mb-4 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="encounter-visit-context"
-        >
-          {context.join(" · ")}
-        </p>
       ) : null}
 
       {dateEpisode && dateEpisode.id != null ? (
@@ -247,132 +248,173 @@ export default async function EncounterDetailPage(props: {
         </Link>
       ) : null}
 
-      <div className="rounded-xl border border-black/5 bg-white/60 p-4 shadow-sm sm:p-6 dark:border-white/10 dark:bg-black/10">
-        <dl className="divide-y divide-black/5 dark:divide-white/10">
-          {encounter.reason ? (
-            <DetailRow label="Chief complaint">
-              <span data-testid="encounter-reason">{encounter.reason}</span>
-            </DetailRow>
-          ) : null}
+      {hasClinicalSummary ? (
+        <section aria-labelledby="clinical-summary-heading">
+          <h2
+            id="clinical-summary-heading"
+            className="text-base font-semibold text-slate-800 dark:text-slate-100"
+          >
+            Clinical summary
+          </h2>
+          <dl className="divide-y divide-black/5 dark:divide-white/10">
+            {encounter.reason ? (
+              <DetailRow label="Chief complaint">
+                <span data-testid="encounter-reason">{encounter.reason}</span>
+              </DetailRow>
+            ) : null}
 
-          {diagnoses.length > 0 ? (
-            <DetailRow label="Diagnoses">
-              <div
-                className="flex flex-wrap gap-1.5"
-                data-testid="encounter-diagnoses"
-              >
-                {diagnoses.map((d, i) => (
-                  <span
-                    key={i}
-                    className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                  >
-                    {d}
-                  </span>
-                ))}
-              </div>
-            </DetailRow>
-          ) : null}
-
-          {encounter.provider_name ? (
-            <DetailRow label="Provider">
-              <ProviderName
-                name={encounter.provider_name}
-                providerId={encounter.provider_id}
-                className=""
-              />
-            </DetailRow>
-          ) : null}
-
-          {encounter.location_name ? (
-            <DetailRow label="Facility">
-              {encounter.location_provider_id ? (
-                <Link
-                  href={`/providers/${encounter.location_provider_id}`}
-                  className="inline-flex items-center gap-1.5 hover:text-brand-700 hover:underline dark:hover:text-brand-300"
+            {diagnoses.length > 0 ? (
+              <DetailRow label="Diagnoses">
+                <div
+                  className="flex flex-wrap gap-1.5"
+                  data-testid="encounter-diagnoses"
                 >
-                  <IconBuildingHospital
-                    className="h-4 w-4 shrink-0"
-                    stroke={1.75}
-                  />
-                  {encounter.location_name}
-                </Link>
-              ) : (
-                <span className="inline-flex items-center gap-1.5">
-                  <IconBuildingHospital
-                    className="h-4 w-4 shrink-0"
-                    stroke={1.75}
-                  />
-                  {encounter.location_name}
-                </span>
-              )}
-              {encounter.location_address ? (
-                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {encounter.location_address}
-                  {" · "}
-                  <OpenInMaps
-                    address={encounter.location_address}
-                    label="Directions"
-                    showIcon={false}
-                    className="text-brand-700 hover:underline dark:text-brand-300"
-                  />
+                  {diagnoses.map((d, i) => (
+                    <span
+                      key={i}
+                      className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                    >
+                      {d}
+                    </span>
+                  ))}
                 </div>
-              ) : null}
-            </DetailRow>
-          ) : null}
+              </DetailRow>
+            ) : null}
 
-          {encounter.notes ? (
-            <DetailRow label="Notes">
-              <NotesText
-                as="p"
-                notes={encounter.notes}
-                className="leading-relaxed"
-                data-testid="encounter-notes"
-              />
-            </DetailRow>
-          ) : null}
+            {encounter.notes ? (
+              <DetailRow label="Notes">
+                <NotesText
+                  as="p"
+                  notes={encounter.notes}
+                  className="leading-relaxed"
+                  data-testid="encounter-notes"
+                />
+              </DetailRow>
+            ) : null}
+          </dl>
+        </section>
+      ) : null}
 
-          {scheduledDate ? (
-            <DetailRow label="Scheduling">
-              <span
-                className="inline-flex items-center gap-1.5"
-                data-testid="encounter-scheduling"
-              >
-                <IconCalendarClock className="h-4 w-4 shrink-0" stroke={1.75} />
-                Scheduled {formatRecordDate(scheduledDate, "", fmt)} → attended{" "}
-                {formatRecordDate(encounter.date, "", fmt)}
-              </span>
-            </DetailRow>
-          ) : null}
+      {hasCareDetails ? (
+        <section
+          className="mt-6 border-t border-black/5 pt-5 dark:border-white/5"
+          aria-labelledby="care-details-heading"
+        >
+          <h2
+            id="care-details-heading"
+            className="text-base font-semibold text-slate-800 dark:text-slate-100"
+          >
+            Care details
+          </h2>
+          <dl className="divide-y divide-black/5 dark:divide-white/10">
+            {encounter.provider_name ? (
+              <DetailRow label="Provider">
+                <span className="inline-flex items-center gap-1.5">
+                  <IconStethoscope
+                    className="h-4 w-4 shrink-0 text-slate-400"
+                    stroke={1.75}
+                  />
+                  <ProviderName
+                    name={encounter.provider_name}
+                    providerId={encounter.provider_id}
+                    className=""
+                  />
+                </span>
+              </DetailRow>
+            ) : null}
 
-          <DetailRow label="Source">
-            <div className="flex flex-col items-start gap-1.5">
-              <span
-                className="text-slate-500 dark:text-slate-400"
-                data-testid="encounter-source"
-              >
-                {sourceLabel(encounter.source)}
-              </span>
-              {encounter.document_id ? (
-                <Link
-                  href={`/import/${encounter.document_id}`}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 transition hover:underline dark:text-brand-300"
+            {encounter.location_name ? (
+              <DetailRow label="Facility">
+                {encounter.location_provider_id ? (
+                  <Link
+                    href={`/providers/${encounter.location_provider_id}`}
+                    className="inline-flex items-center gap-1.5 hover:text-brand-700 hover:underline dark:hover:text-brand-300"
+                  >
+                    <IconBuildingHospital
+                      className="h-4 w-4 shrink-0 text-slate-400"
+                      stroke={1.75}
+                    />
+                    {encounter.location_name}
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconBuildingHospital
+                      className="h-4 w-4 shrink-0 text-slate-400"
+                      stroke={1.75}
+                    />
+                    {encounter.location_name}
+                  </span>
+                )}
+                {encounter.location_address ? (
+                  <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                    {encounter.location_address}
+                    {" · "}
+                    <OpenInMaps
+                      address={encounter.location_address}
+                      label="Directions"
+                      showIcon={false}
+                      className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                    />
+                  </div>
+                ) : null}
+              </DetailRow>
+            ) : null}
+
+            {scheduledDate ? (
+              <DetailRow label="Scheduling">
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  data-testid="encounter-scheduling"
                 >
-                  <IconFileText className="h-3.5 w-3.5" stroke={1.75} />
-                  View source document
-                </Link>
-              ) : null}
-              <Link
-                href={timelineDayHref(encounter.date)}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 transition hover:underline dark:text-brand-300"
-                data-testid="encounter-timeline-link"
-              >
-                <IconTimeline className="h-3.5 w-3.5" stroke={1.75} />
-                View this day in Timeline
-              </Link>
-            </div>
-          </DetailRow>
-        </dl>
-      </div>
+                  <IconCalendarClock
+                    className="h-4 w-4 shrink-0"
+                    stroke={1.75}
+                  />
+                  Scheduled {formatRecordDate(scheduledDate, "", fmt)} →
+                  attended {formatRecordDate(encounter.date, "", fmt)}
+                </span>
+              </DetailRow>
+            ) : null}
+          </dl>
+        </section>
+      ) : null}
+
+      <section
+        className="mt-6 border-t border-black/5 pt-5 dark:border-white/5"
+        aria-labelledby="record-history-heading"
+      >
+        <h2
+          id="record-history-heading"
+          className="text-base font-semibold text-slate-800 dark:text-slate-100"
+        >
+          Record history
+        </h2>
+        <span
+          className="mt-2 block text-sm text-slate-500 dark:text-slate-400"
+          data-testid="encounter-source"
+        >
+          {sourceLabel(encounter.source)}
+        </span>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {encounter.document_id ? (
+            <Link
+              href={`/import/${encounter.document_id}`}
+              className="btn btn-sm"
+            >
+              <IconFileText className="h-4 w-4" stroke={1.75} />
+              View source document
+            </Link>
+          ) : null}
+          <Link
+            href={timelineDayHref(encounter.date)}
+            className="btn-ghost btn-sm"
+            data-testid="encounter-timeline-link"
+          >
+            <IconTimeline className="h-4 w-4" stroke={1.75} />
+            View this day in Timeline
+          </Link>
+        </div>
+      </section>
 
       <VisitEpisodes
         profileId={profile.id}
@@ -387,11 +429,6 @@ export default async function EncounterDetailPage(props: {
         linkedRows={linkedRows}
         suggestions={visitSuggestions}
       />
-
-      <p className="mt-4 px-1 text-xs text-slate-500 dark:text-slate-400">
-        Imported visits come from uploaded health records (CCD Encounters
-        section).
-      </p>
     </PageContainer>
   );
 }
