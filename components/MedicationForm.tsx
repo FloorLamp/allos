@@ -28,6 +28,11 @@ import PediatricDoseBandPicker from "@/components/medications/PediatricDoseBandP
 import PediatricWeightUpdate from "@/components/medications/PediatricWeightUpdate";
 import { useIntakeRxcui } from "@/components/intake/useIntakeRxcui";
 import { serializeRxcuiIngredients } from "@/lib/rxnorm";
+import {
+  applyProductSeed,
+  itemSeedFromPool,
+  type SupplyOption,
+} from "@/lib/supply-product";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
@@ -123,6 +128,7 @@ export default function MedicationForm({
   course,
   todayStr,
   conditions = [],
+  initialSupply = null,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: Supplement;
@@ -150,6 +156,9 @@ export default function MedicationForm({
   // A new medication starts today unless the user chooses another date.
   course?: MedicationCourse;
   todayStr?: string;
+  // Opened FROM a shared bottle (#1705) — the cabinet's "Add for another person". The
+  // product fields are seeded from it and it links on save.
+  initialSupply?: SupplyOption | null;
 }) {
   const s = supplement;
   const toast = useToast();
@@ -161,7 +170,12 @@ export default function MedicationForm({
     setPediatricContext(pediatric);
   }, [pediatric]);
 
-  const [name, setName] = useState(s?.name ?? "");
+  // Seeded FROM the bottle (#1705): the pool is authoritative for the product, so its
+  // name and strength prefill the fields this form owns the inputs for. Editable — the
+  // DOSE is this person's, so the seed is a starting point, never a lock.
+  const supplySeed = initialSupply ? itemSeedFromPool(initialSupply) : null;
+  const seededRef = useRef(supplySeed);
+  const [name, setName] = useState(s?.name ?? supplySeed?.name ?? "");
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [situation, setSituation] = useState(s?.situation ?? "");
@@ -223,7 +237,7 @@ export default function MedicationForm({
           start_date: d.start_date ?? "",
           end_date: d.end_date ?? "",
         }))
-      : [emptyDose()]
+      : [{ ...emptyDose(), amount: supplySeed?.amount ?? "" }]
   );
 
   // Item-level calendar (#1602). Seeded from the stored row so an edit round-trips
@@ -403,6 +417,34 @@ export default function MedicationForm({
     setSelectedPediatricBandMinLbs(null);
     markTouched("doseAmount", "foodTiming", "timeOfDay");
     setDoses(update);
+  }
+
+  // Picking a shared bottle (#1705) seeds the same two product fields the cabinet
+  // deep link seeds, and only them. A value the user typed is never overwritten
+  // (applyProductSeed), and the amount is marked TOUCHED so a later catalog pick
+  // doesn't quietly replace the strength the household's actual bottle carries.
+  function onPickSupply(supply: SupplyOption | null): void {
+    const seed = supply ? itemSeedFromPool(supply) : null;
+    const previous = seededRef.current;
+    setName((current) =>
+      applyProductSeed(current, previous?.name ?? null, seed?.name ?? "")
+    );
+    if (seed) markTouched("doseAmount");
+    setDoses((ds) =>
+      ds.map((d, i) =>
+        i === 0
+          ? {
+              ...d,
+              amount: applyProductSeed(
+                d.amount,
+                previous?.amount ?? null,
+                seed?.amount ?? ""
+              ),
+            }
+          : d
+      )
+    );
+    seededRef.current = seed;
   }
 
   function selectPediatricBand(band: PediatricBand) {
@@ -1093,7 +1135,12 @@ export default function MedicationForm({
         setCritical={setCritical}
       />
 
-      <RefillTracking fid={fid} supplement={s} />
+      <RefillTracking
+        fid={fid}
+        supplement={s}
+        initialSupply={initialSupply}
+        onPickSupply={onPickSupply}
+      />
 
       <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
         {/* Pediatric label context precedes the fields it can populate. The complete

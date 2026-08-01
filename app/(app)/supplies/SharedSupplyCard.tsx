@@ -9,6 +9,7 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import type { AppRoute } from "@/lib/hrefs";
+import { productLabel } from "@/lib/supply-product";
 import type { AvatarProfile } from "@/components/Avatar";
 import { updatePoolAction, deletePoolAction } from "./actions";
 
@@ -35,6 +36,16 @@ export interface SharedSupplyCardData {
     href: AppRoute;
     profile: AvatarProfile;
     acting: boolean;
+  }[];
+  // "Add for another person" (#1705): every accessible profile the caller may WRITE,
+  // each with the deep link that opens that surface's add form pre-seeded from this
+  // bottle. Resolved at the page's auth boundary; the item is created under the target
+  // profile's OWN write gate (the chip switches the active profile first), never the
+  // acting profile's.
+  addTargets: {
+    profile: AvatarProfile;
+    acting: boolean;
+    href: AppRoute;
   }[];
   canWrite: boolean;
 }
@@ -77,6 +88,10 @@ export default function SharedSupplyCard({
     });
   };
 
+  // The bottle's product identity as ONE label — the same computation the picker's
+  // options and the linked items' chips read (#1705), so a bottle reads the same
+  // everywhere it appears.
+  const product = productLabel(pool);
   const daysText =
     pool.daysLeft == null
       ? "No estimate yet"
@@ -105,16 +120,14 @@ export default function SharedSupplyCard({
             data-testid="shared-supply-name"
           >
             {pool.name}
-            {pool.strength ? (
-              <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
-                {pool.strength}
-                {pool.form ? ` · ${pool.form}` : ""}
+            {product && (
+              <span
+                className="ml-2 font-normal text-slate-500 dark:text-slate-400"
+                data-testid="shared-supply-product"
+              >
+                {product}
               </span>
-            ) : pool.form ? (
-              <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
-                {pool.form}
-              </span>
-            ) : null}
+            )}
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             <span data-testid="shared-supply-days">{daysText}</span>
@@ -217,6 +230,30 @@ export default function SharedSupplyCard({
             Nothing links to this bottle any more. Its count is kept until you
             delete it — nothing is removed on your behalf.
           </p>
+        )}
+        {/* The bottle → item direction (#1705). A household bottle is only useful to a
+            second person if adding it for them is one step: each chip switches to that
+            profile and opens its add form pre-seeded with this bottle's product facts
+            and pre-linked to it. */}
+        {pool.addTargets.length > 0 && (
+          <div className="mt-3" data-testid="shared-supply-add-for">
+            <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+              Add for another person
+            </p>
+            <ul className="flex flex-wrap gap-2">
+              {pool.addTargets.map((t) => (
+                <li key={t.profile.id}>
+                  <ProfileSwitcherChip
+                    profile={t.profile}
+                    acting={t.acting}
+                    destination={t.href}
+                    label={`Add ${pool.name}`}
+                    testId="shared-supply-add-for-link"
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {pool.hiddenMemberCount > 0 && (
           <p

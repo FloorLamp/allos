@@ -7,6 +7,7 @@ import {
   getSupplementPairs,
   getRefillRates,
   getPoolChips,
+  findLinkableSupply,
   getPendingSuggestions,
   getActivitiesByDate,
   getActivityDates,
@@ -143,13 +144,22 @@ interface Item {
 // warnings, a slot-filterable schedule, compact coaching disclosures, and modal
 // add/edit flows. A self-contained async server component rendered by the tabbed
 // nutrition page.
-export default async function SupplementsTab() {
+export default async function SupplementsTab({
+  supplyId = 0,
+}: {
+  // The cabinet's "Add for another person" deep link (#1705). 0 / unreachable = no seed.
+  supplyId?: number;
+}) {
   const { login, profile } = await requireSession();
   // The medicine-cabinet door (#1522) counts over the caller's WHOLE accessible set,
   // not the acting profile: a shared bottle is household-scoped and has no kind of
   // its own, so this tab and Medications show the same number and land on the same
   // list. Everything else on this tab stays single-profile.
-  const cabinetCount = countVisiblePools((await requireScope()).ids);
+  const scope = await requireScope();
+  const cabinetCount = countVisiblePools(scope.ids);
+  // Resolved through the SAME offerability rule the item form's picker uses, so an id
+  // outside this caller's reach simply doesn't seed anything.
+  const initialSupply = findLinkableSupply(scope.ids, supplyId);
   const todayStr = today(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   // Dietary preferences (#975): the RDA-adequacy food-source lines filter/substitute
@@ -1073,6 +1083,7 @@ export default async function SupplementsTab() {
                   <h2 className="mb-3 section-label">Manage</h2>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <AddSupplementModal
+                      initialSupply={initialSupply}
                       allSupplements={supplements}
                       stackItems={stackItems}
                       pgxVariants={pgxVariants}
@@ -1098,6 +1109,7 @@ export default async function SupplementsTab() {
                 action={
                   <AddSupplementModal
                     key="add-supplement"
+                    initialSupply={initialSupply}
                     allSupplements={supplements}
                     stackItems={stackItems}
                     pgxVariants={pgxVariants}

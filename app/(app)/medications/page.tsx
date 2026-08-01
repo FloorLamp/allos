@@ -5,6 +5,7 @@ import {
   getConditions,
   collectHouseholdRollup,
   countVisiblePools,
+  findLinkableSupply,
 } from "@/lib/queries";
 import { mergedSituationOptions } from "@/lib/situations";
 import { loadMedicationsData, type MedicationsData } from "./med-data";
@@ -47,7 +48,10 @@ export const dynamic = "force-dynamic";
 // only (#1096 write-centric), a read-only member's board is view-only. One intake_items
 // table; supplements live on Nutrition → Supplements.
 export default async function MedicationsPage(props: {
-  searchParams: Promise<{ filter?: string | string[] }>;
+  searchParams: Promise<{
+    filter?: string | string[];
+    supply?: string | string[];
+  }>;
 }) {
   const searchParams = await props.searchParams;
   const scope = await requireScope();
@@ -64,6 +68,19 @@ export default async function MedicationsPage(props: {
   )
     ? (rawFilter as MedicationFilter)
     : null;
+
+  // Opened from the medicine cabinet's "Add for another person" (#1705): `?supply=`
+  // names the bottle this add should be seeded from and linked to. Resolved through the
+  // SAME offerability rule the item form's picker uses, so an id outside this caller's
+  // reach simply doesn't seed anything.
+  const initialSupply = findLinkableSupply(
+    scope.ids,
+    Number(
+      (Array.isArray(searchParams.supply)
+        ? searchParams.supply[0]
+        : searchParams.supply) ?? 0
+    )
+  );
 
   const weightUnit = getUnitPrefs(loginId).weightUnit;
   const timeFormat = getDisplayFormatPrefs(loginId).timeFormat;
@@ -127,6 +144,7 @@ export default async function MedicationsPage(props: {
       <ProviderOptionsProvider providers={getPickerProviders()}>
         <SituationOptionsProvider options={situationOptions}>
           <MedicationAddWorkspace
+            initialSupply={initialSupply}
             // The medicine-cabinet door (#1522), counted over the WHOLE accessible
             // set rather than the acting profile — the cabinet is household-scoped,
             // and this is the number the /supplies page will list.

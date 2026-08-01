@@ -102,6 +102,21 @@ export function intakeHref(kind: SupplementKind): AppRoute {
     : nutritionTabHref("supplements");
 }
 
+// "Add this bottle for another person" (#1705) — the cabinet's second entry point into
+// the item forms. Same kind→surface rule as intakeHref, plus the `?supply=` param the
+// two surfaces parse to open their add form pre-seeded and pre-linked. One helper so the
+// param name lives in exactly one place: the cabinet writes it, both pages read it.
+export const SUPPLY_PREFILL_PARAM = "supply";
+
+export function addItemFromPoolHref(
+  kind: SupplementKind,
+  supplyId: number
+): AppRoute {
+  return kind === "medication"
+    ? `/medications?${SUPPLY_PREFILL_PARAM}=${supplyId}`
+    : `/nutrition?tab=supplements&${SUPPLY_PREFILL_PARAM}=${supplyId}`;
+}
+
 // --------------------------------------------------------------------------
 // Query-rule helpers
 // --------------------------------------------------------------------------

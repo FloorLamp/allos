@@ -9,6 +9,7 @@ import {
   unlinkItemAction,
 } from "@/app/(app)/supplies/actions";
 import { SUPPLIES_HREF } from "@/lib/hrefs";
+import { bottleLabel, type SupplyOption } from "@/lib/supply-product";
 
 // The "Shared supply" control (#1374), rendered inside the refill block of BOTH intake
 // forms (the one shared RefillTracking component, so supplements and medications get it
@@ -21,25 +22,40 @@ import { SUPPLIES_HREF } from "@/lib/hrefs";
 // opposite things. Separate actions keep each write's intent unambiguous — and let an
 // EXISTING item be shared without re-saving the whole medication.
 //
-// A brand-new (unsaved) item has no id to link, so the control explains that sharing
-// becomes available once the item is saved.
+// A brand-new (unsaved) item has no id to LINK — but since #1705 it has the other
+// direction: choosing a bottle here seeds the item form's product fields and rides along
+// as `supply_id` on the item's own save, so the household flow ("there's a shared bottle
+// of D3 5000 IU; add it for my daughter") is one step. That branch posts a field instead
+// of calling an action, which is why it needs no Apply button of its own.
 export default function SharedSupplyPicker({
   itemId,
   itemName,
   supplyId,
   supplyName,
+  initialSupply = null,
+  onPickSupply,
 }: {
   itemId?: number;
   itemName: string;
   supplyId: number | null;
   supplyName: string | null;
+  // CREATE mode only (#1705): the bottle this form was opened from, e.g. the cabinet's
+  // "Add for another person". Preselected and pre-seeded.
+  initialSupply?: SupplyOption | null;
+  // CREATE mode only: hands the chosen bottle to the item form so it can prefill the
+  // product fields it owns the inputs for.
+  onPickSupply?: (supply: SupplyOption | null) => void;
 }) {
-  const [options, setOptions] = useState<
-    { id: number; name: string; strength: string | null }[]
-  >([]);
+  const [options, setOptions] = useState<SupplyOption[]>(
+    initialSupply ? [initialSupply] : []
+  );
   const [loaded, setLoaded] = useState(false);
   const [choice, setChoice] = useState<string>(
-    supplyId != null ? String(supplyId) : ""
+    supplyId != null
+      ? String(supplyId)
+      : initialSupply
+        ? String(initialSupply.id)
+        : ""
   );
   const [savedChoice, setSavedChoice] = useState<string>(
     supplyId != null ? String(supplyId) : ""
@@ -58,7 +74,7 @@ export default function SharedSupplyPicker({
   }, [supplyId, supplyName]);
 
   useEffect(() => {
-    if (!itemId || loaded) return;
+    if (loaded) return;
     let live = true;
     void listSharedSupplyOptions().then((opts) => {
       if (!live) return;
@@ -68,15 +84,53 @@ export default function SharedSupplyPicker({
     return () => {
       live = false;
     };
-  }, [itemId, loaded]);
+  }, [loaded]);
 
+  // CREATE mode (#1705). No item exists yet, so there is nothing to link and no action to
+  // call: the chosen bottle rides on the item form's OWN submit as `supply_id`, and the
+  // pick is handed up so the form can seed the product fields from it.
   if (!itemId) {
+    const picked = options.find((o) => String(o.id) === choice) ?? null;
     return (
       <div
         data-testid="shared-supply-picker"
-        className="sm:col-span-2 mt-3 text-xs text-slate-500 dark:text-slate-400"
+        className="sm:col-span-2 mt-4 border-t border-black/5 pt-4 dark:border-white/5"
       >
-        Save this item first to share its bottle with another household member.
+        <label className="label" htmlFor="shared-supply-new-item">
+          Shared supply
+        </label>
+        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+          Draw this item from a bottle the household already shares — the bottle
+          keeps the count for everyone linked to it.
+        </p>
+        <input type="hidden" name="supply_id" value={choice} />
+        <select
+          id="shared-supply-new-item"
+          className="input max-w-xs"
+          data-testid="shared-supply-new-item-select"
+          value={choice}
+          onChange={(e) => {
+            const next = e.target.value;
+            setChoice(next);
+            onPickSupply?.(options.find((o) => String(o.id) === next) ?? null);
+          }}
+        >
+          <option value="">Not shared</option>
+          {options.map((o) => (
+            <option key={o.id} value={String(o.id)}>
+              {bottleLabel(o)}
+            </option>
+          ))}
+        </select>
+        {picked && (
+          <p
+            className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+            data-testid="shared-supply-new-item-note"
+          >
+            This item will draw from “{bottleLabel(picked)}”. Its dose and
+            schedule stay yours; the bottle keeps the count.
+          </p>
+        )}
       </div>
     );
   }
@@ -180,8 +234,7 @@ export default function SharedSupplyPicker({
           <option value="">Not shared</option>
           {options.map((o) => (
             <option key={o.id} value={String(o.id)}>
-              {o.name}
-              {o.strength ? ` (${o.strength})` : ""}
+              {bottleLabel(o)}
             </option>
           ))}
           <option value="__new__">Create a new shared bottle…</option>
@@ -212,9 +265,12 @@ export default function SharedSupplyPicker({
         </button>
       </div>
       {choice === "__new__" && (
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          The count currently on this item moves into the new shared bottle —
-          one way, once.
+        <p
+          className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="shared-supply-new-hint"
+        >
+          The new bottle inherits this item’s name and strength, and the count
+          currently on the item moves into it — one way, once.
         </p>
       )}
       {error && (

@@ -29,7 +29,17 @@ export default async function NutritionPage(props: {
   const searchParams = await props.searchParams;
   const tab = parseTab(searchParams.tab);
 
-  const activePanel = tab === "supplements" ? <SupplementsTab /> : <FoodTab />;
+  // `?supply=` (#1705) is the cabinet's "Add for another person" deep link. Parsed here
+  // with the tab, resolved (and access-checked) inside the tab that uses it.
+  const rawSupply = Array.isArray(searchParams.supply)
+    ? searchParams.supply[0]
+    : searchParams.supply;
+  const activePanel =
+    tab === "supplements" ? (
+      <SupplementsTab supplyId={Number(rawSupply ?? 0)} />
+    ) : (
+      <FoodTab />
+    );
 
   return (
     <TabFirstPage

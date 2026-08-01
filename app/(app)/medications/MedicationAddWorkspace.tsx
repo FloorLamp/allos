@@ -10,6 +10,7 @@ import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import type { FormResult } from "@/lib/types";
+import type { SupplyOption } from "@/lib/supply-product";
 
 type AddMode = "quick" | "full";
 
@@ -25,6 +26,7 @@ export default function MedicationAddWorkspace({
   age,
   todayStr,
   conditions,
+  initialSupply = null,
 }: {
   subtitle: string;
   // Shared bottles the caller can see in the medicine cabinet (#1522). Resolved at
@@ -40,9 +42,15 @@ export default function MedicationAddWorkspace({
   age: number | null;
   todayStr: string;
   conditions: { id: number; name: string }[];
+  // Arrived from the cabinet's "Add for another person" (#1705). The panel opens on the
+  // FULL form because that is the one carrying the shared-supply control the seed shows
+  // up in — a quick-add would link the bottle invisibly.
+  initialSupply?: SupplyOption | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<AddMode>("quick");
+  const [open, setOpen] = useState(initialSupply != null);
+  const [mode, setMode] = useState<AddMode>(
+    initialSupply != null ? "full" : "quick"
+  );
 
   function close() {
     setOpen(false);
@@ -157,6 +165,7 @@ export default function MedicationAddWorkspace({
                   age={age}
                   todayStr={todayStr}
                   conditions={conditions}
+                  initialSupply={initialSupply}
                   onDone={close}
                 />
               </>

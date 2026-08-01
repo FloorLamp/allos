@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Supplement } from "@/lib/types";
+import type { SupplyOption } from "@/lib/supply-product";
 import SharedSupplyPicker from "./SharedSupplyPicker";
 
 // The optional refill-tracking block shared by both intake forms (#846): units on
@@ -12,17 +13,28 @@ import SharedSupplyPicker from "./SharedSupplyPicker";
 export default function RefillTracking({
   fid,
   supplement,
+  initialSupply = null,
+  onPickSupply,
 }: {
   fid: string | number;
   supplement?: Supplement;
+  // CREATE mode (#1705): the bottle this form was opened from, and the callback that
+  // lets the item form prefill its product fields when one is chosen here.
+  initialSupply?: SupplyOption | null;
+  onPickSupply?: (supply: SupplyOption | null) => void;
 }) {
   const s = supplement;
   const loadedQty =
     s?.quantity_on_hand != null ? Math.max(0, s.quantity_on_hand) : "";
+  // A bottle chosen on a NEW item (#1705) makes it pooled the moment it saves, so the
+  // private-count fields must disappear now rather than after the round trip.
+  const [chosenSupply, setChosenSupply] = useState<SupplyOption | null>(
+    initialSupply
+  );
   // A POOLED item (#1374) keeps NO private count — the shared bottle holds it — so the
   // per-item quantity field is hidden entirely and the shared-supply control below is
   // the whole story. Leaving both visible is how a household ends up double-counting.
-  const pooled = s?.supply_id != null;
+  const pooled = s?.supply_id != null || chosenSupply != null;
   const tracked = s?.quantity_on_hand != null;
   const [enabled, setEnabled] = useState(tracked);
   return (
@@ -100,6 +112,11 @@ export default function RefillTracking({
         itemName={s?.name ?? ""}
         supplyId={s?.supply_id ?? null}
         supplyName={s?.supply_name ?? null}
+        initialSupply={initialSupply}
+        onPickSupply={(supply) => {
+          setChosenSupply(supply);
+          onPickSupply?.(supply);
+        }}
       />
     </div>
   );
