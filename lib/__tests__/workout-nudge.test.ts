@@ -263,4 +263,43 @@ describe("digestWorkoutLine (#1712)", () => {
     expect(digestWorkoutLine(null)).toBeNull();
     expect(digestWorkoutLine(rec())).toBeNull();
   });
+
+  // #1819 item 3: the standalone "Today:" prefix restates the digest's own Today
+  // heading. The BARE variant drops it — same computation, same states, no second
+  // formatter for the digest to drift from.
+  describe("the bare variant the digest renders under its Today heading", () => {
+    const bare = { standalone: false } as const;
+
+    it("drops the prefix from every state", () => {
+      expect(
+        digestWorkoutLine(
+          rec({ sessionLabel: "Back", exercises: ["Lat Pulldown"] }),
+          bare
+        )
+      ).toBe("🏋️ Back — Lat Pulldown");
+      expect(
+        digestWorkoutLine(
+          rec({ rest: { title: "Rest day", detail: "…" } }),
+          bare
+        )
+      ).toBe("🛌 Rest day");
+      expect(
+        digestWorkoutLine(
+          rec({ onTrack: { title: "On track this week", detail: "…" } }),
+          bare
+        )
+      ).toBe("✅ On track this week");
+    });
+
+    it("differs from the standalone form by the prefix alone", () => {
+      const r = rec({ sessionLabel: "Push", exercises: ["Bench Press"] });
+      expect(digestWorkoutLine(r)).toBe(
+        digestWorkoutLine(r, bare)!.replace(/^(\S+) /, "$1 Today: ")
+      );
+    });
+
+    it("still says nothing when there is nothing to preview", () => {
+      expect(digestWorkoutLine(rec(), bare)).toBeNull();
+    });
+  });
 });
