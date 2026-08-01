@@ -10,6 +10,7 @@ import { getUnitPrefs, getWeekMode } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { frequencyScopeLabel } from "@/lib/goals";
 import FrequencyTargets from "@/app/(app)/training/FrequencyTargets";
+import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import GoalsManager from "./GoalsManager";
 import GoalPacingFindings from "./GoalPacingFindings";
 
@@ -54,6 +55,13 @@ export default async function GoalsSection() {
         equipmentByExercise={equipmentByExercise}
         weightUnit={wu}
       />
+
+      {/* Right-sizing suggestions (#1670) for the weekly routine below: a training
+          frequency target the profile has been under for four completed weeks,
+          offered for the cadence they actually keep or for no target at all. */}
+      <div className="mt-6">
+        <RightSizeSuggestions profileId={profile.id} domain="training" />
+      </div>
 
       {/* Weekly frequency targets, below the goals. */}
       <div className="card mt-6">

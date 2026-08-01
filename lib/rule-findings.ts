@@ -1386,18 +1386,28 @@ export function buildTargetRightSizeFindings(
   profileId: number,
   today: string
 ): Finding[] {
-  return collectRightSizeCandidates(profileId, today).map((c) => ({
+  return collectRightSizeCandidates(profileId, today).map(
+    rightSizeCandidateFinding
+  );
+}
+
+// One candidate's Finding envelope. Exported so a domain's own suggestion card can
+// run its candidates through the SAME suppression filter every other surface uses
+// (activeFindings over these keys) without gathering the candidates a second time —
+// the card and the coaching rollup then hide and re-appear together, by construction.
+export function rightSizeCandidateFinding(c: RightSizeCandidate): Finding {
+  return {
     domain: "right-size",
     dedupeKey: c.key,
     supersedes: c.legacyKey,
     title: c.title,
     detail: c.detail,
     // Calm FYI — an observation about the user's own log, never an alarm.
-    tone: "info" as const,
+    tone: "info",
     evidence: c.evidence,
     actionHref: RIGHTSIZE_ACTION[c.domain].href,
     actionLabel: RIGHTSIZE_ACTION[c.domain].label,
-  }));
+  };
 }
 
 // ---- Domain: sun exposure (coaching tier only, issue #571) ----------------

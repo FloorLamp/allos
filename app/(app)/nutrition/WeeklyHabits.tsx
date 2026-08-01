@@ -18,6 +18,7 @@ import {
   foodHabitInteractionNote,
 } from "@/lib/food-habit";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
+import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import SubmitButton from "@/components/SubmitButton";
 import { trackFoodHabit } from "./actions";
 import UntrackHabitButton from "./UntrackHabitButton";
@@ -66,6 +67,13 @@ export default function WeeklyHabits({
   return (
     <div className={embedded ? undefined : "card"} data-testid="weekly-habits">
       <h3 className="mb-3 section-label">Weekly habits</h3>
+
+      {/* Right-sizing suggestions (#1670), above the habits they are about: a
+          servings target the profile has been under for four completed weeks,
+          offered for the intake they actually keep or for no target at all. */}
+      <div className="mb-3">
+        <RightSizeSuggestions profileId={profileId} domain="food" />
+      </div>
 
       {habits.length > 0 && (
         <ul className="mb-3 space-y-1.5">

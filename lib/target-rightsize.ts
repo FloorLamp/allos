@@ -288,13 +288,21 @@ export type RightSizeOutcome =
   | "lowered"
   | "stopped"
   | "already-lower"
-  | "not-found";
+  | "not-found"
+  // The suggestion is no longer being made — the cadence recovered, the target was
+  // re-tuned, or it was already right-sized elsewhere. The action re-derives the
+  // candidate before writing rather than trusting a number posted by the page, so a
+  // card left open on a stale tab refuses instead of applying a floor nobody is
+  // suggesting any more. Only an action returns this; neither write core can.
+  | "stale";
 
 // One-line copy per outcome, shared by every surface that runs an accept action so two
 // callers can't describe the same result differently.
 export const RIGHTSIZE_OUTCOME_TEXT: Record<RightSizeOutcome, string> = {
   lowered: "Weekly target lowered — your history is unchanged.",
   stopped: "Weekly target removed — everything you logged stays.",
-  "already-lower": "That target is already at or below this — nothing to change.",
+  "already-lower":
+    "That target is already at or below this — nothing to change.",
   "not-found": "That target is no longer available.",
+  stale: "That suggestion is out of date — reload to see where this stands.",
 };

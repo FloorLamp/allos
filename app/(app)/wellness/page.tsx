@@ -4,6 +4,7 @@ import { getWellnessPractices } from "@/lib/queries";
 import { getWeekStart } from "@/lib/settings";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
+import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import AddPracticeButton from "./AddPracticeButton";
 import PracticeCard from "./PracticeCard";
 
@@ -33,6 +34,13 @@ export default async function WellnessPage(props: {
         action={<AddPracticeButton defaultOpen={searchParams.new === "1"} />}
         actionAlign="start"
       />
+
+      {/* Right-sizing suggestions (#1670), above the cards they are about: a weekly
+          goal the profile has been under for four completed weeks, offered for the
+          cadence they actually keep or for the logs-only state (#1621). */}
+      <div className="mb-6">
+        <RightSizeSuggestions profileId={profile.id} domain="practice" />
+      </div>
 
       <section>
         <h2 className="mb-2 section-label">Your practices</h2>
