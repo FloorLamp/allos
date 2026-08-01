@@ -37,17 +37,26 @@ function documentLabel(t: DocumentTombstone): string {
 function BlockedRow({ tombstone }: { tombstone: DocumentTombstone }) {
   const [pending, startTransition] = useTransition();
   const [outcome, setOutcome] = useState<string | null>(null);
-  const [cleared, setCleared] = useState(false);
+  const [settled, setSettled] = useState(false);
 
+  // WHAT EACH OUTCOME LOOKS LIKE, and why the two differ:
+  //
+  //   done            — the action revalidates /data, so this row LEAVES the list on
+  //                     the next render. The entry disappearing IS the feedback, and it
+  //                     is the honest one: the block is gone, so a row claiming to
+  //                     describe one would be stale.
+  //   already-allowed — nothing was written, so nothing is revalidated and the row
+  //                     stays. It renders the message instead of vanishing, which is
+  //                     the point of the typed outcome: a press that changed nothing
+  //                     must not look identical to one that did.
+  //   error           — same, with its own message.
   function onAllow() {
     const form = new FormData();
     form.set("hash", tombstone.contentHash);
     startTransition(async () => {
       const res = await allowDocumentReacquisition(form);
       setOutcome(res.message);
-      // Both non-error outcomes end with the block lifted, so the row stops offering
-      // an action either way — but it keeps saying WHICH happened.
-      if (res.status !== "error") setCleared(true);
+      setSettled(true);
     });
   }
 
@@ -64,7 +73,7 @@ function BlockedRow({ tombstone }: { tombstone: DocumentTombstone }) {
           Deleted {tombstone.deletedAt.slice(0, 10)}
         </p>
       </div>
-      {cleared ? (
+      {settled ? (
         <span
           className="text-sm text-slate-500 dark:text-slate-400"
           data-testid="blocked-document-outcome"

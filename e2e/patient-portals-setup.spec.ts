@@ -683,11 +683,10 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
       .first(); // first-ok: the filename is unique to this test, so this is spec-owned data
     await expect(blockedRow).toBeVisible();
 
-    // 7. …and reversible with one tap, which reports what it actually did.
+    // 7. …and reversible with one tap. The action revalidates, so the entry LEAVES the
+    //    list — the block is gone, and a row still describing one would be stale.
     await hydratedClick(page, blockedRow.getByTestId("allow-reacquisition"));
-    await expect(blockedRow.getByTestId("blocked-document-outcome")).toHaveText(
-      /bring this document back/
-    );
+    await expect(blockedRow).toHaveCount(0);
 
     // 8. The next offer ingests again — the block is genuinely lifted, not just hidden.
     const afterAllow = await upload();
@@ -719,9 +718,7 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
       .filter({ hasText: filename })
       .first(); // first-ok: spec-owned row
     await hydratedClick(page, leftover.getByTestId("allow-reacquisition"));
-    await expect(
-      leftover.getByTestId("blocked-document-outcome")
-    ).toBeVisible();
+    await expect(leftover).toHaveCount(0);
   });
 
   test("the delete confirm names the tombstone only for a portal-acquired document", async ({
@@ -828,7 +825,7 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
         .filter({ hasText: name })
         .first(); // first-ok: the filename is unique to this test
       await hydratedClick(page, row.getByTestId("allow-reacquisition"));
-      await expect(row.getByTestId("blocked-document-outcome")).toBeVisible();
+      await expect(row).toHaveCount(0);
     }
     await page.goto("/integrations/patient-portals");
     await dropPortal(page, portal);
