@@ -50,6 +50,7 @@ import {
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
 import { buildFoodNudge } from "@/lib/notifications/food";
+import { countVisibleFoodButtons } from "@/lib/notifications/food-format";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { canonicalFoodGroup } from "@/lib/food-groups";
@@ -117,6 +118,13 @@ function liveTokens(profileId: number): string[] {
   return liveMessagePointers(profileId).flatMap((p) =>
     keyboardTokens(p.keyboard)
   );
+}
+
+// The profile's single live keyboard — what the chat is showing, as the pointer records it.
+function liveKeyboard(profileId: number) {
+  const pointers = liveMessagePointers(profileId);
+  expect(pointers).toHaveLength(1);
+  return pointers[0].keyboard;
 }
 
 describe("the pointer is recorded for every delivered keyboard (#1779)", () => {
@@ -517,6 +525,45 @@ describe("class 2 — additive quick-log buttons", () => {
     expect(out.closed).toBe(0);
     // The keyboard stays LIVE — logging another serving is still valid all day.
     expect(liveTokens(pid).some((t) => t.startsWith("food:"))).toBe(true);
+  });
+
+  // #1807. The re-render is the ONLY reconciler that rebuilds a whole message, so it is
+  // the only one that can change what the user chose to see. Expansion is the user's:
+  // the rebuild reads its visible count off the pointer's live keyboard, exactly as the
+  // tap handlers do, so a tick can neither collapse a keyboard someone expanded nor
+  // re-expand one they collapsed.
+  it("a rebuild preserves the expansion the user set, rather than resetting to the default", async () => {
+    const pid = newProfile("Expand Esme");
+    setUserBirthdate(pid, "1970-04-02");
+    seedLoginTelegram(pid, "5551807");
+    const td = today(pid);
+
+    // The chat is showing an EXPANDED keyboard (the state a "Show more" tap leaves).
+    const expanded = buildFoodNudge(pid, "Morning", td, 12);
+    expect(expanded).not.toBeNull();
+    const sentKeyboard = messageKeyboard(expanded!);
+    expect(countVisibleFoodButtons(sentKeyboard)).toBe(12);
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5551807",
+      messageId: 506,
+      kind: "food",
+      date: td,
+      keyboard: sentKeyboard,
+    });
+
+    // Nothing has changed, so the sweep must not touch it at all — a rebuild at the
+    // compact default would differ from the delivered keyboard and spend an edit.
+    expect((await reconcileProfileMessages(pid)).edited).toBe(0);
+
+    // Now something the counts DO depend on changes, forcing a real re-render.
+    const slug = canonicalFoodGroup("leafy greens");
+    expect(slug).not.toBeNull();
+    logFoodServingCore(pid, slug!, td, new Date().toISOString(), "Morning");
+    expect((await reconcileProfileMessages(pid)).edited).toBe(1);
+
+    // The re-render kept the 12-button expansion, and the pointer records it.
+    expect(countVisibleFoodButtons(liveKeyboard(pid))).toBe(12);
   });
 });
 
