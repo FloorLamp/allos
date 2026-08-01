@@ -36,6 +36,11 @@ export interface MessagePointer {
   // The SUBJECT's local calendar date at send time — the rollover comparison.
   date: string;
   keyboard: InlineKeyboard;
+  // The message's TITLE LINE as delivered — attribution prefix included (#1822 item 7).
+  // The sweep edits by pointer and never holds the text it is replacing, so this is what
+  // lets a close name its own subject. Null for a pointer recorded before migration 139,
+  // which closes with the subjectless line rather than a guessed one.
+  title: string | null;
   sentAt: string;
   // The stored keyboard blob VERBATIM — the optimistic-concurrency witness (#1788).
   //
@@ -95,17 +100,21 @@ export function recordMessagePointer(p: {
   kind: string;
   date: string;
   keyboard: InlineKeyboard;
+  // The delivered title line, attribution prefix included (#1822 item 7). Optional so a
+  // caller with nothing to record stores NULL rather than an empty subject.
+  title?: string | null;
 }): void {
   try {
     db.prepare(
       `INSERT INTO notify_messages
-         (profile_id, chat_id, message_id, kind, date, keyboard, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+         (profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(chat_id, message_id) DO UPDATE SET
          profile_id = excluded.profile_id,
          kind       = excluded.kind,
          date       = excluded.date,
          keyboard   = excluded.keyboard,
+         title      = excluded.title,
          sent_at    = excluded.sent_at`
     ).run(
       p.profileId,
@@ -114,6 +123,7 @@ export function recordMessagePointer(p: {
       p.kind,
       p.date,
       JSON.stringify(p.keyboard),
+      p.title?.trim() || null,
       sqlNow()
     );
   } catch (e) {
@@ -132,6 +142,7 @@ interface PointerRow {
   kind: string;
   date: string;
   keyboard: string;
+  title: string | null;
   sent_at: string;
 }
 
@@ -141,7 +152,7 @@ interface PointerRow {
 export function liveMessagePointers(profileId: number): MessagePointer[] {
   const rows = db
     .prepare(
-      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, sent_at
+      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at
          FROM notify_messages
         WHERE profile_id = ?
         ORDER BY sent_at, id`
@@ -159,6 +170,7 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
       kind: r.kind,
       date: r.date,
       keyboard,
+      title: r.title,
       sentAt: r.sent_at,
       version: r.keyboard,
     });

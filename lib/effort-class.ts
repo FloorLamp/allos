@@ -162,20 +162,75 @@ export function workoutDeferralDecision(
   };
 }
 
+// ---- The days-left phrase (issue #1822 item 1) ----
+
+// How much of the week window is left, stated the way a reader hears it. `daysLeft`
+// counts the on-days remaining AFTER today, so 0 does NOT mean "the week is over" — it
+// means today is the last chance, which is precisely when the nudge matters most.
+//
+// WHY IT LIVES HERE. Two formatters state the same pace fact: this file's
+// `workoutAcknowledgmentLine` and `recoveryOverrideLine` in ./workout-recommendation
+// (which already imports this module, so the phrase can be shared without a cycle).
+// The acknowledgment used to render the raw count — "Chest is 1/2 with 0 days left",
+// which reads as a closed door — while the recovery line already phrased the same edge
+// today-inclusively. One pace fact answered two ways is exactly the drift "one question,
+// one computation" (#221) exists to prevent, so the phrase is computed once and both
+// call it: the edge cannot re-diverge.
+export function daysLeftPhrase(daysLeft: number): string {
+  const after = Math.max(0, daysLeft);
+  if (after === 0) return "only today left";
+  return `today and ${after} ${after === 1 ? "day" : "days"} left`;
+}
+
+// ---- Generic session titles (issue #1822 item 2) ----
+
+// Session names that describe nothing beyond "I did a workout". Praising one of these
+// produces "Nice workout today" — a compliment with no content, which reads as filler
+// rather than as the app having noticed anything. The list is deliberately the exact
+// whole-string matches: "chest workout" is specific and keeps its praise; a bare
+// "Workout" does not.
+const GENERIC_SESSION_TITLES = new Set([
+  "workout",
+  "workouts",
+  "training",
+  "training session",
+  "session",
+  "exercise",
+  "exercise session",
+  "gym",
+  "gym session",
+  "activity",
+  "strength session",
+  "workout session",
+]);
+
+// Whether a session title says nothing about WHAT was trained. Whole-string, on the
+// trimmed lowercase form — a substring test would swallow "chest workout".
+export function isGenericSessionTitle(name: string): boolean {
+  const t = name.trim().toLowerCase();
+  return t === "" || GENERIC_SESSION_TITLES.has(t);
+}
+
 // The acknowledgment line: what they did, then the pace fact that justifies pushing
 // anyway. Silent about pace when nothing forced the send (an incidental-scope nudge
 // after a lift needs no justification — the two are compatible).
 //
 // Tone note: this is the message OPENING on a day the person already trained, so it
-// leads with the session, never with the shortfall.
+// leads with the session, never with the shortfall (#1672). That goal survives BOTH
+// openings: a named session earns the praise, a generic title degrades to a plain
+// acknowledgment ("Trained today") rather than a hollow "Nice workout today" — the
+// message still opens with what they did, it just stops complimenting a placeholder.
 export function workoutAcknowledgmentLine(
   ack: { session: string; forcedBy: BehindTargetPace | null } | null
 ): string | null {
   if (!ack) return null;
-  const did = `Nice ${ack.session.trim().toLowerCase()} today`;
+  const session = ack.session.trim().toLowerCase();
+  const did = isGenericSessionTitle(session)
+    ? "Trained today"
+    : `Nice ${session} today`;
   if (!ack.forcedBy) return `${did}.`;
   const t = ack.forcedBy;
-  const days = Math.max(0, t.daysLeftInWindow);
-  const dayWord = days === 1 ? "day" : "days";
-  return `${did} — ${t.label} is ${t.count}/${t.perWeek} with ${days} ${dayWord} left.`;
+  return `${did} — ${t.label} is ${t.count}/${t.perWeek} with ${daysLeftPhrase(
+    t.daysLeftInWindow
+  )}.`;
 }

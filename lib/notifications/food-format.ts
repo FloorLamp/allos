@@ -147,7 +147,10 @@ function proteinBody(
   // No goal band ⇒ no conclusion to state, and none is invented.
   if (typeof parts === "string") return parts;
   const tail = parts.statusWords ? ` — ${parts.statusWords}` : "";
-  return rich`${parts.emoji} Protein · ${bold(parts.amount)} of ${parts.band}${tail}`;
+  // The joiner is the plain line's (#1822 item 4), with the figure emphasized: the
+  // parts already separate amount/band/status, so the two renderings can only differ
+  // in emphasis, never in what they claim.
+  return rich`${parts.emoji} Protein: ${bold(parts.amount)} so far · goal ${parts.band}${tail}`;
 }
 
 // Two buttons per keyboard row, so six groups render as a tidy 3×2 grid.
