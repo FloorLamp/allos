@@ -24,6 +24,7 @@ import PlateBuilderModal from "./PlateBuilderModal";
 import { isRealIsoDate } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useToast } from "@/components/Toast";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useHaptics } from "@/components/useHaptics";
@@ -147,6 +148,8 @@ export default function ActivityForm({
   const tz = useTimezone();
   // Kept for the unmount-flush failure path: the toast outlives the form.
   const toast = useToast();
+  // Offline capture for a never-created session (#1596) — see onQueueOffline below.
+  const { enqueue: enqueueOffline } = useOfflineQueue();
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
   const [saving, setSaving] = useState(false);
@@ -626,6 +629,10 @@ export default function ActivityForm({
       activityEquipmentId,
     ]
   );
+  // The offline-capture callback below runs on the CLOSE-path flush, after `draft`
+  // (declared later — it needs autosave's createdId) exists; the ref bridges the
+  // declaration order without reordering the two hooks.
+  const draftRef = useRef<{ clear: () => void } | null>(null);
   // The auto-save state machine (#1189, extracted per #1207): debounced persist,
   // created-row reuse, in-flight serialization, unmount + close-path flush. The
   // parent stays the single owner of form state; the hook drives persistence over
@@ -637,6 +644,29 @@ export default function ActivityForm({
     isPrefillCreate: !!prefill && !editData,
     buildFormData,
     toast,
+    // Offline capture (#1596): when the CLOSE-path flush dies on a dead connection
+    // and this session never got a server row, the whole form — the exact fields
+    // saveActivity would have received — is queued as a "set" intent and replayed
+    // through the same write core on reconnect. `id`/`profile_id` are stripped so
+    // the capture is create-only on the queue-stamped profile (#599). The local
+    // draft (#1699) is discarded in the same breath: the queue is now the durable
+    // owner, and a restorable draft would re-log the session a second time.
+    onQueueOffline: async (fd) => {
+      const fields: Record<string, string> = {};
+      fd.forEach((value, key) => {
+        if (typeof value === "string" && key !== "id" && key !== "profile_id")
+          fields[key] = value;
+      });
+      const capturedDate = isRealIsoDate(fields.date ?? "")
+        ? fields.date
+        : todayStr(tz);
+      await enqueueOffline("set", capturedDate, { fields });
+      // clear(), not discard(): it also cancels a pending draft write, so the
+      // just-queued session can't be re-offered as a restorable draft.
+      draftRef.current?.clear();
+      toast("Workout saved offline — will sync when you reconnect.");
+      return true;
+    },
   });
   const { status, savedAt, createdId, savableId, hasRow, dirty } = autosave;
 
@@ -717,6 +747,7 @@ export default function ActivityForm({
         confirmLabel: "Resume",
       }),
   });
+  draftRef.current = draft;
   const clearDraft = draft.clear;
   // Clear on successful save. `savedAt > 0 && !dirty` is precisely "the server has
   // everything on screen" — the only honest moment to drop the local copy.
