@@ -122,7 +122,12 @@ describe("the goals-upsert collision delete (#1809)", () => {
     const protocolId = newProtocol(profile.id, collided);
 
     await createFrequencyTarget(
-      fd({ id: edited, scope_kind: "type", scope_value: "strength", per_week: 5 })
+      fd({
+        id: edited,
+        scope_kind: "type",
+        scope_value: "strength",
+        per_week: 5,
+      })
     );
 
     // The edit merged into ONE row: the edited target now owns the scope, the collided

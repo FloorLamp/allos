@@ -34,12 +34,14 @@ describe("import side-effect inventory", () => {
     for (const e of IMPORT_SIDE_EFFECTS) {
       expect(e.what.length, e.key).toBeGreaterThan(0);
       expect(e.where.length, e.key).toBeGreaterThan(0);
-      expect(["one-way", "recompute", "sweep", "global", "unlink"], e.key).toContain(
-        e.onDelete
-      );
-      expect(["one-way", "recompute", "sweep", "global", "unlink"], e.key).toContain(
-        e.onReassign
-      );
+      expect(
+        ["one-way", "recompute", "sweep", "global", "unlink"],
+        e.key
+      ).toContain(e.onDelete);
+      expect(
+        ["one-way", "recompute", "sweep", "global", "unlink"],
+        e.key
+      ).toContain(e.onReassign);
       // A side EFFECT is by definition not a footprint ROW, so it never feeds the
       // extracted_count tally (that number counts rows off IMPORT_FOOTPRINT_TABLES).
       expect(e.countsTowardFootprint, e.key).toBe(false);

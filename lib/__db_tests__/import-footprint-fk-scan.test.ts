@@ -59,11 +59,13 @@ function foreignKeys(): Map<string, ForeignKey[]> {
 // The footprint tables PLUS every table CASCADE-deleted along with them, to fixpoint.
 function deleteSetClosure(fks: Map<string, ForeignKey[]>): Set<string> {
   const closure = new Set(IMPORT_FOOTPRINT_TABLES.map((t) => t.table));
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const [child, list] of fks) {
       if (closure.has(child)) continue;
-      if (list.some((fk) => closure.has(fk.table) && fk.on_delete === "CASCADE")) {
+      if (
+        list.some((fk) => closure.has(fk.table) && fk.on_delete === "CASCADE")
+      ) {
         closure.add(child);
         changed = true;
       }
@@ -180,7 +182,9 @@ describe("import-footprint FK scan (#1808)", () => {
       }
     }
     for (const e of FREED_BEFORE_DELETE) {
-      expect(live, `${e.ref} is no longer a live NO ACTION FK`).toContain(e.ref);
+      expect(live, `${e.ref} is no longer a live NO ACTION FK`).toContain(
+        e.ref
+      );
       expect(e.why.length, e.ref).toBeGreaterThan(0);
     }
   });
@@ -207,8 +211,9 @@ describe("import-footprint FK scan (#1808)", () => {
 
   it("the episode stopped-med links are the SET NULL shape migration 137 gave them", () => {
     const links = (
-      db.prepare(`PRAGMA foreign_key_list("episode_stopped_meds")`).all() as
-        ForeignKey[]
+      db
+        .prepare(`PRAGMA foreign_key_list("episode_stopped_meds")`)
+        .all() as ForeignKey[]
     ).filter((fk) => fk.from === "item_id" || fk.from === "course_id");
     expect(links).toHaveLength(2);
     for (const fk of links) expect(fk.on_delete, fk.from).toBe("SET NULL");

@@ -46,7 +46,9 @@ export function deleteFrequencyTargetRow(
     unlinkProtocolsFromTargets(profileId, [targetId]);
     return (
       db
-        .prepare(`DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?`)
+        .prepare(
+          `DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?`
+        )
         .run(targetId, profileId).changes > 0
     );
   });

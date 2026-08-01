@@ -82,5 +82,7 @@ export function stopTrackingFrequencyTarget(
     const outcome = untrackWellnessPractice(profileId, targetId);
     return outcome.kind === "untracked" ? "stopped" : "not-found";
   }
-  return deleteFrequencyTargetRow(profileId, targetId) ? "stopped" : "not-found";
+  return deleteFrequencyTargetRow(profileId, targetId)
+    ? "stopped"
+    : "not-found";
 }

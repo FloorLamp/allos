@@ -184,8 +184,7 @@ function newProtocol(profileId: number, itemId: number): number {
 function protocolItemId(id: number): number | null {
   return (
     db.prepare(`SELECT intake_item_id FROM protocols WHERE id = ?`).get(id) as
-      | { intake_item_id: number | null }
-      | undefined
+      { intake_item_id: number | null } | undefined
   )?.intake_item_id as number | null;
 }
 
@@ -243,9 +242,7 @@ describe("deleting a document whose extracted med an episode stopped (#1808)", (
 
     // The document and its extracted med are gone.
     expect(
-      db
-        .prepare(`SELECT id FROM medical_documents WHERE id = ?`)
-        .get(s.docId)
+      db.prepare(`SELECT id FROM medical_documents WHERE id = ?`).get(s.docId)
     ).toBeUndefined();
     expect(
       db.prepare(`SELECT id FROM intake_items WHERE id = ?`).get(s.itemId)
@@ -283,7 +280,11 @@ describe("deleting a document whose extracted med an episode stopped (#1808)", (
     // persistDocumentImport re-runs clearImportedDocumentRows before re-inserting — the
     // reprocess path shares the delete-set, so it tripped the same FK.
     expect(() =>
-      persistDocumentImport(s.owner.id, s.docId, makeInput("Amoxicillin 500 mg"))
+      persistDocumentImport(
+        s.owner.id,
+        s.docId,
+        makeInput("Amoxicillin 500 mg")
+      )
     ).not.toThrow();
 
     const stop = readStop(s.stopId);
