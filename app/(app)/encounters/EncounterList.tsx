@@ -62,7 +62,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Visit",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (e) => (
-      <>
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={`/encounters/${e.id}`}
@@ -77,9 +77,11 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
           ) : null}
         </div>
         {e.reason ? (
-          <span className="text-xs font-normal text-slate-400">{e.reason}</span>
+          <div className="mt-0.5 text-xs font-normal text-slate-400">
+            {e.reason}
+          </div>
         ) : null}
-      </>
+      </div>
     ),
   },
   {
@@ -150,7 +152,8 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
   },
   {
     header: "Source",
-    cellClassName: "whitespace-nowrap",
+    headerClassName: "hidden sm:table-cell",
+    cellClassName: "hidden whitespace-nowrap sm:table-cell",
     cell: (e) => (
       <RecordProvenance source={e.source} documentId={e.document_id} />
     ),

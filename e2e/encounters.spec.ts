@@ -111,6 +111,33 @@ test.describe("Visit detail page", () => {
     await followLink(page, rowLink, /\/encounters\/\d+$/);
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
   });
+
+  test("mobile visit rows omit Source and put the chief complaint on its own line", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/records/history/visits");
+
+    const row = page
+      .getByTestId("visits-past")
+      .getByRole("row")
+      .filter({ hasText: "Annual physical" })
+      .first(); // first-ok: either seeded Annual physical row exercises the same responsive EncounterList columns
+    await expect(row).toBeVisible();
+
+    await expect(row.getByText("Source", { exact: true })).toBeHidden();
+    const visit = row.getByRole("link", { name: "Office Visit" });
+    const complaint = row.getByText("Annual physical", { exact: true });
+    const [visitBox, complaintBox] = await Promise.all([
+      visit.boundingBox(),
+      complaint.boundingBox(),
+    ]);
+    expect(visitBox).not.toBeNull();
+    expect(complaintBox).not.toBeNull();
+    expect(complaintBox!.y).toBeGreaterThanOrEqual(
+      visitBox!.y + visitBox!.height
+    );
+  });
 });
 
 // The single "Add visit" entry (issue #566): switching the tense toggle to "Already
