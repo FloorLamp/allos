@@ -203,12 +203,22 @@ test.describe("Weather & UV integration (#1172)", () => {
         member,
         member.getByRole("button", { name: "Disable" })
       );
+      // Server-truth budget (#1556): the badge is server-rendered from the
+      // connection row, so it only swaps after the disable action's write +
+      // revalidate round-trip completes and the RSC tree repaints. Observed
+      // losing the 5s default under CI shard load at retries=0 (run 30682); the
+      // assertion still waits on the real commit, so it masks nothing.
       await expect(member.getByTestId("weather-status")).toContainText(
-        /Not enabled/i
+        /Not enabled/i,
+        { timeout: 20_000 }
       );
       await settledClick(member, member.getByTestId("weather-enable"));
+      // Same class, and the wider half of it: enableWeather also kicks an initial
+      // runWeatherSync before revalidating, so the badge waits on a write + a sync
+      // attempt + the repaint. This is the assertion run 30682 lost.
       await expect(member.getByTestId("sync-status-weather")).toContainText(
-        "Connected"
+        "Connected",
+        { timeout: 20_000 }
       );
     } finally {
       await member.context().close();
