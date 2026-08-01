@@ -126,10 +126,13 @@ export function captureDelete(
           WHERE intake_item_id = ? AND profile_id = ?`
       ).run(rootId, profileId);
       // An episode's stopped-med reversal record (#1140 Part B) may reference THIS med
-      // (item_id) and its just-closed course (course_id) — both REFERENCES FKs with no
-      // ON DELETE (migration 095). Delete those link rows first (id-keyed, #203) so the
-      // intake_items DELETE below can't trip the FK; not restored on undo (like the
-      // protocol/supply side effects) — the reopen-restore link is honestly gone.
+      // (item_id) and its just-closed course (course_id). Since migration 137 (#1808)
+      // both links are ON DELETE SET NULL, so the DELETE below can no longer trip the FK
+      // — but this path still removes the record OUTRIGHT, deliberately. Erasing a med by
+      // hand is a statement about the med itself ("this row should not exist"), unlike a
+      // document delete/reprocess, which is a statement about the SOURCE and leaves the
+      // episode's narrative standing by name. Id-keyed (#203); not restored on undo, like
+      // the protocol/supply side effects above.
       db.prepare(
         `DELETE FROM episode_stopped_meds
           WHERE item_id = ? AND profile_id = ?`

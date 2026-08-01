@@ -238,10 +238,40 @@ export function clearImportedDocumentRows(
   // is deduped on (item_id, started_on), so a reprocess re-adds nothing, and it is
   // cleaned via its parent med's CASCADE on med delete/merge — #1204's stated cleanup
   // model. A course on a med THIS document OWNS is cascade-deleted with the med below.)
+  // Row-ops side-state (#1808): a protocol may adopt an intake_items med as its
+  // intervention (protocols.intake_item_id, #660 — a REFERENCES FK with no ON DELETE),
+  // and that med can be one THIS document extracted. NULL those links FIRST so the
+  // intake_items delete (in the footprint loop) can't trip the FK. The protocol survives
+  // under its own name with no intervention linked — the same degradation the manual med
+  // delete already chose (lib/undo-delete-db.ts).
+  // (episode_stopped_meds needs no statement here: migration 137 gave its item_id and
+  // course_id ON DELETE SET NULL, so the record survives its med by name — the
+  // "episode-stopped-med-link" entry in IMPORT_SIDE_EFFECTS declares that.)
+  db.prepare(
+    `UPDATE protocols SET intake_item_id = NULL
+       WHERE profile_id = ?
+         AND intake_item_id IN (
+           SELECT id FROM intake_items
+            WHERE profile_id = ? AND document_id = ? AND source = 'extracted'
+         )`
+  ).run(profileId, profileId, docId);
   for (const t of IMPORT_FOOTPRINT_TABLES) {
-    db.prepare(
-      `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
-    ).run(footprintKeyValue(t, docId, source), profileId);
+    // Name the table in the failure. A constraint thrown from inside this loop used to
+    // surface as a bare SQLITE_CONSTRAINT_FOREIGNKEY, and finding out WHICH of eighteen
+    // deletes was refused — and by which referencing row — was a foreign-key walk by
+    // hand (#1808). The loop already knows the table; say so.
+    try {
+      db.prepare(
+        `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
+      ).run(footprintKeyValue(t, docId, source), profileId);
+    } catch (err) {
+      throw new Error(
+        `Clearing imported ${t.table} rows for document ${docId} failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        { cause: err }
+      );
+    }
   }
 }
 
@@ -342,6 +372,30 @@ export function moveImportedDocumentRows(
          WHERE profile_id = ? AND indication_condition_id IS NOT NULL
            AND indication_condition_id NOT IN (
              SELECT id FROM conditions WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+  }
+  // Row-ops side-state (#1808): an episode's stopped-med record and a protocol's
+  // intervention link must never cross profiles either. NEITHER is caught by an FK — a
+  // reassign moves the med with a profile_id UPDATE, and no FK fires on an UPDATE — so
+  // without this the SOURCE profile's episode/protocol would be left pointing at a med
+  // that now belongs to the DESTINATION profile: a live cross-profile reference nothing
+  // refuses. Same re-enforce as the loops above, on BOTH affected profiles: free any link
+  // whose med no longer lives in that row's profile (a link whose both ends moved
+  // together stays intact). The stop record keeps its `med_name` snapshot, so the episode
+  // still says what it stopped; the protocol keeps its own name. A stop record's course
+  // belongs to the same med by construction, so it is freed in the same statement.
+  for (const pid of [srcProfileId, destProfileId]) {
+    db.prepare(
+      `UPDATE episode_stopped_meds SET item_id = NULL, course_id = NULL
+         WHERE profile_id = ? AND item_id IS NOT NULL
+           AND item_id NOT IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+    ).run(pid, pid);
+    db.prepare(
+      `UPDATE protocols SET intake_item_id = NULL
+         WHERE profile_id = ? AND intake_item_id IS NOT NULL
+           AND intake_item_id NOT IN (
+             SELECT id FROM intake_items WHERE profile_id = ?
            )`
     ).run(pid, pid);
   }

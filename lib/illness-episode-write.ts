@@ -354,28 +354,37 @@ export function endEpisodeWithMedReconciliation(
     const stopped: number[] = [];
     const linkStmt = db.prepare(
       `INSERT OR IGNORE INTO episode_stopped_meds
-         (profile_id, episode_id, item_id, course_id)
-       VALUES (?, ?, ?, ?)`
+         (profile_id, episode_id, item_id, course_id, med_name)
+       VALUES (?, ?, ?, ?, ?)`
     );
     for (const itemId of medItemIds) {
       // The open course we're about to close (active=1 ⇒ exactly one). Capture its id
       // FIRST so we can persist the exact course this episode closed — the reversal
       // record reopen inverts (#1140 Part B / #203 "row operations carry their
-      // side-state").
+      // side-state"). The med's NAME comes along as a SNAPSHOT (#1808, migration 137):
+      // the med row may later be deleted or re-extracted by a document reprocess, which
+      // nulls `item_id`, and the episode must still be able to say what it stopped.
       const openCourse = db
         .prepare(
-          `SELECT c.id FROM medication_courses c
+          `SELECT c.id, ii.name FROM medication_courses c
              JOIN intake_items ii ON ii.id = c.item_id
             WHERE c.item_id = ? AND ii.profile_id = ? AND ii.kind = 'medication'
               AND c.stopped_on IS NULL
             ORDER BY c.started_on, c.id LIMIT 1`
         )
-        .get(itemId, profileId) as { id: number } | undefined;
+        .get(itemId, profileId) as { id: number; name: string } | undefined;
       stopMedicationCourses(profileId, itemId, {
         date: stopDate,
         reason: "illness_resolved",
       });
-      if (openCourse) linkStmt.run(profileId, episodeId, itemId, openCourse.id);
+      if (openCourse)
+        linkStmt.run(
+          profileId,
+          episodeId,
+          itemId,
+          openCourse.id,
+          openCourse.name
+        );
       stopped.push(itemId);
     }
     return { kind: "ended", stoppedItemIds: stopped };

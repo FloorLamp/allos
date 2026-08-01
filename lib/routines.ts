@@ -15,6 +15,7 @@
 // declared targets and a custom routine's day-derived targets can't fork.
 
 import { db, writeTx, today } from "./db";
+import { unlinkProtocolsFromTargets } from "./frequency-target-delete";
 import {
   regionForExercise,
   exerciseHistoryKey,
@@ -361,6 +362,23 @@ export function activateRoutine(profileId: number, routineId: number): boolean {
     ).run(profileId, routineId);
 
     // Replace ONLY training-scope targets — food_group (nutrition) is untouched.
+    // A protocol may have adopted one of these as its adherence intervention
+    // (protocols.frequency_target_id, no ON DELETE), which would refuse the delete and
+    // fail the whole activation — the #1809 defect at its bulk site. Free those links
+    // first, in this same transaction: the rows this replaces are gone for good, so a
+    // protocol that pointed at one degrades to no intervention (the same honest state
+    // every other frequency-target delete lands on) rather than silently re-pointing at
+    // a same-scope row the routine happens to re-derive.
+    const replaced = (
+      db
+        .prepare(
+          `SELECT id FROM frequency_targets
+             WHERE profile_id = ?
+               AND scope_kind IN ('region','group','type')`
+        )
+        .all(profileId) as { id: number }[]
+    ).map((r) => r.id);
+    unlinkProtocolsFromTargets(profileId, replaced);
     db.prepare(
       `DELETE FROM frequency_targets
          WHERE profile_id = ?

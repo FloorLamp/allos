@@ -2,7 +2,8 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
+import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import type { FrequencyScopeKind } from "@/lib/types";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
@@ -63,13 +64,22 @@ export async function createFrequencyTarget(formData: FormData) {
   if (id) {
     // Editing an existing routine — update it in place, including a changed scope.
     // If a *different* row already occupies the new scope, remove it first so the
-    // edit merges into one row (rather than colliding / duplicating).
-    db.prepare(
-      "DELETE FROM frequency_targets WHERE scope_kind = ? AND scope_value = ? AND id != ? AND profile_id = ?"
-    ).run(kind, value, id, profile.id);
-    db.prepare(
-      "UPDATE frequency_targets SET scope_kind = ?, scope_value = ?, scope_identity = ?, per_week = ?, per_week_max = ? WHERE id = ? AND profile_id = ?"
-    ).run(kind, value, scopeIdentity, perWeek, perWeekMax, id, profile.id);
+    // edit merges into one row (rather than colliding / duplicating). That collision
+    // delete goes through the shared core (#1809): a protocol may have adopted the
+    // collided-with target as its intervention, and `protocols.frequency_target_id`
+    // would otherwise refuse the delete and fail the whole edit. Collision-delete and
+    // update are ONE transaction so a scope edit can never half-apply.
+    writeTx(() => {
+      const collisions = db
+        .prepare(
+          "SELECT id FROM frequency_targets WHERE scope_kind = ? AND scope_value = ? AND id != ? AND profile_id = ?"
+        )
+        .all(kind, value, id, profile.id) as { id: number }[];
+      for (const c of collisions) deleteFrequencyTargetRow(profile.id, c.id);
+      db.prepare(
+        "UPDATE frequency_targets SET scope_kind = ?, scope_value = ?, scope_identity = ?, per_week = ?, per_week_max = ? WHERE id = ? AND profile_id = ?"
+      ).run(kind, value, scopeIdentity, perWeek, perWeekMax, id, profile.id);
+    });
   } else {
     // New entry: one target per (scope_kind, scope_value), so an existing scope
     // has its cadence updated instead of duplicated.
@@ -92,13 +102,14 @@ export async function createFrequencyTarget(formData: FormData) {
   revalidatePath("/");
 }
 
+// Delete a training goal. Routed through the shared core (#1809) so a protocol that
+// adopted this goal as its adherence intervention is unlinked first — before, the live
+// `protocols.frequency_target_id` FK refused the delete and the goal was undeletable.
 export async function deleteFrequencyTarget(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
-  db.prepare(
-    "DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?"
-  ).run(id, profile.id);
+  deleteFrequencyTargetRow(profile.id, id);
   revalidatePath("/training");
   revalidatePath("/");
 }

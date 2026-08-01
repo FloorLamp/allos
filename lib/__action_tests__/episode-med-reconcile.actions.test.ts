@@ -190,6 +190,14 @@ describe("reopenEpisodeAction restarts the meds the end stopped (#1140 Part B)",
     );
     expect(medState(ibuprofen).active).toBe(0);
     expect(stoppedMedRows(profile.id, episodeId)).toBe(1);
+    // The record snapshots the med's NAME at write time (#1808, migration 137) so the
+    // episode can still say what it stopped after the med row is deleted or re-extracted.
+    const snapshot = db
+      .prepare(
+        "SELECT med_name FROM episode_stopped_meds WHERE profile_id = ? AND episode_id = ?"
+      )
+      .get(profile.id, episodeId) as { med_name: string };
+    expect(snapshot.med_name).toBe("Ibuprofen");
 
     const res = await reopenEpisodeAction(
       fd({ episodeId, medItemIds: String(ibuprofen) })

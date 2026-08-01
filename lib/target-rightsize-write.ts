@@ -14,6 +14,7 @@
 // asserted directly in lib/__db_tests__/target-rightsize.test.ts.
 
 import { db, writeTx } from "./db";
+import { deleteFrequencyTargetRow } from "./frequency-target-delete";
 import { untrackWellnessPractice } from "./practice-store";
 import type { FrequencyScopeKind } from "./types";
 import type { RightSizeOutcome } from "./target-rightsize";
@@ -65,10 +66,12 @@ export function lowerFrequencyTargetFloor(
 //
 // A practice routes through the practice store's own untrack core rather than a second
 // DELETE, so the practice-specific side-state it owns (its Upcoming dismissal row)
-// keeps being cleaned up in one place. Every other scope nulls any protocol's link
-// FIRST — a live `protocols.frequency_target_id` FK would otherwise block the delete —
-// then removes the row, both inside one IMMEDIATE transaction so the pair cannot
-// half-apply and strand a protocol pointing at a deleted target.
+// keeps being cleaned up in one place. Every other scope goes through the shared delete
+// core (lib/frequency-target-delete), which nulls any protocol's link FIRST — a live
+// `protocols.frequency_target_id` FK would otherwise block the delete — then removes the
+// row, both inside one IMMEDIATE transaction so the pair cannot half-apply and strand a
+// protocol pointing at a deleted target. Its boolean IS the refusal: an id that vanished
+// between the read above and the delete answers "not-found" rather than a false "stopped".
 export function stopTrackingFrequencyTarget(
   profileId: number,
   targetId: number
@@ -79,16 +82,7 @@ export function stopTrackingFrequencyTarget(
     const outcome = untrackWellnessPractice(profileId, targetId);
     return outcome.kind === "untracked" ? "stopped" : "not-found";
   }
-  return writeTx(() => {
-    const live = readTarget(profileId, targetId);
-    if (!live) return "not-found";
-    db.prepare(
-      `UPDATE protocols SET frequency_target_id = NULL, owns_frequency_target = 0
-        WHERE profile_id = ? AND frequency_target_id = ?`
-    ).run(profileId, targetId);
-    db.prepare(
-      `DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?`
-    ).run(targetId, profileId);
-    return "stopped";
-  });
+  return deleteFrequencyTargetRow(profileId, targetId)
+    ? "stopped"
+    : "not-found";
 }
