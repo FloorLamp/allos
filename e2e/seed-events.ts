@@ -61,6 +61,7 @@ import {
   seedSunOutdoor,
   seedIntradayPanel,
   seedVitalsToday,
+  seedBulkCorrection,
 } from "./seed/metrics";
 import { seedRuleDomains, seedSuppressedCenter } from "./seed/findings";
 import {
@@ -130,6 +131,7 @@ seedActivityFormPaths();
 seedDuplicateImmunization();
 seedProviderMergePair();
 seedSourceCompare();
+seedBulkCorrection();
 seedIllness();
 seedFoodSlots();
 seedEndurancePlans();

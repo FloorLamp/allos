@@ -11,6 +11,9 @@ import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import DuplicateReview from "@/components/DuplicateReview";
 import UnitMislabelReview from "@/components/UnitMislabelReview";
+import BulkCorrectionCard from "@/app/(app)/data/BulkCorrectionCard";
+import type { CorrectionFieldId } from "@/lib/bulk-correction";
+import type { CorrectionSourcesByField } from "@/lib/bulk-correction-db";
 import BlockedDocuments from "@/components/BlockedDocuments";
 import ConnectedSources from "@/components/ConnectedSources";
 import ImportFeed from "@/components/ImportFeed";
@@ -55,6 +58,8 @@ export default function ReviewInbox({
   activityClusters = [],
   bodyMetricPairs = [],
   unitMislabels = [],
+  correctionSources,
+  initialCorrectionField = null,
   units,
   isAdmin = false,
 }: {
@@ -74,6 +79,11 @@ export default function ReviewInbox({
   bodyMetricPairs?: BodyMetricConflictPair<BodyMetricConflictRow>[];
   // Probable power-of-ten unit mislabels (issue #761), each a one-click correction.
   unitMislabels?: UnitMislabelReviewRow[];
+  // Bulk corrections (#1603): which source runs exist per correctable field, for
+  // the "Fix a run of data" panel's pickers.
+  correctionSources: CorrectionSourcesByField;
+  // Pre-selected field from a contextual "Fix a range…" link (?fix=), or null.
+  initialCorrectionField?: CorrectionFieldId | null;
   units: UnitPrefs;
   // Admins can inspect the raw provider payload captured per sync (issue #9). The
   // "View raw" affordance is only rendered for admins on events that carry a
@@ -89,6 +99,17 @@ export default function ReviewInbox({
       />
 
       <UnitMislabelReview items={unitMislabels} />
+
+      {/* Fix a bad RUN of data in one pass (#1603) — the corrections neighborhood's
+          bulk sibling to the per-row cards above. */}
+      <BulkCorrectionCard
+        sources={correctionSources}
+        initialField={initialCorrectionField}
+        units={{
+          weightUnit: units.weightUnit,
+          distanceUnit: units.distanceUnit,
+        }}
+      />
 
       {issues.length > 0 && (
         <div className="card border-rose-200 dark:border-rose-900/50">

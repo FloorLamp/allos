@@ -109,7 +109,11 @@ test.describe("command palette — per-hit actions (#662)", () => {
         .getByRole("listitem")
         .filter({ hasText: APPT_MARKER })
         .first(); // first-ok: filtered to APPT_MARKER, a unique marker THIS spec planted — one match
-      await expect(row).toBeVisible();
+      // Same first-search warm-up ceiling as the medication/biomarker hits above —
+      // this test's search is its palette's first, so index warm-up + a loaded
+      // shard can outrun the 5 s default (#1556 interaction-latency class,
+      // observed on shard 2, 2026-08-01).
+      await expect(row).toBeVisible({ timeout: 20_000 });
       const complete = row.getByTestId("palette-hit-action-complete");
       await expect(complete).toBeVisible();
       // settledClick awaits the completeAppointment POST before returning.

@@ -173,9 +173,12 @@ test("practice edits reject invalid cadence and logs-only name collisions (#1618
   // (it does NOT honor opts.timeout), so the first card lookup after the save can
   // outrun it on a loaded shard. Both cards paint in the same repaint, so one
   // named ceiling covers the sequence. Not a sleep — this still fails if the
-  // created card never appears.
+  // created card never appears. 2026-08-01: raised 20s → 45s after three shard-4
+  // overruns in one day on unrelated diffs (#1556 census) — that shard's boxes
+  // run neighboring specs at 28-35s, so a double create round-trip needs the
+  // wider honest ceiling.
   await expect(trackedCard.getByTestId("practice-log-button")).toBeVisible({
-    timeout: 20_000,
+    timeout: 45_000,
   });
   await settledClick(page, trackedCard.getByTestId("practice-log-button"));
   await settledClick(page, historyCard.getByTestId("practice-log-button"));
