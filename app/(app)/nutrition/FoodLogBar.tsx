@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconAdjustmentsHorizontal,
@@ -115,7 +115,6 @@ export default function FoodLogBar({
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
   // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [, startTransition] = useTransition();
   const router = useRouter();
   const toast = useToast();
 

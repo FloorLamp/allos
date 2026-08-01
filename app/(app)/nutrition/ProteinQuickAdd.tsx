@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { IconPlus, IconMinus } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
@@ -36,7 +36,6 @@ export default function ProteinQuickAdd({
     lastPreset != null ? String(lastPreset) : ""
   );
   const [busy, setBusy] = useState(false);
-  const [, startTransition] = useTransition();
   const toast = useToast();
 
   const grams = Number(amount);

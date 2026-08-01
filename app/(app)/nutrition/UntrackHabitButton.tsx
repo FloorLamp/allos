@@ -38,13 +38,16 @@ export default function UntrackHabitButton({
     }
     const fd = new FormData();
     fd.set("target_id", String(targetId));
-    const res = await untrackFoodHabit(fd);
-    if (!res.ok) {
-      toast(res.error || "Couldn't stop tracking that habit.", {
-        tone: "error",
-      });
-      return;
-    }
+    // The write itself is what `pending` disables the button for; the action's own
+    // revalidate repaints the list (#1473).
+    startTransition(async () => {
+      const res = await untrackFoodHabit(fd);
+      if (!res.ok) {
+        toast(res.error || "Couldn't stop tracking that habit.", {
+          tone: "error",
+        });
+      }
+    });
   }
 
   return (

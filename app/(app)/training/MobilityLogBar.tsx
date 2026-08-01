@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { IconCheck } from "@tabler/icons-react";
 import type { MobilityMove } from "@/lib/mobility-moves";
 import { regionsForMove } from "@/lib/mobility-coverage";
@@ -51,7 +51,6 @@ export default function MobilityLogBar({
   const [duration, setDuration] = useState(
     initialDurationMin != null ? String(initialDurationMin) : ""
   );
-  const [, startTransition] = useTransition();
   const toast = useToast();
 
   const sections = useMemo(() => {

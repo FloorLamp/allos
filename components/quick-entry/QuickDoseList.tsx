@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
@@ -34,7 +34,6 @@ export default function QuickDoseList({
   onDone: () => void;
 }) {
   const toast = useToast();
-  const [, startTransition] = useTransition();
   // Doses resolved during THIS overlay session, dropped from the list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running
   // the gather mid-list would reorder rows under the user's finger.
