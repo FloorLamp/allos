@@ -132,6 +132,7 @@ import { migration as m130 } from "./130-acquirer-provenance";
 import { migration as m131 } from "./131-portal-accounts";
 import { migration as m132 } from "./132-portal-run-reports";
 import { migration as m133 } from "./133-portal-sync-requests";
+import { migration as m134 } from "./134-notify-message-pointers";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -273,4 +274,5 @@ export const MIGRATIONS: Migration[] = [
   m131,
   m132,
   m133,
+  m134,
 ];
