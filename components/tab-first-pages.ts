@@ -49,7 +49,7 @@ export const RECORDS_TAB_FIRST_PAGE = {
     "Your health record in one place — history, problems, care, and specialty records.",
   mobileColumns: 4,
   testId: "records-group-tabs",
-  desktopStripClassName: "mb-3",
+  desktopStripClassName: "mb-2",
   tabs: [
     { href: "/records/history", label: "History" },
     { href: "/records/problems", label: "Problems" },

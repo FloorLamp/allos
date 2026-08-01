@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation";
 import type { RecordsGroup } from "./nav";
 
 // The second level of the Health-record tab hierarchy (#1079). The four group tabs
-// now use the shared tab-first page shell; this strip keeps the active group's panes
-// directly above its content. Active by `usePathname()`: a group is selected when
-// the path is under its basePath; a pane lights on exact href match. The group set
-// (including the data-gated Specialty panes) is computed server-side and passed in,
-// so the strip and the routes agree on what's reachable.
+// now use the shared tab-first page shell; this strip sits directly below those
+// tabs in normal document flow, then scrolls away with its pane instead of becoming
+// a detached second sticky layer. Active by `usePathname()`: a group is selected
+// when the path is under its basePath; a pane lights on exact href match. The group
+// set (including the data-gated Specialty panes) is computed server-side and passed
+// in, so the strip and the routes agree on what's reachable.
 export default function RecordsTabs({ groups }: { groups: RecordsGroup[] }) {
   const pathname = usePathname();
   const activeGroup =
@@ -18,7 +19,7 @@ export default function RecordsTabs({ groups }: { groups: RecordsGroup[] }) {
   if (activeGroup.panes.length <= 1) return null;
 
   return (
-    <div className="sub-chrome sticky top-[var(--shell-chrome-h)] z-20 -mx-4 mb-6 bg-white/85 px-4 py-3 backdrop-blur-xl md:static md:z-auto md:mx-0 md:bg-transparent md:px-0 md:pt-0 md:backdrop-blur-none dark:bg-ink-950/85 md:dark:bg-transparent">
+    <div className="-mx-4 mb-6 px-4 pb-3 md:mx-0 md:px-0">
       <div
         data-testid="records-sub-tabs"
         className="flex flex-nowrap gap-2 overflow-x-auto pb-1"

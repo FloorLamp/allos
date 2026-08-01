@@ -78,8 +78,26 @@ test("mobile Health record starts with four shell-owned group tabs", async ({
   await expect(
     page.getByTestId("shell-tab-strip").getByRole("tab", { name: "Problems" })
   ).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByTestId("records-sub-tabs")).toBeVisible();
+  const subTabs = page.getByTestId("records-sub-tabs");
+  await expect(subTabs).toBeVisible();
   await expect(page.getByTestId("records-conditions")).toBeVisible();
+
+  // The secondary chips continue the tab band without becoming another sticky
+  // layer. They should leave the viewport with the pane rather than lingering
+  // after the shell-owned primary tabs auto-hide.
+  const primaryBox = await page
+    .getByTestId("shell-tab-strip")
+    .getByTestId("records-group-tabs")
+    .boundingBox();
+  const secondaryBox = await subTabs.boundingBox();
+  expect(primaryBox).not.toBeNull();
+  expect(secondaryBox).not.toBeNull();
+  expect(
+    secondaryBox!.y - (primaryBox!.y + primaryBox!.height)
+  ).toBeLessThanOrEqual(12);
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(subTabs).not.toBeInViewport();
 });
 
 test("two-level tabs navigate group → sub-tab across the panes (#1079)", async ({
