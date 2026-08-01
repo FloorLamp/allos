@@ -106,10 +106,11 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const body = sentBody(fetchMock);
-    // Counted in the band line …
-    expect(body).toContain("sync issue");
-    // … and NAMED, so the user knows which source died and what it wants.
-    expect(body).toContain("Strava sync needs attention");
+    // In the band line — NAMED there too since #1819 item 5, which is a small band
+    // getting exactly what the #1685 detail line was added to guarantee …
+    expect(body).toContain("🗓️ Today: Strava sync needs attention");
+    // … and named again with its cause and its link, which is the point of #1685.
+    expect(body).toContain("🔌 Strava sync needs attention");
     expect(body).toContain("401");
   });
 
