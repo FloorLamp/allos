@@ -11,7 +11,6 @@ import {
   type PracticeWeekVerdict,
 } from "@/lib/trends-practices";
 import { chartAdherenceState, chartSeries } from "@/lib/chart-colors";
-import { formatLongDate } from "@/lib/format-date";
 import type { DateRange } from "@/lib/timeline-format";
 import ChartCard from "@/components/ChartCard";
 import TrendsSectionShell from "./TrendsSectionShell";
@@ -167,7 +166,7 @@ export default async function PracticesSection({
                   title={practice.name}
                   headingLevel="h3"
                   headline={weekly}
-                  description="Days logged per completed week, against your weekly range."
+                  description="Days logged per completed week, dated by the week's first day, against your weekly range."
                   note={practiceConsistencyText(practice.consistency)}
                   detailHref="/wellness"
                   detailTitle={practice.name}
@@ -181,8 +180,6 @@ export default async function PracticesSection({
                     unit=" days"
                     decimals={0}
                     yDomain={[0, "auto"]}
-                    tickFormatter={(v) => v.slice(5)}
-                    labelFormatter={(v) => `Week of ${formatLongDate(v)}`}
                     // A range target gets the BAND it actually declared; a
                     // floor-only target gets the single line it actually declared.
                     // Never both, and never two lines the reader has to join.
