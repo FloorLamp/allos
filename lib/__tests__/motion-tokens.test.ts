@@ -47,7 +47,7 @@ describe("overlay motion tokens", () => {
   });
 
   it("every overlay animation class is defined in the stylesheet", () => {
-    for (const anchor of ["scrim", "bottom", "left", "dialog"] as const) {
+    for (const anchor of ["scrim", "bottom", "left", "top", "dialog"] as const) {
       for (const phase of ["enter", "exit"] as const) {
         const cls = overlayMotionClass(anchor, phase, false);
         expect(cls).toBe(`overlay-${phase}-${anchor}`);
@@ -77,7 +77,7 @@ describe("overlay motion tokens", () => {
     // Two independent guarantees, because either alone is one refactor from
     // failing: the mapper returns no class at all, AND the stylesheet neutralizes
     // the classes for anything that applies them another way.
-    for (const anchor of ["scrim", "bottom", "left", "dialog"] as const) {
+    for (const anchor of ["scrim", "bottom", "left", "top", "dialog"] as const) {
       expect(overlayMotionClass(anchor, "enter", true)).toBe("");
       expect(overlayMotionClass(anchor, "exit", true)).toBe("");
     }
@@ -87,7 +87,7 @@ describe("overlay motion tokens", () => {
         CSS.indexOf("--overlay-ms")
       )
     );
-    for (const anchor of ["scrim", "bottom", "left", "dialog"] as const) {
+    for (const anchor of ["scrim", "bottom", "left", "top", "dialog"] as const) {
       expect(reduced).toContain(`.overlay-enter-${anchor}`);
       expect(reduced).toContain(`.overlay-exit-${anchor}`);
     }

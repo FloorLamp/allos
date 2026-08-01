@@ -18,6 +18,7 @@ import {
   IconSparkles,
 } from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
+import ProfileIdentityBar from "@/components/ProfileIdentityBar";
 import SidebarContent from "@/components/SidebarContent";
 import QuickLogSheet from "@/components/QuickLogSheet";
 import { openGlobalSearch } from "@/components/CommandPalette";
@@ -99,6 +100,7 @@ export default function MobileNav({
   username,
   profiles,
   viewIds = [],
+  readOnlyIds = [],
   restricted = false,
   isAdmin = false,
   multiProfile = false,
@@ -120,9 +122,12 @@ export default function MobileNav({
   // drawer's profile menu shows "Signed in as <username>" like the desktop (#1013).
   username: string;
   profiles: SessionProfile[];
-  // The session's multi-profile VIEW-SET (issue #1096); threaded into the shared
-  // SidebarContent so the drawer's profile menu shows the same view toggles.
+  // The session's multi-profile VIEW-SET (issue #1096) — the stacked avatars on
+  // the bar and the panel's view toggles read the same validated set.
   viewIds?: number[];
+  // Accessible profiles held READ-only by this login (issue #33) — the per-row
+  // hint in the switcher panel.
+  readOnlyIds?: number[];
   // When true, the fitness-oriented nav entries are hidden for the active
   // (age-restricted) profile. Resolved on the server; see lib/age-gate.ts.
   restricted?: boolean;
@@ -254,9 +259,27 @@ export default function MobileNav({
           >
             <IconMenu2 className="h-6 w-6" stroke={1.75} />
           </button>
-          <Link href="/" className="flex items-center gap-2">
-            <Wordmark markClassName="h-5 w-9" />
-          </Link>
+          {/* The identity bar takes the WORDMARK'S SLOT on a multi-profile
+              instance (issue #1801). In a personal health app the brand line
+              spends ~90px of a 390px bar saying nothing, while "whose data is
+              this?" had no answer on this screen at all; home stays one tap away
+              in the drawer, and the desktop sidebar and login screen keep the
+              wordmark. On a single-profile instance identity is unambiguous, so
+              the wordmark stays exactly as it was. */}
+          {multiProfile ? (
+            <ProfileIdentityBar
+              profiles={profiles}
+              actingProfileId={active.id}
+              viewIds={viewIds}
+              readOnlyIds={readOnlyIds}
+              readOnly={readOnly}
+              surface="mobile"
+            />
+          ) : (
+            <Link href="/" className="flex items-center gap-2">
+              <Wordmark markClassName="h-5 w-9" />
+            </Link>
+          )}
           <div className="ml-auto -mr-1 flex items-center">
             {/* Global search, one tap from every page (issue #1416). Opens the
                 same CommandPalette the drawer's search button and ⌘K do. */}
@@ -355,6 +378,11 @@ export default function MobileNav({
                 username={username}
                 profiles={profiles}
                 viewIds={viewIds}
+                readOnlyIds={readOnlyIds}
+                // The drawer does NOT carry the identity bar: on a phone the bar
+                // lives in the top bar, where it is readable without opening
+                // anything (#1801). Same component, placed once per viewport.
+                showIdentityBar={false}
                 restricted={restricted}
                 isAdmin={isAdmin}
                 multiProfile={multiProfile}

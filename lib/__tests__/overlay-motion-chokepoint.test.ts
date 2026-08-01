@@ -47,6 +47,10 @@ const OVERLAY_SURFACES = new Map<string, string>([
     "components/ActivityOverlay.tsx",
     "the activity dock's expanded editor — session lifecycle; swipe-down resolves to MINIMIZE, never discard (#1428)",
   ],
+  [
+    "components/ProfileIdentityBar.tsx",
+    "the mobile profile switcher — TOP-anchored; it drops from the identity bar and swipe-UP resolves to CLOSE, retreating through the bar it came from (#1801)",
+  ],
 ]);
 
 // ── Rule 2: portal overlays that are deliberately NOT this system ────────────
