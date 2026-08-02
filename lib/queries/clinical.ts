@@ -169,7 +169,12 @@ function conditionRepresentativeIds(filterStatus: boolean): string {
       PARTITION BY profile_id, COALESCE(
         'code:' || NULLIF(TRIM(code), ''),
         'name:' || LOWER(TRIM(name))
-      )
+      ),
+      -- Laterality is IDENTITY, not decoration (#1403/#482): left-knee and
+      -- right-knee osteoarthritis share a name AND an unspecified ICD-10 code, so
+      -- without this the two collapse and one side vanishes from the problem list.
+      -- An unstated side ('') groups with other unstated rows, as before.
+      'lat:' || COALESCE(laterality, '')
       ORDER BY (status = 'active') DESC, (document_id IS NULL) DESC, id DESC
     ) AS rn
     FROM conditions WHERE profile_id = ?${filterStatus ? " AND status = ?" : ""}
@@ -196,12 +201,19 @@ export const PROCEDURE_REPRESENTATIVE_IDS = `
 
 // Family history collapses on (relative, condition), both normalized. An unknown
 // relation (NULL) groups with other unknown-relation rows for the same condition.
+// The genetic discriminator and the family side join the key (#1407): a maternal
+// grandmother and a paternal one both labeled "Grandmother", or a biological and an
+// adopted parent both labeled "Father", are DIFFERENT relatives with different
+// hereditary weight — collapsing them would silently drop one. Unstated ('') groups
+// with other unstated rows, so nothing that used to collapse stops collapsing.
 export const FAMILY_HISTORY_REPRESENTATIVE_IDS = `
   SELECT id FROM (
     SELECT id, ROW_NUMBER() OVER (
       PARTITION BY profile_id,
         'rel:' || LOWER(TRIM(COALESCE(relation, ''))),
-        'cond:' || LOWER(TRIM(condition))
+        'cond:' || LOWER(TRIM(condition)),
+        'type:' || COALESCE(relation_type, ''),
+        'line:' || COALESCE(lineage, '')
       ORDER BY (document_id IS NULL) DESC, id DESC
     ) AS rn
     FROM family_history WHERE profile_id = ?

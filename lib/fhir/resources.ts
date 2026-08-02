@@ -1,4 +1,9 @@
 import { classifyLoinc } from "../biomarker-loinc";
+import {
+  toConditionLaterality,
+  toConditionSeverity,
+} from "../condition-attributes";
+import { familyRelationFacts } from "../family-relation";
 import { normalizeResultStatus } from "../lab-result-lifecycle";
 import {
   allergyExternalId,
@@ -33,6 +38,8 @@ import type {
 import type {
   AppointmentKind,
   AppointmentStatus,
+  ConditionLaterality,
+  ConditionSeverity,
   ImagingModality,
   OpticalKind,
 } from "../types";
@@ -275,10 +282,66 @@ export function mapConditionResource(r: any): ImportedCondition | null {
     code,
     code_system: system,
     status: decided.status,
+    // Condition.severity and Condition.bodySite (#1403) — both carried by real
+    // bundles and both DROPPED before this. severity reads the SNOMED grade codes
+    // or their display; bodySite yields the side through the shared coercion (which
+    // handles both a laterality qualifier code and a phrase like "Structure of left
+    // kidney"). Nothing is inferred from the condition NAME: an unstated side stays
+    // unstated. `stage` has no FHIR R4 home on Condition beyond the free-text
+    // stage.summary, which is read here when present.
+    laterality: conditionLaterality(r?.bodySite),
+    severity: conditionSeverity(r?.severity),
+    stage: conditionStage(r?.stage),
     onset_date: decided.onset_date,
     resolved_date: decided.resolved_date,
     external_id: conditionExternalId({ name, code, onsetDate: onset }),
   };
+}
+
+// Condition.bodySite (0..*) → our side enum: try every coding's code and display,
+// then the concept text. First hit wins; silent when the source states no side.
+function conditionLaterality(bodySite: any): ConditionLaterality | null {
+  const sites = Array.isArray(bodySite)
+    ? bodySite
+    : bodySite != null
+      ? [bodySite]
+      : [];
+  for (const cc of sites) {
+    for (const c of ccCodings(cc)) {
+      const byCode = toConditionLaterality(
+        c?.code != null ? String(c.code) : null
+      );
+      if (byCode) return byCode;
+      const byDisplay = toConditionLaterality(codingDisplay(c));
+      if (byDisplay) return byDisplay;
+    }
+    const byText = toConditionLaterality(conceptName(cc));
+    if (byText) return byText;
+  }
+  return null;
+}
+
+// Condition.severity (a CodeableConcept over the SNOMED mild/moderate/severe value
+// set) → our grade enum, code first then display/text.
+function conditionSeverity(severity: any): ConditionSeverity | null {
+  for (const c of ccCodings(severity)) {
+    const byCode = toConditionSeverity(c?.code != null ? String(c.code) : null);
+    if (byCode) return byCode;
+    const byDisplay = toConditionSeverity(codingDisplay(c));
+    if (byDisplay) return byDisplay;
+  }
+  return toConditionSeverity(conceptName(severity));
+}
+
+// Condition.stage[].summary → the printed stage, verbatim. Free text by design (see
+// migration 143): staging vocabularies are open-ended, so nothing is coerced.
+function conditionStage(stage: any): string | null {
+  const stages = Array.isArray(stage) ? stage : stage != null ? [stage] : [];
+  for (const st of stages) {
+    const summary = conceptName(st?.summary);
+    if (summary) return summary;
+  }
+  return null;
 }
 
 // ---- AllergyIntolerance ----
@@ -845,17 +908,47 @@ function familyDeceased(r: any): number | null {
   return null;
 }
 
+// The relative's age at DEATH (#1407): FamilyMemberHistory.deceasedAge, in years.
+// Distinct from condition.onsetAge (age at diagnosis) and from age[x] (age when
+// recorded) — conflating them would misreport the exact number the screening-cadence
+// logic keys on. Null unless the value is a finite year quantity.
+function familyAgeAtDeath(r: any): number | null {
+  const a = r?.deceasedAge;
+  const unit = a?.unit ?? a?.code;
+  if (unit != null && !/^a$|yr|year/i.test(String(unit))) return null;
+  const n = Number(a?.value);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
 // One FamilyMemberHistory resource → one ImportedFamilyHistory row per condition it
-// carries. relationship → relation, condition.code → the condition, condition
-// .onsetAge → onset_age (years), deceased[x] → deceased.
+// carries. relationship → relation (+ the genetic discriminator and family side,
+// #1407), condition.code → the condition, condition.onsetAge → onset_age (years),
+// deceased[x] → deceased, deceasedAge → age_at_death, and the condition marked
+// contributedToDeath names the cause of death.
 export function mapFamilyMemberHistoryResource(
   r: any
 ): ImportedFamilyHistory[] {
   if (r?.status === "entered-in-error") return [];
   const relation = familyRelation(r);
   const deceased = familyDeceased(r);
+  const ageAtDeath = familyAgeAtDeath(r);
+  // The genetic axis, read from the relationship CODE (HL7 v3 RoleCode NMTH/HSIS/
+  // STPMTH/MGRMTH/…) with its display as the fallback. One shared resolver with the
+  // CDA path (lib/family-relation), so the two importers can't drift.
+  const facts = familyRelationFacts(
+    firstCodingCode(r?.relationship),
+    relation ?? conceptName(r?.relationship)
+  );
+  const conditions = Array.isArray(r?.condition) ? r.condition : [];
+  // FamilyMemberHistory.condition.contributedToDeath marks WHICH condition killed
+  // the relative — the cause of death, stated by the source rather than inferred.
+  const causeOfDeath =
+    conditions
+      .filter((c: any) => c?.contributedToDeath === true)
+      .map((c: any) => conceptName(c?.code))
+      .find((n: string | null): n is string => !!n) ?? null;
   const out: ImportedFamilyHistory[] = [];
-  for (const c of Array.isArray(r?.condition) ? r.condition : []) {
+  for (const c of conditions) {
     const condition = conceptName(c?.code);
     if (!condition) continue;
     const { code, system } = pickCoding(c?.code, [ICD10]);
@@ -872,7 +965,11 @@ export function mapFamilyMemberHistoryResource(
       code,
       code_system: system,
       onset_age: onsetAge,
-      deceased,
+      deceased: deceased ?? (ageAtDeath != null || causeOfDeath ? 1 : null),
+      age_at_death: ageAtDeath,
+      cause_of_death: causeOfDeath,
+      relation_type: facts.relationType,
+      lineage: facts.lineage,
       external_id: familyHistoryExternalId({ relation, condition, code }),
     });
   }

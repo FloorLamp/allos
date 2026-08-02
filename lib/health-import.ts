@@ -2,7 +2,11 @@ import type {
   AllergyStatus,
   AppointmentKind,
   AppointmentStatus,
+  ConditionLaterality,
+  ConditionSeverity,
   ConditionStatus,
+  FamilyLineage,
+  FamilyRelationType,
   ImagingLaterality,
   ImagingModality,
   MedicalCategory,
@@ -160,6 +164,12 @@ export interface ImportedCondition {
   code: string | null;
   code_system: string | null;
   status: ConditionStatus;
+  // Side / grade / stage (#1403) — CCD targetSiteCode + Problem Severity observation,
+  // FHIR Condition.bodySite + Condition.severity. Optional: a source that states
+  // none leaves them null (unstated is never guessed into a claim).
+  laterality?: ConditionLaterality | null;
+  severity?: ConditionSeverity | null;
+  stage?: string | null;
   onset_date: string | null; // YYYY-MM-DD
   resolved_date: string | null;
   external_id: string;
@@ -224,6 +234,14 @@ export interface ImportedFamilyHistory {
   code_system: string | null;
   onset_age: number | null;
   deceased: number | null;
+  // Death facts + the genetic discriminator (#1407) — FHIR deceasedAge,
+  // condition.contributedToDeath and relationship; the CDA death/age observations
+  // and the relatedSubject role code. Optional; unstated relation_type reads as
+  // genetic (lib/family-relation.ts).
+  age_at_death?: number | null;
+  cause_of_death?: string | null;
+  relation_type?: FamilyRelationType | null;
+  lineage?: FamilyLineage | null;
   external_id: string; // stable dedup key ("ccda:famhx:…")
 }
 

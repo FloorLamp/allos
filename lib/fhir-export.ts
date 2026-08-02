@@ -101,6 +101,13 @@ export interface FhirExportCondition {
   status: string; // active | inactive | resolved
   onset_date: string | null;
   resolved_date: string | null;
+  // Side / grade / stage (#1403) → Condition.bodySite / .severity / .stage[].summary,
+  // the same elements the importer reads back. Optional so existing partial-input
+  // callers/fixtures stay valid; an unstated value is simply omitted from the
+  // resource rather than guessed.
+  laterality?: string | null;
+  severity?: string | null;
+  stage?: string | null;
 }
 
 export interface FhirExportAllergy {
@@ -171,6 +178,13 @@ export interface FhirExportFamilyHistory {
   code_system: string | null;
   onset_age: number | null;
   deceased: number | null; // 1 | 0 | null
+  // Death facts + the genetic discriminator (#1407) → deceasedAge,
+  // condition.contributedToDeath, and a relationship text that carries the
+  // qualifier. Optional, same discipline as the condition attributes above.
+  age_at_death?: number | null;
+  cause_of_death?: string | null;
+  relation_type?: string | null;
+  lineage?: string | null;
 }
 
 export interface FhirExportCarePlanItem {
@@ -298,6 +312,12 @@ function conditionResource(c: FhirExportCondition): Record<string, unknown> {
     clinicalStatus: statusConcept(c.status),
     code: concept(c.name, c.code, c.code_system),
   };
+  // The three attributes #1403 added, on the FHIR elements the importer reads back —
+  // so a side/grade/stage survives an export→import round trip instead of living
+  // only in this instance's database.
+  if (c.laterality) r.bodySite = [{ text: c.laterality }];
+  if (c.severity) r.severity = { text: c.severity };
+  if (c.stage) r.stage = [{ summary: { text: c.stage } }];
   if (c.onset_date) r.onsetDateTime = c.onset_date;
   if (c.resolved_date) r.abatementDateTime = c.resolved_date;
   return r;
@@ -429,13 +449,33 @@ function familyMemberHistoryResource(
     code: concept(f.condition, f.code, f.code_system),
   };
   if (f.onset_age != null) cond.onsetAge = { value: f.onset_age, unit: "a" };
+  // The stored cause of death marks WHICH condition contributed to the death — the
+  // element the importer reads it back out of (#1407).
+  if (
+    f.cause_of_death &&
+    f.cause_of_death.trim().toLowerCase() === f.condition.trim().toLowerCase()
+  )
+    cond.contributedToDeath = true;
   const r: Record<string, unknown> = {
     resourceType: "FamilyMemberHistory",
     status: "completed",
     condition: [cond],
   };
-  if (f.relation) r.relationship = concept(f.relation);
+  // The relationship text carries the discriminator the receiving system needs — a
+  // bare "Father" would read as biological, which for an adopted parent is the exact
+  // wrong claim (#1407). Lineage rides along the same way.
+  if (f.relation) {
+    const quals = [
+      f.relation_type && f.relation_type !== "genetic" ? f.relation_type : null,
+      f.lineage,
+    ].filter(Boolean);
+    r.relationship = concept(
+      quals.length ? `${f.relation} (${quals.join(", ")})` : f.relation
+    );
+  }
   if (f.deceased != null) r.deceasedBoolean = f.deceased === 1;
+  if (f.age_at_death != null)
+    r.deceasedAge = { value: f.age_at_death, unit: "a" };
   return r;
 }
 

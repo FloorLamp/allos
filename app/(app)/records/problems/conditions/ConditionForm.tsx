@@ -13,7 +13,12 @@ import {
   ICD10_CONDITION_NAMES,
   ICD10_SYSTEM,
 } from "@/lib/icd10";
-import type { Condition, FormResult } from "@/lib/types";
+import {
+  CONDITION_LATERALITIES,
+  CONDITION_SEVERITIES,
+  type Condition,
+  type FormResult,
+} from "@/lib/types";
 
 // Shared add/edit condition form. Add mode: no `condition`. Edit mode: pass the
 // row + an `onDone` callback. The resolved-date field only applies when the status
@@ -231,6 +236,60 @@ export default function ConditionForm({
             defaultValue={condition?.onset_date ?? ""}
           />
         </div>
+      </div>
+      {/* Side / grade / stage (#1403). All optional: a condition that isn't sided or
+          graded simply leaves them unstated — the app never guesses a side. The side
+          matters most, because a sided condition is a distinct clinical entity
+          (#482) and the problem-list label and dedupe key both read it. */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor={`cond-laterality-${uid}`}>
+            Side
+          </label>
+          <select
+            id={`cond-laterality-${uid}`}
+            name="laterality"
+            className="input"
+            defaultValue={condition?.laterality ?? ""}
+          >
+            <option value="">Not stated</option>
+            {CONDITION_LATERALITIES.map((l) => (
+              <option key={l} value={l}>
+                {l[0].toUpperCase() + l.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor={`cond-severity-${uid}`}>
+            Severity
+          </label>
+          <select
+            id={`cond-severity-${uid}`}
+            name="severity"
+            className="input"
+            defaultValue={condition?.severity ?? ""}
+          >
+            <option value="">Not stated</option>
+            {CONDITION_SEVERITIES.map((s) => (
+              <option key={s} value={s}>
+                {s[0].toUpperCase() + s.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="label" htmlFor={`cond-stage-${uid}`}>
+          Stage
+        </label>
+        <input
+          id={`cond-stage-${uid}`}
+          name="stage"
+          className="input"
+          defaultValue={condition?.stage ?? ""}
+          placeholder="e.g. Stage IIIA, CKD stage 3b"
+        />
       </div>
       {status === "resolved" && (
         <div>
