@@ -5,8 +5,12 @@ import {
   canStartPeriodOn,
   checkPeriodWrite,
   cycleControlState,
+  cycleOffer,
   cycleRefusalMessage,
   cycleStateLine,
+  END_PERIOD_LABEL,
+  REOPEN_PERIOD_LABEL,
+  START_PERIOD_LABEL,
   lastEndedPeriodIn,
   openPeriodIn,
 } from "@/lib/cycle-plausibility";
@@ -146,6 +150,75 @@ describe("cycleStateLine / cycleControlState (#1681 — the contextual state)", 
     const s = cycleControlState([period(1, "2026-04-05", null)], TODAY);
     expect(s.staleOpenPeriod).toBe(true);
     expect(s.stateLine).toBe("Day 16 · Follicular");
+  });
+});
+
+// Issue #1892 — the ONE offer three surfaces render (the Cycle page control, the
+// dashboard phase widget, the quick-log sheet's overlay). It is a pure function of the
+// control state, so it cannot disagree with itself across surfaces; what is asserted
+// here is which verb each state yields and that at most one is ever on offer.
+describe("cycleOffer (#1892 — the label names the write)", () => {
+  const offerOn = (periods: CyclePeriod[], date = TODAY) =>
+    cycleOffer(cycleControlState(periods, date));
+
+  it("no history at all: the offer is to start — the state the widget used to HIDE on", () => {
+    expect(offerOn([])).toEqual({ write: "start", label: START_PERIOD_LABEL });
+  });
+
+  it("a period is open: the offer is to end it, whatever its duration", () => {
+    expect(offerOn([period(1, "2026-04-18", null)])).toEqual({
+      write: "end",
+      label: END_PERIOD_LABEL,
+    });
+    // Long-open is the OBSERVATION layer's business (cycle-observation.ts observes
+    // prolonged bleeding); the end offer is never withdrawn by duration.
+    const stale = cycleControlState([period(1, "2026-04-05", null)], TODAY);
+    expect(stale.staleOpenPeriod).toBe(true);
+    expect(cycleOffer(stale)).toEqual({
+      write: "end",
+      label: END_PERIOD_LABEL,
+    });
+  });
+
+  it("just ended: the offer is the reopen, NOT a gap-suppressed start", () => {
+    expect(offerOn([period(1, "2026-04-16", TODAY)])).toEqual({
+      write: "reopen",
+      label: REOPEN_PERIOD_LABEL,
+    });
+  });
+
+  it("mid-cycle, past the plausible gap: the offer is to start again", () => {
+    expect(offerOn([period(1, "2026-04-01", "2026-04-05")])).toEqual({
+      write: "start",
+      label: START_PERIOD_LABEL,
+    });
+  });
+
+  it("inside the gap window but past the reopen window: NO offer at all", () => {
+    // Ended 5 days ago: too old to reopen (> REOPEN_PERIOD_MAX_AGE_DAYS), too soon to
+    // start (< MIN_PLAUSIBLE_PERIOD_GAP_DAYS). The silence is the point — a tap here
+    // would mint an implausible back-to-back period, so the dated form owns it.
+    expect(offerOn([period(1, "2026-04-11", "2026-04-15")])).toBeNull();
+  });
+
+  it("offers AT MOST ONE write on every day of a whole cycle", () => {
+    // The exclusivity is a fact about the constants (reopen ≤ 3 days, start ≥ 10),
+    // not a tie-break inside cycleOffer — pinned here so shrinking the gap can never
+    // silently produce two simultaneous offers.
+    expect(REOPEN_PERIOD_MAX_AGE_DAYS).toBeLessThan(
+      MIN_PLAUSIBLE_PERIOD_GAP_DAYS
+    );
+    const history = [period(1, "2026-04-01", "2026-04-05")];
+    for (let day = 5; day <= 30; day++) {
+      const date = `2026-04-${String(day).padStart(2, "0")}`;
+      const state = cycleControlState(history, date);
+      const offers = [
+        state.openPeriodId != null,
+        state.canReopen,
+        state.canStart,
+      ].filter(Boolean);
+      expect(offers.length, date).toBeLessThanOrEqual(1);
+    }
   });
 });
 

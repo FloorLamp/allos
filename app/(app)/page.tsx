@@ -51,6 +51,7 @@ import {
 } from "@/lib/situations";
 import { getCycleForecast, listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, cycleDayOnDate } from "@/lib/cycle";
+import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
 import { latestTrend } from "@/lib/latest-trend";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
@@ -133,6 +134,7 @@ import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
+import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
 import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
 import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
@@ -677,10 +679,16 @@ export default async function Dashboard() {
   }
 
   // cycle-phase (#1221): "Cycle day N · <phase>" over cycleDayOnDate + cyclePhaseOnDate
-  // (lib/cycle.ts, #221). Relevance-gated in the registry; self-hides when no phase is
-  // derivable (before any recorded period). Since #1679 the tile also carries the
-  // PROJECTED next-period window — the SAME getCycleForecast the Cycle surface reads, so
-  // the tile and the page can never show different windows.
+  // (lib/cycle.ts, #221). Relevance-gated in the registry. Since #1679 the tile also
+  // carries the PROJECTED next-period window — the SAME getCycleForecast the Cycle
+  // surface reads, so the tile and the page can never show different windows.
+  //
+  // Since #1892 the tile no longer self-hides when no phase is derivable: that was the
+  // state of someone who has not logged day 1 yet, so it hid exactly when logging
+  // mattered most. It is now DATA-AWARE — the CTA variant of the same card — and it
+  // carries the ONE cycle offer, resolved here ONCE (`cycleControlState`) and handed
+  // down as data. The Cycle page control and the quick-log sheet render that same
+  // state; none of the three re-derives it.
   const cyclePeriods = has("cycle-phase") ? listCyclePeriods(profile.id) : [];
   const cyclePhase =
     cyclePeriods.length > 0 ? cyclePhaseOnDate(cyclePeriods, on) : null;
@@ -688,6 +696,9 @@ export default async function Dashboard() {
     cyclePeriods.length > 0 ? cycleDayOnDate(cyclePeriods, on) : null;
   const cycleForecast =
     cyclePeriods.length > 0 ? getCycleForecast(profile.id, on) : null;
+  const cycleControl = has("cycle-phase")
+    ? cycleControlState(cyclePeriods, on)
+    : null;
   const cycleModel =
     cyclePhase != null && cycleDay != null
       ? { day: cycleDay, phase: cyclePhase }
@@ -784,6 +795,10 @@ export default async function Dashboard() {
     (sleepSummary == null || sleepPresentation?.freshness === "stale")
   )
     emptyIds.add("sleep-last-night");
+  // cycle-phase (#1892): "empty" is "no phase is derivable yet" — the state that used
+  // to HIDE the card. The CTA it renders is the card itself with the offer button and
+  // no derived line, so the widget stays one component in both states.
+  if (has("cycle-phase") && cycleModel == null) emptyIds.add("cycle-phase");
 
   // The onboarding CTA for a data-aware widget whose domain is empty — the
   // dashboard doubling as the setup checklist, each empty widget pointing at the
@@ -841,15 +856,29 @@ export default async function Dashboard() {
           />
         );
       case "vitals-latest":
+        // #1892: the CTA opens the SAME measurements quick-entry the non-empty card's
+        // "Log reading" action opens, so the affordance does not disappear the moment
+        // the domain stops being empty — which is when a weekly BP logger needs it.
         return (
           <WidgetEmpty
             title="Latest vitals"
             icon={IconHeartbeat}
             message="No blood pressure or resting heart rate yet. Log a reading to see it here at a glance."
-            ctaLabel="Log a reading"
-            ctaHref="/trends#body"
+            cta={<LogReadingButton label="Log a reading" />}
           />
         );
+      case "cycle-phase":
+        // #1892: the former self-hide. Same component, CTA variant — it carries the
+        // ONE cycle offer, so the person who has not logged day 1 has a one-tap path
+        // on the surface they are already looking at.
+        return cycleControl ? (
+          <CyclePhaseWidget
+            day={null}
+            phase={null}
+            forecast={null}
+            control={cycleControl}
+          />
+        ) : null;
       case "sleep-last-night":
         return (
           <WidgetEmpty
@@ -928,11 +957,12 @@ export default async function Dashboard() {
       case "vitals-latest":
         return vitalsModel ? <VitalsLatestWidget model={vitalsModel} /> : null;
       case "cycle-phase":
-        return cycleModel ? (
+        return cycleControl ? (
           <CyclePhaseWidget
-            day={cycleModel.day}
-            phase={cycleModel.phase}
+            day={cycleModel?.day ?? null}
+            phase={cycleModel?.phase ?? null}
             forecast={cycleForecast}
+            control={cycleControl}
           />
         ) : null;
       case "active-protocols":
@@ -1018,10 +1048,7 @@ export default async function Dashboard() {
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
       (def.id !== "data-quality" || dataQualityFindings.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
-      (def.id !== "active-protocols" || activeProtocols.length > 0) &&
-      // cycle-phase (#1221): informational card that self-hides when no phase is
-      // derivable yet (before any recorded period) — never an onboarding CTA.
-      (def.id !== "cycle-phase" || cycleModel !== null),
+      (def.id !== "active-protocols" || activeProtocols.length > 0),
     // symptom-log is the unified "How are you today?" card (#992): the mood tap is
     // always offered, so the slot stays available in both illness states. Its folded
     // "Take any meds?" branch (#1221) is composed inside the card (shown only on a well

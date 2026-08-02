@@ -79,6 +79,10 @@ describe("quickLogMenu", () => {
       "log-measurements",
       // #1633 — the web catching up to the Telegram bot's one-tap practice log.
       "log-practice",
+      // #1892 — the missing logging path. Period day 1 is the app's most
+      // time-sensitive log (both the phase derivation and the regularity data
+      // depend on catching it), and the sheet had no entry for it at all.
+      "log-period",
       // #1525 — the one non-log row: filing a document, the in-app twin of the
       // share target. Last, because it is the odd verb out.
       "add-document",
@@ -93,8 +97,37 @@ describe("quickLogMenu", () => {
       "log-dose",
       "log-measurements",
       "log-practice",
+      "log-period",
       "add-document",
     ]);
+  });
+
+  // Issue #1892 — the cycle relevance gate, the SAME `cycle` bit as the Cycle nav
+  // entry and the dashboard phase widget.
+  it("drops the period row for a profile where cycle tracking is irrelevant", () => {
+    const ids = quickLogMenu(false, false).map((i) => i.id);
+    expect(ids).not.toContain("log-period");
+    // Nothing else moves — the gate is per-entry, not a mode.
+    expect(ids).toEqual([
+      LOG_ACTIVITY_ID,
+      "log-food",
+      "log-dose",
+      "log-measurements",
+      "log-practice",
+      "add-document",
+    ]);
+  });
+
+  it("defaults to SHOWING the period row, so an unthreaded caller never over-hides", () => {
+    // The DEFAULT_NAV_RELEVANCE posture: a surface that hasn't resolved the bitset
+    // must not hide a row the profile is entitled to.
+    expect(quickLogMenu(false).map((i) => i.id)).toContain("log-period");
+  });
+
+  it("applies BOTH gates at once", () => {
+    const ids = quickLogMenu(true, false).map((i) => i.id);
+    expect(ids).not.toContain(LOG_ACTIVITY_ID);
+    expect(ids).not.toContain("log-period");
   });
 });
 
@@ -145,6 +178,7 @@ describe("the registry itself", () => {
       "dose",
       "measurements",
       "practice",
+      "cycle",
       "document",
     ]);
   });

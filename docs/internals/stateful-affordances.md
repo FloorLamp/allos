@@ -1,8 +1,8 @@
 # Stateful affordances and the gated-table write scan
 
-Status: **shipped** (#1892 established the pattern; #1893 added the audit
-criterion, the workout offer state, the refill recency line, and this
-enforcement layer)
+Status: **shipped** (#1892 established the pattern and then applied it to its
+own second and third renderers; #1893 added the audit criterion, the workout
+offer state, the refill recency line, and this enforcement layer)
 
 A one-tap write affordance is a promise: the label names the write the tap will
 perform. This page holds the criterion for deciding when a button owes the user
@@ -66,6 +66,56 @@ modules, which is what `gate` exists to record: `lib/cycle-write.ts` owns the
 typed refusals and holds no SQL of its own (pinned by a test), reaching the
 table only through the store.
 
+## Worked example: one offer state, three renderers (`cycles`)
+
+`cycles` is the entry to read first, because it is the one where the audit's
+"name the `offerState`" ambition has been carried through to every surface that
+offers the write.
+
+`cycleControlState` (`lib/cycle-plausibility.ts`) says what is TRUE — is a
+period open, is it stale, what is the derived state line, may a start or a
+reopen be offered. `cycleOffer` turns that state into **at most one** offer, and
+the offer carries the label:
+
+| state                                         | offer    | label                |
+| --------------------------------------------- | -------- | -------------------- |
+| a period is open                              | `end`    | Period ended today   |
+| ended within `REOPEN_PERIOD_MAX_AGE_DAYS`     | `reopen` | Still bleeding       |
+| no period for `MIN_PLAUSIBLE_PERIOD_GAP_DAYS` | `start`  | Period started today |
+| between those two windows                     | —        | (no button)          |
+
+At most one — and sometimes none — is a fact about the constants rather than a
+tie-break inside `cycleOffer`: the reopen window (3 days) closes before the
+plausible-gap window (10 days) opens. The gap between them is where the honest
+answer is silence, and the dated form on the Cycle page owns that exception.
+
+Three surfaces render it and **none of them re-derives it**:
+
+| surface                | component                                         | where the state comes from             |
+| ---------------------- | ------------------------------------------------- | -------------------------------------- |
+| Cycle page control     | `app/(app)/medical/cycles/PeriodQuickActions.tsx` | the page, once per render              |
+| Dashboard phase widget | `components/dashboard/CyclePhaseWidget.tsx`       | the dashboard page, once per render    |
+| Quick-log sheet        | `components/quick-entry/QuickCyclePanel.tsx`      | `loadQuickEntry("cycle")`, **on open** |
+
+All three mount `components/cycle/PeriodOfferButton.tsx`, the only caller of
+`cycleOffer` in the app. `lib/__tests__/cycle-offer-renderers.test.ts` is the
+#221 pin: it fails if a surface reaches for the predicates directly, calls the
+derivation itself, hard-codes a verb, or if a fourth server entry point starts
+resolving the state.
+
+The sheet gathers on OPEN rather than at layout time deliberately (#1468): a
+layout-time snapshot would be exactly as stale as the page it rode in on, and
+the verb has to be current. The sheet ROW is a plain menu label ("Log period");
+the verb lives on the button one tap in, which is the only place it can be
+honest.
+
+Widening the affordance this way is safe precisely because of the split at the
+top of this page. The dashboard is the surface most likely to be stale — a tab
+open since yesterday — and a stale tap still reaches `lib/cycle-write.ts`, which
+re-enforces the same predicates under the write lock and answers with a typed
+refusal the caller renders. The worst outcome is an honest message; a double-log
+or an invented period is not reachable.
+
 ## The scan
 
 `lib/__tests__/stateful-writes.test.ts`, over the shared source scanner in
@@ -108,7 +158,9 @@ log (the #798 redose-window line), mood (`upsertMoodLog` updates same-day),
 preventive done (idempotent per rule+date), the illness front door, cycle
 (#1892), practice/protocol buttons. Appointments have no one-tap affordance —
 completion is form-level. **Weight and food servings are additive by design and
-correctly plain.**
+correctly plain** — which is also why the vitals card's "Log reading" (#1892) is
+a plain button: it opens the measurements form, and a reading is a fact added,
+not a transition.
 
 Two defects were fixed by #1893:
 

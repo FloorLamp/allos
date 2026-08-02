@@ -505,15 +505,21 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
       "Your current cycle day and derived phase — informational only, never a prediction. Appears only when cycle tracking is relevant for the profile.",
     // On by default, but gated on the SAME `cycle` relevance bit as the Cycle nav
     // entry (relevanceKey), so it's hidden entirely unless cycle tracking applies to
-    // the profile. NOT data-aware: it self-hides (renders nothing) when no phase is
-    // derivable yet — an informational card, never an onboarding CTA (the #714
-    // tracking-not-forecasting contract).
+    // the profile.
+    //
+    // DATA-AWARE since #1892. It used to SELF-HIDE when no phase was derivable, which
+    // was the inversion: that is precisely the state of someone who has not logged day
+    // 1, so the card vanished exactly when logging mattered most and the only path was
+    // nav → Medical → Cycles. The #714 tracking-not-forecasting contract governs the
+    // quiet DISPLAY; it never meant "never offer a log button". Its empty variant is
+    // the same card carrying the one cycle offer, so the CTA is a WRITE, not a link.
     defaultOn: true,
     fitness: false,
     // Passive by its own #714 contract: informational only, never a prediction and
     // never a prompt.
     actionable: false,
     span: "half",
+    dataAware: true,
     relevanceKey: "cycle",
   },
   {

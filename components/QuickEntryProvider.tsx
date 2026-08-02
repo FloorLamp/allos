@@ -20,7 +20,7 @@ import {
 } from "@/app/(app)/quick-entry-actions";
 import type { QuickEntryForm } from "@/lib/quick-log";
 
-// The two newest bodies load ON DEMAND (#1525/#1633). This host is mounted on every
+// The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
 // route, and its promise is that it COSTS NOTHING until opened — a promise about
 // JavaScript as much as about queries. The forms it already carried are small and
 // shared with pages the shell links to anyway; the upload form and the practice list
@@ -32,6 +32,14 @@ const UploadForm = dynamic(() => import("./UploadForm"));
 const QuickPracticeList = dynamic(
   () => import("./quick-entry/QuickPracticeList")
 );
+// Same rule, third body (#1892): the period panel drags in the shared offer button
+// and, through it, the cycle Server Actions' client references. Static-importing it
+// would put that on the initial JS of EVERY route — including routes with no cycle
+// surface at all — which is exactly the promise this host makes above. Hydration
+// latency is not free: a wider hydration window is what turns a pre-hydration
+// `.fill()` on a controlled input into a silently stale save (see settledFill in
+// e2e/helpers.ts), so the cost of breaking this rule is paid by other pages' flakes.
+const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -104,6 +112,9 @@ const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   measurements: { title: "Log measurements", ownsHeading: true },
   dose: { title: "Log dose", ownsHeading: false },
   practice: { title: "Log practice", ownsHeading: false },
+  // #1892: the sheet's period row. The panel owns no heading — the verb is on the
+  // button, which is the point.
+  cycle: { title: "Log period", ownsHeading: false },
   document: { title: "Add document", ownsHeading: false },
 };
 
@@ -243,6 +254,13 @@ function QuickEntryBody({
       );
     case "dose":
       return <QuickDoseList doses={data.doses} onDone={onDone} />;
+    case "cycle":
+      // The SAME <PeriodOfferButton> the Cycle page control and the dashboard phase
+      // widget render, over the SAME server-resolved cycleControlState — a third
+      // RENDERER of one state, never a third implementation. A successful tap closes:
+      // start/end/reopen is one transaction with a real end, and #1468's contract is
+      // that it lands you back where you were.
+      return <QuickCyclePanel state={data.state} onDone={onDone} />;
     case "practice":
       // No `onSaved`: like the food bar, practice logging has no single "saved"
       // moment — multi-session days are the point and a morning check may log two

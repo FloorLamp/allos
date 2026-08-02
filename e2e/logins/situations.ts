@@ -21,6 +21,26 @@ export const CYCLE_PROFILE = "Cycle Log (e2e)";
 export const E2E_LOGIN_CYCLE_STALE = "e2e_cycle_stale";
 export const CYCLE_STALE_PROFILE = "Cycle Stale Open (e2e)";
 
+// The cycle LOG-AFFORDANCE fixtures (issue #1892). Two dedicated adult FEMALE profiles,
+// both cycle-RELEVANT by life stage rather than by data, because the whole point is the
+// state a profile is in BEFORE it has any cycle data:
+//
+//   • CTA — no cycle rows at all. This is the state the dashboard phase widget used to
+//     SELF-HIDE on, which is precisely the state of someone who has not logged day 1 yet.
+//     The spec mutates it (start → end → the reopen window) and clears its own rows before
+//     every test, so --repeat-each starts from the same place.
+//   • GAP — one period that ended 5 days ago: too old for the "Still bleeding" reopen
+//     (> REOPEN_PERIOD_MAX_AGE_DAYS) and too soon for a plausible start
+//     (< MIN_PLAUSIBLE_PERIOD_GAP_DAYS), so the card renders the derived phase and offers
+//     NO button at all. Read-only, so it stays stable under --repeat-each.
+//
+// Both are separate from CYCLE_PROFILE, which must keep its three-period history for the
+// Cycle-page spec's trend and regularity assertions. Synthetic, no PHI.
+export const E2E_LOGIN_CYCLE_CTA = "e2e_cycle_cta";
+export const CYCLE_CTA_PROFILE = "Cycle Log CTA (e2e)";
+export const E2E_LOGIN_CYCLE_GAP = "e2e_cycle_gap";
+export const CYCLE_GAP_PROFILE = "Cycle Log Gap (e2e)";
+
 // Derived situations (issues #1292/#1298). A member granted a dedicated adult FEMALE
 // (premenopausal → cycle-relevant) profile carrying a Period-keyed iron supplement and a
 // Poor-sleep-keyed magnesium, and a rough last-night sleep session so the DERIVED

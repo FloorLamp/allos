@@ -347,7 +347,10 @@ export default async function AppLayout({
                       overlay / palette the sheet does. Beside CommandPalette so
                       it sits inside both contexts it dispatches into, and
                       viewport-agnostic — the shortcut URL is an ordinary link. */}
-                      <QuickShortcutHandler restricted={restricted} />
+                      <QuickShortcutHandler
+                        restricted={restricted}
+                        cycleRelevant={relevance.cycle}
+                      />
                       <ExtractionToaster profileId={profile.id} />
                       <ImportJobsToaster profileId={profile.id} />
                       {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and
