@@ -11,7 +11,8 @@ import {
   isBiomarkerGoal,
 } from "../../biomarker-goal";
 import { retestDaysForBiomarker } from "../../biomarker-retest";
-import { goalMatchesExercise } from "../../goals";
+import { biomarkerFamily } from "../../canonical-name";
+import { goalMatchesExercise, isGoalLive } from "../../goals";
 import type { BodyMetricKind, Goal } from "../../types";
 import { biomarkerPlot } from "../biomarker-plot";
 import { getLatestBodyMetric } from "../metrics";
@@ -155,4 +156,29 @@ export function getGoalProgressMap(
     out.set(g.id, computeGoalProgress(g, matched, t));
   }
   return out;
+}
+
+// The LIVE biomarker goals a given analyte carries (#1853) — what a biomarker's own
+// detail page needs in order to show the target beside the series it describes,
+// which is the whole point of the issue: "LDL under 100 by June" belonged next to the
+// LDL chart, not in a freeform text field on another page.
+//
+// Matching is by the #482 FAMILY, not by raw name, and deliberately so: the readings
+// that advance the goal are the family's readings (getBiomarkerSeries collapses them
+// into one series), so the goal must appear on exactly the page that charts them. A
+// goal anchored on "Hemoglobin A1c" therefore also shows on the page for its eAG
+// re-expression — one series, one target, one answer.
+//
+// Reads through getGoals, which is already profile-scoped; no new owned SQL.
+export function getBiomarkerGoals(
+  profileId: number,
+  canonical: string
+): Goal[] {
+  const family = biomarkerFamily(canonical).toLowerCase();
+  return getGoals(profileId).filter(
+    (g) =>
+      isGoalLive(g) &&
+      isBiomarkerGoal(g) &&
+      biomarkerFamily(g.biomarker_name!).toLowerCase() === family
+  );
 }
