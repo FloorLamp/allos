@@ -11,7 +11,7 @@ import {
   PGX_SEVERITY_LABEL,
   type PgxHit,
 } from "@/lib/pgx";
-import { ototoxicTitle, type OtotoxicHit } from "@/lib/ototoxic";
+import { ototoxicNote, ototoxicTitle, type OtotoxicHit } from "@/lib/ototoxic";
 import {
   drugAllergyMatchLabel,
   drugAllergyDetail,
@@ -237,7 +237,7 @@ export default function IntakeWarnings({
                 embedded
                 icon={false}
                 title={ototoxicTitle(hit)}
-                detail={hit.note}
+                detail={ototoxicNote(hit)}
                 evidence={`A general note about the medication class, not a recommendation to change anything; discuss any hearing or balance concern with your prescriber. Source: ${hit.citation}`}
                 dismissKey={hit.dedupeKey}
                 dismissLabel={`Dismiss ${ototoxicTitle(hit)} hearing-safety note`}

@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
-import { getNavRelevance } from "@/lib/queries/nav-relevance";
+import {
+  getNavRelevance,
+  getRecordsSpecialtyRelevance,
+} from "@/lib/queries/nav-relevance";
+import { visibleSpecialtyPanes } from "../../nav";
 import DentalSection from "../../DentalSection";
 import { SectionSubtitle } from "../../SectionHeader";
 import PageContainer from "@/components/PageContainer";
@@ -12,7 +16,11 @@ export const dynamic = "force-dynamic";
 // redirects to the first visible specialty pane.
 export default async function RecordsDentalPage() {
   const { profile } = await requireSession();
-  if (!getNavRelevance(profile.id).dental) redirect("/records/specialty/skin");
+  // The first VISIBLE pane, from the shared gated list (see the Vision pane's note).
+  if (!getNavRelevance(profile.id).dental)
+    redirect(
+      visibleSpecialtyPanes(getRecordsSpecialtyRelevance(profile.id))[0].href
+    );
   return (
     <PageContainer width="flow" data-testid="records-dental">
       <SectionSubtitle title="Dental">

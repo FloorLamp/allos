@@ -157,18 +157,25 @@ export function ototoxicTitle(hit: OtotoxicHit): string {
   return `Ototoxic medication — ${hit.medName}`;
 }
 
-// The informational, never-prescriptive detail: the class note, the HEARING BASELINE
-// citation when the profile has an audiogram on file (#1600), then the fixed guardrail
+// The note BODY: the drug-class sentence plus the HEARING BASELINE citation when the
+// profile has an audiogram on file (#1600). This is the ONE place the two are joined, so
+// the surfaces that render the note as a card body (the /medications and Supplements
+// safety strips, which carry the guardrail in their own evidence line) and the ones that
+// render the whole note as a single string (ototoxicDetail, below) can never disagree
+// about what the baseline says. With no audiogram on file it is exactly `hit.note` and
+// every surface reads as it did before this change.
+export function ototoxicNote(hit: OtotoxicHit): string {
+  return hit.baseline
+    ? `${hit.note} ${hearingBaselineSentence(hit.baseline)}`
+    : hit.note;
+}
+
+// The informational, never-prescriptive detail: the note body, then the fixed guardrail
 // sentence and the source citation. The baseline sentence sits BEFORE the guardrail on
 // purpose — it is factual context about this person, and the guardrail must stay the
-// last word so the note still closes on "discuss it, this is not advice". With no
-// audiogram on file the sentence is simply absent and the note reads exactly as it did
-// before this change.
+// last word so the note still closes on "discuss it, this is not advice".
 export function ototoxicDetail(hit: OtotoxicHit): string {
-  const baseline = hit.baseline
-    ? ` ${hearingBaselineSentence(hit.baseline)}`
-    : "";
-  return `${hit.note}${baseline} ${GUARDRAIL} Source: ${hit.citation}.`;
+  return `${ototoxicNote(hit)} ${GUARDRAIL} Source: ${hit.citation}.`;
 }
 
 // Whether this note is citing a DOCUMENTED threshold shift — the conjunction #1600

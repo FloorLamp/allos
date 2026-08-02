@@ -982,16 +982,16 @@ Medical → Health record, organized as two-level tabs — a group tab **History
 **Problems** / **Care** / **Specialty** then a section sub-tab. History → Visits
 · Procedures · Immunizations; Problems → one stacked pane Conditions +
 Allergies; Care → Overview (Background + Family history + Care plan + Health
-goals) · Providers; Specialty → Vision · Dental · Skin · Mental health ·
-Substance use. Bare `/records` lands on `/records/history/visits`; the old
+goals) · Providers; Specialty → Vision · Hearing · Dental · Skin · Mental
+health · Substance use. Bare `/records` lands on `/records/history/visits`; the old
 `/conditions`, `/allergies`, `/procedures`, `/immunizations`, `/family-history`,
 `/encounters`, `/providers`, `/care-plan`, `/care-goals`, and
 `/medical/background` index routes were removed in #1635 and 404, while the
 per-provider, per-encounter, and per-vaccine detail pages survive at their own
 routes; (**Coverage gaps** was briefly a section here through #1042 phase 6 —
 #1086 moved it to Data → Coverage as a catalog/data-management workflow, and the
-old `/coverage` route is likewise gone;) the five specialty surfaces — Vision /
-Dental / Skin / Mental health / Substance use — are the Specialty group's
+old `/coverage` route is likewise gone;) the six specialty surfaces — Vision /
+Hearing / Dental / Skin / Mental health / Substance use — are the Specialty group's
 sub-tabs; the old `/vision`, `/dental`, `/skin`, and `/medical/instruments`
 routes were removed too (as was `/medical/substance-use`, ahead of #1635), with Vision/Dental
 data-gated on data presence (a hidden sub-tab's route re-gates server-side),
@@ -1145,19 +1145,40 @@ the ABCDE observations into a verdict.
 
 ### Hearing
 
-Audiogram **pure-tone thresholds** stored per ear per frequency (250 Hz–8 kHz)
-that reuse the biomarker store and trend/flag against the WHO ≤25 dB HL band —
-each ear/frequency stays its own independently-flagging series (deliberately
-never collapsed, so a normal frequency can't hide a flagged one) — extracted
-from an uploaded audiogram report or entered manually; a new age-related
-**hearing screening** preventive rule (a `hearing` audiology
-appointment/audiogram satisfies it) that recorded **noise exposure** (Settings →
-Health risk factors) or an active **ototoxic medication** brings due sooner; and
-an **ototoxic-medication** awareness note — an active aminoglycoside / cisplatin
-/ high-dose loop diuretic / high-dose salicylate / vancomycin / quinine surfaces
-a calm, cited hearing-safety note on Medications, Supplements, and Upcoming,
-informational and never prescriptive. Hearing aids are tracked in the
-**Equipment** registry rather than a second medical-device table.
+The Hearing tab (`/records/specialty/hearing`), under Medical → Health record,
+sits beside Vision and is **always rendered** — its in-page audiogram form is
+the only creation path today, so a data gate would make the first hearing test
+unreachable (audiometry import is a later change). Enter one dated hearing test
+at a time: a pure-tone air-conduction threshold in dB HL per ear per test
+frequency (250 Hz–8 kHz), any of the twelve fields left blank meaning "not
+tested". Each test lists with its per-ear **pure-tone average** and descriptive
+grade, thresholds above the normal band marked, and a **threshold-shift** card
+when the numbers have significantly moved since the earliest test on file (the
+ASHA ototoxicity-monitoring criteria: 20 dB at one frequency, or 10 dB at two
+adjacent frequencies).
+
+**Where the readings live (#1600):** an audiogram is dated per-subject readings,
+so it reuses the **observation store** rather than minting a table — each
+threshold is a canonical `vitals` `medical_records` row
+("Hearing Threshold, Right Ear 4 kHz", `dB HL`), which is the same store, the
+same curated WHO ≤25 dB HL band, and the same rows that already trend and flag
+on Results → Biomarkers. Each ear/frequency stays its own independently-flagging
+series (deliberately never collapsed into one "hearing" family, so a normal
+frequency can't hide a flagged one). This change added **no migration**.
+
+Around the record: a new age-related **hearing screening** preventive rule (a
+`hearing` audiology appointment/audiogram satisfies it) that recorded **noise
+exposure** (Settings → Health risk factors) or an active **ototoxic medication**
+brings due sooner; and an **ototoxic-medication** awareness note — an active
+aminoglycoside / cisplatin / high-dose loop diuretic / high-dose salicylate /
+vancomycin / quinine surfaces a calm, cited hearing-safety note on Medications,
+Supplements, and Upcoming. That note now **cites the newest audiogram** when one
+is on file, and names a documented threshold shift when there is one — the
+"on an ototoxic drug _and_ the thresholds have moved" conjunction it previously
+could not see. With no audiogram on file it says nothing extra: the note may
+become more specific, never more insistent. Informational and never
+prescriptive throughout. Hearing aids are tracked in the **Equipment** registry
+rather than a second medical-device table.
 
 ### Result status, corrections, and how a draw was collected
 
