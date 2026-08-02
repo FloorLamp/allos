@@ -130,6 +130,15 @@ export interface MoodPayload {
 // (the replay strips them again, belt-and-braces), so a replayed intent can only
 // insert a new session on the intent's stamped profile — never retarget an
 // existing row. See the scope comment's exclusion note.
+//
+// REPLAYS AS A COMPLETED SESSION: the capture fires on the editor's CLOSE path,
+// so the intent's own capturedAt is the moment the session ended — and the
+// replay (lib/offline/writes.ts::applySetIntent) stamps it as the row's end_time
+// when the captured fields carry a start but no end/duration. Without that, the
+// replayed row would be the live-draft signature (started, unended,
+// duration-less) and workout presence (#921) would resurrect it as an ACTIVE
+// workout at reconnect — the app-wide dock and the stale-workout nag, hours
+// after the user walked away.
 export interface SetPayload {
   fields: Record<string, string>;
 }
