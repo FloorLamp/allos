@@ -277,9 +277,9 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 139 (#1822) ADD COLUMN guard: a schema-shape PRAGMA (does `title` already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
-    file: "lib/migrations/versions/140-followup-settle.ts",
+    file: "lib/migrations/versions/141-followup-settle.ts",
     includes: "PRAGMA table_info(care_plan_items)",
-    why: "migration 140 (#1866) ADD COLUMN guard: a schema-shape PRAGMA (do the settled_* columns already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
+    why: "migration 141 (#1866) ADD COLUMN guard: a schema-shape PRAGMA (do the settled_* columns already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
     file: "lib/migrations/versions/076-encounter-type-code.ts",

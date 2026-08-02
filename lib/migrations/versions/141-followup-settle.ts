@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 140 (issue #1866): the follow-up TERMINATOR — persistent resolve/decline
+// Migration 141 (issue #1866): the follow-up TERMINATOR — persistent resolve/decline
 // state for a tracked finding follow-up.
 //
 // ── WHY ──────────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 140,
-  name: "140-followup-settle",
+  id: 141,
+  name: "141-followup-settle",
   up,
 };

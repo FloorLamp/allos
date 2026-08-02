@@ -312,7 +312,7 @@ conservative — one send when the follow-up crosses overdue, one repeat
 `FOLLOWUP_REPEAT_DAYS` later framed as final, then nothing further, with the
 finding holding the calm surfaces forever — and its ONLY permanent off-switch is
 the **per-item terminator** (`settleFollowUpCore`: "done on \<date\>" /
-"discussed, not doing it" with an optional reason, migration 140's `settled_*`
+"discussed, not doing it" with an optional reason, migration 141's `settled_*`
 columns), rendered inline where the follow-up renders. It is NOT silenced by an
 Upcoming dismissal: the send gate is `isHiddenUnderPolicy` under the item's own
 `snooze-only` policy, keyed by the identical `followup:<id>` dedupeKey — a
@@ -360,7 +360,7 @@ leaves the overdue follow-up live).
 The definitive CLOSE is never a suppression at all: the #1866 **terminator**
 (`settleFollowUpCore` — "done on \<date\>" or a declined "discussed, not doing
 it" with an optional reason) writes terminal state onto the chain node itself
-(`settled_disposition`/`settled_on`/`settled_reason`, migration 140, status
+(`settled_disposition`/`settled_on`/`settled_reason`, migration 141, status
 stamped `completed`/`not-done`), so the finding — and its push escalation —
 ends because the underlying fact is answered, not because a dismissal hid it. A
 settled node is structurally excluded from the builder and from every "open
