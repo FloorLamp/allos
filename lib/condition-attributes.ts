@@ -125,6 +125,8 @@ export function conditionGradeLabel(c: ConditionAttributes): string | null {
   const parts: string[] = [];
   if (c.severity) parts.push(c.severity[0].toUpperCase() + c.severity.slice(1));
   const stage = c.stage?.trim();
-  if (stage) parts.push(/^stage\b/i.test(stage) ? stage : `Stage ${stage}`);
+  // "Stage" is prefixed only when the stored value does not already say it anywhere
+  // ("CKD stage 3b" must not become "Stage CKD stage 3b").
+  if (stage) parts.push(/\bstage\b/i.test(stage) ? stage : `Stage ${stage}`);
   return parts.length ? parts.join(" · ") : null;
 }
