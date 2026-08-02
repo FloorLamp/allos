@@ -4,6 +4,7 @@ import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import { toFamilyLineage, toFamilyRelationType } from "@/lib/family-relation";
 
 // Family-history writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -35,24 +36,52 @@ function boolInt(raw: unknown): number {
   return v === "on" || v === "1" || v === "true" ? 1 : 0;
 }
 
+// The death facts (#1407), read as ONE decision so the flag and the details can never
+// contradict each other: stating an age at death or a cause IS stating the death, so
+// `deceased` follows either. The checkbox alone still records a death with no
+// details, and nothing here invents an age or a cause the form did not post.
+function deathFacts(formData: FormData): {
+  deceased: number;
+  ageAtDeath: number | null;
+  causeOfDeath: string | null;
+} {
+  const ageAtDeath = ageOrNull(formData.get("age_at_death"));
+  const causeOfDeath = str(formData, "cause_of_death");
+  const checked = boolInt(formData.get("deceased"));
+  return {
+    deceased:
+      checked === 1 || ageAtDeath != null || causeOfDeath != null ? 1 : 0,
+    ageAtDeath,
+    causeOfDeath,
+  };
+}
+
 export async function addFamilyHistory(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const condition = String(formData.get("condition") ?? "").trim();
   if (!condition) return formError("Enter the condition.");
+  const death = deathFacts(formData);
   db.prepare(
     `INSERT INTO family_history
-       (relation, condition, code, code_system, onset_age, deceased, notes,
+       (relation, condition, code, code_system, onset_age, deceased,
+        age_at_death, cause_of_death, relation_type, lineage, notes,
         source, profile_id)
-     VALUES (?,?,?,?,?,?,?,NULL,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
   ).run(
     str(formData, "relation"),
     condition,
     str(formData, "code"),
     str(formData, "code_system"),
     ageOrNull(formData.get("onset_age")),
-    boolInt(formData.get("deceased")),
+    death.deceased,
+    death.ageAtDeath,
+    death.causeOfDeath,
+    // Coerced through the shared pure normalizers, so an off-vocabulary post lands
+    // as NULL (unstated → hereditary-by-default) rather than failing the CHECK.
+    toFamilyRelationType(formData.get("relation_type")),
+    toFamilyLineage(formData.get("lineage")),
     str(formData, "notes"),
     profile.id
   );
@@ -70,10 +99,12 @@ export async function updateFamilyHistory(
   const condition = String(formData.get("condition") ?? "").trim();
   if (!id) return formError("Couldn't find that entry.");
   if (!condition) return formError("Enter the condition.");
+  const death = deathFacts(formData);
   db.prepare(
     `UPDATE family_history
        SET relation = ?, condition = ?, code = ?, code_system = ?,
-           onset_age = ?, deceased = ?, notes = ?
+           onset_age = ?, deceased = ?, age_at_death = ?, cause_of_death = ?,
+           relation_type = ?, lineage = ?, notes = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     str(formData, "relation"),
@@ -81,7 +112,11 @@ export async function updateFamilyHistory(
     str(formData, "code"),
     str(formData, "code_system"),
     ageOrNull(formData.get("onset_age")),
-    boolInt(formData.get("deceased")),
+    death.deceased,
+    death.ageAtDeath,
+    death.causeOfDeath,
+    toFamilyRelationType(formData.get("relation_type")),
+    toFamilyLineage(formData.get("lineage")),
     str(formData, "notes"),
     id,
     profileId

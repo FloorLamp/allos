@@ -8,6 +8,11 @@ import {
 } from "./settings";
 import { ageInMonthsFromBirthdate } from "./date";
 import {
+  conditionDisplayLabel,
+  conditionGradeLabel,
+} from "./condition-attributes";
+import { familyDeathLabel, familyRelativeLabel } from "./family-relation";
+import {
   getLatestMetricSample,
   getLatestBodyMetricDated,
 } from "./queries/metrics";
@@ -247,19 +252,24 @@ export function getProfileSummary(
   const conditions: SummaryCondition[] = getConditions(profileId, {
     status: "active",
   }).map((c) => ({
-    name: c.name,
+    // Side-aware label + the grade line (#1403), through the shared pure builders.
+    name: conditionDisplayLabel(c),
     code: c.code,
     status: c.status,
     onsetDate: c.onset_date,
+    grade: conditionGradeLabel(c),
   }));
   // Family history: hereditary-risk context (all relatives). Grouped by relative in
   // the query order.
   const familyHistory: SummaryFamilyHistory[] = getFamilyHistory(profileId).map(
     (f) => ({
-      relation: f.relation,
+      // Discriminator-aware relative label + the death line (#1407): "father, MI at
+      // 52" and "adopted father" are the two facts a hereditary read turns on.
+      relation: f.relation ? familyRelativeLabel(f) : null,
       condition: f.condition,
       onsetAge: f.onset_age,
       deceased: f.deceased === 1,
+      deathLabel: familyDeathLabel(f),
     })
   );
 

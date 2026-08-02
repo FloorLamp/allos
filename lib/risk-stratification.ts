@@ -28,9 +28,14 @@ import {
   type ConditionConcept,
   type ConditionInput,
 } from "./condition-codes";
+import { isGeneticRelative } from "./family-relation";
 import type { LifeStage } from "./life-stage";
 import type { SmokingStatusValue } from "./smoking";
-import type { GenomicResultType, GenomicSignificance } from "./types/medical";
+import type {
+  FamilyRelationType,
+  GenomicResultType,
+  GenomicSignificance,
+} from "./types/medical";
 
 // The curated risk factors the layer recognizes. A stable, closed set — a new
 // factor is added here with its rule(s) below and its derivation in
@@ -132,16 +137,74 @@ export interface RiskInputs {
 
 // A family_history row as the classifier sees it (#1039): the coded condition ref
 // (name + optional code/code_system — a CodedConditionRef, so conditionCodeConcepts
-// and conditionInputName accept it directly) PLUS the two family-specific signals.
+// and conditionInputName accept it directly) PLUS the family-specific signals.
 // `onsetAge` is the relative's age at diagnosis (family_history.onset_age) and feeds
 // the early-onset cadence tightening; `relation` is the free-text relation label,
-// threaded for a future degree-gating pass (#1039 Ask 5) but NOT consumed today. A
-// bare string is still accepted for legacy/manual callers (FamilyInput below).
+// threaded for a future degree-gating pass (#1039 Ask 5) but NOT consumed today.
+// `genetic` (#1407) IS consumed: an explicitly NON-genetic relative (an adopted or
+// step parent) carries no hereditary weight and contributes no family factor at all.
+// Absent/undefined means hereditary-by-default, so every legacy caller and bare
+// string keeps its existing behaviour (see lib/family-relation.ts for the rule).
 export interface FamilyConditionRef extends CodedConditionRef {
   relation?: string | null;
   onsetAge?: number | null;
+  genetic?: boolean | null;
 }
 export type FamilyConditionInput = string | FamilyConditionRef;
+
+// A stored family_history row as the input builder reads it — a structural subset of
+// FamilyHistory, so getFamilyHistory() rows satisfy it directly.
+export interface FamilyHistoryRiskRow {
+  relation: string | null;
+  condition: string;
+  code: string | null;
+  code_system: string | null;
+  onset_age: number | null;
+  age_at_death?: number | null;
+  cause_of_death?: string | null;
+  relation_type?: FamilyRelationType | null;
+}
+
+// Stored family_history rows → the classifier's family inputs. PURE, and the ONE
+// place the two #1407 payoffs are computed, so the query layer stays a gather:
+//
+//   1. The GENETIC GATE — `genetic` is resolved once, here, through the shared
+//      predicate, so an adopted/step relative's history stops weighing as hereditary.
+//   2. CAUSE OF DEATH AS A CONDITION — "father, MI at 52" lived in two columns the
+//      classifier never saw. A stated cause of death is a family condition in its own
+//      right and is emitted as a SECOND ref for the row, carrying age_at_death as its
+//      onset proxy. Conservative in the right direction: age at death is never below
+//      age at onset, so an early-onset threshold can only under-trigger, never
+//      fabricate an early onset. A cause that merely repeats the row's own condition
+//      term is not duplicated.
+export function familyConditionRefs(
+  rows: readonly FamilyHistoryRiskRow[]
+): FamilyConditionRef[] {
+  const out: FamilyConditionRef[] = [];
+  for (const r of rows) {
+    const genetic = isGeneticRelative(r.relation_type ?? null);
+    out.push({
+      name: r.condition,
+      code: r.code,
+      codeSystem: r.code_system,
+      relation: r.relation,
+      onsetAge: r.onset_age,
+      genetic,
+    });
+    const cause = r.cause_of_death?.trim();
+    if (!cause || cause.toLowerCase() === r.condition.trim().toLowerCase())
+      continue;
+    out.push({
+      name: cause,
+      code: null,
+      codeSystem: null,
+      relation: r.relation,
+      onsetAge: r.age_at_death ?? null,
+      genetic,
+    });
+  }
+  return out;
+}
 
 // The variant fields the hereditary-risk classifier reads — a structural subset of
 // GenomicVariant (gene + the two ROUTING discriminators). Keyed on the GENE (the
@@ -355,6 +418,11 @@ export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
   const factors = new Set<RiskFactor>();
 
   for (const raw of inputs.familyConditions) {
+    // The genetic gate (#1407): an EXPLICITLY non-genetic relative — an adopted or
+    // step parent — carries no hereditary weight, so the row contributes nothing at
+    // all (no base factor, no early-onset tightening). Unstated stays hereditary
+    // (see lib/family-relation.ts); only a stated exclusion excludes.
+    if (typeof raw !== "string" && raw.genetic === false) continue;
     // Code table first (family_history rows carry code/code_system too, #1030),
     // stem match as the name fallback — unioned, same shape as the personal-
     // condition recognizer above. Collected PER ROW so the onset-age rule below can

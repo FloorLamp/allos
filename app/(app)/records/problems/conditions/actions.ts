@@ -8,6 +8,11 @@ import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type { ConditionStatus } from "@/lib/types";
 import { addSuggestedConditionCore } from "@/lib/condition-suggestion-write";
+import {
+  toConditionLaterality,
+  toConditionSeverity,
+  toConditionStage,
+} from "@/lib/condition-attributes";
 
 // Condition / problem-list writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?`. Manual rows carry a NULL source/document_id.
@@ -39,19 +44,28 @@ export async function addCondition(formData: FormData): Promise<FormResult> {
   const resolved =
     status === "resolved" ? dateOrNull(formData.get("resolved_date")) : null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  // Side / grade / stage (#1403). Coerced through the shared pure normalizers, so a
+  // posted value outside the CHECK sets lands as NULL (unstated) rather than failing
+  // the insert; `stage` is free text by design.
+  const laterality = toConditionLaterality(formData.get("laterality"));
+  const severity = toConditionSeverity(formData.get("severity"));
+  const stage = toConditionStage(formData.get("stage"));
   // created_at from the CLOCK SEAM (sqlNow, #1534): with no explicit date this
   // stamp IS the record's Timeline day (`substr(created_at, 1, 10)` /
   // dateFromCreatedAt), compared against `today()`-derived bounds.
   db.prepare(
     `INSERT INTO conditions
-       (name, code, code_system, status, onset_date, resolved_date, notes, source, profile_id,
-        created_at)
-     VALUES (?,?,?,?,?,?,?,NULL,?,?)`
+       (name, code, code_system, status, laterality, severity, stage,
+        onset_date, resolved_date, notes, source, profile_id, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?,?)`
   ).run(
     name,
     code,
     codeSystem,
     status,
+    laterality,
+    severity,
+    stage,
     onset,
     resolved,
     notes,
@@ -78,12 +92,29 @@ export async function updateCondition(formData: FormData): Promise<FormResult> {
   const resolved =
     status === "resolved" ? dateOrNull(formData.get("resolved_date")) : null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const laterality = toConditionLaterality(formData.get("laterality"));
+  const severity = toConditionSeverity(formData.get("severity"));
+  const stage = toConditionStage(formData.get("stage"));
   db.prepare(
     `UPDATE conditions
        SET name = ?, code = ?, code_system = ?, status = ?,
+           laterality = ?, severity = ?, stage = ?,
            onset_date = ?, resolved_date = ?, notes = ?
      WHERE id = ? AND profile_id = ?`
-  ).run(name, code, codeSystem, status, onset, resolved, notes, id, profileId);
+  ).run(
+    name,
+    code,
+    codeSystem,
+    status,
+    laterality,
+    severity,
+    stage,
+    onset,
+    resolved,
+    notes,
+    id,
+    profileId
+  );
   revalidateConditions();
   return formOk();
 }

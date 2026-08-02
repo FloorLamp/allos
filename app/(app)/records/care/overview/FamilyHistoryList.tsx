@@ -8,6 +8,7 @@ import {
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import NotesText from "@/components/NotesText";
+import { familyDeathLabel, familyRelativeLabel } from "@/lib/family-relation";
 import type { FamilyHistory } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
@@ -17,7 +18,11 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
     header: "Relative",
     cellClassName:
       "whitespace-nowrap font-medium text-slate-800 dark:text-slate-100",
-    cell: (f) => f.relation || "—",
+    // Discriminator-aware label (#1407/#531): "Father" and "Father (adopted)" are
+    // different clinical claims — one weighs as hereditary risk, the other does not
+    // — so they must not render identically. Shared pure builder.
+    cell: (f) =>
+      f.relation || f.relation_type || f.lineage ? familyRelativeLabel(f) : "—",
   },
   {
     header: "Condition",
@@ -28,9 +33,15 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
         {f.code ? (
           <span className="ml-1.5 text-xs text-slate-400">{f.code}</span>
         ) : null}
-        {f.deceased === 1 ? (
-          <span className="ml-2 badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
-            Deceased
+        {/* "Died at 52 — Myocardial infarction" (#1407), replacing the bare
+            Deceased badge: the age and the cause are the screening-cadence inputs,
+            so the surface that records them shows them. */}
+        {familyDeathLabel(f) ? (
+          <span
+            className="ml-2 badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+            data-testid={`family-death-${f.id}`}
+          >
+            {familyDeathLabel(f)}
           </span>
         ) : null}
         <NotesText
@@ -89,7 +100,7 @@ export default function FamilyHistoryList({
       confirmDelete={(f) => ({
         title: "Delete family-history entry",
         message: `Delete “${f.condition}”${
-          f.relation ? ` (${f.relation})` : ""
+          f.relation ? ` (${familyRelativeLabel(f)})` : ""
         }? This can’t be undone.`,
       })}
       onDelete={async (f) => {

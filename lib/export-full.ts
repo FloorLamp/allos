@@ -169,7 +169,8 @@ export function collectFhirExportInput(
 ): FhirExportInput {
   const conditions = db
     .prepare(
-      `SELECT name, code, code_system, status, onset_date, resolved_date
+      `SELECT name, code, code_system, status, laterality, severity, stage,
+              onset_date, resolved_date
          FROM conditions WHERE profile_id = ? ORDER BY name`
     )
     .all(profileId) as FhirExportCondition[];
@@ -284,7 +285,8 @@ export function collectFhirExportInput(
 
   const familyHistory = db
     .prepare(
-      `SELECT relation, condition, code, code_system, onset_age, deceased
+      `SELECT relation, condition, code, code_system, onset_age, deceased,
+              age_at_death, cause_of_death, relation_type, lineage
          FROM family_history WHERE profile_id = ? ORDER BY condition, id`
     )
     .all(profileId) as FhirExportFamilyHistory[];

@@ -11,7 +11,11 @@ import {
   ICD10_CONDITION_NAMES,
   ICD10_SYSTEM,
 } from "@/lib/icd10";
-import type { FamilyHistory, FormResult } from "@/lib/types";
+import {
+  FAMILY_LINEAGES,
+  type FamilyHistory,
+  type FormResult,
+} from "@/lib/types";
 
 // Common relatives, offered as a pick-or-type Combobox (allowFreeText).
 const RELATIONS = [
@@ -195,6 +199,47 @@ export default function FamilyHistoryForm({
           />
         </div>
       </div>
+      {/* The genetic axis (#1407). A genetic-risk read that treats an ADOPTED
+          parent's history as hereditary is wrong, so the discriminator is a stated
+          fact here — left unstated it reads as genetic, which is what every row
+          written before this field meant. */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor={`fh-relation-type-${uid}`}>
+            Relationship
+          </label>
+          <select
+            id={`fh-relation-type-${uid}`}
+            name="relation_type"
+            className="input"
+            defaultValue={entry?.relation_type ?? ""}
+          >
+            <option value="">Not stated (genetic)</option>
+            <option value="genetic">Genetic (biological)</option>
+            <option value="half">Half sibling</option>
+            <option value="adopted">Adopted — not genetic</option>
+            <option value="step">Step — not genetic</option>
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor={`fh-lineage-${uid}`}>
+            Family side
+          </label>
+          <select
+            id={`fh-lineage-${uid}`}
+            name="lineage"
+            className="input"
+            defaultValue={entry?.lineage ?? ""}
+          >
+            <option value="">Not stated</option>
+            {FAMILY_LINEAGES.map((l) => (
+              <option key={l} value={l}>
+                {l[0].toUpperCase() + l.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="grid grid-cols-2 items-end gap-3">
         <div>
           <label className="label" htmlFor={`fh-age-${uid}`}>
@@ -220,6 +265,38 @@ export default function FamilyHistoryForm({
           />
           Deceased
         </label>
+      </div>
+      {/* Age and cause of death (#1407) — "father, MI at 52" is precisely what the
+          screening-cadence logic keys on, and neither half had a home before this.
+          Filling either states the death, so the checkbox above follows them. */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor={`fh-age-death-${uid}`}>
+            Age at death
+          </label>
+          <input
+            id={`fh-age-death-${uid}`}
+            name="age_at_death"
+            type="number"
+            min={0}
+            max={130}
+            className="input"
+            defaultValue={entry?.age_at_death ?? ""}
+            placeholder="years"
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor={`fh-cause-death-${uid}`}>
+            Cause of death
+          </label>
+          <input
+            id={`fh-cause-death-${uid}`}
+            name="cause_of_death"
+            className="input"
+            defaultValue={entry?.cause_of_death ?? ""}
+            placeholder="e.g. Myocardial infarction"
+          />
+        </div>
       </div>
       <div>
         <label className="label" htmlFor={`fh-notes-${uid}`}>

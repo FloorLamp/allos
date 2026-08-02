@@ -4,7 +4,11 @@ import type {
   AllergyVerificationStatus,
   AppointmentKind,
   AppointmentStatus,
+  ConditionLaterality,
+  ConditionSeverity,
   ConditionStatus,
+  FamilyLineage,
+  FamilyRelationType,
   MedicalCategory,
   MedicalFlag,
   Sex,
@@ -29,6 +33,12 @@ import {
   type ConfidenceKind,
 } from "./extraction-confidence";
 import canonicalSeed from "./canonical-biomarkers.json";
+import {
+  toConditionLaterality,
+  toConditionSeverity,
+  toConditionStage,
+} from "./condition-attributes";
+import { toFamilyLineage, toFamilyRelationType } from "./family-relation";
 import { normalizeCanonicalKey } from "./canonical-name";
 import {
   toAllergyCriticality,
@@ -207,6 +217,12 @@ export interface PersistCondition {
   code: string | null;
   code_system: string | null;
   status: ConditionStatus;
+  // Side / grade / stage (#1403). Optional: only the deterministic CCD/FHIR path
+  // fills them (targetSiteCode / Problem Severity, bodySite / severity); the AI path
+  // leaves them unstated, and an absent value is never guessed into a claim.
+  laterality?: ConditionLaterality | null;
+  severity?: ConditionSeverity | null;
+  stage?: string | null;
   onset_date: string | null;
   resolved_date: string | null;
   external_id: string | null;
@@ -258,6 +274,14 @@ export interface PersistFamilyHistory {
   code_system: string | null;
   onset_age: number | null;
   deceased: number | null;
+  // Death facts + the genetic discriminator (#1407). Optional, same discipline as
+  // the condition attributes above: the deterministic path fills what the document
+  // states, the AI path leaves them unstated, and unstated relation_type reads as
+  // genetic (lib/family-relation.ts).
+  age_at_death?: number | null;
+  cause_of_death?: string | null;
+  relation_type?: FamilyRelationType | null;
+  lineage?: FamilyLineage | null;
   external_id: string | null;
 }
 
@@ -734,6 +758,12 @@ export function extractionToPersistInput(
     code: c.code,
     code_system: c.code_system,
     status: toConditionStatus(c.status),
+    // Side / grade coerced onto the CHECK sets here (#1403), one shared coercion
+    // (lib/condition-attributes), so an off-vocabulary model string lands as
+    // unstated instead of failing the INSERT. Stage is free text by design.
+    laterality: toConditionLaterality(c.laterality),
+    severity: toConditionSeverity(c.severity),
+    stage: toConditionStage(c.stage),
     onset_date: c.onset_date,
     resolved_date: c.resolved_date,
     external_id: null,
@@ -769,6 +799,12 @@ export function extractionToPersistInput(
       code_system: f.code_system,
       onset_age: f.onset_age,
       deceased: f.deceased,
+      // Death facts + genetic discriminator (#1407), coerced onto the CHECK sets by
+      // the shared normalizers; a model string outside them lands as unstated.
+      age_at_death: f.age_at_death ?? null,
+      cause_of_death: f.cause_of_death ?? null,
+      relation_type: toFamilyRelationType(f.relation_type),
+      lineage: toFamilyLineage(f.lineage),
       external_id: null,
     })
   );
@@ -1147,6 +1183,10 @@ export function healthRecordToPersistInput(
       code: c.code,
       code_system: c.code_system,
       status: c.status,
+      // Already coerced by the deterministic parsers (#1403) — carried, not re-read.
+      laterality: c.laterality ?? null,
+      severity: c.severity ?? null,
+      stage: c.stage ?? null,
       onset_date: c.onset_date,
       resolved_date: c.resolved_date,
       external_id: c.external_id,
@@ -1182,6 +1222,11 @@ export function healthRecordToPersistInput(
       code_system: f.code_system,
       onset_age: f.onset_age,
       deceased: f.deceased,
+      // Already coerced by the deterministic parsers (#1407) — carried, not re-read.
+      age_at_death: f.age_at_death ?? null,
+      cause_of_death: f.cause_of_death ?? null,
+      relation_type: f.relation_type ?? null,
+      lineage: f.lineage ?? null,
       external_id: f.external_id,
     })),
     carePlanItems: (parsed.carePlanItems ?? []).map((c) => ({

@@ -528,14 +528,37 @@ export interface Allergy {
 export const CONDITION_STATUSES = ["active", "inactive", "resolved"] as const;
 export type ConditionStatus = (typeof CONDITION_STATUSES)[number];
 
+// Which side of the body a problem sits on (migration 144, #1403). Runtime array
+// is the single source for the union AND the conditions.laterality CHECK. A closed
+// vocabulary by nature, unlike a body SITE — and IDENTITY, not decoration (#482):
+// a left-knee problem and a right-knee problem are two clinical entities, so the
+// display label and the problem-list dedupe key both read it. NULL means the side
+// was never stated, which is not the same claim as "not sided" — the imaging enum's
+// extra 'na' member is deliberately not carried here.
+export const CONDITION_LATERALITIES = ["left", "right", "bilateral"] as const;
+export type ConditionLaterality = (typeof CONDITION_LATERALITIES)[number];
+
+// How severe a problem is (migration 144, #1403) — the same three grades FHIR's
+// Condition.severity value set and the CCD Problem Severity observation
+// (2.16.840.1.113883.10.20.22.4.8) use. Runtime array is the single source for the
+// union AND the conditions.severity CHECK. NULL = ungraded.
+export const CONDITION_SEVERITIES = ["mild", "moderate", "severe"] as const;
+export type ConditionSeverity = (typeof CONDITION_SEVERITIES)[number];
+
 // A problem-list condition / diagnosis (table: conditions). `name` is the display
 // term, `code`/`code_system` the coded identity (ICD-10 / SNOMED) when present.
+// `laterality`/`severity`/`stage` (#1403) carry the side, grade and stage that used
+// to collapse into the name string or a notes blob; `stage` stays free text because
+// staging vocabularies (AJCC "IIIA", CKD "stage 3b", NYHA "II") are open-ended.
 export interface Condition {
   id: number;
   name: string;
   code: string | null;
   code_system: string | null;
   status: ConditionStatus;
+  laterality: ConditionLaterality | null;
+  severity: ConditionSeverity | null;
+  stage: string | null;
   onset_date: string | null;
   resolved_date: string | null;
   notes: string | null;
@@ -863,11 +886,36 @@ export interface LesionPhoto {
   created_at: string;
 }
 
+// How a relative is related to the data subject on the GENETIC axis (migration 145,
+// #1407). Runtime array is the single source for the union AND the
+// family_history.relation_type CHECK. `genetic` is a full genetic relative, `half`
+// a half-sibling (genetic, half the shared genome), `adopted` and `step` are NOT
+// genetic relatives. NULL means unstated and is READ AS GENETIC — family history is
+// hereditary by default (FHIR FamilyMemberHistory.relationship likewise), every row
+// predating the column is a genetic assertion, and only an explicit adopted/step
+// marking excludes a relative from the hereditary read.
+export const FAMILY_RELATION_TYPES = [
+  "genetic",
+  "half",
+  "adopted",
+  "step",
+] as const;
+export type FamilyRelationType = (typeof FAMILY_RELATION_TYPES)[number];
+
+// Which side of the family a relative sits on (migration 145, #1407). Runtime array
+// is the single source for the union AND the family_history.lineage CHECK. NULL
+// where the concept does not apply (a parent, a sibling) or was never stated.
+export const FAMILY_LINEAGES = ["maternal", "paternal"] as const;
+export type FamilyLineage = (typeof FAMILY_LINEAGES)[number];
+
 // A family-history entry (table: family_history): one condition affecting one
 // relative. `relation` is the affected relative (mother/father/sibling/…);
 // `condition` the display term for their diagnosis; `code`/`code_system` its coded
 // identity when present. `onset_age` is the relative's age (years) at onset when
-// known; `deceased` is 1/0 (null when unknown). Provenance/dedup mirror conditions.
+// known; `deceased` is 1/0 (null when unknown). `age_at_death`/`cause_of_death`
+// (#1407) are the death facts the screening-cadence logic keys on ("father, MI at
+// 52"); `relation_type`/`lineage` are the genetic discriminator and the family side.
+// Provenance/dedup mirror conditions.
 export interface FamilyHistory {
   id: number;
   relation: string | null;
@@ -876,6 +924,10 @@ export interface FamilyHistory {
   code_system: string | null;
   onset_age: number | null;
   deceased: number | null;
+  age_at_death: number | null;
+  cause_of_death: string | null;
+  relation_type: FamilyRelationType | null;
+  lineage: FamilyLineage | null;
   notes: string | null;
   source: string | null;
   document_id: number | null;

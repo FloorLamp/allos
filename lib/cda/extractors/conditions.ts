@@ -6,8 +6,16 @@ import {
   isNoKnownProblemText,
   toConditionStatus,
 } from "../../clinical-parse";
+import {
+  toConditionLaterality,
+  toConditionSeverity,
+} from "../../condition-attributes";
 import type { ImportedCondition } from "../../health-import";
-import { PROBLEM_OBS_TEMPLATE, SECTIONS } from "../constants";
+import {
+  PROBLEM_OBS_TEMPLATE,
+  SECTIONS,
+  SEVERITY_OBS_TEMPLATE,
+} from "../constants";
 import type { SectionExtractor } from "../constants";
 import {
   asArray,
@@ -21,6 +29,58 @@ import {
   sectionIs,
   truthyNegation,
 } from "../normalize";
+
+// The problem's SEVERITY (#1403): a nested Severity Observation (template 4.8),
+// whose <value> codes the SNOMED mild/moderate/severe grade. Walks
+// entryRelationships the way the allergy severity reader does — the same nesting,
+// the same template — and returns the display name / code for the shared coercion.
+// Null when the document states no grade.
+function problemSeverityText(
+  obs: any,
+  narrativeIds: Record<string, string>
+): string | null {
+  const walk = (node: any): string | null => {
+    for (const er of asArray(node?.entryRelationship)) {
+      const inner = er?.observation;
+      if (!inner) continue;
+      const tids = asArray(inner?.templateId)
+        .map((t: any) => t?.["@_root"])
+        .filter(Boolean);
+      if (tids.includes(SEVERITY_OBS_TEMPLATE)) {
+        const v = Array.isArray(inner.value) ? inner.value[0] : inner.value;
+        const name = codedDisplayName(v, narrativeIds);
+        if (name) return name;
+        const code = v?.["@_code"];
+        if (code != null) return String(code);
+      }
+      const nested = walk(inner);
+      if (nested) return nested;
+    }
+    return null;
+  };
+  return walk(obs);
+}
+
+// The problem's SIDE (#1403), from the observation's <targetSiteCode> — the CDA
+// twin of FHIR's Condition.bodySite. Reads the qualifier code first (SNOMED
+// laterality), then the display name / narrative text, then the site term itself
+// ("Structure of left knee"). Nothing is inferred from the problem NAME.
+function problemLateralityText(
+  obs: any,
+  narrativeIds: Record<string, string>
+): string | null {
+  for (const site of asArray(obs?.targetSiteCode)) {
+    for (const q of asArray(site?.qualifier)) {
+      const qv = q?.value;
+      const display = qv?.["@_displayName"];
+      if (typeof display === "string" && display.trim()) return display.trim();
+      if (qv?.["@_code"] != null) return String(qv["@_code"]);
+    }
+    const name = codedDisplayName(site, narrativeIds);
+    if (name) return name;
+  }
+  return null;
+}
 
 // Map one Problem Concern Act (template 4.3) to an ImportedCondition, or null when
 // it carries no productive problem (nullFlavored / "no active problems").
@@ -86,6 +146,11 @@ export function mapCondition(
     code,
     code_system: system,
     status: decided.status,
+    // Side + grade the document already carried and the importer used to drop
+    // (#1403), coerced onto the CHECK sets by the shared normalizers. CCD has no
+    // problem-stage element, so `stage` stays unstated on this path.
+    laterality: toConditionLaterality(problemLateralityText(obs, narrativeIds)),
+    severity: toConditionSeverity(problemSeverityText(obs, narrativeIds)),
     onset_date: decided.onset_date,
     resolved_date: decided.resolved_date,
     external_id: conditionExternalId({ name, code, onsetDate: onset }),

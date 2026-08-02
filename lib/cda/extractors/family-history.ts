@@ -4,6 +4,7 @@ import {
   familyHistoryExternalId,
   isNoKnownProblemText,
 } from "../../clinical-parse";
+import { familyRelationFacts } from "../../family-relation";
 import type { ImportedFamilyHistory } from "../../health-import";
 import {
   AGE_OBS_TEMPLATE,
@@ -59,6 +60,38 @@ function familyOnsetAge(obs: any): number | null {
   return null;
 }
 
+// The relative's RELATIONSHIP CODE (HL7 v3 RoleCode) off the organizer, for the
+// genetic discriminator + family side (#1407). The display name is read separately
+// as the text fallback.
+function familyRelationCode(org: any): string | null {
+  const raw = org?.subject?.relatedSubject?.code?.["@_code"];
+  return raw != null ? String(raw).trim() : null;
+}
+
+// The relative's age at DEATH (#1407): an Age Observation (template 4.31) nested
+// under the Death Observation — the same PQ-in-years shape familyOnsetAge reads,
+// but anchored to the death rather than a condition's onset. Null when absent.
+function familyAgeAtDeath(org: any): number | null {
+  const walk = (node: any): number | null => {
+    if (node == null || typeof node !== "object") return null;
+    const v = Array.isArray(node?.value) ? node.value[0] : node?.value;
+    if (v?.["@_code"] === "419099009") {
+      const age = familyOnsetAge(node);
+      if (age != null) return age;
+    }
+    for (const child of [
+      ...asArray(node?.component),
+      ...asArray(node?.entryRelationship),
+      ...asArray(node?.observation),
+    ]) {
+      const found = walk(child?.observation ?? child);
+      if (found != null) return found;
+    }
+    return null;
+  };
+  return walk(org);
+}
+
 // Whether the relative is recorded as deceased: a nested Death Observation whose
 // value codes SNOMED "Dead" (419099009), found anywhere under the organizer (a
 // sibling component observation or nested under a condition's entryRelationship).
@@ -89,6 +122,12 @@ function familyHistoryFromOrganizer(
 ): ImportedFamilyHistory[] {
   if (!org) return [];
   const relation = familyRelation(org);
+  // The genetic axis + family side, from the relatedSubject role code (NMTH / HSIS /
+  // STPMTH / MGRMTH / …) with the display as the text fallback. ONE shared resolver
+  // with the FHIR path (lib/family-relation), so the two importers can't drift.
+  const facts = familyRelationFacts(familyRelationCode(org), relation);
+  const deceased = familyDeceased(org);
+  const ageAtDeath = familyAgeAtDeath(org);
   const out: ImportedFamilyHistory[] = [];
   for (const comp of asArray(org?.component)) {
     const obs = comp?.observation;
@@ -112,7 +151,13 @@ function familyHistoryFromOrganizer(
       code,
       code_system: system,
       onset_age: familyOnsetAge(obs),
-      deceased: familyDeceased(org),
+      deceased: deceased ?? (ageAtDeath != null ? 1 : null),
+      // CCD's Death Observation asserts THAT the relative died, not of what — so
+      // age_at_death lands here and cause_of_death stays unstated on this path
+      // rather than being guessed from the organizer's conditions.
+      age_at_death: ageAtDeath,
+      relation_type: facts.relationType,
+      lineage: facts.lineage,
       external_id: familyHistoryExternalId({ relation, condition, code }),
     });
   }

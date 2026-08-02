@@ -74,7 +74,9 @@ Rules:
   Emit ONLY what the document actually states; never invent a code, status, or date — leave a
   field null when it isn't printed. Each array is empty for a plain lab/scan report:
   - conditions: problem-list diagnoses (name + ICD-10/SNOMED code when printed; status
-    "active"/"inactive"/"resolved" when stated; onset/resolved dates ISO YYYY-MM-DD).
+    "active"/"inactive"/"resolved" when stated; onset/resolved dates ISO YYYY-MM-DD; plus
+    laterality left/right/bilateral, severity mild/moderate/severe and stage EXACTLY when the
+    document states them — a side or a grade is never inferred from the diagnosis name).
   - allergies: allergies / intolerances (substance + reaction + severity + status, plus
     criticality and verification_status when the document states them — never inferred). Do NOT
     emit a row for an explicit "no known allergies" / "NKDA" statement — leave the array empty.
@@ -83,7 +85,9 @@ Rules:
     "Office Visit"/"Emergency", class_code AMB/IMP/EMER, reason, attending provider name, facility
     name). A document's own visit diagnoses ALSO go in conditions.
   - family_history: one entry per (relative, condition) pair (relation, condition, onset_age,
-    deceased).
+    deceased, plus age_at_death / cause_of_death when the record states how and how young the
+    relative died, and relation_type half/adopted/step and lineage maternal/paternal ONLY when
+    the document says so — an ordinary relative is a genetic one).
   - care_plan: planned / ordered FUTURE care — follow-ups, ordered tests, referrals, planned
     procedures (the "Plan" / "Follow-up" section).
   - care_goals: stated clinical goals / targets (e.g. "A1c < 7.0%").
@@ -375,6 +379,21 @@ export const TOOL: Anthropic.Tool = {
               description:
                 "Clinical status if stated: active, inactive, or resolved. Null otherwise.",
             },
+            laterality: {
+              type: ["string", "null"],
+              description:
+                "Side of the body if the diagnosis states one: left, right, or bilateral. Null otherwise — never infer a side.",
+            },
+            severity: {
+              type: ["string", "null"],
+              description:
+                "Severity grade if stated: mild, moderate, or severe. Null otherwise.",
+            },
+            stage: {
+              type: ["string", "null"],
+              description:
+                "Stage exactly as printed if the diagnosis is staged, e.g. 'Stage IIIA', 'CKD stage 3b'. Null otherwise.",
+            },
             onset_date: {
               type: ["string", "null"],
               description: "Onset date, ISO YYYY-MM-DD, else null",
@@ -534,6 +553,26 @@ export const TOOL: Anthropic.Tool = {
             deceased: {
               type: ["boolean", "null"],
               description: "Whether the relative is deceased, if stated",
+            },
+            age_at_death: {
+              type: ["number", "null"],
+              description:
+                "Relative's age (years) at DEATH, if stated. Distinct from onset_age (age at diagnosis).",
+            },
+            cause_of_death: {
+              type: ["string", "null"],
+              description:
+                "What the relative died of, if stated, e.g. 'Myocardial infarction'",
+            },
+            relation_type: {
+              type: ["string", "null"],
+              description:
+                "Only when the document SAYS so: 'half' (half sibling), 'adopted' or 'step' (not a genetic relative), or 'genetic' (explicitly biological). Null otherwise — an ordinary relative is genetic by default.",
+            },
+            lineage: {
+              type: ["string", "null"],
+              description:
+                "Family side if stated: maternal or paternal. Null otherwise.",
             },
             ...CONFIDENCE_FIELDS,
           },

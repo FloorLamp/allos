@@ -287,6 +287,16 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 141 (#1866) ADD COLUMN guard: a schema-shape PRAGMA (do the settled_* columns already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
+    file: "lib/migrations/versions/144-condition-laterality-severity.ts",
+    includes: "PRAGMA table_info(conditions)",
+    why: "migration 144 (#1403) ADD COLUMN guard: a schema-shape PRAGMA (do laterality/severity/stage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
+  },
+  {
+    file: "lib/migrations/versions/145-family-history-death-lineage.ts",
+    includes: "PRAGMA table_info(family_history)",
+    why: "migration 145 (#1407) ADD COLUMN guard: a schema-shape PRAGMA (do age_at_death/cause_of_death/relation_type/lineage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
+  },
+  {
     file: "lib/migrations/versions/076-encounter-type-code.ts",
     includes: "PRAGMA table_info(encounters)",
     why: "migration 075 (#1035) ADD COLUMN guard: a schema-shape PRAGMA (do code/code_system already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
