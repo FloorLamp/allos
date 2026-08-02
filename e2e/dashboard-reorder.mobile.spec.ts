@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { type Browser, type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
@@ -105,10 +105,23 @@ async function openCustomize(browser: Browser): Promise<Page> {
   return page;
 }
 
-// Save, and wait for the editor to close — the sticky bar's buttons live outside
-// <main>, so this is scoped to the bar rather than the page.
+// Save, and wait for the SAVE to land — not for the affordance that reappears
+// afterwards.
+//
+// `settledClick`, not a bare click. Save is a Server Action that persists the
+// layout and then `revalidatePath("/")`s the DASHBOARD, the heaviest page in the
+// app; only once that response arrives does the transition end and the editor
+// close. A bare click leaves the very next assertion racing that whole round trip,
+// which on a loaded CI runner reliably outruns the default 5s expect timeout —
+// while passing locally, where the same round trip takes ~160ms. That is the same
+// race, on the same page, that the household-chip switch in e2e/dashboard.spec.ts
+// already uses settledClick for. Awaiting the POST is the real signal; raising a
+// ceiling would only have moved the failure.
 async function saveLayout(page: Page) {
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await settledClick(
+    page,
+    page.getByRole("button", { name: "Save", exact: true })
+  );
   await expect(
     page.getByRole("main").getByRole("button", { name: "Edit dashboard" })
   ).toBeVisible();
@@ -192,7 +205,16 @@ test("a reorder performed in the compact list survives Save", async ({
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, {
       steps: 12,
     });
+
+    // Mid-gesture the ghost is what the user is carrying — a real element, so the
+    // lift is not just a repaint of the list.
+    await expect(page.getByTestId("dashboard-drag-ghost")).toBeAttached();
     await page.mouse.up();
+
+    // The gesture is over only once the ghost is gone: dnd-kit keeps the overlay
+    // mounted through its drop animation, and a ghost left behind would sit over
+    // the list as dead chrome.
+    await expect(page.getByTestId("dashboard-drag-ghost")).toHaveCount(0);
 
     // The list moved: the row that led is no longer leading. How FAR it landed is
     // left to the collision detector (the rows shift under the pointer as it

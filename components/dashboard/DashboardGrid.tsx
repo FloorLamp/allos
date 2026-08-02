@@ -220,7 +220,18 @@ function DragGhost({
   compact: boolean;
 }) {
   return (
-    <div aria-hidden="true" className="cursor-grabbing opacity-90 shadow-xl">
+    // `pointer-events-none` is load-bearing, not cosmetic. dnd-kit's DragOverlay
+    // wrapper is `position: fixed; z-index: 999` and sets NO pointer-events of its
+    // own, and it stays mounted through the drop animation — so for the couple of
+    // hundred milliseconds after you let go, the ghost swallows taps on whatever it
+    // happens to be lying over. On a phone the very next thing a user reaches for
+    // after dropping a row is Save. A picture of a card you are already holding must
+    // never be able to take a tap; the real controls never leave the list.
+    <div
+      aria-hidden="true"
+      data-testid="dashboard-drag-ghost"
+      className="pointer-events-none cursor-grabbing opacity-90 shadow-xl"
+    >
       <WidgetEditorItem
         widget={widget}
         hidden={hidden}
