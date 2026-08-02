@@ -89,8 +89,11 @@ import {
   dropMessagePointer,
   liveMessagePointers,
   pruneMessagePointers,
+  releaseMessagePointerKeyboard,
+  restoreMessagePointer,
   type MessagePointer,
 } from "./message-pointers";
+import { classifyTelegramFailure } from "./telegram-error";
 import { messageKeyboard } from "./telegram-render";
 import {
   closeMessage,
@@ -455,7 +458,11 @@ export interface ReconcileResult {
   // to zero, which is what keeps this off the rate limiter.
   edited: number;
   closed: number;
+  // Pointers forgotten because the message is permanently unreachable (#1885).
   dropped: number;
+  // Edits that failed TRANSIENTLY (#1885): the claim was released and the pointer left
+  // exactly as it was found, so the next tick recomputes the same plan and retries.
+  deferred: number;
   pruned: number;
   // Edits another overlapping tick had already claimed (#1788). Non-zero means two
   // reconcile passes are running against one profile — benign, and the whole point is
@@ -464,8 +471,10 @@ export interface ReconcileResult {
 }
 
 // Reconcile every live message for one profile. Best-effort throughout: a failed edit
-// (message deleted, chat gone, past Telegram's edit horizon) drops the pointer and
-// moves on — a reconcile failure must never fail a tick that has reminders to deliver.
+// never fails a tick that has reminders to deliver. What a failure MEANS is classified,
+// not assumed (#1885) — a permanently dead message (deleted, chat gone, past Telegram's
+// edit horizon) drops its pointer, while a transient one (rate limit, 5xx, network,
+// timeout) releases the claim and leaves the pointer for the next tick.
 export async function reconcileProfileMessages(
   profileId: number
 ): Promise<ReconcileResult> {
@@ -474,6 +483,7 @@ export async function reconcileProfileMessages(
     edited: 0,
     closed: 0,
     dropped: 0,
+    deferred: 0,
     pruned: 0,
     skipped: 0,
   };
@@ -546,6 +556,41 @@ export async function reconcileProfileMessages(
         result.edited++;
       }
     } catch (e) {
+      // WHAT THE FAILURE MEANS IS CLASSIFIED, NEVER ASSUMED (#1885). The transport
+      // throws one typed error for every Bot API failure alike, so "the edit threw" on
+      // its own says nothing about whether the message still exists. Only the permanent
+      // cases may forget the pointer; a transient one has to leave a retry possible.
+      if (classifyTelegramFailure(e) === "transient") {
+        // Rate limit, 5xx, network reach failure, timeout, unconfigured token: the
+        // message is still sitting in the chat showing its pre-edit keyboard. The claim
+        // already mutated (or deleted) the row before the call, so KEEPING the pointer
+        // means putting it back — otherwise the next tick would read a row that claims
+        // an edit which never happened, and the stale keyboard would stand forever.
+        // Retries stay bounded by the pointer's own retention horizon (the pruner at the
+        // top of this sweep), so this can never become a retry-forever loop.
+        //
+        // Delivery HEALTH is untouched here, deliberately: reconcile never dispatches,
+        // so it has no channel result to fold, and the set/clear/freeze decision in
+        // ./delivery-status stays the only thing that moves that marker. A failed edit
+        // must neither raise a delivery alarm nor clear one a real send has raised.
+        const kept =
+          plan.kind === "close"
+            ? restoreMessagePointer(pointer)
+            : releaseMessagePointerKeyboard(
+                profileId,
+                pointer.id,
+                plan.keyboard,
+                pointer.version
+              );
+        log.info("message reconcile deferred (transient, pointer kept)", {
+          profile: profileId,
+          chat: pointer.chatId,
+          kept,
+          err: e instanceof Error ? e.message : String(e),
+        });
+        result.deferred++;
+        continue;
+      }
       // A dead pointer: Telegram refuses edits on a deleted message, a chat the bot
       // was removed from, or a message past its edit horizon. Nothing is recoverable,
       // so forget it rather than retry forever. (A no-op for a close, whose claim
