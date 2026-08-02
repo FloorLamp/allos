@@ -1,8 +1,9 @@
 // The impure (DB-touching) half of an activity merge, shared by the Data → Review
 // duplicate resolver (app/(app)/data/review-actions.ts) and the Journal's manual
 // pair-merge (app/(app)/training/activity-actions.ts). The pure fold math lives in
-// lib/import-review/detect.ts (foldActivityFields); this writes the folded result
-// onto the keeper. Server-only (uses the sync `db`).
+// lib/import-review (foldActivityFields in detect.ts; the keeper columns a fold writes,
+// keeperFoldState, in conflicts.ts); this writes that result onto the keeper and — on
+// undo — writes it back with one member removed. Server-only (uses the sync `db`).
 //
 // Callers own the DELETE of the discarded row and the recorded pair-decision — the
 // two merges differ there: the review resolver deletes via FK cascade (no undo),
