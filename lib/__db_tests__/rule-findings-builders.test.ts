@@ -1212,3 +1212,118 @@ describe("finding-text date pref threading (#1020)", () => {
     expect(byIso[0].detail).toContain(lastCheck); // the ISO shape verbatim
   });
 });
+
+// ---- #1853: a biomarker goal paces per RESULT, not per day ------------------
+
+describe("buildGoalPacingFindings — biomarker goals (#1853)", () => {
+  // One fixture, one trap: a goal whose readings are genuinely drifting the wrong
+  // way, seen from two different "today"s. The verdict must change when a RESULT
+  // lands, not when the calendar turns over.
+  function seedLdlGoal(
+    name: string,
+    opts: { readings: [string, number][]; createdOffset: number }
+  ) {
+    const { profileId, anchor } = makeProfile(name);
+    const ins = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, value_num)
+       VALUES (?, ?, 'lab', 'LDL Cholesterol', ?, 'mg/dL', 'LDL Cholesterol', ?)`
+    );
+    for (const [offset, value] of opts.readings) {
+      const date = shiftDateStr(anchor, Number(offset));
+      ins.run(profileId, date, String(value), value);
+    }
+    const goalId = Number(
+      db
+        .prepare(
+          `INSERT INTO goals
+             (profile_id, title, category, status, archived, target_value, unit,
+              biomarker_name, target_direction, target_date, baseline_value, created_at)
+           VALUES (?, 'LDL under 100', 'biomarker', 'active', 0, 100, 'mg/dL',
+                   'LDL Cholesterol', 'below', ?, 150, ?)`
+        )
+        .run(
+          profileId,
+          shiftDateStr(anchor, 120),
+          `${shiftDateStr(anchor, opts.createdOffset)} 09:00:00`
+        ).lastInsertRowid
+    );
+    return { profileId, anchor, goalId };
+  }
+
+  it("fires an off-pace finding once results have drifted the wrong way", () => {
+    const { profileId, anchor, goalId } = seedLdlGoal("labgoal-away", {
+      // Set at 150, and every draw since has gone UP — moving away from "under 100".
+      readings: [
+        ["-240", 150],
+        ["-150", 158],
+        ["-60", 166],
+        ["-20", 172],
+      ],
+      createdOffset: -250,
+    });
+
+    const findings = buildGoalPacingFindings(profileId, anchor);
+    const f = findings.find((x) => x.dedupeKey.includes(`goal:${goalId}`));
+    expect(f).toBeDefined();
+    expect(f!.title).toContain("LDL under 100");
+    expect(f!.detail).toMatch(/moving away/i);
+    // It names the analyte and its next draw, not a daily verdict.
+    expect(f!.detail).toContain("LDL Cholesterol");
+    // COACHING tier: same `goal-pace:` namespace as the body goals, so it can never
+    // reach Upcoming, the hero or a notification.
+    expect(tierForDedupeKey(f!.dedupeKey)).toBe("coaching");
+  });
+
+  it("says NOTHING until a result has landed since the goal was created", () => {
+    const { profileId, anchor, goalId } = seedLdlGoal("labgoal-nocheckin", {
+      // The same drifting history — but every draw predates the goal. The user set
+      // this goal yesterday and has not been tested since.
+      readings: [
+        ["-240", 150],
+        ["-150", 158],
+        ["-60", 166],
+      ],
+      createdOffset: -1,
+    });
+
+    const findings = buildGoalPacingFindings(profileId, anchor);
+    expect(
+      findings.find((x) => x.dedupeKey.includes(`goal:${goalId}`))
+    ).toBeUndefined();
+  });
+
+  it("stays silent once a result lands on the wanted side of the target", () => {
+    const { profileId, anchor, goalId } = seedLdlGoal("labgoal-met", {
+      readings: [
+        ["-240", 150],
+        ["-150", 130],
+        ["-20", 88],
+      ],
+      createdOffset: -250,
+    });
+
+    const findings = buildGoalPacingFindings(profileId, anchor);
+    expect(
+      findings.find((x) => x.dedupeKey.includes(`goal:${goalId}`))
+    ).toBeUndefined();
+  });
+
+  it("ignores an archived goal", () => {
+    const { profileId, anchor, goalId } = seedLdlGoal("labgoal-archived", {
+      readings: [
+        ["-240", 150],
+        ["-150", 158],
+        ["-60", 166],
+        ["-20", 172],
+      ],
+      createdOffset: -250,
+    });
+    db.prepare("UPDATE goals SET archived = 1 WHERE id = ?").run(goalId);
+    expect(
+      buildGoalPacingFindings(profileId, anchor).find((x) =>
+        x.dedupeKey.includes(`goal:${goalId}`)
+      )
+    ).toBeUndefined();
+  });
+});

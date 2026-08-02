@@ -61,7 +61,17 @@ import {
   getUserSex,
 } from "@/lib/settings";
 import { degFTo, tempUnitLabel } from "@/lib/units";
-import { getLatestMetricSample } from "@/lib/queries";
+import {
+  getBiomarkerGoals,
+  getGoalProgressMap,
+  getLatestMetricSample,
+} from "@/lib/queries";
+import {
+  biomarkerGoalCheckInText,
+  biomarkerGoalCurrentText,
+  biomarkerGoalTargetText,
+} from "@/lib/biomarker-goal";
+import { goalPaceTone, goalPct } from "@/lib/goals";
 import { ageInMonthsFromBirthdate } from "@/lib/date";
 import { measurementPercentile } from "@/lib/growth";
 import {
@@ -226,6 +236,15 @@ export default async function BiomarkerDetailPage(props: {
 
   // Newest reading overall (series is oldest-first) for the header value.
   const latest = series[series.length - 1];
+
+  // The live GOAL on this analyte (#1853), rendered beside the series it describes —
+  // the join the issue is about. Progress comes from the SAME getGoalProgressMap the
+  // Training goal card reads, so the two surfaces cannot show different numbers for
+  // one target; matching is by the #482 family, so a target set on any member shows
+  // on the page that charts them.
+  const todayStr = today(profile.id);
+  const biomarkerGoals = getBiomarkerGoals(profile.id, canonical);
+  const goalProgress = getGoalProgressMap(profile.id, biomarkerGoals);
 
   // "The rest of this panel" (#1502). The analyte's normalized panel, plus the
   // profile's other CURRENT readings in it — one row per analyte via the shared
@@ -671,6 +690,40 @@ export default async function BiomarkerDetailPage(props: {
               </div>
             </div>
           ))}
+        {biomarkerGoals.map((goal) => {
+          const progress = goalProgress.get(goal.id);
+          const pct = goalPct(goal, progress);
+          return (
+            <div key={goal.id} data-testid="biomarker-goal">
+              <div className="label">Goal</div>
+              <div className="text-sm font-medium text-brand-700 dark:text-brand-400">
+                {biomarkerGoalTargetText(goal)}
+                {goal.target_date ? ` by ${goal.target_date}` : ""}
+              </div>
+              <div
+                className="text-xs text-slate-500 dark:text-slate-400"
+                data-tone={
+                  pct == null
+                    ? undefined
+                    : goalPaceTone(pct, {
+                        createdAt: goal.created_at,
+                        targetDate: goal.target_date,
+                        today: todayStr,
+                        // Per-RESULT pacing: the verdict is frozen at the last draw,
+                        // because nothing about a lab goal changes on a day no lab
+                        // was drawn (#1853).
+                        evidenceDate: progress?.asOf ?? null,
+                      })
+                }
+              >
+                {biomarkerGoalCurrentText(progress)}
+                {progress?.checkIn
+                  ? ` · ${biomarkerGoalCheckInText(progress.checkIn, (d) => d)}`
+                  : ""}
+              </div>
+            </div>
+          );
+        })}
         {!pediatricBp && badge !== "unknown" && latest.flag !== "immune" && (
           <div>
             <div className="label">Status</div>

@@ -14,6 +14,12 @@ import {
   fmtBodyMetric,
   isGoalLive,
 } from "@/lib/goals";
+import {
+  biomarkerGoalCheckInText,
+  biomarkerGoalCurrentText,
+  biomarkerGoalTargetText,
+  isBiomarkerGoal,
+} from "@/lib/biomarker-goal";
 import { fmtWeight } from "@/lib/units";
 import OverflowMenu, {
   MENU_ITEM,
@@ -39,6 +45,7 @@ import {
   deleteGoal,
 } from "@/app/(app)/training/goal-actions";
 import GoalForm from "@/app/(app)/training/GoalForm";
+import type { GoalBiomarkerOption } from "@/app/(app)/training/goal-target-options";
 
 // A progress value, formatted for the goal's metric.
 function goalValueText(g: Goal, value: number, wu: WeightUnit): string {
@@ -56,6 +63,7 @@ export default function GoalsManager({
   equipment,
   equipmentByExercise,
   weightUnit,
+  biomarkerOptions,
 }: {
   goals: Goal[];
   goalProgress: Record<number, GoalProgress>;
@@ -67,6 +75,7 @@ export default function GoalsManager({
   equipment: { id: number; name: string }[];
   equipmentByExercise: Record<string, number[]>;
   weightUnit: WeightUnit;
+  biomarkerOptions: GoalBiomarkerOption[];
 }) {
   const wu = weightUnit;
   const formatPrefs = useFormatPrefs();
@@ -137,13 +146,25 @@ export default function GoalsManager({
           {visibleGoals.map((g) => {
             const isExercise = g.metric != null && g.exercise != null;
             const isBody = g.body_metric != null;
-            const auto = isExercise || isBody; // progress derived automatically
+            const isBio = isBiomarkerGoal(g);
+            const auto = isExercise || isBody || isBio; // progress derived automatically
             const prog = auto ? goalProgress[g.id] : undefined;
             const pct = goalPct(g, prog);
+            // A lab goal's pace advances on RESULTS, not on the calendar — the owed
+            // line is frozen at the last reading, so a goal cannot slide to "behind"
+            // on a day when no lab was drawn (#1853). Every other goal keeps the
+            // daily model by omitting the field entirely.
+            const paceOpts = {
+              createdAt: g.created_at,
+              targetDate: g.target_date,
+              today: todayStr,
+              ...(isBio ? { evidenceDate: prog?.asOf ?? null } : {}),
+            };
 
             return (
               <div
                 key={g.id}
+                data-testid="goal-card"
                 className={`card !p-3 text-sm ${
                   g.archived ? "opacity-55 grayscale" : ""
                 } ${openMenu === g.id ? "relative z-20" : ""}`}
@@ -168,6 +189,13 @@ export default function GoalsManager({
                     ) : isBody ? (
                       <span className="text-xs text-brand-600 dark:text-brand-400">
                         {goalBodyTargetText(g, wu)}
+                      </span>
+                    ) : isBio ? (
+                      <span
+                        className="text-xs text-brand-600 dark:text-brand-400"
+                        data-testid="goal-biomarker-target"
+                      >
+                        {biomarkerGoalTargetText(g)}
                       </span>
                     ) : (
                       g.category && (
@@ -302,7 +330,9 @@ export default function GoalsManager({
                           ? `${goalValueText(g, prog.current, wu)} in last 4 wks`
                           : isBody && prog
                             ? `${prog.current > 0 ? fmtBodyMetric(g.body_metric!, prog.current, wu) : "—"} now`
-                            : `${g.current_value} / ${g.target_value} ${g.unit ?? ""}`}
+                            : isBio
+                              ? biomarkerGoalCurrentText(prog)
+                              : `${g.current_value} / ${g.target_value} ${g.unit ?? ""}`}
                       </span>
                       <span>{pct}%</span>
                     </div>
@@ -318,22 +348,28 @@ export default function GoalsManager({
                     <div className="mt-1 h-2 w-full rounded-full bg-slate-100 dark:bg-ink-800">
                       <div
                         data-testid="goal-bar"
-                        data-tone={goalPaceTone(pct, {
-                          createdAt: g.created_at,
-                          targetDate: g.target_date,
-                          today: todayStr,
-                        })}
+                        data-tone={goalPaceTone(pct, paceOpts)}
                         className={`h-2 rounded-full transition-colors ${goalBarClass(
                           pct,
-                          {
-                            createdAt: g.created_at,
-                            targetDate: g.target_date,
-                            today: todayStr,
-                          }
+                          paceOpts
                         )}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
+                    {/* The check-in rhythm (#1853): a lab goal's natural cadence is
+                        the analyte's own retest interval, so between draws the honest
+                        thing to say is when the next result is expected — not a
+                        freshly recomputed verdict about a day nothing was measured. */}
+                    {isBio && prog?.checkIn && (
+                      <div
+                        className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+                        data-testid="goal-check-in"
+                      >
+                        {biomarkerGoalCheckInText(prog.checkIn, (d) =>
+                          formatLongDate(d, formatPrefs)
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -394,6 +430,7 @@ export default function GoalsManager({
             equipment={equipment}
             equipmentByExercise={equipmentByExercise}
             weightUnit={weightUnit}
+            biomarkerOptions={biomarkerOptions}
             editGoal={modal.goal}
             onDone={() => setModal(null)}
           />
