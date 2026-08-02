@@ -16,6 +16,8 @@ import {
   SW_RELOAD_FALLBACK_MS,
   SW_SKIP_WAITING,
   UPDATE_CHECK_MS,
+  UPDATE_PENDING_KEY,
+  UPDATE_PENDING_MARKER,
   type ServiceWorkerStatus,
 } from "@/lib/sw-update";
 import {
@@ -291,6 +293,26 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
     setSwWaiting(false);
     setSwWaitingAtLoad(false);
   }, [plan]);
+
+  // Hand the pending state across the crash boundary (issue #1906). A tab with a
+  // pending update is running a build whose hashed chunks the deploy has removed, so
+  // a client navigation to a route it has not visited can throw ABOVE the route
+  // group — and `app/global-error.tsx` replaces the root layout, meaning this
+  // component is not mounted when that boundary has to decide whether what it caught
+  // is deployment skew or a genuine crash. A per-tab marker is the only channel that
+  // survives; the pending decision itself stays here, computed once.
+  useEffect(() => {
+    try {
+      if (pending) {
+        sessionStorage.setItem(UPDATE_PENDING_KEY, UPDATE_PENDING_MARKER);
+      } else {
+        sessionStorage.removeItem(UPDATE_PENDING_KEY);
+      }
+    } catch {
+      // Storage can be denied outright (private mode, blocked cookies). The boundary
+      // then reads no marker and renders its card, which is the pre-#1906 behaviour.
+    }
+  }, [pending]);
 
   const reload = useCallback(() => {
     if (reloadedRef.current) return;

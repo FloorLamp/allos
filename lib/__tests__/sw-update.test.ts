@@ -4,7 +4,15 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   deployDetectorFor,
+  isDeploymentSkewError,
   loadTimeUpdatePlan,
+  nextSkewGuard,
+  parseSkewGuard,
+  SKEW_RECOVERY_MAX_ATTEMPTS,
+  SKEW_RECOVERY_WINDOW_MS,
+  skewRecoveryPlan,
+  UPDATE_PENDING_MARKER,
+  updatePendingFromMarker,
   reloadPlanFor,
   resolveUpdateState,
   SW_SKIP_WAITING,
@@ -293,5 +301,196 @@ describe("the worker's activation posture (#1700)", () => {
     // The page owns that schema (lib/offline/idb.ts). A worker naming a lower
     // version fails the open outright instead of replaying the queue.
     expect(SW).toContain("indexedDB.open(OFFLINE_DB)");
+  });
+});
+
+describe("isDeploymentSkewError — the stale-build signature (#1906)", () => {
+  it("recognises webpack's ChunkLoadError by name", () => {
+    expect(
+      isDeploymentSkewError({
+        name: "ChunkLoadError",
+        message: "Loading chunk 4821 failed.",
+      })
+    ).toBe(true);
+  });
+
+  it("recognises a failed dynamic import, however the engine words it", () => {
+    // Chrome, Firefox and Safari each phrase this differently and all three mean
+    // the same thing: the module the deploy deleted.
+    for (const message of [
+      "Failed to fetch dynamically imported module: https://example.test/_next/static/chunks/page-abc.js",
+      "error loading dynamically imported module",
+      "Importing a module script failed.",
+      "Unable to preload CSS for /_next/static/css/abc.css",
+    ]) {
+      expect(isDeploymentSkewError({ name: "TypeError", message })).toBe(true);
+    }
+  });
+
+  it("recognises a failed RSC payload fetch", () => {
+    expect(
+      isDeploymentSkewError({
+        name: "Error",
+        message: "Failed to fetch RSC payload for https://example.test/trends",
+      })
+    ).toBe(true);
+  });
+
+  it("does NOT claim an ordinary network failure", () => {
+    // The narrowness is the point: treating "Failed to fetch" as skew would reload
+    // the document out from under someone whose connection merely dropped.
+    expect(
+      isDeploymentSkewError({ name: "TypeError", message: "Failed to fetch" })
+    ).toBe(false);
+  });
+
+  it("does NOT claim an ordinary application crash", () => {
+    expect(
+      isDeploymentSkewError({
+        name: "TypeError",
+        message: "Cannot read properties of undefined (reading 'profileId')",
+      })
+    ).toBe(false);
+  });
+
+  it("survives an error with nothing on it", () => {
+    expect(isDeploymentSkewError(null)).toBe(false);
+    expect(isDeploymentSkewError(undefined)).toBe(false);
+    expect(isDeploymentSkewError({})).toBe(false);
+  });
+});
+
+describe("the skew loop guard (#1906)", () => {
+  const T0 = 1_700_000_000_000;
+
+  it("reads nothing out of an absent or unparseable marker", () => {
+    expect(parseSkewGuard(null)).toBeNull();
+    expect(parseSkewGuard("")).toBeNull();
+    expect(parseSkewGuard("not json")).toBeNull();
+    expect(parseSkewGuard('{"attempts":"one","at":1}')).toBeNull();
+    expect(parseSkewGuard('{"attempts":1}')).toBeNull();
+    expect(parseSkewGuard("[1,2]")).toBeNull();
+  });
+
+  it("round-trips the guard it writes", () => {
+    const written = nextSkewGuard(null, T0);
+    expect(written).toEqual({ attempts: 1, at: T0 });
+    expect(parseSkewGuard(JSON.stringify(written))).toEqual(written);
+  });
+
+  it("counts within one window, keeping the window's OPENING timestamp", () => {
+    // Anchoring on the first attempt is what makes the window a cap rather than a
+    // sliding leash a fast loop could drag along with it.
+    const first = nextSkewGuard(null, T0);
+    const second = nextSkewGuard(first, T0 + 500);
+    expect(second).toEqual({ attempts: 2, at: T0 });
+  });
+
+  it("opens a fresh window once the old one has aged out", () => {
+    const first = nextSkewGuard(null, T0);
+    const later = T0 + SKEW_RECOVERY_WINDOW_MS + 1;
+    expect(nextSkewGuard(first, later)).toEqual({ attempts: 1, at: later });
+  });
+
+  it("ignores a guard written in the future (a clock that moved backwards)", () => {
+    const future = { attempts: 5, at: T0 + 10_000 };
+    expect(nextSkewGuard(future, T0)).toEqual({ attempts: 1, at: T0 });
+  });
+});
+
+describe("skewRecoveryPlan (#1906)", () => {
+  const T0 = 1_700_000_000_000;
+  const CHUNK = { name: "ChunkLoadError", message: "Loading chunk 12 failed." };
+
+  it("recovers the FIRST skew: hard reload onto the new build", () => {
+    expect(
+      skewRecoveryPlan({
+        error: CHUNK,
+        updatePending: true,
+        guard: null,
+        now: T0,
+      })
+    ).toBe("hard-reload");
+  });
+
+  it("renders the card on the SECOND skew — the guard cannot spin", () => {
+    // A hard reload that fails the same way is an infinite redirect the user never
+    // sees. One attempt, then the card, which at least says something.
+    const afterFirst = nextSkewGuard(null, T0);
+    expect(
+      skewRecoveryPlan({
+        error: CHUNK,
+        updatePending: true,
+        guard: afterFirst,
+        now: T0 + 900,
+      })
+    ).toBe("render-card");
+  });
+
+  it("recovers again once the window has passed — a later deploy is a new episode", () => {
+    const afterFirst = nextSkewGuard(null, T0);
+    expect(
+      skewRecoveryPlan({
+        error: CHUNK,
+        updatePending: true,
+        guard: afterFirst,
+        now: T0 + SKEW_RECOVERY_WINDOW_MS + 1,
+      })
+    ).toBe("hard-reload");
+  });
+
+  it("renders the card when no update is pending — this is a real crash", () => {
+    expect(
+      skewRecoveryPlan({
+        error: CHUNK,
+        updatePending: false,
+        guard: null,
+        now: T0,
+      })
+    ).toBe("render-card");
+  });
+
+  it("renders the card for an error that is not skew, pending update or not", () => {
+    expect(
+      skewRecoveryPlan({
+        error: { name: "TypeError", message: "x is not a function" },
+        updatePending: true,
+        guard: null,
+        now: T0,
+      })
+    ).toBe("render-card");
+  });
+
+  it("never reloads more than SKEW_RECOVERY_MAX_ATTEMPTS times in a window", () => {
+    let guard = null as ReturnType<typeof parseSkewGuard>;
+    let reloads = 0;
+    // Simulate a deploy that stays broken: every pass throws the same chunk error.
+    for (let i = 0; i < 25; i += 1) {
+      const now = T0 + i * 100;
+      if (
+        skewRecoveryPlan({
+          error: CHUNK,
+          updatePending: true,
+          guard,
+          now,
+        }) === "hard-reload"
+      ) {
+        reloads += 1;
+        guard = nextSkewGuard(guard, now);
+      }
+    }
+    expect(reloads).toBe(SKEW_RECOVERY_MAX_ATTEMPTS);
+  });
+});
+
+describe("the update-pending marker (#1906)", () => {
+  it("is only pending on the marker the registrar writes", () => {
+    // The registrar and the error boundary live on opposite sides of a crash, so the
+    // marker's shape is the whole contract between them.
+    expect(updatePendingFromMarker(UPDATE_PENDING_MARKER)).toBe(true);
+    expect(updatePendingFromMarker(null)).toBe(false);
+    expect(updatePendingFromMarker("")).toBe(false);
+    expect(updatePendingFromMarker("0")).toBe(false);
+    expect(updatePendingFromMarker("true")).toBe(false);
   });
 });

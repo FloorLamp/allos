@@ -238,3 +238,165 @@ export function reloadPlanFor({
 }): "handshake" | "plain" {
   return waitingWorker ? "handshake" : "plain";
 }
+
+// ---------------------------------------------------------------------------
+// DEPLOYMENT SKEW (issue #1906)
+//
+// A pending update means a deploy happened, and this tab is still running the OLD
+// build. The deploy removed that build's hashed chunks from the server, so a client
+// navigation to a route this tab has NOT visited fetches a chunk that no longer
+// exists: 404, and a throw above the route group. The worker's cache-first asset
+// policy protects only what was already fetched — unvisited routes are the
+// unprotected set, deliberately, because deferring activation is what keeps the
+// loaded document alive at all (#1700).
+//
+// That failure has exactly one recovery: a HARD load, which lands on the new build
+// and always works. Re-rendering the same stale runtime cannot help, and neither can
+// any soft navigation. So the error boundary asks this module — the same module the
+// registrar asks about the same deploy — whether what it caught is that known state,
+// and recovers before it renders anything.
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the registrar records "an update is pending" for the error boundary.
+ *
+ * The two live on opposite sides of a crash: `app/global-error.tsx` replaces the
+ * ROOT LAYOUT, so `ServiceWorkerRegister` is not mounted when the boundary needs the
+ * answer and no amount of props or context can reach it. sessionStorage is the right
+ * shape for the handoff — per-tab, exactly like the state it describes, and gone when
+ * the tab is.
+ */
+export const UPDATE_PENDING_KEY = "allos-update-pending";
+
+/** The marker's shape lives here so the writer and the reader cannot disagree. */
+export const UPDATE_PENDING_MARKER = "1";
+
+export function updatePendingFromMarker(
+  raw: string | null | undefined
+): boolean {
+  return raw === UPDATE_PENDING_MARKER;
+}
+
+/**
+ * Error signatures that mean "this build's assets are gone", not "something broke".
+ *
+ * Deliberately narrow. A bare "Failed to fetch" is every network error there is and
+ * must NOT match: mistaking an ordinary failure for skew would turn the error card
+ * into a reload, which is a worse answer for a user whose connection dropped. Every
+ * entry here is a loader-specific message from a browser or a bundler, matched
+ * case-insensitively because they are not spelled the same across engines.
+ */
+const SKEW_SIGNATURES = [
+  "chunkloaderror",
+  "loading chunk",
+  "loading css chunk",
+  "failed to fetch dynamically imported module",
+  "error loading dynamically imported module",
+  "importing a module script failed",
+  "unable to preload css",
+  "failed to fetch rsc payload",
+];
+
+export function isDeploymentSkewError(
+  error: { name?: string; message?: string } | null | undefined
+): boolean {
+  if (!error) return false;
+  const haystack = `${error.name ?? ""} ${error.message ?? ""}`.toLowerCase();
+  return SKEW_SIGNATURES.some((signature) => haystack.includes(signature));
+}
+
+/**
+ * THE LOOP GUARD, which is the load-bearing part of this fix.
+ *
+ * Recovering skew means a hard load, and a hard load that fails the same way is an
+ * infinite redirect — strictly worse than the error card it was trying to avoid, and
+ * invisible to the user because no card ever stays on screen. So recovery is
+ * RATIONED, not merely flagged: at most `SKEW_RECOVERY_MAX_ATTEMPTS` per tab per
+ * window, counted from the first attempt in that window.
+ *
+ * A window rather than a permanent flag because the two failure modes need opposite
+ * answers. A genuine spin retries immediately, so a window of a minute caps it at one
+ * reload and then hands the user the card — it cannot spin. A second, unrelated skew
+ * an hour later (another deploy, another unvisited route) is a fresh episode and
+ * deserves its own recovery, which a permanent flag would deny forever.
+ *
+ * Note what is NOT here: the guard is never cleared by a page that loads
+ * successfully. That was the tempting version, and it is the spinning one — a worker
+ * serving a cached old document loads "successfully" every time, clearing the guard
+ * on every pass.
+ */
+export const SKEW_RECOVERY_KEY = "allos-skew-recovery";
+export const SKEW_RECOVERY_WINDOW_MS = 60_000;
+export const SKEW_RECOVERY_MAX_ATTEMPTS = 1;
+
+export type SkewRecoveryGuard = {
+  /** Attempts made so far in this window. */
+  attempts: number;
+  /** When the window opened — the first attempt's timestamp, not the last. */
+  at: number;
+};
+
+/** Read the stored guard. Anything unparseable is "no guard", never a throw. */
+export function parseSkewGuard(
+  raw: string | null | undefined
+): SkewRecoveryGuard | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const { attempts, at } = parsed as Record<string, unknown>;
+    if (typeof attempts !== "number" || typeof at !== "number") return null;
+    if (!Number.isFinite(attempts) || !Number.isFinite(at)) return null;
+    return { attempts, at };
+  } catch {
+    return null;
+  }
+}
+
+/** Attempts that still count — a window that has aged out counts for nothing. */
+function attemptsInWindow(
+  guard: SkewRecoveryGuard | null,
+  now: number
+): number {
+  if (!guard) return 0;
+  const age = now - guard.at;
+  if (age < 0 || age > SKEW_RECOVERY_WINDOW_MS) return 0;
+  return guard.attempts;
+}
+
+/** The guard to store when taking an attempt. Opens a new window when the old aged out. */
+export function nextSkewGuard(
+  guard: SkewRecoveryGuard | null,
+  now: number
+): SkewRecoveryGuard {
+  const counted = attemptsInWindow(guard, now);
+  if (counted === 0 || !guard) return { attempts: 1, at: now };
+  return { attempts: counted + 1, at: guard.at };
+}
+
+/**
+ * What the top-level error boundary should do (#1906).
+ *
+ * `hard-reload` only when all three hold: an update is pending (so a deploy really
+ * did happen under this tab), the error looks like a missing build asset, and the
+ * guard has an attempt left. Anything else renders the card, which remains the honest
+ * answer for an ordinary crash and the terminus for a reload that did not help.
+ */
+export function skewRecoveryPlan({
+  error,
+  updatePending,
+  guard,
+  now,
+}: {
+  error: { name?: string; message?: string } | null | undefined;
+  updatePending: boolean;
+  guard: SkewRecoveryGuard | null;
+  now: number;
+}): "hard-reload" | "render-card" {
+  if (!updatePending) return "render-card";
+  if (!isDeploymentSkewError(error)) return "render-card";
+  if (attemptsInWindow(guard, now) >= SKEW_RECOVERY_MAX_ATTEMPTS) {
+    return "render-card";
+  }
+  return "hard-reload";
+}
