@@ -13,6 +13,7 @@ import {
   medicationBrandOptions,
   GENERIC_BRAND_OPTION,
 } from "@/lib/medication-info";
+import { MED_DESCRIPTION_ENTRIES } from "@/lib/datasets/medication-descriptions";
 import type { FoodTiming } from "@/lib/types";
 
 // Follow-ups to the medications page (issue #851). One consolidated pure suite for the
@@ -144,11 +145,46 @@ describe("#851 item 14 — one option per med, 'Generic (Brand, Brand)'", () => 
     expect(medicationCatalogLabel("Metformin", [])).toBe("Metformin");
   });
 
-  it("catalogLabelGeneric strips the parenthetical", () => {
+  it("catalogLabelGeneric resolves a label to its generic", () => {
     expect(catalogLabelGeneric("Acetaminophen (Tylenol, Panadol)")).toBe(
       "Acetaminophen"
     );
     expect(catalogLabelGeneric("Metformin")).toBe("Metformin");
+  });
+
+  // #1817: a generic whose OWN name carries parentheses. Text-stripping the trailing
+  // parenthetical truncated "Cholecalciferol (Vitamin D3)" to "Cholecalciferol" — a
+  // name the catalog matches (it is a match key) but never DISPLAYS as a generic, which
+  // is exactly the distinction the strip cannot make and the lookup can.
+  it("keeps a generic whose own name contains parentheses whole", () => {
+    expect(
+      catalogLabelGeneric(
+        "Cholecalciferol (Vitamin D3) (Vitamin D, Vitamin D3)"
+      )
+    ).toBe("Cholecalciferol (Vitamin D3)");
+    expect(catalogLabelGeneric("Cholecalciferol (Vitamin D3)")).toBe(
+      "Cholecalciferol (Vitamin D3)"
+    );
+  });
+
+  it("round-trips every catalog label back to its own generic", () => {
+    for (const entry of MED_DESCRIPTION_ENTRIES) {
+      if (!entry.generic) continue;
+      const label = medicationCatalogLabel(
+        entry.generic,
+        entry.brand_names ?? []
+      );
+      expect(catalogLabelGeneric(label)).toBe(entry.generic);
+    }
+  });
+
+  // The not-in-catalog fallback: free text the user typed and picked comes back whole,
+  // parenthetical included — outside the catalog nothing says that parenthetical is a
+  // brand list, so nothing is dropped.
+  it("returns an unknown label unchanged", () => {
+    expect(catalogLabelGeneric("  Compounded thing (my pharmacy)  ")).toBe(
+      "Compounded thing (my pharmacy)"
+    );
   });
 
   it("returns one option per medication (no flat brand entries)", () => {

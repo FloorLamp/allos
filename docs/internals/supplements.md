@@ -329,7 +329,13 @@ ledger rows (deleting the row recomputes them; the id-keyed
 never recycle). **Other:** the combobox collapses to one option per med
 (`medicationCatalogOptions` — `Generic (Brand, Brand)`, ≤2 brands + "…", filter
 over the label, a typed brand token prefills `brand` via
-`resolveMedicationPick`); "Generic" leads the brand options
+`resolveMedicationPick`); reading a label BACK to its generic
+(`catalogLabelGeneric`) is a lookup in the catalog that produced it, never a text
+strip of the trailing parenthetical — the catalog holds generics whose own name
+carries one (`Cholecalciferol (Vitamin D3)`) and only it can tell that apart from
+a brand suffix (#1817); a strip is tried only when the whole string is unknown,
+and only its catalog-confirmed result is accepted, so an unrecognized name comes
+back WHOLE rather than truncated on a guess; "Generic" leads the brand options
 (`medicationBrandOptions`); the picker's ORDER is per-profile (#1677 — see
 **Picker order** below); a catalog pick auto-confirms an UNAMBIGUOUS RxNorm
 top match (`dominantRxNormCandidate`, silent offline degrade, ambiguous →
