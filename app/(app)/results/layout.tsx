@@ -1,5 +1,6 @@
 import type { AppRoute } from "@/lib/hrefs";
 import AnchorRedirect from "@/components/AnchorRedirect";
+import PageContainer from "@/components/PageContainer";
 import TabFirstPage from "@/components/TabFirstPage";
 import { RESULTS_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 
@@ -26,11 +27,15 @@ export default function ResultsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <>
+    <PageContainer
+      width="wide"
+      className="mx-auto"
+      data-testid="results-container"
+    >
       <AnchorRedirect map={ANCHOR_MAP} />
       <TabFirstPage config={RESULTS_TAB_FIRST_PAGE} testId="results-page">
         {children}
       </TabFirstPage>
-    </>
+    </PageContainer>
   );
 }

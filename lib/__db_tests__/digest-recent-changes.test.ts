@@ -10,13 +10,14 @@
 //   3. the #1723 lines appear only under their own gates, and the step observation
 //      goes SILENT on stale data rather than guessing.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   setHomeLocation,
   setStepsDailyTarget,
   setTimezone,
+  setWeekMode,
 } from "@/lib/settings";
 import { collectRecentChanges } from "@/lib/queries/recent-changes";
 import { getLightExposureLine } from "@/lib/queries/light-exposure";
@@ -426,6 +427,17 @@ describe("light-exposure line (#1723 part 1)", () => {
   const LAT = 40.7;
   const LNG = -74;
 
+  beforeEach(() => {
+    // Weekly pace is intentionally exercised midweek. On Sunday, 0/5 is already
+    // outside the reachable window and the shared progress core suppresses the
+    // ordinary "behind" phrase, so wall-clock test dates change the scenario.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-17T12:00:00Z")); // Wednesday
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   function seedDay(
     date: string,
     weatherCode: number,
@@ -509,6 +521,12 @@ describe("light-exposure line (#1723 part 1)", () => {
 
   it("composes the practice's pace when it is behind", () => {
     const pid = trackedProfile("Behind Bea");
+    // Rolling mode makes the week window a mature, deterministic 7 days regardless of
+    // the calendar day the test runs. In calendar mode, on the first day(s) of a fresh
+    // week frequencyPace owes floor(5×elapsed/7)=0 sessions, so 0/5 reads "on-pace"
+    // (#748's early-week grace) and the pace clause is rightly dropped — the very
+    // behavior this test is NOT about. Rolling keeps 0/5 unambiguously "behind".
+    setWeekMode(pid, "rolling");
     const td = today(pid);
     seedDay(td, 0, 4);
     const line = getLightExposureLine(pid, td);

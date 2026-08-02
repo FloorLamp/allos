@@ -38,17 +38,19 @@ test("the Reports tab renders a narrative report body (#708)", async ({
   // The body renders through NotesText — the report text is viewable inline.
   await expect(reports.getByText(CULTURE_BODY)).toBeVisible();
 
-  // …as a CARD in the list, not loose prose — the row's own structure (#1598). The
+  // …as a structured row in one divided list, not a pile of nested cards. The
   // seeded rows are unattributed, so neither optional line rides along.
-  const card = reports
+  const row = reports
     .getByTestId("report-card")
     .filter({ hasText: CULTURE_BODY });
-  await expect(card.getByTestId("report-body")).toContainText(CULTURE_BODY);
+  await expect(reports.getByTestId("reports-list")).not.toHaveClass(/\bcard\b/);
+  await expect(row).not.toHaveClass(/\bcard\b/);
+  await expect(row.getByTestId("report-body")).toContainText(CULTURE_BODY);
   await expect(
-    card.getByRole("heading", { name: "Final Report" })
+    row.getByRole("heading", { name: "Final Report" })
   ).toBeVisible();
   await expect(
-    card.getByRole("link", { name: /View source document/ })
+    row.getByRole("link", { name: /View source document/ })
   ).toHaveCount(0);
 });
 
@@ -58,7 +60,12 @@ test("the Reports pane renders on a direct deep link, with its tab selected (#15
   // Reaching the pane by URL is the other half of "it renders": Reports is its own
   // route, and a bookmark or an out-of-app link lands on it with no tab click.
   await page.goto("/results/reports");
-  await expect(page.getByTestId("results-reports")).toBeVisible();
+  const reports = page.getByTestId("results-reports");
+  await expect(reports).toBeVisible();
+  await expect(reports).toHaveClass(/\bmax-w-3xl\b/);
+  await expect(reports.getByText(/Narrative diagnostic reports/)).toHaveCount(
+    0
+  );
   await expect(page.getByTestId("reports-list")).toBeVisible();
   await expect(
     page.getByTestId("results-tabs").getByRole("tab", { name: "Reports" })
@@ -91,6 +98,9 @@ test("a profile with no narrative reports gets the pane's empty state (#1598)", 
     const reports = page.getByTestId("results-reports");
     await expect(reports).toBeVisible();
     await expect(reports.getByText(/No narrative reports yet/)).toBeVisible();
+    await expect(
+      reports.getByRole("link", { name: /Import records/ })
+    ).toHaveAttribute("href", "/data?section=import");
     // The empty state REPLACES the list — an empty card list would look the same from
     // the outside, and the nudge (import a CCD/XDM record) is what makes the pane
     // usable at all for someone who has never imported one.

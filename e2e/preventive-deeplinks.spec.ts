@@ -68,11 +68,12 @@ test.describe("preventive deep-links per class (#1083)", () => {
     );
     // DAST-10 preselected ⇒ the in-app tap-through renders its baked items
     // (#1085), not the total-only note.
+    const screeningDialog = page.getByRole("dialog", {
+      name: "Add screening",
+    });
+    await expect(screeningDialog.getByTestId("substance-item-0")).toBeVisible();
     await expect(
-      page.getByRole("main").getByTestId("substance-item-0")
-    ).toBeVisible();
-    await expect(
-      page.getByRole("main").getByTestId("substance-total-only-note")
+      screeningDialog.getByTestId("substance-total-only-note")
     ).toHaveCount(0);
   });
 
@@ -90,7 +91,9 @@ test.describe("preventive deep-links per class (#1083)", () => {
     );
     // Only PHQ-9 has a 9th item (index 8); GAD-7 has 7 — proves the preselect.
     await expect(
-      page.getByRole("main").getByTestId("instrument-item-8")
+      page
+        .getByRole("dialog", { name: "Add screening" })
+        .getByTestId("instrument-item-8")
     ).toBeVisible();
   });
 

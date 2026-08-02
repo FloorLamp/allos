@@ -58,8 +58,7 @@ const buildColumns = (
   },
   {
     header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (c) => (
       <RecordProvenance source={c.source} documentId={c.document_id} />
     ),

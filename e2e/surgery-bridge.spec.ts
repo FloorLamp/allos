@@ -82,7 +82,7 @@ test("a scheduled surgical visit suggests activating Pre-surgery", async ({
   // 7-day lead window (0 days out). Deriving the date in the browser (isoInDays) would
   // race the app's frozen/pinned-timezone clock in CI and mis-place the visit — the
   // whole "date defaults to today" pattern the visits specs use avoids that.
-  await page.goto("/records/history/visits");
+  await page.goto("/records/history/visits?new=1");
   const addCard = page.getByTestId("visits-add");
   await expect(addCard).toBeVisible();
   await addCard.getByLabel("Reason / title").fill(VISIT_TITLE);

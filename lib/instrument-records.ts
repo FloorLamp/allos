@@ -246,6 +246,7 @@ export interface InstrumentReading {
   total: number;
   band: SeverityBand;
   selfHarmAnswer: number | null;
+  documentId: number | null;
 }
 
 const INSTRUMENT_NAMES = INSTRUMENTS as readonly string[];
@@ -288,7 +289,7 @@ function selfHarmAnswersByRecord(
 export function getInstrumentReadings(profileId: number): InstrumentReading[] {
   const rows = db
     .prepare(
-      `SELECT id, canonical_name AS canon, date, value_num AS total
+      `SELECT id, canonical_name AS canon, date, value_num AS total, document_id
        FROM medical_records
        WHERE profile_id = ? AND canonical_name IN (${INSTRUMENT_NAMES.map(() => "?").join(",")})
          AND value_num IS NOT NULL
@@ -299,6 +300,7 @@ export function getInstrumentReadings(profileId: number): InstrumentReading[] {
     canon: string;
     date: string;
     total: number;
+    document_id: number | null;
   }[];
   const shByRecord = selfHarmAnswersByRecord(
     profileId,
@@ -315,6 +317,7 @@ export function getInstrumentReadings(profileId: number): InstrumentReading[] {
       total: r.total,
       band: severityBand(inst, r.total),
       selfHarmAnswer: shByRecord.get(r.id) ?? null,
+      documentId: r.document_id,
     });
   }
   return out;
@@ -331,6 +334,7 @@ export interface SubstanceInstrumentReading {
   date: string;
   total: number;
   band: SeverityBand;
+  documentId: number | null;
 }
 
 const SUBSTANCE_INSTRUMENT_NAMES = SUBSTANCE_INSTRUMENTS as readonly string[];
@@ -341,7 +345,7 @@ export function getSubstanceInstrumentReadings(
 ): SubstanceInstrumentReading[] {
   const rows = db
     .prepare(
-      `SELECT id, canonical_name AS canon, date, value_num AS total
+      `SELECT id, canonical_name AS canon, date, value_num AS total, document_id
        FROM medical_records
        WHERE profile_id = ? AND canonical_name IN (${SUBSTANCE_INSTRUMENT_NAMES.map(() => "?").join(",")})
          AND value_num IS NOT NULL
@@ -352,6 +356,7 @@ export function getSubstanceInstrumentReadings(
     canon: string;
     date: string;
     total: number;
+    document_id: number | null;
   }[];
   const out: SubstanceInstrumentReading[] = [];
   for (const r of rows) {
@@ -363,6 +368,7 @@ export function getSubstanceInstrumentReadings(
       date: r.date,
       total: r.total,
       band: substanceSeverityBand(inst, r.total),
+      documentId: r.document_id,
     });
   }
   return out;

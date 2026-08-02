@@ -56,11 +56,126 @@ test.describe("Provider registry closeout", () => {
     page,
   }) => {
     await page.goto(`/providers/${providerId("Dr. Cora Bell (e2e)")}`);
+    const detail = page.getByTestId("provider-detail");
+    const margins = await detail.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const parentRect = element.parentElement!.getBoundingClientRect();
+      return {
+        left: rect.left - parentRect.left,
+        right: parentRect.right - rect.right,
+      };
+    });
+    expect(Math.abs(margins.left - margins.right)).toBeLessThan(2);
+    await expect(page.getByTestId("provider-identity")).toHaveClass(/\bcard\b/);
+    await expect(detail.locator(".card .card")).toHaveCount(0);
+    await expect(page.getByTestId("provider-identity-details")).toHaveCSS(
+      "flex-direction",
+      "column"
+    );
     const affiliations = page.getByTestId("provider-affiliations");
     await expect(affiliations).toContainText("Practices at");
     await expect(
       affiliations.getByRole("link", { name: /Bell Cardiology \(e2e\)/ })
     ).toBeVisible();
+    const addAffiliation = affiliations.getByTestId("affiliation-add-toggle");
+    await expect(addAffiliation).toHaveClass(/\bbtn\b/);
+    await addAffiliation.click();
+    await expect(
+      page.getByRole("dialog", { name: "Link affiliation" })
+    ).toBeVisible();
+    await page
+      .getByRole("dialog", { name: "Link affiliation" })
+      .getByRole("button", { name: "Close" })
+      .click();
+  });
+
+  test("provider activity links to clinical destinations, not source documents", async ({
+    page,
+  }) => {
+    const id = providerId("Dr. Cora Bell (e2e)");
+    const handle = new Database(DB_PATH);
+    const visitId = Number(
+      handle
+        .prepare(
+          `INSERT INTO encounters
+             (profile_id, date, type, provider_id, source)
+           VALUES (1, '2026-04-01', 'Provider href visit (e2e)', ?, 'document:908')`
+        )
+        .run(id).lastInsertRowid
+    );
+    const labId = Number(
+      handle
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, canonical_name, value, provider_id, source)
+           VALUES
+             (1, '2026-04-02', 'lab', 'GLUCOSE', 'Glucose', '90', ?, 'document:908')`
+        )
+        .run(id).lastInsertRowid
+    );
+    const medicationId = Number(
+      handle
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, active, obligation, provider_id, source)
+           VALUES
+             (1, 'Provider href medication (e2e)', 'medication', 1, 'must', ?, 'document:908')`
+        )
+        .run(id).lastInsertRowid
+    );
+    handle.close();
+
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/providers/${id}`);
+      const detail = page.getByTestId("provider-detail");
+      const tablist = detail.getByRole("tablist");
+      await expect(tablist).toHaveCSS("overflow-x", "auto");
+      await expect(
+        detail.getByRole("tab", { name: /^Visits/ })
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(
+        detail.getByTestId("provider-activity-panel-visits")
+      ).toBeVisible();
+
+      await expect(
+        detail.getByRole("link", { name: /Provider href visit \(e2e\)/ })
+      ).toHaveAttribute("href", `/encounters/${visitId}`);
+
+      await followLink(
+        page,
+        detail.getByRole("tab", { name: /^Labs/ }),
+        /[?&]activity=labs/
+      );
+      await expect(
+        detail.getByRole("link", { name: /Glucose/ })
+      ).toHaveAttribute("href", "/biomarkers/view?name=Glucose");
+
+      await followLink(
+        page,
+        detail.getByRole("tab", { name: /^Medications/ }),
+        /[?&]activity=medications/
+      );
+      await expect(
+        detail.getByRole("link", {
+          name: /Provider href medication \(e2e\)/,
+        })
+      ).toHaveAttribute("href", `/medications/${medicationId}`);
+
+      await expect(detail.locator('a[href^="/import/"]')).toHaveCount(0);
+    } finally {
+      const cleanup = new Database(DB_PATH);
+      cleanup
+        .prepare("DELETE FROM encounters WHERE id = ? AND profile_id = 1")
+        .run(visitId);
+      cleanup
+        .prepare("DELETE FROM medical_records WHERE id = ? AND profile_id = 1")
+        .run(labId);
+      cleanup
+        .prepare("DELETE FROM intake_items WHERE id = ? AND profile_id = 1")
+        .run(medicationId);
+      cleanup.close();
+    }
   });
 
   test("a declined affiliation suggestion stays gone (#1055)", async ({
@@ -72,6 +187,9 @@ test.describe("Provider registry closeout", () => {
     // suggestion; decline it. On a later run it is already declined (gone). Either
     // way, the end state asserted is the same: no Ng Family Practice suggestion.
     if (await suggestions.count()) {
+      await expect(suggestions.getByTestId("affiliation-accept")).toHaveClass(
+        /\bbtn\b/
+      );
       const decline = suggestions.getByTestId("affiliation-decline");
       if (await decline.count()) await settledClick(page, decline.first()); // first-ok: spec-owned Sam Ng fixture, sole suggestion
     }
@@ -109,6 +227,7 @@ test.describe("Provider registry closeout", () => {
     page,
   }) => {
     await page.goto("/records/specialty/vision");
+    await page.getByTestId("add-prescription-panel-toggle").click();
     const form = page.getByTestId("optical-prescription-form");
     await form.getByLabel("Prescriber").fill("Dr. Vision E2E");
     await settledClick(page, form.getByRole("button", { name: "Add" }));
@@ -120,7 +239,10 @@ test.describe("Provider registry closeout", () => {
     // On the provider's detail, the Rx surfaces under the Vision activity section.
     const detail = page.getByTestId("provider-detail");
     await expect(detail).toContainText("Dr. Vision E2E");
-    await detail.getByTestId("activity-summary-vision").click();
+    await expect(detail.getByRole("tab", { name: /^Vision/ })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
     const rxEntry = detail.getByText(/Glasses|Contact lenses/).first(); // first-ok: spec-owned provider's own Rx list
     await expect(rxEntry).toBeVisible();
   });

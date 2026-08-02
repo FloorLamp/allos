@@ -9,6 +9,7 @@ import SortableHeader from "./SortableHeader";
 import TableSortSelect from "./TableSortSelect";
 import { ResponsiveTable, Td } from "./ResponsiveTable";
 import NotesText from "./NotesText";
+import SourceDocumentLink from "./SourceDocumentLink";
 import RecordForm from "./RecordForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
@@ -23,7 +24,7 @@ import {
   humanizeAge,
 } from "@/lib/reference-range";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
-import { biomarkerViewHref, importHref, type AppRoute } from "@/lib/hrefs";
+import { biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
 import {
@@ -158,47 +159,43 @@ function nameCell(r: {
   );
 }
 
-// Date cell: the reading's date, linking to its source document when present. The
-// latest reading of a biomarker also shows its age below ("8 months ago"), flagged
-// amber once it's over a year old (a yearly-retest heuristic). Older readings in a
-// group omit the age line — pass `showAge` false for those.
+// Date cell: the reading's date, age, and an explicitly labelled provenance link.
+// The date itself is not navigation: the source import is not a reading detail page.
+// The latest reading of a biomarker shows its age ("8 months ago"), flagged amber
+// once it's over a year old (a yearly-retest heuristic). Older readings omit age.
 function dateCell(
   r: { date: string; category: string | null; document_id: number | null },
   now: string,
   showAge: boolean
 ) {
-  const dateEl = (
-    <span className="whitespace-nowrap">
-      {r.document_id ? (
-        <Link
-          href={importHref(r.document_id)}
-          className="text-brand-700 hover:underline dark:text-brand-400"
-        >
-          {r.date}
-        </Link>
-      ) : (
-        r.date
-      )}
-    </span>
-  );
-  if (!showAge) return dateEl;
   const ageDays = daysBetween(r.date, now);
   const stale = isBiomarkerStale(r.date, r.category, now);
   const relative = ageDays <= 0 ? "today" : `${humanizeAge(ageDays)} ago`;
   return (
     <div className="flex flex-col">
-      {dateEl}
-      <span
-        className={`text-xs ${
-          stale
-            ? "text-amber-600 dark:text-amber-400"
-            : "text-slate-500 dark:text-slate-400"
-        }`}
-        title={stale ? "Over a year old — consider retesting" : undefined}
-      >
-        {stale && "⚠️ "}
-        {relative}
-      </span>
+      <span className="whitespace-nowrap">{r.date}</span>
+      {showAge ? (
+        <span
+          className={`text-xs ${
+            stale
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-slate-500 dark:text-slate-400"
+          }`}
+          title={stale ? "Over a year old — consider retesting" : undefined}
+        >
+          {stale && "⚠️ "}
+          {relative}
+        </span>
+      ) : null}
+      {r.document_id != null ? (
+        <SourceDocumentLink
+          documentId={r.document_id}
+          className="text-xs text-brand-700 hover:underline dark:text-brand-300"
+          testId="biomarker-source-document-link"
+        >
+          Source document
+        </SourceDocumentLink>
+      ) : null}
     </div>
   );
 }

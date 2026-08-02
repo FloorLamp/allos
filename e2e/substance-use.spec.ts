@@ -32,6 +32,17 @@ async function weekCount(page: Page, substance: string): Promise<number> {
   return Number(text.trim().split(/\s+/)[0]);
 }
 
+async function openScreening(page: Page) {
+  const form = page.getByTestId("substance-instruments-form");
+  if (!(await form.isVisible().catch(() => false))) {
+    await settledClick(
+      page,
+      page.getByTestId("add-substance-screening-panel-toggle")
+    );
+  }
+  await expect(form).toBeVisible();
+}
+
 test.describe("substance use (#998/#1078/#1085)", () => {
   // Serial: every test mutates the ONE shared fixture profile and asserts
   // relative before/after counts. CI runs workers=1 anyway; this pins the same
@@ -65,10 +76,13 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       "/records/specialty/substance-use"
     );
 
-    // The section itself renders the screening form.
+    // The screening form is available on request without occupying the page.
     await page.goto("/records/specialty/substance-use");
     await expect(page.getByTestId("records-substance-use")).toBeVisible();
-    await expect(page.getByTestId("substance-instruments-form")).toBeVisible();
+    await expect(
+      page.getByTestId("add-substance-screening-panel-toggle")
+    ).toBeVisible();
+    await expect(page.getByTestId("substance-instruments-form")).toBeHidden();
 
     // The old standalone route is gone with NO redirect (#1175 standing
     // preference) — a stale bookmark 404s.
@@ -78,7 +92,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
 
   test("in-app AUDIT-C computes a banded total and records a score", async () => {
     await page.goto("/records/specialty/substance-use");
-    await expect(page.getByTestId("substance-instruments-form")).toBeVisible();
+    await openScreening(page);
 
     const rows = page.getByTestId(/^substance-reading-\d+$/);
     const before = await rows.count();
@@ -98,6 +112,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
 
   test("in-app DAST-10 (#1085): 10-item tap-through with the reverse-scored item, banded total", async () => {
     await page.goto("/records/specialty/substance-use");
+    await openScreening(page);
     const rows = page.getByTestId(/^substance-reading-\d+$/);
     const before = await rows.count();
 
@@ -135,6 +150,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
 
   test("AUDIT stays total-only (no reproduced items) and records an outside total", async () => {
     await page.goto("/records/specialty/substance-use");
+    await openScreening(page);
     const rows = page.getByTestId(/^substance-reading-\d+$/);
     const before = await rows.count();
 

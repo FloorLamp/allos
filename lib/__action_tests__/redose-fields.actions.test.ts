@@ -19,13 +19,14 @@ function redoseRow(id: number) {
   return db
     .prepare(
       `SELECT obligation, min_interval_hours AS mih, max_daily_count AS mdc,
-              redose_notice AS rn
+              max_daily_amount_mg AS mdmg, redose_notice AS rn
          FROM intake_items WHERE id = ?`
     )
     .get(id) as {
     obligation: string;
     mih: number | null;
     mdc: number | null;
+    mdmg: number | null;
     rn: number;
   };
 }
@@ -64,6 +65,41 @@ describe("redose fields on addSupplement", () => {
     expect(row.rn).toBe(1);
   });
 
+  it("persists the amount-aware mg/day max for a PRN medication, without gating the opt-in (#1854)", async () => {
+    const r = await addSupplement(
+      fd({
+        name: "Ibuprofen 800",
+        kind: "medication",
+        obligation: "may",
+        min_interval_hours: "6",
+        max_daily_count: "4",
+        max_daily_amount_mg: "1200",
+        redose_notice: "1",
+      })
+    );
+    expect(r.ok).toBe(true);
+    const row = redoseRow(lastItemId());
+    expect(row.mdmg).toBe(1200);
+    expect(row.rn).toBe(1);
+
+    // A blank/invalid mg field stays NULL (the mg basis is then unavailable) and
+    // never blocks the count-gated opt-in.
+    await addSupplement(
+      fd({
+        name: "Naproxen Sodium",
+        kind: "medication",
+        obligation: "may",
+        min_interval_hours: "8",
+        max_daily_count: "3",
+        max_daily_amount_mg: "-5",
+        redose_notice: "1",
+      })
+    );
+    const row2 = redoseRow(lastItemId());
+    expect(row2.mdmg).toBeNull();
+    expect(row2.rn).toBe(1);
+  });
+
   it("opt-in is FORCED OFF when a confirmed field is blank (no notice, ever)", async () => {
     await addSupplement(
       fd({
@@ -88,6 +124,7 @@ describe("redose fields on addSupplement", () => {
         // as_needed not set (scheduled med)
         min_interval_hours: "6",
         max_daily_count: "4",
+        max_daily_amount_mg: "1200",
         redose_notice: "1",
       })
     );
@@ -95,6 +132,7 @@ describe("redose fields on addSupplement", () => {
     expect(row.obligation).toBe("must");
     expect(row.mih).toBeNull();
     expect(row.mdc).toBeNull();
+    expect(row.mdmg).toBeNull();
     expect(row.rn).toBe(0);
   });
 });
@@ -108,11 +146,13 @@ describe("redose fields on updateSupplement", () => {
         obligation: "may",
         min_interval_hours: "8",
         max_daily_count: "3",
+        max_daily_amount_mg: "660",
         redose_notice: "1",
       })
     );
     const id = lastItemId();
     expect(redoseRow(id).rn).toBe(1);
+    expect(redoseRow(id).mdmg).toBe(660);
 
     // Edit it to a scheduled med (as_needed omitted) — the fields must clear.
     const r = await updateSupplement(
@@ -122,6 +162,7 @@ describe("redose fields on updateSupplement", () => {
         kind: "medication",
         min_interval_hours: "8",
         max_daily_count: "3",
+        max_daily_amount_mg: "660",
         redose_notice: "1",
       })
     );
@@ -130,6 +171,7 @@ describe("redose fields on updateSupplement", () => {
     expect(row.obligation).toBe("must");
     expect(row.mih).toBeNull();
     expect(row.mdc).toBeNull();
+    expect(row.mdmg).toBeNull();
     expect(row.rn).toBe(0);
   });
 });

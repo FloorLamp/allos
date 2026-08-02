@@ -54,6 +54,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     test.slow();
 
     await page.goto("/records/specialty/skin");
+    await page.getByTestId("add-skin-lesion-panel-toggle").click();
     const form = page.getByTestId("skin-lesion-form");
     await expect(form).toBeVisible();
 
@@ -121,7 +122,8 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     ).toBeVisible();
 
     // Edit the observation record: change the finding note.
-    await card.getByRole("button", { name: "Edit" }).first().click(); // first-ok: the Edit button on the scoped lesion card this spec created
+    await card.getByRole("button", { name: "Record actions" }).click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
     const editForm = card.getByTestId("skin-lesion-form");
     await editForm
       .getByLabel("Finding / note")
@@ -139,10 +141,8 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     // Delete the observation and confirm the card is gone. The row's "Delete" button
     // opens the confirm dialog (a client toggle); the dialog's Delete fires the POST.
     // exact:true scopes it off the photo strip's "Delete photo" remove control.
-    await card
-      .getByRole("button", { name: "Delete", exact: true })
-      .first() // first-ok: the scoped card's row-Delete (exact, off the photo strip's "Delete photo")
-      .click();
+    await card.getByRole("button", { name: "Record actions" }).click();
+    await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
     await settledClick(
       page,
       page

@@ -17,6 +17,10 @@ call and a **today / 7-day rollup by feature × profile** so the admin whose API
 key everyone spends can see where it goes (tokens only — no dollar math; the
 model is recorded, so compute cost from your provider's prices). Failures
 surface there (and inline where you triggered them), not just in the console.
+Like the error log, each event's free text is masked through the shared
+secret-redaction chokepoint before it's persisted, the file self-trims to a
+byte budget so it stays bounded, and an admin-only **Clear** button on the tab
+empties it.
 
 Separately, **unexpected** server errors — an unhandled exception in a Server
 Action, a route 500, a crashed fire-and-forget task — are captured server-side

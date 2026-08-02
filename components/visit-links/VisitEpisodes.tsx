@@ -48,20 +48,20 @@ export default function VisitEpisodes({
   if (trail.length === 0 && suggestionEpisodes.length === 0) return null;
 
   return (
-    <div className="mt-4 space-y-4" data-testid="visit-episodes">
+    <div className="mt-6 space-y-6" data-testid="visit-episodes">
       {trail.length > 0 ? (
         <section
-          className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 shadow-sm sm:p-6 dark:border-amber-900 dark:bg-amber-950/20"
+          className="border-t border-black/5 pt-5 dark:border-white/5"
           data-testid="encounter-episode-trail"
         >
-          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">
             Illness episodes
           </h2>
-          <ul className="space-y-2">
+          <ul className="divide-y divide-black/5 dark:divide-white/5">
             {trail.map((ep) => (
               <li
                 key={ep.id}
-                className="flex items-center justify-between gap-3 text-sm"
+                className="flex items-start justify-between gap-4 py-3 text-sm first:pt-0 last:pb-0"
               >
                 <Link
                   href={episodeHref(ep.id)}
@@ -96,27 +96,27 @@ export default function VisitEpisodes({
 
       {suggestionEpisodes.length > 0 ? (
         <section
-          className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 shadow-sm sm:p-6 dark:border-brand-900 dark:bg-brand-950/30"
+          className="border-l-2 border-brand-400 pl-4"
           data-testid="link-episode-to-visit"
         >
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
             Link an illness episode?
           </h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             This visit falls during {suggestionEpisodes.length} illness episode
             {suggestionEpisodes.length === 1 ? "" : "s"}. Link it to keep the
             care trail together.
           </p>
-          <ul className="mt-3 space-y-2">
+          <ul className="mt-3 divide-y divide-black/5 dark:divide-white/5">
             {suggestionEpisodes.map((ep) => (
               <li
                 key={ep.id}
-                className="flex items-center justify-between gap-3 text-sm"
+                className="flex flex-col items-start justify-between gap-3 py-3 text-sm first:pt-0 sm:flex-row sm:items-center"
               >
                 <span className="min-w-0 text-slate-800 dark:text-slate-100">
                   {ep.situation}
                 </span>
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex shrink-0 items-center gap-2">
                   <form action={linkEpisodeVisitAction}>
                     <input type="hidden" name="profileId" value={profileId} />
                     <input type="hidden" name="episodeId" value={ep.id} />
@@ -128,7 +128,7 @@ export default function VisitEpisodes({
                     <button
                       type="submit"
                       data-testid="link-episode-suggestion"
-                      className="text-xs font-semibold text-brand-700 transition hover:underline dark:text-brand-300"
+                      className="btn btn-sm"
                     >
                       Link
                     </button>
@@ -141,10 +141,7 @@ export default function VisitEpisodes({
                       name="encounterId"
                       value={encounterId}
                     />
-                    <button
-                      type="submit"
-                      className="text-xs font-medium text-slate-400 transition hover:text-rose-600 dark:hover:text-rose-400"
-                    >
+                    <button type="submit" className="btn-ghost btn-sm">
                       Dismiss
                     </button>
                   </form>

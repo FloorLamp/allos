@@ -7,6 +7,7 @@ import {
 } from "@/lib/queries";
 import { getLesionPhotos } from "@/lib/skin-photo-write";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { EncounterOptionsProvider } from "@/components/EncounterOptionsContext";
 import SkinLesionForm from "@/app/(app)/records/specialty/skin/SkinLesionForm";
 import SkinLesionList from "@/app/(app)/records/specialty/skin/SkinLesionList";
@@ -38,23 +39,25 @@ export default function SkinSection({ profileId }: { profileId: number }) {
           byProfile: { [profileId]: encounterOptions },
         }}
       >
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="min-w-0 space-y-4 lg:col-span-2">
-            <SkinLesionList
-              items={records}
-              followUps={followUps}
-              photos={photos}
-              checkedAt={checkedAt}
-            />
-          </div>
-
-          <div className="min-w-0 space-y-4">
+        <div className="space-y-6">
+          <AddEntryPanel
+            testId="add-skin-lesion-panel"
+            panelId="add-skin-lesion-panel-body"
+            label="Add skin lesion"
+            presentation="modal"
+          >
             <SkinLesionForm action={addSkinLesion} />
-            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-              This is a self-monitoring record for you and your dermatologist —
-              it tracks and compares lesions, it does not assess them.
-            </p>
-          </div>
+          </AddEntryPanel>
+          <SkinLesionList
+            items={records}
+            followUps={followUps}
+            photos={photos}
+            checkedAt={checkedAt}
+          />
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            This is a self-monitoring record for you and your dermatologist — it
+            tracks and compares lesions, it does not assess them.
+          </p>
         </div>
       </EncounterOptionsProvider>
     </ProviderOptionsProvider>

@@ -277,6 +277,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 139 (#1822) ADD COLUMN guard: a schema-shape PRAGMA (does `title` already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
+    file: "lib/migrations/versions/140-prn-max-daily-mg.ts",
+    includes: "PRAGMA table_info(intake_items)",
+    why: "migration 140 (#1854) ADD COLUMN guard: a schema-shape PRAGMA (does `max_daily_amount_mg` already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
+  },
+  {
     file: "lib/migrations/versions/076-encounter-type-code.ts",
     includes: "PRAGMA table_info(encounters)",
     why: "migration 075 (#1035) ADD COLUMN guard: a schema-shape PRAGMA (do code/code_system already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",

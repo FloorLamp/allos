@@ -166,6 +166,7 @@ export interface StoredAllergyInput {
 
 export interface IgESensitizationInput {
   allergen: string; // extracted allergen name
+  canonicalName: string | null; // null means the biomarker detail family is unresolved
   marker: string; // full analyte name
   value: string | null;
   valueNum: number | null;
@@ -173,6 +174,9 @@ export interface IgESensitizationInput {
   rastClass: number | null;
   flag: MedicalFlag | null;
   date: string | null;
+  // Source report for the supporting lab reading, when imported. Optional keeps
+  // the pure matcher convenient for callers that only need clinical values.
+  documentId?: number | null;
 }
 
 // A merged allergies-view row. `origin` distinguishes a clinically-documented
