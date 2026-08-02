@@ -72,7 +72,12 @@ export function seedBodyMobile(): void {
       `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr, notes)
      VALUES (?, ?, ?, ?, 'e2e:trends-body')`
     );
-    const oldBodyDay = shiftDateStr(tbToday, -7);
+    // −9d, not −7d: the metric page's rolling windows cover COMPLETE days (#1909),
+    // so the 7-day window spans yesterday back through tbToday−7. A weigh-in ON
+    // that boundary would land inside all three windows and collapse them into one
+    // card, costing the partial-collapse signal the spec measures. Nine days back
+    // keeps the old weigh-in outside 7d and inside 30d/90d, which is the point.
+    const oldBodyDay = shiftDateStr(tbToday, -9);
     const recentBodyDay = shiftDateStr(tbToday, -1);
     insBm.run(tbId, oldBodyDay, 78.4, 58);
     insBm.run(tbId, recentBodyDay, 77.9, 56);

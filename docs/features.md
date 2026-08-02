@@ -680,6 +680,21 @@ than maintaining a second interpretation. A hub configuration is carried by the
 URL — the range, tab, and compare params are shareable and bookmarkable — not by
 a stored view list.
 
+**Trailing averages cover complete days.** A metric's detail page carries a
+**Rolling summary** — 7, 30, and 90-day windows with an average, range, and
+change each, independent of the chart's range control and collapsed into one
+card wherever the windows genuinely hold the same readings. Those windows end
+**yesterday**: today is not history until it ends, and for a cumulative metric
+such as steps an included today used to drag the average down all afternoon and
+silently correct itself at midnight. **Latest** is the exception and still shows
+today's reading — recency is today's job, the average is history's — and the
+card's note says both. The dashboard's Steps-today card compares today against
+its own baseline, the last seven days that carry a reading, and labels it
+**"prior 7 days"** rather than a second "7-day average": the two surfaces answer
+different questions, so they no longer wear the same name. Both compute through
+one shared helper whose window basis and today-inclusion are declared per
+caller.
+
 ### The Overview surface: starred grid and body census
 
 The starred grid answers two questions: **what you saved** and **what changed**.
