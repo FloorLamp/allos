@@ -213,14 +213,21 @@ function plantRunReport(portalName: string, at?: string) {
       .get(portal.id) as { id: number };
     const stamp =
       at ?? frozenNow().toISOString().replace("T", " ").slice(0, 19);
+    // The CHECK CLOCK moves with the stamp (#1888). A real report writes `at` and its
+    // two clock columns together — `checked_at` is what answers an open request and
+    // `checked_ok_at` is what the staleness cadence reads — so a planted row that set
+    // only `at` would describe a run no client could ever report.
     handle
       .prepare(
         `INSERT INTO portal_run_reports
-           (account_id, portal_id, at, ok, status, message, discovered)
-         VALUES (?, ?, ?, 1, 'nothing-new', NULL, 0)
-         ON CONFLICT(account_id) DO UPDATE SET at = excluded.at, ok = 1`
+           (account_id, portal_id, at, ok, status, message, discovered,
+            checked_at, checked_ok_at)
+         VALUES (?, ?, ?, 1, 'nothing-new', NULL, 0, ?, ?)
+         ON CONFLICT(account_id) DO UPDATE SET at = excluded.at, ok = 1,
+           checked_at = excluded.checked_at,
+           checked_ok_at = excluded.checked_ok_at`
       )
-      .run(account.id, portal.id, stamp);
+      .run(account.id, portal.id, stamp, stamp, stamp);
   });
 }
 
