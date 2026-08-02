@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { BodyMetricKind, FormResult, Goal, GoalMetric } from "@/lib/types";
+import type {
+  BodyMetricKind,
+  FormResult,
+  Goal,
+  GoalDirection,
+  GoalMetric,
+} from "@/lib/types";
+import { GOAL_DIRECTIONS } from "@/lib/types";
+import { isBiomarkerGoal } from "@/lib/biomarker-goal";
+import type { GoalBiomarkerOption } from "./goal-target-options";
 import type { WeightUnit } from "@/lib/settings";
 import {
   variantOf,
@@ -13,6 +22,7 @@ import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/goals";
 import ActivityCombobox from "@/components/ActivityCombobox";
+import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -25,11 +35,31 @@ const METRICS: { value: GoalMetric; label: string }[] = [
   { value: "hold", label: "Hold time" },
 ];
 
+// The three metrics the BODY-metric goal path owns, unchanged since it shipped.
+// #1853 added biomarker targets ALONGSIDE these, not instead of them: these three
+// keep their own column, their own canonical-kg storage and their own daily pacing.
 const BODY_METRICS: BodyMetricKind[] = ["weight", "body_fat", "resting_hr"];
 const BODY_TARGET_LABEL: Record<BodyMetricKind, string> = {
   weight: "Target bodyweight",
   body_fat: "Target body fat (%)",
   resting_hr: "Target resting HR (bpm)",
+};
+
+// Which side of the number the goal wants to be on (#1853). Declared, never inferred:
+// "LDL under 100" and "Vitamin D over 100" are different goals with the same number.
+const DIRECTION_LABEL: Record<GoalDirection, string> = {
+  below: "Under",
+  above: "Over",
+};
+
+const GOAL_KINDS = ["exercise", "body", "biomarker", "freeform"] as const;
+type GoalKind = (typeof GOAL_KINDS)[number];
+
+const KIND_LABEL: Record<GoalKind, string> = {
+  exercise: "Exercise goal",
+  body: "Body metric",
+  biomarker: "Lab or vital",
+  freeform: "Freeform",
 };
 
 // Create or edit a goal. Pass `editGoal` to pre-fill and submit to updateGoal;
@@ -39,6 +69,7 @@ export default function GoalForm({
   equipment = [],
   equipmentByExercise = {},
   weightUnit,
+  biomarkerOptions = [],
   editGoal,
   onDone,
 }: {
@@ -49,16 +80,22 @@ export default function GoalForm({
   equipment?: { id: number; name: string }[];
   equipmentByExercise?: Record<string, number[]>;
   weightUnit: WeightUnit;
+  // The ranked analyte rows for the lab/vital target picker (#1853), already grouped
+  // and label-disambiguated by the shared series-picker options. Defaults to empty so
+  // a caller that predates the target keeps rendering the other three kinds.
+  biomarkerOptions?: GoalBiomarkerOption[];
   editGoal?: Goal;
   onDone?: () => void;
 }) {
   const isExerciseGoal = !!(editGoal?.exercise && editGoal?.metric);
-  const initialKind: "exercise" | "freeform" | "body" = editGoal
+  const initialKind: GoalKind = editGoal
     ? isExerciseGoal
       ? "exercise"
       : editGoal.body_metric
         ? "body"
-        : "freeform"
+        : isBiomarkerGoal(editGoal)
+          ? "biomarker"
+          : "freeform"
     : "exercise";
   const [kind, setKind] = useState(initialKind);
   const [exercise, setExercise] = useState(editGoal?.exercise ?? "");
@@ -94,6 +131,51 @@ export default function GoalForm({
   const [bodyTarget, setBodyTarget] = useState(() =>
     bodyTargetFor(editGoal?.body_metric ?? "weight")
   );
+
+  // ── Lab / vital target (#1853) ────────────────────────────────────────────
+  // A Combobox picks by LABEL, and seriesPickerOptions guarantees labels are unique,
+  // so the label→name map is total and a pick can never be ambiguous.
+  const optionByLabel = new Map(biomarkerOptions.map((o) => [o.label, o]));
+  const optionByName = new Map(biomarkerOptions.map((o) => [o.name, o]));
+  const [bioLabel, setBioLabel] = useState(() =>
+    editGoal?.biomarker_name
+      ? (optionByName.get(editGoal.biomarker_name)?.label ??
+        editGoal.biomarker_name)
+      : ""
+  );
+  const bioOption = optionByLabel.get(bioLabel) ?? null;
+  const [direction, setDirection] = useState<GoalDirection>(
+    editGoal?.target_direction ?? "below"
+  );
+  // The stored target belongs to the analyte the goal was SAVED on; switching to a
+  // different analyte clears it, so an mg/dL number can never be posted as a
+  // mmol/L target (the biomarker analogue of the #631 body-metric fix).
+  const [bioTarget, setBioTarget] = useState(() =>
+    editGoal?.target_value != null && isBiomarkerGoal(editGoal ?? ({} as Goal))
+      ? String(editGoal.target_value)
+      : ""
+  );
+  // The unit the goal was saved with wins while the analyte is unchanged, so an edit
+  // shows the number in the unit it was actually captured in.
+  const bioUnit =
+    editGoal?.biomarker_name && editGoal.biomarker_name === bioOption?.name
+      ? (editGoal.unit ?? bioOption?.unit ?? null)
+      : (bioOption?.unit ?? null);
+
+  // The thresholds the app already holds for this analyte, stated beside the number
+  // the user is about to type — the reference band the biomarker chart draws, for
+  // this profile's sex and age. Nothing is prefilled from it: a reference range is
+  // context, and picking someone's target for them is a different (clinical) act.
+  const referenceHint = (() => {
+    if (!bioOption) return null;
+    const { low, high, unit } = bioOption;
+    const suffix = unit ? ` ${unit}` : "";
+    if (low != null && high != null)
+      return `Reference range ${low}–${high}${suffix}`;
+    if (high != null) return `Reference under ${high}${suffix}`;
+    if (low != null) return `Reference over ${low}${suffix}`;
+    return null;
+  })();
 
   const timed = isTimed(exercise);
   // Timed lifts can only have a hold target; force it.
@@ -187,10 +269,11 @@ export default function GoalForm({
 
       {/* Kind toggle */}
       <div className="flex flex-wrap gap-1.5">
-        {(["exercise", "body", "freeform"] as const).map((k) => (
+        {GOAL_KINDS.map((k) => (
           <button
             key={k}
             type="button"
+            data-testid={`goal-kind-${k}`}
             onClick={() => setKind(k)}
             className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
               kind === k
@@ -198,11 +281,7 @@ export default function GoalForm({
                 : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
             }`}
           >
-            {k === "exercise"
-              ? "Exercise goal"
-              : k === "body"
-                ? "Body metric"
-                : "Freeform"}
+            {KIND_LABEL[k]}
           </button>
         ))}
       </div>
@@ -525,6 +604,122 @@ export default function GoalForm({
           </div>
           <div className="sm:col-span-2">
             <SubmitButton pendingLabel="Saving…">{submitLabel}</SubmitButton>
+          </div>
+        </div>
+      ) : kind === "biomarker" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="label" htmlFor="goal-biomarker">
+              Lab or vital
+            </label>
+            {/* The SAME ranked, group-headed option list every other biomarker
+                picker has shown since #1675: due-or-flagged first, then your
+                markers, then the whole vocabulary — not a new alphabetical list.
+                The name the form posts is resolved from the picked LABEL, which
+                seriesPickerOptions guarantees is unique. */}
+            <input
+              type="hidden"
+              name="biomarker_name"
+              value={bioOption?.name ?? ""}
+            />
+            <Combobox
+              id="goal-biomarker"
+              value={bioLabel}
+              onChange={(v) => {
+                setBioLabel(v);
+                // Switching analyte clears the number: 100 mg/dL is not 100 mmol/L,
+                // and a stale value would post against the new analyte's unit.
+                if (v !== bioLabel) setBioTarget("");
+              }}
+              options={biomarkerOptions.map((o) => o.label)}
+              groupFor={(label) => optionByLabel.get(label)?.group ?? null}
+              ariaLabel="Lab or vital"
+              placeholder="e.g. LDL Cholesterol, Hemoglobin A1c"
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="label">Target</label>
+            <input type="hidden" name="target_direction" value={direction} />
+            <div className="flex flex-wrap gap-1.5">
+              {GOAL_DIRECTIONS.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  data-testid={`goal-direction-${d}`}
+                  onClick={() => setDirection(d)}
+                  className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
+                    direction === d
+                      ? "border-brand-500 bg-brand-500 text-white"
+                      : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                  }`}
+                >
+                  {DIRECTION_LABEL[d]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="label" htmlFor="goal-biomarker-target">
+              Target value{bioUnit ? ` (${bioUnit})` : ""}
+            </label>
+            <input
+              id="goal-biomarker-target"
+              type="number"
+              step="any"
+              name="biomarker_target"
+              value={bioTarget}
+              onChange={(e) => setBioTarget(e.target.value)}
+              className="input"
+              required
+            />
+            {referenceHint && (
+              <p
+                className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="goal-biomarker-reference"
+              >
+                {referenceHint}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="label" htmlFor="goal-biomarker-date">
+              Target date (optional)
+            </label>
+            <DateField
+              id="goal-biomarker-date"
+              name="target_date"
+              defaultValue={editGoal?.target_date ?? ""}
+              showCountdown
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label" htmlFor="goal-biomarker-title">
+              Title (optional)
+            </label>
+            <input
+              id="goal-biomarker-title"
+              name="title"
+              defaultValue={editGoal?.title ?? ""}
+              className="input"
+              placeholder={
+                bioOption
+                  ? `${bioOption.name} ${direction === "below" ? "under" : "over"} target`
+                  : "Lab goal"
+              }
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <p className="-mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Progress tracks from your results for this marker, and advances
+              when a new one arrives — not day by day.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <SubmitButton pendingLabel="Saving…" disabled={!bioOption}>
+              {submitLabel}
+            </SubmitButton>
           </div>
         </div>
       ) : (

@@ -449,9 +449,18 @@ export async function createMedicationShareLinkAction(
 // remembered last-fill size is used when it's absent (the one-tap case). A successful
 // refill clears the low-supply episode marker so a later drop re-fires a fresh nudge
 // (issue #325 parity with restart).
+//
+// The success arm carries the core's own numbers back (#1893): a refill is ADDITIVE, so
+// the affordance needs to know what THIS tap added in order to say "Refilled just now
+// (+90)" for a short window — the #798 informational treatment for an accidental
+// double-tap. Plain serializable fields, never the better-sqlite3 row.
+export type RefillActionResult =
+  | { ok: true; fillSize: number; newQuantity: number }
+  | { ok: false; error: string };
+
 export async function refillMedication(
   formData: FormData
-): Promise<FormResult> {
+): Promise<RefillActionResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that medication.");
@@ -468,7 +477,11 @@ export async function refillMedication(
       revalidatePath("/medications");
       revalidatePath("/nutrition");
       revalidatePath("/");
-      return formOk();
+      return {
+        ok: true,
+        fillSize: outcome.fillSize,
+        newQuantity: outcome.newQuantity,
+      };
     case "needs-size":
       return formError("How many units did you refill? Enter the fill size.");
     case "untracked":

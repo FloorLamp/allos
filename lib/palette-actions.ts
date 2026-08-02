@@ -59,8 +59,19 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
   },
   {
     id: "start-workout",
+    // The RESTING label. While a session is live the palette renders the shared
+    // start-vs-resume offer instead (#1893, lib/workout-offer) — "resume"/"continue"
+    // are keywords here so the action is findable by the verb it will actually perform.
     label: "Start workout",
-    keywords: ["live", "session", "rest timer", "begin", "in session"],
+    keywords: [
+      "live",
+      "session",
+      "rest timer",
+      "begin",
+      "in session",
+      "resume",
+      "continue",
+    ],
     icon: "barbell",
     target: { kind: "live" },
   },

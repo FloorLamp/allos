@@ -5,11 +5,42 @@
 import { shiftDateStr } from "./date";
 import type { Goal } from "./types";
 
+// Why a MEASURED goal has no progress to show, or null when it has (#1853).
+//   "no-readings"   — nothing numeric has been measured for it yet.
+//   "unit-mismatch" — the series is now charted in a unit the stored target was not
+//                     captured in. mg/dL and mmol/L differ by ~39× for a lipid, so
+//                     comparing them anyway would render a confident lie.
+export type GoalUnavailable = "no-readings" | "unit-mismatch";
+
+// When a per-result goal is next expected to be measured (#1853). Declared here
+// rather than in lib/biomarker-goal so GoalProgress can carry it without importing
+// back — biomarker-goal already depends on this module, and one direction is enough.
+export interface GoalCheckIn {
+  // The analyte's check-in cadence, in days.
+  cadenceDays: number;
+  // When the next result is expected, or null when none has ever landed.
+  dueDate: string | null;
+  // Whether that expected result is now due (or overdue).
+  due: boolean;
+  // Whole days since the last result, or null when there is none.
+  daysSinceResult: number | null;
+}
+
 export interface GoalProgress {
   current: number;
   target: number;
   pct: number;
   done: boolean;
+  // ---- Per-result (biomarker) goal fields, #1853 --------------------------
+  // The date of the reading `current` came from — the goal's EVIDENCE date, which
+  // is what its pace verdict advances on (goalPaceTone's `evidenceDate`). Absent
+  // for exercise and body-metric goals, which advance on the clock.
+  asOf?: string | null;
+  // The unit both `current` and `target` are expressed in.
+  unit?: string | null;
+  unavailable?: GoalUnavailable | null;
+  // Attached by the gather (it needs the profile's `today`), not by the pure core.
+  checkIn?: GoalCheckIn | null;
   // Best value across ALL logged sets ever — the lifetime PR — regardless of the
   // recency window. `current` is the best within the trailing window (when a
   // `today` is supplied); this is exposed separately so the UI can still surface
@@ -190,15 +221,23 @@ export function computeGoalProgress(
   };
 }
 
-// Progress for a body-metric goal: how far the current value has moved from the
-// baseline (captured at creation) toward the target. Direction-agnostic, so a
-// reduction goal (lose weight, lower HR) reads 0→100% just like a gain goal.
-export function computeBodyGoalProgress(
-  goal: Goal,
-  current: number | null
+// How far a current value has moved from a baseline (captured at goal creation)
+// toward a target. Direction-agnostic, so a reduction goal (lose weight, lower LDL)
+// reads 0→100% just like a gain goal.
+//
+// THE one baseline→target progress computation (#221). Body-metric goals
+// (computeBodyGoalProgress) and biomarker goals (computeBiomarkerGoalProgress in
+// lib/biomarker-goal.ts) are both this function plus their own gather: they measure
+// different series in different units, but "how far from where I started to where I
+// want to be" is one question and must not get two answers.
+//
+// Every argument is in ONE unit — the caller converts at its boundary (canonical kg
+// for weight, the analyte's charted unit for a biomarker) and this never converts.
+export function baselineTargetProgress(
+  current: number | null,
+  target: number,
+  baseline: number | null
 ): GoalProgress {
-  const target = goal.target_value ?? 0;
-  const baseline = goal.baseline_value;
   if (current == null) return { current: 0, target, pct: 0, done: false };
   if (baseline == null || baseline === target) {
     // No usable baseline to measure directional progress from (missing, or a
@@ -213,4 +252,17 @@ export function computeBodyGoalProgress(
   const ratio = (current - baseline) / (target - baseline);
   const pct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
   return { current, target, pct, done: pct >= 100 };
+}
+
+// Progress for a body-metric goal: the shared baseline→target computation over the
+// goal's latest body-metric value (canonical units — kg for weight).
+export function computeBodyGoalProgress(
+  goal: Goal,
+  current: number | null
+): GoalProgress {
+  return baselineTargetProgress(
+    current,
+    goal.target_value ?? 0,
+    goal.baseline_value
+  );
 }

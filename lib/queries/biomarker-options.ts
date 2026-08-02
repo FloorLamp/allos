@@ -2,7 +2,11 @@
 // profile facts once, translates family/retest identities onto the candidate
 // names, and hands only bucketed sets to the pure biomarker-rank tenant.
 
-import { biomarkerFamily, biomarkerRetestIdentity } from "../canonical-name";
+import {
+  biomarkerFamily,
+  biomarkerRetestIdentity,
+  normalizeCanonicalKey,
+} from "../canonical-name";
 import { PHENOAGE_INPUT_NAMES } from "../bio-age";
 import {
   biomarkerRankKey,
@@ -96,4 +100,32 @@ export function getRankedBiomarkerOptions(
     starred,
     pillar,
   });
+}
+
+// The canonical spelling of an analyte a picker offered, or null when the name is
+// not in this profile's biomarker vocabulary at all.
+//
+// The candidate set is EXACTLY the one getRankedBiomarkerOptions ranks — the curated
+// canonical vocabulary plus the profile's derived analytes — so "what the picker
+// could offer" and "what a write will accept" are one list and cannot drift. A
+// biomarker GOAL (#1853) validates its target through this, so a hand-posted name
+// can't create a goal anchored on an analyte the app has no series, unit or retest
+// cadence for.
+//
+// Matching is on normalizeCanonicalKey, the ROW identity the pickers dedupe on —
+// NOT on biomarkerFamily. Resolving on family would silently re-anchor a goal on
+// "Vitamin D3, 25-Hydroxy" to the family's total, when #482 deliberately keeps the
+// fractions separately trendable: family is how readings REACH a goal (that happens
+// later, in getBiomarkerSeries), not what the goal IS.
+export function resolveBiomarkerOptionName(
+  profileId: number,
+  name: string
+): string | null {
+  const wanted = normalizeCanonicalKey(name.trim());
+  if (!wanted) return null;
+  const candidates = [
+    ...getCanonicalAutocomplete(profileId),
+    ...getDerivedCanonicalNames(profileId),
+  ];
+  return candidates.find((c) => normalizeCanonicalKey(c) === wanted) ?? null;
 }

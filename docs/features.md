@@ -534,7 +534,11 @@ lift's coached next set is pre-seeded so you just confirm it, and a client-side
 **rest timer** (a lift-appropriate default — longer for heavy compounds, shorter
 for accessories — with preset chips and a beep/vibrate at zero) starts
 automatically when you log the next set; **Finish workout** stamps your end time
-and drops back to the normal form for notes and intensity. It's a
+and drops back to the normal form for notes and intensity. While a session is
+running, every one of those entry points — including "Log this session" on
+Today's session — reads **Resume workout** and reopens the session you already
+have going, with its clock and its logged sets intact; you can never restart a
+workout you're in the middle of by tapping the wrong thing. It's a
 strength-focused surface, so it's hidden for age-restricted profiles. A
 non-strength session can also be tagged with the **gear** it used — a bike for a
 ride, shoes for a run — picked from your **Equipment** registry, with the picker
@@ -932,6 +936,29 @@ that's off pace for its target date surfaces a calm **Goal pacing** note
 (trending away, or landing well past the deadline at your current robust trend),
 alongside a gentle safe-rate caution when weight is dropping faster than
 ~1%/week — each dismissible.
+
+A goal can also target a **lab or vital**: "LDL under 100 by June", "A1c below
+7", "BP systolic under 120". Pick the marker, a direction (under / over), a
+number and an optional date. The picker is the same relevance-ranked biomarker
+list every other biomarker field uses — markers due for retest or flagged lead,
+then your own markers, then the full vocabulary — and it states the analyte's
+reference range beside the number so a target is set next to the thresholds the
+app already holds. The value is stored with the unit the marker's own chart is
+labelled in, so a mg/dL target is never compared against an mmol/L result.
+
+Progress reads the same series the marker's detail page charts, matched by
+biomarker family (an A1c goal is advanced by the eAG re-expression of the same
+draw), and the target renders on that page too — beside the series it describes.
+Weight, body fat and resting HR keep their own **Body metric** goal and are not
+offered here, so each measure has exactly one kind of goal.
+
+**A lab goal paces per result, not per day.** A body-weight goal is measured
+every morning, so its pace can fairly be judged every morning; a lab value
+changes when a tube is drawn. Between draws the verdict is held where the last
+result left it — a lab goal never slides to "behind" on a day nothing was
+measured — and the card says when the next result is due instead, on the
+marker's own retest cadence. An off-pace lab goal joins the same calm,
+dismissible **Goal pacing** note; it never escalates and never notifies.
 
 ## Nutrition
 

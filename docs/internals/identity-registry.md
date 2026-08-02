@@ -89,6 +89,15 @@ domain functions.
   `canonical-biomarkers` keys on the exact canonical `name` (which curated row —
   distinct from `biomarkerFamily`, which collapses ACROSS names; different
   layers). Full spec: `docs/internals/datasets.md`.
+- **Biomarker goals: family for FACTS, canonical row for the ANCHOR (#1853).**
+  A goal stores the analyte name the user PICKED (`goals.biomarker_name`), and the
+  picker dedupes its rows on `normalizeCanonicalKey` like every other biomarker
+  field — collapsing rows on family would make the vitamin-D D2/D3 fractions
+  unpickable (#482). The READINGS that advance the goal reach it through
+  `biomarkerFamily`, because `getBiomarkerSeries` is what gathers them, so an A1c
+  goal is advanced by the eAG re-expression of the same draw and shows on the
+  detail page that charts them. Family is how facts REACH a row; it is not what a
+  row IS.
 - **Findings dedupeKey registry (#448 → #860 Track A).** `RULE_FINDING_REGISTRY`
   in `lib/rule-finding-prefixes.ts` binds every finding-producing builder's
   dedupeKey PREFIX to its reach TIER (`FindingTier` care/coaching) and its

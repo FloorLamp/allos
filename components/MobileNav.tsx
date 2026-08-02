@@ -162,7 +162,7 @@ export default function MobileNav({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { openCreate, openLive } = useActivityEditor();
+  const { openCreate, openLive, workoutOffer } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
   const reduceMotion = usePrefersReducedMotion();
   const drawer = usePresence(open, motionMs("drawer", reduceMotion));
@@ -313,9 +313,14 @@ export default function MobileNav({
                 {showsActivityShortcuts(primary) && (
                   <button
                     type="button"
-                    aria-label="Start workout"
-                    title="Start workout"
+                    // The label IS the offer (#1893): with a session already live this
+                    // reads "Resume workout" and reopens the docked session, because
+                    // the old unconditional "Start workout" tap reset its clock. One
+                    // derivation (lib/workout-offer), four surfaces.
+                    aria-label={workoutOffer.label}
+                    title={workoutOffer.label}
                     data-testid="start-workout-mobile"
+                    data-workout-offer={workoutOffer.kind}
                     onClick={() => openLive()}
                     className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
                   >

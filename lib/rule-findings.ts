@@ -189,6 +189,15 @@ import {
   type WeightAnomaly,
 } from "./weight-anomaly";
 import {
+  biomarkerGoalCheckIn,
+  biomarkerTargetOf,
+  directionMet,
+  labGoalHasCheckedIn,
+} from "./biomarker-goal";
+import { retestDaysForBiomarker } from "./biomarker-retest";
+import { biomarkerPlot } from "./queries/biomarker-plot";
+import { sameUnit } from "./unit-conversions";
+import {
   assessGoalPace,
   detectFastWeightLoss,
   goalPaceSignalKey,
@@ -1182,6 +1191,74 @@ export function buildGoalPacingFindings(
           `adjusting the target date or your plan.${hedge}`
         : `At your current pace you'll reach it ${describeEta(-pace.daysLate!)} — ` +
           `consider moving the target date or adjusting the plan.${hedge}`;
+    findings.push({
+      domain: "goal-pace",
+      dedupeKey: goalPaceSignalKey(pace.goalId),
+      title: `“${pace.title}” is off pace`,
+      detail,
+      tone: "caution",
+      actionHref: "/training?tab=goals",
+      actionLabel: "Review goal",
+    });
+  }
+
+  // Off-pace BIOMARKER goals (#1853). Same builder, same `goal-pace:` namespace, same
+  // dismiss action and therefore the same COACHING tier — a lab goal drifting is an
+  // observation about a plan, not a safety signal, so it must not reach Upcoming, the
+  // Needs-attention hero or a notification, and adding it here rather than to a new
+  // prefix is what guarantees that (docs/internals/findings.md).
+  //
+  // The verdict itself is `assessGoalPace` over `projectGoal` — the SAME projection
+  // the body goals above and the Trends chart captions run — fed the analyte's own
+  // charted series, so the finding and the chart cannot disagree.
+  //
+  // The GATE is what differs: a lab goal is only assessed once a result has landed
+  // since it was created (`labGoalHasCheckedIn`). A goal that has not been drawn since
+  // the user set it has nothing to be off pace about, and firing on the clock would
+  // hand someone a "you're behind" they could do nothing about on a day when nothing
+  // was measured. That is also why there is no daily re-fire: the finding changes when
+  // a tube is drawn.
+  for (const g of getGoals(profileId)) {
+    if (!isGoalLive(g) || g.target_date == null) continue;
+    const target = biomarkerTargetOf(g);
+    if (!target) continue;
+    const plot = biomarkerPlot(profileId, target.name);
+    if (!plot || !sameUnit(target.unit, plot.unit)) continue;
+    const latest = plot.points.at(-1) ?? null;
+    if (!labGoalHasCheckedIn(g.created_at, latest?.date ?? null)) continue;
+    // Already on the wanted side of the number — nothing to pace.
+    if (latest && directionMet(target.direction, latest.value, target.value))
+      continue;
+    const pace = assessGoalPace(
+      {
+        id: g.id,
+        title: g.title,
+        targetValue: target.value,
+        targetDate: g.target_date,
+        baselineValue: target.baselineValue,
+      },
+      plot.points
+    );
+    if (!pace) continue;
+    const hedge = pace.confidence === "low" ? " (rough estimate)" : "";
+    const cadence = biomarkerGoalCheckIn(
+      latest?.date ?? null,
+      retestDaysForBiomarker(target.name),
+      today
+    );
+    const nextDraw = cadence.dueDate
+      ? cadence.due
+        ? " Your next result for it is due."
+        : ` Your next result for it is due around ${cadence.dueDate}.`
+      : "";
+    const detail =
+      pace.status === "away"
+        ? `Your recent results for ${target.name} are moving away from this ` +
+          `target — consider adjusting the date or the plan with your ` +
+          `clinician.${hedge}${nextDraw}`
+        : `At the trend across your recent results you'd reach it ` +
+          `${describeEta(-pace.daysLate!)} — consider moving the target date or ` +
+          `revisiting the plan.${hedge}${nextDraw}`;
     findings.push({
       domain: "goal-pace",
       dedupeKey: goalPaceSignalKey(pace.goalId),

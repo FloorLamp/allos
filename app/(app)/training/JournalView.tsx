@@ -162,6 +162,7 @@ export default function JournalView({
     close,
     registerDock,
     canStartWorkout,
+    workoutOffer,
   } = useActivityEditor();
   const dockRef = useRef<HTMLDivElement | null>(null);
 
@@ -708,10 +709,13 @@ export default function JournalView({
           type="button"
           onClick={openLive}
           data-testid="start-workout"
+          data-workout-offer={workoutOffer.kind}
           className="btn-ghost"
         >
           <IconBolt className="h-4 w-4" stroke={2} />
-          Start workout
+          {/* The label IS the offer (#1893) — "Resume workout" while a session is
+              live, because openLive reopens it rather than resetting its clock. */}
+          {workoutOffer.label}
         </button>
       )}
       <button type="button" onClick={() => openCreate()} className="btn">
