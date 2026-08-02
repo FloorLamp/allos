@@ -119,6 +119,11 @@ test("preview → apply → undo corrects an lb-as-kg run, locks it, and skips l
     await page.goto("/data?section=review");
     const card = page.getByTestId("bulk-correction-card");
     await expect(card).toBeVisible();
+    // Since #1880 item 6 the panel trails Review COLLAPSED to one summary line (a
+    // native <details>, so this toggle needs no hydration); a ?fix= deep-link is
+    // what opens it pre-expanded. Open it by hand here.
+    await card.getByTestId("bulk-correction-toggle").click();
+    await expect(page.getByTestId("bulk-correction-field")).toBeVisible();
 
     // Pick the Withings run; the range prefills to the run's full span (the
     // DateField renders it in the pref-aware display format, so assert
