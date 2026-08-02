@@ -32,10 +32,13 @@ Per person, under **Settings → Notifications → Home Assistant**:
    `X-Allos-Webhook-Secret` header; your HA automation can reject any call that
    doesn't carry it (HA webhook ids are already capability URLs, so this is
    belt-and-suspenders).
-4. Choose **which reminder kinds** to forward (doses, escalation, refill,
-   preventive, workout, digest, upcoming, weekly-recap, milestones). A household
-   may want doses announced but not weekly recaps.
-5. **Send test** to verify the wiring.
+4. **Send test** to verify the wiring.
+
+**Which reminder kinds** Home Assistant announces (a household may want doses
+announced but not weekly recaps) is the **HA** column of the _Message kinds_
+table further down the same page — one row per kind, alongside the Telegram and
+Web Push columns. The box in the column header turns the whole column on or off
+at once; safety reminders keep their own boxes and are never swept by it.
 
 > **PHI posture.** The webhook body contains medication names (in
 > `title`/`body`) and typically travels LAN-to-LAN. Use an **`https`** HA URL

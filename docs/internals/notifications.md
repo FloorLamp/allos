@@ -84,9 +84,45 @@ login-keyed (`push_subscriptions.login_id`).
   theirs); the schedule + food/mood/sleep stay on the **profile** tier
   (`saveNotificationPrefs`, `requireWriteAccess`); the per-profile mute is a
   login-tier action (`saveProfileNotifyMute`, validated against
-  `canAccessProfile`). The Notifications page renders "This login" (Telegram +
-  Push), "This profile" (Reminders & schedule + mute + Home Assistant), and
-  admin-only "Server".
+  `canAccessProfile`). Since #1462 §6 the page is three sections — Channels,
+  Schedule & message kinds, and the two per-login reductions (digest tune, mute)
+  — and since #1868 it is registered `tier: "mixed"` so its header states the
+  mixed scope instead of claiming one tier; the per-section scope strings remain
+  the fine-grained layer. The instance-wide Telegram BOT card lives on
+  Settings → Server.
+
+**The Settings page is ONE editor per setting (#1868).** Settings → Notifications
+was the densest page in the app, and about a third of its controls were
+duplicates of controls already on it:
+
+- **The Home Assistant card no longer routes kinds.** Its "announce which
+  reminders" grid wrote the SAME `ha_notify_disabled_kinds` key as the matrix's
+  HA column — 26 checkboxes for 13 booleans — while the page's own header comment
+  claimed the matrix had already replaced per-kind duplication (true for Telegram
+  and Push, never done for HA). The card now configures the CHANNEL only (enable,
+  webhook URL, shared secret, send-test) and points at the column.
+  `saveHomeAssistantPrefs` therefore **preserves** the stored disabled set rather
+  than deriving it from `ha_kind_*` fields — load-bearing, since a form without
+  those fields would otherwise read as "every kind unchecked" and silence the
+  whole channel on a URL edit. The `TOGGLEABLE_HA_KINDS` alias is gone with it.
+- **Column select-all on the matrix** (`lib/notifications/matrix-bulk.ts`, pure):
+  a tri-state control in each column header — `sweepableKinds` /
+  `columnBulkState` / `nextColumnBulkTarget` / `applyColumnBulk` — writing the
+  full disabled set through the SAME tier-correct action a single cell uses. No
+  new setting, no new storage, no delivery-semantics change. **Safety kinds are
+  never swept** (#928): `dose`, `escalation` and `redose` keep their individual
+  checkboxes and the existing warn-never-block all-off notice, so a safety signal
+  can never be silenced by one undifferentiated tap — and `columnBulkLabel` says
+  so in the control's own accessible name ("turn off everything except safety
+  reminders"). A NON_CONFIGURABLE kind (`followup`, #1873) has no registry row, so
+  it is invisible to the matrix and unreachable by a sweep. Row-level select-all
+  is deliberately absent: a row spans three cells and overlaps the per-kind
+  enable.
+- **The digest mirror is collapsed.** Its ten checkboxes were an acknowledged
+  mirror of the message's ⚙️ Tune control, so they now sit behind a disclosure
+  over `digestTuneSummary` — one line naming exactly what is turned down. The card
+  survives rather than being deleted because it is the only way to reverse a
+  demotion off-Telegram, which is the whole point of the #1714 mirror.
 
 **Notifications** (`lib/notifications/`) are delivered over three channels —
 Telegram, Web Push, and an outbound Home Assistant webhook — driven by an hourly
@@ -957,7 +993,11 @@ per category, then **▲ Done**.
 - **Mirrored in Settings → Notifications** ("Morning digest") as the same toggles,
   read-write, so preferences are discoverable, reversible off-Telegram, and visible
   to someone auditing why their digest looks thin. One storage, two surfaces — a
-  mirror of an existing message control, not a settings-only feature.
+  mirror of an existing message control, not a settings-only feature. Since #1868
+  the mirror renders COLLAPSED: an honest one-line state (`digestTuneSummary`,
+  pure) plus a disclosure holding the full list. Being a mirror is the reason —
+  the canonical control rides the message, and this surface exists for discovery
+  and reversal, not for ten always-rendered checkboxes on the app's densest page.
 
 **Light and movement lines (#1723).** Two more Today/Yesterday lines, both
 riding this message — **no send is created by either**:

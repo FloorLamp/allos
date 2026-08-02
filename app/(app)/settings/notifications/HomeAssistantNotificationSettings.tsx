@@ -158,9 +158,9 @@ export default function HomeAssistantNotificationSettings({
             className="text-xs text-slate-500 dark:text-slate-400"
             data-testid="ha-kinds-pointer"
           >
-            Which reminders Home Assistant announces is the{" "}
-            <strong>HA</strong> column of the Message kinds table below — it is
-            the one place that setting lives.
+            Which reminders Home Assistant announces is the <strong>HA</strong>{" "}
+            column of the Message kinds table below — it is the one place that
+            setting lives.
           </p>
         </>
       )}

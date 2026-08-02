@@ -388,9 +388,9 @@ export default function NotificationPrefs({
           <SaveStatus pending={pending} savedAt={savedAt} error={error} />
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Turn a kind off, or keep it and choose which channels carry it. The box
-          under a channel name edits that whole column at once — it turns off
-          everything except safety reminders, which keep their own boxes.
+          Turn a kind off, or keep it and choose which channels carry it. The
+          box under a channel name edits that whole column at once — it turns
+          off everything except safety reminders, which keep their own boxes.
         </p>
 
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
