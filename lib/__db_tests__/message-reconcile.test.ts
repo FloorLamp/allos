@@ -53,6 +53,7 @@ import {
   editMessageReplyMarkupRaw,
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
+import { TelegramApiError } from "@/lib/notifications/telegram-error";
 import { buildFoodNudge } from "@/lib/notifications/food";
 import { countVisibleFoodButtons } from "@/lib/notifications/food-format";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
@@ -273,6 +274,149 @@ describe("day rollover", () => {
 
     const out = await reconcileProfileMessages(pid);
     expect(out.closed).toBe(1);
+    expect(liveMessagePointers(pid)).toEqual([]);
+  });
+});
+
+// ── A failed edit is CLASSIFIED, not assumed dead (#1885) ───────────────────
+//
+// The sweep claims a pointer BEFORE it calls Telegram, so dropping it on any thrown
+// error at all was unrecoverable by construction: a 429, a 5xx or a network blip
+// permanently forgot the only record of what a live chat is showing, and the stale
+// keyboard stood forever. Only the permanently-dead answers may forget the pointer;
+// a transient one has to leave the next tick something to retry from.
+describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
+  // A 5xx as the typed transport throws it.
+  function transientFailure(method = "editMessageText"): TelegramApiError {
+    return new TelegramApiError({
+      method,
+      status: 502,
+      description: null,
+      message: `Telegram ${method} failed: HTTP 502`,
+    });
+  }
+
+  it("a failed CLOSE is retried by the next pass, not forgotten", async () => {
+    const pid = newProfile("Blip Bella");
+    const { itemId, doseId } = seedDose(pid, "Bella D3");
+    seedLoginTelegram(pid, "5551885");
+    await sendMorningReminder(pid);
+    markDoseTaken(pid, doseId, itemId, today(pid));
+    const before = liveMessagePointers(pid)[0];
+
+    editText.mockRejectedValueOnce(transientFailure());
+    const first = await reconcileProfileMessages(pid);
+
+    expect(first.deferred).toBe(1);
+    expect(first.dropped).toBe(0);
+    expect(first.closed).toBe(0);
+    // The close CLAIM deleted the row before the call; the release put it back exactly
+    // as it was — same row, same witness — which is what makes a retry possible at all.
+    const kept = liveMessagePointers(pid);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].id).toBe(before.id);
+    expect(kept[0].messageId).toBe(before.messageId);
+    expect(kept[0].version).toBe(before.version);
+    expect(kept[0].sentAt).toBe(before.sentAt);
+
+    // The next tick, with Telegram answering again.
+    const second = await reconcileProfileMessages(pid);
+    expect(second.closed).toBe(1);
+    expect(second.deferred).toBe(0);
+    expect(liveMessagePointers(pid)).toEqual([]);
+    // Two attempts at the same close — the failed one and the successful retry.
+    expect(editText).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed STRIP leaves the pointer describing what the chat still shows", async () => {
+    const pid = newProfile("Blip Bruno");
+    const a = seedDose(pid, "Bruno A");
+    seedDose(pid, "Bruno B");
+    seedLoginTelegram(pid, "5551886");
+    await sendMorningReminder(pid);
+    markDoseTaken(pid, a.doseId, a.itemId, today(pid));
+
+    editText.mockRejectedValueOnce(transientFailure());
+    const first = await reconcileProfileMessages(pid);
+    expect(first.deferred).toBe(1);
+    expect(first.edited).toBe(0);
+
+    // The edit never landed, so the chat is still showing A's button — and the pointer
+    // says so. A pointer left holding the POST-edit keyboard would be lying about the
+    // chat and would never plan the strip again.
+    expect(
+      liveTokens(pid).some((t) => t.startsWith(`take:${pid}:${a.doseId}:`))
+    ).toBe(true);
+
+    const second = await reconcileProfileMessages(pid);
+    expect(second.edited).toBe(1);
+    expect(
+      liveTokens(pid).some((t) => t.startsWith(`take:${pid}:${a.doseId}:`))
+    ).toBe(false);
+  });
+
+  it("a rate limit is transient, not a dead message", async () => {
+    const pid = newProfile("Limit Lina");
+    const { itemId, doseId } = seedDose(pid, "Lina D3");
+    seedLoginTelegram(pid, "5551887");
+    await sendMorningReminder(pid);
+    markDoseTaken(pid, doseId, itemId, today(pid));
+
+    editText.mockRejectedValueOnce(
+      new TelegramApiError({
+        method: "editMessageText",
+        status: 429,
+        description: "Too Many Requests: retry after 30",
+        message:
+          "Telegram editMessageText failed: Too Many Requests: retry after 30",
+      })
+    );
+    const out = await reconcileProfileMessages(pid);
+    expect(out.deferred).toBe(1);
+    expect(out.dropped).toBe(0);
+    expect(liveMessagePointers(pid)).toHaveLength(1);
+  });
+
+  it("a chat the bot was blocked from IS dead — the permanent path still drops", async () => {
+    const pid = newProfile("Blocked Bo");
+    const { itemId, doseId } = seedDose(pid, "Bo D3");
+    seedLoginTelegram(pid, "5551888");
+    await sendMorningReminder(pid);
+    markDoseTaken(pid, doseId, itemId, today(pid));
+
+    editText.mockRejectedValueOnce(
+      new TelegramApiError({
+        method: "editMessageText",
+        status: 403,
+        description: "Forbidden: bot was blocked by the user",
+        message:
+          "Telegram editMessageText failed: Forbidden: bot was blocked by the user",
+      })
+    );
+    const out = await reconcileProfileMessages(pid);
+    expect(out.dropped).toBe(1);
+    expect(out.deferred).toBe(0);
+    expect(liveMessagePointers(pid)).toEqual([]);
+  });
+
+  it("retries stay bounded by retention — a permanently failing pointer ages out", async () => {
+    // The bound that lets "transient" mean retry without meaning retry FOREVER: the
+    // restored row keeps its original sent_at, so the pruner still reaches it.
+    const pid = newProfile("Bounded Bea");
+    const { itemId, doseId } = seedDose(pid, "Bea D3");
+    seedLoginTelegram(pid, "5551889");
+    await sendMorningReminder(pid);
+    markDoseTaken(pid, doseId, itemId, today(pid));
+
+    editText.mockRejectedValueOnce(transientFailure());
+    expect((await reconcileProfileMessages(pid)).deferred).toBe(1);
+
+    db.prepare(
+      `UPDATE notify_messages SET sent_at = datetime('now', ?) WHERE profile_id = ?`
+    ).run(`-${MESSAGE_POINTER_RETENTION_DAYS + 1} days`, pid);
+    const out = await reconcileProfileMessages(pid);
+    expect(out.pruned).toBe(1);
+    expect(out.examined).toBe(0);
     expect(liveMessagePointers(pid)).toEqual([]);
   });
 });

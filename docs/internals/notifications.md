@@ -829,6 +829,37 @@ one pure decision (`lib/notifications/reconcile-core.ts`):
 - a dead pointer (message deleted, chat gone, past the edit horizon) → the
   best-effort edit fails, the pointer is dropped, nothing is retried forever.
 
+**A failed edit is CLASSIFIED, never assumed dead (#1885).** The transport used to
+throw a bare `Error` for every Bot API failure alike, so the sweep's catch dropped
+the pointer on a 429, a 5xx, a DNS blip, an `AbortSignal` timeout or a missing bot
+token exactly as it did on "message to edit not found" — and because the claim
+mutates or deletes the row _before_ the network call, a wrongly-dropped pointer has
+no retry path left at all: a live chat keeps a stale keyboard no later tick can fix.
+`lib/notifications/telegram-api.ts` now throws a typed `TelegramApiError` carrying
+the HTTP status and Telegram's own `description` (network failures included, with a
+null status), and one pure decision —
+`classifyTelegramFailure` in `lib/notifications/telegram-error.ts` — splits them:
+
+- **permanent** (`message to edit not found`, `message can't be edited`,
+  `chat not found`, `bot was kicked` / `bot was blocked`, `CHAT_WRITE_FORBIDDEN`,
+  any 403, …) → drop the pointer, exactly as before;
+- **transient** (429, 5xx, network reach failure, timeout, unconfigured token, and
+  anything unrecognised) → **release the claim** and leave the pointer as the sweep
+  found it, so the next tick recomputes the same plan and retries. A keyboard claim
+  is swapped back under the same compare-and-swap
+  (`releaseMessagePointerKeyboard`); a close claim, which deleted the row, is
+  re-inserted verbatim — original id and `sent_at` included
+  (`restoreMessagePointer`). The result carries these as `deferred`.
+
+The **unknown default is transient** on purpose, because the two mistakes are not
+symmetric: a wrong "permanent" is unrecoverable, while a wrong "transient" costs at
+most one fast-failing call per tick until the pointer ages out. Keeping the original
+`sent_at` on a restore is what bounds it — retention (`MESSAGE_POINTER_RETENTION_DAYS`)
+still prunes the row, so "retry" can never become "retry forever" and no attempt
+counter is needed. Delivery HEALTH is untouched by any of this: reconcile never
+dispatches, so the set/clear/freeze decision in `delivery-status.ts` stays the only
+thing that moves the `notify_last_error` marker.
+
 **Overlapping ticks (#1788).** The sweep does not assume an operator runs exactly
 one scheduler — a compose poll sidecar plus a host crontab, two replicas on one
 volume, or a manual `notify` run during the hourly one all put two passes on one

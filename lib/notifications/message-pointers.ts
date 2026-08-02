@@ -236,6 +236,69 @@ export function claimMessagePointerClose(
   });
 }
 
+// ---- Releasing a claim the edit did not earn (issue #1885) -----------------
+//
+// The claim is made BEFORE the network call, so an edit that fails has already mutated
+// (or deleted) the row. That is correct for a PERMANENTLY dead message — there is
+// nothing left to reconcile — but wrong for a transient failure: the chat still shows
+// the pre-edit keyboard, and the pointer is the only record of it. Releasing the claim
+// puts the row back exactly as the sweep found it, so the next tick recomputes the same
+// plan, re-claims, and retries. Without this, "we didn't drop it" would still leave no
+// state a retry could run from.
+
+// Undo a keyboard claim: swap the stored blob back from `claimed` to `version`. A
+// compare-and-swap in the same direction as the claim, so a pass that lost the row to
+// another writer in the meantime restores nothing rather than clobbering it. `claimed`
+// is serialized by the SAME call the claim used, so the witness matches by construction.
+export function releaseMessagePointerKeyboard(
+  profileId: number,
+  id: number,
+  claimed: InlineKeyboard,
+  version: string
+): boolean {
+  return writeTx(() => {
+    const res = db
+      .prepare(
+        `UPDATE notify_messages SET keyboard = ?
+          WHERE profile_id = ? AND id = ? AND keyboard = ?`
+      )
+      .run(version, profileId, id, JSON.stringify(claimed));
+    return res.changes === 1;
+  });
+}
+
+// Undo a CLOSE claim, which deleted the row: re-insert it verbatim, original id and
+// `sent_at` included. Keeping `sent_at` is what keeps retries bounded — the restored
+// pointer ages exactly as it would have, so `pruneMessagePointers` still removes it at
+// the retention horizon instead of a failing message being renewed forever. A conflict
+// (a fresh send already recorded a pointer for this chat/message) leaves the newer row
+// alone: it describes what the chat is showing now, which this one no longer does.
+export function restoreMessagePointer(p: MessagePointer): boolean {
+  return writeTx(() => {
+    const res = db
+      .prepare(
+        `INSERT INTO notify_messages
+           (id, profile_id, chat_id, message_id, kind, date, keyboard, title, sent_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT DO NOTHING`
+      )
+      .run(
+        p.id,
+        p.profileId,
+        p.chatId,
+        p.messageId,
+        p.kind,
+        p.date,
+        // The blob VERBATIM, so the restored row is byte-identical to the witness the
+        // next pass will read and claim against.
+        p.version,
+        p.title,
+        p.sentAt
+      );
+    return res.changes === 1;
+  });
+}
+
 // Forget a pointer: the message is closed, its keyboard is gone, or the edit failed
 // because the message no longer exists (deleted, chat gone). All three mean there is
 // nothing left to reconcile, so the row is dropped rather than retried forever.

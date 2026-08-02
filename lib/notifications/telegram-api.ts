@@ -16,6 +16,7 @@
 import { getTelegramBotConfig } from "../settings";
 import type { NotificationMessage } from "./types";
 import { splitTelegramHtml, capTelegramKeyboard } from "./telegram-limits";
+import { TelegramApiError } from "./telegram-error";
 import {
   esc,
   messageKeyboard,
@@ -71,6 +72,12 @@ const apiBase = (token: string) => `https://api.telegram.org/bot${token}`;
 // POST to a Bot API method; throw on transport or API error (Telegram returns
 // 200 with { ok:false, description } for logical errors too). timeoutMs guards
 // the fetch itself — long-poll calls need it above the server-side poll window.
+//
+// EVERY failure leaves here as a TelegramApiError (#1885) carrying the HTTP status and
+// Telegram's own `description`, so a caller can tell "this message is gone forever"
+// from "this attempt didn't land" without parsing a sentence. One chokepoint, so every
+// caller inherits the distinction. The thrown `message` keeps its original wording —
+// `ignoreNotModified` below and the tick's logs read it.
 async function call(
   method: string,
   body: unknown,
@@ -79,21 +86,43 @@ async function call(
   const { telegramBotToken } = getTelegramBotConfig();
   if (!telegramBotToken)
     throw new Error("Telegram bot token is not configured");
-  const res = await fetch(`${apiBase(telegramBotToken)}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase(telegramBotToken)}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (cause) {
+    // The request never reached an answer: DNS, refused connection, or the timeout
+    // signal firing. No status was ever received, which is the transient signature —
+    // typed here rather than left as a raw TypeError/DOMException so the classifier
+    // sees the same shape it sees for an API-level failure.
+    throw new TelegramApiError({
+      method,
+      status: null,
+      description: null,
+      message: `Telegram ${method} failed: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+      cause,
+    });
+  }
   const json = (await res.json().catch(() => null)) as {
     ok?: boolean;
     description?: string;
     result?: unknown;
   } | null;
   if (!res.ok || !json?.ok) {
-    throw new Error(
-      `Telegram ${method} failed: ${json?.description ?? `HTTP ${res.status}`}`
-    );
+    throw new TelegramApiError({
+      method,
+      status: res.status,
+      description: json?.description ?? null,
+      message: `Telegram ${method} failed: ${
+        json?.description ?? `HTTP ${res.status}`
+      }`,
+    });
   }
   return json;
 }
