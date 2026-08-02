@@ -15,7 +15,11 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { setProfileSetting, getProfileSetting } from "@/lib/settings";
+import {
+  setProfileSetting,
+  getProfileSetting,
+  setWeekMode,
+} from "@/lib/settings";
 import { utcSqlString } from "@/lib/date";
 import { buildWorkoutTargetReminder } from "@/lib/notifications/workouts";
 import { seedProfile } from "./fixtures";
@@ -81,6 +85,13 @@ function insertFinishedWalk(profileId: number, now: Date, ageMin = 20): number {
 function setup(tag: string): number {
   const { profileId } = seedProfile(tag);
   setProfileSetting(profileId, "timezone", "UTC");
+  // Rolling mode pins the week window to a mature, deterministic 7 days on every
+  // calendar day (daysLeftInWindow = 0: today is always the last day). In calendar
+  // mode, early in a fresh week the behind cardio target is still reachable without
+  // today, so the #1672 same-day deferral rightly HOLDS the reminder (seedProfile
+  // logs a training session today) — a product behavior this suite is NOT about.
+  // Rolling keeps the target pace-tight, so the baseline reminder always builds.
+  setWeekMode(profileId, "rolling");
   db.prepare(
     `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
      VALUES (?, 'type', 'cardio', 5)`

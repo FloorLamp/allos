@@ -17,6 +17,7 @@ import {
   setHomeLocation,
   setStepsDailyTarget,
   setTimezone,
+  setWeekMode,
 } from "@/lib/settings";
 import { collectRecentChanges } from "@/lib/queries/recent-changes";
 import { getLightExposureLine } from "@/lib/queries/light-exposure";
@@ -509,6 +510,12 @@ describe("light-exposure line (#1723 part 1)", () => {
 
   it("composes the practice's pace when it is behind", () => {
     const pid = trackedProfile("Behind Bea");
+    // Rolling mode makes the week window a mature, deterministic 7 days regardless of
+    // the calendar day the test runs. In calendar mode, on the first day(s) of a fresh
+    // week frequencyPace owes floor(5×elapsed/7)=0 sessions, so 0/5 reads "on-pace"
+    // (#748's early-week grace) and the pace clause is rightly dropped — the very
+    // behavior this test is NOT about. Rolling keeps 0/5 unambiguously "behind".
+    setWeekMode(pid, "rolling");
     const td = today(pid);
     seedDay(td, 0, 4);
     const line = getLightExposureLine(pid, td);
