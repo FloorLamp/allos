@@ -6,10 +6,12 @@
 // a `profile_id` read straight out of the same client FormData that named the row id, so
 // the value that was checked and the row that was deleted were never tied together.
 //
-// The three gates on this surface are deliberately different, and each is exercised here:
+// The gates on this surface are deliberately different, and each is exercised here:
 //   • routing writes take requireProfileWriteAccess(TARGET);
-//   • the pending list's non-routing actions (ignore, dismiss) take the any-profile-write
-//     gate, because they name no profile at all;
+//   • dismiss ("Not now") takes the any-profile-write gate — it names no profile, and it
+//     is self-expiring;
+//   • durable IGNORE takes requireAdmin (#1875): it silently breaks another login's
+//     future imports, which no per-profile grant can stand in for;
 //   • the registries take requireAdmin (covered by the static scan, not here).
 
 import { describe, expect, it } from "vitest";
@@ -219,7 +221,8 @@ describe("pending-identity actions (#1739)", () => {
 
   it("IGNORE writes a durable binding that points nowhere and stops the prompt", async () => {
     const { slug, accountId } = makePortal();
-    const login = createLogin({ role: "member" });
+    // Admin, because durable Ignore is admin-only since #1875.
+    const login = createLogin({ role: "admin" });
     const profile = createProfile("Ignore Owner", login.id);
     actAs(login, profile);
 
@@ -242,9 +245,9 @@ describe("pending-identity actions (#1739)", () => {
     );
   });
 
-  it("REFUSES ignore and dismiss for a login that can write nothing", async () => {
+  it("REFUSES dismiss for a login that can write nothing", async () => {
     const { slug, accountId } = makePortal();
-    // A caregiver with read-only access everywhere cannot silence a portal identity.
+    // A caregiver with read-only access everywhere cannot clear a portal prompt.
     const login = createLogin({ role: "member" });
     const readOnly = createProfile("No Write Anywhere", login.id);
     db.prepare(
@@ -256,17 +259,38 @@ describe("pending-identity actions (#1739)", () => {
     const [row] = pendingFor(accountId);
 
     await expect(
-      ignorePendingIdentityAction(fd({ pending_id: row.id }))
-    ).rejects.toThrow(/no write access/);
-    await expect(
       dismissPendingIdentityAction(fd({ pending_id: row.id }))
     ).rejects.toThrow(/no write access/);
     expect(pendingFor(accountId)).toHaveLength(1);
   });
 
+  it("REFUSES durable Ignore for ANY member — admin-only since #1875", async () => {
+    // The caregiver fixture from the issue: genuine WRITE access to one profile. Under
+    // the old any-writer gate this member could permanently refuse a pending belonging
+    // to another adult's login, silently breaking that person's future imports.
+    const { slug, accountId } = makePortal();
+    const login = createLogin({ role: "member" });
+    const writable = createProfile("Ignore Caregiver", login.id);
+    actAs(login, writable);
+
+    recordPendingIdentity(slug, null, "Not Theirs To Refuse", "discovered");
+    const [row] = pendingFor(accountId);
+
+    await expect(
+      ignorePendingIdentityAction(fd({ pending_id: row.id }))
+    ).rejects.toThrow(/NEXT_REDIRECT/);
+    // Nothing was refused, nothing was cleared.
+    expect(pendingFor(accountId)).toHaveLength(1);
+    expect(
+      listPortalIdentities().some(
+        (i) => i.patientLabel === "Not Theirs To Refuse"
+      )
+    ).toBe(false);
+  });
+
   it("a MEMBER with write access to one profile may act on the list", async () => {
-    // The owner-approved trade: caregiver-members finish their own portal setup without
-    // an admin. The gate is "could act on it at all", i.e. write somewhere.
+    // Caregiver-members still clear their own prompts without an admin: "Not now" is
+    // self-expiring and low-stakes, so it keeps the any-writer gate (#1875).
     const { slug, accountId } = makePortal();
     const login = createLogin({ role: "member" });
     const writable = createProfile("Caregiver Writable", login.id);
@@ -313,7 +337,8 @@ describe("pending-identity actions (#1739)", () => {
 
   it("removes an IGNORED binding through the un-ignore path, which needs no profile", async () => {
     const { slug, accountId } = makePortal();
-    const login = createLogin({ role: "member" });
+    // Admin to WRITE the ignore (#1875); the un-ignore below stays any-writer.
+    const login = createLogin({ role: "admin" });
     const profile = createProfile("Unignore Owner", login.id);
     actAs(login, profile);
 

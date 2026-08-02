@@ -27,10 +27,12 @@ import {
   listPortalAccounts,
   listPortalRunReports,
   listPortals,
+  recordDiscoveredIdentities,
   recordPortalRunReport,
   type PortalAccount,
 } from "@/lib/portals";
 import {
+  listVisiblePendingIdentities,
   listVisiblePortalRegistry,
   listVisiblePortalRunReports,
 } from "@/lib/portal-visibility";
@@ -369,5 +371,55 @@ describe("listPortals / listPortalAccounts stay instance-wide", () => {
     expect(listPortalAccounts().some((acc) => acc.id === accountB.id)).toBe(
       true
     );
+  });
+});
+
+// ── The pending list (#1875) ─────────────────────────────────────────────────
+//
+// Same fixture, same predicate, third surface: a pending row's patient label is a
+// portal-reported FULL NAME, so a member with write access to one profile must not be
+// shown another household's proxy-patient labels — and a first-contact (unclaimed)
+// account's pendings are admin-only territory, which is why the page passes `isAdmin`
+// (never the old any-writer population) as the unclaimed flag.
+describe("listVisiblePendingIdentities — the #1875 disclosure boundary", () => {
+  const A_PENDING = "PENDING, AY HOUSEHOLD";
+  const B_PENDING = "PENDING, BEE HOUSEHOLD";
+  const U_PENDING = "PENDING, UNCLAIMED";
+
+  beforeAll(() => {
+    expect(recordDiscoveredIdentities(accountA, [A_PENDING])).toBe(1);
+    expect(recordDiscoveredIdentities(accountB, [B_PENDING])).toBe(1);
+    expect(recordDiscoveredIdentities(unclaimedAccount, [U_PENDING])).toBe(1);
+  });
+
+  it("shows a member only pendings on logins claimed by a profile they can reach", () => {
+    const visible = listVisiblePendingIdentities([profileA], false);
+    const serialized = JSON.stringify(visible);
+
+    expect(visible.some((p) => p.patientLabel === A_PENDING)).toBe(true);
+    // The disclosure assertions proper: the other household's label, login nickname
+    // and portal name appear nowhere in the payload, whatever shape it grows.
+    expect(serialized).not.toContain(B_PENDING);
+    expect(serialized).not.toContain(B_ACCOUNT);
+    expect(serialized).not.toContain(B_PORTAL);
+    // A first-contact account's pendings are not a member's either (#1875).
+    expect(serialized).not.toContain(U_PENDING);
+  });
+
+  it("keeps the unclaimed first-contact case for the flagged (admin) population only", () => {
+    const admin = listVisiblePendingIdentities([profileA, profileB], true);
+    for (const label of [A_PENDING, B_PENDING, U_PENDING]) {
+      expect(admin.some((p) => p.patientLabel === label)).toBe(true);
+    }
+    // The flag never widens visibility of a CLAIMED foreign account's pendings.
+    const memberWithFlag = listVisiblePendingIdentities([profileA], true);
+    expect(memberWithFlag.some((p) => p.patientLabel === U_PENDING)).toBe(true);
+    expect(memberWithFlag.some((p) => p.patientLabel === B_PENDING)).toBe(
+      false
+    );
+  });
+
+  it("gives a login with no accessible profile nothing", () => {
+    expect(listVisiblePendingIdentities([], false)).toEqual([]);
   });
 });

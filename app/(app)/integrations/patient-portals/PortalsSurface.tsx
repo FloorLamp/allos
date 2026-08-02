@@ -499,7 +499,7 @@ export default function PortalsSurface({
                         temptation (#1874 point 13): the label is the portal's spelling
                         and the join key every upload resolves against, so it is
                         deliberately not editable here. */}
-                    <p className="px-3 py-1.5 text-xs text-slate-400 dark:text-slate-500">
+                    <p className="px-3 py-1.5 text-xs text-slate-500 dark:text-slate-400">
                       The name is the portal&apos;s spelling — it can&apos;t be
                       edited here.
                     </p>
@@ -1435,8 +1435,8 @@ export default function PortalsSurface({
                 Settings → API tokens
               </Link>{" "}
               with the <strong>Upload documents</strong> capability, named for
-              the device — &ldquo;Mom&apos;s laptop&rdquo; — so retiring a
-              machine never disturbs the others.
+              the device — “Mom’s laptop” — so retiring a machine never
+              disturbs the others.
             </p>
           )}
           {guideStep(
@@ -1563,7 +1563,7 @@ export default function PortalsSurface({
           <p className="text-sm text-slate-600 dark:text-slate-300">
             No portals yet — an admin on this instance can add one. Once a
             portal login covering {memberNames} reports its patients,
-            they&apos;ll appear here for you to map.
+            they’ll appear here for you to map.
           </p>
         </section>
       )}
