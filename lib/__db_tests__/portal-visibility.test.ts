@@ -34,7 +34,7 @@ import {
   listVisiblePortalRegistry,
   listVisiblePortalRunReports,
 } from "@/lib/portal-visibility";
-import { portalStatusLine } from "@/lib/portal-status";
+import { portalLoginStatus } from "@/lib/portal-status";
 
 // Household B's secrets — the strings that must never reach household A.
 const B_PORTAL = "Leak Test Portal B";
@@ -153,26 +153,23 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
     expect(serialized).toContain(A_MESSAGE);
   });
 
-  it("keeps the leak out of the sentence the card actually renders", () => {
-    // End-to-end through the pure formatter: rule 1 picks the globally-newest failure,
-    // which is household B's — the exact path that produced the reported bug.
-    const leaked = portalStatusLine({
-      lastSuccessAt: null,
-      connected: true,
-      reports: listPortalRunReports(),
-      pending: [],
-    });
-    expect(leaked.text).toContain(B_MESSAGE);
+  it("keeps the leak out of the sentences the page actually renders", () => {
+    // End-to-end through the pure formatter: each login row formats its OWN last
+    // report (#1874 — the page-level pick-the-newest sentence retired with the
+    // redesign). Unscoped, B's failure line is formattable — proving the fixture is
+    // live and the message really would render…
+    const bReport = listPortalRunReports().find(
+      (r) => r.accountId === accountB.id
+    )!;
+    expect(portalLoginStatus(bReport).text).toContain(B_MESSAGE);
 
-    const scoped = portalStatusLine({
-      lastSuccessAt: null,
-      connected: true,
-      reports: listVisiblePortalRunReports([profileA], true),
-      pending: [],
-    });
-    expect(scoped.text).not.toContain(B_MESSAGE);
-    expect(scoped.text).not.toContain(B_ACCOUNT);
-    expect(scoped.text).not.toContain(B_PORTAL);
+    // …while the scoped read hands household A no report that could ever format it.
+    const sentences = listVisiblePortalRunReports([profileA], true)
+      .map((r) => portalLoginStatus(r).text)
+      .join("\n");
+    expect(sentences).not.toContain(B_MESSAGE);
+    expect(sentences).not.toContain(B_ACCOUNT);
+    expect(sentences).not.toContain(B_PORTAL);
   });
 
   it("shows a household its own account, from either side", () => {

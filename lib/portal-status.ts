@@ -1,15 +1,24 @@
-// The PURE Status line of the Patient portals card (issue #1756). No DB, no request —
-// the page reads the rows, this decides the sentence, and a unit test pins every branch.
+// The PURE per-login run status of the Patient portals page. No DB, no request — the
+// page reads the rows, this decides each login row's sentence, and a unit test pins
+// every branch.
 //
-// ── WHAT WENT WRONG, AND WHY IT IS ONE FUNCTION ──────────────────────────────
+// ── FROM ONE PAGE-BOTTOM SENTENCE TO ONE LINE PER LOGIN (#1874) ──────────────
 //
-// The card promises, in its own words, that "the tool reports every run, so a quiet week
-// reads as healthy rather than broken". The FIRST run then violated it: that run's own
-// patient is not bound yet, so its report is refused, no profile-scoped sync event lands,
-// and the Status line said "No run reported yet." — at the exact moment a household is
-// deciding whether to trust this thing. The pending rows below it said otherwise. Two
-// surfaces answering one question differently is the bug, so there is now one function
-// that answers it, and both the sentence and its tone come out of here.
+// #1756 built `portalStatusLine`: ONE status sentence for the whole page, derived from
+// the globally-newest run report plus the ACTIVE profile's last successful sync. It
+// fixed the first-contact lie ("No run reported yet." above a list of patients a run
+// had just reported), but the page walk behind #1874 showed its two remaining costs:
+// the sentence sat at the page bottom, far from the login it described, and its
+// profile-scoped half meant switching the header profile silently rewrote the page's
+// claim — scope confusion on a household-wide surface.
+//
+// #1874 retires the page-level sentence. A run belongs to a LOGIN — that is the whole
+// argument of the account-level run reports (#1756) — so its status now renders on the
+// login's own row, and this module formats exactly that: one login's last reported run.
+// First contact needs no special sentence anymore, because the pending rows themselves
+// are permanent structure directly under the login that reported them. Per-patient
+// "Last checked" stays on the patient rows (identitySyncStatuses), which was always the
+// finer-grained half of the answer.
 //
 // ── THE FAILURE-BADGE ASYMMETRY (deliberate, and easy to misread) ────────────
 //
@@ -21,124 +30,53 @@
 // badge is `getImportIssues(profileId)`: profile-scoped by construction, like every other
 // reader of integration_sync_events. A pre-patient portal failure genuinely has no
 // profile — that is what makes it portal-level — so no profile's Review can honestly
-// claim it. It surfaces HERE instead, as an attention-toned line on the card that owns
-// the portal. Do not "fix" this by attributing such a run to a guessed profile; guessing
+// claim it. It surfaces HERE instead, as an attention-toned line on the login that owns
+// the run. Do not "fix" this by attributing such a run to a guessed profile; guessing
 // which person a portal run belongs to is the harm this whole surface exists to prevent.
 
 export type PortalStatusTone = "ok" | "attention" | "idle";
 
-export interface PortalStatusLine {
+export interface PortalLoginStatus {
   tone: PortalStatusTone;
   text: string;
 }
 
-// The account-level run report shape this needs — structural, so the pure module never
-// imports the DB layer that produces it.
-export interface PortalRunReportLike {
-  portalName: string;
-  accountName: string;
-  accountImplicit: boolean;
+// The slice of an account-level run report this needs — structural, so the pure module
+// never imports the DB layer that produces it.
+export interface PortalRunLike {
   at: string;
   ok: boolean;
+  // The tool's own failure line, or null. Free text from an authenticated but untrusted
+  // tool — render as text, never as markup.
   message: string | null;
-  discovered: number;
-}
-
-export interface PortalStatusInput {
-  // Last SUCCESSFUL sync event for the active profile, or null. Profile-scoped, which is
-  // why it cannot answer the first-contact question on its own.
-  lastSuccessAt: string | null;
-  // Whether the integration has a connection row for the active profile.
-  connected: boolean;
-  // Every login's last reported run. Account-level, so it survives a run with no profile.
-  reports: PortalRunReportLike[];
-  // Identities still waiting to be mapped, as shown on the card. Empty for a viewer who
-  // cannot act on them, so this never points someone at a card they cannot see.
-  pending: { portalName: string }[];
 }
 
 function day(stamp: string): string {
   return stamp.slice(0, 10);
 }
 
-// "Ochsner MyChart", or "Ochsner MyChart (Mom)" once the login is worth naming. Same rule
-// the rest of the card uses: an implicit login is an implementation detail of the key.
-function label(report: PortalRunReportLike): string {
-  return report.accountImplicit
-    ? report.portalName
-    : `${report.portalName} (${report.accountName})`;
-}
-
-// Distinct, in first-seen order — a household with two portals waiting hears both named.
-function portalNames(rows: { portalName: string }[]): string {
-  const seen: string[] = [];
-  for (const r of rows)
-    if (!seen.includes(r.portalName)) seen.push(r.portalName);
-  return seen.join(", ");
-}
-
 function sentence(text: string): string {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
-export function portalStatusLine(input: PortalStatusInput): PortalStatusLine {
-  const newest = input.reports.reduce<PortalRunReportLike | null>(
-    (best, r) => (best === null || r.at > best.at ? r : best),
-    null
-  );
-
-  // 1. A failure the household has not already recovered from. A later SUCCESS on this
-  //    profile supersedes it — the point of "last checked" is how long it has really been
-  //    since the portal was read, and a recovered run answers that.
-  if (
-    newest &&
-    !newest.ok &&
-    (input.lastSuccessAt === null || input.lastSuccessAt < newest.at)
-  ) {
+// One login's last reported run, as its row states it. `null` means the login has never
+// reported at all — honest idle, not failure: this integration is attended, so a quiet
+// login is a login nobody has run yet, not a broken one.
+export function portalLoginStatus(
+  report: PortalRunLike | null
+): PortalLoginStatus {
+  if (!report) {
+    return { tone: "idle", text: "No run reported yet." };
+  }
+  if (!report.ok) {
     return {
       tone: "attention",
-      text: newest.message
-        ? sentence(`The last run on ${label(newest)} failed: ${newest.message}`)
-        : `The last run on ${label(newest)} failed.`,
+      text: report.message
+        ? sentence(`Last run failed ${day(report.at)}: ${report.message}`)
+        : `Last run failed ${day(report.at)}.`,
     };
   }
-
-  // 2. FIRST CONTACT: a run happened, it taught allos who is on the portal, and nothing
-  //    has ever been checked for this profile. This is the dead zone — the run was
-  //    refused, so no sync event exists — and the honest sentence is the next ACTION, not
-  //    "no run reported yet".
-  if (input.lastSuccessAt === null && input.pending.length > 0) {
-    const n = input.pending.length;
-    return {
-      tone: "attention",
-      text:
-        `The tool reported ${n} ${n === 1 ? "patient" : "patients"} on ` +
-        `${portalNames(input.pending)} — map ${n === 1 ? "that patient" : "them"} ` +
-        `below to finish setup.`,
-    };
-  }
-
-  // 3. The ordinary healthy answer.
-  if (input.lastSuccessAt) {
-    return { tone: "ok", text: `Last checked ${input.lastSuccessAt}.` };
-  }
-
-  // 4. A run was reported, but not one that counts as a check for THIS profile — it
-  //    belonged to another profile's patient, or everything on that login is ignored.
-  //    Saying "no run reported yet" here would repeat the original lie in miniature.
-  if (newest) {
-    return {
-      tone: "idle",
-      text: `The tool reported a run on ${label(newest)} on ${day(
-        newest.at
-      )}, but nothing has been checked for this profile yet.`,
-    };
-  }
-
-  return {
-    tone: "idle",
-    text: input.connected
-      ? "Set up, but no run reported yet."
-      : "No run reported yet.",
-  };
+  // A run that found nothing new still counts as a check — that is the point of the
+  // every-run report: a quiet week reads as healthy rather than broken.
+  return { tone: "ok", text: `Last run ${day(report.at)}` };
 }
