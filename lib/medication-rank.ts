@@ -18,15 +18,12 @@
 // ORDERING ONLY: membership never changes and everything stays reachable through the
 // combobox's fuzzy search regardless of rank.
 
+import { medEntryForName } from "./datasets/medication-descriptions";
 import {
-  MED_DESCRIPTION_ENTRIES,
-  medEntryForName,
-} from "./datasets/medication-descriptions";
-import {
+  catalogLabelsByGeneric,
   GENERIC_BRAND_OPTION,
   medicationBrandNames,
   medicationBrandOptions,
-  medicationCatalogLabel,
 } from "./medication-info";
 import { rankByFrequency } from "./rank-by-frequency";
 
@@ -94,31 +91,13 @@ export const COMMON_MEDICATIONS: readonly string[] = [
   "Doxycycline",
 ];
 
-function labelFor(generic: string, brands: readonly string[]): string {
-  return medicationCatalogLabel(generic, [...brands]);
-}
-
-// generic (lowercased) → the collapsed "Generic (Brand, Brand)" combobox label.
-let labelByGeneric: Map<string, string> | null = null;
-function genericLabels(): Map<string, string> {
-  if (!labelByGeneric) {
-    labelByGeneric = new Map(
-      MED_DESCRIPTION_ENTRIES.filter((e) => e.generic).map((e) => [
-        e.generic.toLowerCase(),
-        labelFor(e.generic, e.brand_names ?? []),
-      ])
-    );
-  }
-  return labelByGeneric;
-}
-
 // The curated medication options with the common head in front and the remaining
 // catalog A–Z behind it — the order a profile with NO medication history sees. Same
 // membership as `medicationCatalogOptions()`, different order.
 let curatedCache: string[] | null = null;
 export function curatedMedicationOptions(): string[] {
   if (curatedCache) return curatedCache;
-  const byGeneric = genericLabels();
+  const byGeneric = catalogLabelsByGeneric();
   const head: string[] = [];
   const taken = new Set<string>();
   for (const generic of COMMON_MEDICATIONS) {
@@ -143,7 +122,7 @@ function optionForUsedName(name: string): string | null {
   if (!raw) return null;
   const entry = medEntryForName(raw);
   if (!entry?.generic) return raw;
-  return genericLabels().get(entry.generic.toLowerCase()) ?? raw;
+  return catalogLabelsByGeneric().get(entry.generic.toLowerCase()) ?? raw;
 }
 
 // The medication name picker order for one profile (#1677). Usage beats the curated
