@@ -17,7 +17,7 @@ import {
 
 describe("isGeneticRelative", () => {
   it("treats an UNSTATED relation type as genetic (hereditary by default)", () => {
-    // Every row written before migration 144, and every import that says nothing.
+    // Every row written before migration 145, and every import that says nothing.
     expect(isGeneticRelative(null)).toBe(true);
     expect(isGeneticRelative(undefined)).toBe(true);
   });

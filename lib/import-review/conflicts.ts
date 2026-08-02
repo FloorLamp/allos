@@ -23,6 +23,8 @@ import {
   ZERO_IS_MISSING_FIELDS,
   hasFoldValue,
   foldActivityFields,
+  orderDropsForFold,
+  type ActivityDupInput,
   type ActivityFoldField,
 } from "./detect";
 
@@ -214,6 +216,56 @@ export function foldActivityFieldsWithOverrides(
     if (member && hasFoldValue(name, member[name])) out[name] = member[name];
   }
   return out;
+}
+
+// The keeper columns a fold WRITES, as one value: the folded fold-fields, the
+// session-level equipment link, and the edit lock. ONE computation (#1884) for both
+// directions of a merge — the fold itself and its undo — so a partial undo can never
+// land the keeper in a state no fold would have produced.
+export interface KeeperFoldState {
+  fields: Record<ActivityFoldField, unknown>;
+  equipmentId: number | null;
+  edited: number;
+}
+
+// The keeper's state given EXACTLY this set of drops folded into it (#1884).
+//
+// The fold is a pure function of (pre-fold keeper, folded drops, overrides) — it does
+// not depend on how the drops got there or in what order the caller passed them
+// (orderDropsForFold re-imposes the deterministic token order here). That makes it
+// invertible INCREMENTALLY: to un-fold one drop, recompute with the remaining drops
+// instead of resetting to the pre-fold snapshot, which is only correct when EVERY drop
+// leaves at once. `drops` empty reproduces the pre-fold keeper exactly (including its
+// prior `edited` flag), so a full undo is the same computation as a partial one.
+//
+// `keeper` is either the live pre-fold row (writeActivityFold) or the captured
+// keeperBefore snapshot (revertActivityMerge); both carry the fold fields,
+// equipment_id and edited, which is all this reads. Pure.
+export function keeperFoldState(
+  keeper: Record<string, unknown>,
+  drops: Record<string, unknown>[],
+  overrides: OverrideChoices = {}
+): KeeperFoldState {
+  const ordered = orderDropsForFold(
+    drops as unknown as ActivityDupInput[]
+  ) as unknown as Record<string, unknown>[];
+  const fields = foldActivityFieldsWithOverrides(keeper, ordered, overrides);
+  // Session-level equipment link (#342): keeper-wins COALESCE across the keeper then
+  // every drop in order — the keeper's gear stands, the drops only fill a gap. Handled
+  // explicitly (not via ACTIVITY_FOLD_FIELDS) so the link stays out of the fold's
+  // richness scoring and conflict-preview UI, which are for measurement gap-fill.
+  let equipmentId = (keeper.equipment_id as number | null | undefined) ?? null;
+  for (const drop of ordered)
+    equipmentId =
+      equipmentId ?? (drop.equipment_id as number | null | undefined) ?? null;
+  // A keeper carrying ANY folded drop is a merged result, so it stays edit-locked
+  // (#133) — a re-ingest of the rolling window must not clobber it. Only when the last
+  // drop is un-folded does the keeper get its own pre-merge lock state back.
+  return {
+    fields,
+    equipmentId,
+    edited: ordered.length > 0 ? 1 : Number(keeper.edited ?? 0),
+  };
 }
 
 // Pull just the fold-field values off a full activity row — the compact payload the

@@ -11,7 +11,7 @@
 //
 // The default: an UNSTATED relation_type (NULL) is read as GENETIC. Family history
 // is hereditary by default (FHIR FamilyMemberHistory.relationship likewise), every
-// row written before migration 144 is a genetic assertion, and only an EXPLICIT
+// row written before migration 145 is a genetic assertion, and only an EXPLICIT
 // adopted/step marking excludes a relative. Absence stays absence — nothing here
 // invents a discriminator the user never stated.
 //

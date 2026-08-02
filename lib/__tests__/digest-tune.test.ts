@@ -14,6 +14,7 @@ import {
   DIGEST_TUNABLE_CATEGORIES,
   activitiesSurviveDemotion,
   collapsedTuneAction,
+  digestTuneSummary,
   expandedTuneActions,
   intersectDigestDemotions,
   isDigestCategory,
@@ -114,6 +115,28 @@ describe("toggleDigestDemotion — the declared write", () => {
     const before: DigestCategory[] = ["mood"];
     toggleDigestDemotion(before, "vitals");
     expect(before).toEqual(["mood"]);
+  });
+});
+
+describe("digestTuneSummary — the collapsed Settings mirror (#1868 §3)", () => {
+  it("says nothing is turned down when nothing is", () => {
+    expect(digestTuneSummary([])).toMatch(/every category on/i);
+  });
+
+  it("names what IS turned down, in declaration order, with a count", () => {
+    const s = digestTuneSummary(["sleep", "vitals"]);
+    expect(s).toContain("2 categories");
+    // Declaration order (vitals is a collector category, sleep a digest-own one), so
+    // the summary reads in the same order as the list it collapses.
+    expect(s.indexOf(DIGEST_CATEGORY_LABELS.vitals)).toBeLessThan(
+      s.indexOf(DIGEST_CATEGORY_LABELS.sleep)
+    );
+  });
+
+  it("reads singular for one", () => {
+    expect(digestTuneSummary(["labs"])).toBe(
+      `1 category is notable-only: ${DIGEST_CATEGORY_LABELS.labs}.`
+    );
   });
 });
 

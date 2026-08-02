@@ -139,11 +139,13 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "cross-profile write (#1739): the one-tap version of bindIdentityAction — it binds a REPORTED-but-unplaced portal identity to a TARGET profile, taking the (login, patient label) off the pending row server-side so the caller cannot retype them into a subtly different key. Same class of write, same gate: requireProfileWriteAccess(profileId) on the target, not requireWriteAccess() on the session's active profile",
     gate: "requireProfileWriteAccess",
   },
+  // ignorePendingIdentityAction needs no entry since #1875: durable Ignore is
+  // admin-only, so the body calls requireAdmin() and the scan accepts it directly.
   {
     file: "app/(app)/integrations/patient-portals/actions.ts",
-    fn: "ignorePendingIdentityAction",
-    why: "pending-list write that ROUTES NOTHING (#1739): it records 'never sync this portal patient' as a binding with NO profile (the migration-131 CHECK makes ignored+profile unrepresentable). There is therefore no target profile for requireProfileWriteAccess, and requireWriteAccess would assert the session's ACTIVE profile, which is unrelated to a portal login. It calls the local requireAnyProfileWriteAccess() instead: session + demo refusal + WRITE on at least one reachable profile — the same population the bind picker serves. Member-visible by owner ruling; a read-only caregiver still cannot silence an identity",
-    gate: "requireAnyProfileWriteAccess",
+    fn: "remapIdentityAction",
+    why: "cross-profile write (#1836): atomically re-points a binding from the profile it CURRENTLY names to a TARGET profile — records routed away from one person and onto another — so it gates with requireProfileWriteAccess TWICE, once per side, and neither side is necessarily the session's active profile (requireWriteAccess would assert the wrong thing). The current owner is RESOLVED FROM THE ROW server-side (#1747); the posted expected_profile_id is only the compare half of the CAS, refused with a typed outcome when stale",
+    gate: "requireProfileWriteAccess",
   },
   {
     file: "app/(app)/integrations/patient-portals/actions.ts",

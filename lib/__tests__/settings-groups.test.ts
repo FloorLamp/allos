@@ -9,6 +9,7 @@ import {
   visibleSettingsGroups,
   isSettingsGroupActive,
   tierBlurb,
+  tierChip,
 } from "../settings-groups";
 
 // The settings group registry (#1462) is the single source of truth for how Settings
@@ -104,7 +105,7 @@ describe("settings group registry shape", () => {
 
   it("every group states a tier and a one-sentence summary", () => {
     for (const g of SETTINGS_GROUPS) {
-      expect(["login", "profile", "server"]).toContain(g.tier);
+      expect(["login", "profile", "mixed", "server"]).toContain(g.tier);
       expect(g.summary.length).toBeGreaterThan(10);
       // One sentence (the copy standard, #945): a single terminal period.
       expect(
@@ -195,6 +196,37 @@ describe("tierBlurb", () => {
   });
   it("says server for a server-tier group", () => {
     expect(tierBlurb("server", names)).toMatch(/server/i);
+  });
+  it("names BOTH for a mixed-tier group, and points at the per-section strings", () => {
+    // #1868 §4: the honest fourth case. A mixed group's header may not claim one tier —
+    // that is what forced Notifications to grow a second, page-local labeling system.
+    const blurb = tierBlurb("mixed", names);
+    expect(blurb).toContain("ada");
+    expect(blurb).toContain("Test Patient");
+    expect(blurb).toMatch(/each section/i);
+  });
+});
+
+describe("the Notifications group is registered MIXED (#1868 §4)", () => {
+  it("does not claim a single tier", () => {
+    // The page's cards genuinely span tiers: Telegram/Push/digest-mirror/mute follow
+    // the login, the schedule and content follow the profile, and the routing matrix
+    // writes login and profile keys in adjacent columns.
+    expect(settingsGroup("notifications").tier).toBe("mixed");
+  });
+});
+
+describe("tierChip — the index's short form of the same statement", () => {
+  const names = { username: "ada", profileName: "Test Patient" };
+  it("uses one vocabulary with tierBlurb", () => {
+    expect(tierChip("login", names)).toBe("your login");
+    expect(tierChip("profile", names)).toBe("Test Patient");
+    expect(tierChip("server", names)).toMatch(/server/i);
+  });
+  it("never mislabels a mixed group as belonging to the profile", () => {
+    const chip = tierChip("mixed", names);
+    expect(chip).toContain("your login");
+    expect(chip).toContain("Test Patient");
   });
 });
 

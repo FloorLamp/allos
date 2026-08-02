@@ -68,6 +68,20 @@ hygiene guard — see "Assertion integrity" below.
    green, and a 4-tests-broken PR self-reported green. Retries also interact
    badly with the non-idempotent specs of class 1.
 
+**The picker-in-row `hasText` trap (#1879 — proven live to act on the wrong
+patient).** `filter({ hasText })` matches a row's ENTIRE subtree text, including
+the `<option>` labels of an embedded `<select>` and the accessible names of an
+embedded chip picker — so on a surface where every row carries every household
+profile name (the portals pending rows, any future picker-in-row list), a
+row-scoped `hasText: "RILEY"` matches the FIRST row whenever a profile is named
+Riley, and the driver acts on the wrong row indistinguishably from success. It
+passes today only while fixture labels happen not to collide with fixture
+profile names — the same daily-roulette shape as class 1. Anchor on the label
+ELEMENT, never the row: an exact-text anchor
+(`.filter({ has: page.getByText(label, { exact: true }) })`), a dedicated label
+testid, or — what the portals specs do since #1874 — a row attribute carrying
+the identity (`[data-testid="pending-row"][data-label="…"]`).
+
 ## Fix (a) — the hygiene guard
 
 `lib/__tests__/e2e-hygiene.test.ts` is a pure source-scan (the #448 /
@@ -316,6 +330,31 @@ What this means when writing a spec:
 - Do NOT reach for `waitForTimeout` or `networkidle` if a streamed surface
   seems racy — if the guard's ceiling is ever exceeded, its error names the
   stuck page; that is a finding, not a flake to sleep past.
+
+## A declared ceiling above 30 s needs `test.slow()` (2026-08-02)
+
+A named `{ timeout: N }` on an assertion bounds only that assertion — the TEST
+still dies at Playwright's 30 s default. So a ceiling raised past 30 s is inert:
+the run is killed before the ceiling it declares can ever apply, and the failure
+reads as the ceiling's message with a _shorter_ elapsed time than the ceiling
+itself, which is the tell. `wellness-practices.spec.ts:137` spent a full cycle
+in that state — a 45 s ceiling that never once got to 45 s, dying at 30.1 s.
+
+If an assertion genuinely needs more than 30 s, add `test.slow()` (or a
+`test.setTimeout`) in the same change, and say in the comment why the sequence is
+slow. And treat a ceiling that keeps needing to grow as evidence the test's SETUP
+is the problem, not its budget.
+
+**A ceiling that keeps growing is a setup problem — seed instead.** That test
+drove two full UI create round-trips (plus a reload and an untrack) as setup for
+assertions about EDITS. Its ceiling went 5 s → 20 s → 45 s → `test.slow()`, and
+still exhausted 45 s on shard 4 against diffs that cannot reach wellness. Seeding
+the two practices straight into the worker DB (#868 spec-owned fixtures) took the
+test from 25–31 s to **under 7 s**, deterministically, with every assertion
+unchanged. Nothing was lost, because the create and untrack paths are each
+already covered by a sibling test in the same file. When you find yourself
+raising a number a third time, ask what the test is NAMED for and seed everything
+that isn't that.
 
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 

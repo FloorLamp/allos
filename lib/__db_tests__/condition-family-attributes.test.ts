@@ -2,7 +2,7 @@
 // history death facts + genetic discriminator (#1407).
 //
 // Covers what only a real database can prove:
-//   1. Migrations 143/144 actually shipped the columns, with their CHECK sets live.
+//   1. Migrations 144/145 actually shipped the columns, with their CHECK sets live.
 //   2. The IMPORT path round-trips them — a CCD/FHIR projection that states a side
 //      and a grade lands them on the row instead of dropping them (the whole point
 //      of #1403), and a family projection lands the death facts and the axis.
@@ -171,7 +171,7 @@ beforeAll(() => {
   );
 });
 
-describe("migrations 143/144 — the columns and their CHECK sets", () => {
+describe("migrations 144/145 — the columns and their CHECK sets", () => {
   it("conditions carries laterality / severity / stage", () => {
     const cols = (
       db.prepare(`PRAGMA table_info(conditions)`).all() as { name: string }[]

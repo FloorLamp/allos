@@ -255,39 +255,46 @@ export is a regulatory requirement, so Epic MyChart, Cerner/Oracle Health,
 athenahealth and the rest all produce the same thing. MyChart is simply the
 first companion tool written against the contract.
 
-Setup, under **Data → Import → Patient portals**. The page is a **guided flow**:
-it works out where you are from what it already knows and shows you that one
-step, with a single button for it. You never scroll past a form meant for
-somebody else's stage, and a household that finished setup a year ago sees
-status rather than setup. The five steps below are the whole shape — the page
-keeps them as a collapsible under its title, in case you want to see what comes
-next:
+Setup, under **Data → Import → Patient portals**. The page renders the thing
+itself: **portal → login → patient**, each portal a permanent card from the
+moment you add it. Guidance sits on top of that structure rather than replacing
+it — a **checklist** (Portal added · API token · First run · patients to map)
+runs above the cards until setup is done, then disappears. On a first visit the
+checklist unrolls into a five-step guide whose step 1 **is** the add-portal
+form; adding the portal materializes its card in place, ticks the step, and
+lights the next one. The page is household-wide and says so once; nothing on it
+follows the header's active profile. The five steps:
 
 1. **Register each portal** by its display name — "Ochsner MyChart". Allos mints
    the short id the companion tool quotes, so renaming the portal later never
    breaks a machine's config. A portal is recorded **by name only**: its web
    address lives in the companion tool's local config on your machine, and allos
-   refuses to store one anywhere, including in the display name. You may tag
-   which software it runs, which is only for display and for the tool to
-   sanity-check what it has been pointed at.
+   refuses to store one anywhere, including in the display name. The software it
+   runs is a row of chips — MyChart, Cerner, eClinicalWorks, "Something else",
+   or the default "Not sure" — only for display and for the tool to sanity-check
+   what it has been pointed at, and editable later from the portal's **⋯** menu.
 2. **Name the logins, if there are several.** One portal often has more than one
    account in a household — each parent's own — and a portal's patient list is
    shown **per login**, so the same name can mean two different people on two
-   accounts. Give each one a name ("Mom", "Dad") — or the **email address** the
-   login uses, which is often the way a household actually tells two logins
-   apart. A name is all allos stores: never a password, and never a web address.
-   If your household has one login, skip this entirely — you will never see the
-   concept.
+   accounts. **Add a login** lives in the portal's **⋯** menu; give each one a
+   name ("Mom", "Dad") — or the **email address** the login uses, which is often
+   the way a household actually tells two logins apart. A name is all allos
+   stores: never a password, and never a web address. With one login you never
+   meet the concept — the portal card simply is its login; logins appear as
+   titled sub-groups only once there are two.
 3. **Mint an API token** (Settings → Account & security → API tokens) with the
    _Upload documents_ capability. Give **each computer its own token**, so
    retiring one machine doesn't disturb the others.
-4. **Run the tool.** It reports which patients that login covers, and while any
-   of them are waiting they take over the page — mapping them is the only thing
-   it asks you to do.
-5. **Map each patient to a profile** — one tap, using the label exactly as the
-   portal spelled it. Or **ignore** a patient whose records belong somewhere
-   else, and they stop being offered. Labels are matched exactly as written: two
-   labels that differ visibly are two different people.
+4. **Run the tool.** It reports which patients that login covers; they appear as
+   amber rows under the login that reported them, waiting to be mapped.
+5. **Map each patient to a profile** — tap the household member's **face** in
+   the row's avatar-chip picker, then **Map**. Nothing is preselected, ever: the
+   choice is made, not merely left alone. The label is bound exactly as the
+   portal spelled it — two labels that differ visibly are two different people.
+   A pending name that exactly matches a patient already mapped on another login
+   gets a **"same person?"** suggestion with a one-tap Map — suggested only,
+   never applied for you. **Ignore** (admin-only, durable) and **Not now**
+   (clears the prompt until the next report) live in the row's ⋯ menu.
 
 Documents land in **Data → Review** like any other import, with the same
 deduplication and the same size and type checks. A document pushed in by the tool
@@ -295,15 +302,29 @@ records **which portal it came from** — shown as "Acquired via …" in Review 
 the import's detail page — so two portals serving the same patient stay tellable
 apart. A document you uploaded yourself simply says nothing there.
 
-**Everything else is under Manage.** The portal and login registry, the add
-forms, renaming a portal, unmapping a patient, un-ignoring one, and the manual
-"type the label yourself" bind all live in one collapsed **Manage portals &
-logins** section, open from any step. Nothing was removed; it stopped being the
-first thing a first-time user meets. The manual bind in particular is labelled
-as the escape hatch it is: patients normally appear by themselves after a run,
-spelled the way the portal spells them, and a guess is refused rather than
-corrected. Each row's edit and remove verbs live in its **⋯** menu, and the
-destructive ones ask first.
+**Everything is edited where it lives.** Every row's verbs sit in a **⋯** menu
+at its right edge — rename or remove a portal, edit its software, add or rename
+a login, unmap or un-ignore a patient — and the destructive ones ask first.
+Changing a mapped patient's profile is one tap on the row's avatar chip: the
+picker reopens with the current person pressed, and Save re-points the mapping
+atomically, so there is never a moment where the label is unmapped and an
+arriving upload would be refused. Feedback appears inline beside whatever you
+touched, never in a status line at the bottom. **Patient labels themselves are
+deliberately not editable** — the label is the portal's verbatim spelling and
+the key every upload resolves against, so an "edited" label would orphan the
+mapping; if a portal changes its spelling, the new spelling arrives as a new
+pending row and the same-person suggestion carries the old mapping over. The
+manual **"pre-bind a patient by hand"** escape hatch survives at the end of each
+login's patient list, labelled as one: patients normally appear by themselves
+after a run, spelled the way the portal spells them, and a guess is refused
+rather than corrected.
+
+**What a member sees.** Members see exactly the logins that cover profiles they
+can access, under a note saying so; a first-contact portal that no run has
+claimed yet is visible to admins only. Portal and login management is
+admin-only, and so is the durable **Ignore** — a member with write access can
+map patients onto their own profiles and clear prompts with **Not now**, but
+cannot permanently refuse a patient on someone else's login.
 
 **Why the mapping lives here and not in the tool.** If the tool decided which
 profile a patient belongs to, that decision would sit in local config on every
@@ -332,12 +353,12 @@ to that question.
 of run belong to a portal login rather than to a person: the very first one,
 whose own patient is not mapped yet, and a failure that happens before any
 patient is reached ("the portal's login page changed"). Neither can be filed
-under a profile, and neither is guessed onto one — but both now leave a trace,
-and the page's **Status** sentence says what happened: _"The tool reported 3 patients
-on Ochsner MyChart — map them below to finish setup"_, or the tool's own failure
-message. A failure that names a mapped patient still raises that profile's
-**Review** failure badge as before; a portal-level one cannot, because it has no
-profile to raise it for, and shows on this card instead.
+under a profile, and neither is guessed onto one — but both leave a trace on the
+**login's own row**, which carries its last-run status: _"Last run 2026-03-04"_,
+or the tool's own failure message. A failure that names a mapped patient still
+raises that profile's **Review** failure badge as before; a portal-level one
+cannot, because it has no profile to raise it for, and shows on the login row
+instead.
 
 **Why there is no Start button.** Allos cannot make an attended sync happen, so
 the page doesn't pretend to: it is setup and status. For the same reason this
@@ -355,16 +376,15 @@ remembering, not the double-click. Three things raise a **sync request**:
 - **After a visit** — a mapped profile's appointment has just passed, which is
   the moment new records actually appear on a portal, and the most useful nudge
   this feature can send.
-- **Asking** — the **Request sync** button beside each login in the page's
-  steady-state status, for when the person who manages allos is not the person
-  whose laptop holds the login.
+- **Asking** — the **Request sync** button on each login's row, for when the
+  person who manages allos is not the person whose laptop holds the login.
 
 A request is **never a schedule**: nothing is promised to run at a time, and the
 row carries only the portal and login short ids — never an address. It
 **expires** after a week rather than sitting there forever, and it **answers
 itself**: the next reported run for that login clears it, including a failed one
-(the person went to the machine; whether the run then worked is what the Status
-line is for). The companion tool never learns requests exist — there is nothing
+(the person went to the machine; whether the run then worked is what the login
+row's status is for). The companion tool never learns requests exist — there is nothing
 new on the wire and nothing to acknowledge.
 
 **Who hears about it, and how loudly.** The reminder goes to the login whose

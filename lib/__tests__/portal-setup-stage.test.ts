@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  portalChecklist,
   portalSetupStage,
   type PortalSetupFacts,
 } from "@/lib/portal-setup-stage";
@@ -79,5 +80,44 @@ describe("portalSetupStage", () => {
         facts({ portalCount: 0, pendingCount: 2, reportCount: 5 })
       )
     ).toBe("no-portals");
+  });
+});
+
+// The checklist (#1874): the same facts, rendered as the strip/guide items. The page
+// only formats these — done/current per item and the vanish-at-steady rule live here.
+describe("portalChecklist", () => {
+  it("is gone at steady state — a finished checklist is clutter, not reassurance", () => {
+    expect(portalChecklist(facts())).toBeNull();
+  });
+
+  it("marks exactly the stage as current, with earlier steps done", () => {
+    const items = portalChecklist(
+      facts({ hasUploadToken: false, reportCount: 0 })
+    )!;
+    expect(items.map((i) => i.key)).toEqual([
+      "portal",
+      "token",
+      "first-run",
+      "map",
+    ]);
+    expect(items.map((i) => i.done)).toEqual([true, false, false, false]);
+    expect(items.filter((i) => i.current).map((i) => i.key)).toEqual(["token"]);
+  });
+
+  it("counts the patients waiting to be mapped in the item's own label", () => {
+    const items = portalChecklist(facts({ pendingCount: 2 }))!;
+    const map = items.find((i) => i.key === "map")!;
+    expect(map.label).toBe("2 patients to map");
+    expect(map.current).toBe(true);
+    expect(map.done).toBe(false);
+    expect(portalChecklist(facts({ pendingCount: 1 }))!.at(-1)!.label).toBe(
+      "1 patient to map"
+    );
+  });
+
+  it("never claims the map step is done before a run has reported anything", () => {
+    const items = portalChecklist(facts({ reportCount: 0 }))!;
+    expect(items.find((i) => i.key === "map")!.done).toBe(false);
+    expect(items.find((i) => i.key === "map")!.label).toBe("Map patients");
   });
 });

@@ -528,7 +528,7 @@ export interface Allergy {
 export const CONDITION_STATUSES = ["active", "inactive", "resolved"] as const;
 export type ConditionStatus = (typeof CONDITION_STATUSES)[number];
 
-// Which side of the body a problem sits on (migration 143, #1403). Runtime array
+// Which side of the body a problem sits on (migration 144, #1403). Runtime array
 // is the single source for the union AND the conditions.laterality CHECK. A closed
 // vocabulary by nature, unlike a body SITE — and IDENTITY, not decoration (#482):
 // a left-knee problem and a right-knee problem are two clinical entities, so the
@@ -538,7 +538,7 @@ export type ConditionStatus = (typeof CONDITION_STATUSES)[number];
 export const CONDITION_LATERALITIES = ["left", "right", "bilateral"] as const;
 export type ConditionLaterality = (typeof CONDITION_LATERALITIES)[number];
 
-// How severe a problem is (migration 143, #1403) — the same three grades FHIR's
+// How severe a problem is (migration 144, #1403) — the same three grades FHIR's
 // Condition.severity value set and the CCD Problem Severity observation
 // (2.16.840.1.113883.10.20.22.4.8) use. Runtime array is the single source for the
 // union AND the conditions.severity CHECK. NULL = ungraded.
@@ -886,7 +886,7 @@ export interface LesionPhoto {
   created_at: string;
 }
 
-// How a relative is related to the data subject on the GENETIC axis (migration 144,
+// How a relative is related to the data subject on the GENETIC axis (migration 145,
 // #1407). Runtime array is the single source for the union AND the
 // family_history.relation_type CHECK. `genetic` is a full genetic relative, `half`
 // a half-sibling (genetic, half the shared genome), `adopted` and `step` are NOT
@@ -902,7 +902,7 @@ export const FAMILY_RELATION_TYPES = [
 ] as const;
 export type FamilyRelationType = (typeof FAMILY_RELATION_TYPES)[number];
 
-// Which side of the family a relative sits on (migration 144, #1407). Runtime array
+// Which side of the family a relative sits on (migration 145, #1407). Runtime array
 // is the single source for the union AND the family_history.lineage CHECK. NULL
 // where the concept does not apply (a parent, a sibling) or was never stated.
 export const FAMILY_LINEAGES = ["maternal", "paternal"] as const;

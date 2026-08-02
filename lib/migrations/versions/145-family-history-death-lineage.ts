@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 144 (issue #1407): age/cause of death and a GENETIC discriminator on
+// Migration 145 (issue #1407): age/cause of death and a GENETIC discriminator on
 // family history.
 //
 // ── THE GAP ──────────────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 144,
-  name: "144-family-history-death-lineage",
+  id: 145,
+  name: "145-family-history-death-lineage",
   up,
 };

@@ -334,7 +334,7 @@ function conditionSeverity(severity: any): ConditionSeverity | null {
 }
 
 // Condition.stage[].summary → the printed stage, verbatim. Free text by design (see
-// migration 143): staging vocabularies are open-ended, so nothing is coerced.
+// migration 144): staging vocabularies are open-ended, so nothing is coerced.
 function conditionStage(stage: any): string | null {
   const stages = Array.isArray(stage) ? stage : stage != null ? [stage] : [];
   for (const st of stages) {

@@ -5,7 +5,11 @@ import {
   newestNoteDate,
 } from "@/lib/release-notes";
 import { requireSession } from "@/lib/auth";
-import { visibleSettingsGroups, tierBlurb } from "@/lib/settings-groups";
+import {
+  visibleSettingsGroups,
+  tierBlurb,
+  tierChip,
+} from "@/lib/settings-groups";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
@@ -56,7 +60,10 @@ export default async function SettingsIndexPage() {
                   {g.label}
                 </span>
                 <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                  {g.tier === "login" ? "your login" : profile.name}
+                  {tierChip(g.tier, {
+                    username: login.username,
+                    profileName: profile.name,
+                  })}
                 </span>
               </div>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">

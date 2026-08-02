@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 143 (issue #1403): laterality / severity / stage on the problem list.
+// Migration 144 (issue #1403): laterality / severity / stage on the problem list.
 //
 // ── THE GAP ──────────────────────────────────────────────────────────────────
 //
@@ -66,7 +66,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 143,
-  name: "143-condition-laterality-severity",
+  id: 144,
+  name: "144-condition-laterality-severity",
   up,
 };

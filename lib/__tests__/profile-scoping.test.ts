@@ -287,14 +287,14 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 141 (#1866) ADD COLUMN guard: a schema-shape PRAGMA (do the settled_* columns already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
-    file: "lib/migrations/versions/143-condition-laterality-severity.ts",
+    file: "lib/migrations/versions/144-condition-laterality-severity.ts",
     includes: "PRAGMA table_info(conditions)",
-    why: "migration 143 (#1403) ADD COLUMN guard: a schema-shape PRAGMA (do laterality/severity/stage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
+    why: "migration 144 (#1403) ADD COLUMN guard: a schema-shape PRAGMA (do laterality/severity/stage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
-    file: "lib/migrations/versions/144-family-history-death-lineage.ts",
+    file: "lib/migrations/versions/145-family-history-death-lineage.ts",
     includes: "PRAGMA table_info(family_history)",
-    why: "migration 144 (#1407) ADD COLUMN guard: a schema-shape PRAGMA (do age_at_death/cause_of_death/relation_type/lineage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
+    why: "migration 145 (#1407) ADD COLUMN guard: a schema-shape PRAGMA (do age_at_death/cause_of_death/relation_type/lineage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
   {
     file: "lib/migrations/versions/076-encounter-type-code.ts",
