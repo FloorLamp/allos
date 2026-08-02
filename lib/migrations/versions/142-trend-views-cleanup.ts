@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 140 (issue #1869 item 4): delete the inert `trend_views` rows from
+// Migration 142 (issue #1869 item 4): delete the inert `trend_views` rows from
 // `profile_settings`.
 //
 // #1653's Trends overhaul removed the Views strip, its three Server Actions, the
@@ -29,7 +29,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 140,
-  name: "140-trend-views-cleanup",
+  id: 142,
+  name: "142-trend-views-cleanup",
   up,
 };
