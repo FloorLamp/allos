@@ -1,5 +1,5 @@
-import type { BodyMetricKind, Goal, GoalStatus } from "./types";
-import { GOAL_STATUSES } from "./types";
+import type { BodyMetricKind, Goal, GoalDirection, GoalStatus } from "./types";
+import { GOAL_DIRECTIONS, GOAL_STATUSES } from "./types";
 import type { GoalProgress } from "./goal-progress";
 import { baseLiftName, variantOf } from "./lifts";
 import { foodGroupName } from "./food-groups";
@@ -7,6 +7,7 @@ import { fmtWeight, round } from "./units";
 import type { WeightUnit } from "./settings";
 import { formatSeconds } from "./duration";
 import { daysBetweenDateStr } from "./date";
+import { isBiomarkerGoal } from "./biomarker-goal";
 
 // Runtime guard for a goal lifecycle status, single-sourced from GOAL_STATUSES (and
 // thus from the goals.status CHECK — see the enum-parity test). Used by the write
@@ -16,6 +17,17 @@ export function isGoalStatus(value: unknown): value is GoalStatus {
   return (
     typeof value === "string" &&
     (GOAL_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+// Runtime guard for a goal's target direction, single-sourced from GOAL_DIRECTIONS
+// (and thus from the goals.target_direction CHECK — see the enum-parity test), the
+// same discipline isGoalStatus follows. The write action validates the submitted
+// direction against the one source of truth rather than a re-typed literal pair.
+export function isGoalDirection(value: unknown): value is GoalDirection {
+  return (
+    typeof value === "string" &&
+    (GOAL_DIRECTIONS as readonly string[]).includes(value)
   );
 }
 
@@ -47,14 +59,16 @@ export function isGoalLive(g: {
 //   3. No numeric basis → null (render no bar).
 //
 // A goal is "derived" iff it is exercise-linked (BOTH `exercise` AND `metric`
-// set — the definition in lib/types.ts) OR body-linked (`body_metric` set). This
+// set — the definition in lib/types.ts), body-linked (`body_metric` set), or
+// biomarker-linked (BOTH `biomarker_name` AND `target_direction` set, #1853). This
 // is exactly the set getGoalProgressMap builds progress for; a `metric` set
 // WITHOUT an `exercise` is not a well-formed exercise goal, has no progress
 // entry, and so falls through to the freeform current/target basis (issue #307's
 // user-visible bug: the household/dashboard copies tested `metric || body_metric`
 // and showed such a goal a bogus 0%, while the goals page showed current/target).
 export function goalPct(g: Goal, progress?: GoalProgress): number | null {
-  if ((g.exercise && g.metric) || g.body_metric) return progress?.pct ?? 0;
+  if ((g.exercise && g.metric) || g.body_metric || isBiomarkerGoal(g))
+    return progress?.pct ?? 0;
   if (g.target_value && g.current_value != null)
     return Math.min(100, Math.round((g.current_value / g.target_value) * 100));
   return null;
@@ -134,17 +148,41 @@ export const PACE_BADGE_CLASS: Record<PaceTone, string> = {
 //   - otherwise linear pace over the goal's [created_at, target_date] window: on pace
 //     iff progress ≥ the share the elapsed fraction owes, else "behind".
 // Pure calendar math (daysBetweenDateStr), client-safe — no DB.
+//
+// `evidenceDate` (#1853) makes the owed line advance on EVIDENCE instead of on the
+// clock, for a goal whose quantity only changes when it is measured. A body-weight
+// goal is measured daily, so on day 40 of 100 the clock genuinely owes 40% and the
+// scale can genuinely report whether you are there. A LAB goal cannot: it advances
+// per result. With `evidenceDate` set, the elapsed term is measured to the last
+// RESULT rather than to today, so the verdict is frozen between draws — a goal
+// cannot slide from "on pace" to "behind" on a Tuesday when no lab was drawn, which
+// would be measuring the calendar rather than the person. An explicit null means no
+// evidence has landed at all, which is "nothing to pace yet", never "behind".
+//
+// Omitting the field is the DAILY model, byte-for-byte as before: every existing
+// caller (exercise goals, body-metric goals, StatBox's generic bars) is unaffected.
+// The DEADLINE half still reads `today` in both models — a passed deadline is a fact
+// about the calendar, and a lab goal whose date has gone by with no result is not
+// quietly still "on pace".
 export function goalPaceTone(
   pct: number,
-  opts: { createdAt: string; targetDate: string | null; today: string }
+  opts: {
+    createdAt: string;
+    targetDate: string | null;
+    today: string;
+    evidenceDate?: string | null;
+  }
 ): PaceTone {
   if (pct >= 100) return "met";
   const { createdAt, targetDate, today } = opts;
   if (!targetDate) return "on-pace"; // no deadline → can't pace
   const remaining = daysBetweenDateStr(today, targetDate);
   if (remaining != null && remaining < 0) return "failed"; // deadline passed short
+  const perResult = "evidenceDate" in opts;
+  if (perResult && !opts.evidenceDate) return "on-pace"; // no result yet → nothing to say
+  const asOf = perResult ? opts.evidenceDate! : today;
   const total = daysBetweenDateStr(createdAt, targetDate);
-  const elapsed = daysBetweenDateStr(createdAt, today);
+  const elapsed = daysBetweenDateStr(createdAt, asOf);
   if (total == null || elapsed == null || total <= 0) return "on-pace";
   const frac = Math.min(1, Math.max(0, elapsed / total));
   return pct >= 100 * frac ? "on-pace" : "behind";

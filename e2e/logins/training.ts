@@ -63,3 +63,27 @@ export const LOAD_CONTEXT_PROFILE = "Load Context (e2e)";
 export const LOAD_CONTEXT_LIFT = "Machine Chest Press";
 export const LOAD_CONTEXT_HOME = "Zzz home chest press (e2e)";
 export const LOAD_CONTEXT_HOTEL = "Zzz hotel chest press (e2e)";
+
+// ── Lab-value goals (#1853) ───────────────────────────────────────────────────
+// A dedicated WRITE-granted ADULT profile whose readings make a biomarker goal
+// observable end to end:
+//   • LAB_GOAL_TRACKED  — an LDL with a HIGH baseline draw and a later, lower one,
+//                         so a seeded "under 100" goal has real progress, a real
+//                         as-of date and a real check-in date to render.
+//   • LAB_GOAL_OVERDUE  — an HbA1c drawn ~400 days ago on its 90-day cadence, so
+//                         the picker's "Due or flagged" group is non-empty and the
+//                         ranked order is observable rather than assumed. (The LDL
+//                         above is over its band, so it is FLAGGED and joins that
+//                         same group, behind the overdue draw.)
+//   • LAB_GOAL_IN_RANGE — an in-range Albumin, so the picker's third group ("Your
+//                         markers") is non-empty too and all three headers render.
+// Dedicated on purpose (#868): the spec CREATES a goal through the form and deletes
+// it again, and a goal write on a shared profile would race a neighbour. Every date
+// is relative, so the fixture never goes stale.
+export const E2E_LOGIN_LAB_GOAL = "e2e_lab_goal";
+export const LAB_GOAL_PROFILE = "Lab Goal (e2e)";
+export const LAB_GOAL_TRACKED = "LDL Cholesterol";
+export const LAB_GOAL_OVERDUE = "Hemoglobin A1c";
+export const LAB_GOAL_IN_RANGE = "Albumin";
+// The seeded goal's target, in the analyte's canonical unit.
+export const LAB_GOAL_TARGET = 100;

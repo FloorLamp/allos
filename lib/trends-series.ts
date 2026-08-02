@@ -9,9 +9,7 @@
 import {
   getLogicalBodyMetricDailySeries,
   getVolumeByDate,
-  getBiomarkerSeriesWithDerived,
   getUsedCanonicalNamesWithDerived,
-  getCanonicalBiomarker,
   getMedicationCourses,
   getSupplements,
   getAppointments,
@@ -22,14 +20,7 @@ import {
 import { today } from "./db";
 import type { BiomarkerPickerGroup } from "./biomarker-rank";
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
-import {
-  getUnitPrefs,
-  getUserSex,
-  getUserAge,
-  getUserAgeOn,
-  getUserReproductiveStatus,
-  getSituationEvents,
-} from "./settings";
+import { getUnitPrefs, getUserAge, getSituationEvents } from "./settings";
 import { showBodyFat } from "./growth-metrics";
 import {
   buildAnnotations,
@@ -38,12 +29,6 @@ import {
   type TrendWindow,
 } from "./trend-annotations";
 import { dispWeight, round } from "./units";
-import {
-  referenceRange,
-  parseReferenceRange,
-  parseLooseValue,
-} from "./reference-range";
-import { convertToCanonical, sameUnit } from "./unit-conversions";
 import {
   ALL_ROWS,
   filterSeriesByRange,
@@ -57,6 +42,9 @@ import {
   savedMetricIdForBodySlug,
 } from "./trends-body-metrics";
 import { fullBodyMetricSeries } from "./body-metric-series";
+// The analyte-plot leaf both this module and the biomarker-goal reader depend on
+// (#1853): one answer to "what does this analyte's series look like, in what unit".
+import { biomarkerPlot } from "./queries/biomarker-plot";
 import { activeRangeLabel } from "./trends-context";
 import { bioSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
@@ -279,74 +267,6 @@ export function buildSavedBodyMetricSeries(
     ),
     range: null,
   };
-}
-
-// One biomarker's FULL (un-windowed) plot: the numeric points in the unit the tile
-// and chart will label, plus the effective reference range. Mirrors the biomarker
-// detail page's charting: chart in the canonical unit when the biomarker has one
-// (converting every convertible reading and carrying the effective reference
-// range), else fall back to the latest reading's unit and its parsed lab range.
-// Censored readings ("<0.10") are plotted at their limit.
-//
-// Extracted from buildBiomarkerSeries (#1485 G) so the windowed chart and the
-// sparse-series fallback resolve unit + conversion through the SAME path — a
-// fallback that formatted the raw stored value would print a different unit than
-// the tile's own chart for exactly the analytes it exists to serve.
-function biomarkerPlot(
-  profileId: number,
-  canonical: string
-): {
-  rows: ReturnType<typeof getBiomarkerSeriesWithDerived>;
-  points: { date: string; value: number }[];
-  unit: string | null;
-  rng: { low: number | null; high: number | null } | null;
-} | null {
-  const series = getBiomarkerSeriesWithDerived(profileId, canonical);
-  if (series.length === 0) return null;
-  const cb = getCanonicalBiomarker(canonical);
-  const sex = getUserSex(profileId);
-  const latestDate = series[series.length - 1]?.date ?? null;
-  const age = getUserAgeOn(profileId, latestDate);
-  const status = getUserReproductiveStatus(profileId);
-
-  // exact value_num, or an inexact-but-bounded reading plotted at its limit.
-  const plottable = series.flatMap((r) => {
-    const p =
-      r.value_num != null ? { value: r.value_num } : parseLooseValue(r.value);
-    return p ? [{ r, value: p.value }] : [];
-  });
-
-  let unit: string | null;
-  let points: { date: string; value: number }[];
-  let rng: { low: number | null; high: number | null } | null = null;
-
-  if (cb && cb.unit) {
-    unit = cb.unit;
-    points = plottable
-      .map((x) => ({
-        date: x.r.date,
-        value: convertToCanonical(x.value, x.r.unit, cb),
-      }))
-      .filter((x): x is { date: string; value: number } => x.value != null);
-    const ref = referenceRange(cb, sex, age, status);
-    if (ref.low != null || ref.high != null) {
-      rng = { low: ref.low, high: ref.high };
-    }
-  } else {
-    const latestUnit = plottable.length
-      ? (plottable[plottable.length - 1].r.unit ?? null)
-      : null;
-    unit = latestUnit;
-    points = plottable
-      .filter((x) => sameUnit(x.r.unit, latestUnit))
-      .map((x) => ({ date: x.r.date, value: x.value }));
-    const parsed = parseReferenceRange(
-      series[series.length - 1].reference_range
-    );
-    if (parsed) rng = { low: parsed.low ?? null, high: parsed.high ?? null };
-  }
-
-  return { rows: series, points, unit, rng };
 }
 
 // Build one biomarker's series windowed to `range`. Returns null when there are no

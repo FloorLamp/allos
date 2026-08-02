@@ -253,6 +253,14 @@ export type GoalMetric = "weight" | "reps" | "sets" | "hold";
 // getLatestBodyMetric and the document-import classifier in body-metric-extract).
 export type BodyMetricKind = "weight" | "body_fat" | "resting_hr";
 
+// Which side of its target value a measured goal wants to be on (#1853, migration
+// 147). USER-DECLARED and never inferred: "LDL under 100" and "Vitamin D above 100"
+// are different goals with the same number, and a goal created before its first
+// reading has no baseline to infer a direction from. Single source of truth for the
+// `goals.target_direction` CHECK and the TS union (see the enum-parity test).
+export const GOAL_DIRECTIONS = ["below", "above"] as const;
+export type GoalDirection = (typeof GOAL_DIRECTIONS)[number];
+
 export interface Goal {
   id: number;
   title: string;
@@ -283,6 +291,17 @@ export interface Goal {
   // `body_metric` is set; progress runs baseline_value → target_value.
   body_metric: BodyMetricKind | null;
   baseline_value: number | null;
+  // Biomarker-goal fields (null otherwise; #1853, migration 147). A goal is
+  // biomarker-linked when `biomarker_name` AND `target_direction` are both set;
+  // progress runs baseline_value → target_value in `unit`, over the analyte's
+  // #482 FAMILY series (the same series the biomarker detail page charts).
+  //
+  // `biomarker_name` is the anchor/display name the user picked, NOT the matching
+  // key — readings reach the goal through biomarkerFamily, so an "A1c" goal is
+  // advanced by the eAG re-expression of the same draw (#482: family is how facts
+  // REACH a row, not what a row IS).
+  biomarker_name: string | null;
+  target_direction: GoalDirection | null;
   // Filed away (0/1). Independent of status, so achieved goals stay achieved.
   archived: number;
 }
