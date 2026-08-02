@@ -142,6 +142,12 @@ export async function saveBackupSettings(formData: FormData) {
     })(),
     keepDaily: num("backup_keep_daily", prev.keepDaily),
     keepWeekly: num("backup_keep_weekly", prev.keepWeekly),
+    // 1h..1y, matching getBackupSettings' read clamp — a zero or out-of-range
+    // submit keeps the stored value rather than disabling the health alarm.
+    stalenessHours: (() => {
+      const h = num("backup_staleness_hours", prev.stalenessHours);
+      return h >= 1 && h <= 8760 ? h : prev.stalenessHours;
+    })(),
   });
   revalidatePath("/settings/server");
 }

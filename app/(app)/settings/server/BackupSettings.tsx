@@ -51,6 +51,7 @@ export default function BackupSettings({
   const [hour, setHour] = useState(settings.hour);
   const [keepDaily, setKeepDaily] = useState(settings.keepDaily);
   const [keepWeekly, setKeepWeekly] = useState(settings.keepWeekly);
+  const [stalenessHours, setStalenessHours] = useState(settings.stalenessHours);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
   // "Back up now" is a distinct action with its own result message, not tied to
   // the "saved" chip — keep its own transition so it doesn't flip savedAt.
@@ -66,6 +67,7 @@ export default function BackupSettings({
     fd.set("backup_hour", String(hour));
     fd.set("backup_keep_daily", String(keepDaily));
     fd.set("backup_keep_weekly", String(keepWeekly));
+    fd.set("backup_staleness_hours", String(stalenessHours));
     runSave(async () => {
       await saveBackupSettings(fd);
       setResult(null);
@@ -105,7 +107,7 @@ export default function BackupSettings({
   }
 
   return (
-    <div className="card space-y-5">
+    <div className="card space-y-5" data-testid="backup-settings">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Automated backups
@@ -132,42 +134,63 @@ export default function BackupSettings({
       </label>
 
       {enabled && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
-            <label className="label">Hour</label>
-            <select
-              value={hour}
-              onChange={(e) => setHour(Number(e.target.value))}
-              className="input"
-            >
-              {Array.from({ length: 24 }, (_, i) => (
-                <option key={i} value={i}>
-                  {String(i).padStart(2, "0")}:00
-                </option>
-              ))}
-            </select>
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="label">Hour</label>
+              <select
+                value={hour}
+                onChange={(e) => setHour(Number(e.target.value))}
+                className="input"
+              >
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>
+                    {String(i).padStart(2, "0")}:00
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Keep dailies</label>
+              <input
+                type="number"
+                min={0}
+                value={keepDaily}
+                onChange={(e) => setKeepDaily(Number(e.target.value))}
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="label">Keep weeklies</label>
+              <input
+                type="number"
+                min={0}
+                value={keepWeekly}
+                onChange={(e) => setKeepWeekly(Number(e.target.value))}
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="label">Stale alarm (hours)</label>
+              <input
+                type="number"
+                min={1}
+                max={8760}
+                value={stalenessHours}
+                onChange={(e) => setStalenessHours(Number(e.target.value))}
+                className="input"
+                data-testid="backup-staleness-hours"
+              />
+            </div>
           </div>
-          <div>
-            <label className="label">Keep dailies</label>
-            <input
-              type="number"
-              min={0}
-              value={keepDaily}
-              onChange={(e) => setKeepDaily(Number(e.target.value))}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label">Keep weeklies</label>
-            <input
-              type="number"
-              min={0}
-              value={keepWeekly}
-              onChange={(e) => setKeepWeekly(Number(e.target.value))}
-              className="input"
-            />
-          </div>
-        </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            The health endpoint (<code>/api/health</code>) reports{" "}
+            <code>backup-stale</code> once the newest snapshot is older than the
+            stale alarm, so an uptime monitor catches a backup schedule that
+            silently died. 48 hours gives a nightly schedule one missed day plus
+            slack.
+          </p>
+        </>
       )}
 
       <p className="text-xs text-amber-600 dark:text-amber-400">
