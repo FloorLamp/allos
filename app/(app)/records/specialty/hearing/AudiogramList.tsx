@@ -90,9 +90,8 @@ export default function AudiogramList({
           </ul>
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             Measured against the ASHA ototoxicity-monitoring criteria (20 dB at
-            one frequency, or 10 dB at two adjacent frequencies). This is a
-            comparison of recorded numbers, not a diagnosis — bring it to your
-            audiologist or prescriber.
+            one frequency, or 10 dB at two adjacent frequencies). It compares
+            recorded numbers — bring it to your audiologist or prescriber.
           </p>
         </div>
       )}
@@ -176,7 +175,7 @@ export default function AudiogramList({
                           return (
                             <td
                               key={ear}
-                              className="py-1 pr-2 text-slate-400 dark:text-slate-500"
+                              className="py-1 pr-2 text-slate-500 dark:text-slate-400"
                             >
                               —
                             </td>

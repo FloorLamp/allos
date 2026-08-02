@@ -121,8 +121,9 @@ export default function AudiogramForm({
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Thresholds in decibels hearing level (dB HL) — the quietest tone each
-        ear heard. Lower is better; {NORMAL_THRESHOLD_DB_HL} dB HL or less is
-        the normal band. Leave a frequency blank if it wasn&apos;t tested.
+        ear heard. Lower is better, and a frequency you leave blank is recorded
+        as not tested. The normal band is {NORMAL_THRESHOLD_DB_HL} dB HL or
+        less.
       </p>
 
       <div>
