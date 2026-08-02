@@ -124,19 +124,29 @@ export interface SummaryCrossReactivity {
 }
 
 export interface SummaryCondition {
+  // The DISPLAY label, side included (#1403): a passport that reads "Osteoarthritis
+  // of knee" when the record says LEFT knee is a lossy clinical handoff. Built by
+  // the shared conditionDisplayLabel in the loader, so every surface agrees.
   name: string;
   code: string | null;
   status: ConditionStatus;
   onsetDate: string | null;
+  // Severity / stage as one calm line ("Moderate · Stage IIIA"), or null (#1403).
+  grade?: string | null;
 }
 
 // One family-history entry on the passport: a relative + their condition, with the
 // onset age when known.
 export interface SummaryFamilyHistory {
+  // The relative label WITH its genetic discriminator (#1407) — "Father (adopted)"
+  // is a different hereditary claim from "Father", and a passport must not blur the
+  // two. Built by the shared familyRelativeLabel in the loader.
   relation: string | null;
   condition: string;
   onsetAge: number | null;
   deceased: boolean;
+  // "Died at 52 — Myocardial infarction" (#1407), or null when no death is asserted.
+  deathLabel?: string | null;
 }
 
 // ---- The assembled card model ----

@@ -837,9 +837,10 @@ function insertImportRows(
   );
   const insCondition = db.prepare(
     `INSERT OR IGNORE INTO conditions
-       (name, code, code_system, status, onset_date, resolved_date,
+       (name, code, code_system, status, laterality, severity, stage,
+        onset_date, resolved_date,
         source, document_id, external_id, profile_id, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Encounters / visits. Same idempotency as records/conditions: a
   // per-document delete-set (below) clears this document's prior rows, then INSERT
@@ -867,8 +868,9 @@ function insertImportRows(
   const insFamilyHistory = db.prepare(
     `INSERT OR IGNORE INTO family_history
        (relation, condition, code, code_system, onset_age, deceased,
+        age_at_death, cause_of_death, relation_type, lineage,
         source, document_id, external_id, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Care plan items + care goals. Same idempotency: the per-document delete-set
   // clears prior rows, then INSERT OR IGNORE dedups within the document via the
@@ -1124,6 +1126,11 @@ function insertImportRows(
       c.code,
       c.code_system,
       c.status,
+      // Side / grade / stage (#1403): what CCD targetSiteCode + Problem Severity and
+      // FHIR Condition.bodySite/severity carry, and what the importer used to drop.
+      c.laterality ?? null,
+      c.severity ?? null,
+      c.stage ?? null,
       c.onset_date,
       c.resolved_date,
       docSource,
@@ -1191,6 +1198,13 @@ function insertImportRows(
       f.code_system,
       f.onset_age,
       f.deceased,
+      // Death facts + the genetic discriminator (#1407): FHIR deceasedAge /
+      // condition.contributedToDeath / relationship, and the CDA death + age
+      // observations and relatedSubject code.
+      f.age_at_death ?? null,
+      f.cause_of_death ?? null,
+      f.relation_type ?? null,
+      f.lineage ?? null,
       docSource,
       docId,
       scopedExternalId(f.external_id),

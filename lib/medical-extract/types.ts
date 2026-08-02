@@ -95,6 +95,13 @@ export interface ExtractedCondition extends ExtractedConfidence {
   code: string | null;
   code_system: string | null;
   status: string | null; // raw clinical status; normalized in import-shape
+  // Side / grade / stage as PRINTED (#1403) — raw strings, coerced onto the CHECK
+  // sets in import-shape (toConditionLaterality / toConditionSeverity). A document
+  // that states none leaves them null. Optional so fixtures that predate the fields
+  // stay valid; the real normalize path always sets all three.
+  laterality?: string | null;
+  severity?: string | null;
+  stage?: string | null;
   onset_date: string | null; // YYYY-MM-DD
   resolved_date: string | null; // YYYY-MM-DD
 }
@@ -140,6 +147,14 @@ export interface ExtractedFamilyHistory extends ExtractedConfidence {
   code_system: string | null;
   onset_age: number | null;
   deceased: number | null; // 1/0/null
+  // Death facts + the genetic discriminator as PRINTED (#1407). age_at_death is
+  // whole years; relation_type / lineage are raw strings coerced onto the CHECK sets
+  // in import-shape. Unstated relation_type reads as genetic downstream. Optional so
+  // fixtures that predate the fields stay valid; the real normalize path sets them.
+  age_at_death?: number | null;
+  cause_of_death?: string | null;
+  relation_type?: string | null;
+  lineage?: string | null;
 }
 
 export interface ExtractedCarePlanItem extends ExtractedConfidence {

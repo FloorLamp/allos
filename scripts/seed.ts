@@ -1583,6 +1583,27 @@ const condIns = db.prepare(
   `INSERT INTO conditions (profile_id, name, code, code_system, status, onset_date, resolved_date, notes)
    VALUES (1,?,?,?,?,?,?,?)`
 );
+// A SIDED + GRADED problem (#1403): laterality/severity/stage on the same row, so the
+// seeded profile shows what the columns are for — a knee that is specifically the
+// LEFT one, at a stated grade. Same statement, its own insert because the shared
+// prepared statement above predates the columns.
+const condSidedIns = db.prepare(
+  `INSERT INTO conditions (profile_id, name, code, code_system, status, laterality,
+     severity, stage, onset_date, resolved_date, notes)
+   VALUES (1,?,?,?,?,?,?,?,?,?,?)`
+);
+condSidedIns.run(
+  "Osteoarthritis of knee",
+  "M17.12",
+  "ICD-10",
+  "active",
+  "left",
+  "moderate",
+  null,
+  "2021-06-04",
+  null,
+  "Flares after long runs"
+);
 condIns.run(
   "Essential hypertension",
   "I10",
@@ -1741,18 +1762,59 @@ const famIns = db.prepare(
   `INSERT INTO family_history (profile_id, relation, condition, code, code_system, onset_age, deceased, notes)
    VALUES (1,?,?,?,?,?,?,?)`
 );
+// Death facts + the genetic discriminator (#1407). Own statement for the same reason
+// as the sided condition above.
+const famFactsIns = db.prepare(
+  `INSERT INTO family_history (profile_id, relation, condition, code, code_system,
+     onset_age, deceased, age_at_death, cause_of_death, relation_type, lineage, notes)
+   VALUES (1,?,?,?,?,?,?,?,?,?,?,?)`
+);
 famIns.run("Father", "Type 2 diabetes", "44054006", "SNOMED CT", 55, 0, null);
-famIns.run(
+// The canonical screening-cadence input: a genetic father who died OF an MI, young.
+famFactsIns.run(
   "Father",
   "Coronary artery disease",
   "53741008",
   "SNOMED CT",
   62,
   1,
-  "Fatal MI at 68"
+  68,
+  "Myocardial infarction",
+  "genetic",
+  null,
+  null
 );
 famIns.run("Mother", "Breast cancer", "254837009", "SNOMED CT", 60, 0, null);
 famIns.run("Sister", "Asthma", "195967001", "SNOMED CT", null, 0, null);
+// A maternal grandmother (family side stated) and a STEP-father whose history is
+// recorded but carries no hereditary weight — the row that proves the risk engine
+// reads the discriminator rather than the relation label.
+famFactsIns.run(
+  "Grandmother",
+  "Colorectal cancer",
+  "363406005",
+  "SNOMED CT",
+  71,
+  1,
+  74,
+  "Colorectal cancer",
+  "genetic",
+  "maternal",
+  null
+);
+famFactsIns.run(
+  "Stepfather",
+  "Coronary artery disease",
+  "53741008",
+  "SNOMED CT",
+  58,
+  0,
+  null,
+  null,
+  "step",
+  null,
+  "Not a genetic relative"
+);
 
 // ── Genomic variants (#709) ──────────────────────────────────────────────────
 // Synthetic structured genetic results — obviously-fictional, from a fictional lab.

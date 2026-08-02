@@ -1159,6 +1159,39 @@ a calm, cited hearing-safety note on Medications, Supplements, and Upcoming,
 informational and never prescriptive. Hearing aids are tracked in the
 **Equipment** registry rather than a second medical-device table.
 
+### The problem list and family history carry their clinical detail
+
+A problem is more than a name. A condition records its **side** (left / right /
+bilateral), its **severity** (mild / moderate / severe) and its **stage** (free
+text, because AJCC "IIIA", CKD "stage 3b" and NYHA "II" are different
+vocabularies) — all optional, all unstated by default, and none of them ever
+inferred from the diagnosis name. The side is **identity, not decoration**: the
+problem list labels a sided condition with its side ("Osteoarthritis of knee
+(left)"), the delete confirmation names the side it is about to remove, and the
+left-knee and right-knee rows survive de-duplication separately even though they
+share a name and an ICD-10 code. The passport carries the side and grade too, so
+a handoff document reads the same as the app. Imports stop dropping what they
+already parse: the CCD Problem Severity observation and `targetSiteCode`, and
+FHIR `Condition.severity` / `.bodySite` / `.stage`, land in these columns and
+export back out the same way.
+
+Family history records **how and how young** a relative died — `age at death` and
+`cause of death`, distinct from the age at onset — and **whether they are a
+genetic relative at all**: genetic, half sibling, adopted, or step, plus the
+maternal/paternal line where it applies. Left unstated a relative reads as
+genetic, which is what every entry made before the field meant, so nothing
+changes retroactively. The distinction is not cosmetic: the **risk and
+screening-cadence engine** now excludes an explicitly non-genetic relative
+entirely (an adopted parent's coronary disease no longer tightens a cardiac
+screen), and it reads a genetic relative's cause of death as a condition in its
+own right, aged at death — so "father, MI at 52", the exact input the cadence
+rules key on, finally reaches them. The row and the passport label the relative
+with the discriminator ("Father (adopted)", "Grandmother (maternal)") and render
+the death as one line ("Died at 52 — Myocardial infarction"). The FHIR importer
+maps `FamilyMemberHistory.deceasedAge`, `condition.contributedToDeath` and the
+v3 relationship role codes; the CCD importer reads the death observation's
+nested age observation and the `relatedSubject` code.
+
 ### Result status, corrections, and how a draw was collected
 
 A lab result carries more than a number. Each reading can record its **result

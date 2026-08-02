@@ -214,6 +214,11 @@ describe("normalizeClinicalDomains", () => {
         code: "J45.909",
         code_system: "ICD-10-CM",
         status: "Active", // raw — enum normalization happens in import-shape
+        // Side / grade / stage (#1403) are read for every condition; a document that
+        // states none carries null, never an inferred side.
+        laterality: null,
+        severity: null,
+        stage: null,
         onset_date: "2015-01-01",
         resolved_date: null, // junk date dropped to null
         // Per-record confidence (#1601) is read for every domain; a row that states

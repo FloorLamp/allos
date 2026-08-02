@@ -387,6 +387,9 @@ export function normalizeClinicalDomains(raw: any): {
       code: strOrNull(c?.code),
       code_system: strOrNull(c?.code_system),
       status: strOrNull(c?.status),
+      laterality: strOrNull(c?.laterality),
+      severity: strOrNull(c?.severity),
+      stage: strOrNull(c?.stage),
       onset_date: isoDateOrNull(c?.onset_date),
       resolved_date: isoDateOrNull(c?.resolved_date),
       ...confidenceOf(c),
@@ -485,6 +488,10 @@ export function normalizeClinicalDomains(raw: any): {
       code_system: strOrNull(f?.code_system),
       onset_age: finiteOrNull(f?.onset_age),
       deceased: boolIntOrNull(f?.deceased),
+      age_at_death: finiteOrNull(f?.age_at_death),
+      cause_of_death: strOrNull(f?.cause_of_death),
+      relation_type: strOrNull(f?.relation_type),
+      lineage: strOrNull(f?.lineage),
       ...confidenceOf(f),
     });
   }

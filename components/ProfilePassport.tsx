@@ -319,6 +319,13 @@ export default function ProfilePassport({
                           {c.code}
                         </span>
                       )}
+                      {/* Severity / stage (#1403) — the grade an ER read needs
+                          beside the diagnosis, not buried in a notes blob. */}
+                      {c.grade && (
+                        <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          {c.grade}
+                        </span>
+                      )}
                     </span>
                     {c.onsetDate && (
                       <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
@@ -356,9 +363,12 @@ export default function ProfilePassport({
                           — {f.relation}
                         </span>
                       )}
-                      {f.deceased && (
+                      {/* "Died at 52 — Myocardial infarction" (#1407) when the
+                          record carries the death facts; the bare "(deceased)"
+                          remains the fallback for a row that states only the flag. */}
+                      {(f.deathLabel || f.deceased) && (
                         <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">
-                          (deceased)
+                          ({f.deathLabel ?? "deceased"})
                         </span>
                       )}
                     </span>
