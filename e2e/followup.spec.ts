@@ -41,7 +41,7 @@ async function addStudy(
   opts: { date: string; impression: string }
 ) {
   await page.goto("/results/imaging");
-  // Entry lives behind "+ Add imaging study" since #1499 section C.
+  // The rare-entry CTA opens the imaging form in a modal.
   await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
   const form = page.getByTestId("imaging-study-form");
   await expect(form).toBeVisible();

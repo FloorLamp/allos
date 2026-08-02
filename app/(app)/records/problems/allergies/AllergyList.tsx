@@ -116,12 +116,18 @@ function buildColumns(
     },
     {
       header: "Status",
-      cell: (a) => <StatusBadge status={a.status} />,
+      cell: (a) =>
+        !isAllergyActionable(a) && a.verification_status ? (
+          <span className="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {allergyVerificationLabel(a.verification_status)}
+          </span>
+        ) : (
+          <StatusBadge status={a.status} />
+        ),
     },
     {
       header: "Source",
-      headerClassName: "hidden sm:table-cell",
-      cellClassName: "hidden whitespace-nowrap sm:table-cell",
+      cellClassName: "whitespace-nowrap",
       cell: (a) => (
         <RecordProvenance source={a.source} documentId={a.document_id} />
       ),

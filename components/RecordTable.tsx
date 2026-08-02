@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import {
-  IconPencil,
-  IconTrash,
-  IconCaretUpFilled,
-  IconCaretDownFilled,
-} from "@tabler/icons-react";
+import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/ui";
 import SubjectChip from "@/components/SubjectChip";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
+import type { AppRoute } from "@/lib/hrefs";
 import type { SubjectInfo } from "@/lib/scope";
 
 // A column of the shared records table. `cell` renders the row's value; the base
@@ -50,8 +50,8 @@ export interface RecordTableMultiView<T> {
 
 // The shared Records list surface: a `card` table whose rows
 // each swap in place for an inline edit form (a `colSpan` cell rendering the
-// page's shared <XForm>), with a per-row pencil (edit) + trash (confirm → delete)
-// action cell and the shared EmptyState. Columns and the edit form are supplied by
+// page's shared <XForm>), with record CRUD in the shared overflow menu and the
+// shared EmptyState. Columns and the edit form are supplied by
 // the caller so each page keeps its own field set; RecordTable owns the shell, the
 // edit toggle, the (optional) header sorting, and the delete confirmation.
 export default function RecordTable<T extends { id: number }>({
@@ -64,6 +64,7 @@ export default function RecordTable<T extends { id: number }>({
   defaultSort,
   tieBreak,
   multiView,
+  emptyActions,
 }: {
   items: T[];
   columns: RecordColumn<T>[];
@@ -71,6 +72,7 @@ export default function RecordTable<T extends { id: number }>({
   onDelete: (item: T) => void | Promise<void>;
   confirmDelete: (item: T) => DeleteConfirm;
   emptyMessage: string;
+  emptyActions?: ReadonlyArray<{ href: AppRoute; label: string }>;
   // Column index (into `columns`, must be sortable) + direction to sort by on
   // mount. Omit for an unsorted table that renders `items` in the given order.
   defaultSort?: { index: number; dir: "asc" | "desc" };
@@ -83,6 +85,7 @@ export default function RecordTable<T extends { id: number }>({
 }) {
   const confirm = useConfirm();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [sortIndex, setSortIndex] = useState<number | null>(
     defaultSort?.index ?? null
   );
@@ -90,7 +93,7 @@ export default function RecordTable<T extends { id: number }>({
 
   // Plain-button delete (not a form action) so confirm() can open a dialog the
   // user must answer before the destructive delete runs.
-  async function handleDelete(item: T) {
+  async function handleDelete(item: T, close: () => void) {
     const opts = confirmDelete(item);
     const ok = await confirm({
       title: opts.title,
@@ -99,6 +102,7 @@ export default function RecordTable<T extends { id: number }>({
       danger: true,
     });
     if (!ok) return;
+    close();
     await onDelete(item);
   }
 
@@ -113,7 +117,7 @@ export default function RecordTable<T extends { id: number }>({
   }
 
   if (items.length === 0) {
-    return <EmptyState message={emptyMessage} />;
+    return <EmptyState message={emptyMessage} actions={emptyActions} />;
   }
 
   const sortCol = sortIndex != null ? columns[sortIndex] : null;
@@ -130,9 +134,9 @@ export default function RecordTable<T extends { id: number }>({
   const colSpan = columns.length + 1 + (multiView ? 1 : 0);
 
   return (
-    <div className="card overflow-x-auto p-0">
-      <table className="w-full border-collapse text-sm">
-        <thead>
+    <div className="card overflow-visible p-0 sm:overflow-x-auto">
+      <table className="block w-full border-collapse text-sm sm:table">
+        <thead className="hidden sm:table-header-group">
           <tr className="border-b border-black/5 dark:border-white/5">
             {multiView && (
               <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-300">
@@ -179,18 +183,18 @@ export default function RecordTable<T extends { id: number }>({
             <th className="px-3 py-2" />
           </tr>
         </thead>
-        <tbody>
+        <tbody className="block sm:table-row-group">
           {rows.map((item) =>
             editingId === item.id ? (
-              <tr key={item.id}>
-                <td colSpan={colSpan} className="p-3">
+              <tr key={item.id} className="block sm:table-row">
+                <td colSpan={colSpan} className="block p-3 sm:table-cell">
                   {renderEditForm(item, () => setEditingId(null))}
                 </td>
               </tr>
             ) : (
               <tr
                 key={item.id}
-                className="border-b border-black/5 transition hover:bg-slate-50 dark:border-white/5 dark:hover:bg-ink-850"
+                className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border-b border-black/5 px-3 py-3 transition last:border-b-0 hover:bg-slate-50 sm:table-row sm:p-0 dark:border-white/5 dark:hover:bg-ink-850"
               >
                 {multiView &&
                   (() => {
@@ -198,7 +202,7 @@ export default function RecordTable<T extends { id: number }>({
                     const isActing =
                       subject.profileId === multiView.actingProfileId;
                     return (
-                      <td className="px-3 py-2 align-top">
+                      <td className="col-span-2 row-start-1 mb-1 block p-0 align-top sm:table-cell sm:px-3 sm:py-2">
                         {subjectChipVisible({ multi: true, isActing }) ? (
                           <SubjectChip subject={subject} />
                         ) : null}
@@ -208,12 +212,34 @@ export default function RecordTable<T extends { id: number }>({
                 {columns.map((col, i) => (
                   <td
                     key={i}
-                    className={`px-3 py-2 ${col.cellClassName ?? ""}`}
+                    className={`min-w-0 ${
+                      i === 0
+                        ? `col-start-1 ${
+                            multiView ? "row-start-2" : "row-start-1"
+                          } block pr-2 sm:table-cell sm:px-3 sm:py-2`
+                        : `col-span-2 mt-1 flex items-start gap-2 p-0 text-sm sm:px-3 sm:py-2 ${
+                            // A caller that declares `hidden` also owns the
+                            // breakpoint that reveals this column (often md).
+                            // Adding sm:table-cell here would override it early.
+                            col.cellClassName?.split(/\s+/).includes("hidden")
+                              ? ""
+                              : "sm:table-cell"
+                          }`
+                    } ${col.cellClassName ?? ""}`}
                   >
+                    {i > 0 ? (
+                      <span className="w-24 shrink-0 text-xs font-medium text-slate-400 sm:hidden">
+                        {col.header}
+                      </span>
+                    ) : null}
                     {col.cell(item)}
                   </td>
                 ))}
-                <td className="px-3 py-2">
+                <td
+                  className={`col-start-2 ${
+                    multiView ? "row-start-2" : "row-start-1"
+                  } block p-0 sm:table-cell sm:px-3 sm:py-2`}
+                >
                   {(() => {
                     // Per-item write gate (#858/#1328): in multi-view a row whose
                     // SUBJECT is read-only-granted shows no edit/delete; single-view
@@ -229,25 +255,38 @@ export default function RecordTable<T extends { id: number }>({
                       : true;
                     if (!canWrite) return null;
                     return (
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setEditingId(item.id)}
-                          aria-label="Edit"
-                          title="Edit record"
-                          className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
+                      <div className="flex items-center justify-end">
+                        <OverflowMenu
+                          label="Record actions"
+                          open={menuOpenId === item.id}
+                          onOpenChange={(open) =>
+                            setMenuOpenId(open ? item.id : null)
+                          }
                         >
-                          <IconPencil className="h-4 w-4" stroke={1.75} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(item)}
-                          aria-label="Delete"
-                          title="Delete record"
-                          className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
-                        >
-                          <IconTrash className="h-4 w-4" stroke={1.75} />
-                        </button>
+                          {({ close }) => (
+                            <>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setEditingId(item.id);
+                                  close();
+                                }}
+                                className={MENU_ITEM}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => handleDelete(item, close)}
+                                className={MENU_ITEM_DANGER}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </OverflowMenu>
                       </div>
                     );
                   })()}

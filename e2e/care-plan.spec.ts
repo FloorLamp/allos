@@ -14,7 +14,7 @@ test.describe("Care plan (#391)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#care-plan");
     await expect(
       page.getByRole("heading", { name: "Care plan" })
     ).toBeVisible();
@@ -37,10 +37,11 @@ test.describe("Care plan (#391)", () => {
     // page's completion path — the list has no separate mark-done button).
     // Idempotent: re-completing an already-completed row is a harmless no-op, so a
     // CI retry against the reused DB still passes.
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#care-plan");
     const row = page.locator("tr").filter({ hasText: "E2E orthotics fitting" });
     await expect(row).toBeVisible();
-    await row.getByRole("button", { name: "Edit" }).click();
+    await row.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
 
     // Two "Status" pickers now exist (the always-present add form + this edit
     // form); target the edit form's by its non-"new" id. Since #1676 the status is
@@ -80,12 +81,12 @@ test.describe("Care plan (#391)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#health-goals");
     await expect(
       page.getByRole("heading", { name: "Health goals" })
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Add health goal" })
+      page.getByTestId("add-health-goal-panel-toggle")
     ).toBeVisible();
     // A seeded goal from the record's Goals section.
     await expect(page.getByText("HbA1c below 6.5%")).toBeVisible();

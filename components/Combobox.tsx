@@ -133,7 +133,14 @@ export default function Combobox({
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div
+      ref={ref}
+      className="relative"
+      // Let a parent focus trap leave the first Escape to this open picker.
+      // The input handler below then closes only the listbox; a second Escape
+      // reaches the modal normally.
+      data-escape-layer={open ? "true" : undefined}
+    >
       <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center justify-center text-slate-500 dark:text-slate-400">
         <IconSearch className="h-4 w-4" stroke={2} aria-hidden="true" />
       </span>

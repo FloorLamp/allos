@@ -7,6 +7,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { EmptyState } from "@/components/ui";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
+import SourceDocumentLink from "@/components/SourceDocumentLink";
 import type { AppRoute } from "@/lib/hrefs";
 import type { FormResult } from "@/lib/types";
 
@@ -37,6 +38,7 @@ export interface InstrumentHistoryRow {
   maxTotal: number;
   // Deep link to this instrument's trend, resolved on the server.
   href: AppRoute;
+  documentId?: number | null;
 }
 
 export default function InstrumentHistoryList({
@@ -110,6 +112,14 @@ export default function InstrumentHistoryList({
               <span className="text-slate-500 dark:text-slate-400">
                 {r.date}
               </span>
+              {r.documentId != null ? (
+                <>
+                  {" · "}
+                  <SourceDocumentLink documentId={r.documentId}>
+                    Source document
+                  </SourceDocumentLink>
+                </>
+              ) : null}
             </span>
             <span className="flex items-center gap-3">
               <span>

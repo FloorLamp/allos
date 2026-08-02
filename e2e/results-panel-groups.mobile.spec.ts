@@ -211,19 +211,27 @@ test("an un-canonicalized reading lands in Other rather than being dropped (#149
   await page.context().close();
 });
 
-test("the add-a-reading form is behind '+ Add result', and deep links auto-expand (#1499)", async ({
+test("the add-a-reading CTA opens a modal, and deep links open it prefilled (#1499)", async ({
   browser,
 }) => {
   const page = await openBrowser(browser);
 
-  // No standing form: the panel is collapsed, so its fields are out of the page.
+  // No standing form: the CTA is visible, while the dialog is not mounted.
   const panel = page.getByTestId("add-result-panel");
+  const toggle = page.getByTestId("add-result-panel-toggle");
   await expect(panel).toHaveAttribute("data-open", "false");
-  await expect(panel.getByLabel("Name", { exact: true })).toBeHidden();
+  await expect(toggle).toHaveClass(/\bbtn\b/);
+  await expect(
+    page.getByRole("dialog", { name: "Add medical record" })
+  ).toHaveCount(0);
 
-  await hydratedClick(page, page.getByTestId("add-result-panel-toggle"));
+  await hydratedClick(page, toggle);
   await expect(panel).toHaveAttribute("data-open", "true");
-  await expect(panel.getByLabel("Name", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Add medical record" })
+      .getByLabel("Name", { exact: true })
+  ).toBeVisible();
 
   // The palette / medication-monitoring "Add result" deep link says it came to add
   // something, so it arrives open and prefilled.
@@ -233,7 +241,9 @@ test("the add-a-reading form is behind '+ Add result', and deep links auto-expan
     "true"
   );
   await expect(
-    page.locator("#add-result").getByLabel("Name", { exact: true })
+    page
+      .getByRole("dialog", { name: "Add medical record" })
+      .getByLabel("Name", { exact: true })
   ).toHaveValue("Ferritin");
 
   await page.context().close();

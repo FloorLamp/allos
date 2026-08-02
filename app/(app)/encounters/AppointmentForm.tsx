@@ -23,6 +23,7 @@ export default function AppointmentForm({
   action,
   appointment,
   onDone,
+  onSaved,
   defaultDate,
   prefill,
   date,
@@ -32,6 +33,7 @@ export default function AppointmentForm({
   action: (formData: FormData) => Promise<FormResult>;
   appointment?: Appointment;
   onDone?: () => void;
+  onSaved?: () => void;
   defaultDate: string;
   prefill?: {
     title: string | null;
@@ -98,6 +100,7 @@ export default function AppointmentForm({
     toast(editing ? "Appointment updated" : "Appointment saved");
     if (!editing) formRef.current?.reset();
     onDone?.();
+    onSaved?.();
   }
 
   return (

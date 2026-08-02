@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { followLink, settledClick, settledFill } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // THIS worker's database (#1538): workerDbPath() resolves the same file this
@@ -40,6 +45,45 @@ test.describe("Visit detail page", () => {
     await expect(detail.getByTestId("encounter-diagnoses")).toContainText(
       "Essential hypertension"
     );
+    await expect(
+      detail.getByRole("heading", { name: "Clinical summary" })
+    ).toBeVisible();
+
+    // The detail is one centered reading card with flat sections inside it—not a
+    // stack of cards or cards nested inside cards. Its label/value pairs also share
+    // one left edge instead of creating an awkward mostly-empty metadata column.
+    await expect(detail.getByTestId("encounter-detail-card")).toBeVisible();
+    await expect(detail.locator(".card")).toHaveCount(1);
+    await expect(detail.locator(".card .card")).toHaveCount(0);
+    const layout = await detail.evaluate((element) => {
+      const content = element.closest<HTMLElement>(
+        '[data-testid="app-content-container"]'
+      );
+      if (!content) throw new Error("Missing app content container");
+      const detailBox = element.getBoundingClientRect();
+      const contentBox = content.getBoundingClientRect();
+      return {
+        detailWidth: detailBox.width,
+        leftGap: detailBox.left - contentBox.left,
+        rightGap: contentBox.right - detailBox.right,
+      };
+    });
+    expect(layout.detailWidth).toBeLessThanOrEqual(768);
+    expect(Math.abs(layout.leftGap - layout.rightGap)).toBeLessThan(2);
+
+    const reasonLabel = detail.getByText("Chief complaint", { exact: true });
+    const reason = detail.getByTestId("encounter-reason");
+    const [labelBox, reasonBox] = await Promise.all([
+      reasonLabel.boundingBox(),
+      reason.boundingBox(),
+    ]);
+    expect(labelBox).not.toBeNull();
+    expect(reasonBox).not.toBeNull();
+    expect(reasonBox!.y).toBeGreaterThanOrEqual(labelBox!.y + labelBox!.height);
+    expect(Math.abs(reasonBox!.x - labelBox!.x)).toBeLessThan(2);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectNoClippedContent(page);
     // Back-link returns to the Visits list.
     await expect(
       detail.getByRole("link", { name: "Back to visits" })
@@ -48,14 +92,74 @@ test.describe("Visit detail page", () => {
 
   test("the Visits list row links to the detail page", async ({ page }) => {
     await page.goto("/records/history/visits");
+    const past = page.getByTestId("visits-past");
+    await expect(
+      past.getByRole("columnheader", { name: "Chief complaint" })
+    ).toBeVisible();
+    await expect(
+      past.getByRole("columnheader", { name: "Source" })
+    ).toHaveCount(0);
+    const annualPhysicalRow = past
+      .getByRole("row")
+      .filter({ hasText: "Annual physical" })
+      .first(); // first-ok: either seeded Annual physical row proves the class badge is absent from table rows
+    await expect(
+      annualPhysicalRow.getByText("Ambulatory", { exact: true })
+    ).toHaveCount(0);
+    await expect(past.getByTestId("household-view-link")).toHaveAttribute(
+      "href",
+      "/medical/episodes"
+    );
+    // Provider/facility links should hug their visible content. A column flex stack
+    // without items-start stretches inline-flex children into full-width hit areas.
+    const providerCells = page.getByTestId("encounter-provider-cell");
+    await expect(providerCells).not.toHaveCount(0);
+    for (const cell of await providerCells.all()) {
+      await expect(cell).toHaveCSS("align-items", "flex-start");
+    }
+    await expect(
+      page.getByTestId("visits-past").getByRole("link", { name: "Directions" })
+    ).toHaveCount(0);
     // EncounterList is a client component; clicking a row's <Link> before it
     // hydrates swallows the client navigation (the URL never changes). followLink
     // retries the click until the router commits the detail URL — no networkidle
     // hydration gate needed (#868).
     const rowLink = page.getByRole("link", { name: "Office Visit" }).first(); // first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
     await expect(rowLink).toHaveAttribute("href", /\/encounters\/\d+$/);
+    await expect(rowLink).toHaveClass(/\btext-brand-700\b/);
     await followLink(page, rowLink, /\/encounters\/\d+$/);
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
+  });
+
+  test("mobile visit rows use a dedicated Chief complaint row and omit Source", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/records/history/visits");
+
+    const row = page
+      .getByTestId("visits-past")
+      .getByRole("row")
+      .filter({ hasText: "Annual physical" })
+      .first(); // first-ok: either seeded Annual physical row exercises the same responsive EncounterList columns
+    await expect(row).toBeVisible();
+
+    await expect(row.getByText("Source", { exact: true })).toHaveCount(0);
+    await expect(
+      row.getByText("Chief complaint", { exact: true })
+    ).toBeVisible();
+    await expect(row.getByText("Ambulatory", { exact: true })).toHaveCount(0);
+    const visit = row.getByRole("link", { name: "Office Visit" });
+    const complaint = row.getByText("Annual physical", { exact: true });
+    const [visitBox, complaintBox] = await Promise.all([
+      visit.boundingBox(),
+      complaint.boundingBox(),
+    ]);
+    expect(visitBox).not.toBeNull();
+    expect(complaintBox).not.toBeNull();
+    expect(complaintBox!.y).toBeGreaterThanOrEqual(
+      visitBox!.y + visitBox!.height
+    );
   });
 });
 
@@ -70,7 +174,9 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
   function cleanup() {
     const handle = new Database(DB_PATH);
     try {
-      handle.prepare("DELETE FROM encounters WHERE reason = ?").run(MARKER);
+      handle
+        .prepare("DELETE FROM encounters WHERE reason LIKE ?")
+        .run(`${MARKER}%`);
     } finally {
       handle.close();
     }
@@ -84,7 +190,7 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
   }) => {
     test.slow();
 
-    await page.goto("/records/history/visits");
+    await page.goto("/records/history/visits?new=1");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 
@@ -108,6 +214,28 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
     // The logged visit appears in the Past (visit-history) section by its reason.
     const past = page.getByTestId("visits-past");
     await expect(past.getByText(MARKER)).toBeVisible({ timeout: 15_000 });
+
+    // The detail owns a real edit CTA. It opens the shared form in a modal, saves
+    // through the encounter update action, then refreshes the detail in place.
+    const visitRow = past.getByRole("row").filter({ hasText: MARKER });
+    await followLink(
+      page,
+      visitRow.getByRole("link", { name: "Office Visit" }),
+      /\/encounters\/\d+$/
+    );
+    const edit = page.getByTestId("edit-encounter");
+    await expect(edit).toHaveClass(/\bbtn\b/);
+    await edit.click();
+    const dialog = page.getByRole("dialog", { name: "Edit visit" });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByLabel("Reason (chief complaint)")
+      .fill(`${MARKER} edited`);
+    await settledClick(page, dialog.getByRole("button", { name: "Save" }));
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId("encounter-reason")).toHaveText(
+      `${MARKER} edited`
+    );
   });
 });
 

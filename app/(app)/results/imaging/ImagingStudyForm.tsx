@@ -5,6 +5,7 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
+import { useAddEntryModalClose } from "@/components/AddEntryPanel";
 import {
   IMAGING_MODALITIES,
   IMAGING_LATERALITIES,
@@ -32,6 +33,7 @@ export default function ImagingStudyForm({
   onDone?: () => void;
 }) {
   const toast = useToast();
+  const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!study;
   const [error, setError] = useState<string | null>(null);
@@ -52,24 +54,24 @@ export default function ImagingStudyForm({
     toast(editing ? "Study updated" : "Study saved");
     if (!editing) formRef.current?.reset();
     onDone?.();
+    if (!editing) closeEntryModal?.();
   }
 
   const uid = study?.id ?? "new";
-  // Add mode renders INSIDE the "+ Add imaging study" panel (#1499 section C), which
-  // is the card and owns the heading; edit mode swaps into a list row and brings its
-  // own frame.
+  // Add mode renders in the shared entry modal; edit mode swaps into a table row.
+  // The form stays frameless in both places so neither host gets a nested card.
   return (
     <form
       ref={formRef}
       action={handle}
-      className={editing ? "card space-y-3" : "space-y-3"}
+      className="space-y-3"
       data-testid="imaging-study-form"
     >
       {editing && <input type="hidden" name="id" value={study!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`is-modality-${uid}`}>
             Modality
@@ -100,7 +102,7 @@ export default function ImagingStudyForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`is-laterality-${uid}`}>
             Laterality
@@ -130,7 +132,7 @@ export default function ImagingStudyForm({
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 items-end gap-3">
+      <div className="grid items-end gap-3 sm:grid-cols-2">
         <label
           className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
           htmlFor={`is-contrast-${uid}`}
@@ -201,7 +203,7 @@ export default function ImagingStudyForm({
           placeholder="The radiologist's impression / findings, verbatim"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`is-status-${uid}`}>
             Status

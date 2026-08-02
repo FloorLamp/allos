@@ -49,8 +49,7 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
   },
   {
     header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (f) => (
       <RecordProvenance source={f.source} documentId={f.document_id} />
     ),

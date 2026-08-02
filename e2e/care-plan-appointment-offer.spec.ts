@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
-import { settledFill, settledSelect } from "./helpers";
+import { settledSelect } from "./helpers";
 
 // Close the care-plan loop on appointment completion (issue #658): completing a
 // visit OFFERS to close the open care-plan items it matches (by kind/title/date
@@ -35,24 +35,33 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
 
     // Add an OPEN care-plan item (undated intentions still match — the matcher
     // only date-gates DATED items).
-    await page.goto("/records/care/overview");
-    await settledFill(page, page.locator("#cp-desc-new"), ITEM);
+    await page.goto("/records/care/overview#care-plan");
+    await page.getByTestId("add-care-plan-panel-toggle").click();
+    const carePlanDialog = page.getByRole("dialog", {
+      name: "Add care-plan item",
+    });
+    await carePlanDialog.locator("#cp-desc-new").fill(ITEM);
     // Status is an enum picker since #1676.
-    await settledSelect(page, page.locator("#cp-status-new"), "planned");
+    await settledSelect(
+      page,
+      carePlanDialog.locator("#cp-status-new"),
+      "planned"
+    );
     // Scope the "Add" to the Care plan section — the merged Health record page
     // (#1042 phase 6) has one "Add" per section.
-    await page
-      .getByTestId("records-care-plan")
+    await carePlanDialog
       .getByRole("button", { name: "Add", exact: true })
       .click();
     await expect(page.getByText("Care-plan item saved")).toBeVisible();
 
     // Book a matching colonoscopy appointment (defaults to today → scheduled).
     await page.goto("/records/history/visits");
+    await page.getByTestId("add-visit-panel-toggle").click();
+    const visitDialog = page.getByRole("dialog", { name: "Add visit" });
     const upcoming = page.getByTestId("visits-upcoming");
-    await upcoming.getByLabel("Reason / title").fill(APPT);
-    await upcoming.getByLabel("Kind (optional)").selectOption("screening");
-    await upcoming.getByRole("button", { name: "Add", exact: true }).click();
+    await visitDialog.getByLabel("Reason / title").fill(APPT);
+    await visitDialog.getByLabel("Kind (optional)").selectOption("screening");
+    await visitDialog.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
     // Complete it — the close-the-loop panel appears.
@@ -78,7 +87,7 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     await expect(page.getByText("Care-plan item marked done")).toBeVisible();
 
     // The item is now closed on the care-plan page.
-    await page.goto("/records/care/overview");
+    await page.goto("/records/care/overview#care-plan");
     await expect(page.locator("tr").filter({ hasText: ITEM })).toContainText(
       "Completed"
     );

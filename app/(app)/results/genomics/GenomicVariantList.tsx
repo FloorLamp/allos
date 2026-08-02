@@ -18,6 +18,7 @@ import {
 import type { GenomicVariant } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
+import { dataSectionHref } from "@/lib/hrefs";
 
 const buildColumns = (
   fmt: DisplayFormatPrefs,
@@ -67,17 +68,13 @@ const buildColumns = (
   },
   {
     header: "Significance",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName:
-      "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
+    cellClassName: "whitespace-nowrap text-slate-500 dark:text-slate-400",
     cell: (v) =>
       v.significance ? significanceLabel(v.significance) : <span>—</span>,
   },
   {
     header: "Type",
-    headerClassName: "hidden md:table-cell",
-    cellClassName:
-      "hidden whitespace-nowrap text-slate-500 md:table-cell dark:text-slate-400",
+    cellClassName: "whitespace-nowrap text-slate-500 dark:text-slate-400",
     cell: (v) => resultTypeLabel(v.result_type),
   },
   {
@@ -87,8 +84,7 @@ const buildColumns = (
   },
   {
     header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cellClassName: "whitespace-nowrap",
     cell: (v) => (
       <RecordProvenance source={v.source} documentId={v.document_id} />
     ),
@@ -111,7 +107,10 @@ export default function GenomicVariantList({
       <RecordTable
         items={items}
         columns={buildColumns(useFormatPrefs(), affectedMeds)}
-        emptyMessage="No genomic variants yet. Add one, or upload a clinical genetics / PGx report to import your results."
+        emptyMessage="No genomic variants yet. Add one manually or import a clinical genetics or PGx report."
+        emptyActions={[
+          { href: dataSectionHref("import"), label: "Import records" },
+        ]}
         multiView={
           multiView
             ? {

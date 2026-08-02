@@ -1,4 +1,7 @@
-import { DOCUMENT_SOURCE_PREFIX } from "@/lib/body-metric-extract";
+import {
+  DOCUMENT_SOURCE_PREFIX,
+  documentSourceId,
+} from "@/lib/document-source";
 import {
   DEFAULT_FORMAT_PREFS,
   formatClock,
@@ -20,6 +23,19 @@ export function sourceLabel(source: string | null): string {
   if (!source) return "Manual";
   if (source.startsWith(DOCUMENT_SOURCE_PREFIX)) return "Document";
   return source;
+}
+
+// Resolve the source document behind any record-shaped row. Most clinical tables
+// carry a dedicated `document_id`; older/source-keyed stores (notably
+// immunizations) encode the same identity as `source = 'document:<id>'`. UI
+// callers should never have to know which storage shape a domain uses.
+export function sourceDocumentId(
+  documentId: number | null | undefined,
+  source: string | null | undefined
+): number | null {
+  if (Number.isInteger(documentId) && Number(documentId) > 0)
+    return Number(documentId);
+  return source ? documentSourceId(source) : null;
 }
 
 // Format a plain YYYY-MM-DD date as "Mon D, YYYY" (UTC-safe, so no off-by-one from

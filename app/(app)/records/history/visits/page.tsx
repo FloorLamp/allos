@@ -20,10 +20,8 @@ export default async function RecordsVisitsPage(props: {
   const showHousehold = scope.profiles.length > 1;
   return (
     <div data-testid="records-visits">
-      <SectionSubtitle>
-        Your appointments and visit history in one place — book upcoming visits
-        (they also surface on Upcoming) and review past encounters, diagnoses,
-        and notes.
+      <SectionSubtitle title="Visits">
+        Manage upcoming appointments and your visit history.
       </SectionSubtitle>
       <VisitsSection
         scope={scope}

@@ -13,20 +13,14 @@
 
 import { assignHashedColors } from "./trend-colors";
 import { BODY_METRIC_META } from "./trends-body-metrics";
+import { documentSourceId } from "./document-source";
+
+export { documentSourceId };
 
 export const METRIC_SOURCE_PRIORITY_KEY = "metric_source_priority";
 
-// A document-provenance source is 'document:<id>' (mirrors
-// body-metric-extract.DOCUMENT_SOURCE_PREFIX — kept literal here so this pure module
-// doesn't pull in the extraction/AI module graph, the same way the e2e specs mirror
-// the wire format). Returns the numeric doc id, or null for a non-document source.
-const DOCUMENT_SOURCE_PREFIX = "document:";
-
-export function documentSourceId(source: string): number | null {
-  if (!source.startsWith(DOCUMENT_SOURCE_PREFIX)) return null;
-  const n = Number(source.slice(DOCUMENT_SOURCE_PREFIX.length));
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
+// `documentSourceId` is re-exported here for the metric-source API's existing
+// callers. Encoding/parsing itself lives in the domain-neutral provenance module.
 
 export interface DocumentMeta {
   filename?: string | null;

@@ -6,7 +6,6 @@ import { stampSubjects, type ProfileScope } from "@/lib/scope";
 import GenomicVariantForm from "@/app/(app)/results/genomics/GenomicVariantForm";
 import GenomicVariantList from "@/app/(app)/results/genomics/GenomicVariantList";
 import { addGenomicVariant } from "@/app/(app)/results/genomics/actions";
-import ListRailLayout from "@/components/ListRailLayout";
 import AddEntryPanel from "@/components/AddEntryPanel";
 
 // The former /genomics index page body (#1042 phase 5), now the #genomics section
@@ -36,26 +35,21 @@ export default function GenomicsSection({ scope }: { scope: ProfileScope }) {
   );
 
   return (
-    <ListRailLayout
-      rail={
-        <>
-          {/* Entry behind "+ Add genomic variant" (#1499 section C — the #1497
-          rare-cadence rule): a genetics report is a once-in-a-lifetime import for
-          most profiles, so the form costs one button until it is wanted. */}
-          <AddEntryPanel
-            testId="add-genomic-panel"
-            panelId="add-genomic-panel-body"
-            label="Add genomic variant"
-          >
-            <GenomicVariantForm action={addGenomicVariant} />
-          </AddEntryPanel>
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Variant data is stored on this server and is never sent to any
-            external service except when you upload a report for extraction.
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <AddEntryPanel
+          testId="add-genomic-panel"
+          panelId="add-genomic-panel-body"
+          label="Add genomic variant"
+          presentation="modal"
+        >
+          <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+            Enter a clinical genetics or pharmacogenomic result. Raw consumer
+            genotype files aren&apos;t supported.
           </p>
-        </>
-      }
-    >
+          <GenomicVariantForm action={addGenomicVariant} />
+        </AddEntryPanel>
+      </div>
       <GenomicVariantList
         items={variants}
         affectedMeds={affectedMeds}
@@ -63,6 +57,6 @@ export default function GenomicsSection({ scope }: { scope: ProfileScope }) {
           multi ? { actingProfileId: scope.actingProfileId } : undefined
         }
       />
-    </ListRailLayout>
+    </div>
   );
 }

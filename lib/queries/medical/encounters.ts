@@ -1,4 +1,4 @@
-import { encounterKind } from "../../encounter-kind";
+import { encounterTypeKey } from "../../encounter-kind";
 import { db } from "../../db";
 import { cache } from "../../request-cache";
 import type { Encounter } from "../../types";
@@ -63,26 +63,21 @@ export function visitContextForEncounter(
 ): VisitContext | null {
   const current = getEncounter(profileId, encounterId);
   if (!current) return null;
-  const kindOf = (encounter: Encounter) =>
-    encounterKind({
-      classCode: encounter.class_code,
-      code: encounter.code,
-      codeSystem: encounter.code_system,
-      type: encounter.type,
-    });
+  const typeKeyOf = (encounter: Encounter) =>
+    encounterTypeKey(encounter.type, encounter.class_code);
   const others = getEncounters(profileId)
     .filter((encounter) => encounter.id !== encounterId)
     .map((encounter) => ({
       date: encounter.date,
       providerId: encounter.provider_id,
-      kind: kindOf(encounter),
+      typeKey: typeKeyOf(encounter),
     }));
   return visitContext(
     {
       date: current.date,
       providerId: current.provider_id,
       providerName: current.provider_name,
-      kind: kindOf(current),
+      typeKey: typeKeyOf(current),
     },
     others
   );

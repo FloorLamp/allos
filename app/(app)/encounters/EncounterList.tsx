@@ -6,13 +6,10 @@ import { IconBuildingHospital } from "@tabler/icons-react";
 import EncounterForm from "./EncounterForm";
 import { updateEncounter, deleteEncounter } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
-import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
-import OpenInMaps from "@/components/OpenInMaps";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
-  classLabel,
   encounterKind,
   encounterTypeDisplay,
   ENCOUNTER_KIND_LABELS,
@@ -63,25 +60,23 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Visit",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (e) => (
-      <>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={`/encounters/${e.id}`}
-            className="transition hover:text-brand-700 hover:underline dark:hover:text-brand-300"
-          >
-            {encounterTypeDisplay(e.type, e.class_code)}
-          </Link>
-          {e.class_code ? (
-            <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-              {classLabel(e.class_code)}
-            </span>
-          ) : null}
-        </div>
-        {e.reason ? (
-          <span className="text-xs font-normal text-slate-400">{e.reason}</span>
-        ) : null}
-      </>
+      <Link
+        href={`/encounters/${e.id}`}
+        className="font-medium text-brand-700 transition hover:underline dark:text-brand-300"
+      >
+        {encounterTypeDisplay(e.type, e.class_code)}
+      </Link>
     ),
+  },
+  {
+    header: "Chief complaint",
+    cellClassName: "text-slate-600 dark:text-slate-300",
+    cell: (e) =>
+      e.reason ? (
+        <span className="break-words">{e.reason}</span>
+      ) : (
+        <span className="text-slate-400">—</span>
+      ),
   },
   {
     header: "Diagnoses",
@@ -111,7 +106,10 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     cellClassName: "hidden whitespace-nowrap md:table-cell",
     cell: (e) =>
       e.provider_name || e.location_name ? (
-        <div className="flex flex-col gap-1 text-slate-500 dark:text-slate-400">
+        <div
+          className="flex flex-col items-start gap-1 text-slate-500 dark:text-slate-400"
+          data-testid="encounter-provider-cell"
+        >
           {e.provider_name ? (
             <ProviderName
               name={e.provider_name}
@@ -141,26 +139,10 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
               </span>
             )
           ) : null}
-          {e.location_address ? (
-            <OpenInMaps
-              address={e.location_address}
-              label="Directions"
-              showIcon={false}
-              className="text-xs text-brand-700 hover:underline dark:text-brand-300"
-            />
-          ) : null}
         </div>
       ) : (
         <span className="text-slate-400">—</span>
       ),
-  },
-  {
-    header: "Source",
-    headerClassName: "hidden sm:table-cell",
-    cellClassName: "hidden whitespace-nowrap sm:table-cell",
-    cell: (e) => (
-      <RecordProvenance source={e.source} documentId={e.document_id} />
-    ),
   },
 ];
 
@@ -237,6 +219,7 @@ export default function EncounterList({
             profileId={multiView ? e.subject.profileId : undefined}
             onDone={done}
             defaultDate={defaultDate}
+            embedded
           />
         )}
         confirmDelete={(e) => ({

@@ -5,6 +5,7 @@ import {
   createVisitOffers,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import DentalProcedureForm from "@/app/(app)/records/specialty/dental/DentalProcedureForm";
 import DentalProcedureList from "@/app/(app)/records/specialty/dental/DentalProcedureList";
@@ -27,22 +28,24 @@ export default function DentalSection({ profileId }: { profileId: number }) {
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <CreateVisitFromRecord
-            profileId={profileId}
-            offers={createVisitOffersList}
-          />
-          <DentalProcedureList items={records} followUps={followUps} />
-        </div>
-
-        <div className="min-w-0 space-y-4">
+      <div className="space-y-6">
+        <AddEntryPanel
+          testId="add-dental-record-panel"
+          panelId="add-dental-record-panel-body"
+          label="Add dental record"
+          presentation="modal"
+        >
           <DentalProcedureForm action={addDentalProcedure} />
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            This is a record of dental work and findings, not a clinical
-            charting tool.
-          </p>
-        </div>
+        </AddEntryPanel>
+        <CreateVisitFromRecord
+          profileId={profileId}
+          offers={createVisitOffersList}
+        />
+        <DentalProcedureList items={records} followUps={followUps} />
+        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+          This is a record of dental work and findings, not a clinical charting
+          tool.
+        </p>
       </div>
     </ProviderOptionsProvider>
   );

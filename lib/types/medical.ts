@@ -91,6 +91,11 @@ export interface Appointment {
   // "Log this visit" creates a linked encounter or an import/sync auto-completes a
   // matching one. NULL for a still-scheduled or manually-completed appointment.
   encounter_id: number | null;
+  // Import provenance (#24): appointments projected from a document retain both
+  // the owning document FK and its `document:<id>` source identity. Manual rows
+  // keep both null.
+  document_id: number | null;
+  source: string | null;
   created_at: string;
 }
 

@@ -83,6 +83,7 @@ export interface ImmunityTiter {
   unit: string | null;
   date: string | null;
   status: TiterStatus;
+  document_id: number | null;
 }
 
 function likeContains(value: string): string {
@@ -125,6 +126,7 @@ export function getImmunityTiters(profileId: number): ImmunityTiter[] {
       status: titerImmuneStatus(value, {
         immuneAtLeast: immuneThresholdFor(marker),
       }),
+      document_id: row.document_id,
     });
   }
   return titers;

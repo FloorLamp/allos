@@ -13,7 +13,7 @@
 //
 // Every value is synthetic (a fake profile + a fake cardio "walk"; no PHI).
 
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   setProfileSetting,
@@ -100,6 +100,17 @@ function setup(tag: string): number {
 }
 
 describe("workout-reminder presence gates through the tick (#981)", () => {
+  beforeEach(() => {
+    // The baseline fixture models a reachable midweek 1/5 cardio target. At the
+    // real week's end that target is no longer the same recommendation scenario,
+    // which made this presence-gate test depend on the CI run's weekday.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-17T15:00:00Z")); // Wednesday
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("baseline (idle) fires and marks the slot", () => {
     const p = setup("GateBaseline");
     const now = new Date();

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { IconGitMerge } from "@tabler/icons-react";
+import { IconChevronDown, IconGitMerge } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { mergeProviderAction } from "./actions";
@@ -69,46 +69,59 @@ export default function ProviderMergePanel({
   }
 
   return (
-    <div className="mt-6 card" data-testid="provider-merge">
-      <h2 className="mb-1 flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-100">
-        <IconGitMerge className="h-4 w-4" stroke={1.75} />
-        Merge a duplicate
-      </h2>
-      <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-        Pick a duplicate of {survivor.name} to absorb. Every linked record,
-        visit, medication and appointment moves onto {survivor.name}, then the
-        duplicate is deleted.
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          className="input max-w-xs"
-          value={duplicateId}
-          onChange={(e) =>
-            setDuplicateId(e.target.value ? Number(e.target.value) : "")
-          }
-          data-testid="provider-merge-select"
-        >
-          <option value="">Select a duplicate…</option>
-          {candidates.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-              {c.impact ? ` (${c.impact})` : ""}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="btn-danger"
-          disabled={!chosen || busy}
-          onClick={handleMerge}
-          data-testid="provider-merge-button"
-        >
-          {busy ? "Merging…" : "Merge"}
-        </button>
+    <details
+      className="group mt-8 border-t border-black/5 pt-4 dark:border-white/5"
+      data-testid="provider-merge"
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:text-slate-300 dark:hover:bg-ink-800">
+        <IconGitMerge className="h-4 w-4 shrink-0" stroke={1.75} />
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium">Merge a duplicate</span>
+          <span className="block text-xs font-normal text-slate-400">
+            Admin tool
+          </span>
+        </span>
+        <IconChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-3 px-3">
+        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+          Pick a duplicate of {survivor.name} to absorb. Every linked record,
+          visit, medication and appointment moves onto {survivor.name}, then the
+          duplicate is deleted.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="input max-w-xs"
+            value={duplicateId}
+            onChange={(e) =>
+              setDuplicateId(e.target.value ? Number(e.target.value) : "")
+            }
+            data-testid="provider-merge-select"
+          >
+            <option value="">Select a duplicate…</option>
+            {candidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+                {c.impact ? ` (${c.impact})` : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn-danger"
+            disabled={!chosen || busy}
+            onClick={handleMerge}
+            data-testid="provider-merge-button"
+          >
+            {busy ? "Merging…" : "Merge"}
+          </button>
+        </div>
+        {error ? (
+          <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">
+            {error}
+          </p>
+        ) : null}
       </div>
-      {error ? (
-        <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{error}</p>
-      ) : null}
-    </div>
+    </details>
   );
 }
