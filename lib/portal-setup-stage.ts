@@ -6,8 +6,10 @@
 // shape was the problem.
 //
 // So the page became a FORMATTER over one decision: this module answers "what is the next
-// step?" and the page renders only that step's card. One question, one computation — the
-// same discipline `portalStatusLine` (#1756) applies to the status sentence.
+// step?". #1826 rendered it as one stage card at a time; #1874 keeps the derivation and
+// changes only the rendering — a checklist above the always-visible portal sections
+// (portalChecklist, below), so guidance sits on top of the structure instead of
+// replacing it. One question, one computation.
 //
 // NO NEW STORAGE. A stage is derived from rows that already exist — the registry, the
 // tokens, the run reports, the pending list. There is deliberately no "setup_step" column

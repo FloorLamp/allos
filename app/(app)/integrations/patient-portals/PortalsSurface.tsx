@@ -185,7 +185,9 @@ function ProfileChip({
         }}
         size="sm"
       />
-      <span className="truncate">{profile.name}</span>
+      <span className="truncate" data-testid="profile-chip-name">
+        {profile.name}
+      </span>
     </button>
   );
 }
@@ -203,7 +205,9 @@ function StaticChip({ profile }: { profile: ProfileChoice }) {
         }}
         size="sm"
       />
-      <span className="truncate">{profile.name}</span>
+      <span className="truncate" data-testid="profile-chip-name">
+        {profile.name}
+      </span>
     </span>
   );
 }
@@ -651,8 +655,18 @@ export default function PortalsSurface({
                       className={MENU_ITEM_DANGER}
                       data-testid="pending-ignore"
                       title="Never sync this patient — they stay refused, and stop appearing here"
-                      onClick={() => {
+                      onClick={async () => {
                         close();
+                        // Durable, so it confirms and the copy states the gate
+                        // (#1875): only an admin can do this, or undo it.
+                        const ok = await confirm({
+                          title: `Ignore ${p.patientLabel}?`,
+                          message:
+                            "Never sync this patient: every future upload for them is refused, and they stop appearing here. This holds until an admin stops ignoring them.",
+                          confirmLabel: "Ignore patient",
+                          danger: true,
+                        });
+                        if (!ok) return;
                         const fd = new FormData();
                         fd.set("pending_id", String(p.id));
                         run(
@@ -1333,6 +1347,10 @@ export default function PortalsSurface({
             ＋ Add a portal
           </button>
         )}
+        {/* Add/remove outcomes land here — beside the affordance, never a page-bottom
+            line. A successful add is ALSO visible as the section that materialized
+            above, in place (#1874 point 7). */}
+        {!addOpen && <RowNote id="portals" note={note} />}
       </section>
     );
   }
@@ -1435,8 +1453,8 @@ export default function PortalsSurface({
                 Settings → API tokens
               </Link>{" "}
               with the <strong>Upload documents</strong> capability, named for
-              the device — “Mom’s laptop” — so retiring a machine never
-              disturbs the others.
+              the device — “Mom’s laptop” — so retiring a machine never disturbs
+              the others.
             </p>
           )}
           {guideStep(
@@ -1551,9 +1569,10 @@ export default function PortalsSurface({
       {!showGuide && checklistStrip()}
 
       {portals.map((p) => portalSection(p))}
-      <RowNote id="portals" note={note} />
 
-      {isAdmin && !showGuide && addPortalCard()}
+      {/* The one add affordance. During the first-visit guide the form IS step 1, so
+          the card would be the same field twice — it appears once step 1 is done. */}
+      {isAdmin && stage !== "no-portals" && addPortalCard()}
 
       {showGuide && guide()}
 
@@ -1562,8 +1581,8 @@ export default function PortalsSurface({
         <section className="card" data-testid="portals-member-empty">
           <p className="text-sm text-slate-600 dark:text-slate-300">
             No portals yet — an admin on this instance can add one. Once a
-            portal login covering {memberNames} reports its patients,
-            they’ll appear here for you to map.
+            portal login covering {memberNames} reports its patients, they’ll
+            appear here for you to map.
           </p>
         </section>
       )}
