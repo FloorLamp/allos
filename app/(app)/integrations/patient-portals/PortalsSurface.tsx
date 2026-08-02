@@ -88,6 +88,11 @@ export interface IdentityView {
   patientLabel: string;
   profileId: number | null;
   ignored: boolean;
+  // The portal REFUSES the download for this person (#1889) — a settled answer, not a
+  // fault. Rendered once as a quiet note and never as a failure event: no Data → Review
+  // badge, no notification, and the staleness/post-visit nags suppress for this identity
+  // because asking someone to collect what the portal will not give is a pointless nag.
+  declined: boolean;
   lastOkAt: string | null;
   lastFailedAt: string | null;
 }
@@ -452,6 +457,20 @@ export default function PortalsSurface({
             <StaticChip profile={bound} />
           ) : null}
           <span className="min-w-0 flex-1" />
+          {!i.ignored && i.declined && (
+            // QUIET, ONCE, AND WITHOUT AN ACTION (#1889). The portal offers this proxy a
+            // preview with no Download button; that is identical tomorrow and identical
+            // next month, and nothing the person running the tool can do about it. So it
+            // is stated calmly and it names no fix — a repeated failure event here is how
+            // a badge stops being read.
+            <span
+              className="text-xs text-slate-500 dark:text-slate-400"
+              data-testid="portal-identity-declined"
+            >
+              the portal doesn&rsquo;t offer downloads for this proxy &mdash;
+              nothing to fix
+            </span>
+          )}
           {!i.ignored && (
             // Per-(login, patient) "Last checked" (#1874 point 4) — computed against
             // the profile this patient is BOUND to, never the active one. A quiet check

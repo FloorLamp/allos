@@ -115,6 +115,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/portals.ts",
     includes:
+      "SELECT id, profile_id AS profileId FROM portal_identities WHERE account_id = ? AND patient_label = ?",
+    why: "applyIdentityOutcomes / clearIdentityDeclined (#1889): the same resolve-the-owner lookup as portalIdentityProfile, keyed on the EXTERNAL identity a run report names rather than on a surrogate id the client could not know. It asks 'whose binding is this, so I can check the reporting token may write it' — filtering by profile_id would presuppose that answer. The resolved id is immediately intersected with the token's write set, and the UPDATE that follows IS profile-scoped (id AND profile_id, a compare-and-swap)",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
       "SELECT profile_id AS profileId FROM portal_identities WHERE id = ?",
     why: "portalIdentityProfile (#1747): the ONE lookup that RESOLVES which profile a binding points at so the unbind action can gate on THAT profile rather than on a profile id the same client post supplied — filtering by profile_id here would presuppose the answer. It reads the id→profile_id mapping and nothing else, feeds it straight to requireProfileWriteAccess, and the delete that follows IS profile-scoped (id AND profile_id, a compare-and-swap). The gate is the protection, not the filter (the app/(app)/gate-item.ts shape)",
   },
