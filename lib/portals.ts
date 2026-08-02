@@ -6,7 +6,12 @@ import {
   mintSlug,
   normalizePatientLabel,
   rejectsAddress,
+  reportAdvancesStalenessClock,
+  reportAnswersRequest,
+  reportIsUnattendedFailure,
   PORTAL_NAME_MAX,
+  type IdentityOutcome,
+  type ReportedIdentity,
   type SyncReportStatus,
 } from "./acquirer-identity";
 
@@ -88,6 +93,12 @@ export interface PortalIdentity {
   // inseparable, so a caller never has to consider "ignored but pointing somewhere".
   profileId: number | null;
   ignored: boolean;
+  // THE PORTAL REFUSES THE DOWNLOAD for this person (#1889). Standing state, not an
+  // event, and deliberately NOT coupled to `ignored`: an ignored label names nobody
+  // here, while a declined one is bound to a real profile whose records the household
+  // does want and the portal will not hand over. Set by a run reporting the outcome,
+  // cleared by the first successful collection.
+  declined: boolean;
   updatedAt: string;
 }
 
@@ -477,7 +488,8 @@ const IDENTITY_COLS = `pi.id AS id, pi.portal_id AS portalId, p.slug AS portalSl
           p.name AS portalName, pi.account_id AS accountId, a.slug AS accountSlug,
           a.name AS accountName, a.implicit AS accountImplicit,
           pi.patient_label AS patientLabel, pi.profile_id AS profileId,
-          pi.ignored AS ignored, pi.updated_at AS updatedAt`;
+          pi.ignored AS ignored, pi.declined AS declined,
+          pi.updated_at AS updatedAt`;
 
 const IDENTITY_FROM = `FROM portal_identities pi
      JOIN portals p ON p.id = pi.portal_id
@@ -502,6 +514,7 @@ function toIdentity(row: Record<string, unknown>): PortalIdentity {
     patientLabel: row.patientLabel as string,
     profileId: (row.profileId as number | null) ?? null,
     ignored: (row.ignored as number) === 1,
+    declined: (row.declined as number) === 1,
     updatedAt: row.updatedAt as string,
   };
 }
@@ -694,6 +707,86 @@ export function unignorePortalIdentity(identityId: number): boolean {
     db
       .prepare("DELETE FROM portal_identities WHERE id = ? AND ignored = 1")
       .run(identityId).changes > 0
+  );
+}
+
+// ── Per-identity outcomes: the portal DECLINES this person (#1889) ───────────
+//
+// One run, one sign-in, several patients — and routinely several different answers. The
+// report's `identities` list carries a per-identity outcome so one run can tell the truth
+// about each patient; this is where those outcomes become STANDING STATE.
+//
+// WHY STANDING STATE AND NOT AN EVENT. "The portal offers this proxy a preview with no
+// Download button" is a settled answer: identical tomorrow, identical next month, and
+// nothing the person running the tool can do about it. Reported as a failure it lights
+// Data → Review on every run forever, which is how a badge stops being read. Stored as
+// state it is said ONCE, quietly, on the card — and it suppresses the nags that would ask
+// a person to go and collect what the portal will not give (lib/portal-requests.ts).
+//
+// SELF-CLEARING, like every other signal here: the first successful collection for that
+// patient clears it. Nothing has to remember to tidy up, and a portal that starts
+// offering the download again needs no human to notice.
+//
+// SUGGEST-NEVER-WRITE IS NOT AT STAKE. `declined` is a PORTAL-OBSERVED fact, not a
+// user-owned field: the household's own answers live in `ignored` (a person's choice) and
+// `profile_id` (a person's binding), and neither is touched here.
+//
+// Auth-blind by house rule: the route authenticates and resolves the login, then calls in.
+
+export interface IdentityOutcomeTally {
+  // Identities newly marked declined by this report.
+  declined: number;
+  // Identities whose declined state this report CLEARED by collecting.
+  cleared: number;
+}
+
+const SET_DECLINED_STMT = db.prepare(
+  `UPDATE portal_identities
+      SET declined = ?, updated_at = datetime('now')
+    WHERE account_id = ? AND patient_label = ? AND declined = ?`
+);
+
+// Apply the outcomes one run reported for one LOGIN. Entries with no outcome are left
+// alone — a client that has never heard of outcomes must not silently clear a standing
+// answer by merely listing the label it saw.
+export function applyIdentityOutcomes(
+  accountId: number,
+  entries: readonly ReportedIdentity[]
+): IdentityOutcomeTally {
+  const stated = entries.filter((e) => e.outcome !== null);
+  if (stated.length === 0) return { declined: 0, cleared: 0 };
+  return writeTx((): IdentityOutcomeTally => {
+    let declined = 0;
+    let cleared = 0;
+    for (const entry of stated) {
+      const want: IdentityOutcome = entry.outcome!;
+      const to = want === "declined" ? 1 : 0;
+      const changes = SET_DECLINED_STMT.run(
+        to,
+        accountId,
+        entry.label,
+        to === 1 ? 0 : 1
+      ).changes;
+      if (changes > 0) {
+        if (to === 1) declined++;
+        else cleared++;
+      }
+    }
+    return { declined, cleared };
+  });
+}
+
+// A successful collection for ONE patient clears their declined state, whether or not the
+// run bothered to spell the outcome out. `status: "downloaded"` for a patient IS the
+// evidence that the portal offered the download — the same fact `outcome: "collected"`
+// carries, arriving by the older spelling.
+export function clearIdentityDeclined(
+  accountId: number,
+  patientLabel: string
+): boolean {
+  return (
+    SET_DECLINED_STMT.run(0, accountId, normalizePatientLabel(patientLabel), 1)
+      .changes > 0
   );
 }
 
@@ -1016,6 +1109,10 @@ export interface PortalRunReport {
   // returns), never the length of the reported list. The card and the response the tool
   // gets therefore quote the same number.
   discovered: number;
+  // WHAT KIND OF RUN this was (#1888/#1889). Both default to TRUE on the wire, so a row
+  // written by a client that has never heard of them reads exactly as it always did.
+  contacted: boolean;
+  attended: boolean;
 }
 
 // Record the run one LOGIN just reported, replacing that login's previous report.
@@ -1038,16 +1135,46 @@ export function recordPortalRunReport(
     // always names the login that most recently reported — a machine handed over to a
     // different person re-points it by running once.
     reportedByLoginId?: number | null;
+    // WHAT KIND OF RUN (#1888/#1889). Omitted means TRUE — the wire default — so every
+    // existing caller keeps its exact meaning.
+    contacted?: boolean;
+    attended?: boolean;
   }
 ): void {
   // The clock SEAM (sqlNow, #1534), not datetime('now'): the card reduces this to a
   // calendar day, so it must read the same clock every other day-shaped value reads.
   const now = sqlNow();
+  const provenance = {
+    contacted: input.contacted !== false,
+    attended: input.attended !== false,
+    ok: input.ok,
+  };
+  const message = input.message ? input.message.slice(0, 500) : null;
+
+  // ── THE STICKY CHECK CLOCK (#1888) ──
+  //
+  // This table holds ONE ROW PER LOGIN — the LAST run it reported — which is what makes
+  // it bounded by construction (migration 132). So a delivery-only push OVERWRITES the
+  // previous genuine run's stamp, and a read-time `contacted = 1` filter would turn
+  // "checked yesterday, pushed today" into "never checked" and raise a staleness nudge
+  // one day after a real run: the opposite bug, equally silent.
+  //
+  // The two clock columns therefore only ever move FORWARD, and only when the ONE pure
+  // predicate pair says this report earned it. Every consumer then reads a column
+  // instead of restating `contacted !== false` in SQL — the whole point of #1888's
+  // first constraint. Passing NULL when the report earns nothing, and COALESCEing on
+  // conflict, makes "leave the previous value standing" a property of ONE statement
+  // rather than a read-then-write two concurrent reports could interleave.
+  const checkedAt = reportAnswersRequest(provenance) ? now : null;
+  const checkedOkAt = reportAdvancesStalenessClock(provenance) ? now : null;
+  const unattendedFailAt = reportIsUnattendedFailure(provenance) ? now : null;
+
   db.prepare(
     `INSERT INTO portal_run_reports
        (account_id, portal_id, at, ok, status, message, discovered,
-        reported_by_login_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        reported_by_login_id, contacted, attended, checked_at, checked_ok_at,
+        unattended_fail_at, unattended_fail_message)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(account_id)
      DO UPDATE SET portal_id = excluded.portal_id,
                    at = excluded.at,
@@ -1055,16 +1182,42 @@ export function recordPortalRunReport(
                    status = excluded.status,
                    message = excluded.message,
                    discovered = excluded.discovered,
-                   reported_by_login_id = excluded.reported_by_login_id`
+                   reported_by_login_id = excluded.reported_by_login_id,
+                   contacted = excluded.contacted,
+                   attended = excluded.attended,
+                   checked_at = COALESCE(excluded.checked_at,
+                                         portal_run_reports.checked_at),
+                   checked_ok_at = COALESCE(excluded.checked_ok_at,
+                                            portal_run_reports.checked_ok_at),
+                   -- The escalation clause (#1889) is CLEARED by any report that answers
+                   -- the request (the ask it explained is over), SET by a fresh
+                   -- unattended failure, and otherwise left standing — a delivery push in
+                   -- between must not erase why the machine gave up.
+                   unattended_fail_at =
+                     CASE WHEN excluded.checked_at IS NOT NULL THEN NULL
+                          WHEN excluded.unattended_fail_at IS NOT NULL
+                            THEN excluded.unattended_fail_at
+                          ELSE portal_run_reports.unattended_fail_at END,
+                   unattended_fail_message =
+                     CASE WHEN excluded.checked_at IS NOT NULL THEN NULL
+                          WHEN excluded.unattended_fail_at IS NOT NULL
+                            THEN excluded.unattended_fail_message
+                          ELSE portal_run_reports.unattended_fail_message END`
   ).run(
     account.id,
     account.portalId,
     now,
     input.ok ? 1 : 0,
     input.status,
-    input.message ? input.message.slice(0, 500) : null,
+    message,
     Math.max(0, Math.round(input.discovered)),
-    input.reportedByLoginId ?? null
+    input.reportedByLoginId ?? null,
+    provenance.contacted ? 1 : 0,
+    provenance.attended ? 1 : 0,
+    checkedAt,
+    checkedOkAt,
+    unattendedFailAt,
+    unattendedFailAt ? message : null
   );
 }
 
@@ -1072,7 +1225,8 @@ const LIST_RUN_REPORTS_STMT = db.prepare(
   `SELECT r.portal_id AS portalId, p.slug AS portalSlug, p.name AS portalName,
           r.account_id AS accountId, a.slug AS accountSlug, a.name AS accountName,
           a.implicit AS accountImplicit, r.at AS at, r.ok AS ok,
-          r.status AS status, r.message AS message, r.discovered AS discovered
+          r.status AS status, r.message AS message, r.discovered AS discovered,
+          r.contacted AS contacted, r.attended AS attended
      FROM portal_run_reports r
      JOIN portals p ON p.id = r.portal_id
      JOIN portal_accounts a ON a.id = r.account_id
@@ -1097,6 +1251,8 @@ export function listPortalRunReports(): PortalRunReport[] {
       status: row.status as SyncReportStatus,
       message: (row.message as string | null) ?? null,
       discovered: row.discovered as number,
+      contacted: (row.contacted as number) === 1,
+      attended: (row.attended as number) === 1,
     })
   );
 }

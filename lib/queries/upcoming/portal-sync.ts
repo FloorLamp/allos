@@ -48,6 +48,11 @@ export function syncRequestItems(
       daysSinceChecked: req.lastOkAt
         ? daysBetweenDateStr(req.lastOkAt.slice(0, 10), today)
         : null,
+      // ONE OPTIONAL CLAUSE on the shared formatter (#1889), never a second formatter:
+      // when a scheduled unattended run already tried and could not finish, the ask the
+      // person reads carries WHY it is their turn. Null the rest of the time, so the
+      // sentence is unchanged for every request nothing has attempted.
+      unattendedFailure: req.unattendedFailure,
     });
     const left = daysUntilExpiry(req.expiresAt, today);
     items.push({

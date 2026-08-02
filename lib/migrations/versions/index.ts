@@ -142,6 +142,7 @@ import { migration as m140 } from "./140-prn-max-daily-mg";
 import { migration as m141 } from "./141-followup-settle";
 import { migration as m142 } from "./142-trend-views-cleanup";
 import { migration as m143 } from "./143-portal-software-open-enum";
+import { migration as m144 } from "./144-sync-report-provenance";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -293,4 +294,5 @@ export const MIGRATIONS: Migration[] = [
   m141,
   m142,
   m143,
+  m144,
 ];
