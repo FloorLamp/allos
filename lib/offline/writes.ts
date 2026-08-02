@@ -12,7 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
-import { isRealIsoDate } from "@/lib/date";
+import { isRealIsoDate, zonedDateParts } from "@/lib/date";
 import { isDoseDateAccepted } from "@/lib/dose-log-window";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
@@ -31,7 +31,7 @@ import {
   normalizeMoodInput,
   type MoodRatingColumn,
 } from "@/lib/mood";
-import { resetMoodCheckinIgnored } from "@/lib/settings";
+import { getTimezone, resetMoodCheckinIgnored } from "@/lib/settings";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
@@ -413,7 +413,8 @@ const SET_FIELDS = [
 function applySetIntent(
   profileId: number,
   payload: SetPayload,
-  date: string
+  date: string,
+  capturedAt: unknown
 ): { status: "done" | "rejected"; reason?: string } {
   const fields = payload?.fields;
   if (!fields || typeof fields !== "object" || !isRealIsoDate(date)) {
@@ -425,6 +426,27 @@ function applySetIntent(
     if (typeof value === "string") fd.set(key, value);
   }
   fd.set("date", date);
+  // COMPLETION STAMP (#1596 follow-up). A queued session is a CLOSED session —
+  // the capture only ever fires on the editor's close path — but the create form
+  // defaults start_time to the open moment, and an offline session is typically
+  // abandoned without an end or a duration. Replayed verbatim, that row carries
+  // the live-draft signature (started, unended, duration-less), so workout
+  // presence (#921) resurrects it as an ACTIVE workout at whatever moment the
+  // device reconnects: the app-wide dock and the 45-min "Still working out?" nag
+  // haunt every page for up to ACTIVE_MAX_QUIET_MIN — hours after the user
+  // walked away (the #1441 class, re-created by replay; caught as cross-spec
+  // dock contamination on CI). The capture instant IS when the session closed,
+  // so stamp it as the end — wall-clock HH:MM in the profile's timezone, the
+  // same "end = the moment you finished" rule the live Finish button applies —
+  // making the row read as the completed session it is (isCompletedSessionRow).
+  // A payload that already carries an end time or a positive duration is left
+  // untouched; a start-less capture is already completed and needs nothing.
+  const durationField = Number(fd.get("duration_min"));
+  const hasDuration = Number.isFinite(durationField) && durationField > 0;
+  if (fd.get("start_time") && !fd.get("end_time") && !hasDuration) {
+    const closedAt = new Date(resolveCapturedInstant(capturedAt));
+    fd.set("end_time", zonedDateParts(getTimezone(profileId), closedAt).hhmm);
+  }
   // Canonical-unit fallbacks only: the capture always stamps the units each value
   // was entered in (buildFormData sets both), so these are unreachable for a real
   // intent and merely keep the core total for a hand-crafted one.
@@ -610,7 +632,8 @@ export function applyIntent(
       const applied = applySetIntent(
         profileId,
         intent.payload as SetPayload,
-        intent.date
+        intent.date,
+        intent.capturedAt
       );
       if (applied.status === "rejected") {
         outcome = applied;

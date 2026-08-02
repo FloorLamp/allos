@@ -15,17 +15,25 @@ import { workerDbPath } from "./worker-env";
 // activities/exercise_sets DB check is what proves both the replay (a real row with
 // its sets) and the idempotency ledger (exactly one row after reload re-flushes).
 
-function sessionRows(marker: string): { id: number; sets: number }[] {
+interface SessionRow {
+  id: number;
+  sets: number;
+  start_time: string | null;
+  end_time: string | null;
+  duration_min: number | null;
+}
+
+function sessionRows(marker: string): SessionRow[] {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
     return db
       .prepare(
-        `SELECT a.id,
+        `SELECT a.id, a.start_time, a.end_time, a.duration_min,
                 (SELECT COUNT(*) FROM exercise_sets s WHERE s.activity_id = a.id) AS sets
            FROM activities a WHERE a.title = ?`
       )
-      .all(marker) as { id: number; sets: number }[];
+      .all(marker) as SessionRow[];
   } finally {
     db.close();
   }
@@ -93,6 +101,16 @@ test("a workout logged offline queues at close, then syncs exactly once (#1596)"
   const rows = sessionRows(marker);
   expect(rows).toHaveLength(1);
   expect(rows[0].sets).toBeGreaterThanOrEqual(1);
+
+  // The replayed session is a COMPLETED session — never the live-draft
+  // signature (started, unended, duration-less). Left live-shaped, workout
+  // presence would resurrect it as an ACTIVE workout and the app-wide dock +
+  // "Still working out?" nag would haunt every page (and, on a shared CI
+  // worker, every later spec) for up to 90 minutes. The replay stamps the
+  // capture (close) instant as the end, so the row must carry one.
+  expect(rows[0].start_time).not.toBeNull();
+  expect(rows[0].end_time).not.toBeNull();
+  await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 
   // No draft-restore offer either: the queue owns the entry, so reopening the
   // editor must not offer the same session back for a duplicate save (#1699 vs
