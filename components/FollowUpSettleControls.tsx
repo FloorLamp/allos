@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import type { FormResult } from "@/lib/types";
 
@@ -81,14 +82,13 @@ export default function FollowUpSettleControls({
         <input type="hidden" name="profile_id" value={profileId} />
       )}
       {mode === "done" && (
-        <input
-          type="date"
+        <DateField
           name="settled_on"
-          aria-label="Done on"
           defaultValue={today}
           max={today}
           required
-          className="input w-auto py-1 text-xs"
+          data-testid={`followup-settle-date-${carePlanItemId}`}
+          inputClassName="w-32 py-1 text-xs"
         />
       )}
       <input

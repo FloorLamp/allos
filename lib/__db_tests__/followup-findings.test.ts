@@ -295,9 +295,9 @@ describe("the #1866 terminator on the builder surface", () => {
     // node no longer satisfies the "open follow-up exists" idempotency check.
     const retracked = trackImagingFollowUpCore(p, studyId, 30, now);
     expect(retracked.kind).toBe("created");
-    expect(
-      (retracked as { carePlanItemId: number }).carePlanItemId
-    ).not.toBe(cpId);
+    expect((retracked as { carePlanItemId: number }).carePlanItemId).not.toBe(
+      cpId
+    );
   });
 
   it("settleFollowUpCore refuses with typed outcomes, never a silent no-op", () => {

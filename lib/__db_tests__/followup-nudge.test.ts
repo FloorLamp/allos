@@ -100,7 +100,11 @@ describe("runFollowUpNudges — two-send cadence at the tick level (#1866)", () 
     // Same day again + every day up to the repeat threshold: nothing.
     await runFollowUpNudges(p, "FUN", now);
     await runFollowUpNudges(p, "FUN", shiftDateStr(now, 1));
-    await runFollowUpNudges(p, "FUN", shiftDateStr(now, FOLLOWUP_REPEAT_DAYS - 1));
+    await runFollowUpNudges(
+      p,
+      "FUN",
+      shiftDateStr(now, FOLLOWUP_REPEAT_DAYS - 1)
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // Weeks later: exactly ONE repeat, appended to the marker.
@@ -216,9 +220,7 @@ describe("the terminator ends the escalation permanently (#1866 req 2)", () => {
     await runFollowUpNudges(p, "FUN", shiftDateStr(now, 201));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(getProfileSetting(p, followUpNudgeMarkerKey(cpId))).toBeUndefined();
-    expect(
-      getProfileSetting(p, followUpNudgeMarkerKey(newId))
-    ).toBeDefined();
+    expect(getProfileSetting(p, followUpNudgeMarkerKey(newId))).toBeDefined();
   });
 
   it("a done-on-date settle ends it identically", async () => {
@@ -260,7 +262,9 @@ describe("message rendering", () => {
       "https://example.test"
     );
     expect(first.kind).toBe("followup");
-    expect(first.title).toContain("Overdue follow-up: Norton — Follow-up CT chest");
+    expect(first.title).toContain(
+      "Overdue follow-up: Norton — Follow-up CT chest"
+    );
     expect(first.body).toContain("Was due 2026-03-15.");
     expect(first.body).toContain("6 mm RLL nodule");
     expect(first.actions).toEqual([

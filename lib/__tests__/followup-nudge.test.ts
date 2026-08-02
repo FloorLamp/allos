@@ -65,12 +65,7 @@ describe("planFollowUpNudges — the two-send cadence (#1866)", () => {
   });
 
   it("a live snooze FREEZES the cadence: no send, marker untouched (#227)", () => {
-    const plan = planFollowUpNudges(
-      [{ id: 7, sentDates: [] }],
-      [],
-      [7],
-      TODAY
-    );
+    const plan = planFollowUpNudges([{ id: 7, sentDates: [] }], [], [7], TODAY);
     expect(plan.toSend).toEqual([]);
     expect(plan.toClear).toEqual([]);
     // The repeat is frozen too, not just the first send.
