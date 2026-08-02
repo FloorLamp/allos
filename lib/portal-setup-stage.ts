@@ -6,8 +6,10 @@
 // shape was the problem.
 //
 // So the page became a FORMATTER over one decision: this module answers "what is the next
-// step?" and the page renders only that step's card. One question, one computation — the
-// same discipline `portalStatusLine` (#1756) applies to the status sentence.
+// step?". #1826 rendered it as one stage card at a time; #1874 keeps the derivation and
+// changes only the rendering — a checklist above the always-visible portal sections
+// (portalChecklist, below), so guidance sits on top of the structure instead of
+// replacing it. One question, one computation.
 //
 // NO NEW STORAGE. A stage is derived from rows that already exist — the registry, the
 // tokens, the run reports, the pending list. There is deliberately no "setup_step" column
@@ -81,4 +83,63 @@ export function portalSetupStage(facts: PortalSetupFacts): PortalSetupStage {
     return facts.hasUploadToken ? "first-run" : "create-token";
   }
   return "steady";
+}
+
+// ── The checklist (#1874) ────────────────────────────────────────────────────
+//
+// The stage machine's OTHER rendering. #1826 rendered one stage CARD at a time, which
+// made the guidance replace the structure; #1874 keeps the structure (the portal
+// sections) always visible and reduces the stage machine to a checklist rendered above
+// them — unrolled into the five-step guide on first visit, a compact strip once a run
+// has reported, and GONE at steady state. Same facts, same waterfall, one derivation.
+
+export interface PortalChecklistItem {
+  key: "portal" | "token" | "first-run" | "map";
+  label: string;
+  done: boolean;
+  // Exactly one item is current while the checklist renders at all — the stage.
+  current: boolean;
+}
+
+// The four setup facts as checklist items, or null at steady state (a finished
+// checklist is clutter, not reassurance — the sections themselves are the steady page).
+//
+// "Map patients" is DONE only once a run has reported and nothing is waiting: before
+// the first run there is nothing to map yet, and rendering that step "done" would claim
+// a household finished a step it never met.
+export function portalChecklist(
+  facts: PortalSetupFacts
+): PortalChecklistItem[] | null {
+  const stage = portalSetupStage(facts);
+  if (stage === "steady") return null;
+  const n = facts.pendingCount;
+  return [
+    {
+      key: "portal",
+      label: "Portal added",
+      done: facts.portalCount > 0,
+      current: stage === "no-portals",
+    },
+    {
+      key: "token",
+      label: "API token",
+      done: facts.hasUploadToken,
+      current: stage === "create-token",
+    },
+    {
+      key: "first-run",
+      label: "First run",
+      done: facts.reportCount > 0,
+      current: stage === "first-run",
+    },
+    {
+      key: "map",
+      label:
+        n > 0
+          ? `${n} ${n === 1 ? "patient" : "patients"} to map`
+          : "Map patients",
+      done: facts.reportCount > 0 && n === 0,
+      current: stage === "map-patients",
+    },
+  ];
 }

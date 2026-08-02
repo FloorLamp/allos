@@ -27,14 +27,16 @@ import {
   listPortalAccounts,
   listPortalRunReports,
   listPortals,
+  recordDiscoveredIdentities,
   recordPortalRunReport,
   type PortalAccount,
 } from "@/lib/portals";
 import {
+  listVisiblePendingIdentities,
   listVisiblePortalRegistry,
   listVisiblePortalRunReports,
 } from "@/lib/portal-visibility";
-import { portalStatusLine } from "@/lib/portal-status";
+import { portalLoginStatus } from "@/lib/portal-status";
 
 // Household B's secrets — the strings that must never reach household A.
 const B_PORTAL = "Leak Test Portal B";
@@ -153,26 +155,23 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
     expect(serialized).toContain(A_MESSAGE);
   });
 
-  it("keeps the leak out of the sentence the card actually renders", () => {
-    // End-to-end through the pure formatter: rule 1 picks the globally-newest failure,
-    // which is household B's — the exact path that produced the reported bug.
-    const leaked = portalStatusLine({
-      lastSuccessAt: null,
-      connected: true,
-      reports: listPortalRunReports(),
-      pending: [],
-    });
-    expect(leaked.text).toContain(B_MESSAGE);
+  it("keeps the leak out of the sentences the page actually renders", () => {
+    // End-to-end through the pure formatter: each login row formats its OWN last
+    // report (#1874 — the page-level pick-the-newest sentence retired with the
+    // redesign). Unscoped, B's failure line is formattable — proving the fixture is
+    // live and the message really would render…
+    const bReport = listPortalRunReports().find(
+      (r) => r.accountId === accountB.id
+    )!;
+    expect(portalLoginStatus(bReport).text).toContain(B_MESSAGE);
 
-    const scoped = portalStatusLine({
-      lastSuccessAt: null,
-      connected: true,
-      reports: listVisiblePortalRunReports([profileA], true),
-      pending: [],
-    });
-    expect(scoped.text).not.toContain(B_MESSAGE);
-    expect(scoped.text).not.toContain(B_ACCOUNT);
-    expect(scoped.text).not.toContain(B_PORTAL);
+    // …while the scoped read hands household A no report that could ever format it.
+    const sentences = listVisiblePortalRunReports([profileA], true)
+      .map((r) => portalLoginStatus(r).text)
+      .join("\n");
+    expect(sentences).not.toContain(B_MESSAGE);
+    expect(sentences).not.toContain(B_ACCOUNT);
+    expect(sentences).not.toContain(B_PORTAL);
   });
 
   it("shows a household its own account, from either side", () => {
@@ -372,5 +371,55 @@ describe("listPortals / listPortalAccounts stay instance-wide", () => {
     expect(listPortalAccounts().some((acc) => acc.id === accountB.id)).toBe(
       true
     );
+  });
+});
+
+// ── The pending list (#1875) ─────────────────────────────────────────────────
+//
+// Same fixture, same predicate, third surface: a pending row's patient label is a
+// portal-reported FULL NAME, so a member with write access to one profile must not be
+// shown another household's proxy-patient labels — and a first-contact (unclaimed)
+// account's pendings are admin-only territory, which is why the page passes `isAdmin`
+// (never the old any-writer population) as the unclaimed flag.
+describe("listVisiblePendingIdentities — the #1875 disclosure boundary", () => {
+  const A_PENDING = "PENDING, AY HOUSEHOLD";
+  const B_PENDING = "PENDING, BEE HOUSEHOLD";
+  const U_PENDING = "PENDING, UNCLAIMED";
+
+  beforeAll(() => {
+    expect(recordDiscoveredIdentities(accountA, [A_PENDING])).toBe(1);
+    expect(recordDiscoveredIdentities(accountB, [B_PENDING])).toBe(1);
+    expect(recordDiscoveredIdentities(unclaimedAccount, [U_PENDING])).toBe(1);
+  });
+
+  it("shows a member only pendings on logins claimed by a profile they can reach", () => {
+    const visible = listVisiblePendingIdentities([profileA], false);
+    const serialized = JSON.stringify(visible);
+
+    expect(visible.some((p) => p.patientLabel === A_PENDING)).toBe(true);
+    // The disclosure assertions proper: the other household's label, login nickname
+    // and portal name appear nowhere in the payload, whatever shape it grows.
+    expect(serialized).not.toContain(B_PENDING);
+    expect(serialized).not.toContain(B_ACCOUNT);
+    expect(serialized).not.toContain(B_PORTAL);
+    // A first-contact account's pendings are not a member's either (#1875).
+    expect(serialized).not.toContain(U_PENDING);
+  });
+
+  it("keeps the unclaimed first-contact case for the flagged (admin) population only", () => {
+    const admin = listVisiblePendingIdentities([profileA, profileB], true);
+    for (const label of [A_PENDING, B_PENDING, U_PENDING]) {
+      expect(admin.some((p) => p.patientLabel === label)).toBe(true);
+    }
+    // The flag never widens visibility of a CLAIMED foreign account's pendings.
+    const memberWithFlag = listVisiblePendingIdentities([profileA], true);
+    expect(memberWithFlag.some((p) => p.patientLabel === U_PENDING)).toBe(true);
+    expect(memberWithFlag.some((p) => p.patientLabel === B_PENDING)).toBe(
+      false
+    );
+  });
+
+  it("gives a login with no accessible profile nothing", () => {
+    expect(listVisiblePendingIdentities([], false)).toEqual([]);
   });
 });

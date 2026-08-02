@@ -11,29 +11,22 @@ import {
   PORTAL_B_NAME,
 } from "./fixture-logins";
 
-// Cross-household disclosure on the Patient portals status card (#1787).
+// Cross-household disclosure on the Patient portals page (#1787, tightened by #1875).
 //
-// The card's Status sentence picks the globally-newest FAILED portal run report and
-// renders its portal name, account nickname, and the companion tool's free-text
-// `message`. That read was instance-wide, gated only by requireSession(), so a login
-// with access to no profile tied to that portal account still saw all three — including
-// up to 500 characters of text an external tool supplies through the token-authenticated
-// upload API.
+// The page renders each portal login's last-run report — portal name, account nickname,
+// and the companion tool's free-text `message`, up to 500 characters supplied through
+// the token-authenticated upload API. Before #1787 that read was instance-wide, so a
+// login with access to no profile tied to the failing account still saw all three.
+// #1874 moved the sentence from a page-bottom status line onto the login's own row, and
+// #1875 closed the remaining crack: unclaimed accounts are admin-only, so a member sees
+// a portal ONLY through a login already claimed by a profile they can reach.
 //
 // The seeded fixture (e2e/seed/portals.ts) is two households that share NO profile
 // access. Household B owns the failing portal; household A must never learn that it
-// failed, or why.
-// A holds WRITE access to its own profile, so it is in the canManagePending population —
-// the widest a non-admin member can be, which makes this the strongest form of the
-// negative: even the most-privileged member with no tie to the account sees nothing.
-// The failing run is planted HERE, not in the seed. Seeded, it would be the only run
-// report in the database — and an admin reaches every profile, so it would legitimately
-// become the newest visible failure for the shared admin session and break
-// patient-portals-setup.spec's first-contact assertion that the card reads exactly
-// "No run reported yet.". A fixture that changes a neighbour's surface is not a fixture.
-// So this spec owns the row: planted before each of its tests, removed after, whatever
-// the test did. The durable scaffolding (two households, the account bound to B) stays
-// in the seed, because it changes nobody's surface.
+// failed, why — or, since #1875, that it exists at all.
+// The failing run is planted HERE, not in the seed: seeded, it would become part of the
+// shared admin session's surface and disturb the setup spec's assertions. This spec owns
+// the row — planted before each of its tests, removed after, whatever the test did.
 function beeAccountId(db: Database.Database): number {
   return (
     db
@@ -79,16 +72,15 @@ function clearBeeFailure(): void {
   });
 }
 
-// A fixed DEEP-FUTURE stamp, never wall clock: it makes this the newest report while it
-// exists, so it is exactly the one portalStatusLine's rule 1 picks — the path the bug
-// travelled.
+// A fixed DEEP-FUTURE stamp, never wall clock: it makes this the newest report the
+// account can have while it exists, so the login row's status is unambiguous.
 const FAILURE_AT = "2027-01-01 12:00:00";
 
-test.describe("Patient portals status scoping (#1787)", () => {
+test.describe("Patient portals status scoping (#1787/#1875)", () => {
   test.beforeEach(() => plantBeeFailure());
   test.afterEach(() => clearBeeFailure());
 
-  test("household A never sees household B's portal failure", async ({
+  test("household A never sees household B's portal, login, or failure", async ({
     browser,
   }) => {
     test.slow(); // local `next dev` compiles the route on first hit
@@ -100,52 +92,50 @@ test.describe("Patient portals status scoping (#1787)", () => {
     try {
       await member.goto("/integrations/patient-portals");
 
-      // The page is not blanked — it still answers for THIS household with its own next
-      // step, which is what makes the fix a scoping change rather than a removal. What it
-      // must not carry is a single trace of the other household's run.
-      await expect(member.getByTestId("portal-stage")).toBeVisible();
+      // The page is not blanked — it still answers for THIS household (here: the
+      // member-empty promise, since A's profile has no covering login), which is what
+      // makes the fix a scoping change rather than a removal.
+      await expect(member.getByTestId("portals-member-empty")).toBeVisible();
 
       // The FREE TEXT is asserted page-wide, because that is the disclosure: up to 500
       // characters an external companion tool supplies through the token-authenticated
       // upload API, which could name a patient or an account detail. It must not reach
-      // this login through ANY element, not just through the one that leaked it.
+      // this login through ANY element.
       await expect(member.locator("body")).not.toContainText(PORTAL_B_FAILURE);
 
-      // THE FAILING ACCOUNT IS NEVER NAMED to this login either — the nickname is half of
-      // what leaked, and it names a household's composition (#1796).
+      // The failing account's nickname names a household's composition (#1796).
       await expect(member.locator("body")).not.toContainText(PORTAL_B_ACCOUNT);
 
-      // Deliberately NOT asserted page-wide: the PORTAL name. #1826 narrowed the page onto
-      // the scoped registry read (`listVisiblePortalRegistry`), and that read admits an
-      // UNCLAIMED account — an account with no binding onto any profile — to the
-      // canManagePending population, which household A is in. A portal created in the UI
-      // is claimed by nobody until a run has discovered a patient on it, so clause (b) is
-      // load-bearing rather than incidental, and B's portal still reaches A through its
-      // never-bound implicit login. What A must not learn is that B's NAMED login failed
-      // and why, which is what the assertions above cover.
+      // And since #1875 the PORTAL NAME is gone too: unclaimed accounts are admin-only,
+      // so B's never-bound implicit login no longer smuggles the portal's existence to
+      // every member with write access somewhere.
+      await expect(member.locator("body")).not.toContainText(PORTAL_B_NAME);
     } finally {
       await member.context().close();
     }
   });
 
-  test("household B still sees its own portal failure", async ({ browser }) => {
+  test("household B still sees its own portal failure, on its login's row", async ({
+    browser,
+  }) => {
     test.slow();
 
     // The other half of the negative: the message is genuinely reachable, so the first
-    // test is proving scoping rather than a fixture that never rendered. B's account has
-    // a reported run, so B's page is in steady state and leads with the one status
-    // sentence (#1826).
+    // test is proving scoping rather than a fixture that never rendered. The sentence
+    // lives on the login row now (#1874) — B's covering login is the only one B sees,
+    // so its portal section renders without sub-groups and carries the status.
     const member = await loginAs(browser, {
       username: E2E_LOGIN_PORTAL_B,
       password: E2E_MEMBER_PASSWORD,
     });
     try {
       await member.goto("/integrations/patient-portals");
-      const status = member.getByTestId("portals-status-line");
-      await expect(status).toBeVisible();
+      const section = member.locator(
+        `[data-testid="portal-section"][data-portal-name="${PORTAL_B_NAME}"]`
+      );
+      await expect(section).toBeVisible();
+      const status = section.getByTestId("login-status");
       await expect(status).toContainText(PORTAL_B_FAILURE);
-      await expect(status).toContainText(PORTAL_B_NAME);
-      await expect(status).toContainText(PORTAL_B_ACCOUNT);
       await expect(status).toHaveAttribute("data-tone", "attention");
     } finally {
       await member.context().close();
