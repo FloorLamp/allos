@@ -12,6 +12,19 @@ useDefault = true
 # or "auth" sitting next to a 64-hex digest matches gitleaks' generic-api-key
 # rule (this bit a login-email migration whose manifest line read
 # `"...-auth-tokens.ts": "<sha256>"`).
-[allowlist]
+[[allowlists]]
 description = "migration hash manifest — filename->SHA-256 of checked-in files, no secrets"
 paths = ['''lib/migrations/manifest\.json$''']
+
+# The redaction tests (lib/__tests__/ai-log-redaction.test.ts and
+# lib/__tests__/log-console-redaction.test.ts) must feed the scanner's own subject
+# matter — a credential-SHAPED value — to prove redactSecrets() masks it. The repo's
+# standing fake-credential literal for that is `sk-live-12345`: obviously invented,
+# issued by no provider, and flagged only because gitleaks' generic-api-key rule sees
+# a secret-ish KEY NAME beside it (e.g. `access_token: "sk-live-12345"`).
+#
+# The literal is allowlisted rather than the test paths on purpose: a REAL secret
+# committed to those same files still fails the scan.
+[[allowlists]]
+description = "fake-credential fixture literal used by the redaction tests"
+regexes = ['''sk-live-12345''']
