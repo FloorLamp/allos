@@ -79,18 +79,24 @@ test("Data → Review shows a stopped sync with its own copy, not the reauth wor
 }) => {
   await page.goto("/data?section=review");
   const review = page.getByTestId("review-inbox");
-  await expect(review.getByText("Needs attention")).toBeVisible();
+  const attention = review.getByTestId("needs-attention-sources");
+  await expect(attention.getByText("Needs attention")).toBeVisible();
 
-  const row = review.getByTestId(`import-issue-${PROVIDER}`);
-  await expect(row).toBeVisible();
+  // Since #1880 a quiet stop escalates the STANDING (the staleness breach composes
+  // into `failing`), so the provider renders its full source card under Needs
+  // attention — once — rather than a summary row beside a duplicate card below.
+  const card = attention.getByTestId(`source-${PROVIDER}`);
+  await expect(card).toBeVisible();
   // Says what we observed …
-  await expect(row).toContainText("sync has stopped");
-  await expect(row).toContainText(`No data since ${staleSince()}`);
-  await expect(row).toContainText(`${DAYS_STALE} days`);
-  // … and never claims a cause it has no evidence for. The seeded Strava failure keeps
-  // the "sync failed" wording, so this assertion is scoped to this row.
-  await expect(row).not.toContainText("sync failed");
-  await expect(row).not.toContainText("Reconnect to resume syncing");
+  await expect(card).toContainText(`No data since ${staleSince()}`);
+  await expect(card).toContainText(`${DAYS_STALE} days`);
+  await expect(card).toContainText("Check the connection");
+  // … and never claims a cause it has no evidence for.
+  await expect(card).not.toContainText("Reconnect to resume syncing");
+  // The card renders ONCE: the provider is not listed again under Connected sources.
+  await expect(
+    review.getByTestId("connected-sources").getByTestId(`source-${PROVIDER}`)
+  ).toHaveCount(0);
 });
 
 test("the stopped sync is counted by the Review badge", async ({ page }) => {
@@ -105,7 +111,7 @@ test("the stopped sync is counted by the Review badge", async ({ page }) => {
   await page.goto("/data?section=review");
   await expect(badge).toHaveText(String(withStale - 1));
   await expect(
-    page.getByTestId("review-inbox").getByTestId(`import-issue-${PROVIDER}`)
+    page.getByTestId("review-inbox").getByTestId(`source-${PROVIDER}`)
   ).toHaveCount(0);
 });
 

@@ -7,16 +7,25 @@
 import { describe, it, expect } from "vitest";
 import {
   buildHistoryRows,
+  consecutiveLeadingFailures,
+  escalationPolicyLabel,
   eventVerdict,
+  failureConsequence,
+  failureRunReason,
+  FAILING_CONSECUTIVE_RUNS,
   formatCoverage,
   formatSyncChange,
   formatSyncOutcome,
+  intermittentReassurance,
+  intermittentRunsLabel,
   needsAttention,
   providerStanding,
   quietRunLabel,
   runWindowNorm,
   standingBadge,
+  standingEscalates,
   syncVocabularyForKind,
+  windowDivergence,
   type SyncEventFacts,
 } from "@/lib/integrations/provider-state";
 import { truncatedSyncDetails } from "@/lib/integrations/sync-details";
@@ -45,6 +54,36 @@ describe("syncVocabularyForKind", () => {
   });
 });
 
+// The recent run window: newest-first, `fails` leading failures then `oks`
+// successes behind them.
+function runs(fails: number, oks: number): SyncEventFacts[] {
+  const out: SyncEventFacts[] = [];
+  let id = 100;
+  for (let i = 0; i < fails; i++)
+    out.push(ev({ id: id--, ok: 0, error: "weather fetch failed (503)" }));
+  for (let i = 0; i < oks; i++) out.push(ev({ id: id--, inserted: 1 }));
+  return out;
+}
+
+// A connected provider's standing over a window, with the staleness facts a real
+// caller (getIntegrationState) supplies. Defaults: last success well inside the
+// threshold.
+function standingOf(
+  window: SyncEventFacts[],
+  over: Partial<Parameters<typeof providerStanding>[0]> = {}
+) {
+  return providerStanding({
+    connected: true,
+    needsReauth: false,
+    latest: window[0] ?? null,
+    recentRuns: window,
+    lastSuccessAt: "2026-08-01 08:00:00",
+    thresholdDays: 2,
+    today: "2026-08-01",
+    ...over,
+  });
+}
+
 describe("providerStanding + standingBadge", () => {
   it("puts a dead credential ahead of everything else", () => {
     expect(
@@ -63,38 +102,145 @@ describe("providerStanding + standingBadge", () => {
     expect(standingBadge("not-connected").tone).toBe("caution");
   });
 
-  it("reads the latest event for a connected provider", () => {
+  it("reads the run window for a connected provider", () => {
     expect(
       providerStanding({ connected: true, needsReauth: false, latest: null })
     ).toBe("never-synced");
     expect(
-      providerStanding({
-        connected: true,
-        needsReauth: false,
-        latest: ev({ ok: 0 }),
+      standingOf([ev({ details: truncatedSyncDetails() }), ev(), ev()])
+    ).toBe("partial");
+    expect(standingOf(runs(0, 6))).toBe("healthy");
+  });
+
+  // THE #1880 headline: flapping is not failing. The boundary is
+  // FAILING_CONSECUTIVE_RUNS — 2 consecutive failures with a recent success stay a
+  // calm amber `intermittent`; the third escalates.
+  it("classifies 2 consecutive failures as intermittent and 3 as failing", () => {
+    expect(FAILING_CONSECUTIVE_RUNS).toBe(3);
+    expect(standingOf(runs(1, 5))).toBe("intermittent");
+    expect(standingOf(runs(2, 5))).toBe("intermittent");
+    expect(standingOf(runs(3, 5))).toBe("failing");
+    expect(consecutiveLeadingFailures(runs(2, 5))).toBe(2);
+    // A success at the head resets the streak — a flap is not an outage.
+    expect(consecutiveLeadingFailures(runs(0, 3))).toBe(0);
+  });
+
+  it("keeps a provider with old failures inside the window intermittent, not healthy", () => {
+    // Latest run SUCCEEDED, but the window carries failures: the pattern is
+    // intermittency, and hiding it would make the amber chip flap on and off with
+    // every alternation — exactly the latest-event-wins disease.
+    const window = [ev({ inserted: 2 }), ...runs(1, 4)];
+    expect(standingOf(window)).toBe("intermittent");
+  });
+
+  // The staleness interplay (#1685 composed, not duplicated): the SAME failure
+  // pattern escalates or not depending on whether a success landed inside the
+  // provider's staleness window.
+  it("escalates a flap once the last success falls outside the staleness window", () => {
+    const window = runs(1, 5);
+    expect(
+      standingOf(window, {
+        lastSuccessAt: "2026-07-31 08:00:00",
+        today: "2026-08-01",
+      })
+    ).toBe("intermittent"); // success inside the 2-day window
+    expect(
+      standingOf(window, {
+        lastSuccessAt: "2026-07-25 08:00:00",
+        today: "2026-08-01",
+      })
+    ).toBe("failing"); // success outside it — the #1685 breach escalates
+  });
+
+  it("escalates a QUIET stop too — no failures recorded, just no success in the window", () => {
+    expect(
+      standingOf([ev({ at: "2026-07-20 08:00:00" })], {
+        lastSuccessAt: "2026-07-20 08:00:00",
+        today: "2026-08-01",
       })
     ).toBe("failing");
+    // An exempt provider (null threshold) never goes stale (#1685).
     expect(
-      providerStanding({
-        connected: true,
-        needsReauth: false,
-        latest: ev({ details: truncatedSyncDetails() }),
+      standingOf([ev({ at: "2026-07-20 08:00:00" })], {
+        lastSuccessAt: "2026-07-20 08:00:00",
+        thresholdDays: null,
+        today: "2026-08-01",
       })
-    ).toBe("partial");
-    expect(
-      providerStanding({ connected: true, needsReauth: false, latest: ev() })
     ).toBe("healthy");
   });
 
-  it("routes exactly the actionable standings into Review's inbox", () => {
-    expect(needsAttention("failing")).toBe(true);
-    expect(needsAttention("needs-reauth")).toBe(true);
+  it("stays calm for a provider that has only ever failed once or twice", () => {
+    // No success EVER: staleness cannot fire (#1685's never-succeeded exemption)
+    // and the streak is below the escalation threshold — the provider's own page
+    // shows the failure; nothing escalates until the third consecutive miss.
+    expect(standingOf(runs(2, 0), { lastSuccessAt: null })).toBe(
+      "intermittent"
+    );
+    expect(standingOf(runs(3, 0), { lastSuccessAt: null })).toBe("failing");
+  });
+
+  it("routes exactly the escalating standings to the badge/digest, and intermittent to nowhere", () => {
+    // standingEscalates is what the Review badge, Needs attention, the hero item,
+    // and the digest 🔌 lines read — the reach of a flapping source only narrows.
+    expect(standingEscalates("failing")).toBe(true);
+    expect(standingEscalates("needs-reauth")).toBe(true);
+    for (const s of [
+      "intermittent",
+      "partial",
+      "not-connected",
+      "healthy",
+      "never-synced",
+    ] as const) {
+      expect(standingEscalates(s)).toBe(false);
+    }
+    // needsAttention decides which sources EXPAND with a reason; intermittent
+    // deliberately collapses to a one-liner (#1880 item 1).
+    expect(needsAttention("intermittent")).toBe(false);
     expect(needsAttention("partial")).toBe(true);
     expect(needsAttention("not-connected")).toBe(true);
     // Healthy providers collapse to one line; a just-enabled one is working as
     // designed and is the staleness detector's problem if it never starts (#1685).
     expect(needsAttention("healthy")).toBe(false);
     expect(needsAttention("never-synced")).toBe(false);
+  });
+
+  it("names the intermittent standing with a calm caution badge", () => {
+    expect(standingBadge("intermittent")).toEqual({
+      label: "Intermittent",
+      tone: "caution",
+    });
+  });
+});
+
+describe("flap + escalation copy (#1880)", () => {
+  it("states the honest run tally and the vocabulary-true reassurance", () => {
+    expect(intermittentRunsLabel(3, 10)).toBe("3 of the last 10 runs failed");
+    expect(intermittentRunsLabel(1, 1)).toBe("1 of the last 1 run failed");
+    expect(intermittentReassurance("forecast")).toContain("nothing missing");
+    expect(intermittentReassurance("records")).toContain("catches up");
+  });
+
+  it("states the escalation policy with the provider's own staleness threshold", () => {
+    const withStale = escalationPolicyLabel(2);
+    expect(withStale).toContain("after 3 consecutive failures");
+    expect(withStale).toContain("no run has succeeded in 2 days");
+    expect(withStale).toContain("the same rule the Review badge");
+    // An exempt provider states only the consecutive half — no invented threshold.
+    const exempt = escalationPolicyLabel(null);
+    expect(exempt).toContain("after 3 consecutive failures");
+    expect(exempt).not.toContain("no run has succeeded");
+  });
+
+  it("prefers the provider's declared consequence and falls back generically", () => {
+    expect(
+      failureConsequence(
+        "Withings",
+        "Measurements from your scale and cuff have stopped arriving."
+      )
+    ).toBe("Measurements from your scale and cuff have stopped arriving.");
+    expect(failureConsequence("Oura Ring", null)).toBe(
+      "New data from Oura Ring has stopped arriving."
+    );
   });
 });
 
@@ -177,7 +323,7 @@ describe("buildHistoryRows", () => {
       ev({
         id: 3,
         inserted: 1,
-        window_start: "2026-07-18",
+        window_start: "2026-07-10",
         window_end: "2026-08-01",
       }),
     ];
@@ -186,8 +332,77 @@ describe("buildHistoryRows", () => {
     expect(rows.map((r) => (r.kind === "event" ? r.window : "quiet"))).toEqual([
       null,
       null,
-      "2026-07-18 → 2026-08-01",
+      "2026-07-10 → 2026-08-01",
     ]);
+  });
+
+  // #1880 item 4: the norm is the LATEST run's window, never a majority vote over
+  // stale history — so after a day rollover the header agrees with the newest row
+  // and the OLDER rows note their divergence.
+  it("derives the norm from the latest run, with older rows noting the day roll", () => {
+    const events = [
+      // The newest run reaches → 08-09 (the day rolled)…
+      ev({
+        id: 9,
+        inserted: 1,
+        window_start: "2026-07-20",
+        window_end: "2026-08-09",
+      }),
+      // …while every older run covered → 08-08. Under the majority rule the
+      // HEADER would claim → 08-08 and contradict the newest row.
+      ev({
+        id: 8,
+        inserted: 2,
+        window_start: "2026-07-20",
+        window_end: "2026-08-08",
+      }),
+      ev({
+        id: 7,
+        inserted: 3,
+        window_start: "2026-07-20",
+        window_end: "2026-08-08",
+      }),
+    ];
+    expect(runWindowNorm(events)).toBe("2026-07-20 → 2026-08-09");
+    const rows = buildHistoryRows(events);
+    expect(rows.map((r) => (r.kind === "event" ? r.window : "?"))).toEqual([
+      null,
+      "covered → 2026-08-08 (before the day rolled)",
+      "covered → 2026-08-08 (before the day rolled)",
+    ]);
+  });
+
+  it("keeps the day-roll phrase for exactly a one-day gap, and states other divergence plainly", () => {
+    const norm = { start: "2026-07-20", end: "2026-08-09" };
+    // Same start, end more than a day short: shortened but no rollover claim.
+    expect(
+      windowDivergence(
+        ev({ window_start: "2026-07-20", window_end: "2026-08-01" }),
+        norm
+      )
+    ).toBe("covered → 2026-08-01");
+    // A different start states the whole window.
+    expect(
+      windowDivergence(
+        ev({ window_start: "2026-07-10", window_end: "2026-08-09" }),
+        norm
+      )
+    ).toBe("2026-07-10 → 2026-08-09");
+    // Matching the norm says nothing at all.
+    expect(
+      windowDivergence(
+        ev({ window_start: "2026-07-20", window_end: "2026-08-09" }),
+        norm
+      )
+    ).toBeNull();
+  });
+
+  it("skips windowless failures when picking the norm", () => {
+    const events = [
+      ev({ id: 5, ok: 0, error: "weather fetch failed (503)" }),
+      ev({ id: 4, inserted: 1, ...win }),
+    ];
+    expect(runWindowNorm(events)).toBe("2026-07-18 → 2026-08-07");
   });
 
   it("collapses a run of consecutive no-ops (#137) but never a lone one", () => {
@@ -210,11 +425,59 @@ describe("buildHistoryRows", () => {
     ]);
     const quiet = rows[1];
     expect(quiet.kind === "quiet" && quiet.count).toBe(3);
-    // A failure is never a no-op — it stays its own visible row with its reason.
+    // A LONE failure is never collapsed — it stays its own visible row with its
+    // reason.
     expect(rows[2].kind === "event" && rows[2].ev.id).toBe(5);
     // The lone no-op between the failure and the meaningful run is NOT collapsed:
     // hiding one row behind a summary of one gains nothing.
     expect(rows[3].kind === "event" && rows[3].ev.id).toBe(4);
+  });
+
+  // #1880 item 3: consecutive IDENTICAL failures group like consecutive no-ops do,
+  // so an alternating Failed/Refreshed hour reads as a pattern, not a zebra.
+  it("groups consecutive identical failures into one ×N row", () => {
+    const err = "weather fetch failed (503)";
+    const events = [
+      ev({ id: 9, ok: 0, at: "2026-08-01 09:00:00", error: err }),
+      ev({ id: 8, inserted: 5, at: "2026-08-01 08:00:00" }),
+      ev({ id: 7, ok: 0, at: "2026-08-01 07:00:00", error: err }),
+      ev({ id: 6, ok: 0, at: "2026-08-01 06:00:00", error: err }),
+      ev({ id: 5, inserted: 3, at: "2026-08-01 05:00:00" }),
+    ];
+    const rows = buildHistoryRows(events);
+    expect(rows.map((r) => r.kind)).toEqual([
+      "event", // the lone newest failure stays a row with its reason
+      "event",
+      "failure-run", // 07:00 + 06:00 collapse
+      "event",
+    ]);
+    const run = rows[2];
+    if (run.kind !== "failure-run") throw new Error("expected failure-run");
+    expect(run.count).toBe(2);
+    expect(run.newestAt).toBe("2026-08-01 07:00:00");
+    expect(run.oldestAt).toBe("2026-08-01 06:00:00");
+    expect(run.error).toBe(err);
+  });
+
+  it("never groups consecutive failures with DIFFERENT reasons", () => {
+    const events = [
+      ev({ id: 9, ok: 0, error: "rate limit reached (429)" }),
+      ev({ id: 8, ok: 0, error: "token refresh failed (401)" }),
+      ev({ id: 7, inserted: 1 }),
+    ];
+    const rows = buildHistoryRows(events);
+    // Two causes, two rows — collapsing them would hide which failure said what.
+    expect(rows.map((r) => r.kind)).toEqual(["event", "event", "event"]);
+  });
+
+  it("labels a failure run with its count-qualified shared reason", () => {
+    expect(failureRunReason(2, "weather fetch failed (503)")).toBe(
+      "weather fetch failed (503) — both runs"
+    );
+    expect(failureRunReason(4, "weather fetch failed (503)")).toBe(
+      "weather fetch failed (503) — all 4 runs"
+    );
+    expect(failureRunReason(2, null)).toBeNull();
   });
 
   it("labels a quiet run in the provider's own vocabulary", () => {

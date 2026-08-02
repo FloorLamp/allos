@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection, getStravaConfig } from "@/lib/integrations/connections";
@@ -87,7 +88,7 @@ export default async function StravaPage(props: {
       )}
 
       {connected ? (
-        <div className="grid max-w-3xl gap-6">
+        <PageContainer width="reading" className="grid gap-6">
           <div className="card">
             <IntegrationStatusHeader
               state={state}
@@ -111,9 +112,9 @@ export default async function StravaPage(props: {
           />
 
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
-        </div>
+        </PageContainer>
       ) : (
-        <div className="grid max-w-3xl gap-6">
+        <PageContainer width="reading" className="grid gap-6">
           <div className="card space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Enter your Strava API application&rsquo;s{" "}
@@ -192,7 +193,7 @@ export default async function StravaPage(props: {
             callbackUrl={callbackUrl}
             callbackDomain={callbackDomain}
           />
-        </div>
+        </PageContainer>
       )}
     </div>
   );
