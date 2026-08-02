@@ -68,6 +68,20 @@ hygiene guard — see "Assertion integrity" below.
    green, and a 4-tests-broken PR self-reported green. Retries also interact
    badly with the non-idempotent specs of class 1.
 
+**The picker-in-row `hasText` trap (#1879 — proven live to act on the wrong
+patient).** `filter({ hasText })` matches a row's ENTIRE subtree text, including
+the `<option>` labels of an embedded `<select>` and the accessible names of an
+embedded chip picker — so on a surface where every row carries every household
+profile name (the portals pending rows, any future picker-in-row list), a
+row-scoped `hasText: "RILEY"` matches the FIRST row whenever a profile is named
+Riley, and the driver acts on the wrong row indistinguishably from success. It
+passes today only while fixture labels happen not to collide with fixture
+profile names — the same daily-roulette shape as class 1. Anchor on the label
+ELEMENT, never the row: an exact-text anchor
+(`.filter({ has: page.getByText(label, { exact: true }) })`), a dedicated label
+testid, or — what the portals specs do since #1874 — a row attribute carrying
+the identity (`[data-testid="pending-row"][data-label="…"]`).
+
 ## Fix (a) — the hygiene guard
 
 `lib/__tests__/e2e-hygiene.test.ts` is a pure source-scan (the #448 /
